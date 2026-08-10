@@ -180,7 +180,7 @@
 #         that reads as "nothing to see here".
 #
 #   chain: ethereum | polygon | solana | none | ...
-#     `none` means NO on-chain surface exists at all, ever — Salad pays PayPal
+#     `none` means NO on-chain surface exists at all, ever — provider pays off-chain
 #     and gift cards only. Tier 2 (on-chain reconciliation) must skip these
 #     rather than fail to find an address for them.
 #     Omit entirely when the chain is chosen per-withdrawal and there is no

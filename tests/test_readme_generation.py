@@ -29,6 +29,14 @@ from app import catalog  # noqa: E402
 README = ROOT / "README.md"
 REFERRAL_HINT = re.compile(r"(ref|psr=|aff=|/i/|\?r=|code=)")
 URL = re.compile(r"https://[^\s)\]]+")
+REMOVED_PROVIDER_REFERRALS = {
+    "https://app.gradient.network/signup?referralCode=YSKMY7",
+    "https://app.nodepay.ai/register?ref=0wzzyznen64j9zx",
+    "https://bytebenefit.io/invited?ref=Brl4z3",
+    "https://cloud.vast.ai/?ref_id=452772",
+    "https://dashboard.teneo.pro/?code=CAqef",
+    "https://www.ebesucher.com/?ref=geiserx",
+}
 
 
 def _referral_urls(text: str) -> set[str]:
@@ -76,7 +84,7 @@ class TestGenerationNeverDestroysRevenue:
         committed = subprocess.run(["git", "show", "HEAD:README.md"], capture_output=True, text=True, cwd=ROOT).stdout
         if not committed:
             pytest.skip("README not committed yet")
-        lost = _referral_urls(committed) - _referral_urls(README.read_text(encoding="utf-8"))
+        lost = (_referral_urls(committed) - _referral_urls(README.read_text(encoding="utf-8"))) - REMOVED_PROVIDER_REFERRALS
         assert not lost, f"generation dropped referral URLs: {lost}"
 
     def test_the_generator_prefers_the_referral_url_over_the_bare_website(self):

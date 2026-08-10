@@ -4,7 +4,7 @@
 
 Setup and configuration for every service CashPilot supports.
 
-**51 services** across 4 categories. The table is sortable — click a heading to reorder it.
+**23 services** across 2 categories. The table is sortable — click a heading to reorder it.
 
 !!! tip "Choosing what to run"
 
@@ -17,71 +17,33 @@ Setup and configuration for every service CashPilot supports.
 | Service | Needs | Runs as | Minimum payout | Status |
 |---|---|---|---|---|
 | [Bitping](bitping.md) | — | Docker | $5 | active |
-| [Bytebenefit](bytebenefit.md) | Residential IP | App only | $3 | active |
 | [Bytelixir](bytelixir.md) | Residential IP, 50 Mbps | App only | $2 | active |
-| [earn.cc](earncc.md) | Residential IP | App only | — | broken |
 | [Earn.fm](earnfm.md) | Residential IP | Docker | $3 | active |
 | [EarnApp](earnapp.md) | Residential IP, 10 Mbps recommended; 100 Mbps recommended for US max rate | Docker | $10 | active |
-| [Ebesucher](ebesucher.md) | Residential IP | App only | $2 | active |
 | [Honeygain](honeygain.md) | Residential IP | Docker | $20 | active |
 | [IPRoyal Pawns](iproyal.md) | Residential IP | Docker | $5 | active |
 | [MystNodes](mysterium.md) | — | Docker | 4 MYST | active |
-| [PacketShare](packetshare.md) | Residential IP | Docker | $5 | dead |
 | [PacketStream](packetstream.md) | Residential IP | Docker | $5 | active |
-| [Peer2Profit](peer2profit.md) | — | Docker | $2 | dead |
 | [Proxies.sx](proxies-sx.md) | Residential IP, 500 KB/s upload | Docker | $5 | beta |
 | [ProxyBase](proxybase.md) | — | Docker | $1 | active |
 | [ProxyBase Markets](proxybase-xyz.md) | — | Docker | $1 | active |
 | [ProxyLite](proxylite.md) | — | Docker | $5 | active |
 | [ProxyRack](proxyrack.md) | — | Docker | $20 | active |
 | [Repocket](repocket.md) | Residential IP | Docker | $20 | active |
-| [SpeedShare](speedshare.md) | Residential IP | Docker | $5 | active |
 | [Spide](spide.md) | Residential IP | App only | $5 | active |
 | [Traffmonetizer](traffmonetizer.md) | — | Docker | $10 | active |
 | [URnetwork](urnetwork.md) | — | Docker | $5 | active |
-| [WizardGain](wizardgain.md) | Residential IP | Docker | $5 | broken |
 
 ## DePIN
 
 | Service | Needs | Runs as | Minimum payout | Status |
 |---|---|---|---|---|
-| [Anyone Protocol](anyone-protocol.md) | 10 Mbps | Docker | — | active |
-| [BlockMesh (Perceptron Network)](blockmesh.md) | Residential IP | App only | — | dropped |
 | [Dawn Internet](dawn.md) | Residential IP | App only | — | active |
-| [Deeper Network](deeper-network.md) | Residential IP | App only | — | active |
-| [GagaNode](gaganode.md) | — | App only | $5 | dropped |
-| [Gradient Network](gradient.md) | Residential IP | App only | — | active |
 | [Grass](grass.md) | Residential IP | App only | — | active |
-| [Helium](helium.md) | Residential IP | App only | — | active |
-| [Koii Network](koii.md) | — | App only | — | broken |
-| [Network3](network3.md) | — | App only | — | broken |
-| [Nodepay](nodepay.md) | Residential IP | App only | — | active |
-| [Nodle](nodle.md) | — | App only | — | active |
 | [PassiveApp](passiveapp.md) | Residential IP | App only | $5 | beta |
-| [Presearch](presearch.md) | — | Docker | — | active |
-| [Sentinel dVPN](sentinel-dvpn.md) | 10 Mbps | App only | — | active |
-| [Teneo Protocol](teneo.md) | Residential IP | App only | — | active |
-| [Theta Edge Node](theta-edge.md) | — | App only | — | active |
 | [Titan Network](titan.md) | Residential IP | App only | — | active |
 | [Uprock](uprock.md) | Residential IP | App only | $5 | active |
 | [Wipter](wipter.md) | Residential IP | Docker | $20 | active |
-
-## GPU Compute
-
-| Service | Needs | Runs as | Minimum payout | Status |
-|---|---|---|---|---|
-| [Flux](flux.md) | Storage 220GB, 25 Mbps | App only | — | active |
-| [Golem Network](golem.md) | Storage 20GB, 10 Mbps | App only | — | active |
-| [io.net](ionet.md) | GPU | App only | — | active |
-| [Nosana](nosana.md) | GPU, Storage 50GB, 50 Mbps | App only | — | active |
-| [Salad](salad.md) | GPU, Residential IP | App only | $5 | active |
-| [Vast.ai](vast-ai.md) | GPU, Storage 100GB, 100 Mbps | App only | $25 | active |
-
-## Storage
-
-| Service | Needs | Runs as | Minimum payout | Status |
-|---|---|---|---|---|
-| [Storj](storj.md) | Storage 550GB, 5 Mbps upload | Docker | $4 | active |
 
 ## Not a service guide
 

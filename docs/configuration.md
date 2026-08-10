@@ -82,10 +82,9 @@ CashPilot reports a worker's GPU as one of three answers — **yes**, **no**, or
 **unknown** — and inside a container the honest answer is almost always
 *unknown*: the absence of a GPU there says nothing about the host.
 
-That matters because four services only earn with a real GPU (Salad, Nosana,
-io.net, Vast.ai), and a GPU service deployed **without** the device starts,
-reports healthy, and earns nothing. It is the same shape as the Mysterium
-`/dev/net/tun` failure.
+That matters for future GPU-backed services: a GPU service deployed **without**
+the device can start, report healthy, and earn nothing. It is the same shape as
+the Mysterium `/dev/net/tun` failure.
 
 To let the worker see an Intel or AMD GPU, uncomment the block in the compose
 file:

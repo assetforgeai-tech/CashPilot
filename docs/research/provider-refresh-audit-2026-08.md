@@ -53,35 +53,15 @@ or official docs make the update certain.
 
 | Provider | Status | Client model | Collector | Verdict |
 |---|---|---|---|---|
-| bytebenefit | active | Windows/Android app | manual | updated; current public setup is app-only, min payout $3. No public API/collector docs found. |
 | bytelixir | active | Windows/Android app | manual | updated; collector remains cookie scrape/manual because no official API shape found. |
-| ebesucher | active | browser/surfbar | manual | keep; official model remains browser traffic exchange. |
 | packetstream | active | desktop client / CID | scrape | updated; current public setup is desktop-client-first, not app-only. |
 | proxybase | active | Docker/app | manual | keep; existing vendor/test guard says VPS/datacenter accepted. |
 | proxybase-xyz | active | Docker CLI marketplace | manual | keep; proxy inventory-like seller network, but still an earning provider entry until proxy-pool integration is designed separately. |
 | spide | active | app only | manual | keep; official terms already drive residential/one-IP warning. |
 | urnetwork | active | Docker/app | manual | keep; no public earnings API found. |
-| earncc | broken | app/site | manual | keep broken; official site/connectivity not reliable. |
-| packetshare | dead | legacy Docker/app | manual | keep dead; no verified current earning path. |
-| peer2profit | dead | legacy Docker/app | api | keep dead; no verified current earning path. |
-| speedshare | active | app/community Docker | manual | updated; active but no official Docker/API. |
-| wizardgain | broken | Docker/app | manual | keep broken; official site/connectivity not reliable. |
 | dawn | active | browser extension/hardware | scrape | current dashboard is live; logged-in account shows connection quality, points, streak, referrals, and epoch rewards. |
-| gradient | active | browser extension | scrape | current public dashboard still logged out in this browser session. |
-| nodepay | active | mobile app + dashboard | scrape | logged-in dashboard currently shows the V2 upgrade wall. |
-| teneo | active | browser extension + Beacon app | scrape | dashboard URL hit cert error in this browser session; no new collector/API shape confirmed. |
-| deeper-network | active | proprietary hardware | manual | keep; not a VPS/server container target. |
-| nodle | active | mobile app | manual | keep; mobile-only earning path. |
 | passiveapp | active | app only | manual | logged-in dashboard shows earnings, threshold, devices, traffic shared, referrals, and download links. |
-| sentinel-dvpn | active | node software | manual | keep; on-chain/manual model. |
-| theta-edge | active | desktop app | manual | keep; no headless Docker/API found. |
 | uprock | active | extension/mobile | manual | needs_user_info: current API/export docs required. |
-| flux | active | host node | manual | keep; compute/stake node, no CashPilot Docker collector change. |
-| golem | active | host Yagna/Docker provider | api | updated; current setup is host-level provider install, not a single CashPilot-managed image. |
-| ionet | active | dashboard-driven GPU worker | manual | updated; current worker onboarding is dashboard-driven. Needs API/sample response for collector. |
-| nosana | active | GPU provider | api | keep; Solana/explorer API model. |
-| salad | active | Windows app | api | keep; cookie API collector already exists. |
-| vast-ai | active | GPU marketplace | api | keep; API-key model. |
 | bitping | active | Docker/app | api | keep; API collector already exists. |
 | earnapp | active | official app / Docker prohibited | api | updated; official earning model is now pay-per-time, with Docker/VM/hosting still prohibited. Deploy warning remains required. |
 | earnfm | active | Docker client / UUID API key | api | dashboard base URL updated to app.earn.fm; visible dashboard confirms balance, bandwidth totals, payout buckets, and API key location under More. |
@@ -93,20 +73,12 @@ or official docs make the update certain.
 | repocket | active | Docker/app | api | keep; Firebase collector exists. |
 | traffmonetizer | active | Docker/app | api | keep; token collector exists. |
 | proxies-sx | beta | SDK Docker peer | api | keep; recently added API collector/per-node earnings. |
-| storj | active | Docker/storage node | api | keep; local dashboard API collector and direct egress already set. |
 | grass | active | extension/app | api | keep; token collector exists. |
-| helium | active | hardware/network | api | keep; on-chain/API model. |
-| presearch | active | Docker node | api | keep; node dashboard model. |
 | titan | active | app | api | logged-in dashboard shows per-device rows, daily history, TNTIP/USDC split, and paused-extension warning. |
-| anyone-protocol | active | Docker relay | auto | keep; reward contract collector exists. |
-| blockmesh | dropped | extension | scrape | keep dropped; not reintroduced without current official docs. |
-| gaganode | dropped | app | api | keep dropped; no verified current safe earning path. |
-| koii | broken | app/node | manual | keep broken; official access/connectivity not reliable. |
-| network3 | broken | app/node | manual | keep broken; official access/connectivity not reliable. |
 | wipter | active | app only | scrape | updated; active but no public API found. |
 
 ## Needs user info
 
-Provide official docs, dashboard export, or redacted API response before adding collectors for: `bytebenefit`, `gradient`, `uprock`, `ionet`.
+Provide official docs, dashboard export, or redacted API response before adding collectors for: `uprock`.
 
-Provider fields with conflicting or insufficient official public data: `bytelixir` payout threshold history, `proxybase-xyz` buyer/seller proxy-inventory split, `urnetwork` earnings API, `speedshare` official collector/API, `nodepay` current rewards model, `teneo` current payout shape.
+Provider fields with conflicting or insufficient official public data: `bytelixir` payout threshold history, `proxybase-xyz` buyer/seller proxy-inventory split, `urnetwork` earnings API.

@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from app.collectors.anyone import AnyoneCollector
 from app.collectors.base import BaseCollector, EarningsResult
 from app.collectors.bitping import BitpingCollector
 from app.collectors.bytelixir import BytelixirCollector
@@ -23,20 +22,16 @@ from app.collectors.packetstream import PacketStreamCollector
 from app.collectors.proxies_sx import ProxiesSxCollector
 from app.collectors.proxyrack import ProxyRackCollector
 from app.collectors.repocket import RepocketCollector
-from app.collectors.salad import SaladCollector
-from app.collectors.storj import StorjCollector
 from app.collectors.traffmonetizer import TraffmonetizerCollector
 
 logger = logging.getLogger(__name__)
 
 # slug -> collector class
 COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
-    "anyone-protocol": AnyoneCollector,
     "honeygain": HoneygainCollector,
     "earnapp": EarnAppCollector,
     "iproyal": IPRoyalCollector,
     "mysterium": MystNodesCollector,
-    "storj": StorjCollector,
     "traffmonetizer": TraffmonetizerCollector,
     "repocket": RepocketCollector,
     "proxyrack": ProxyRackCollector,
@@ -46,17 +41,14 @@ COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
     "proxies-sx": ProxiesSxCollector,
     "grass": GrassCollector,
     "bytelixir": BytelixirCollector,
-    "salad": SaladCollector,
 }
 
 # Map of slug -> list of config keys needed to instantiate the collector
 _COLLECTOR_ARGS: dict[str, list[str]] = {
-    "anyone-protocol": ["fingerprints"],
     "honeygain": ["email", "password"],
     "earnapp": ["oauth_token"],
     "iproyal": ["email", "password"],
     "mysterium": ["email", "password"],
-    "storj": ["?api_url"],
     "traffmonetizer": ["token"],
     "repocket": ["email", "password"],
     "proxyrack": ["api_key"],
@@ -72,7 +64,6 @@ _COLLECTOR_ARGS: dict[str, list[str]] = {
     # they must be declared here or the UI never asks for them and the values
     # are never passed to the collector — which accepts them already.
     "bytelixir": ["session_cookie", "?remember_web", "?xsrf_token"],
-    "salad": ["auth_cookie"],
 }
 
 _SECRET_KINDS = {"password", "api_key", "token", "cookie", "bearer", "jwt", "oauth_token", "access_token"}
@@ -204,13 +195,6 @@ CREDENTIAL_LIFETIMES: dict[str, dict[str, dict[str, object]]] = {
             "hours": None,
             "durable": True,
             "why": "Bearer token from browser localStorage. Re-copy it if Grass signs you out.",
-        },
-    },
-    "salad": {
-        "auth_cookie": {
-            "hours": None,
-            "durable": True,
-            "why": "Salad's auth cookie. Lasts until you log out.",
         },
     },
 }

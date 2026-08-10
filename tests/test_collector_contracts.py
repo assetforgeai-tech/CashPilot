@@ -40,7 +40,7 @@ def _fixture(slug: str) -> dict:
 def _source(slug: str) -> str:
     """The collector's own source, resolved via the CLASS not the slug.
 
-    COLLECTOR_MAP is keyed by catalog slug ("mysterium", "anyone-protocol")
+    COLLECTOR_MAP is keyed by catalog slug ("mysterium", "proxybase-xyz")
     while the modules are named after the provider's API ("mystnodes.py",
     "anyone.py"). Deriving the path from the slug silently looks at the wrong
     file — or no file at all.
@@ -168,23 +168,6 @@ class TestParsingRealShapes:
         assert out.balance == fx["parsed"]
         assert out.currency == fx["currency"]
 
-    def test_salad_reads_the_balance_directly(self):
-        from app.collectors.salad import SaladCollector
-
-        fx = _fixture("salad")
-        out = self._run(SaladCollector(auth_cookie="c"), [fx["sample"]])
-        assert out.error is None
-        assert out.balance == fx["parsed"]
-
-    def test_a_renamed_field_is_caught_rather_than_read_as_zero(self):
-        """The failure this bead exists for: the provider renames the key."""
-        from app.collectors.salad import SaladCollector
-
-        out = self._run(SaladCollector(auth_cookie="c"), [{"balanceCurrent": 3.5}])
-        assert out.balance == 0.0 or out.error is not None, (
-            "a renamed field must surface as an error or a zero, never as a plausible number"
-        )
-
 
 class TestCredentialSelfTest:
     """The button that answers "are these credentials valid?" in a second.
@@ -254,7 +237,7 @@ class TestCredentialSelfTest:
         assert exc.value.status_code == 404
 
     def test_a_service_with_no_collector_says_there_is_nothing_to_test(self):
-        out = self._call("grass" if "grass" not in COLLECTOR_MAP else "teneo")
+        out = self._call("passiveapp")
         assert out["outcome"] in {"unsupported", "not_configured"}
 
     def test_unconfigured_credentials_are_reported_as_such(self):

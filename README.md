@@ -67,7 +67,6 @@ Services CashPilot can deploy and manage automatically via Docker.
 <!-- BEGIN GENERATED: docker-services -->
 | Service | Guide | Residential IP required | VPS allowed | Devices / Acct | Devices / IP | Payout |
 |---------|-------|:-:|:-:|:-:|:-:|--------|
-| [Anyone Protocol](https://anyone.io) | [Guide](docs/guides/anyone-protocol.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto |
 | [Bitping](https://app.bitping.com) | [Guide](docs/guides/bitping.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto (SOL) |
 | [Earn.fm](https://earn.fm/ref/GEISYB91) | [Guide](docs/guides/earnfm.md) | ✅ | ✅ | ? \*\*\* | 1 | Crypto |
 | [EarnApp](https://earnapp.com/i/TSMD9wSm) \*\*\*\* | [Guide](docs/guides/earnapp.md) | ✅ | ❌ | 15 | ? \*\*\* | PayPal, Amazon Gift Card, Wise |
@@ -75,22 +74,17 @@ Services CashPilot can deploy and manage automatically via Docker.
 | [IPRoyal Pawns](https://pawns.app?r=19266874) | [Guide](docs/guides/iproyal.md) | ✅ | ❌ | ? \*\*\* | 1 | PayPal, Crypto, Bank Transfer |
 | [MystNodes](https://mystnodes.co/?referral_code=do7v7YOoBBpbOstKQovX2pUvZYKia4ZhH3QIdNtE) | [Guide](docs/guides/mysterium.md) | ❌ | ✅ | ? \*\*\* | Unlimited | Crypto |
 | [PacketStream](https://packetstream.io/?psr=7xgZ) | [Guide](docs/guides/packetstream.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | PayPal |
-| [Presearch](https://presearch.com/signup?rid=4872322) | [Guide](docs/guides/presearch.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto |
 | [Proxies.sx](https://www.proxies.sx) | [Guide](docs/guides/proxies-sx.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto |
 | [ProxyBase](https://peer.proxybase.org?referral=nXzS3c6iTO) | [Guide](docs/guides/proxybase.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto |
 | [ProxyBase Markets](https://proxybase.xyz?referral=nXzS3c6iTO) | [Guide](docs/guides/proxybase-xyz.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto (USDC) |
 | [ProxyLite](https://proxylite.ru/?r=KMUPRZIZ) | [Guide](docs/guides/proxylite.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto, PayPal |
 | [ProxyRack](https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn) | [Guide](docs/guides/proxyrack.md) | ❌ | ✅ | 500 | ? \*\*\* | PayPal, Crypto |
 | [Repocket](https://repocket.com/) | [Guide](docs/guides/repocket.md) | ✅ | ❌ | 5 | ? \*\*\* | PayPal, Crypto |
-| [SpeedShare](https://speedshare.app) | [Guide](docs/guides/speedshare.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto, PayPal |
-| [Storj](https://storj.dev/node/get-started/setup) | [Guide](docs/guides/storj.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto |
 | [Traffmonetizer](https://traffmonetizer.com/?aff=2111758) | [Guide](docs/guides/traffmonetizer.md) | ❌ | ✅ | ? \*\*\* | Unlimited | Crypto (USDT), PayPal |
 | [URnetwork](https://ur.io/?referral_code=1Q3G19) | [Guide](docs/guides/urnetwork.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto |
 | [Wipter](https://wipter.com/en/refer-a-friend) | [Guide](docs/guides/wipter.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | PayPal, Crypto |
 <!-- END GENERATED: docker-services -->
 
-> \* Storj nodes on the same /24 subnet share data allocation, reducing per-node earnings.
->
 > \*\* Traffmonetizer ToS requires residential IP, but VPS nodes are accepted in practice.
 >
 > \*\*\*\* EarnApp's help centre **prohibits** Docker containers, VMs, hosting services and home servers, with account termination and cancellation of pending payments as the stated penalty — which is exactly how CashPilot deploys it. Read the [guide](docs/guides/earnapp.md) before deploying.
@@ -106,21 +100,11 @@ These services have no Docker image. CashPilot lists them in the catalog with si
 <!-- BEGIN GENERATED: extension-services -->
 | Service | Guide | Residential IP required | VPS allowed | Devices / Acct | Devices / IP | Payout | Status |
 |---------|-------|:-:|:-:|:-:|:-:|--------|--------|
-| [Bytebenefit](https://bytebenefit.io/invited?ref=Brl4z3) | [Guide](docs/guides/bytebenefit.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | PayPal | Active |
 | [Bytelixir](https://bytelixir.com/r/OYEIRE0VSZBZ) | [Guide](docs/guides/bytelixir.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto | Active |
 | [Dawn Internet](https://dawninternet.com/?code=2QLQV97F) | [Guide](docs/guides/dawn.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto | Active |
-| [Deeper Network](https://deeper.network) | [Guide](docs/guides/deeper-network.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto | Active |
-| [Ebesucher](https://www.ebesucher.com/?ref=geiserx) | [Guide](docs/guides/ebesucher.md) | ✅ | ❌ | ? \*\*\* | 1 | PayPal | Active |
-| [Gradient Network](https://app.gradient.network/signup?referralCode=YSKMY7) | [Guide](docs/guides/gradient.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto | Active |
 | [Grass](https://app.grass.io/register?referralCode=kn8FNEPnUr2tMqE) | [Guide](docs/guides/grass.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto | Active |
-| [Helium](https://helium.com) | [Guide](docs/guides/helium.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto | Active |
-| [Nodepay](https://app.nodepay.ai/register?ref=0wzzyznen64j9zx) | [Guide](docs/guides/nodepay.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto | Active |
-| [Nodle](https://nodle.com) | [Guide](docs/guides/nodle.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto | Active |
 | [PassiveApp](https://passiveapp.com/i/bqpC4M) | [Guide](docs/guides/passiveapp.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto, PayPal | Beta |
-| [Sentinel dVPN](https://sentinel.co) | [Guide](docs/guides/sentinel-dvpn.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto | Active |
 | [Spide](https://spide.network/register.html?f3bc51) | [Guide](docs/guides/spide.md) | ✅ | ❌ | ? \*\*\* | 1 | Crypto | Active |
-| [Teneo Protocol](https://dashboard.teneo.pro/?code=CAqef) | [Guide](docs/guides/teneo.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto | Active |
-| [Theta Edge Node](https://thetatoken.org) | [Guide](docs/guides/theta-edge.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto | Active |
 | [Titan Network](https://edge.titannet.info/signup?inviteCode=2GKKJ495) | [Guide](docs/guides/titan.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto (USDC) | Active |
 | [Uprock](https://link.uprock.com/i/33e8492e) | [Guide](docs/guides/uprock.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto | Active |
 <!-- END GENERATED: extension-services -->
@@ -132,12 +116,6 @@ GPU-intensive computing services. Requires compatible hardware.
 <!-- BEGIN GENERATED: gpu-services -->
 | Service | Guide | Residential IP required | GPU | Min Storage | Payout | Status |
 |---------|-------|:-:|:-:|:-:|--------|--------|
-| [Flux](https://runonflux.io) | [Guide](docs/guides/flux.md) | ❌ | ❌ | 220GB | Crypto | Active |
-| [Golem Network](https://golem.network) | [Guide](docs/guides/golem.md) | ❌ | ❌ | 20GB | Crypto | Active |
-| [io.net](https://io.net) | [Guide](docs/guides/ionet.md) | ❌ | ✅ | N/A | Crypto | Active |
-| [Nosana](https://nosana.io) | [Guide](docs/guides/nosana.md) | ❌ | ✅ | 50GB | Crypto | Active |
-| [Salad](https://salad.io) | [Guide](docs/guides/salad.md) | ✅ | ✅ | N/A | PayPal, Gift Cards | Active |
-| [Vast.ai](https://cloud.vast.ai/?ref_id=452772) | [Guide](docs/guides/vast-ai.md) | ❌ | ✅ | 100GB | Crypto, Bank Transfer | Active |
 <!-- END GENERATED: gpu-services -->
 
 > **Note:** Earnings vary widely by location, hardware, and demand -- see individual guide pages in `docs/guides/` for details.
@@ -361,14 +339,6 @@ Services that were evaluated but are no longer listed in the catalog due to bein
 
 | Service | Status | Reason | Last checked |
 |---------|--------|--------|:------------:|
-| Peer2Profit | Dead | Domain unreachable | Mar 2026 |
-| PacketShare | Dead | Signup process broken, no progress | Mar 2026 |
-| earn.cc | Broken | Server error on signup | Mar 2026 |
-| WizardGain | Broken | Under maintenance indefinitely | Mar 2026 |
-| Koii Network | Broken | Website says paused | Mar 2026 |
-| Network3 | Broken | No SSL, no updates in months | Mar 2026 |
-| GagaNode | Shady | Poorly made website, untrustworthy | Mar 2026 |
-| BlockMesh (Perceptron) | Dropped | Rebranded, requires browser dev mode, shady | Mar 2026 |
 | Filecoin | Not viable | Enterprise-only (10 TiB min, datacenter infrastructure required) | Mar 2026 |
 | AntGain | Dead | Telegram channel unavailable | Mar 2026 |
 
