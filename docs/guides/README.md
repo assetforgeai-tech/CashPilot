@@ -17,11 +17,11 @@ Setup and configuration for every service CashPilot supports.
 | Service | Needs | Runs as | Minimum payout | Status |
 |---|---|---|---|---|
 | [Bitping](bitping.md) | — | Docker | $5 | active |
-| [Bytebenefit](bytebenefit.md) | Residential IP | App only | $5 | active |
+| [Bytebenefit](bytebenefit.md) | Residential IP | App only | $3 | active |
 | [Bytelixir](bytelixir.md) | Residential IP, 50 Mbps | App only | $2 | active |
 | [earn.cc](earncc.md) | Residential IP | App only | — | broken |
-| [Earn.fm](earnfm.md) | Residential IP | Docker | $15 | active |
-| [EarnApp](earnapp.md) | Residential IP | Docker | $10 | active |
+| [Earn.fm](earnfm.md) | Residential IP | Docker | $3 | active |
+| [EarnApp](earnapp.md) | Residential IP, 10 Mbps recommended; 100 Mbps recommended for US max rate | Docker | $10 | active |
 | [Ebesucher](ebesucher.md) | Residential IP | App only | $2 | active |
 | [Honeygain](honeygain.md) | Residential IP | Docker | $20 | active |
 | [IPRoyal Pawns](iproyal.md) | Residential IP | Docker | $5 | active |

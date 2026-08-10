@@ -4,10 +4,11 @@ category: bandwidth
 status: active
 website: https://earn.fm
 description: >
-  Earn.fm pays you for sharing your internet bandwidth. Earnings collector
-  uses email/password auth via Supabase. Lightweight Docker image with
-  straightforward deployment (Docker client uses separate UUID token).
-short_description: Bandwidth sharing - email/password auth, lightweight client
+  Earn.fm pays you for sharing your internet bandwidth. The deployable client
+  uses a UUID API key from Account Settings; the earnings collector still uses
+  the dashboard email/password login flow because no stable public balance API
+  key contract is documented.
+short_description: Bandwidth sharing - API-key client, lightweight Docker
 
 referral:
   signup_url: "https://earn.fm/ref/GEISYB91"
@@ -41,7 +42,7 @@ requirements:
 
 payment:
   methods: [crypto]
-  minimum_payout: "$15"
+  minimum_payout: "$3"
   currency: USD
   frequency: "On request"
 
@@ -55,14 +56,14 @@ earnings:
 cashout:
   method: redirect
   dashboard_url: "https://app.earn.fm/#/payout"
-  min_amount: 15.0
+  min_amount: 3.0
   currency: USD
 
 platforms: [docker, linux]
 
 collector:
   type: api
-  notes: "Supabase email/password auth. Docker client uses separate EARNFM_TOKEN (UUID) for bandwidth sharing only."
+  notes: "Supabase email/password auth. Docker client uses separate EARNFM_TOKEN UUID API key for bandwidth sharing only."
   credential_hint: "Use your Earn.fm account email and password (same as <a href='https://app.earn.fm' target='_blank'>app.earn.fm</a> login)."
 
 payout:

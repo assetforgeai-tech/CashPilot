@@ -23,29 +23,29 @@
 
 ## Description
 
-EarnApp by Bright Data lets you sell your unused bandwidth for passive income. Bright Data is the world's largest proxy network, powering data collection for Fortune 500 companies.
+EarnApp by Bright Data lets residential devices earn from contributed network usage. Its official model is now fixed-rate pay-per-time, not pay-per-GB. Official support prohibits VM, Docker, hosting, personal/home server, and business/monetization environments, so the community Docker image is a known account-risk path rather than the provider's intended setup.
 
 ## Earning Estimates
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $0 - $5 (estimate) |
+| Monthly range | $0 - $10 (estimate) |
 | Per | device |
-| Minimum payout | $2.50 |
+| Minimum payout | $10 |
 | Payout frequency | On request (auto-redeem available: PayPal $10 min, Wise $10 min, Amazon $50 min) |
 | Payment methods | Paypal, Amazon Giftcard, Wise |
 
-> Highly location-dependent. US/EU IPs earn the most. Earnings scale with bandwidth consumed.
+> Official rates are pay-per-time: up to $10/IP/month in the US and up to $5/IP/month elsewhere, depending on active use and demand.
 
 ## Requirements
 
 | Requirement | Value |
 |-------------|-------|
 | Residential IP | Yes |
-| Minimum bandwidth | None |
+| Minimum bandwidth | 10 Mbps recommended; 100 Mbps recommended for US max rate |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Docker, Windows, Macos, Linux, Android |
+| Supported platforms | Docker, Windows, Macos, Linux, Android, iOS |
 
 ## Setup Instructions
 

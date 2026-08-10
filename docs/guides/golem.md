@@ -5,7 +5,7 @@
 
 ## Description
 
-Golem Network is a decentralized compute marketplace where you share CPU and GPU resources in exchange for GLM tokens. Providers run the Yagna agent which manages workload execution in sandboxed environments. One of the oldest decentralized compute projects (founded 2016). Supports CPU tasks, GPU rendering, and general-purpose compute. Payments via Polygon L2.
+Golem Network is a decentralized compute marketplace where you share CPU and GPU resources in exchange for GLM tokens. Providers run the Yagna agent which manages workload execution in sandboxed environments. Current provider docs favor a host Docker-based provider install, but CashPilot does not package it as a single managed service container. Payments are in GLM.
 
 ## Earning Estimates
 
@@ -17,7 +17,7 @@ Golem Network is a decentralized compute marketplace where you share CPU and GPU
 | Payout frequency | Per task completion |
 | Payment methods | Crypto |
 
-> Earnings depend on hardware, pricing, and task demand. CPU-only nodes earn less. GPU nodes earn more but require NVIDIA. Run the Yagna provider agent (not Docker image). Payments on Polygon in GLM tokens.
+> Earnings depend on hardware, pricing, and task demand. Current provider setup is a host-level Golem/Yagna provider install, commonly Docker-based, not a single CashPilot-managed image.
 
 ## Requirements
 
@@ -37,7 +37,7 @@ Sign up at [Golem Network](https://golem.network).
 
 ### 2. Get your credentials
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+Follow the current Golem provider documentation on the host. CashPilot can track the provider through local Yagna state once installed, but does not deploy the provider container itself.
 
 ### 3. Deploy with CashPilot
 

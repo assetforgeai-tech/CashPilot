@@ -14,7 +14,7 @@ Status: implementation snapshot. Source priority is official site/docs/dashboard
 
 | Provider | Status | Client model | Collector | Verdict |
 |---|---|---|---|---|
-| bytebenefit | active | app only | manual | needs_user_info: no public API/collector docs found. |
+| bytebenefit | active | Windows/Android app | manual | updated; current public setup is app-only, min payout $3. No public API/collector docs found. |
 | bytelixir | active | Windows/Android app | manual | updated; collector remains cookie scrape/manual because no official API shape found. |
 | ebesucher | active | browser/surfbar | manual | keep; official model remains browser traffic exchange. |
 | packetstream | active | desktop client / CID | scrape | updated; current public setup is desktop-client-first, not app-only. |
@@ -38,14 +38,14 @@ Status: implementation snapshot. Source priority is official site/docs/dashboard
 | theta-edge | active | desktop app | manual | keep; no headless Docker/API found. |
 | uprock | active | extension/mobile | manual | needs_user_info: current API/export docs required. |
 | flux | active | host node | manual | keep; compute/stake node, no CashPilot Docker collector change. |
-| golem | active | Yagna provider | api | keep; local Yagna API model. |
-| ionet | active | GPU provider | manual | needs_user_info: current worker/API docs or sample response required. |
+| golem | active | host Yagna/Docker provider | api | updated; current setup is host-level provider install, not a single CashPilot-managed image. |
+| ionet | active | dashboard-driven GPU worker | manual | updated; current worker onboarding is dashboard-driven. Needs API/sample response for collector. |
 | nosana | active | GPU provider | api | keep; Solana/explorer API model. |
 | salad | active | Windows app | api | keep; cookie API collector already exists. |
 | vast-ai | active | GPU marketplace | api | keep; API-key model. |
 | bitping | active | Docker/app | api | keep; API collector already exists. |
-| earnapp | active | app/Docker prohibited by ToS | api | keep; collector exists, deploy warning remains required. |
-| earnfm | active | Docker/client | api | keep; Supabase collector exists. |
+| earnapp | active | official app / Docker prohibited | api | updated; official earning model is now pay-per-time, with Docker/VM/hosting still prohibited. Deploy warning remains required. |
+| earnfm | active | Docker client / UUID API key | api | updated; deploy uses Account Settings API key, collector remains email/password because no public balance API-key contract is documented. |
 | honeygain | active | Docker/app | api | keep; collector exists. |
 | iproyal | active | Docker/app | api | keep; collector exists. |
 | mysterium | active | Docker/VPN node | api | keep; direct egress and TequilAPI collector already set. |

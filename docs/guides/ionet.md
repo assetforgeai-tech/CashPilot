@@ -5,7 +5,7 @@
 
 ## Description
 
-io.net is a decentralized GPU network for AI/ML workloads. Aggregates idle GPUs from consumers and data centers. Requires NVIDIA GPU with 8GB+ VRAM for meaningful earnings. Container-based deployments supported.
+io.net is a decentralized GPU network for AI/ML workloads. Aggregates idle GPUs from consumers and data centers. Requires NVIDIA GPU with 8GB+ VRAM for meaningful earnings. Current worker onboarding is done from the io.net Cloud dashboard and installs worker/container components on the GPU host.
 
 ## Earning Estimates
 
@@ -37,7 +37,7 @@ Sign up at [io.net](https://io.net).
 
 ### 2. Get your credentials
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+After signing up, follow the current worker setup in the io.net Cloud dashboard on the GPU host.
 
 ### 3. Deploy with CashPilot
 

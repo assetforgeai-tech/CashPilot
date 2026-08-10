@@ -13,7 +13,7 @@ Bytebenefit is a bandwidth-sharing service that pays through PayPal and Stripe. 
 |--------|-------|
 | Monthly range | $0 - $3 (estimate) |
 | Per | device |
-| Minimum payout | $5 |
+| Minimum payout | $3 |
 | Payout frequency | On request |
 | Payment methods | Paypal |
 
@@ -37,7 +37,7 @@ Sign up at [Bytebenefit](https://bytebenefit.io/invited?ref=Brl4z3) — signing 
 
 ### 2. Get your credentials
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+After signing up, install the current Windows or Android app from Bytebenefit. CashPilot tracks this service manually; there is no Docker deployment.
 
 ### 3. Deploy with CashPilot
 

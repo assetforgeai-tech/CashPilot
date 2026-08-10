@@ -35,7 +35,7 @@ requirements:
 
 payment:
   methods: [paypal]
-  minimum_payout: "$5"
+  minimum_payout: "$3"
   currency: USD
   frequency: "On request"
 
@@ -49,14 +49,14 @@ earnings:
 cashout:
   method: redirect
   dashboard_url: "https://dashboard.bytebenefit.io"
-  min_amount: 5.0
+  min_amount: 3.0
   currency: USD
 
 platforms: [windows, android]
 
 collector:
   type: manual
-  notes: "No Docker image or public API."
+  notes: "No Docker image or public API. Current setup is Windows or Android app."
 
 payout:
   model: unknown

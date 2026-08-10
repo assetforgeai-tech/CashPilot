@@ -5,7 +5,7 @@
 
 ## Description
 
-Earn.fm pays you for sharing your internet bandwidth. Authenticates via a UUID API key from the dashboard. Lightweight Docker image with straightforward deployment.
+Earn.fm pays you for sharing your internet bandwidth. The deployable client uses a UUID API key from Account Settings; the earnings collector still uses the dashboard email/password login flow because no stable public balance API key contract is documented.
 
 ## Earning Estimates
 

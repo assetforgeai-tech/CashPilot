@@ -4,11 +4,12 @@ category: bandwidth
 status: active
 website: https://earnapp.com
 description: >
-  EarnApp by Bright Data lets you sell your unused bandwidth for passive income.
-  Bright Data is the world's largest proxy network, powering data collection for
-  Fortune 500 companies. The community Docker image (fazalfarhan01) makes headless
-  deployment easy with a lite mode that requires only a UUID.
-short_description: Bandwidth sharing - backed by Bright Data
+  EarnApp by Bright Data lets residential devices earn from contributed network
+  usage. Its official model is now fixed-rate pay-per-time, not pay-per-GB.
+  Official support prohibits VM, Docker, hosting, personal/home server, and
+  business/monetization environments, so the community Docker image is a
+  known account-risk path rather than the provider's intended setup.
+short_description: Bandwidth sharing - pay-per-time, Docker prohibited
 
 referral:
   signup_url: "https://earnapp.com/i/TSMD9wSm"
@@ -44,7 +45,7 @@ requirements:
   vps_ip: false
   container_prohibited: true
   devices_per_account: 15
-  min_bandwidth: ""
+  min_bandwidth: "10 Mbps recommended; 100 Mbps recommended for US max rate"
   gpu: false
   min_storage: ""
 
@@ -56,10 +57,10 @@ payment:
 
 earnings:
   monthly_low: 0
-  monthly_high: 5
+  monthly_high: 10
   currency: USD
   per: "device"
-  notes: "Highly location-dependent. US/EU IPs earn the most. Earnings scale with bandwidth consumed."
+  notes: "Official rates are pay-per-time: up to $10/IP/month in the US and up to $5/IP/month elsewhere, depending on active use and demand."
 
 cashout:
   method: redirect
@@ -67,7 +68,7 @@ cashout:
   min_amount: 10.0
   currency: USD
 
-platforms: [docker, windows, macos, linux, android]
+platforms: [docker, windows, macos, linux, android, ios]
 
 collector:
   type: api

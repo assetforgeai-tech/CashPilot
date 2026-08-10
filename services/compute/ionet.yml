@@ -6,7 +6,8 @@ website: https://io.net
 description: >
   io.net is a decentralized GPU network for AI/ML workloads. Aggregates idle
   GPUs from consumers and data centers. Requires NVIDIA GPU with 8GB+ VRAM
-  for meaningful earnings. Container-based deployments supported.
+  for meaningful earnings. Current worker onboarding is done from the io.net
+  Cloud dashboard and installs worker/container components on the GPU host.
 short_description: Decentralized GPU network for AI - NVIDIA GPU required
 
 referral:
@@ -53,7 +54,7 @@ platforms: [linux]
 
 collector:
   type: manual
-  notes: "Dashboard at cloud.io.net. GPU provider signup process unclear."
+  notes: "Dashboard at cloud.io.net. Current worker setup is dashboard-driven; public earnings API/sample response is not documented."
 
 payout:
   model: unknown

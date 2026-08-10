@@ -7,8 +7,9 @@ description: >
   Golem Network is a decentralized compute marketplace where you share CPU and
   GPU resources in exchange for GLM tokens. Providers run the Yagna agent which
   manages workload execution in sandboxed environments. One of the oldest
-  decentralized compute projects (founded 2016). Supports CPU tasks, GPU
-  rendering, and general-purpose compute. Payments via Polygon L2.
+  decentralized compute projects (founded 2016). Current provider docs favor a
+  host Docker-based provider install, but CashPilot does not package it as a
+  single managed service container. Payments are in GLM.
 short_description: Decentralized compute marketplace - GLM tokens via Yagna agent
 
 referral:
@@ -41,7 +42,7 @@ earnings:
   monthly_high: 50
   currency: USD
   per: "device"
-  notes: "Earnings depend on hardware, pricing, and task demand. CPU-only nodes earn less. GPU nodes earn more but require NVIDIA. Run the Yagna provider agent (not Docker image). Payments on Polygon in GLM tokens."
+  notes: "Earnings depend on hardware, pricing, and task demand. Current provider setup is a host-level Golem/Yagna provider install, commonly Docker-based, not a single CashPilot-managed image."
 
 cashout:
   method: redirect
@@ -57,7 +58,7 @@ platforms: [linux]
 
 collector:
   type: api
-  notes: "Yagna REST API at localhost:7465. Provider earnings queryable via /payment/invoices. GLM on Polygon for on-chain tracking."
+  notes: "Local Yagna REST API at localhost:7465. Provider earnings can be queried from Yagna/payment state once the host provider is installed."
 
 payout:
   model: unknown
