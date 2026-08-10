@@ -1,4 +1,4 @@
-# Provider refresh audit - 2026-08-10
+# Provider refresh audit - 2026-08-11
 
 Status: implementation snapshot. Source priority is official site/docs/dashboard/API/GitHub first. No hidden dashboard/API fields are guessed.
 
@@ -20,6 +20,23 @@ or official docs make the update certain.
 | bytelixir | updated | <https://bytelixir.com> public pages | Windows/Android only, 50 Mbps minimum, $2 public minimum payout claim, typical $2-10/month public claim. No public API found. |
 | speedshare | revived from dead to active | <https://speedshare.app> and liveness check | Official site/dashboard now answer. Keep manual collector; no public earnings API found. |
 | wipter | revived from dead to active | <https://wipter.com> and liveness check | Official site now answers. Keep scrape/manual dashboard model; no public API found. |
+
+## 2026-08-11 bandwidth dashboard batch
+
+| Provider | Visible state | Verdict |
+|---|---|---|
+| bitping | logged-in choose page; app dashboard + nodes paths visible | current model confirmed; no code change needed |
+| earnapp | logged-in dashboard, current balance visible | current model confirmed; keep Docker warning |
+| earnfm | dashboard path resolves to 404 in browser session | needs follow-up if docs should point to a different public page |
+| honeygain | login page visible, no authenticated session on current browser profile | no change |
+| iproyal | dashboard path returned 403 | no change; current login path blocked in this browser session |
+| proxylite | login page visible | no change |
+| proxyrack | logged-in dashboard with device rows and balance | current model confirmed |
+| repocket | logged-in dashboard with offers/bandwidth area | current model confirmed |
+| traffmonetizer | logged-in dashboard with token/balance page | current model confirmed |
+| proxies-sx | public home page visible | current peer-SDK model confirmed |
+| packetstream | logged-in dashboard with balance/device activity | current model confirmed |
+| proxybase | logged-in peer dashboard with devices, balance, access token | current model confirmed |
 
 ## Audit matrix
 
