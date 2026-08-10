@@ -29,7 +29,7 @@ Setup and configuration for every service CashPilot supports.
 | [ProxyLite](proxylite.md) | — | Docker | $5 | active |
 | [ProxyRack](proxyrack.md) | — | Docker | $20 | active |
 | [Repocket](repocket.md) | Residential IP | Docker | $20 | active |
-| [Spide](spide.md) | Residential IP | App only | $5 | active |
+| [Spide](spide.md) | Residential IP | Docker | $5 | active |
 | [Traffmonetizer](traffmonetizer.md) | — | Docker | $10 | active |
 | [URnetwork](urnetwork.md) | — | Docker | $5 | active |
 

@@ -5,7 +5,7 @@
 
 ## Description
 
-Spide is a bandwidth-sharing service that lets you monetize unused internet bandwidth. Uses an optional machine ID for device tracking. Available through community Docker images from the income-generator project.
+Spide is a bandwidth-sharing service that lets you monetize unused internet bandwidth. The current CashPilot runtime downloads the official Linux CLI zip, starts it in Docker, then registers the emitted Device key through the dashboard API.
 
 ## Earning Estimates
 
@@ -45,7 +45,7 @@ In the CashPilot web UI, find **Spide** in the service catalog and click **Deplo
 
 ## Docker Configuration
 
-- **Image:** ``
+- **Image:** `alpine:3.20`
 
 ### Environment Variables
 

@@ -53,6 +53,7 @@ from app import (
     power,
     preflight,
     producer_state,
+    provider_automation,
     setup_token,
     update_check,
     version,
@@ -1750,11 +1751,45 @@ async def api_deploy(
     await database.save_deployment(slug=slug, container_id=container_id, spec=spec)
     await database.record_health_event(slug, "start", f"deployed to worker {worker_id}")
     metrics.record_container_lifecycle("deploy", slug)
+    _spawn(_run_post_deploy_automation(slug, worker_id, hn))
     _spawn(_run_collection())
     response: dict[str, Any] = {"status": "deployed", "container_id": container_id}
     if divergence:
         response["kept_from_previous_deployment"] = divergence
     return response
+
+async def _run_post_deploy_automation(slug: str, worker_id: int, hostname: str) -> None:
+    svc = catalog.get_service(slug)
+    deploy = (svc or {}).get("deploy") or {}
+    if deploy.get("automation") != "device_key_register" or slug != "spide":
+        return
+    await _register_spide_device_from_worker_logs(worker_id, hostname)
+
+async def _register_spide_device_from_worker_logs(worker_id: int, hostname: str) -> None:
+    token = await database.get_config("spide_dashboard_token")
+    if not token:
+        await database.record_health_event("spide", "setup_needed", "dashboard token missing for device registration")
+        return
+    device_key = None
+    for _ in range(12):
+        try:
+            payload = await _proxy_worker_logs(worker_id, "spide", lines=200)
+            device_key = provider_automation.extract_spide_device_key(payload.get("logs", ""))
+            if device_key:
+                break
+        except Exception as exc:
+            logger.warning("Spide device-key log probe failed: %s", exc)
+        await asyncio.sleep(5)
+    if not device_key:
+        await database.record_health_event("spide", "setup_waiting", "Device key not visible in worker logs yet")
+        return
+    try:
+        await provider_automation.register_spide_device(str(token), device_key, title=f"cashpilot-{hostname}")
+    except Exception as exc:
+        logger.warning("Spide device registration failed: %s", exc)
+        await database.record_health_event("spide", "setup_failed", "dashboard device registration failed")
+        return
+    await database.record_health_event("spide", "setup_complete", f"registered Device key ending {device_key[-4:]}")
 
 
 def _merge_recorded_spec(

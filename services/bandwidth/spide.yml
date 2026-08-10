@@ -14,22 +14,31 @@ referral:
   code: "f3bc51"
 
 docker:
-  image: ""
-  platforms: []
-  env:
-    - key: SPIDE_MACHINE_ID
-      label: "Machine ID"
-      required: false
-      secret: false
-      description: "Machine ID for existing device already registered (auto-generated if empty)"
+  image: alpine:3.20
+  platforms: [linux/amd64]
+  resources:
+    mem_limit: "256m"
+    oom_score_adj: 300
+  env: []
   ports: []
-  volumes: []
-  command: ""
+  volumes:
+    - "spide-data:/data/spide"
+  command: >-
+    sh -ec 'set -eu;
+    apk add --no-cache ca-certificates curl unzip >/dev/null;
+    mkdir -p /data/spide;
+    if [ ! -x /data/spide/spide_linux_cli ]; then
+      curl -fsSL -o /tmp/spide_linux_cli.zip https://config-alpha-01.sgp1.digitaloceanspaces.com/spide_linux_cli.zip;
+      echo "0971fc29e68d3366cd72658d06a78505fdcebd69  /tmp/spide_linux_cli.zip" | sha1sum -c -;
+      unzip -o /tmp/spide_linux_cli.zip -d /data/spide >/dev/null;
+    fi;
+    exe="$(find /data/spide -maxdepth 2 -type f -perm -111 | head -n 1)";
+    exec "$exe"'
   network_mode: ""
 
 deploy:
   automation: device_key_register
-  notes: "Start the official Linux CLI, parse the Device key from stdout, then register it in the dashboard."
+  notes: "Download and run the official Linux CLI zip, parse the Device key from stdout, then register it in the dashboard."
 
 dashboard:
   credentials:
