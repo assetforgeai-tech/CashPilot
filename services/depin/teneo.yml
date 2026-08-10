@@ -16,7 +16,7 @@ referral:
 
 docker:
   image: ""
-  platforms: [browser-extension]
+  platforms: [browser-extension, windows, macos, linux, android, ios]
   env: []
   ports: []
   volumes: []
