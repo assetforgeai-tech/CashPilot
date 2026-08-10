@@ -1544,6 +1544,36 @@ async def delete_config_keys(keys: list[str]) -> None:
 # --- Deployments ---
 
 
+async def save_runtime_asset(provider: str, asset_kind: str, value: str) -> None:
+    from app import runtime_assets
+
+    await set_config(runtime_assets.config_key(provider, asset_kind), value)
+
+async def get_runtime_asset(provider: str, asset_kind: str) -> str | None:
+    from app import runtime_assets
+
+    value = await get_config(runtime_assets.config_key(provider, asset_kind))
+    return str(value) if value is not None else None
+
+async def list_runtime_assets() -> list[dict[str, Any]]:
+    from app import runtime_assets
+
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT key, value FROM config WHERE key LIKE 'runtime_asset::%::secret' ORDER BY key"
+        )
+        rows = []
+        for row in await cursor.fetchall():
+            parsed = runtime_assets.parse_config_key(row["key"])
+            if not parsed:
+                continue
+            provider, asset_kind = parsed
+            rows.append({"provider": provider, "asset_kind": asset_kind, "is_set": bool(row["value"])})
+        return rows
+    finally:
+        await db.close()
+
 async def save_deployment(
     slug: str,
     container_id: str,

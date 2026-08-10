@@ -4090,6 +4090,32 @@ class MystWalletReleaseRequest(BaseModel):
     client_id: str
     wallet_id: int
 
+class RuntimeAssetSaveRequest(BaseModel):
+    provider: str
+    asset_kind: str
+    value: str
+
+class RuntimeAssetRequest(BaseModel):
+    client_id: str
+    provider: str
+    asset_kind: str
+
+@app.get("/api/admin/runtime-assets")
+async def api_runtime_assets_list(request: Request) -> list[dict[str, Any]]:
+    _require_owner(request)
+    return await database.list_runtime_assets()
+
+@app.post("/api/admin/runtime-assets")
+async def api_runtime_asset_save(request: Request, body: RuntimeAssetSaveRequest) -> dict[str, str]:
+    _require_owner(request)
+    if not body.value:
+        raise HTTPException(status_code=400, detail="Asset value required")
+    try:
+        await database.save_runtime_asset(body.provider, body.asset_kind, body.value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "saved"}
+
 async def _require_confirmed_worker(request: Request, client_id: str) -> None:
     if not client_id.strip():
         raise HTTPException(status_code=400, detail="client_id required")
@@ -4111,6 +4137,17 @@ async def api_myst_wallet_release(request: Request, body: MystWalletReleaseReque
     if not await database.release_myst_wallet(body.wallet_id, body.client_id.strip()):
         raise HTTPException(status_code=404, detail="MYST wallet lease not found")
     return {"status": "released"}
+
+@app.post("/api/workers/runtime-asset")
+async def api_worker_runtime_asset(request: Request, body: RuntimeAssetRequest) -> dict[str, str]:
+    await _require_confirmed_worker(request, body.client_id)
+    try:
+        value = await database.get_runtime_asset(body.provider, body.asset_kind)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if value is None:
+        raise HTTPException(status_code=404, detail="Runtime asset not found")
+    return {"provider": body.provider, "asset_kind": body.asset_kind, "value": value}
 
 @app.post("/api/workers/earnings-import")
 async def api_worker_earnings_import(request: Request, body: EarningsImport) -> dict[str, Any]:

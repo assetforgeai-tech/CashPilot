@@ -1192,6 +1192,61 @@ class TestMystWalletLease:
             resp = client.post("/api/myst-wallets/release", json={"client_id": "worker-1", "wallet_id": 1})
             assert resp.status_code == 404
 
+class TestRuntimeAssetApi:
+    def test_owner_can_save_runtime_asset(self, client):
+        with (
+            _auth_owner(),
+            patch("app.main.database.save_runtime_asset", new_callable=AsyncMock) as save_asset,
+        ):
+            resp = client.post(
+                "/api/admin/runtime-assets",
+                json={"provider": "grass", "asset_kind": "seed_bundle", "value": "raw-seed"},
+            )
+        assert resp.status_code == 200
+        save_asset.assert_awaited_once_with("grass", "seed_bundle", "raw-seed")
+
+    def test_runtime_asset_list_is_redacted(self, client):
+        rows = [{"provider": "grass", "asset_kind": "seed_bundle", "is_set": True}]
+        with (
+            _auth_owner(),
+            patch("app.main.database.list_runtime_assets", new_callable=AsyncMock, return_value=rows),
+        ):
+            resp = client.get("/api/admin/runtime-assets")
+        assert resp.status_code == 200
+        assert resp.json() == rows
+        assert "raw-seed" not in resp.text
+
+    def test_confirmed_worker_can_request_runtime_asset(self, client):
+        with (
+            patch("app.main._authenticate_worker_heartbeat", new_callable=AsyncMock, return_value="ok"),
+            patch("app.main.database.get_runtime_asset", new_callable=AsyncMock, return_value="raw-seed"),
+        ):
+            resp = client.post(
+                "/api/workers/runtime-asset",
+                json={"client_id": "worker-1", "provider": "grass", "asset_kind": "seed_bundle"},
+            )
+        assert resp.status_code == 200
+        assert resp.json() == {"provider": "grass", "asset_kind": "seed_bundle", "value": "raw-seed"}
+
+    def test_runtime_asset_requires_confirmed_worker_key(self, client):
+        with patch("app.main._authenticate_worker_heartbeat", new_callable=AsyncMock, return_value="enroll"):
+            resp = client.post(
+                "/api/workers/runtime-asset",
+                json={"client_id": "worker-1", "provider": "grass", "asset_kind": "seed_bundle"},
+            )
+        assert resp.status_code == 403
+
+    def test_missing_runtime_asset_returns_404(self, client):
+        with (
+            patch("app.main._authenticate_worker_heartbeat", new_callable=AsyncMock, return_value="ok"),
+            patch("app.main.database.get_runtime_asset", new_callable=AsyncMock, return_value=None),
+        ):
+            resp = client.post(
+                "/api/workers/runtime-asset",
+                json={"client_id": "worker-1", "provider": "grass", "asset_kind": "seed_bundle"},
+            )
+        assert resp.status_code == 404
+
     def test_api_clear_config_unknown_service(self, client):
         with _auth_owner():
             resp = client.delete("/api/config/nonexistent")
