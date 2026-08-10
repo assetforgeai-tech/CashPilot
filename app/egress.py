@@ -1,7 +1,7 @@
 """Egress-IP awareness across the fleet (CashPilot-5qc).
 
-Providers cap per **IP address**, not per device. Honeygain treats more than one
-active device on a network as "network overused"; EarnApp documents that extra
+Providers cap per **IP address**, not per device. Some providers treat more than
+one active device on a network as "network overused"; others document that extra
 devices behind one IP share the same daily cap without increasing earnings.
 
 CashPilot's whole fleet model encourages deploying one service to several

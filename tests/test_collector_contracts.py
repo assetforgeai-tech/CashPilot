@@ -157,11 +157,11 @@ class TestParsingRealShapes:
         with patch.object(collector, "_get_client", return_value=client):
             return asyncio.run(collector.collect())
 
-    def test_honeygain_reads_cents(self):
-        from app.collectors.honeygain import HoneygainCollector
+    def test_bitping_reads_balance(self):
+        from app.collectors.bitping import BitpingCollector
 
-        fx = _fixture("honeygain")
-        c = HoneygainCollector(email="a@b.c", password="x")
+        fx = _fixture("bitping")
+        c = BitpingCollector(email="a@b.c", password="x")
         c._token = "already-authenticated"
         out = self._run(c, [fx["sample"]])
         assert out.error is None
@@ -207,26 +207,26 @@ class TestCredentialSelfTest:
     def _result(self, balance=0.0, currency="USD", error=None):
         from app.collectors.base import EarningsResult
 
-        return EarningsResult(platform="honeygain", balance=balance, currency=currency, error=error)
+        return EarningsResult(platform="earnapp", balance=balance, currency=currency, error=error)
 
     def test_valid_credentials_report_the_balance(self):
-        out = self._call("honeygain", collect=self._result(balance=12.5))
+        out = self._call("earnapp", collect=self._result(balance=12.5))
         assert out["ok"] is True
         assert "12.5" in out["message"]
 
     def test_a_rejected_login_says_so_without_echoing_anything(self):
-        out = self._call("honeygain", collect=self._result(error="401 Unauthorized for token abc123secret"))
+        out = self._call("earnapp", collect=self._result(error="401 Unauthorized for token abc123secret"))
         assert out["ok"] is False
         assert out["outcome"] == "bad_credentials"
         assert "abc123secret" not in json.dumps(out), "the response leaked the provider's raw error"
 
     def test_a_raised_exception_never_leaks_its_text(self):
-        out = self._call("honeygain", raises=RuntimeError("connect failed to https://user:hunter2@api"))
+        out = self._call("earnapp", raises=RuntimeError("connect failed to https://user:hunter2@api"))
         assert "hunter2" not in json.dumps(out)
         assert out["outcome"] == "unreachable"
 
     def test_no_response_field_can_carry_a_secret(self):
-        out = self._call("honeygain", collect=self._result(balance=1.0))
+        out = self._call("earnapp", collect=self._result(balance=1.0))
         assert set(out) <= {"ok", "outcome", "message", "balance", "currency"}
 
     def test_an_unknown_service_is_a_404(self):
@@ -237,11 +237,11 @@ class TestCredentialSelfTest:
         assert exc.value.status_code == 404
 
     def test_a_service_with_no_collector_says_there_is_nothing_to_test(self):
-        out = self._call("passiveapp")
+        out = self._call("uprock")
         assert out["outcome"] in {"unsupported", "not_configured"}
 
     def test_unconfigured_credentials_are_reported_as_such(self):
-        out = self._call("honeygain")
+        out = self._call("earnapp")
         assert out["outcome"] == "not_configured"
 
     def test_a_second_attempt_is_rate_limited(self):
@@ -262,8 +262,8 @@ class TestCredentialSelfTest:
                 patch.object(main.database, "get_config", AsyncMock(return_value={})),
                 patch("app.collectors.build_one", return_value=(collector, [])),
             ):
-                first = await main.api_test_credentials(MagicMock(), "honeygain")
-                second = await main.api_test_credentials(MagicMock(), "honeygain")
+                first = await main.api_test_credentials(MagicMock(), "earnapp")
+                second = await main.api_test_credentials(MagicMock(), "earnapp")
                 return first, second
 
         first, second = asyncio.run(run())
@@ -288,7 +288,7 @@ class TestCredentialSelfTest:
                 patch.object(main.database, "get_config", AsyncMock(return_value={})),
                 patch("app.collectors.build_one", return_value=(collector, [])),
             ):
-                return await main.api_test_credentials(MagicMock(), "honeygain")
+                return await main.api_test_credentials(MagicMock(), "earnapp")
 
         asyncio.run(run())
         collector.close.assert_awaited()
@@ -341,23 +341,23 @@ class TestBuildingASingleCollector:
     def test_it_builds_a_collector_when_every_required_key_is_present(self):
         from app import collectors
 
-        collector, missing = collectors.build_one("honeygain", {"honeygain_email": "a@b.c", "honeygain_password": "pw"})
+        collector, missing = collectors.build_one("earnapp", {"earnapp_oauth_token": "tok"})
         assert collector is not None
         assert missing == []
-        assert collector.platform == "honeygain"
+        assert collector.platform == "earnapp"
 
     def test_it_names_the_missing_keys_rather_than_failing_vaguely(self):
         from app import collectors
 
-        collector, missing = collectors.build_one("honeygain", {})
+        collector, missing = collectors.build_one("earnapp", {})
         assert collector is None
-        assert missing == ["honeygain_email", "honeygain_password"]
+        assert missing == ["earnapp_oauth_token"]
 
     def test_a_partially_configured_service_names_only_what_is_absent(self):
         from app import collectors
 
-        _, missing = collectors.build_one("honeygain", {"honeygain_email": "a@b.c"})
-        assert missing == ["honeygain_password"]
+        _, missing = collectors.build_one("bitping", {"bitping_email": "a@b.c"})
+        assert missing == ["bitping_password"]
 
     def test_an_unknown_slug_yields_nothing_and_no_missing_keys(self):
         """Nothing is missing because nothing was ever required."""
@@ -369,17 +369,17 @@ class TestBuildingASingleCollector:
         """A cached one would validate the credentials the user just replaced."""
         from app import collectors
 
-        config = {"honeygain_email": "a@b.c", "honeygain_password": "pw"}
-        first, _ = collectors.build_one("honeygain", config)
-        second, _ = collectors.build_one("honeygain", config)
+        config = {"earnapp_oauth_token": "tok"}
+        first, _ = collectors.build_one("earnapp", config)
+        second, _ = collectors.build_one("earnapp", config)
         assert first is not second
 
     def test_it_never_populates_the_shared_collector_cache(self):
         from app import collectors
 
-        collectors._cached_collectors.pop("honeygain", None)
-        collectors.build_one("honeygain", {"honeygain_email": "a@b.c", "honeygain_password": "pw"})
-        assert "honeygain" not in collectors._cached_collectors
+        collectors._cached_collectors.pop("earnapp", None)
+        collectors.build_one("earnapp", {"earnapp_oauth_token": "tok"})
+        assert "earnapp" not in collectors._cached_collectors
 
     def test_optional_arguments_are_not_required(self):
         """A '?'-prefixed argument must not block construction when absent."""
@@ -402,10 +402,10 @@ class TestBuildingASingleCollector:
         from app import collectors
 
         with patch.dict(
-            collectors.COLLECTOR_MAP, {"honeygain": lambda **kw: (_ for _ in ()).throw(ValueError("nope"))}
+            collectors.COLLECTOR_MAP, {"earnapp": lambda **kw: (_ for _ in ()).throw(ValueError("nope"))}
         ):
             collector, missing = collectors.build_one(
-                "honeygain", {"honeygain_email": "a@b.c", "honeygain_password": "pw"}
+                "earnapp", {"earnapp_oauth_token": "tok"}
             )
         assert collector is None
         assert missing == []

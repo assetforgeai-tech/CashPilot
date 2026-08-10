@@ -49,7 +49,6 @@ Content-Type: application/json
 {
   "client_id": "desktop-macbook",
   "readings": [
-    {"slug": "honeygain", "balance": 12.4, "date": "2026-07-01", "currency": "USD"},
     {"slug": "mysterium", "balance": 88.0, "date": "2026-07-01", "currency": "MYST", "fx_rate_usd": 0.41}
   ]
 }
@@ -257,11 +256,11 @@ Notifications fire **only the first time** a particular failure appears — a co
 
 ### Egress IP and per-IP limits
 
-Providers count devices per **IP address**, not per machine. Honeygain treats a
-second active device on a network as "network overused", and EarnApp documents
-that extra devices behind one IP share a single daily cap. Two workers in one
-house are two machines on your dashboard and **one customer** to the provider,
-so the second one usually earns nothing.
+Providers count devices per **IP address**, not per machine. Some providers
+treat a second active device on a network as "network overused", and others
+document that extra devices behind one IP share a single daily cap. Two workers
+in one house are two machines on your dashboard and **one customer** to the
+provider, so the second one usually earns nothing.
 
 Each worker therefore reports the public address it leaves the internet through,
 and the UI can group the fleet by that address (`/api/fleet/egress-groups`)

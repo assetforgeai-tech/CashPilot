@@ -33,6 +33,8 @@ REMOVED_PROVIDER_REFERRALS = {
     "https://app.gradient.network/signup?referralCode=YSKMY7",
     "https://app.nodepay.ai/register?ref=0wzzyznen64j9zx",
     "https://bytebenefit.io/invited?ref=Brl4z3",
+    "https://dashboard.honeygain.com/ref/SERGIB4014",
+    "https://passiveapp.com/i/bqpC4M",
     "https://cloud.vast.ai/?ref_id=452772",
     "https://dashboard.teneo.pro/?code=CAqef",
     "https://www.ebesucher.com/?ref=geiserx",
@@ -177,13 +179,13 @@ class TestTheGuideStubGenerator:
         return new_service_stub.render(slug)
 
     def test_it_renders_a_real_service_from_the_catalog(self):
-        out = self._render("honeygain")
-        assert "# Honeygain" in out
+        out = self._render("earnapp")
+        assert "# EarnApp" in out
         assert "Devices per IP" in out
 
     def test_it_uses_the_referral_link_in_the_setup_step(self):
-        out = self._render("honeygain")
-        signup = (catalog.get_service("honeygain").get("referral") or {}).get("signup_url")
+        out = self._render("earnapp")
+        signup = (catalog.get_service("earnapp").get("referral") or {}).get("signup_url")
         assert signup and signup in out
 
     def test_it_says_not_documented_rather_than_inventing_a_value(self):

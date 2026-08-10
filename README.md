@@ -70,7 +70,6 @@ Services CashPilot can deploy and manage automatically via Docker.
 | [Bitping](https://app.bitping.com) | [Guide](docs/guides/bitping.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto (SOL) |
 | [Earn.fm](https://earn.fm/ref/GEISYB91) | [Guide](docs/guides/earnfm.md) | ✅ | ✅ | ? \*\*\* | 1 | Crypto |
 | [EarnApp](https://earnapp.com/i/TSMD9wSm) \*\*\*\* | [Guide](docs/guides/earnapp.md) | ✅ | ❌ | 15 | ? \*\*\* | PayPal, Amazon Gift Card, Wise |
-| [Honeygain](https://dashboard.honeygain.com/ref/SERGIB4014) | [Guide](docs/guides/honeygain.md) | ✅ | ❌ | 10 | 1 | PayPal, Crypto |
 | [IPRoyal Pawns](https://pawns.app?r=19266874) | [Guide](docs/guides/iproyal.md) | ✅ | ❌ | ? \*\*\* | 1 | PayPal, Crypto, Bank Transfer |
 | [MystNodes](https://mystnodes.co/?referral_code=do7v7YOoBBpbOstKQovX2pUvZYKia4ZhH3QIdNtE) | [Guide](docs/guides/mysterium.md) | ❌ | ✅ | ? \*\*\* | Unlimited | Crypto |
 | [PacketStream](https://packetstream.io/?psr=7xgZ) | [Guide](docs/guides/packetstream.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | PayPal |
@@ -103,7 +102,6 @@ These services have no Docker image. CashPilot lists them in the catalog with si
 | [Bytelixir](https://bytelixir.com/r/OYEIRE0VSZBZ) | [Guide](docs/guides/bytelixir.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto | Active |
 | [Dawn Internet](https://dawninternet.com/?code=2QLQV97F) | [Guide](docs/guides/dawn.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto | Active |
 | [Grass](https://app.grass.io/register?referralCode=kn8FNEPnUr2tMqE) | [Guide](docs/guides/grass.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto | Active |
-| [PassiveApp](https://passiveapp.com/i/bqpC4M) | [Guide](docs/guides/passiveapp.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto, PayPal | Beta |
 | [Spide](https://spide.network/register.html?f3bc51) | [Guide](docs/guides/spide.md) | ✅ | ❌ | ? \*\*\* | 1 | Crypto | Active |
 | [Titan Network](https://edge.titannet.info/signup?inviteCode=2GKKJ495) | [Guide](docs/guides/titan.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto (USDC) | Active |
 | [Uprock](https://link.uprock.com/i/33e8492e) | [Guide](docs/guides/uprock.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto | Active |

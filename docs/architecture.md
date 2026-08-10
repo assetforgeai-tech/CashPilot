@@ -37,7 +37,7 @@ cashpilot/
     exchange_rates.py       # Crypto/fiat conversion via CoinGecko + Frankfurter
     collectors/             # Earnings collectors (one module per service, UI only)
       base.py               # BaseCollector ABC + EarningsResult dataclass
-      honeygain.py          # Example: JWT auth + balance endpoint
+      earnapp.py            # Example: auth + balance endpoint
       __init__.py           # COLLECTOR_MAP registry + make_collectors() factory
     templates/              # Jinja2: dashboard, setup wizard, catalog, settings
     static/

@@ -15,7 +15,6 @@ from app.collectors.bytelixir import BytelixirCollector
 from app.collectors.earnapp import EarnAppCollector
 from app.collectors.earnfm import EarnFMCollector
 from app.collectors.grass import GrassCollector
-from app.collectors.honeygain import HoneygainCollector
 from app.collectors.iproyal import IPRoyalCollector
 from app.collectors.mystnodes import MystNodesCollector
 from app.collectors.packetstream import PacketStreamCollector
@@ -28,7 +27,6 @@ logger = logging.getLogger(__name__)
 
 # slug -> collector class
 COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
-    "honeygain": HoneygainCollector,
     "earnapp": EarnAppCollector,
     "iproyal": IPRoyalCollector,
     "mysterium": MystNodesCollector,
@@ -45,7 +43,6 @@ COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
 
 # Map of slug -> list of config keys needed to instantiate the collector
 _COLLECTOR_ARGS: dict[str, list[str]] = {
-    "honeygain": ["email", "password"],
     "earnapp": ["oauth_token"],
     "iproyal": ["email", "password"],
     "mysterium": ["email", "password"],

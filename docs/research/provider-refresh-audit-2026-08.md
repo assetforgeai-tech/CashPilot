@@ -28,7 +28,6 @@ or official docs make the update certain.
 | bitping | logged-in choose page; app dashboard + nodes paths visible | current model confirmed; no code change needed |
 | earnapp | logged-in dashboard, current balance visible | current model confirmed; keep Docker warning |
 | earnfm | new dashboard base `https://app.earn.fm/` is visibly logged in; Home shows balance and total bandwidth shared, Payout shows residential/datacenter/referral/available/pending buckets, More shows the UUID API key | setup and payout URLs updated |
-| honeygain | new/current dashboard `https://dashboard.honeygain.com/` logged in; balance, payout threshold, earnings, active device count visible | current model confirmed |
 | iproyal | new dashboard `https://dashboard.pawns.app/` logged in; app download, balance, $5 threshold, Internet Sharing/Cashout menu visible | dashboard URL updated |
 | proxylite | `https://lk.proxylite.ru/` logged in; Account ID, balance, devices, payouts menu visible | current model confirmed |
 | proxyrack | logged-in dashboard with device rows and balance | current model confirmed |
@@ -47,7 +46,6 @@ or official docs make the update certain.
 | nodepay | V2 upgrade wall visible | no API/collector change without completing upgrade |
 | teneo | cert authority error on dashboard URL | do not bypass; needs safe/valid URL or user-side resolution |
 | titan | logged-in dashboard; TNTIP/USDC, tasks, paused extension warning visible | current dashboard model confirmed |
-| passiveapp | logged-in dashboard; earnings, $5 threshold, devices, traffic chart, download link visible | update dashboard URL; manual tracking only |
 
 ## Audit matrix
 
@@ -60,12 +58,10 @@ or official docs make the update certain.
 | spide | active | app only | manual | keep; official terms already drive residential/one-IP warning. |
 | urnetwork | active | Docker/app | manual | keep; no public earnings API found. |
 | dawn | active | browser extension/hardware | scrape | current dashboard is live; logged-in account shows connection quality, points, streak, referrals, and epoch rewards. |
-| passiveapp | active | app only | manual | logged-in dashboard shows earnings, threshold, devices, traffic shared, referrals, and download links. |
 | uprock | active | extension/mobile | manual | needs_user_info: current API/export docs required. |
 | bitping | active | Docker/app | api | keep; API collector already exists. |
 | earnapp | active | official app / Docker prohibited | api | updated; official earning model is now pay-per-time, with Docker/VM/hosting still prohibited. Deploy warning remains required. |
 | earnfm | active | Docker client / UUID API key | api | dashboard base URL updated to app.earn.fm; visible dashboard confirms balance, bandwidth totals, payout buckets, and API key location under More. |
-| honeygain | active | Docker/app | api | keep; logged-in dashboard confirms balance/earnings/device views. |
 | iproyal | active | Docker/app | api | dashboard URL updated to dashboard.pawns.app; collector exists. |
 | mysterium | active | Docker/VPN node | api | keep; direct egress and TequilAPI collector already set. |
 | proxylite | active | Docker/app | api | keep; logged-in dashboard confirms Account ID based setup. |

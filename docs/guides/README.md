@@ -4,7 +4,7 @@
 
 Setup and configuration for every service CashPilot supports.
 
-**23 services** across 2 categories. The table is sortable — click a heading to reorder it.
+**21 services** across 2 categories. The table is sortable — click a heading to reorder it.
 
 !!! tip "Choosing what to run"
 
@@ -20,7 +20,6 @@ Setup and configuration for every service CashPilot supports.
 | [Bytelixir](bytelixir.md) | Residential IP, 50 Mbps | App only | $2 | active |
 | [Earn.fm](earnfm.md) | Residential IP | Docker | $3 | active |
 | [EarnApp](earnapp.md) | Residential IP, 10 Mbps recommended; 100 Mbps recommended for US max rate | Docker | $10 | active |
-| [Honeygain](honeygain.md) | Residential IP | Docker | $20 | active |
 | [IPRoyal Pawns](iproyal.md) | Residential IP | Docker | $5 | active |
 | [MystNodes](mysterium.md) | — | Docker | 4 MYST | active |
 | [PacketStream](packetstream.md) | Residential IP | Docker | $5 | active |
@@ -40,7 +39,6 @@ Setup and configuration for every service CashPilot supports.
 |---|---|---|---|---|
 | [Dawn Internet](dawn.md) | Residential IP | App only | — | active |
 | [Grass](grass.md) | Residential IP | App only | — | active |
-| [PassiveApp](passiveapp.md) | Residential IP | App only | $5 | beta |
 | [Titan Network](titan.md) | Residential IP | App only | — | active |
 | [Uprock](uprock.md) | Residential IP | App only | $5 | active |
 | [Wipter](wipter.md) | Residential IP | Docker | $20 | active |

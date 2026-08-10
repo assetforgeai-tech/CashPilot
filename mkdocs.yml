@@ -137,7 +137,6 @@ nav:
       - Bytelixir: guides/bytelixir.md
       - Earn.fm: guides/earnfm.md
       - EarnApp: guides/earnapp.md
-      - Honeygain: guides/honeygain.md
       - IPRoyal Pawns: guides/iproyal.md
       - MystNodes: guides/mysterium.md
       - PacketStream: guides/packetstream.md
@@ -153,7 +152,6 @@ nav:
     - DePIN:
       - Dawn Internet: guides/dawn.md
       - Grass: guides/grass.md
-      - PassiveApp: guides/passiveapp.md
       - Titan Network: guides/titan.md
       - Uprock: guides/uprock.md
       - Wipter: guides/wipter.md
