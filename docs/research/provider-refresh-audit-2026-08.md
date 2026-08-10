@@ -60,10 +60,10 @@ or official docs make the update certain.
 | packetstream | active | desktop client / CID | scrape | updated; current public setup is desktop-client-first, not app-only. |
 | proxybase | active | Docker/app | manual | keep; existing vendor/test guard says VPS/datacenter accepted. |
 | proxybase-xyz | active | Docker CLI marketplace | manual | keep; proxy inventory-like seller network, but still an earning provider entry until proxy-pool integration is designed separately. |
-| spide | active | Linux CLI + dashboard registration | manual | automate later as two-phase setup: CLI emits Device key, then `POST /api/v1/device/create` with dashboard bearer cookie. |
+| spide | active | Linux CLI + dashboard registration | manual | automated as a two-phase setup: CLI emits Device key, then CashPilot registers it with `POST /api/v1/device/create` using the saved dashboard credential. |
 | urnetwork | active | Docker/app | manual | keep; no public earnings API found. |
 | dawn | active | browser extension/hardware | scrape | current dashboard is live; logged-in account shows connection quality, points, streak, referrals, and epoch rewards. |
-| uprock | active | extension/mobile | manual | needs_user_info: current API/export docs required. |
+| uprock | active | extension/mobile | manual | seed/profile bundle flow confirmed; keep collector manual until a public API shape is verified. |
 | bitping | active | Docker/app | api | keep; API collector already exists. |
 | earnapp | active | official app / Docker prohibited | api | updated; official earning model is now pay-per-time, with Docker/VM/hosting still prohibited. Deploy warning remains required. |
 | earnfm | active | Docker client / UUID API key | api | dashboard base URL updated to app.earn.fm; visible dashboard confirms balance, bandwidth totals, payout buckets, and API key location under More. |
@@ -76,7 +76,7 @@ or official docs make the update certain.
 | proxies-sx | beta | SDK Docker peer | api | keep; recently added API collector/per-node earnings. |
 | grass | active | extension/app | api | keep; token collector exists. |
 | titan | active | app | api | logged-in dashboard shows per-device rows, daily history, TNTIP/USDC split, and paused-extension warning. |
-| wipter | active | app only | scrape | updated; active but no public API found. |
+| wipter | active | Docker/app | scrape | runtime is env-login based and restart-once friendly; no public API found. |
 
 ## Needs user info
 
@@ -88,7 +88,7 @@ Provider fields with conflicting or insufficient official public data: `bytelixi
 
 - Restart ownership decision: systemd supervises only core services (`docker`, `cashpilot-ui`, `cashpilot-worker`); provider containers stay owned by CashPilot/Docker and should use Docker `restart: always`.
 - MYST is a separate direct-wallet lane: funded wallet leasing, password/MMN setup, and wallet rotation are its own module, not a generic bandwidth provider.
-- Grass/Uprock/Wipter are seed/profile style runtimes. EarnApp is cookie-based. Spide is device-key registration after first CLI start. IPRoyal uses the official Pawns CLI Docker image.
+- Grass/Uprock are seed/profile style runtimes. EarnApp is cookie-based. Spide is device-key registration after first CLI start. IPRoyal uses the official Pawns CLI Docker image. Wipter uses env-login with post-login restart.
 - CashPilot deploy path and compose export now set provider containers to `restart: always`. Core systemd remains for CashPilot worker/UI only, not one unit per provider.
 
 ## 2026-08-11 normalization planning notes
