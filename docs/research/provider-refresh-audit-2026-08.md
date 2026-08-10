@@ -27,7 +27,7 @@ or official docs make the update certain.
 |---|---|---|
 | bitping | logged-in choose page; app dashboard + nodes paths visible | current model confirmed; no code change needed |
 | earnapp | logged-in dashboard, current balance visible | current model confirmed; keep Docker warning |
-| earnfm | new dashboard base `https://app.earn.fm/` loads but visible DOM only exposes an accessibility button | URL updated; needs follow-up with working dashboard view/API sample |
+| earnfm | new dashboard base `https://app.earn.fm/` is visibly logged in; screenshot shows dashboard balance, total bandwidth shared, Home/Payout/Referral/More menu, and download-app warning | URL updated; needs API sample only before collector changes |
 | honeygain | new/current dashboard `https://dashboard.honeygain.com/` logged in; balance, payout threshold, earnings, active device count visible | current model confirmed |
 | iproyal | new dashboard `https://dashboard.pawns.app/` logged in; app download, balance, $5 threshold, Internet Sharing/Cashout menu visible | dashboard URL updated |
 | proxylite | `https://lk.proxylite.ru/` logged in; Account ID, balance, devices, payouts menu visible | current model confirmed |
@@ -84,7 +84,7 @@ or official docs make the update certain.
 | vast-ai | active | GPU marketplace | api | keep; API-key model. |
 | bitping | active | Docker/app | api | keep; API collector already exists. |
 | earnapp | active | official app / Docker prohibited | api | updated; official earning model is now pay-per-time, with Docker/VM/hosting still prohibited. Deploy warning remains required. |
-| earnfm | active | Docker client / UUID API key | api | dashboard base URL updated to app.earn.fm; collector remains email/password because no visible API-key balance contract was confirmed. |
+| earnfm | active | Docker client / UUID API key | api | dashboard base URL updated to app.earn.fm; visible dashboard confirms balance and bandwidth totals, but collector remains email/password because no API-key balance contract was confirmed. |
 | honeygain | active | Docker/app | api | keep; logged-in dashboard confirms balance/earnings/device views. |
 | iproyal | active | Docker/app | api | dashboard URL updated to dashboard.pawns.app; collector exists. |
 | mysterium | active | Docker/VPN node | api | keep; direct egress and TequilAPI collector already set. |
