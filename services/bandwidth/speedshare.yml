@@ -1,7 +1,7 @@
 name: SpeedShare
 slug: speedshare
 category: bandwidth
-status: dead
+status: active
 website: https://speedshare.app
 description: >
   SpeedShare lets you earn by sharing your unused internet bandwidth. Residential
@@ -50,14 +50,14 @@ earnings:
   monthly_high: 3
   currency: USD
   per: "device"
-  notes: "Residential IPs only. No official Docker image - uses community build. API at api.speedshare.app is broken (returns Telegraf metrics instead of JSON). Service appears non-functional as of March 2025."
+  notes: "Residential IPs only. No official Docker image - uses community build. Official site and dashboard are reachable, but no public earnings API is documented."
 
 cashout:
   method: manual
   dashboard_url: "https://dashboard.speedshare.app"
   min_amount: 5.0
   currency: USD
-  notes: "Confirmed dead (Discord, March 2026)."
+  notes: "Cash out from the provider dashboard/app; CashPilot has no payout API."
 
 platforms: [docker, windows, macos, linux]
 

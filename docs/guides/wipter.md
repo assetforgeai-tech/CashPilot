@@ -1,6 +1,6 @@
 # Wipter
 
-> **Category:** DePIN | **Status:** Dead
+> **Category:** DePIN | **Status:** Active
 > **Website:** [https://wipter.com](https://wipter.com)
 
 ## Description

@@ -50,7 +50,7 @@ def slug_literals() -> list[tuple[str, int, str]]:
     for path in sorted((ROOT / "app").rglob("*.py")):
         if "collectors" in path.parts:
             continue
-        rel = str(path.relative_to(ROOT))
+        rel = path.relative_to(ROOT).as_posix()
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value in slugs:
@@ -180,7 +180,7 @@ class TestPerNodeEarningsIsDeclaredNotBranchedOn:
             if not p.name.startswith("_")
             and ((yaml.safe_load(p.read_text(encoding="utf-8")) or {}).get("collector") or {}).get("per_node_earnings")
         ]
-        assert claiming == ["mysterium"], claiming
+        assert claiming == ["mysterium", "proxies-sx"], claiming
 
     def test_the_schema_documents_both_new_fields(self):
         schema = (SERVICES / "_schema.yml").read_text(encoding="utf-8")

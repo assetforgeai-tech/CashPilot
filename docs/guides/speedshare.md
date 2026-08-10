@@ -1,9 +1,7 @@
 # SpeedShare
 
-> **Category:** Bandwidth Sharing | **Status:** Dead
+> **Category:** Bandwidth Sharing | **Status:** Active
 > **Website:** [https://speedshare.app](https://speedshare.app)
-
-> **Deprecated:** SpeedShare authentication is completely broken — login no longer works. The project was confirmed dead in their Discord (March 2026). Deployment is blocked. This guide is kept for reference only.
 
 ## Description
 
@@ -19,7 +17,7 @@ SpeedShare lets you earn by sharing your unused internet bandwidth. Residential 
 | Payout frequency | On request |
 | Payment methods | Crypto, Paypal |
 
-> Residential IPs only. No official Docker image - uses community build. API at api.speedshare.app is broken (returns Telegraf metrics instead of JSON). Service appears non-functional as of March 2025.
+> Residential IPs only. No official Docker image - uses community build. Official site and dashboard are reachable, but no public earnings API is documented.
 
 ## Requirements
 

@@ -18,7 +18,7 @@ Setup and configuration for every service CashPilot supports.
 |---|---|---|---|---|
 | [Bitping](bitping.md) | — | Docker | $5 | active |
 | [Bytebenefit](bytebenefit.md) | Residential IP | App only | $5 | active |
-| [Bytelixir](bytelixir.md) | Residential IP | App only | $5 | active |
+| [Bytelixir](bytelixir.md) | Residential IP, 50 Mbps | App only | $2 | active |
 | [earn.cc](earncc.md) | Residential IP | App only | — | broken |
 | [Earn.fm](earnfm.md) | Residential IP | Docker | $15 | active |
 | [EarnApp](earnapp.md) | Residential IP | Docker | $10 | active |
@@ -35,7 +35,7 @@ Setup and configuration for every service CashPilot supports.
 | [ProxyLite](proxylite.md) | — | Docker | $5 | active |
 | [ProxyRack](proxyrack.md) | — | Docker | $20 | active |
 | [Repocket](repocket.md) | Residential IP | Docker | $20 | active |
-| [SpeedShare](speedshare.md) | Residential IP | Docker | $5 | dead |
+| [SpeedShare](speedshare.md) | Residential IP | Docker | $5 | active |
 | [Spide](spide.md) | Residential IP | App only | $5 | active |
 | [Traffmonetizer](traffmonetizer.md) | — | Docker | $10 | active |
 | [URnetwork](urnetwork.md) | — | Docker | $5 | active |
@@ -64,7 +64,7 @@ Setup and configuration for every service CashPilot supports.
 | [Theta Edge Node](theta-edge.md) | — | App only | — | active |
 | [Titan Network](titan.md) | Residential IP, Storage 50GB | App only | — | active |
 | [Uprock](uprock.md) | Residential IP | App only | $5 | active |
-| [Wipter](wipter.md) | Residential IP | App only | $20 | dead |
+| [Wipter](wipter.md) | Residential IP | App only | $20 | active |
 
 ## GPU Compute
 

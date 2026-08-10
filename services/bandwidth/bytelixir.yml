@@ -5,10 +5,10 @@ status: active
 website: https://bytelixir.com
 description: >
   Bytelixir lets you earn passive income by sharing unused internet bandwidth.
-  Supports Windows, macOS, Linux, and Android. Earnings range $2-50/month
-  depending on location. Web dashboard at dash.bytelixir.com for tracking.
-  No Docker image available.
-short_description: Bandwidth sharing - $2-50/month, desktop + Android
+  Current public pages advertise Windows and Android apps, a 50 Mbps connection
+  requirement, and web dashboard tracking at dash.bytelixir.com. No Docker image
+  or public earnings API is available.
+short_description: Bandwidth sharing - Windows/Android app, 50 Mbps minimum
 
 referral:
   signup_url: "https://bytelixir.com/r/OYEIRE0VSZBZ"
@@ -40,30 +40,30 @@ docker:
 
 requirements:
   residential_ip: true
-  min_bandwidth: ""
+  min_bandwidth: "50 Mbps"
   gpu: false
   min_storage: ""
 
 payment:
   methods: [crypto]
-  minimum_payout: "$5"
+  minimum_payout: "$2"
   currency: USD
   frequency: "On request"
 
 earnings:
-  monthly_low: 0
-  monthly_high: 3
+  monthly_low: 2
+  monthly_high: 10
   currency: USD
   per: "device"
-  notes: "Earnings vary by location ($2-50/month). No Docker image. Desktop app or Android app required."
+  notes: "Official public pages describe typical single-device earnings around $2-10/month. Windows or Android app required; no Docker image."
 
 cashout:
   method: redirect
   dashboard_url: "https://dash.bytelixir.com"
-  min_amount: 5.0
+  min_amount: 2.0
   currency: USD
 
-platforms: [windows, macos, linux, android]
+platforms: [windows, android]
 
 collector:
   type: manual

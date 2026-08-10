@@ -82,6 +82,7 @@ Services CashPilot can deploy and manage automatically via Docker.
 | [ProxyLite](https://proxylite.ru/?r=KMUPRZIZ) | [Guide](docs/guides/proxylite.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto, PayPal |
 | [ProxyRack](https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn) | [Guide](docs/guides/proxyrack.md) | ❌ | ✅ | 500 | ? \*\*\* | PayPal, Crypto |
 | [Repocket](https://repocket.com/) | [Guide](docs/guides/repocket.md) | ✅ | ❌ | 5 | ? \*\*\* | PayPal, Crypto |
+| [SpeedShare](https://speedshare.app) | [Guide](docs/guides/speedshare.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto, PayPal |
 | [Storj](https://storj.dev/node/get-started/setup) | [Guide](docs/guides/storj.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto |
 | [Traffmonetizer](https://traffmonetizer.com/?aff=2111758) | [Guide](docs/guides/traffmonetizer.md) | ❌ | ✅ | ? \*\*\* | Unlimited | Crypto (USDT), PayPal |
 | [URnetwork](https://ur.io/?referral_code=1Q3G19) | [Guide](docs/guides/urnetwork.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto |
@@ -121,6 +122,7 @@ These services have no Docker image. CashPilot lists them in the catalog with si
 | [Theta Edge Node](https://thetatoken.org) | [Guide](docs/guides/theta-edge.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto | Active |
 | [Titan Network](https://edge.titannet.info/signup?inviteCode=2GKKJ495) | [Guide](docs/guides/titan.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto | Active |
 | [Uprock](https://link.uprock.com/i/33e8492e) | [Guide](docs/guides/uprock.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto | Active |
+| [Wipter](https://wipter.com/en/refer-a-friend) | [Guide](docs/guides/wipter.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | PayPal, Crypto | Active |
 <!-- END GENERATED: extension-services -->
 
 ### GPU Compute
@@ -359,7 +361,6 @@ Services that were evaluated but are no longer listed in the catalog due to bein
 
 | Service | Status | Reason | Last checked |
 |---------|--------|--------|:------------:|
-| SpeedShare | Dead | Project confirmed dead in Discord | Mar 2026 |
 | Peer2Profit | Dead | Domain unreachable | Mar 2026 |
 | PacketShare | Dead | Signup process broken, no progress | Mar 2026 |
 | earn.cc | Broken | Server error on signup | Mar 2026 |
@@ -368,7 +369,6 @@ Services that were evaluated but are no longer listed in the catalog due to bein
 | Network3 | Broken | No SSL, no updates in months | Mar 2026 |
 | GagaNode | Shady | Poorly made website, untrustworthy | Mar 2026 |
 | BlockMesh (Perceptron) | Dropped | Rebranded, requires browser dev mode, shady | Mar 2026 |
-| Wipter | Dead | Domain resolves to DNS sinkhole, infrastructure gone | Mar 2026 |
 | Filecoin | Not viable | Enterprise-only (10 TiB min, datacenter infrastructure required) | Mar 2026 |
 | AntGain | Dead | Telegram channel unavailable | Mar 2026 |
 
