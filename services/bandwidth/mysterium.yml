@@ -41,6 +41,11 @@ docker:
     - "/dev/net/tun"
   privileged: false
 
+egress:
+  mode: direct
+  udp: required
+  reason: "Needs inbound/UDP VPN traffic and /dev/net/tun; proxy egress can break earnings."
+
 requirements:
   residential_ip: false
   devices_per_ip: 0

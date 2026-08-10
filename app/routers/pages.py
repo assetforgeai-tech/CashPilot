@@ -77,3 +77,21 @@ async def page_fleet(request: Request):
     if not user:
         return deps._login_redirect()
     return deps.templates.TemplateResponse(request, "fleet.html", {"user": user})
+
+@router.get("/proxy-providers", response_class=HTMLResponse)
+async def page_proxy_providers(request: Request):
+    user = auth_module.get_current_user(request)
+    if not user:
+        return deps._login_redirect()
+    if not auth_module.require_role(user, "owner"):
+        raise HTTPException(status_code=403, detail="Owner access required")
+    return deps.templates.TemplateResponse(request, "proxy_providers.html", {"user": user})
+
+@router.get("/proxy-pool", response_class=HTMLResponse)
+async def page_proxy_pool(request: Request):
+    user = auth_module.get_current_user(request)
+    if not user:
+        return deps._login_redirect()
+    if not auth_module.require_role(user, "owner"):
+        raise HTTPException(status_code=403, detail="Owner access required")
+    return deps.templates.TemplateResponse(request, "proxy_pool.html", {"user": user})

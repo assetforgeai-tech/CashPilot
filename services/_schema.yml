@@ -72,6 +72,17 @@
 #   stop_timeout: 30 (optional, seconds to wait before SIGKILL on stop — default 30)
 #   setup: "" (optional, one-time setup instructions/commands to run before first deploy)
 
+# egress: (optional) worker-side routing policy when Proxy Egress is enabled.
+#   mode: proxy | direct | auto
+#     - proxy: send this service through the worker's assigned proxy.
+#     - direct: bypass proxy routing and use the worker/VPS network directly.
+#     - auto: let CashPilot choose from the UDP requirement and worker policy.
+#   udp: required | optional | none
+#     `required` services should normally be direct unless the assigned proxy is
+#     a tested SOCKS5 endpoint with working UDP and the provider does not need
+#     inbound traffic. HTTP proxies cannot satisfy UDP.
+#   reason: "Plain-English note shown to the operator."
+
 # disclosure: (optional but strongly encouraged) what this service does with the
 #   user's machine. "Is this malware?" is a fair question about closed-source
 #   containers that route traffic through someone's home connection, and an

@@ -29,6 +29,8 @@ _REQUIRED_FIELDS = {"name", "slug", "category", "status", "description", "docker
 
 _CATEGORIES = {"bandwidth", "depin", "storage", "compute"}
 _VALID_STATUSES = {"active", "beta", "broken", "dead", "dropped"}
+_EGRESS_MODES = {"proxy", "direct", "auto"}
+_EGRESS_UDP = {"required", "optional", "none"}
 
 
 def _validate(data: dict[str, Any], path: Path) -> list[str]:
@@ -78,6 +80,21 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
         for field in ("residential_ip", "vps_ip", "gpu"):
             if field in reqs and not isinstance(reqs[field], bool):
                 errors.append(f"{path.name}: requirements.{field} must be a boolean")
+
+    egress = data.get("egress")
+    if egress is not None:
+        if not isinstance(egress, dict):
+            errors.append(f"{path.name}: egress must be a mapping, not {type(egress).__name__}")
+        else:
+            mode = egress.get("mode")
+            if mode is not None and mode not in _EGRESS_MODES:
+                errors.append(f"{path.name}: egress.mode must be one of {sorted(_EGRESS_MODES)}, not {mode!r}")
+            udp = egress.get("udp")
+            if udp is not None and udp not in _EGRESS_UDP:
+                errors.append(f"{path.name}: egress.udp must be one of {sorted(_EGRESS_UDP)}, not {udp!r}")
+            reason = egress.get("reason")
+            if reason is not None and not isinstance(reason, str):
+                errors.append(f"{path.name}: egress.reason must be a string")
 
     return errors
 
@@ -218,3 +235,21 @@ def vps_allowed(requirements: dict[str, Any] | None) -> bool | None:
         return bool(reqs["vps_ip"])
     residential = reqs.get("residential_ip")
     return None if residential is None else not residential
+
+def service_egress_mode(service: dict[str, Any] | None, default: str = "proxy") -> str:
+    """proxy/direct/auto for a service, defaulting to the worker policy."""
+    if default not in _EGRESS_MODES:
+        default = "proxy"
+    egress = (service or {}).get("egress") or {}
+    if not isinstance(egress, dict):
+        return default
+    mode = egress.get("mode")
+    return mode if mode in _EGRESS_MODES else default
+
+def service_egress_udp(service: dict[str, Any] | None) -> str:
+    """required/optional/none UDP requirement for egress policy."""
+    egress = (service or {}).get("egress") or {}
+    if not isinstance(egress, dict):
+        return "none"
+    udp = egress.get("udp")
+    return udp if udp in _EGRESS_UDP else "none"

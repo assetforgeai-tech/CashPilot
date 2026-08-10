@@ -495,6 +495,68 @@ class TestWorkers:
 
         asyncio.run(run())
 
+class TestProxyEgress:
+    def test_upsert_provider_and_sync_endpoints(self, db):
+        async def run():
+            provider_id = await database.upsert_proxy_provider(
+                "vtproxy",
+                "vtproxy",
+                base_url="https://vtproxy.net",
+                api_key="secret-key",
+            )
+            assert provider_id > 0
+            providers = await database.list_proxy_providers()
+            assert providers[0]["api_key_set"] is True
+            assert "secret" not in str(providers[0]).lower()
+
+            endpoint_id = await database.upsert_proxy_endpoints(
+                provider_id,
+                [
+                    {
+                        "provider_proxy_id": "56291",
+                        "endpoint": "dc-t5.proxyvt.com:45884",
+                        "host": "dc-t5.proxyvt.com",
+                        "port": 45884,
+                        "protocol": "socks5",
+                        "username": "u",
+                        "password": "p",
+                        "location": "Vietnam",
+                        "status": "active",
+                    }
+                ],
+            )
+            assert endpoint_id > 0
+            pool = await database.list_proxy_pool()
+            assert pool[0]["provider_name"] == "vtproxy"
+            assert pool[0]["password_set"] is True
+            assert "password" not in pool[0]
+
+        asyncio.run(run())
+
+    def test_sticky_assignment(self, db):
+        async def run():
+            wid = await database.upsert_worker("client-1", "worker-1", "http://w1:8081")
+            pid = await database.upsert_proxy_provider("vtproxy", "vtproxy")
+            endpoint_id = await database.upsert_proxy_endpoints(
+                pid,
+                [
+                    {
+                        "provider_proxy_id": "1",
+                        "endpoint": "proxy.example.com:8080",
+                        "host": "proxy.example.com",
+                        "port": 8080,
+                        "protocol": "http",
+                    }
+                ],
+            )
+            assert await database.set_worker_proxy_assignment(wid, endpoint_id, "proxy", "hold")
+            row = await database.get_worker_proxy_assignment(wid)
+            assert row["proxy_id"] == endpoint_id
+            assert row["mode"] == "proxy"
+            assert row["fallback"] == "hold"
+
+        asyncio.run(run())
+
 
 class TestEarningsFxMigration:
     def test_migration_adds_fx_column_to_existing_db(self, db_dir):

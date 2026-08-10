@@ -16,6 +16,7 @@ import asyncio
 import base64
 import contextlib
 import hmac
+import json
 import logging
 import os
 import platform
@@ -36,7 +37,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from app import egress, fleet_key, orchestrator, state_backup, version
+from app import egress, fleet_key, orchestrator, proxy_egress, singbox_config, state_backup, version
 
 try:
     from app.catalog import get_services as _catalog_get_services
@@ -295,6 +296,8 @@ _EGRESS_FAILURE_TTL_SECONDS = 300.0
 _EGRESS_TOTAL_TIMEOUT = 10.0
 # Enough for any textual IP form; the body is never read past this.
 _EGRESS_MAX_BYTES = 128
+_EGRESS_CONFIG_DIR = Path(os.getenv("CASHPILOT_DATA_DIR", "/data")) / "egress"
+_EGRESS_CONFIG_FILE = _EGRESS_CONFIG_DIR / "sing-box.json"
 
 
 def _disk_usage() -> dict[str, Any] | None:
@@ -797,9 +800,16 @@ class DeploySpec(BaseModel):
     hostname: str | None = None
     labels: dict[str, str] = {}
     resources: ResourceSpec | None = None
+    egress_mode: str | None = None
+    egress_udp: str | None = None
     # Advanced and unsupported. Absent means Docker's default runtime, which is
     # what everything uses and what everything is tested against.
     runtime: str | None = None
+
+class EgressApplySpec(BaseModel):
+    mode: str = proxy_egress.PROXY
+    worker_name: str | None = None
+    proxy: dict[str, Any] | None = None
 
 
 _BLOCKED_VOLUME_ROOTS = {
@@ -1349,3 +1359,27 @@ async def api_runtimes(request: Request) -> dict[str, Any]:
 async def api_health() -> dict[str, str]:
     """Health check endpoint (no auth required)."""
     return {"status": "ok", "worker": WORKER_NAME}
+
+@app.get("/api/egress/status")
+async def api_egress_status(request: Request) -> dict[str, Any]:
+    _verify_api_key(request)
+    return {"configured": _EGRESS_CONFIG_FILE.is_file(), "path": str(_EGRESS_CONFIG_FILE)}
+
+@app.post("/api/egress/apply")
+async def api_egress_apply(request: Request, body: EgressApplySpec) -> dict[str, Any]:
+    _verify_api_key(request)
+    _EGRESS_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    mode = proxy_egress.normalize_mode(body.mode)
+    if mode == proxy_egress.DIRECT or not body.proxy:
+        config = {
+            "log": {"level": "info"},
+            "inbounds": [],
+            "outbounds": [{"type": "direct", "tag": "direct"}],
+            "route": {"final": "direct"},
+        }
+    else:
+        config = singbox_config.render_tun_proxy_config(body.proxy, worker_name=body.worker_name or WORKER_NAME)
+    _EGRESS_CONFIG_FILE.write_text(json.dumps(config, indent=2, sort_keys=True), encoding="utf-8")
+    with contextlib.suppress(OSError):
+        _EGRESS_CONFIG_FILE.chmod(0o600)
+    return {"status": "ok", "mode": mode, "path": str(_EGRESS_CONFIG_FILE)}

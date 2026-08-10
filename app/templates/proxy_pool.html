@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Proxy pool - CashPilot{% endblock %}
+{% block page %}proxy-pool{% endblock %}
+{% block topbar_title %}Proxy pool{% endblock %}
+{% block content %}
+<section class="content-section">
+  <div class="section-header">
+    <h2>Proxy pool</h2>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Provider</th><th>Endpoint</th><th>Protocol</th><th>Location</th><th>Status</th><th>Expiry</th><th>Assigned</th>
+        </tr>
+      </thead>
+      <tbody id="pool-rows"></tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script nonce="{{ csp_nonce(request) }}">
+function esc(value) {
+  return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+async function loadPool() {
+  const rows = await fetch('/api/proxy-pool').then(r => r.json());
+  document.getElementById('pool-rows').innerHTML = rows.map(p => `
+    <tr>
+      <td>${esc(p.provider_name || '-')}</td>
+      <td>${esc(p.endpoint)}</td>
+      <td>${esc(p.protocol)}</td>
+      <td>${esc(p.location || '-')}</td>
+      <td>${esc(p.status || '-')}</td>
+      <td>${esc(p.expiry_date || (p.days_left != null ? `${p.days_left}d` : '-'))}</td>
+      <td>${esc(p.assigned_worker_id || '-')}</td>
+    </tr>`).join('');
+}
+loadPool();
+</script>
+{% endblock %}

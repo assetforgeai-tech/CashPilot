@@ -417,6 +417,54 @@ CREATE TABLE IF NOT EXISTS workers (
     registered_at   TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS proxy_providers (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    name           TEXT    NOT NULL,
+    type           TEXT    NOT NULL,
+    base_url       TEXT    NOT NULL DEFAULT '',
+    api_key_enc    TEXT    NOT NULL DEFAULT '',
+    enabled        INTEGER NOT NULL DEFAULT 1,
+    last_synced_at TEXT,
+    created_at     TEXT    NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(type, name)
+);
+
+CREATE TABLE IF NOT EXISTS proxy_endpoints (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider_id       INTEGER,
+    provider_proxy_id TEXT,
+    endpoint          TEXT    NOT NULL,
+    host              TEXT    NOT NULL,
+    port              INTEGER NOT NULL,
+    protocol          TEXT    NOT NULL CHECK(protocol IN ('http', 'socks5')),
+    username          TEXT    NOT NULL DEFAULT '',
+    password_enc      TEXT    NOT NULL DEFAULT '',
+    location          TEXT    NOT NULL DEFAULT '',
+    status            TEXT    NOT NULL DEFAULT 'unknown',
+    expiry_date       TEXT,
+    days_left         INTEGER,
+    hours_left        INTEGER,
+    exit_ip           TEXT,
+    udp_ok            INTEGER,
+    latency_ms        INTEGER,
+    last_synced_at    TEXT,
+    last_checked_at   TEXT,
+    created_at        TEXT    NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY(provider_id) REFERENCES proxy_providers(id) ON DELETE SET NULL,
+    UNIQUE(provider_id, provider_proxy_id)
+);
+
+CREATE TABLE IF NOT EXISTS proxy_assignments (
+    worker_id  INTEGER PRIMARY KEY,
+    proxy_id   INTEGER,
+    mode       TEXT NOT NULL DEFAULT 'proxy' CHECK(mode IN ('proxy', 'direct', 'auto')),
+    fallback   TEXT NOT NULL DEFAULT 'hold' CHECK(fallback IN ('hold', 'rotate')),
+    applied_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY(worker_id) REFERENCES workers(id) ON DELETE CASCADE,
+    FOREIGN KEY(proxy_id) REFERENCES proxy_endpoints(id) ON DELETE SET NULL
+);
+
 CREATE TABLE IF NOT EXISTS user_preferences (
     user_id             INTEGER PRIMARY KEY,
     setup_mode          TEXT    NOT NULL DEFAULT 'fresh',
@@ -741,7 +789,7 @@ async def _encrypt_legacy_plaintext_credentials(db: Any) -> int:
 #: missing a column -- an interrupted upgrade, a restored backup, a hand-edited
 #: file -- could never be repaired, because the gate would say there was nothing
 #: to do. The guards are idempotent and cheap; the version is for the operator.
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 13
 
 
 async def init_db() -> None:
@@ -1882,6 +1930,248 @@ async def delete_worker(worker_id: int) -> None:
     finally:
         await db.close()
 
+
+# --- Proxy egress ---
+
+async def upsert_proxy_provider(
+    name: str,
+    type: str,
+    *,
+    base_url: str = "",
+    api_key: str | None = None,
+    enabled: bool = True,
+) -> int:
+    api_key_enc = encrypt_value(api_key.strip()) if api_key is not None and api_key.strip() else ""
+    db = await _get_db()
+    try:
+        await db.execute(
+            """
+            INSERT INTO proxy_providers (name, type, base_url, api_key_enc, enabled)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(type, name) DO UPDATE SET
+                base_url = excluded.base_url,
+                api_key_enc = CASE WHEN excluded.api_key_enc != '' THEN excluded.api_key_enc ELSE proxy_providers.api_key_enc END,
+                enabled = excluded.enabled
+            """,
+            (name.strip(), type.strip().lower(), base_url.strip(), api_key_enc, 1 if enabled else 0),
+        )
+        await db.commit()
+        cur = await db.execute(
+            "SELECT id FROM proxy_providers WHERE type = ? AND name = ?",
+            (type.strip().lower(), name.strip()),
+        )
+        row = await cur.fetchone()
+        return int(row["id"])
+    finally:
+        await db.close()
+
+async def list_proxy_providers() -> list[dict[str, Any]]:
+    db = await _get_db()
+    try:
+        cur = await db.execute(
+            """
+            SELECT id, name, type, base_url, enabled, last_synced_at, created_at,
+                   CASE WHEN api_key_enc IS NOT NULL AND api_key_enc != '' THEN 1 ELSE 0 END AS api_key_set
+            FROM proxy_providers
+            ORDER BY name
+            """
+        )
+        return [
+            {
+                **dict(row),
+                "enabled": bool(row["enabled"]),
+                "api_key_set": bool(row["api_key_set"]),
+            }
+            for row in await cur.fetchall()
+        ]
+    finally:
+        await db.close()
+
+async def get_proxy_provider(provider_id: int, *, include_secret: bool = False) -> dict[str, Any] | None:
+    db = await _get_db()
+    try:
+        cur = await db.execute("SELECT * FROM proxy_providers WHERE id = ?", (provider_id,))
+        row = await cur.fetchone()
+        if not row:
+            return None
+        data = dict(row)
+        data["enabled"] = bool(data["enabled"])
+        data["api_key_set"] = bool(data.get("api_key_enc"))
+        if include_secret:
+            data["api_key"] = decrypt_value(data.get("api_key_enc") or "")
+        data.pop("api_key_enc", None)
+        return data
+    finally:
+        await db.close()
+
+async def upsert_proxy_endpoints(provider_id: int, proxies: Sequence[Mapping[str, Any]]) -> int:
+    db = await _get_db()
+    try:
+        for proxy in proxies:
+            protocol = str(proxy.get("protocol") or "socks5").lower()
+            if protocol not in {"http", "socks5"}:
+                continue
+            password = str(proxy.get("password") or "")
+            await db.execute(
+                """
+                INSERT INTO proxy_endpoints (
+                    provider_id, provider_proxy_id, endpoint, host, port, protocol,
+                    username, password_enc, location, status, expiry_date, days_left,
+                    hours_left, exit_ip, udp_ok, latency_ms, last_synced_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                ON CONFLICT(provider_id, provider_proxy_id) DO UPDATE SET
+                    endpoint = excluded.endpoint,
+                    host = excluded.host,
+                    port = excluded.port,
+                    protocol = excluded.protocol,
+                    username = excluded.username,
+                    password_enc = CASE WHEN excluded.password_enc != '' THEN excluded.password_enc ELSE proxy_endpoints.password_enc END,
+                    location = excluded.location,
+                    status = excluded.status,
+                    expiry_date = excluded.expiry_date,
+                    days_left = excluded.days_left,
+                    hours_left = excluded.hours_left,
+                    exit_ip = excluded.exit_ip,
+                    udp_ok = excluded.udp_ok,
+                    latency_ms = excluded.latency_ms,
+                    last_synced_at = datetime('now')
+                """,
+                (
+                    provider_id,
+                    str(proxy.get("provider_proxy_id") or ""),
+                    str(proxy.get("endpoint") or ""),
+                    str(proxy.get("host") or ""),
+                    int(proxy.get("port") or 0),
+                    protocol,
+                    str(proxy.get("username") or ""),
+                    encrypt_value(password) if password else "",
+                    str(proxy.get("location") or ""),
+                    str(proxy.get("status") or "unknown"),
+                    proxy.get("expiry_date"),
+                    proxy.get("days_left"),
+                    proxy.get("hours_left"),
+                    proxy.get("exit_ip"),
+                    proxy.get("udp_ok"),
+                    proxy.get("latency_ms"),
+                ),
+            )
+        await db.execute("UPDATE proxy_providers SET last_synced_at = datetime('now') WHERE id = ?", (provider_id,))
+        await db.commit()
+        cur = await db.execute("SELECT id FROM proxy_endpoints WHERE provider_id = ? ORDER BY id DESC LIMIT 1", (provider_id,))
+        row = await cur.fetchone()
+        return int(row["id"]) if row else 0
+    finally:
+        await db.close()
+
+async def list_proxy_pool() -> list[dict[str, Any]]:
+    db = await _get_db()
+    try:
+        cur = await db.execute(
+            """
+            SELECT pe.id, pe.provider_id, pp.name AS provider_name, pp.type AS provider_type,
+                   pe.provider_proxy_id, pe.endpoint, pe.host, pe.port, pe.protocol,
+                   pe.username, pe.location, pe.status, pe.expiry_date, pe.days_left,
+                   pe.hours_left, pe.exit_ip, pe.udp_ok, pe.latency_ms,
+                   pe.last_synced_at, pe.last_checked_at,
+                   CASE WHEN pe.password_enc IS NOT NULL AND pe.password_enc != '' THEN 1 ELSE 0 END AS password_set,
+                   pa.worker_id AS assigned_worker_id
+            FROM proxy_endpoints pe
+            LEFT JOIN proxy_providers pp ON pp.id = pe.provider_id
+            LEFT JOIN proxy_assignments pa ON pa.proxy_id = pe.id
+            ORDER BY pp.name, pe.endpoint
+            """
+        )
+        rows = []
+        for row in await cur.fetchall():
+            item = dict(row)
+            item["password_set"] = bool(item["password_set"])
+            if item.get("udp_ok") is not None:
+                item["udp_ok"] = bool(item["udp_ok"])
+            rows.append(item)
+        return rows
+    finally:
+        await db.close()
+
+async def set_worker_proxy_assignment(worker_id: int, proxy_id: int | None, mode: str = "proxy", fallback: str = "hold") -> bool:
+    mode = mode if mode in {"proxy", "direct", "auto"} else "proxy"
+    fallback = fallback if fallback in {"hold", "rotate"} else "hold"
+    db = await _get_db()
+    try:
+        cur = await db.execute("SELECT id FROM workers WHERE id = ?", (worker_id,))
+        if not await cur.fetchone():
+            return False
+        if proxy_id is not None:
+            cur = await db.execute("SELECT id FROM proxy_endpoints WHERE id = ?", (proxy_id,))
+            if not await cur.fetchone():
+                return False
+        await db.execute(
+            """
+            INSERT INTO proxy_assignments (worker_id, proxy_id, mode, fallback, applied_at)
+            VALUES (?, ?, ?, ?, NULL)
+            ON CONFLICT(worker_id) DO UPDATE SET
+                proxy_id = excluded.proxy_id,
+                mode = excluded.mode,
+                fallback = excluded.fallback,
+                applied_at = NULL
+            """,
+            (worker_id, proxy_id, mode, fallback),
+        )
+        await db.commit()
+        return True
+    finally:
+        await db.close()
+
+async def get_worker_proxy_assignment(worker_id: int) -> dict[str, Any] | None:
+    db = await _get_db()
+    try:
+        cur = await db.execute(
+            """
+            SELECT pa.worker_id, pa.proxy_id, pa.mode, pa.fallback, pa.applied_at, pa.created_at,
+                   pe.endpoint, pe.host, pe.port, pe.protocol, pe.username,
+                   pe.password_enc, pe.status, pe.udp_ok, pp.name AS provider_name
+            FROM proxy_assignments pa
+            LEFT JOIN proxy_endpoints pe ON pe.id = pa.proxy_id
+            LEFT JOIN proxy_providers pp ON pp.id = pe.provider_id
+            WHERE pa.worker_id = ?
+            """,
+            (worker_id,),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return None
+        data = dict(row)
+        enc = data.pop("password_enc", "") or ""
+        if enc:
+            data["password"] = decrypt_value(enc)
+        return data
+    finally:
+        await db.close()
+
+async def get_proxy_endpoint(proxy_id: int) -> dict[str, Any] | None:
+    db = await _get_db()
+    try:
+        cur = await db.execute(
+            """
+            SELECT pe.*, pp.name AS provider_name, pp.type AS provider_type,
+                   CASE WHEN pe.password_enc IS NOT NULL AND pe.password_enc != '' THEN 1 ELSE 0 END AS password_set
+            FROM proxy_endpoints pe
+            LEFT JOIN proxy_providers pp ON pp.id = pe.provider_id
+            WHERE pe.id = ?
+            """,
+            (proxy_id,),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return None
+        data = dict(row)
+        enc = data.pop("password_enc", "") or ""
+        if enc:
+            data["password"] = decrypt_value(enc)
+        data["password_set"] = bool(data.get("password_set"))
+        return data
+    finally:
+        await db.close()
 
 # --- Per-worker fleet keys ---
 #

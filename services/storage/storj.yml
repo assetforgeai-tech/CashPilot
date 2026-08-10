@@ -84,6 +84,11 @@ docker:
     Use spinning disks for storage. Port 28967 TCP+UDP must be forwarded.
     Dashboard at port 14002 — use your server's LAN IP (not localhost) for the collector API URL.
 
+egress:
+  mode: direct
+  udp: required
+  reason: "Needs stable inbound TCP/UDP port forwarding; proxy egress can make the node unreachable."
+
 requirements:
   residential_ip: false
   note: "Storj nodes on the same /24 subnet share data allocation, reducing per-node earnings."

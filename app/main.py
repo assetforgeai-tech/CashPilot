@@ -1630,6 +1630,8 @@ async def api_deploy(
         # starts, registers and earns nothing.
         "devices": docker_conf.get("devices") or None,
         "privileged": docker_conf.get("privileged", False),
+        "egress_mode": catalog.service_egress_mode(svc),
+        "egress_udp": catalog.service_egress_udp(svc),
     }
 
     # Command: resolve ${VAR} placeholders
@@ -4336,8 +4338,10 @@ async def api_fleet_api_key_reveal(request: Request) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 from app.routers import auth as auth_router  # noqa: E402
 from app.routers import pages as pages_router  # noqa: E402
+from app.routers import proxies as proxies_router  # noqa: E402
 from app.routers import users as users_router  # noqa: E402
 
 app.include_router(auth_router.router)
 app.include_router(pages_router.router)
+app.include_router(proxies_router.router)
 app.include_router(users_router.router)
