@@ -31,6 +31,11 @@ docker:
 deploy:
   automation: seed_bundle
   notes: "Runtime uses a pre-authenticated XDG/profile seed bundle. Multi-node defaults stay pending until vps-test-sing confirms blank/reset device/browser IDs."
+  runtime_assets:
+    - provider: grass
+      asset_kind: seed_bundle
+      target: /seed/grass-xdg-seed.tar.gz
+      encoding: base64
   credentials:
     - key: seed_bundle
       label: "Grass seed bundle"

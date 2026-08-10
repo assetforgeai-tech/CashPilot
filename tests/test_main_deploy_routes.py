@@ -277,6 +277,35 @@ class TestApiDeploy:
             assert resp.status_code == 200, resp.text
             assert "resources" not in captured["spec"]
 
+    def test_deploy_forwards_runtime_asset_refs_from_yaml(self, client, deploy_capture):
+        captured, capture = deploy_capture
+        svc = {
+            "slug": "grass",
+            "name": "Grass",
+            "docker": {"image": "grass:latest", "env": [], "ports": [], "volumes": []},
+            "deploy": {
+                "runtime_assets": [
+                    {
+                        "provider": "grass",
+                        "asset_kind": "seed_bundle",
+                        "target": "/seed/grass-xdg-seed.tar.gz",
+                        "encoding": "base64",
+                    }
+                ]
+            },
+        }
+        with (
+            _auth_owner(),
+            patch("app.main._resolve_worker_id", new_callable=AsyncMock, return_value=1),
+            patch("app.main.catalog.get_service", return_value=svc),
+            patch("app.main._proxy_worker_deploy", side_effect=capture),
+            patch("app.main.database.save_deployment", new_callable=AsyncMock),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
+        ):
+            resp = client.post("/api/deploy/grass", json={})
+            assert resp.status_code == 200, resp.text
+            assert captured["spec"]["runtime_assets"] == svc["deploy"]["runtime_assets"]
+
     def test_deploy_storj_real_catalog_carries_resources(self, client, deploy_capture):
         """Guard: the real storj YAML resources must reach the container spec.
 

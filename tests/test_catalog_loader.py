@@ -282,12 +282,28 @@ class TestProviderAutomationContracts:
         assert svc["docker"]["image"] == "ghcr.io/assetforgeai-tech/internetincome-grass-desktop:7.5.1-minimal"
         assert "seed_bundle" in self._credential_keys(svc, "deploy")
         assert svc["deploy"]["automation"] == "seed_bundle"
+        assert svc["deploy"]["runtime_assets"] == [
+            {
+                "provider": "grass",
+                "asset_kind": "seed_bundle",
+                "target": "/seed/grass-xdg-seed.tar.gz",
+                "encoding": "base64",
+            }
+        ]
 
     def test_uprock_runtime_uses_seed_bundle_asset(self):
         svc = self._svc("uprock")
         assert svc["docker"]["image"] == "ghcr.io/assetforgeai-tech/internetincome-uprock:0.0.38-browser"
         assert "seed_bundle" in self._credential_keys(svc, "deploy")
         assert svc["deploy"]["automation"] == "seed_bundle"
+        assert svc["deploy"]["runtime_assets"] == [
+            {
+                "provider": "uprock",
+                "asset_kind": "seed_bundle",
+                "target": "/seed/uprock-seed-bundle.tar.gz",
+                "encoding": "base64",
+            }
+        ]
 
     def test_spide_runtime_uses_device_key_registration(self):
         svc = self._svc("spide")

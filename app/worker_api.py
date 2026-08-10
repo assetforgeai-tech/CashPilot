@@ -35,7 +35,7 @@ from typing import Any
 import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app import egress, fleet_key, orchestrator, proxy_egress, singbox_config, state_backup, version
 
@@ -298,6 +298,7 @@ _EGRESS_TOTAL_TIMEOUT = 10.0
 _EGRESS_MAX_BYTES = 128
 _EGRESS_CONFIG_DIR = Path(os.getenv("CASHPILOT_DATA_DIR", "/data")) / "egress"
 _EGRESS_CONFIG_FILE = _EGRESS_CONFIG_DIR / "sing-box.json"
+_RUNTIME_ASSET_DIR = Path(os.getenv("CASHPILOT_DATA_DIR", "/data")) / "runtime-assets"
 
 
 def _disk_usage() -> dict[str, Any] | None:
@@ -787,6 +788,12 @@ class ResourceSpec(BaseModel):
     oom_score_adj: int | None = None
 
 
+class RuntimeAssetSpec(BaseModel):
+    provider: str
+    asset_kind: str
+    target: str
+    encoding: str = "text"
+
 class DeploySpec(BaseModel):
     image: str
     env: dict[str, str] = {}
@@ -802,6 +809,7 @@ class DeploySpec(BaseModel):
     resources: ResourceSpec | None = None
     egress_mode: str | None = None
     egress_udp: str | None = None
+    runtime_assets: list[RuntimeAssetSpec] = Field(default_factory=list)
     # Advanced and unsupported. Absent means Docker's default runtime, which is
     # what everything uses and what everything is tested against.
     runtime: str | None = None
@@ -812,6 +820,46 @@ class EgressApplySpec(BaseModel):
     worker_name: str | None = None
     proxy: dict[str, Any] | None = None
 
+
+async def _fetch_runtime_asset(provider: str, asset_kind: str) -> str:
+    if not UI_URL:
+        raise RuntimeError("CashPilot UI URL not configured")
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(
+            f"{UI_URL.rstrip('/')}/api/workers/runtime-asset",
+            headers={"Authorization": f"Bearer {API_KEY}"},
+            json={"client_id": CLIENT_ID, "provider": provider, "asset_kind": asset_kind},
+        )
+    if resp.status_code == 404:
+        raise FileNotFoundError(f"runtime asset {provider}:{asset_kind} not found")
+    if resp.status_code in (401, 403):
+        raise PermissionError(f"runtime asset {provider}:{asset_kind} rejected")
+    resp.raise_for_status()
+    value = resp.json().get("value")
+    if not isinstance(value, str):
+        raise ValueError(f"runtime asset {provider}:{asset_kind} missing value")
+    return value
+
+async def _materialize_runtime_assets(slug: str, spec: DeploySpec) -> None:
+    if not spec.runtime_assets:
+        return
+    _RUNTIME_ASSET_DIR.mkdir(parents=True, exist_ok=True)
+    for asset in spec.runtime_assets:
+        target = str(asset.target or "").strip()
+        if not target.startswith("/") or ".." in Path(target).parts:
+            raise HTTPException(status_code=400, detail=f"Invalid runtime asset target for {slug}: {target!r}")
+        provider = str(asset.provider or slug).strip().lower()
+        asset_kind = str(asset.asset_kind or "").strip().lower()
+        if not provider or not asset_kind:
+            raise HTTPException(status_code=400, detail=f"Invalid runtime asset ref for {slug}")
+        payload = await _fetch_runtime_asset(provider, asset_kind)
+        data = base64.b64decode(payload) if str(asset.encoding or "").lower() == "base64" else payload.encode()
+        host_path = _RUNTIME_ASSET_DIR / slug / asset_kind
+        host_path.parent.mkdir(parents=True, exist_ok=True)
+        host_path.write_bytes(data)
+        with contextlib.suppress(OSError):
+            host_path.chmod(0o600)
+        spec.volumes[str(host_path)] = {"bind": target, "mode": "ro"}
 
 _BLOCKED_VOLUME_ROOTS = {
     "/",
@@ -1120,6 +1168,7 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
     _verify_api_key(request)
     _validate_deploy_spec(spec, slug=slug)
     try:
+        await _materialize_runtime_assets(slug, spec)
         container_id = await asyncio.to_thread(
             orchestrator.deploy_raw,
             slug=slug,

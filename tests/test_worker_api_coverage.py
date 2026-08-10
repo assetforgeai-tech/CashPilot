@@ -12,9 +12,11 @@ Mocks app.orchestrator entirely — no real Docker socket is used.
 
 from __future__ import annotations
 
+import asyncio
+import base64
 import os
 from contextlib import asynccontextmanager
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
@@ -25,7 +27,7 @@ try:
     from fastapi.testclient import TestClient  # noqa: E402
 
     from app import worker_api  # noqa: E402
-    from app.worker_api import DeploySpec, _validate_deploy_spec, _verify_api_key  # noqa: E402
+    from app.worker_api import DeploySpec, _materialize_runtime_assets, _validate_deploy_spec, _verify_api_key  # noqa: E402
 except ImportError:
     pytest.skip(
         "Requires full app dependencies (fastapi, docker, etc.) — runs in CI",
@@ -364,6 +366,40 @@ class TestDeployEndpointErrors:
                 headers=_auth(),
             )
         assert resp.status_code == 500
+
+class TestRuntimeAssetMaterialization:
+    def test_seed_bundle_is_written_and_mounted_readonly(self, tmp_path):
+        spec = DeploySpec(
+            image="x",
+            runtime_assets=[
+                {
+                    "provider": "grass",
+                    "asset_kind": "seed_bundle",
+                    "target": "/seed/grass-xdg-seed.tar.gz",
+                    "encoding": "base64",
+                }
+            ],
+        )
+        payload = base64.b64encode(b"seed-bytes").decode()
+
+        with (
+            patch("app.worker_api._RUNTIME_ASSET_DIR", tmp_path),
+            patch("app.worker_api._fetch_runtime_asset", new_callable=AsyncMock, return_value=payload),
+        ):
+            asyncio.run(_materialize_runtime_assets("grass", spec))
+
+        written = tmp_path / "grass" / "seed_bundle"
+        assert written.read_bytes() == b"seed-bytes"
+        assert spec.volumes[str(written)] == {"bind": "/seed/grass-xdg-seed.tar.gz", "mode": "ro"}
+
+    def test_runtime_asset_target_must_be_absolute(self):
+        spec = DeploySpec(
+            image="x",
+            runtime_assets=[{"provider": "grass", "asset_kind": "seed_bundle", "target": "seed.tar.gz"}],
+        )
+        with pytest.raises(HTTPException) as ei:
+            asyncio.run(_materialize_runtime_assets("grass", spec))
+        assert ei.value.status_code == 400
 
 
 class TestStopRestartStartEndpoints:

@@ -1630,6 +1630,7 @@ async def api_deploy(
         )
 
     docker_conf = svc.get("docker", {})
+    deploy_conf = svc.get("deploy", {}) or {}
     image = docker_conf.get("image")
     if not image:
         raise HTTPException(status_code=400, detail=f"Service '{slug}' has no Docker image")
@@ -1711,6 +1712,9 @@ async def api_deploy(
         "egress_mode": catalog.service_egress_mode(svc),
         "egress_udp": catalog.service_egress_udp(svc),
     }
+    runtime_assets = deploy_conf.get("runtime_assets") or []
+    if runtime_assets:
+        spec["runtime_assets"] = runtime_assets
 
     # Command: resolve ${VAR} placeholders
     raw_command = docker_conf.get("command") or None

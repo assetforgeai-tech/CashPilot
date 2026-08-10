@@ -37,6 +37,11 @@ docker:
 deploy:
   automation: seed_bundle
   notes: "Runtime uses a pre-authenticated full seed bundle or credentials.json + main-enabled.db bundle."
+  runtime_assets:
+    - provider: uprock
+      asset_kind: seed_bundle
+      target: /seed/uprock-seed-bundle.tar.gz
+      encoding: base64
   credentials:
     - key: seed_bundle
       label: "Uprock seed bundle"
