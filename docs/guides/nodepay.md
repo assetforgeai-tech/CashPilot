@@ -5,7 +5,7 @@
 
 ## Description
 
-Nodepay is a DePIN network that rewards users for sharing bandwidth through a browser extension. The platform is behind Cloudflare protection which can complicate automated access. Users earn Nodepay Points by keeping the extension active. The network focuses on providing AI training data infrastructure.
+Nodepay is a real-time intelligence platform that rewards contributors for providing signals and participation. The public site now centers on the app and dashboard rather than a browser-extension-first flow. Rewards, referrals, and contributions are tracked in the web dashboard.
 
 ## Earning Estimates
 
@@ -17,7 +17,7 @@ Nodepay is a DePIN network that rewards users for sharing bandwidth through a br
 | Payout frequency | Token airdrop (TBA) |
 | Payment methods | Crypto |
 
-> Earns Nodepay Points pre-token launch. Cloudflare protection may block automated collection. Browser extension required.
+> Rewards are tracked in the app/dashboard. Public access is app-shaped; automated collection may need browser session cookies.
 
 ## Requirements
 
@@ -27,7 +27,7 @@ Nodepay is a DePIN network that rewards users for sharing bandwidth through a br
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Browser-Extension |
+| Supported platforms | Android, iOS |
 
 ## Setup Instructions
 
@@ -37,7 +37,7 @@ Sign up at [Nodepay](https://app.nodepay.ai/register?ref=0wzzyznen64j9zx).
 
 ### 2. Get your credentials
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+After signing up, follow the current app and dashboard flow shown by Nodepay.
 
 ### 3. Deploy with CashPilot
 
@@ -46,7 +46,7 @@ In the CashPilot web UI, find **Nodepay** in the service catalog and click **Dep
 ## Docker Configuration
 
 - **Image:** ``
-- **Platforms:** browser-extension
+- **Platforms:** android, ios
 
 ### Environment Variables
 

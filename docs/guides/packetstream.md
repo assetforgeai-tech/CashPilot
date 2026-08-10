@@ -5,7 +5,7 @@
 
 ## Description
 
-PacketStream is a peer-to-peer bandwidth marketplace where you can sell your unused bandwidth. It powers a residential proxy network used for market research, SEO monitoring, and ad verification. Simple Docker setup with just a CID (Client ID) required. Note that CAPTCHA-protected login can make automated earnings collection challenging.
+PacketStream is a peer-to-peer bandwidth marketplace where you can sell your unused bandwidth. It powers a residential proxy network used for market research, SEO monitoring, and ad verification. The current setup is a desktop client with a CID (Client ID) from the dashboard; automated earnings collection is still awkward because login is CAPTCHA-protected.
 
 ## Earning Estimates
 
@@ -27,7 +27,7 @@ PacketStream is a peer-to-peer bandwidth marketplace where you can sell your unu
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Docker, Windows, Linux, Android |
+| Supported platforms | Docker, Windows, Macos, Linux |
 
 ## Setup Instructions
 
@@ -37,7 +37,7 @@ Sign up at [PacketStream](https://packetstream.io/?psr=7xgZ).
 
 ### 2. Get your credentials
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+After signing up, open the dashboard and copy the CID shown in the setup page.
 
 ### 3. Deploy with CashPilot
 

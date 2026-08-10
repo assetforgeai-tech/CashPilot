@@ -5,10 +5,10 @@ status: active
 website: https://teneo.pro
 description: >
   Teneo Protocol is a DePIN network that rewards users for sharing bandwidth
-  via a browser extension. It operates a community node system where users earn
-  Teneo Points by keeping the extension active. Referrals grant 2000 points each.
-  The protocol focuses on building decentralized data infrastructure.
-short_description: DePIN browser extension - 2000 pts per referral
+  via a Chrome extension or the Beacon app. The Community Node uses the browser
+  extension, while Beacon is available on Android, iOS, Mac, Windows, and Linux.
+  Users earn Teneo Points and Fragments through nodes, quests, and referrals.
+short_description: DePIN browser extension + Beacon app - points and rewards
 
 referral:
   signup_url: "https://dashboard.teneo.pro/?code=CAqef"
@@ -52,7 +52,7 @@ cashout:
   currency: TENEO
   notes: "Points convert to tokens. Claim from dashboard."
 
-platforms: [browser-extension]
+platforms: [browser-extension, windows, macos, linux, android, ios]
 
 collector:
   type: scrape

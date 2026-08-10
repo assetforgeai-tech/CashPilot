@@ -1,0 +1,29 @@
+{
+  "currency": "USD",
+  "fields": [
+    "devices",
+    "pendingPayout",
+    "totalEarned"
+  ],
+  "note": "peer/my-devices returns per-device balances; collector sums pending payouts first, then falls back to lifetime earned",
+  "parsed": 3.25,
+  "sample": {
+    "devices": [
+      {
+        "deviceId": "peer-1",
+        "name": "cashpilot-vps",
+        "status": "earning",
+        "pendingPayout": 1.25,
+        "totalEarned": 7.5
+      },
+      {
+        "deviceId": "peer-2",
+        "name": "cashpilot-home",
+        "status": "listed",
+        "pendingPayout": 2,
+        "totalEarned": 4
+      }
+    ]
+  },
+  "slug": "proxies-sx"
+}

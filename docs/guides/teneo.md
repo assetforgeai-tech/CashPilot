@@ -5,7 +5,7 @@
 
 ## Description
 
-Teneo Protocol is a DePIN network that rewards users for sharing bandwidth via a browser extension. It operates a community node system where users earn Teneo Points by keeping the extension active. Referrals grant 2000 points each. The protocol focuses on building decentralized data infrastructure.
+Teneo Protocol is a DePIN network that rewards users for sharing bandwidth via a Chrome extension or the Beacon app. The Community Node uses the browser extension, while Beacon is available on Android, iOS, Mac, Windows, and Linux. Users earn Teneo Points and Fragments through nodes, quests, and referrals.
 
 ## Earning Estimates
 
@@ -17,7 +17,7 @@ Teneo Protocol is a DePIN network that rewards users for sharing bandwidth via a
 | Payout frequency | Token airdrop (TBA) |
 | Payment methods | Crypto |
 
-> Earns Teneo Points pre-token launch. Browser extension must remain active. Actual USD value depends on future token conversion.
+> Earns Teneo Points and Fragments pre-token launch. The extension or Beacon app must remain active. Actual USD value depends on future token conversion.
 
 ## Requirements
 
@@ -27,7 +27,7 @@ Teneo Protocol is a DePIN network that rewards users for sharing bandwidth via a
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Browser-Extension |
+| Supported platforms | Browser-Extension, Windows, Macos, Linux, Android, iOS |
 
 ## Setup Instructions
 
@@ -37,7 +37,7 @@ Sign up at [Teneo Protocol](https://dashboard.teneo.pro/?code=CAqef).
 
 ### 2. Get your credentials
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+After signing up, open the Teneo dashboard and follow the current node/app setup shown there.
 
 ### 3. Deploy with CashPilot
 
@@ -46,7 +46,7 @@ In the CashPilot web UI, find **Teneo Protocol** in the service catalog and clic
 ## Docker Configuration
 
 - **Image:** ``
-- **Platforms:** browser-extension
+- **Platforms:** browser-extension, windows, macos, linux, android, ios
 
 ### Environment Variables
 

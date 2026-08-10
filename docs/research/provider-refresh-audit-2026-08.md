@@ -17,7 +17,7 @@ Status: implementation snapshot. Source priority is official site/docs/dashboard
 | bytebenefit | active | app only | manual | needs_user_info: no public API/collector docs found. |
 | bytelixir | active | Windows/Android app | manual | updated; collector remains cookie scrape/manual because no official API shape found. |
 | ebesucher | active | browser/surfbar | manual | keep; official model remains browser traffic exchange. |
-| packetstream | active | Docker/app | scrape | keep; dashboard remains session/CAPTCHA shaped. |
+| packetstream | active | desktop client / CID | scrape | updated; current public setup is desktop-client-first, not app-only. |
 | proxybase | active | Docker/app | manual | keep; existing vendor/test guard says VPS/datacenter accepted. |
 | proxybase-xyz | active | Docker CLI marketplace | manual | keep; proxy inventory-like seller network, but still an earning provider entry until proxy-pool integration is designed separately. |
 | spide | active | app only | manual | keep; official terms already drive residential/one-IP warning. |
@@ -29,8 +29,8 @@ Status: implementation snapshot. Source priority is official site/docs/dashboard
 | wizardgain | broken | Docker/app | manual | keep broken; official site/connectivity not reliable. |
 | dawn | active | browser extension/hardware | scrape | needs_user_info: dashboard/API sample required. |
 | gradient | active | browser extension | scrape | needs_user_info: dashboard/API sample required. |
-| nodepay | active | browser extension/app | scrape | needs_user_info: current dashboard/API sample required; Cloudflare/session blocks public collector discovery. |
-| teneo | active | browser extension | scrape | needs_user_info: dashboard/API sample required. |
+| nodepay | active | mobile app + dashboard | scrape | updated; current public site centers on app/dashboard rewards rather than the old extension-first copy. |
+| teneo | active | browser extension + Beacon app | scrape | updated; Beacon now appears on Android/iOS/Mac/Windows/Linux. |
 | deeper-network | active | proprietary hardware | manual | keep; not a VPS/server container target. |
 | nodle | active | mobile app | manual | keep; mobile-only earning path. |
 | passiveapp | active | app only | manual | needs_user_info: current API/export docs required. |
@@ -68,6 +68,6 @@ Status: implementation snapshot. Source priority is official site/docs/dashboard
 
 ## Needs user info
 
-Provide official docs, dashboard export, or redacted API response before adding collectors for: `bytebenefit`, `dawn`, `gradient`, `nodepay`, `teneo`, `passiveapp`, `uprock`, `ionet`, `titan`.
+Provide official docs, dashboard export, or redacted API response before adding collectors for: `bytebenefit`, `dawn`, `gradient`, `passiveapp`, `uprock`, `ionet`, `titan`.
 
-Provider fields with conflicting or insufficient official public data: `bytelixir` payout threshold history, `proxybase-xyz` buyer/seller proxy-inventory split, `urnetwork` earnings API, `speedshare` official collector/API.
+Provider fields with conflicting or insufficient official public data: `bytelixir` payout threshold history, `proxybase-xyz` buyer/seller proxy-inventory split, `urnetwork` earnings API, `speedshare` official collector/API, `nodepay` current rewards model, `teneo` current payout shape.

@@ -4,11 +4,11 @@ category: depin
 status: active
 website: https://nodepay.ai
 description: >
-  Nodepay is a DePIN network that rewards users for sharing bandwidth through
-  a browser extension. The platform is behind Cloudflare protection which can
-  complicate automated access. Users earn Nodepay Points by keeping the extension
-  active. The network focuses on providing AI training data infrastructure.
-short_description: DePIN bandwidth sharing for AI - browser extension
+  Nodepay is a real-time intelligence platform that rewards contributors for
+  providing signals and participation. The public site now centers on the app
+  and dashboard rather than a browser-extension-first flow. Rewards, referrals,
+  and contributions are tracked in the web dashboard.
+short_description: Signals and rewards platform - mobile app + dashboard
 
 referral:
   signup_url: "https://app.nodepay.ai/register?ref=0wzzyznen64j9zx"
@@ -52,11 +52,11 @@ cashout:
   currency: NC
   notes: "Points-based system. Token conversion TBD."
 
-platforms: [browser-extension]
+platforms: [android, ios]
 
 collector:
   type: scrape
-  notes: "Behind Cloudflare. API access may require browser session cookies. Dashboard at app.nodepay.ai."
+  notes: "Dashboard at app.nodepay.ai. Public access is app/dashboard-shaped; automated collection may need browser session cookies."
 
 payout:
   model: unknown

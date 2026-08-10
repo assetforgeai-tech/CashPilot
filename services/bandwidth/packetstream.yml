@@ -6,10 +6,10 @@ website: https://packetstream.io
 description: >
   PacketStream is a peer-to-peer bandwidth marketplace where you can sell your
   unused bandwidth. It powers a residential proxy network used for market research,
-  SEO monitoring, and ad verification. Simple Docker setup with just a CID
-  (Client ID) required. Note that CAPTCHA-protected login can make automated
-  earnings collection challenging.
-short_description: Bandwidth sharing - simple CID-based setup
+  SEO monitoring, and ad verification. The current setup is a desktop client with
+  a CID (Client ID) from the dashboard; automated earnings collection is still
+  awkward because login is CAPTCHA-protected.
+short_description: Residential proxy network - desktop app, CID setup
 
 referral:
   signup_url: "https://packetstream.io/?psr=7xgZ"
@@ -58,7 +58,7 @@ cashout:
   min_amount: 5.0
   currency: USD
 
-platforms: [docker, windows, linux, android]
+platforms: [docker, windows, macos, linux]
 
 collector:
   type: scrape
