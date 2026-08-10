@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import os
+import asyncio
 from contextlib import asynccontextmanager
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
@@ -10,7 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app import myst_wallets
+from app import database, myst_wallets
 
 
 @asynccontextmanager
@@ -58,7 +59,78 @@ class TestMystWalletApi:
         resp = client.post("/api/admin/myst-wallets/import", json={"raw": "wallet-a"})
         assert resp.status_code == 401
 
+    def test_wallet_update_marks_funded(self, client):
+        with (
+            _auth_owner(),
+            patch("app.routers.myst_wallets.database.update_myst_wallet", new_callable=AsyncMock, return_value=True),
+        ):
+            resp = client.patch("/api/admin/myst-wallets/3", json={"funding": "FUNDED"})
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok"}
+
+    def test_wallet_export_returns_text_only_when_owner(self, client):
+        with (
+            _auth_owner(),
+            patch("app.routers.myst_wallets.database.export_myst_wallets", new_callable=AsyncMock, return_value=["wallet-a", "wallet-b"]),
+        ):
+            resp = client.get("/api/admin/myst-wallets/export")
+        assert resp.status_code == 200
+        assert resp.text == "wallet-a\nwallet-b"
+
 
 class TestMystWalletHelpers:
     def test_normalize_wallet_lines_skips_blanks(self):
         assert myst_wallets.normalize_wallet_lines(" a \n\n b \r\n") == ["a", "b"]
+
+class TestMystWalletInventory:
+    def test_admin_list_never_returns_raw_wallet(self, tmp_path):
+        async def run():
+            with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "myst.db"):
+                await database.init_db()
+                await database.import_myst_wallets("raw-wallet-one")
+                rows = await database.list_myst_wallets()
+                assert rows
+                assert "raw_wallet" not in rows[0]
+                assert "raw_wallet_enc" not in rows[0]
+
+        asyncio.run(run())
+
+    def test_explicit_export_returns_raw_wallets(self, tmp_path):
+        async def run():
+            with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "myst.db"):
+                await database.init_db()
+                await database.import_myst_wallets("raw-wallet-one\nraw-wallet-two")
+                rows = await database.export_myst_wallets()
+                assert rows == ["raw-wallet-one", "raw-wallet-two"]
+
+        asyncio.run(run())
+
+    def test_funded_wallet_lease_marks_owner(self, tmp_path):
+        async def run():
+            with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "myst.db"):
+                await database.init_db()
+                await database.import_myst_wallets("raw-wallet-one")
+                wallets = await database.list_myst_wallets()
+                assert await database.update_myst_wallet(wallets[0]["id"], funding="FUNDED")
+                leased = await database.lease_myst_wallet("worker-a", worker_id=7)
+                assert leased["raw_wallet"] == "raw-wallet-one"
+                assert leased["state"] == "LEASED"
+                assert leased["leased_to_client_id"] == "worker-a"
+                listed = await database.list_myst_wallets()
+                assert listed[0]["state"] == "LEASED"
+                assert listed[0]["leased_to_worker_id"] == 7
+
+        asyncio.run(run())
+
+    def test_only_lease_owner_can_release(self, tmp_path):
+        async def run():
+            with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "myst.db"):
+                await database.init_db()
+                await database.import_myst_wallets("raw-wallet-one")
+                wallet_id = (await database.list_myst_wallets())[0]["id"]
+                await database.update_myst_wallet(wallet_id, funding="FUNDED")
+                leased = await database.lease_myst_wallet("worker-a")
+                assert not await database.release_myst_wallet(leased["id"], "worker-b")
+                assert await database.release_myst_wallet(leased["id"], "worker-a")
+
+        asyncio.run(run())

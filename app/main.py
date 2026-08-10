@@ -4082,6 +4082,36 @@ class EarningsImport(BaseModel):
     readings: list[EarningsReading] = Field(default_factory=list, max_length=2000)
 
 
+class MystWalletLeaseRequest(BaseModel):
+    client_id: str
+    worker_id: int | None = None
+
+class MystWalletReleaseRequest(BaseModel):
+    client_id: str
+    wallet_id: int
+
+async def _require_confirmed_worker(request: Request, client_id: str) -> None:
+    if not client_id.strip():
+        raise HTTPException(status_code=400, detail="client_id required")
+    state = await _authenticate_worker_heartbeat(request, client_id.strip())
+    if state != "ok":
+        raise HTTPException(status_code=403, detail="Worker must authenticate with its own key")
+
+@app.post("/api/myst-wallets/lease")
+async def api_myst_wallet_lease(request: Request, body: MystWalletLeaseRequest) -> dict[str, Any]:
+    await _require_confirmed_worker(request, body.client_id)
+    wallet = await database.lease_myst_wallet(body.client_id.strip(), worker_id=body.worker_id)
+    if not wallet:
+        raise HTTPException(status_code=409, detail="No funded MYST wallet available")
+    return wallet
+
+@app.post("/api/myst-wallets/release")
+async def api_myst_wallet_release(request: Request, body: MystWalletReleaseRequest) -> dict[str, str]:
+    await _require_confirmed_worker(request, body.client_id)
+    if not await database.release_myst_wallet(body.wallet_id, body.client_id.strip()):
+        raise HTTPException(status_code=404, detail="MYST wallet lease not found")
+    return {"status": "released"}
+
 @app.post("/api/workers/earnings-import")
 async def api_worker_earnings_import(request: Request, body: EarningsImport) -> dict[str, Any]:
     """Accept a paired client's historical earnings under its own source.

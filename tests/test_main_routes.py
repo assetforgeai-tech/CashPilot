@@ -1143,6 +1143,55 @@ class TestApiConfig:
             assert resp.status_code == 200
             assert any(row["service"] == "spide" for row in resp.json())
 
+class TestMystWalletLease:
+    def test_wallet_lease_requires_confirmed_worker_key(self, client):
+        with patch("app.main._authenticate_worker_heartbeat", new_callable=AsyncMock, return_value="enroll"):
+            resp = client.post("/api/myst-wallets/lease", json={"client_id": "worker-1"})
+            assert resp.status_code == 403
+
+    def test_worker_can_request_a_wallet_lease(self, client):
+        wallet = {
+            "id": 1,
+            "wallet_fingerprint": "fp1",
+            "raw_wallet": "wallet-raw",
+            "address": "addr",
+            "state": "LEASED",
+            "funding": "FUNDED",
+        }
+        with (
+            patch("app.main._authenticate_worker_heartbeat", new_callable=AsyncMock, return_value="ok"),
+            patch("app.main.database.lease_myst_wallet", new_callable=AsyncMock, return_value=wallet),
+        ):
+            resp = client.post("/api/myst-wallets/lease", json={"client_id": "worker-1"})
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["raw_wallet"] == "wallet-raw"
+            assert data["wallet_fingerprint"] == "fp1"
+
+    def test_wallet_lease_returns_409_when_no_funded_wallet(self, client):
+        with (
+            patch("app.main._authenticate_worker_heartbeat", new_callable=AsyncMock, return_value="ok"),
+            patch("app.main.database.lease_myst_wallet", new_callable=AsyncMock, return_value=None),
+        ):
+            resp = client.post("/api/myst-wallets/lease", json={"client_id": "worker-1"})
+            assert resp.status_code == 409
+
+    def test_worker_can_release_a_wallet_lease(self, client):
+        with (
+            patch("app.main._authenticate_worker_heartbeat", new_callable=AsyncMock, return_value="ok"),
+            patch("app.main.database.release_myst_wallet", new_callable=AsyncMock, return_value=True),
+        ):
+            resp = client.post("/api/myst-wallets/release", json={"client_id": "worker-1", "wallet_id": 1})
+            assert resp.status_code == 200
+
+    def test_worker_release_requires_lease_owner(self, client):
+        with (
+            patch("app.main._authenticate_worker_heartbeat", new_callable=AsyncMock, return_value="ok"),
+            patch("app.main.database.release_myst_wallet", new_callable=AsyncMock, return_value=False),
+        ):
+            resp = client.post("/api/myst-wallets/release", json={"client_id": "worker-1", "wallet_id": 1})
+            assert resp.status_code == 404
+
     def test_api_clear_config_unknown_service(self, client):
         with _auth_owner():
             resp = client.delete("/api/config/nonexistent")

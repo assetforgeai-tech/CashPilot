@@ -290,6 +290,8 @@ CREATE TABLE IF NOT EXISTS myst_wallets (
     state              TEXT    NOT NULL DEFAULT 'AVAILABLE',
     funding            TEXT    NOT NULL DEFAULT 'UNFUNDED',
     leased_to_worker_id INTEGER,
+    leased_to_client_id TEXT    NOT NULL DEFAULT '',
+    leased_at           TEXT,
     quarantined_reason TEXT    NOT NULL DEFAULT '',
     imported_at        TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_at         TEXT    NOT NULL DEFAULT (datetime('now'))
@@ -488,6 +490,8 @@ CREATE TABLE IF NOT EXISTS myst_wallets (
     state              TEXT    NOT NULL DEFAULT 'AVAILABLE',
     funding            TEXT    NOT NULL DEFAULT 'UNFUNDED',
     leased_to_worker_id INTEGER,
+    leased_to_client_id TEXT    NOT NULL DEFAULT '',
+    leased_at           TEXT,
     quarantined_reason TEXT    NOT NULL DEFAULT '',
     imported_at        TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_at         TEXT    NOT NULL DEFAULT (datetime('now'))
@@ -2131,6 +2135,12 @@ async def list_proxy_pool() -> list[dict[str, Any]]:
 
 async def _ensure_myst_wallets_table(db: Any) -> None:
     await db.executescript(_MYST_WALLETS_SCHEMA)
+    cursor = await db.execute("PRAGMA table_info(myst_wallets)")
+    cols = {row["name"] for row in await cursor.fetchall()}
+    if "leased_to_client_id" not in cols:
+        await db.execute("ALTER TABLE myst_wallets ADD COLUMN leased_to_client_id TEXT NOT NULL DEFAULT ''")
+    if "leased_at" not in cols:
+        await db.execute("ALTER TABLE myst_wallets ADD COLUMN leased_at TEXT")
 
 async def import_myst_wallets(raw: str) -> int:
     from app.myst_wallets import iter_wallet_records
@@ -2177,6 +2187,123 @@ async def list_myst_wallets() -> list[dict[str, Any]]:
             """
         )
         return [dict(row) for row in await cursor.fetchall()]
+    finally:
+        await db.close()
+
+async def export_myst_wallets(*, funding: str | None = None) -> list[str]:
+    db = await _get_db()
+    try:
+        await _ensure_myst_wallets_table(db)
+        query = "SELECT raw_wallet_enc FROM myst_wallets"
+        params: list[Any] = []
+        if funding:
+            query += " WHERE funding = ?"
+            params.append(funding.upper())
+        query += " ORDER BY id"
+        cursor = await db.execute(query, params)
+        return [decrypt_value(row["raw_wallet_enc"] or "") for row in await cursor.fetchall()]
+    finally:
+        await db.close()
+
+async def update_myst_wallet(
+    wallet_id: int,
+    *,
+    state: str | None = None,
+    funding: str | None = None,
+    quarantined_reason: str | None = None,
+) -> bool:
+    allowed_state = {"AVAILABLE", "LEASED", "QUARANTINED"}
+    allowed_funding = {"FUNDED", "UNFUNDED"}
+    updates: list[str] = []
+    params: list[Any] = []
+    if state is not None:
+        value = state.upper()
+        if value not in allowed_state:
+            return False
+        updates.append("state = ?")
+        params.append(value)
+    if funding is not None:
+        value = funding.upper()
+        if value not in allowed_funding:
+            return False
+        updates.append("funding = ?")
+        params.append(value)
+    if quarantined_reason is not None:
+        updates.append("quarantined_reason = ?")
+        params.append(quarantined_reason)
+    if not updates:
+        return False
+    db = await _get_db()
+    try:
+        await _ensure_myst_wallets_table(db)
+        updates.append("updated_at = datetime('now')")
+        params.append(wallet_id)
+        cursor = await db.execute(
+            f"UPDATE myst_wallets SET {', '.join(updates)} WHERE id = ?",
+            params,
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+    finally:
+        await db.close()
+
+async def lease_myst_wallet(client_id: str, worker_id: int | None = None) -> dict[str, Any] | None:
+    db = await _get_db()
+    try:
+        await _ensure_myst_wallets_table(db)
+        cursor = await db.execute(
+            """
+            SELECT *
+            FROM myst_wallets
+            WHERE state = 'AVAILABLE' AND funding = 'FUNDED'
+            ORDER BY id
+            LIMIT 1
+            """
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        await db.execute(
+            """
+            UPDATE myst_wallets
+            SET state = 'LEASED',
+                leased_to_worker_id = ?,
+                leased_to_client_id = ?,
+                leased_at = datetime('now'),
+                updated_at = datetime('now')
+            WHERE id = ?
+            """,
+            (worker_id, client_id, row["id"]),
+        )
+        await db.commit()
+        item = dict(row)
+        item["state"] = "LEASED"
+        item["leased_to_worker_id"] = worker_id
+        item["leased_to_client_id"] = client_id
+        item["leased_at"] = datetime.now(UTC).isoformat()
+        item["raw_wallet"] = decrypt_value(item.pop("raw_wallet_enc") or "")
+        return item
+    finally:
+        await db.close()
+
+async def release_myst_wallet(wallet_id: int, client_id: str) -> bool:
+    db = await _get_db()
+    try:
+        await _ensure_myst_wallets_table(db)
+        cursor = await db.execute(
+            """
+            UPDATE myst_wallets
+            SET state = 'AVAILABLE',
+                leased_to_worker_id = NULL,
+                leased_to_client_id = '',
+                leased_at = NULL,
+                updated_at = datetime('now')
+            WHERE id = ? AND leased_to_client_id = ?
+            """,
+            (wallet_id, client_id),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
     finally:
         await db.close()
 
