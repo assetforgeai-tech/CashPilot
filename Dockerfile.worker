@@ -50,6 +50,8 @@ COPY --chown=cashpilot:root app/fleet_key.py ./app/
 # Egress identity: pure helpers, deliberately free of app-level imports so
 # the worker image stays minimal.
 COPY --chown=cashpilot:root app/egress.py ./app/
+COPY --chown=cashpilot:root app/proxy_egress.py ./app/
+COPY --chown=cashpilot:root app/singbox_config.py ./app/
 # Encrypted state export: encryption happens on the WORKER so the UI only
 # ever handles ciphertext.
 COPY --chown=cashpilot:root app/state_backup.py ./app/
