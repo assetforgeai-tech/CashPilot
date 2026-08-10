@@ -43,7 +43,7 @@ earnings:
 
 cashout:
   method: redirect
-  dashboard_url: "https://passiveapp.com/dashboard"
+  dashboard_url: "https://dashboard.passiveapp.com/dashboard"
   min_amount: 5.0
   currency: USD
 
@@ -51,7 +51,7 @@ platforms: [windows, linux, android, ios]
 
 collector:
   type: manual
-  notes: "Dashboard signup is live, but the audited account was stopped at email verification. No official Docker image or public API confirmed."
+  notes: "Logged-in dashboard is live. Visible setup shows total earnings, needed-to-withdraw threshold, devices, traffic shared, referrals, and download links. No official Docker image or public API confirmed."
 
 payout:
   model: unknown

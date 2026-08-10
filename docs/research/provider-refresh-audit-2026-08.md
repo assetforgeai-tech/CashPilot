@@ -38,6 +38,17 @@ or official docs make the update certain.
 | packetstream | logged-in dashboard with balance/device activity | current model confirmed |
 | proxybase | logged-in peer dashboard with devices, balance, access token | current model confirmed |
 
+## 2026-08-11 DePIN dashboard batch
+
+| Provider | Visible state | Verdict |
+|---|---|---|
+| dawn | logged-in rewards dashboard; connection quality connected, total/epoch/referral points visible | current dashboard model confirmed |
+| gradient | login page only | needs logged-in session or API sample |
+| nodepay | V2 upgrade wall visible | no API/collector change without completing upgrade |
+| teneo | cert authority error on dashboard URL | do not bypass; needs safe/valid URL or user-side resolution |
+| titan | logged-in dashboard; TNTIP/USDC, tasks, paused extension warning visible | current dashboard model confirmed |
+| passiveapp | logged-in dashboard; earnings, $5 threshold, devices, traffic chart, download link visible | update dashboard URL; manual tracking only |
+
 ## Audit matrix
 
 | Provider | Status | Client model | Collector | Verdict |
@@ -55,13 +66,13 @@ or official docs make the update certain.
 | peer2profit | dead | legacy Docker/app | api | keep dead; no verified current earning path. |
 | speedshare | active | app/community Docker | manual | updated; active but no official Docker/API. |
 | wizardgain | broken | Docker/app | manual | keep broken; official site/connectivity not reliable. |
-| dawn | active | browser extension/hardware | scrape | needs_user_info: dashboard/API sample required. |
-| gradient | active | browser extension | scrape | needs_user_info: dashboard/API sample required. |
-| nodepay | active | mobile app + dashboard | scrape | updated; current public site centers on app/dashboard rewards rather than the old extension-first copy. |
-| teneo | active | browser extension + Beacon app | scrape | updated; Beacon now appears on Android/iOS/Mac/Windows/Linux. |
+| dawn | active | browser extension/hardware | scrape | current dashboard is live; logged-in account shows connection quality, points, streak, referrals, and epoch rewards. |
+| gradient | active | browser extension | scrape | current public dashboard still logged out in this browser session. |
+| nodepay | active | mobile app + dashboard | scrape | logged-in dashboard currently shows the V2 upgrade wall. |
+| teneo | active | browser extension + Beacon app | scrape | dashboard URL hit cert error in this browser session; no new collector/API shape confirmed. |
 | deeper-network | active | proprietary hardware | manual | keep; not a VPS/server container target. |
 | nodle | active | mobile app | manual | keep; mobile-only earning path. |
-| passiveapp | active | app only | manual | needs_user_info: current API/export docs required. |
+| passiveapp | active | app only | manual | logged-in dashboard shows earnings, threshold, devices, traffic shared, referrals, and download links. |
 | sentinel-dvpn | active | node software | manual | keep; on-chain/manual model. |
 | theta-edge | active | desktop app | manual | keep; no headless Docker/API found. |
 | uprock | active | extension/mobile | manual | needs_user_info: current API/export docs required. |
@@ -86,7 +97,7 @@ or official docs make the update certain.
 | grass | active | extension/app | api | keep; token collector exists. |
 | helium | active | hardware/network | api | keep; on-chain/API model. |
 | presearch | active | Docker node | api | keep; node dashboard model. |
-| titan | active | app | api | needs_user_info: current dashboard/API sample required. |
+| titan | active | app | api | logged-in dashboard shows per-device rows, daily history, TNTIP/USDC split, and paused-extension warning. |
 | anyone-protocol | active | Docker relay | auto | keep; reward contract collector exists. |
 | blockmesh | dropped | extension | scrape | keep dropped; not reintroduced without current official docs. |
 | gaganode | dropped | app | api | keep dropped; no verified current safe earning path. |
@@ -96,6 +107,6 @@ or official docs make the update certain.
 
 ## Needs user info
 
-Provide official docs, dashboard export, or redacted API response before adding collectors for: `bytebenefit`, `dawn`, `gradient`, `passiveapp`, `uprock`, `ionet`, `titan`.
+Provide official docs, dashboard export, or redacted API response before adding collectors for: `bytebenefit`, `gradient`, `uprock`, `ionet`.
 
 Provider fields with conflicting or insufficient official public data: `bytelixir` payout threshold history, `proxybase-xyz` buyer/seller proxy-inventory split, `urnetwork` earnings API, `speedshare` official collector/API, `nodepay` current rewards model, `teneo` current payout shape.

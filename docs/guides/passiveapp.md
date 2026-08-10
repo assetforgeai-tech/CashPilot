@@ -17,7 +17,7 @@ PassiveApp is a DePIN platform that lets you earn crypto and PayPal rewards by s
 | Payout frequency | On request |
 | Payment methods | Crypto, Paypal |
 
-> Dashboard signup is live, but the verified account was not ready yet. No official Docker image or public API confirmed.
+> Logged-in dashboard is live. No official Docker image or public API confirmed.
 
 ## Requirements
 
@@ -35,13 +35,13 @@ PassiveApp is a DePIN platform that lets you earn crypto and PayPal rewards by s
 
 Sign up at [PassiveApp](https://passiveapp.com/i/bqpC4M).
 
-### 2. Verify account
+### 2. Open dashboard
 
-Click the verification email link before trying to inspect the dashboard.
+Use the logged-in dashboard at [dashboard.passiveapp.com](https://dashboard.passiveapp.com/dashboard).
 
 ### 3. Deploy
 
-CashPilot should not auto-deploy PassiveApp until the dashboard/client/API shape is confirmed from a verified account.
+CashPilot should keep PassiveApp as manual/dashboard-tracked until a public API or stable client shape is confirmed.
 
 ## Docker Configuration
 
