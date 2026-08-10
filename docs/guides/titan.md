@@ -5,7 +5,7 @@
 
 ## Description
 
-Titan Network is a DePIN platform that shares your IP address, storage, and bandwidth in exchange for TNT token rewards. Available on Windows, Mac, and Android. Nodes contribute to a decentralized CDN and storage layer. Typical earnings range from $5-30/month depending on resources shared and geographic location.
+Titan Network Edge currently earns through a browser-extension dashboard that tracks device uptime, IP quality, task earnings, TNTIP points, and USDC task rewards. The logged-in dashboard shows per-device rows and daily earnings history.
 
 ## Earning Estimates
 
@@ -14,10 +14,10 @@ Titan Network is a DePIN platform that shares your IP address, storage, and band
 | Monthly range | $0 - $30 (estimate) |
 | Per | device |
 | Minimum payout |  |
-| Payout frequency | Epoch-based |
+| Payout frequency | Dashboard withdrawal when available |
 | Payment methods | Crypto |
 
-> Shares IP, storage, and bandwidth. Earnings depend on resources contributed and region. Higher storage allocation yields higher rewards.
+> Dashboard shows TNTIP uptime points plus USDC task rewards. Extension must be enabled; paused extension stops earnings.
 
 ## Requirements
 
@@ -26,8 +26,8 @@ Titan Network is a DePIN platform that shares your IP address, storage, and band
 | Residential IP | Yes |
 | Minimum bandwidth | None |
 | GPU required | No |
-| Minimum storage | 50GB |
-| Supported platforms | Windows, Macos, Android |
+| Minimum storage | None |
+| Supported platforms | Browser-Extension |
 
 ## Setup Instructions
 
@@ -35,25 +35,25 @@ Titan Network is a DePIN platform that shares your IP address, storage, and band
 
 Sign up at [Titan Network](https://edge.titannet.info/signup?inviteCode=2GKKJ495).
 
-### 2. Get a Device ID
+### 2. Install and enable extension
 
-Log into the Titan Edge dashboard to obtain a Device ID for your node. **Note**: As of March 2026, the WebUI cannot generate device IDs and the Android app buttons are non-functional. You may need to wait for Titan to fix these issues.
+Install Titan Browser Extension from the logged-in dashboard, then keep it enabled. If the extension is paused, the dashboard shows no active earning.
 
 ### 3. Deploy
 
-No official Docker image exists. Titan provides native binaries for Windows, macOS, and Android. Unofficial Docker images exist but are not endorsed.
+CashPilot does not deploy Titan yet. Current confirmed flow is browser-extension first.
 
 ## Docker Configuration
 
-- **Image:** (no official Docker image)
+- **Image:** (no Docker image)
 
 ### Environment Variables
 
 No environment variables required.
 
-## Known Issues (March 2026)
+## Dashboard Audit
 
-- **Android app broken**: App installs but buttons/controls are non-functional. Cannot start earning.
-- **WebUI device ID generation broken**: The web dashboard cannot generate new device IDs needed for node setup.
-- **No official Docker image**: Only native desktop/mobile apps are officially supported.
-- **Status**: Wait for Titan team to fix the app and dashboard before attempting setup.
+- Earnings page shows today's earnings and total earnings split into TNTIP and USDC.
+- Earnings History shows daily rows with uptime, task runtime earnings, node uptime earnings, and total earnings.
+- Device Management exists for per-device status.
+- No stable public API contract confirmed.

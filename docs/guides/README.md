@@ -57,14 +57,14 @@ Setup and configuration for every service CashPilot supports.
 | [Network3](network3.md) | — | App only | — | broken |
 | [Nodepay](nodepay.md) | Residential IP | App only | — | active |
 | [Nodle](nodle.md) | — | App only | — | active |
-| [PassiveApp](passiveapp.md) | Residential IP | App only | $5 | active |
+| [PassiveApp](passiveapp.md) | Residential IP | App only | $5 | beta |
 | [Presearch](presearch.md) | — | Docker | — | active |
 | [Sentinel dVPN](sentinel-dvpn.md) | 10 Mbps | App only | — | active |
 | [Teneo Protocol](teneo.md) | Residential IP | App only | — | active |
 | [Theta Edge Node](theta-edge.md) | — | App only | — | active |
-| [Titan Network](titan.md) | Residential IP, Storage 50GB | App only | — | active |
+| [Titan Network](titan.md) | Residential IP | App only | — | active |
 | [Uprock](uprock.md) | Residential IP | App only | $5 | active |
-| [Wipter](wipter.md) | Residential IP | App only | $20 | active |
+| [Wipter](wipter.md) | Residential IP | Docker | $20 | active |
 
 ## GPU Compute
 

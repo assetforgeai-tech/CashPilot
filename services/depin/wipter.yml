@@ -14,13 +14,34 @@ referral:
   signup_url: "https://wipter.com/en/refer-a-friend"
 
 docker:
-  image: ""
-  platforms: [windows, macos, linux, android]
-  env: []
+  image: ghcr.io/techroy23/docker-wipter:latest
+  platforms: [linux/amd64]
+  resources:
+    mem_limit: "512m"
+    oom_score_adj: 300
+  env:
+    - key: WIPTER_EMAIL
+      label: "Email"
+      required: true
+      secret: false
+      description: "Wipter account email. The tested container performs login itself and persists its token/keyring."
+    - key: WIPTER_PASSWORD
+      label: "Password"
+      required: true
+      secret: true
+      description: "Wipter account password. Prefer a dedicated account; no payout/security settings are touched by CashPilot."
   ports: []
-  volumes: []
+  volumes:
+    - "wipter-data:/root/.config/wipter-app"
   command: ""
   network_mode: ""
+  health_signals:
+    - pattern: "LOGIN_SUCCESS|Saving new token|Credential stored for service: com\\.wipter\\.auth\\.production|Wipter setup complete"
+      means: "Wipter accepted the account and saved login state."
+      state: idle
+    - pattern: "<<< PONG|Request ID|Upload:|Download:|SOCKS.*Connection established|HTTPS.*Request ID"
+      means: "Wipter is exchanging traffic."
+      state: idle
 
 requirements:
   residential_ip: true
@@ -48,11 +69,11 @@ cashout:
   currency: USD
   notes: "Cashout only visible in desktop app. No web dashboard payout."
 
-platforms: [windows, macos, linux, android]
+platforms: [docker, windows, macos, linux, android]
 
 collector:
   type: scrape
-  notes: "Dashboard at wipter.com. Earnings visible in account panel. No public API documented."
+  notes: "No public earnings API documented. Runtime login and traffic markers are known from the tested Docker automation."
 
 payout:
   model: unknown

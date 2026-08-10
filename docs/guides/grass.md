@@ -35,13 +35,13 @@ Grass is a decentralized network that lets you sell your unused bandwidth for AI
 
 Sign up at [Grass](https://app.grass.io/register?referralCode=kn8FNEPnUr2tMqE).
 
-### 2. Get your credentials
+### 2. Get collector credential
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+For earnings collection, copy a fresh `accessToken` from the logged-in Grass dashboard or desktop profile.
 
-### 3. Deploy with CashPilot
+### 3. Runtime
 
-In the CashPilot web UI, find **Grass** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
+Current tested automation is seed/profile based. CashPilot does not yet model seed bundle mounts, so this is not an ordinary Docker env login.
 
 ## Docker Configuration
 
@@ -51,3 +51,9 @@ In the CashPilot web UI, find **Grass** in the service catalog and click **Deplo
 ### Environment Variables
 
 No environment variables required.
+
+## Collector Credentials
+
+| Key | Description |
+|-----|-------------|
+| `access_token` | Grass dashboard/profile `accessToken`; collector-only, not a Docker runtime env |

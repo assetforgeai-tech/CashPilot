@@ -4,12 +4,10 @@ category: depin
 status: active
 website: https://titannet.io
 description: >
-  Titan Network is a DePIN platform that shares your IP address, storage, and
-  bandwidth in exchange for TNT token rewards. Available on Windows, Mac, and
-  Android. Nodes contribute to a decentralized CDN and storage layer. Typical
-  earnings range from $5-30/month depending on resources shared and geographic
-  location.
-short_description: DePIN sharing IP, storage, bandwidth - $5-30/month
+  Titan Network Edge currently earns through a browser-extension dashboard that
+  tracks device uptime, IP quality, task earnings, TNTIP points, and USDC task
+  rewards. The logged-in dashboard shows per-device and daily earnings.
+short_description: Browser-extension DePIN tasks - TNTIP/USDC rewards
 
 referral:
   signup_url: "https://edge.titannet.info/signup?inviteCode=2GKKJ495"
@@ -17,7 +15,7 @@ referral:
 
 docker:
   image: ""
-  platforms: []
+  platforms: [browser-extension]
   env: []
   ports: []
   volumes: []
@@ -28,36 +26,37 @@ requirements:
   residential_ip: true
   min_bandwidth: ""
   gpu: false
-  min_storage: "50GB"
+  min_storage: ""
 
 payment:
   methods: [crypto]
+  crypto_token: USDC
   minimum_payout: ""
-  currency: TNT
-  frequency: "Epoch-based"
+  currency: USDC
+  frequency: "Dashboard withdrawal when available"
 
 earnings:
   monthly_low: 0
   monthly_high: 30
   currency: USD
   per: "device"
-  notes: "Shares IP, storage, and bandwidth. Earnings depend on resources contributed and region. Higher storage allocation yields higher rewards."
+  notes: "Dashboard shows TNTIP uptime points plus USDC task rewards. Extension must be enabled; paused extension stops earnings."
 
 cashout:
   method: manual
-  dashboard_url: "https://edge.titannet.io"
-  # Undocumented: the provider does not publish a minimum. NOT 0 —
+  dashboard_url: "https://edge.titannet.info/dashboard"
+  # Undocumented: the provider does not publish a minimum. NOT 0 -
   # 0 means 'no minimum, cash out anything', which would tell the
   # user they can withdraw now and disables payout detection.
   min_amount: null
-  currency: TNT
-  notes: ""
+  currency: USDC
+  notes: "Logged-in dashboard exposes Pending Withdraw USDC and Pending Audit USDC. Minimum was not visible in the audited account."
 
-platforms: [windows, macos, android]
+platforms: [browser-extension]
 
 collector:
-  type: api
-  notes: "Dashboard at edge.titannet.io. Node status and earnings visible via web UI. API details sparse."
+  type: scrape
+  notes: "Logged-in dashboard exposes account totals, per-device rows, and earnings history. No public API contract confirmed."
 
 payout:
   model: unknown

@@ -35,9 +35,9 @@ URnetwork is a decentralized VPN and bandwidth-sharing network. You earn by prov
 
 Sign up at [URnetwork](https://ur.io/?referral_code=1Q3G19).
 
-### 2. Get your credentials
+### 2. Get auth token
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+Get `UR_AUTH_TOKEN` from the logged-in dashboard local storage. It is a JWT used by the community provider container.
 
 ### 3. Deploy with CashPilot
 
@@ -53,3 +53,7 @@ In the CashPilot web UI, find **URnetwork** in the service catalog and click **D
 | Variable | Label | Required | Secret | Description |
 |----------|-------|:--------:|:------:|-------------|
 | `UR_AUTH_TOKEN` | Auth Token | Yes | Yes | Your URnetwork authentication token from the dashboard |
+
+## Collector Status
+
+Logged-in client manager exposes Clients, Statistics, Providers, Wallet Stats, Account Settings, Balance Codes, Data Stats, and Payout Stats. In the audited browser session, wallet/stat endpoints returned 401 and there were 0 clients, so no collector/API contract is confirmed yet.

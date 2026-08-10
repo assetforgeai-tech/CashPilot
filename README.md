@@ -86,6 +86,7 @@ Services CashPilot can deploy and manage automatically via Docker.
 | [Storj](https://storj.dev/node/get-started/setup) | [Guide](docs/guides/storj.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto |
 | [Traffmonetizer](https://traffmonetizer.com/?aff=2111758) | [Guide](docs/guides/traffmonetizer.md) | ❌ | ✅ | ? \*\*\* | Unlimited | Crypto (USDT), PayPal |
 | [URnetwork](https://ur.io/?referral_code=1Q3G19) | [Guide](docs/guides/urnetwork.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto |
+| [Wipter](https://wipter.com/en/refer-a-friend) | [Guide](docs/guides/wipter.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | PayPal, Crypto |
 <!-- END GENERATED: docker-services -->
 
 > \* Storj nodes on the same /24 subnet share data allocation, reducing per-node earnings.
@@ -115,14 +116,13 @@ These services have no Docker image. CashPilot lists them in the catalog with si
 | [Helium](https://helium.com) | [Guide](docs/guides/helium.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto | Active |
 | [Nodepay](https://app.nodepay.ai/register?ref=0wzzyznen64j9zx) | [Guide](docs/guides/nodepay.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto | Active |
 | [Nodle](https://nodle.com) | [Guide](docs/guides/nodle.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto | Active |
-| [PassiveApp](https://passiveapp.com/i/bqpC4M) | [Guide](docs/guides/passiveapp.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto, PayPal | Active |
+| [PassiveApp](https://passiveapp.com/i/bqpC4M) | [Guide](docs/guides/passiveapp.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto, PayPal | Beta |
 | [Sentinel dVPN](https://sentinel.co) | [Guide](docs/guides/sentinel-dvpn.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto | Active |
 | [Spide](https://spide.network/register.html?f3bc51) | [Guide](docs/guides/spide.md) | ✅ | ❌ | ? \*\*\* | 1 | Crypto | Active |
 | [Teneo Protocol](https://dashboard.teneo.pro/?code=CAqef) | [Guide](docs/guides/teneo.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto | Active |
 | [Theta Edge Node](https://thetatoken.org) | [Guide](docs/guides/theta-edge.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto | Active |
-| [Titan Network](https://edge.titannet.info/signup?inviteCode=2GKKJ495) | [Guide](docs/guides/titan.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto | Active |
+| [Titan Network](https://edge.titannet.info/signup?inviteCode=2GKKJ495) | [Guide](docs/guides/titan.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto (USDC) | Active |
 | [Uprock](https://link.uprock.com/i/33e8492e) | [Guide](docs/guides/uprock.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto | Active |
-| [Wipter](https://wipter.com/en/refer-a-friend) | [Guide](docs/guides/wipter.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | PayPal, Crypto | Active |
 <!-- END GENERATED: extension-services -->
 
 ### GPU Compute

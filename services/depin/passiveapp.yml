@@ -1,7 +1,7 @@
 name: PassiveApp
 slug: passiveapp
 category: depin
-status: active
+status: beta
 website: https://passiveapp.com
 description: >
   PassiveApp is a DePIN platform that lets you earn crypto and PayPal rewards
@@ -51,7 +51,7 @@ platforms: [windows, linux, android, ios]
 
 collector:
   type: manual
-  notes: "No official Docker image or public API."
+  notes: "Dashboard signup is live, but the audited account was stopped at email verification. No official Docker image or public API confirmed."
 
 payout:
   model: unknown

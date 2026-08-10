@@ -27,7 +27,7 @@ Wipter is a bandwidth sharing platform available on Windows, Mac, Linux, and And
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Windows, Macos, Linux, Android |
+| Supported platforms | Docker, Windows, Macos, Linux, Android |
 
 ## Setup Instructions
 
@@ -35,9 +35,9 @@ Wipter is a bandwidth sharing platform available on Windows, Mac, Linux, and And
 
 Sign up at [Wipter](https://wipter.com/en/refer-a-friend).
 
-### 2. Get your credentials
+### 2. Get runtime credentials
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+CashPilot uses the account email/password for the tested Docker automation. The container logs in and persists token/keyring state.
 
 ### 3. Deploy with CashPilot
 
@@ -45,9 +45,17 @@ In the CashPilot web UI, find **Wipter** in the service catalog and click **Depl
 
 ## Docker Configuration
 
-- **Image:** ``
-- **Platforms:** windows, macos, linux, android
+- **Image:** `ghcr.io/techroy23/docker-wipter:latest`
+- **Platforms:** linux/amd64
 
 ### Environment Variables
 
-No environment variables required.
+| Variable | Label | Required | Secret | Description |
+|----------|-------|:--------:|:------:|-------------|
+| `WIPTER_EMAIL` | Email | Yes | No | Wipter account email |
+| `WIPTER_PASSWORD` | Password | Yes | Yes | Wipter account password |
+
+## Health Signals
+
+- `LOGIN_SUCCESS`, `Saving new token`, or `Credential stored for service: com.wipter.auth.production`: login accepted and state persisted.
+- `<<< PONG`, `Request ID`, `Upload:`, `Download:`, `SOCKS`, or `HTTPS`: traffic activity.

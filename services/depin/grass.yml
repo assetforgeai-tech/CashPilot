@@ -18,12 +18,7 @@ referral:
 docker:
   image: ""
   platforms: [browser-extension, windows, macos, android, ios]
-  env:
-    - key: GRASS_ACCESS_TOKEN
-      label: "Access Token"
-      required: true
-      secret: true
-      description: "Log in at <a href=\"https://app.grass.io\">app.grass.io</a>, press F12 → Application → Local Storage → click <code>https://app.grass.io</code> → copy the <code>token</code> value"
+  env: []
   ports: []
   volumes: []
   command: ""
@@ -51,7 +46,7 @@ earnings:
 cashout:
   method: redirect
   dashboard_url: "https://app.grass.io/dashboard"
-  # Undocumented: the provider does not publish a minimum. NOT 0 —
+  # Undocumented: the provider does not publish a minimum. NOT 0 -
   # 0 means 'no minimum, cash out anything', which would tell the
   # user they can withdraw now and disables payout detection.
   min_amount: null
@@ -62,8 +57,16 @@ platforms: [browser-extension, windows, macos, android, ios]
 
 collector:
   type: api
-  notes: "Dashboard API at app.grass.io. Auth via session token. Points visible in dashboard."
-  credential_hint: "Log in at <a href='https://app.getgrass.io' target='_blank'>app.getgrass.io</a>, press F12 → Application → Local Storage, copy the <b>accessToken</b> value."
+  notes: "Dashboard API at app.grass.io. Auth via accessToken. Tested runtime login is seed/profile based; CashPilot does not yet model seed bundle mounts."
+  credentials:
+    - key: access_token
+      label: "Access Token"
+      kind: token
+      secret: true
+      required: true
+      source: "Grass dashboard local storage accessToken"
+      description: "Copy a fresh accessToken from the logged-in Grass dashboard or desktop profile. Runtime seed bundles stay outside the repo."
+  credential_hint: "Log in at <a href='https://app.getgrass.io' target='_blank'>app.getgrass.io</a>, press F12 -> Application -> Local Storage, copy the <b>accessToken</b> value."
 
 payout:
   model: internal
