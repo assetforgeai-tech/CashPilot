@@ -27,6 +27,20 @@ docker:
   command: ""
   network_mode: ""
 
+deploy:
+  automation: device_key_register
+  notes: "Start the official Linux CLI, parse the Device key from stdout, then register it in the dashboard."
+
+dashboard:
+  credentials:
+    - key: dashboard_token
+      label: "Dashboard token"
+      kind: token
+      secret: true
+      required: true
+      source: "Spide logged-in dashboard request token/cookie"
+      description: "Token/cookie used only to register CLI Device key through POST /api/v1/device/create."
+
 requirements:
   residential_ip: true
   vps_ip: false

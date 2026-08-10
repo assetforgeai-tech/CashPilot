@@ -43,6 +43,10 @@ docker:
       means: "Wipter is exchanging traffic."
       state: idle
 
+deploy:
+  automation: env_login
+  notes: "Container logs in with WIPTER_EMAIL/WIPTER_PASSWORD, persists token/keyring, then can be restarted once after login-ready markers."
+
 requirements:
   residential_ip: true
   min_bandwidth: ""

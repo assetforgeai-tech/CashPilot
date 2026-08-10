@@ -16,13 +16,29 @@ referral:
   code: "kn8FNEPnUr2tMqE"
 
 docker:
-  image: ""
-  platforms: [browser-extension, windows, macos, android, ios]
+  image: ghcr.io/assetforgeai-tech/internetincome-grass-desktop:7.5.1-minimal
+  platforms: [linux/amd64]
+  resources:
+    mem_limit: "768m"
+    oom_score_adj: 300
   env: []
   ports: []
-  volumes: []
+  volumes:
+    - "grass-profile:/data/profile"
   command: ""
   network_mode: ""
+
+deploy:
+  automation: seed_bundle
+  notes: "Runtime uses a pre-authenticated XDG/profile seed bundle. Multi-node defaults stay pending until vps-test-sing confirms blank/reset device/browser IDs."
+  credentials:
+    - key: seed_bundle
+      label: "Grass seed bundle"
+      kind: file
+      secret: true
+      required: true
+      source: "CashPilot runtime asset inventory"
+      description: "Redacted tar.gz profile seed containing Grass auth/session material; worker requests it by runtime asset API."
 
 requirements:
   residential_ip: true

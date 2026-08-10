@@ -269,3 +269,33 @@ class TestValidate:
     def test_all_shipped_services_pass_validation(self):
         # Guard: no real catalog entry is dropped by the loader's validation.
         assert len(catalog.load_services()) >= 21
+
+class TestProviderAutomationContracts:
+    def _svc(self, slug):
+        return catalog.get_service(slug)
+
+    def _credential_keys(self, service, section):
+        return {item["key"] for item in (service.get(section, {}).get("credentials") or [])}
+
+    def test_grass_runtime_uses_seed_bundle_asset(self):
+        svc = self._svc("grass")
+        assert svc["docker"]["image"] == "ghcr.io/assetforgeai-tech/internetincome-grass-desktop:7.5.1-minimal"
+        assert "seed_bundle" in self._credential_keys(svc, "deploy")
+        assert svc["deploy"]["automation"] == "seed_bundle"
+
+    def test_uprock_runtime_uses_seed_bundle_asset(self):
+        svc = self._svc("uprock")
+        assert svc["docker"]["image"] == "ghcr.io/assetforgeai-tech/internetincome-uprock:0.0.38-browser"
+        assert "seed_bundle" in self._credential_keys(svc, "deploy")
+        assert svc["deploy"]["automation"] == "seed_bundle"
+
+    def test_spide_runtime_uses_device_key_registration(self):
+        svc = self._svc("spide")
+        assert svc["deploy"]["automation"] == "device_key_register"
+        assert "dashboard_token" in self._credential_keys(svc, "dashboard")
+
+    def test_wipter_runtime_uses_env_login(self):
+        svc = self._svc("wipter")
+        keys = {item["key"] for item in svc["docker"]["env"]}
+        assert {"WIPTER_EMAIL", "WIPTER_PASSWORD"} <= keys
+        assert svc["deploy"]["automation"] == "env_login"

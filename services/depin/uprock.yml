@@ -15,13 +15,36 @@ referral:
   code: "33e8492e"
 
 docker:
-  image: ""
-  platforms: [browser-extension, android]
+  image: ghcr.io/assetforgeai-tech/internetincome-uprock:0.0.38-browser
+  platforms: [linux/amd64]
+  resources:
+    mem_limit: "768m"
+    oom_score_adj: 300
   env: []
   ports: []
-  volumes: []
+  volumes:
+    - "uprock-profile:/data/profile"
   command: ""
   network_mode: ""
+  health_signals:
+    - pattern: "earning|work|pass"
+      means: "Uprock runtime is logged in and work-capable."
+      state: idle
+    - pattern: "logged.?out|update.?required|login required"
+      means: "Uprock seed/profile is invalid or app version changed."
+      state: error
+
+deploy:
+  automation: seed_bundle
+  notes: "Runtime uses a pre-authenticated full seed bundle or credentials.json + main-enabled.db bundle."
+  credentials:
+    - key: seed_bundle
+      label: "Uprock seed bundle"
+      kind: file
+      secret: true
+      required: true
+      source: "CashPilot runtime asset inventory"
+      description: "Redacted Uprock profile seed; worker requests it by runtime asset API."
 
 requirements:
   residential_ip: true

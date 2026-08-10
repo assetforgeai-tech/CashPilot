@@ -38,9 +38,9 @@ Setup and configuration for every service CashPilot supports.
 | Service | Needs | Runs as | Minimum payout | Status |
 |---|---|---|---|---|
 | [Dawn Internet](dawn.md) | Residential IP | App only | — | active |
-| [Grass](grass.md) | Residential IP | App only | — | active |
+| [Grass](grass.md) | Residential IP | Docker | — | active |
 | [Titan Network](titan.md) | Residential IP | App only | — | active |
-| [Uprock](uprock.md) | Residential IP | App only | $5 | active |
+| [Uprock](uprock.md) | Residential IP | Docker | $5 | active |
 | [Wipter](wipter.md) | Residential IP | Docker | $20 | active |
 
 ## Not a service guide
