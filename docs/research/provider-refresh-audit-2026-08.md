@@ -143,3 +143,5 @@ Open design point: Spide dashboard credential should probably be stored as a col
 ### Grass multi-node test
 
 Approved test: on `vps-test-sing`, create two trial Grass nodes with the same seed/profile material and blank `device_id` / `browser_id`, then compare dashboard after a few minutes. Do not normalize Grass multi-node install until this is verified by dashboard or runtime evidence.
+
+Live probe on 2026-08-11: two containers on `vps-test-sing` with the same seed and `GRASS_RESET_DEVICE_ID=true` / `GRASS_RESET_BROWSER_ID=true` both reached local `CONNECTED` state. `device_id` regenerated distinctly per node, but `browser_id` remained identical. The visible dashboard still showed no networks and the seed token returned `401` from `https://api.getgrass.io/activeDevices`, so dashboard-level multi-node proof remains inconclusive. Keep Grass multi-node defaults unresolved until a fresh seed/dashboard token for the same account verifies `activeDevices`.
