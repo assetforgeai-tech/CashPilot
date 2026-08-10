@@ -808,6 +808,7 @@ class DeploySpec(BaseModel):
 
 class EgressApplySpec(BaseModel):
     mode: str = proxy_egress.PROXY
+    service_udp: str = "none"
     worker_name: str | None = None
     proxy: dict[str, Any] | None = None
 
@@ -1369,7 +1370,7 @@ async def api_egress_status(request: Request) -> dict[str, Any]:
 async def api_egress_apply(request: Request, body: EgressApplySpec) -> dict[str, Any]:
     _verify_api_key(request)
     _EGRESS_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    mode = proxy_egress.normalize_mode(body.mode)
+    mode = proxy_egress.choose_mode(body.mode, body.service_udp, body.proxy)
     if mode == proxy_egress.DIRECT or not body.proxy:
         config = {
             "log": {"level": "info"},

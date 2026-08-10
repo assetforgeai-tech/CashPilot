@@ -88,6 +88,48 @@ def test_singbox_config_uses_tun_and_socks_outbound():
     assert config["outbounds"][0]["type"] == "socks"
     assert config["route"]["final"] == "proxy-out"
 
+def test_http_proxy_never_satisfies_udp_required():
+    from app import proxy_egress
+
+    mode = proxy_egress.choose_mode(
+        requested_mode="proxy",
+        service_udp="required",
+        proxy={"protocol": "http", "udp_ok": True},
+    )
+    assert mode == "direct"
+
+def test_socks5_proxy_satisfies_udp_only_when_marked_ok():
+    from app import proxy_egress
+
+    assert proxy_egress.choose_mode(
+        requested_mode="auto",
+        service_udp="required",
+        proxy={"protocol": "socks5", "udp_ok": False},
+    ) == "direct"
+    assert proxy_egress.choose_mode(
+        requested_mode="auto",
+        service_udp="required",
+        proxy={"protocol": "socks5", "udp_ok": True},
+    ) == "proxy"
+
+def test_direct_provider_bypasses_fake_proxy():
+    from app import proxy_egress
+
+    assert proxy_egress.choose_mode(
+        requested_mode="direct",
+        service_udp="none",
+        proxy={"protocol": "socks5", "udp_ok": True},
+    ) == "direct"
+
+def test_auto_chooses_direct_for_udp_when_proxy_cannot_udp():
+    from app import proxy_egress
+
+    assert proxy_egress.choose_mode(
+        requested_mode="auto",
+        service_udp="required",
+        proxy={"protocol": "http"},
+    ) == "direct"
+
 
 def test_init_db_creates_proxy_tables(tmp_path):
     db_path = tmp_path / "cashpilot.db"
@@ -127,10 +169,12 @@ def test_worker_egress_apply_writes_singbox_config(tmp_path):
             "/api/egress/apply",
             json={
                 "mode": "proxy",
+                "service_udp": "required",
                 "worker_name": "w1",
                 "proxy": {"host": "proxy.example.com", "port": 8080, "protocol": "http", "password": "secret-pass"},
             },
         )
     assert resp.status_code == 200
+    assert resp.json()["mode"] == "direct"
     assert "secret-pass" not in resp.text
     assert config_file.read_text(encoding="utf-8")
