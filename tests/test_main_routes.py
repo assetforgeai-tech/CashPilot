@@ -1192,6 +1192,35 @@ class TestMystWalletLease:
             resp = client.post("/api/myst-wallets/release", json={"client_id": "worker-1", "wallet_id": 1})
             assert resp.status_code == 404
 
+    def test_worker_can_send_myst_wallet_heartbeat(self, client):
+        with (
+            patch("app.main._authenticate_worker_heartbeat", new_callable=AsyncMock, return_value="ok"),
+            patch("app.main.database.heartbeat_myst_wallet", new_callable=AsyncMock, return_value=True) as heartbeat,
+        ):
+            resp = client.post(
+                "/api/myst-wallets/heartbeat",
+                json={
+                    "client_id": "worker-1",
+                    "wallet_id": 1,
+                    "node_identity": "0xnode",
+                    "runtime_status": "healthy",
+                    "evidence": {"payment_required": False},
+                },
+            )
+        assert resp.status_code == 200
+        heartbeat.assert_awaited_once()
+
+    def test_myst_wallet_heartbeat_requires_lease_owner(self, client):
+        with (
+            patch("app.main._authenticate_worker_heartbeat", new_callable=AsyncMock, return_value="ok"),
+            patch("app.main.database.heartbeat_myst_wallet", new_callable=AsyncMock, return_value=False),
+        ):
+            resp = client.post(
+                "/api/myst-wallets/heartbeat",
+                json={"client_id": "worker-1", "wallet_id": 1, "runtime_status": "healthy"},
+            )
+        assert resp.status_code == 404
+
 class TestRuntimeAssetApi:
     def test_owner_can_save_runtime_asset(self, client):
         with (

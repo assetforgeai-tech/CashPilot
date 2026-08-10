@@ -288,10 +288,14 @@ CREATE TABLE IF NOT EXISTS myst_wallets (
     raw_wallet_enc     TEXT    NOT NULL,
     address            TEXT    NOT NULL DEFAULT '',
     state              TEXT    NOT NULL DEFAULT 'AVAILABLE',
-    funding            TEXT    NOT NULL DEFAULT 'UNFUNDED',
+    funding            TEXT    NOT NULL DEFAULT 'FUNDED',
     leased_to_worker_id INTEGER,
     leased_to_client_id TEXT    NOT NULL DEFAULT '',
     leased_at           TEXT,
+    node_identity      TEXT    NOT NULL DEFAULT '',
+    runtime_status     TEXT    NOT NULL DEFAULT '',
+    last_heartbeat_at  TEXT,
+    evidence_json      TEXT    NOT NULL DEFAULT '{}',
     quarantined_reason TEXT    NOT NULL DEFAULT '',
     imported_at        TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_at         TEXT    NOT NULL DEFAULT (datetime('now'))
@@ -488,10 +492,14 @@ CREATE TABLE IF NOT EXISTS myst_wallets (
     raw_wallet_enc     TEXT    NOT NULL,
     address            TEXT    NOT NULL DEFAULT '',
     state              TEXT    NOT NULL DEFAULT 'AVAILABLE',
-    funding            TEXT    NOT NULL DEFAULT 'UNFUNDED',
+    funding            TEXT    NOT NULL DEFAULT 'FUNDED',
     leased_to_worker_id INTEGER,
     leased_to_client_id TEXT    NOT NULL DEFAULT '',
     leased_at           TEXT,
+    node_identity      TEXT    NOT NULL DEFAULT '',
+    runtime_status     TEXT    NOT NULL DEFAULT '',
+    last_heartbeat_at  TEXT,
+    evidence_json      TEXT    NOT NULL DEFAULT '{}',
     quarantined_reason TEXT    NOT NULL DEFAULT '',
     imported_at        TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_at         TEXT    NOT NULL DEFAULT (datetime('now'))
@@ -2171,6 +2179,14 @@ async def _ensure_myst_wallets_table(db: Any) -> None:
         await db.execute("ALTER TABLE myst_wallets ADD COLUMN leased_to_client_id TEXT NOT NULL DEFAULT ''")
     if "leased_at" not in cols:
         await db.execute("ALTER TABLE myst_wallets ADD COLUMN leased_at TEXT")
+    if "node_identity" not in cols:
+        await db.execute("ALTER TABLE myst_wallets ADD COLUMN node_identity TEXT NOT NULL DEFAULT ''")
+    if "runtime_status" not in cols:
+        await db.execute("ALTER TABLE myst_wallets ADD COLUMN runtime_status TEXT NOT NULL DEFAULT ''")
+    if "last_heartbeat_at" not in cols:
+        await db.execute("ALTER TABLE myst_wallets ADD COLUMN last_heartbeat_at TEXT")
+    if "evidence_json" not in cols:
+        await db.execute("ALTER TABLE myst_wallets ADD COLUMN evidence_json TEXT NOT NULL DEFAULT '{}'")
 
 async def import_myst_wallets(raw: str) -> int:
     from app.myst_wallets import iter_wallet_records
@@ -2187,7 +2203,7 @@ async def import_myst_wallets(raw: str) -> int:
                 INSERT INTO myst_wallets (
                     wallet_fingerprint, raw_wallet_enc, address, state, funding, updated_at
                 )
-                VALUES (?, ?, ?, 'AVAILABLE', 'UNFUNDED', datetime('now'))
+                VALUES (?, ?, ?, 'AVAILABLE', 'FUNDED', datetime('now'))
                 ON CONFLICT(wallet_fingerprint) DO UPDATE SET
                     raw_wallet_enc = excluded.raw_wallet_enc,
                     address = excluded.address,
@@ -2211,6 +2227,7 @@ async def list_myst_wallets() -> list[dict[str, Any]]:
         cursor = await db.execute(
             """
             SELECT id, wallet_fingerprint, address, state, funding, leased_to_worker_id,
+                   node_identity, runtime_status, last_heartbeat_at,
                    quarantined_reason, imported_at, updated_at
             FROM myst_wallets
             ORDER BY id DESC
@@ -2332,6 +2349,68 @@ async def release_myst_wallet(wallet_id: int, client_id: str) -> bool:
             """,
             (wallet_id, client_id),
         )
+        await db.commit()
+        return bool(cursor.rowcount)
+    finally:
+        await db.close()
+
+def _myst_wallet_unfunded(runtime_status: str, evidence: Mapping[str, Any]) -> bool:
+    status = str(runtime_status or "").strip().lower()
+    if status in {"unfunded", "wallet_unfunded", "payment_required", "deposit_required"}:
+        return True
+    if evidence.get("payment_required") is True or evidence.get("unfunded") is True:
+        return True
+    if str(evidence.get("funding_state") or "").strip().lower() == "unfunded":
+        return True
+    if str(evidence.get("registration_status") or "").strip().lower() == "unregistered":
+        return True
+    text = str(evidence.get("dashboard_text") or "").lower()
+    return "deposit" in text or "payment required" in text
+
+async def heartbeat_myst_wallet(
+    wallet_id: int,
+    client_id: str,
+    *,
+    node_identity: str = "",
+    runtime_status: str = "",
+    evidence: Mapping[str, Any] | None = None,
+) -> bool:
+    evidence = evidence or {}
+    unfunded = _myst_wallet_unfunded(runtime_status, evidence)
+    db = await _get_db()
+    try:
+        await _ensure_myst_wallets_table(db)
+        if unfunded:
+            cursor = await db.execute(
+                """
+                UPDATE myst_wallets
+                SET state = 'AVAILABLE',
+                    funding = 'UNFUNDED',
+                    leased_to_worker_id = NULL,
+                    leased_to_client_id = '',
+                    leased_at = NULL,
+                    node_identity = ?,
+                    runtime_status = ?,
+                    last_heartbeat_at = datetime('now'),
+                    evidence_json = ?,
+                    updated_at = datetime('now')
+                WHERE id = ? AND leased_to_client_id = ?
+                """,
+                (node_identity, runtime_status, json.dumps(evidence, sort_keys=True), wallet_id, client_id),
+            )
+        else:
+            cursor = await db.execute(
+                """
+                UPDATE myst_wallets
+                SET node_identity = ?,
+                    runtime_status = ?,
+                    last_heartbeat_at = datetime('now'),
+                    evidence_json = ?,
+                    updated_at = datetime('now')
+                WHERE id = ? AND leased_to_client_id = ?
+                """,
+                (node_identity, runtime_status, json.dumps(evidence, sort_keys=True), wallet_id, client_id),
+            )
         await db.commit()
         return bool(cursor.rowcount)
     finally:

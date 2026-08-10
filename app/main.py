@@ -4090,6 +4090,13 @@ class MystWalletReleaseRequest(BaseModel):
     client_id: str
     wallet_id: int
 
+class MystWalletHeartbeatRequest(BaseModel):
+    client_id: str
+    wallet_id: int
+    node_identity: str = ""
+    runtime_status: str = ""
+    evidence: dict[str, Any] = {}
+
 class RuntimeAssetSaveRequest(BaseModel):
     provider: str
     asset_kind: str
@@ -4137,6 +4144,20 @@ async def api_myst_wallet_release(request: Request, body: MystWalletReleaseReque
     if not await database.release_myst_wallet(body.wallet_id, body.client_id.strip()):
         raise HTTPException(status_code=404, detail="MYST wallet lease not found")
     return {"status": "released"}
+
+@app.post("/api/myst-wallets/heartbeat")
+async def api_myst_wallet_heartbeat(request: Request, body: MystWalletHeartbeatRequest) -> dict[str, str]:
+    await _require_confirmed_worker(request, body.client_id)
+    ok = await database.heartbeat_myst_wallet(
+        body.wallet_id,
+        body.client_id.strip(),
+        node_identity=body.node_identity,
+        runtime_status=body.runtime_status,
+        evidence=body.evidence,
+    )
+    if not ok:
+        raise HTTPException(status_code=404, detail="MYST wallet lease not found")
+    return {"status": "ok"}
 
 @app.post("/api/workers/runtime-asset")
 async def api_worker_runtime_asset(request: Request, body: RuntimeAssetRequest) -> dict[str, str]:

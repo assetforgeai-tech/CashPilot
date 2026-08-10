@@ -134,3 +134,50 @@ class TestMystWalletInventory:
                 assert await database.release_myst_wallet(leased["id"], "worker-a")
 
         asyncio.run(run())
+
+    def test_heartbeat_keeps_lease_alive_with_redacted_runtime(self, tmp_path):
+        async def run():
+            with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "myst.db"):
+                await database.init_db()
+                await database.import_myst_wallets("raw-wallet-one")
+                wallet_id = (await database.list_myst_wallets())[0]["id"]
+                await database.update_myst_wallet(wallet_id, funding="FUNDED")
+                leased = await database.lease_myst_wallet("worker-a")
+                ok = await database.heartbeat_myst_wallet(
+                    leased["id"],
+                    "worker-a",
+                    node_identity="0xnode",
+                    runtime_status="healthy",
+                    evidence={"dashboard_text": "secret-ish text"},
+                )
+                assert ok
+                row = (await database.list_myst_wallets())[0]
+                assert row["state"] == "LEASED"
+                assert row["node_identity"] == "0xnode"
+                assert row["runtime_status"] == "healthy"
+                assert row["last_heartbeat_at"]
+                assert "dashboard_text" not in row
+
+        asyncio.run(run())
+
+    def test_payment_required_heartbeat_marks_wallet_unfunded(self, tmp_path):
+        async def run():
+            with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "myst.db"):
+                await database.init_db()
+                await database.import_myst_wallets("raw-wallet-one")
+                wallet_id = (await database.list_myst_wallets())[0]["id"]
+                await database.update_myst_wallet(wallet_id, funding="FUNDED")
+                leased = await database.lease_myst_wallet("worker-a")
+                ok = await database.heartbeat_myst_wallet(
+                    leased["id"],
+                    "worker-a",
+                    runtime_status="payment_required",
+                    evidence={"payment_required": True},
+                )
+                assert ok
+                row = (await database.list_myst_wallets())[0]
+                assert row["state"] == "AVAILABLE"
+                assert row["funding"] == "UNFUNDED"
+                assert row["leased_to_worker_id"] is None
+
+        asyncio.run(run())
