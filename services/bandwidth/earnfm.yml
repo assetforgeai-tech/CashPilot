@@ -55,7 +55,7 @@ earnings:
 
 cashout:
   method: redirect
-  dashboard_url: "https://app.earn.fm/#/payout"
+  dashboard_url: "https://app.earn.fm/"
   min_amount: 3.0
   currency: USD
 

@@ -27,10 +27,10 @@ or official docs make the update certain.
 |---|---|---|
 | bitping | logged-in choose page; app dashboard + nodes paths visible | current model confirmed; no code change needed |
 | earnapp | logged-in dashboard, current balance visible | current model confirmed; keep Docker warning |
-| earnfm | dashboard path resolves to 404 in browser session | needs follow-up if docs should point to a different public page |
-| honeygain | login page visible, no authenticated session on current browser profile | no change |
-| iproyal | dashboard path returned 403 | no change; current login path blocked in this browser session |
-| proxylite | login page visible | no change |
+| earnfm | new dashboard base `https://app.earn.fm/` loads but visible DOM only exposes an accessibility button | URL updated; needs follow-up with working dashboard view/API sample |
+| honeygain | new/current dashboard `https://dashboard.honeygain.com/` logged in; balance, payout threshold, earnings, active device count visible | current model confirmed |
+| iproyal | new dashboard `https://dashboard.pawns.app/` logged in; app download, balance, $5 threshold, Internet Sharing/Cashout menu visible | dashboard URL updated |
+| proxylite | `https://lk.proxylite.ru/` logged in; Account ID, balance, devices, payouts menu visible | current model confirmed |
 | proxyrack | logged-in dashboard with device rows and balance | current model confirmed |
 | repocket | logged-in dashboard with offers/bandwidth area | current model confirmed |
 | traffmonetizer | logged-in dashboard with token/balance page | current model confirmed |
@@ -73,11 +73,11 @@ or official docs make the update certain.
 | vast-ai | active | GPU marketplace | api | keep; API-key model. |
 | bitping | active | Docker/app | api | keep; API collector already exists. |
 | earnapp | active | official app / Docker prohibited | api | updated; official earning model is now pay-per-time, with Docker/VM/hosting still prohibited. Deploy warning remains required. |
-| earnfm | active | Docker client / UUID API key | api | updated; deploy uses Account Settings API key, collector remains email/password because no public balance API-key contract is documented. |
-| honeygain | active | Docker/app | api | keep; collector exists. |
-| iproyal | active | Docker/app | api | keep; collector exists. |
+| earnfm | active | Docker client / UUID API key | api | dashboard base URL updated to app.earn.fm; collector remains email/password because no visible API-key balance contract was confirmed. |
+| honeygain | active | Docker/app | api | keep; logged-in dashboard confirms balance/earnings/device views. |
+| iproyal | active | Docker/app | api | dashboard URL updated to dashboard.pawns.app; collector exists. |
 | mysterium | active | Docker/VPN node | api | keep; direct egress and TequilAPI collector already set. |
-| proxylite | active | Docker/app | api | keep; user-id API model. |
+| proxylite | active | Docker/app | api | keep; logged-in dashboard confirms Account ID based setup. |
 | proxyrack | active | Docker/app | api | keep; API-key collector exists. |
 | repocket | active | Docker/app | api | keep; Firebase collector exists. |
 | traffmonetizer | active | Docker/app | api | keep; token collector exists. |

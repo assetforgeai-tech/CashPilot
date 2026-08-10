@@ -73,7 +73,7 @@ earnings:
 
 cashout:
   method: redirect
-  dashboard_url: "https://pawns.app/dashboard/earnings"
+  dashboard_url: "https://dashboard.pawns.app/"
   min_amount: 5.0
   currency: USD
 
@@ -82,7 +82,7 @@ platforms: [docker, windows, macos, linux, android, ios]
 collector:
   type: api
   notes: "JWT auth via POST /api/v1/users/tokens (email+password), then GET /api/v1/users/me/balance-dashboard"
-  credential_hint: "Use your IPRoyal Pawns account email and password (same as <a href='https://pawns.app' target='_blank'>pawns.app</a>)."
+  credential_hint: "Use your Pawns account email and password (same as <a href='https://dashboard.pawns.app' target='_blank'>dashboard.pawns.app</a>)."
 
 payout:
   model: internal

@@ -37,7 +37,7 @@ Sign up at [IPRoyal Pawns](https://pawns.app?r=19266874).
 
 ### 2. Get your credentials
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+After signing up, use the current dashboard at [dashboard.pawns.app](https://dashboard.pawns.app/). The Docker CLI still uses your Pawns account email and password.
 
 ### 3. Deploy with CashPilot
 
