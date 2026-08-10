@@ -2114,6 +2114,18 @@ class TestApiCollectorsMeta:
             resp = client.get("/api/collectors/meta")
             assert resp.status_code == 403
 
+    def test_api_collectors_meta_includes_proxies_sx(self, client):
+        with (
+            _auth_owner(),
+            patch("app.main.catalog.get_service", return_value={"name": "Proxies.sx", "payment": {"currency": "USD"}, "collector": {"credential_hint": "API key"}}),
+        ):
+            resp = client.get("/api/collectors/meta")
+            assert resp.status_code == 200
+            proxies = next(item for item in resp.json() if item["slug"] == "proxies-sx")
+            assert proxies["fields"][0]["key"] == "proxies-sx_api_key"
+            assert proxies["fields"][0]["secret"] is True
+            assert proxies["hint"] == "API key"
+
 
 # ---------------------------------------------------------------------------
 # API: Per-node earnings
@@ -2129,6 +2141,18 @@ class TestApiPerNodeEarnings:
             resp = client.get("/api/services/honeygain/per-node-earnings")
             assert resp.status_code == 200
             assert resp.json() == []
+
+    def test_per_node_earnings_proxies_sx(self, client):
+        mock_collector = MagicMock()
+        mock_collector.get_per_node_earnings = AsyncMock(return_value=[{"device_id": "a", "total_earned_usd": 1.5}])
+        with (
+            _auth_owner(),
+            patch("app.main.database.get_config", new_callable=AsyncMock, return_value={"proxies-sx_api_key": "key"}),
+            patch("app.collectors.build_one", return_value=(mock_collector, [])),
+        ):
+            resp = client.get("/api/services/proxies-sx/per-node-earnings")
+            assert resp.status_code == 200
+            assert resp.json() == [{"device_id": "a", "total_earned_usd": 1.5}]
 
 
 # ---------------------------------------------------------------------------

@@ -208,4 +208,5 @@ def test_proxies_sx_bandwidth_service_contract():
     assert env["API_KEY"]["secret"] is True
     assert env["AGENT_NAME"]["default"] == "cashpilot-{hostname}"
 
-    assert data["collector"]["type"] == "manual"
+    assert data["collector"]["type"] == "api"
+    assert data["collector"]["per_node_earnings"] is True

@@ -20,6 +20,7 @@ from app.collectors.honeygain import HoneygainCollector
 from app.collectors.iproyal import IPRoyalCollector
 from app.collectors.mystnodes import MystNodesCollector
 from app.collectors.packetstream import PacketStreamCollector
+from app.collectors.proxies_sx import ProxiesSxCollector
 from app.collectors.proxyrack import ProxyRackCollector
 from app.collectors.repocket import RepocketCollector
 from app.collectors.salad import SaladCollector
@@ -42,6 +43,7 @@ COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
     "bitping": BitpingCollector,
     "earnfm": EarnFMCollector,
     "packetstream": PacketStreamCollector,
+    "proxies-sx": ProxiesSxCollector,
     "grass": GrassCollector,
     "bytelixir": BytelixirCollector,
     "salad": SaladCollector,
@@ -61,6 +63,7 @@ _COLLECTOR_ARGS: dict[str, list[str]] = {
     "bitping": ["email", "password"],
     "earnfm": ["email", "password"],
     "packetstream": ["auth_token"],
+    "proxies-sx": ["api_key"],
     "grass": ["access_token"],
     # bytelixir_session expires ~2h after issue, so on its own this collector
     # dies the same afternoon it is set up. remember_web is the durable cookie

@@ -42,8 +42,8 @@ Sign up at [Proxies.sx](https://www.proxies.sx).
 
 ### 2. Get your API key
 
-Open the Proxies.sx dashboard and create or copy your peer API key. The SDK
-expects it as `API_KEY`.
+Open the Proxies.sx dashboard and create or copy your peer API key. CashPilot
+stores it as `API_KEY`.
 
 ### 3. Deploy with CashPilot
 
@@ -52,8 +52,7 @@ In the CashPilot web UI, find **Proxies.sx** in the bandwidth catalog and click
 `cashpilot-{hostname}`.
 
 CashPilot runs the provider's Node SDK in `node:20-alpine`, installs `ws`, and
-downloads `https://agents.proxies.sx/peer/reference-sdk.js` into the persistent
-`proxies-sx-data` volume on first start.
+downloads `https://agents.proxies.sx/peer/reference-sdk.js` on first start.
 
 ## Docker Configuration
 
@@ -61,6 +60,7 @@ downloads `https://agents.proxies.sx/peer/reference-sdk.js` into the persistent
 - **Platforms:** linux/amd64, linux/arm64
 - **Egress:** direct. Do not route this service through Proxy Egress; Proxies.sx
   grades the worker's real IP.
+- **Collector:** API, per-node earnings enabled.
 
 ### Environment Variables
 

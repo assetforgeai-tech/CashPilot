@@ -50,7 +50,7 @@ requirements:
 
 payment:
   methods: [crypto]
-  minimum_payout: "Unknown"
+  minimum_payout: "$5"
   currency: USD
   frequency: "On request"
 
@@ -70,9 +70,10 @@ cashout:
 platforms: [docker, linux, windows, macos]
 
 collector:
-  type: manual
-  notes: "The provider exposes device status over its API, but the public docs supplied here do not specify a stable earnings payload to map into CashPilot yet."
-  credential_hint: "Copy your API key from the Proxies.sx dashboard."
+  type: api
+  per_node_earnings: true
+  notes: "Uses the peer API. `/peer/my-devices` supplies device status and total-earned data; CashPilot sums withdrawable/pending values when present and falls back to lifetime earned."
+  credential_hint: "Copy your peer API key from the Proxies.sx dashboard."
 
 egress:
   mode: direct
