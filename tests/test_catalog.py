@@ -186,3 +186,26 @@ def test_proxybase_markets_referral_and_image_contract():
 
     # Every service must tell the user how to get paid (contribution rule).
     assert data["cashout"]["method"], "ProxyBase Markets must declare a cashout method"
+
+def test_proxies_sx_bandwidth_service_contract():
+    """Proxies.sx is an earning peer, not proxy inventory for Proxy Egress."""
+    with open(SERVICES_DIR / "bandwidth" / "proxies-sx.yml") as f:
+        data = yaml.safe_load(f)
+
+    assert data["slug"] == "proxies-sx"
+    assert data["category"] == "bandwidth"
+    assert data["requirements"]["residential_ip"] is True
+    assert data["requirements"]["vps_ip"] is False
+    assert data["egress"] == {
+        "mode": "direct",
+        "udp": "none",
+        "reason": data["egress"]["reason"],
+    }
+
+    env = {item["key"]: item for item in data["docker"]["env"]}
+    assert set(env) == {"API_KEY", "AGENT_NAME"}
+    assert env["API_KEY"]["required"] is True
+    assert env["API_KEY"]["secret"] is True
+    assert env["AGENT_NAME"]["default"] == "cashpilot-{hostname}"
+
+    assert data["collector"]["type"] == "manual"

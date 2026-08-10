@@ -1,0 +1,98 @@
+name: Proxies.sx
+slug: proxies-sx
+category: bandwidth
+status: beta
+website: https://www.proxies.sx
+description: >
+  Proxies.sx is a peer bandwidth earning network. The official Node SDK keeps a
+  device online over WebSocket, the service grades the node for customer-routing,
+  and earning only starts once the peer is verified and listed. Residential or
+  mobile IPs are the intended fit; VPS and datacenter IPs may connect but are
+  generally not routed for earnings.
+short_description: Peer bandwidth earning network - SDK-based node, direct egress
+
+docker:
+  image: node:20-alpine
+  platforms: [linux/amd64, linux/arm64]
+  resources:
+    mem_limit: "256m"
+    oom_score_adj: 300
+  env:
+    - key: API_KEY
+      label: "API key"
+      required: true
+      secret: true
+      description: "Create a peer API key in the Proxies.sx dashboard, then paste it here."
+    - key: AGENT_NAME
+      label: "Agent name"
+      required: false
+      secret: false
+      description: "Device name shown in the Proxies.sx peer dashboard."
+      default: "cashpilot-{hostname}"
+  ports: []
+  volumes:
+    - "proxies-sx-data:/app"
+  command: >
+    sh -lc 'cd /app &&
+    if [ ! -f reference-sdk.js ]; then wget -q -O reference-sdk.js https://agents.proxies.sx/peer/reference-sdk.js; fi &&
+    if [ ! -f package.json ]; then npm init -y >/dev/null 2>&1; fi &&
+    if [ ! -d node_modules/ws ]; then npm install ws >/dev/null 2>&1; fi &&
+    exec node reference-sdk.js'
+  network_mode: ""
+  privileged: false
+
+requirements:
+  residential_ip: true
+  vps_ip: false
+  min_bandwidth: "500 KB/s upload"
+  gpu: false
+  min_storage: ""
+
+payment:
+  methods: [crypto]
+  minimum_payout: "Unknown"
+  currency: USD
+  frequency: "On request"
+
+earnings:
+  monthly_low: 0
+  monthly_high: 0
+  currency: USD
+  per: "device"
+  notes: "Earning starts only after the peer is verified, listed, and customer-routable."
+
+cashout:
+  method: redirect
+  dashboard_url: "https://www.proxies.sx"
+  currency: USD
+  notes: "Provider docs do not state a minimum payout amount."
+
+platforms: [docker, linux, windows, macos]
+
+collector:
+  type: manual
+  notes: "The provider exposes device status over its API, but the public docs supplied here do not specify a stable earnings payload to map into CashPilot yet."
+  credential_hint: "Copy your API key from the Proxies.sx dashboard."
+
+egress:
+  mode: direct
+  udp: none
+  reason: "The peer must use the worker's real network path so the provider can grade and route the device; proxy egress would mask the connection."
+
+disclosure:
+  sells: >-
+    Bandwidth from your peer device.
+  third_party_traffic: >-
+    Yes. The service routes customer traffic through the peer when the device is listed.
+  data_collected: >-
+    Device metadata, connection state, and peer routing telemetry.
+  isp_risk: >-
+    Yes. The provider says customer-routing is intended for residential or mobile IPs;
+    VPS/datacenter peers may stay online without earning and are not the target setup.
+  account_rules: >-
+    unknown - the supplied docs describe device registration and listing flow, but not
+    a public per-account or per-IP cap.
+
+payout:
+  model: internal
+  notes: "Balance is tracked inside the provider account and withdrawn through the dashboard."
