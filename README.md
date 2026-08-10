@@ -76,6 +76,7 @@ Services CashPilot can deploy and manage automatically via Docker.
 | [MystNodes](https://mystnodes.co/?referral_code=do7v7YOoBBpbOstKQovX2pUvZYKia4ZhH3QIdNtE) | [Guide](docs/guides/mysterium.md) | ❌ | ✅ | ? \*\*\* | Unlimited | Crypto |
 | [PacketStream](https://packetstream.io/?psr=7xgZ) | [Guide](docs/guides/packetstream.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | PayPal |
 | [Presearch](https://presearch.com/signup?rid=4872322) | [Guide](docs/guides/presearch.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto |
+| [Proxies.sx](https://www.proxies.sx) | [Guide](docs/guides/proxies-sx.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto |
 | [ProxyBase](https://peer.proxybase.org?referral=nXzS3c6iTO) | [Guide](docs/guides/proxybase.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto |
 | [ProxyBase Markets](https://proxybase.xyz?referral=nXzS3c6iTO) | [Guide](docs/guides/proxybase-xyz.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto (USDC) |
 | [ProxyLite](https://proxylite.ru/?r=KMUPRZIZ) | [Guide](docs/guides/proxylite.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto, PayPal |

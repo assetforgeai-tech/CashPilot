@@ -146,6 +146,7 @@ nav:
       - PacketShare: guides/packetshare.md
       - PacketStream: guides/packetstream.md
       - Peer2Profit: guides/peer2profit.md
+      - Proxies.sx: guides/proxies-sx.md
       - ProxyBase: guides/proxybase.md
       - ProxyBase Markets: guides/proxybase-xyz.md
       - ProxyLite: guides/proxylite.md

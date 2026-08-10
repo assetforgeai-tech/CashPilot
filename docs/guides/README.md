@@ -4,7 +4,7 @@
 
 Setup and configuration for every service CashPilot supports.
 
-**50 services** across 4 categories. The table is sortable — click a heading to reorder it.
+**51 services** across 4 categories. The table is sortable — click a heading to reorder it.
 
 !!! tip "Choosing what to run"
 
@@ -29,6 +29,7 @@ Setup and configuration for every service CashPilot supports.
 | [PacketShare](packetshare.md) | Residential IP | Docker | $5 | dead |
 | [PacketStream](packetstream.md) | Residential IP | Docker | $5 | active |
 | [Peer2Profit](peer2profit.md) | — | Docker | $2 | dead |
+| [Proxies.sx](proxies-sx.md) | Residential IP, 500 KB/s upload | Docker | Unknown | beta |
 | [ProxyBase](proxybase.md) | — | Docker | $1 | active |
 | [ProxyBase Markets](proxybase-xyz.md) | — | Docker | $1 | active |
 | [ProxyLite](proxylite.md) | — | Docker | $5 | active |
