@@ -1130,12 +1130,13 @@ async def get_earnings_summary() -> list[dict[str, Any]]:
             FROM earnings
             -- Deliberately ONE row per platform, not one per source. A
             -- provider reports a single balance for the whole account, so the
-            -- newest reading from ANY source IS the current balance; taking the
-            -- latest per source and summing them would multiply it by the
-            -- number of machines watching.
+            -- newest account reading IS the current balance. Node rows are
+            -- auxiliary breakdown only; letting them into this query would
+            -- replace the account total with a node fragment.
             WHERE id IN (
                 SELECT id FROM earnings e
-                WHERE e.date = (SELECT MAX(date) FROM earnings WHERE platform = e.platform)
+                WHERE COALESCE(e.source, 'server') NOT LIKE 'node:%'
+                  AND e.date = (SELECT MAX(date) FROM earnings WHERE platform = e.platform AND COALESCE(source, 'server') NOT LIKE 'node:%')
                 GROUP BY e.platform
                 HAVING id = MAX(e.id)
             )
@@ -1162,7 +1163,8 @@ async def get_earnings_history(
                 """
                 SELECT platform, balance, currency, date
                 FROM earnings
-                WHERE date >= date('now', ?)
+                WHERE COALESCE(source, 'server') NOT LIKE 'node:%'
+                  AND date >= date('now', ?)
                 ORDER BY date DESC, platform
                 """,
                 (f"-{days} days",),
@@ -1172,7 +1174,7 @@ async def get_earnings_history(
             # return an unbounded row set into a single response/chart. Most-recent
             # first; 50k rows spans years of daily per-service earnings.
             cursor = await db.execute(
-                "SELECT platform, balance, currency, date FROM earnings ORDER BY date DESC, platform LIMIT 50000"
+                "SELECT platform, balance, currency, date FROM earnings WHERE COALESCE(source, 'server') NOT LIKE 'node:%' ORDER BY date DESC, platform LIMIT 50000"
             )
         rows = await cursor.fetchall()
         return [dict(r) for r in rows]
@@ -1228,6 +1230,7 @@ async def _usd_earned_per_date(db: Any) -> tuple[dict[str, float], int]:
         """
         SELECT platform, date, balance, currency, fx_rate_usd, source
         FROM earnings
+        WHERE COALESCE(source, 'server') NOT LIKE 'node:%'
         ORDER BY platform, source, date
         """
     )
@@ -1277,10 +1280,11 @@ async def get_earnings_dashboard_summary() -> dict[str, Any]:
             FROM earnings e
             INNER JOIN (
                 SELECT platform, MAX(date) as max_date
-                FROM earnings WHERE currency = 'USD'
+                FROM earnings WHERE currency = 'USD' AND COALESCE(source, 'server') NOT LIKE 'node:%'
                 GROUP BY platform
             ) latest ON e.platform = latest.platform AND e.date = latest.max_date
             WHERE e.currency = 'USD'
+              AND COALESCE(e.source, 'server') NOT LIKE 'node:%'
             """
         )
         row = await cursor.fetchone()
@@ -1341,7 +1345,9 @@ async def get_earnings_per_service() -> list[dict[str, Any]]:
             FROM earnings e
             INNER JOIN (
                 SELECT platform, MAX(date) as max_date
-                FROM earnings GROUP BY platform
+                FROM earnings
+                WHERE COALESCE(source, 'server') NOT LIKE 'node:%'
+                GROUP BY platform
             ) latest ON e.platform = latest.platform AND e.date = latest.max_date
             LEFT JOIN (
                 SELECT e2.platform, e2.balance
@@ -1349,9 +1355,11 @@ async def get_earnings_per_service() -> list[dict[str, Any]]:
                 INNER JOIN (
                     SELECT platform, MAX(date) as max_date
                     FROM earnings
-                    WHERE date < (SELECT MAX(date) FROM earnings e3 WHERE e3.platform = earnings.platform)
+                    WHERE COALESCE(source, 'server') NOT LIKE 'node:%'
+                      AND date < (SELECT MAX(date) FROM earnings e3 WHERE e3.platform = earnings.platform AND COALESCE(e3.source, 'server') NOT LIKE 'node:%')
                     GROUP BY platform
                 ) prev_latest ON e2.platform = prev_latest.platform AND e2.date = prev_latest.max_date
+                WHERE COALESCE(e2.source, 'server') NOT LIKE 'node:%'
             ) prev ON e.platform = prev.platform
             ORDER BY e.balance DESC
             """
@@ -2360,7 +2368,8 @@ async def get_earned_by_platform(days: int = 30) -> dict[str, float]:
             """
             SELECT platform, date, balance, currency, fx_rate_usd, source
             FROM earnings
-            WHERE date >= date('now', ?)
+            WHERE COALESCE(source, 'server') NOT LIKE 'node:%'
+              AND date >= date('now', ?)
             ORDER BY platform, source, date
             """,
             (f"-{max(1, int(days))} days",),
@@ -2438,7 +2447,8 @@ async def get_flatlined_services(min_days: int = FLATLINE_MIN_DAYS) -> list[dict
                    MAX(balance)         AS max_balance,
                    MAX(date)            AS last_date
             FROM earnings
-            WHERE date >= date('now', ?)
+            WHERE COALESCE(source, 'server') NOT LIKE 'node:%'
+              AND date >= date('now', ?)
             GROUP BY platform
             -- Only platforms that recorded a reading TODAY. A collector that is
             -- failing stops writing rows, but its earlier readings are still
@@ -2844,7 +2854,7 @@ async def get_latest_balance(platform: str) -> float | None:
     db = await _get_db()
     try:
         cursor = await db.execute(
-            "SELECT balance FROM earnings WHERE platform = ? ORDER BY date DESC, id DESC LIMIT 1",
+            "SELECT balance FROM earnings WHERE platform = ? AND COALESCE(source, 'server') NOT LIKE 'node:%' ORDER BY date DESC, id DESC LIMIT 1",
             (platform,),
         )
         row = await cursor.fetchone()
@@ -2859,7 +2869,7 @@ async def get_balance_history(platform: str, days: int = 30) -> list[dict[str, A
     try:
         cursor = await db.execute(
             "SELECT date, balance, currency, fx_rate_usd FROM earnings "
-            "WHERE platform = ? AND date >= date('now', ?) ORDER BY date ASC",
+            "WHERE platform = ? AND COALESCE(source, 'server') NOT LIKE 'node:%' AND date >= date('now', ?) ORDER BY date ASC",
             (platform, f"-{int(days)} days"),
         )
         return [dict(r) for r in await cursor.fetchall()]

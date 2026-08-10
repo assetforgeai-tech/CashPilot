@@ -215,6 +215,24 @@ class TestEarnings:
         asyncio.run(run())
 
 
+    def test_node_source_rows_do_not_replace_account_balance(self, db):
+        """Per-node breakdown rows are auxiliary, not the platform balance."""
+
+        async def run():
+            await database.upsert_earnings("hg", 10.0, "USD", source="server")
+            await database.upsert_earnings("hg", 999.0, "USD", source="node:hg:alpha")
+            summary = await database.get_earnings_summary()
+            dashboard = await database.get_earnings_dashboard_summary()
+            latest = await database.get_latest_balance("hg")
+            return summary, dashboard, latest
+
+        summary, dashboard, latest = asyncio.run(run())
+        hg = next(e for e in summary if e["platform"] == "hg")
+        assert hg["balance"] == 10.0
+        assert dashboard["total"] == 10.0
+        assert latest == 10.0
+
+
 class TestConfig:
     def test_set_and_get_config(self, db):
         async def run():

@@ -75,6 +75,81 @@ _COLLECTOR_ARGS: dict[str, list[str]] = {
     "salad": ["auth_cookie"],
 }
 
+_SECRET_KINDS = {"password", "api_key", "token", "cookie", "bearer", "jwt", "oauth_token", "access_token"}
+
+def _kind_for_arg(arg: str) -> str:
+    lowered = arg.lower()
+    if "email" in lowered:
+        return "email"
+    if "password" in lowered:
+        return "password"
+    if "cookie" in lowered:
+        return "cookie"
+    if "api_key" in lowered or lowered.endswith("_key"):
+        return "api_key"
+    if "token" in lowered:
+        return "token"
+    return "text"
+
+def _is_secret_field(arg: str, kind: str) -> bool:
+    from app import database
+
+    lowered = arg.lower()
+    return kind in _SECRET_KINDS or any(lowered.endswith(suffix) for suffix in database.SECRET_CONFIG_KEYS)
+
+def collector_credential_fields(slug: str, service: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """UI/config metadata for one collector, YAML-first with registry fallback."""
+    if service is None:
+        from app import catalog
+
+        service = catalog.get_service(slug)
+    collector = (service or {}).get("collector") or {}
+    declared = collector.get("credentials")
+    if isinstance(declared, list):
+        fields: list[dict[str, Any]] = []
+        for item in declared:
+            if not isinstance(item, dict):
+                continue
+            raw_key = str(item.get("key") or "").strip()
+            if not raw_key:
+                continue
+            config_key = raw_key if raw_key.startswith(f"{slug}_") else f"{slug}_{raw_key}"
+            arg = config_key.removeprefix(f"{slug}_")
+            kind = str(item.get("kind") or _kind_for_arg(arg))
+            field: dict[str, Any] = {
+                "key": config_key,
+                "arg": arg,
+                "label": str(item.get("label") or arg.replace("_", " ").title()),
+                "kind": kind,
+                "secret": bool(item.get("secret")) or _is_secret_field(arg, kind),
+                "required": item.get("required", True) is not False,
+                "source": item.get("source") or "dashboard",
+            }
+            for optional in ("description", "expires_hours", "durable"):
+                if optional in item:
+                    field[optional] = item[optional]
+            fields.append(field)
+        if fields:
+            return fields
+
+    fields = []
+    for arg in _COLLECTOR_ARGS.get(slug, []):
+        optional = arg.startswith("?")
+        name = arg.lstrip("?")
+        kind = _kind_for_arg(name)
+        fields.append(
+            {
+                "key": f"{slug}_{name}",
+                "arg": name,
+                "label": name.replace("_", " ").title(),
+                "kind": kind,
+                "secret": _is_secret_field(name, kind),
+                "required": not optional,
+                "source": "collector_registry",
+            }
+        )
+    return fields
+
 # How long each credential actually lasts, and why it matters.
 #
 # Several collectors need a value copied out of a browser, and some of those die
@@ -182,17 +257,16 @@ def make_collectors(
             continue
 
         cls = COLLECTOR_MAP[slug]
-        arg_keys = _COLLECTOR_ARGS.get(slug, [])
+        fields = collector_credential_fields(slug)
 
         # Resolve constructor kwargs from config
         kwargs: dict[str, str] = {}
         missing: list[str] = []
-        for arg in arg_keys:
-            optional = arg.startswith("?")
-            arg_name = arg.lstrip("?")
-            config_key = f"{slug}_{arg_name}"
+        for field in fields:
+            arg_name = field["arg"]
+            config_key = field["key"]
             val = config.get(config_key, "")
-            if not val and not optional:
+            if not val and field.get("required", True):
                 missing.append(config_key)
             elif val:
                 kwargs[arg_name] = val
@@ -255,7 +329,7 @@ def fully_configured_slugs(config: dict[str, str]) -> set[str]:
     """
     configured: set[str] = set()
     for slug in COLLECTOR_MAP:
-        required = [f"{slug}_{arg}" for arg in _COLLECTOR_ARGS.get(slug, []) if not arg.startswith("?")]
+        required = [field["key"] for field in collector_credential_fields(slug) if field.get("required", True)]
         if required and all(config.get(key) for key in required):
             configured.add(slug)
     return configured
@@ -278,14 +352,13 @@ def build_one(slug: str, config: dict[str, str]) -> tuple[Any | None, list[str]]
 
     kwargs: dict[str, str] = {}
     missing: list[str] = []
-    for arg in _COLLECTOR_ARGS.get(slug, []):
-        optional = arg.startswith("?")
-        name = arg.lstrip("?")
-        value = config.get(f"{slug}_{name}", "")
+    for field in collector_credential_fields(slug):
+        name = field["arg"]
+        value = config.get(field["key"], "")
         if value:
             kwargs[name] = value
-        elif not optional:
-            missing.append(f"{slug}_{name}")
+        elif field.get("required", True):
+            missing.append(field["key"])
     if missing:
         return None, missing
     try:
@@ -309,6 +382,7 @@ __all__ = [
     "BaseCollector",
     "EarningsResult",
     "COLLECTOR_MAP",
+    "collector_credential_fields",
     "make_collectors",
     "close_all_collectors",
 ]

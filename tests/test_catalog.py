@@ -210,3 +210,7 @@ def test_proxies_sx_bandwidth_service_contract():
 
     assert data["collector"]["type"] == "api"
     assert data["collector"]["per_node_earnings"] is True
+    credentials = {item["key"]: item for item in data["collector"]["credentials"]}
+    assert credentials["api_key"]["kind"] == "api_key"
+    assert credentials["api_key"]["secret"] is True
+    assert credentials["api_key"]["required"] is True

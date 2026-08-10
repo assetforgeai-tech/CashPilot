@@ -191,6 +191,42 @@ class TestValidate:
         assert catalog._validate({**self._base(), "docker": {"image": "i", "env": "notalist"}}, p)
         assert catalog._validate({**self._base(), "requirements": {"gpu": "yes"}}, p)  # non-bool
 
+    def test_validate_rejects_malformed_collector_credentials(self, tmp_path):
+        p = tmp_path / "t.yml"
+        assert catalog._validate({**self._base(), "collector": "bad"}, p)
+        assert catalog._validate({**self._base(), "collector": {"credentials": "bad"}}, p)
+        assert catalog._validate({**self._base(), "collector": {"credentials": [{"kind": "api_key"}]}}, p)
+        assert catalog._validate(
+            {**self._base(), "collector": {"credentials": [{"key": "token", "kind": "magic"}]}},
+            p,
+        )
+        assert catalog._validate(
+            {**self._base(), "collector": {"credentials": [{"key": "token", "secret": "yes"}]}},
+            p,
+        )
+
+    def test_validate_accepts_collector_credentials(self, tmp_path):
+        assert catalog._validate(
+            {
+                **self._base(),
+                "collector": {
+                    "credentials": [
+                        {
+                            "key": "api_key",
+                            "label": "API key",
+                            "kind": "api_key",
+                            "secret": True,
+                            "required": True,
+                            "source": "dashboard",
+                            "expires_hours": 24,
+                            "durable": True,
+                        }
+                    ]
+                },
+            },
+            tmp_path / "t.yml",
+        ) == []
+
     def test_validate_allows_empty_image_for_non_deployable(self, tmp_path):
         # Extension/app-only services list an empty image and must still load.
         assert catalog._validate({**self._base(), "docker": {"image": ""}}, tmp_path / "t.yml") == []

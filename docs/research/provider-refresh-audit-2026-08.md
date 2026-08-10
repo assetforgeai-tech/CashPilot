@@ -2,6 +2,17 @@
 
 Status: implementation snapshot. Source priority is official site/docs/dashboard/API/GitHub first. No hidden dashboard/API fields are guessed.
 
+## Logged-in dashboard workflow
+
+When public docs do not expose setup tokens, CIDs, device lists, or API shapes,
+use the local Chrome profile already logged in as `assetforgeai@gmail.com`.
+Dashboard work is setup-safe only: read setup, device, earnings, and API
+responses; do not touch payout, billing, password, security, or purchases.
+Redacted findings stay outside the repo under
+`D:\1. WORK_true\CashPilot\secret\providers\<slug>\` as dashboard notes, API
+samples, and screenshots. Repo changes are made only after the dashboard shape
+or official docs make the update certain.
+
 ## Changes applied
 
 | Provider | Catalog action | Source basis | Notes |

@@ -2011,6 +2011,36 @@ class TestPeriodicTasks:
             asyncio.run(_run_collection())
 
 
+    def test_run_collection_persists_per_node_rows(self):
+        from app.collectors.base import EarningsResult
+        from app.main import _run_collection
+
+        mock_collector = AsyncMock()
+        mock_collector.collect.return_value = EarningsResult(platform="proxies-sx", balance=5.0, currency="USD")
+        mock_collector.get_per_node_earnings = AsyncMock(
+            return_value=[
+                {"device_id": "a", "total_earned_usd": 1.5},
+                {"device_id": "b", "total_earned_usd": 3.5},
+            ]
+        )
+        with (
+            patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[{"slug": "proxies-sx"}]),
+            patch("app.main.database.get_config", new_callable=AsyncMock, return_value={}),
+            patch("app.collectors.make_collectors", return_value=[mock_collector]),
+            patch("app.main.database.upsert_earnings", new_callable=AsyncMock) as mock_upsert,
+            patch("app.main.database.upsert_earnings_many", new_callable=AsyncMock) as mock_bulk,
+            patch("app.main._detect_payout", new_callable=AsyncMock),
+        ):
+            asyncio.run(_run_collection())
+
+        mock_upsert.assert_awaited_once()
+        mock_bulk.assert_awaited_once()
+        rows = mock_bulk.await_args.args[0]
+        assert rows[0]["source"] == "node:proxies-sx:a"
+        assert rows[1]["source"] == "node:proxies-sx:b"
+        assert rows[0]["balance"] == 1.5
+        assert rows[1]["balance"] == 3.5
+
 # ---------------------------------------------------------------------------
 # Security middleware
 # ---------------------------------------------------------------------------
@@ -2126,6 +2156,34 @@ class TestApiCollectorsMeta:
             assert proxies["fields"][0]["secret"] is True
             assert proxies["hint"] == "API key"
 
+
+    def test_api_collectors_meta_prefers_yaml_credentials(self, client):
+        def service(slug):
+            if slug == "proxies-sx":
+                return {
+                    "name": "Proxies.sx",
+                    "payment": {"currency": "USD"},
+                    "collector": {
+                        "credentials": [
+                            {
+                                "key": "api_key",
+                                "label": "Peer API key",
+                                "kind": "api_key",
+                                "secret": True,
+                                "source": "dashboard",
+                            }
+                        ]
+                    },
+                }
+            return {"name": slug, "collector": {}, "payment": {"currency": "USD"}}
+
+        with _auth_owner(), patch("app.main.catalog.get_service", side_effect=service):
+            resp = client.get("/api/collectors/meta")
+            assert resp.status_code == 200
+            proxies = next(item for item in resp.json() if item["slug"] == "proxies-sx")
+            assert proxies["fields"][0]["key"] == "proxies-sx_api_key"
+            assert proxies["fields"][0]["label"] == "Peer API key"
+            assert proxies["fields"][0]["source"] == "dashboard"
 
 # ---------------------------------------------------------------------------
 # API: Per-node earnings

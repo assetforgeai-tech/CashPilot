@@ -73,6 +73,14 @@ collector:
   type: api
   per_node_earnings: true
   notes: "Uses the peer API. `/peer/my-devices` supplies device status and total-earned data; CashPilot sums withdrawable/pending values when present and falls back to lifetime earned."
+  credentials:
+    - key: api_key
+      label: "Peer API key"
+      kind: api_key
+      secret: true
+      required: true
+      source: "Proxies.sx dashboard - peer API key"
+      description: "Copy the peer API key from the Proxies.sx dashboard."
   credential_hint: "Copy your peer API key from the Proxies.sx dashboard."
 
 egress:

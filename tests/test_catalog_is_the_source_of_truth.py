@@ -186,6 +186,7 @@ class TestPerNodeEarningsIsDeclaredNotBranchedOn:
         schema = (SERVICES / "_schema.yml").read_text(encoding="utf-8")
         assert "credential_hint" in schema
         assert "per_node_earnings" in schema
+        assert "collector.credentials" in schema
 
 
 class TestTheDeadCodeDecisionsHold:

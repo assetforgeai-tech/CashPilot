@@ -462,6 +462,70 @@ async def _collect_bounded(collector) -> Any:
                 error_kind=collectors_base.classify_exception(exc),
             )
 
+async def _collect_with_collector(collector) -> tuple[Any, Any]:
+    return collector, await _collect_bounded(collector)
+
+def _node_earnings_rows(platform: str, default_currency: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Normalize per-node earnings into rows for the shared earnings table.
+
+    ponytail: this is a heuristic bridge over heterogeneous provider payloads;
+    the ceiling is "shape already confirmed in the provider dashboard". When a
+    provider adds a clearer API contract, replace the key search with that
+    explicit field and delete the fallback ladder.
+    """
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        node_id = next(
+            (str(row.get(key) or "").strip() for key in ("node_id", "device_id", "identity", "id", "name") if str(row.get(key) or "").strip()),
+            "",
+        )
+        if not node_id:
+            continue
+        currency = str(row.get("currency") or default_currency or "USD").upper()
+        keys = [
+            "balance",
+            "balance_usd",
+            "total_earned_usd",
+            "withdrawable_payout_usd",
+            "pending_payout_usd",
+            "lifetime_usd",
+        ]
+        if currency != "USD":
+            lowered = currency.lower()
+            keys = [
+                f"balance_{lowered}",
+                f"total_earned_{lowered}",
+                f"lifetime_{lowered}",
+                f"earnings_{lowered}",
+                f"withdrawable_{lowered}",
+            ]
+        balance = None
+        for key in keys:
+            value = row.get(key)
+            if value is None:
+                continue
+            try:
+                balance = float(value)
+                break
+            except (TypeError, ValueError):
+                continue
+        if balance is None:
+            continue
+        out.append(
+            {
+                "platform": platform,
+                "balance": balance,
+                "currency": currency,
+                "date": row.get("date") or today,
+                "fx_rate_usd": exchange_rates.to_usd(1.0, currency),
+                "source": f"node:{platform}:{node_id}",
+            }
+        )
+    return out
+
 
 async def _flatline_check() -> list[dict[str, str]]:
     """Alert on services that are running but whose balance has stopped moving.
@@ -625,21 +689,22 @@ async def _run_collection() -> None:
 
             collectors = make_collectors(deployments, config)
             await _close_stale()
-            results = await asyncio.gather(*(_collect_bounded(c) for c in collectors), return_exceptions=True)
+            results = await asyncio.gather(*(_collect_with_collector(c) for c in collectors), return_exceptions=True)
             alerts: list[dict[str, str]] = []
             # Platforms that were already failing before this run: used to detect a
             # recovery, so a service that breaks again later notifies again rather
             # than being deduped into silence forever.
             previously_alerting = {a["platform"] for a in _collector_alerts}
             platforms_ok = 0
-            for result in results:
-                if isinstance(result, Exception):
+            for item in results:
+                if isinstance(item, Exception):
                     # Redacted BEFORE it is logged. A collector exception is
                     # usually an httpx error that embeds the offending header,
                     # which for several providers IS the live credential.
-                    logger.warning("Collector raised exception: %s", notify.redact(str(result)))
+                    logger.warning("Collector raised exception: %s", notify.redact(str(item)))
                     success = False
                     continue
+                collector, result = item
                 if result.error:
                     # Redact FIRST. The comment below explains why the alert is
                     # sanitised; this line used to log the raw string one step
@@ -702,6 +767,19 @@ async def _run_collection() -> None:
                     )
                     logger.info("Collected %s: %.4f %s", result.platform, result.balance, result.currency)
                     platforms_ok += 1
+                    service = catalog.get_service(result.platform)
+                    declares_per_node = bool((service.get("collector") or {}).get("per_node_earnings")) if service else False
+                    getter = getattr(collector, "get_per_node_earnings", None) if declares_per_node else None
+                    if declares_per_node and getter is not None:
+                        try:
+                            node_rows = await getter()
+                        except Exception as exc:
+                            logger.warning("Per-node earnings unavailable for %s: %s", result.platform, exc)
+                            node_rows = []
+                        rows = _node_earnings_rows(result.platform, result.currency, node_rows or [])
+                        if rows:
+                            await database.upsert_earnings_many(rows)
+                            logger.info("Collected %s per-node rows: %d", result.platform, len(rows))
                     if result.platform in previously_alerting:
                         # Recovered — drop the stored alert so a future failure counts
                         # as new and notifies again.
@@ -1153,14 +1231,14 @@ def _collector_needs_setup(slug: str, config: dict[str, str]) -> bool:
     balance because the (separate) collector credentials haven't been entered.
     This distinguishes that "not set up yet" state from a real collector error.
     """
-    from app.collectors import _COLLECTOR_ARGS, COLLECTOR_MAP
+    from app.collectors import COLLECTOR_MAP, collector_credential_fields
 
     if slug not in COLLECTOR_MAP:
         return False
-    for arg in _COLLECTOR_ARGS.get(slug, []):
-        if arg.startswith("?"):  # optional arg — not required for setup
+    for field in collector_credential_fields(slug):
+        if not field.get("required", True):
             continue
-        if not config.get(f"{slug}_{arg}", ""):
+        if not config.get(field["key"], ""):
             return True
     return False
 
@@ -2342,23 +2420,28 @@ async def api_credential_health(request: Request) -> list[dict[str, Any]]:
     """
     _require_auth_api(request)
 
-    from app.collectors import _COLLECTOR_ARGS, credential_lifetime, durable_alternative
+    from app.collectors import collector_credential_fields, credential_lifetime, durable_alternative
 
     updated = await database.get_config_updated_at()
     now = datetime.now(UTC)
     report: list[dict[str, Any]] = []
 
-    for slug, args in _COLLECTOR_ARGS.items():
-        missing_durable = [field for field in durable_alternative(slug) if f"{slug}_{field}" not in updated]
-        for arg in args:
-            field = arg.lstrip("?")
-            key = f"{slug}_{field}"
+    from app.collectors import COLLECTOR_MAP
+
+    for slug in sorted(COLLECTOR_MAP):
+        fields = collector_credential_fields(slug)
+        durable_fields = {field["arg"] for field in fields if field.get("durable")} | set(durable_alternative(slug))
+        missing_durable = [field for field in durable_fields if f"{slug}_{field}" not in updated]
+        for field in fields:
+            key = field["key"]
             stamp = updated.get(key)
             if not stamp:
                 continue  # not configured; nothing to report an age for
 
-            meta = credential_lifetime(slug, field) or {}
-            hours_total = meta.get("hours")
+            meta = credential_lifetime(slug, field["arg"]) or {}
+            hours_total = field.get("expires_hours")
+            if hours_total is None:
+                hours_total = meta.get("hours")
             try:
                 age_hours = (now - datetime.fromisoformat(stamp).replace(tzinfo=UTC)).total_seconds() / 3600
             except ValueError:
@@ -2375,16 +2458,18 @@ async def api_credential_health(request: Request) -> list[dict[str, Any]]:
 
             entry: dict[str, Any] = {
                 "service": slug,
-                "field": field,
+                "field": field["arg"],
                 "age_hours": round(age_hours, 1),
                 "expected_lifetime_hours": hours_total,
                 "status": status,
             }
-            if meta.get("why"):
+            if field.get("description"):
+                entry["why"] = field["description"]
+            elif meta.get("why"):
                 entry["why"] = meta["why"]
             # Only nag about a durable alternative when the short-lived credential
             # is the one actually at risk.
-            if missing_durable and hours_total is not None and not meta.get("durable"):
+            if missing_durable and hours_total is not None and not field.get("durable") and not meta.get("durable"):
                 entry["durable_alternative_missing"] = missing_durable
             report.append(entry)
 
@@ -3493,7 +3578,7 @@ async def api_env_info(request: Request) -> list[dict[str, Any]]:
 @app.get("/api/collectors/meta")
 async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
     _require_owner(request)
-    from app.collectors import _COLLECTOR_ARGS, COLLECTOR_MAP
+    from app.collectors import COLLECTOR_MAP, collector_credential_fields
 
     # Single-sourced from database.SECRET_CONFIG_KEYS so this endpoint can never
     # disagree with the encryption-at-rest / masking logic about which config
@@ -3508,22 +3593,11 @@ async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
     # the service they describe.
     meta = []
     for slug in sorted(COLLECTOR_MAP.keys()):
-        args = _COLLECTOR_ARGS.get(slug, [])
         svc = catalog.get_service(slug)
         name = svc.get("name", slug) if svc else slug
-        fields = []
-        for arg in args:
-            optional = arg.startswith("?")
-            arg_name = arg.lstrip("?")
-            config_key = f"{slug}_{arg_name}"
-            fields.append(
-                {
-                    "key": config_key,
-                    "label": arg_name.replace("_", " ").title(),
-                    "secret": arg_name in secret_args,
-                    "required": not optional,
-                }
-            )
+        fields = collector_credential_fields(slug, svc)
+        for field in fields:
+            field["secret"] = bool(field.get("secret")) or field["arg"] in secret_args
         # Payment currency for bonus offset labeling
         payment = (svc.get("payment", {}) if svc else {}) or {}
         pay_currency = payment.get("currency", "USD")
