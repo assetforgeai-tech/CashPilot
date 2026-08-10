@@ -43,6 +43,7 @@ SUBSTITUTIONS = {
     "user_id": "1",
     "worker_id": "1",
     "provider_id": "1",
+    "wallet_id": "1",
     "payout_id": "1",
     "alert_id": "1",
     "id": "1",
