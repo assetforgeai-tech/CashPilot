@@ -9,7 +9,7 @@ Playbook for building CashPilot's internet presence. Track status of each action
 ### Passive Income Calculator Page
 - [ ] Build a page at `cashpilot.geiser.cloud/calculator` or standalone
 - Visitors enter hardware specs (CPU, GPU model, RAM, bandwidth, residential/VPS)
-- Estimates monthly earnings across all 40+ services
+- Estimates monthly earnings across the current provider catalog
 - Every result links to "Deploy all of these with one click using CashPilot"
 - Pure SEO bait — people Google "how much can I earn from Honeygain" constantly
 - Could drive more traffic than everything else combined
@@ -23,7 +23,7 @@ Playbook for building CashPilot's internet presence. Track status of each action
 
 ### "State of Passive Income Sharing 2026" Report
 - [ ] Write comprehensive 15-page PDF/blog post
-- Compare all 40+ services: which pay, which are dead, earnings per GB, GPU model comparisons
+- Compare current providers: which pay, which are active, earnings per GB, runtime model comparisons
 - Residential vs VPS viability analysis
 - No one has made a comprehensive one — position as the authority
 - Gets cited and linked everywhere

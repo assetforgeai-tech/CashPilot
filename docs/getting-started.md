@@ -45,7 +45,7 @@ Navigate to [http://localhost:8080](http://localhost:8080) in your browser. Sinc
 
 ### 3. Browse the service catalog
 
-Filter services by category (bandwidth, DePIN, storage, compute), view earning estimates, and check requirements before deploying.
+Filter providers by category (bandwidth or DePIN), view earning estimates, and check requirements before deploying.
 
 ### 4. Sign up for services
 
@@ -170,14 +170,12 @@ are entirely optional — CashPilot does not bundle an updater.
 
 ## Supported Services
 
-CashPilot tracks **49 services** across four categories:
+CashPilot tracks **21 providers** across two active categories:
 
-- **Bandwidth Sharing** (22 services) -- Share your internet bandwidth for passive income
-- **DePIN** (20 services) -- Decentralized physical infrastructure networks
-- **GPU Compute** (6 services) -- Rent out your GPU for AI and compute workloads
-- **Storage** (1 service) -- Share disk space on decentralized storage networks
+- **Bandwidth Sharing** (16 providers) -- Share your internet bandwidth for passive income
+- **DePIN** (5 providers) -- Decentralized physical infrastructure networks
 
-Of these, **16 services** can be deployed and managed automatically via Docker. The rest are browser extension or desktop-only services tracked in the catalog with signup links and earning estimates.
+Of these, **15 providers** can be deployed and managed automatically via Docker, and **15 collectors** can read earnings from provider APIs or dashboards. The rest are browser extension or desktop-only providers tracked in the catalog with signup links and earning estimates.
 
 Browse the full catalog in the [Service Guides](guides/README.md) section.
 

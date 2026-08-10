@@ -19,7 +19,7 @@ README tables, so the docs should read from it too.
 WHAT IT WRITES
 --------------
 1. The ``Service Guides`` section of ``mkdocs.yml``'s nav, grouped by the
-   catalog's own four categories instead of one flat alphabetical list of 52.
+   catalog's current categories instead of one flat alphabetical list.
 2. ``docs/guides/README.md`` — a filterable index table carrying the fields a
    visitor actually chooses on: category, what it needs (GPU / residential IP /
    storage), whether it runs in Docker or is app-only, payout minimum, status.
@@ -47,12 +47,10 @@ MKDOCS = ROOT / "mkdocs.yml"
 INDEX = GUIDES / "README.md"
 
 #: Display order and headings. Deliberately not alphabetical: bandwidth is what
-#: most visitors can actually run, and storage/compute need hardware.
+#: most visitors can actually run.
 CATEGORY_TITLES = [
     ("bandwidth", "Bandwidth Sharing"),
     ("depin", "DePIN"),
-    ("compute", "GPU Compute"),
-    ("storage", "Storage"),
 ]
 
 #: Guides under docs/guides/ that are not service guides and must be left alone.
@@ -116,14 +114,14 @@ def render_index(services: list[dict]) -> str:
         "",
         "Setup and configuration for every service CashPilot supports.",
         "",
-        f"**{len(services)} services** across {len(grouped)} categories. "
+        f"**{len(services)} providers** across {len(grouped)} categories. "
         "The table is sortable — click a heading to reorder it.",
         "",
         '!!! tip "Choosing what to run"',
         "",
         "    **Bandwidth** services want a residential IP and pay the least per",
-        "    machine, but run anywhere. **GPU compute** pays most and needs an",
-        "    NVIDIA card. **Storage** wants disk and uptime rather than either.",
+        "    machine. **DePIN** providers usually need account/session or",
+        "    browser-profile setup before unattended runtime is reliable.",
         "",
     ]
     for key, title in CATEGORY_TITLES:

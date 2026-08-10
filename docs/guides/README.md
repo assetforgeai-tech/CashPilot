@@ -4,13 +4,13 @@
 
 Setup and configuration for every service CashPilot supports.
 
-**21 services** across 2 categories. The table is sortable — click a heading to reorder it.
+**21 providers** across 2 categories. The table is sortable — click a heading to reorder it.
 
 !!! tip "Choosing what to run"
 
     **Bandwidth** services want a residential IP and pay the least per
-    machine, but run anywhere. **GPU compute** pays most and needs an
-    NVIDIA card. **Storage** wants disk and uptime rather than either.
+    machine. **DePIN** providers usually need account/session or
+    browser-profile setup before unattended runtime is reliable.
 
 ## Bandwidth Sharing
 

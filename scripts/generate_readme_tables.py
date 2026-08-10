@@ -34,7 +34,6 @@ END = "<!-- END GENERATED: {name} -->"
 # from the catalog loader already.
 DOCKER = "docker-services"
 EXTENSION = "extension-services"
-GPU = "gpu-services"
 
 
 def _yes_no(value: object) -> str:
@@ -126,24 +125,15 @@ def _markers(service: dict) -> str:
 def _row(service: dict, kind: str) -> str:
     reqs = service.get("requirements") or {}
     cells = [_link(service) + _markers(service), _guide(service)]
-    if kind == GPU:
-        cells += [
-            _yes_no(reqs.get("residential_ip")),
-            _yes_no(reqs.get("gpu")),
-            str(reqs.get("min_storage") or "N/A"),
-            _payout(service),
-            str(service.get("status", "")).title(),
-        ]
-    else:
-        cells += [
-            _yes_no(reqs.get("residential_ip")),
-            _yes_no(_vps_allowed(reqs)),
-            _devices(reqs.get("devices_per_account")),
-            _devices(reqs.get("devices_per_ip")),
-            _payout(service),
-        ]
-        if kind == EXTENSION:
-            cells.append(str(service.get("status", "")).title())
+    cells += [
+        _yes_no(reqs.get("residential_ip")),
+        _yes_no(_vps_allowed(reqs)),
+        _devices(reqs.get("devices_per_account")),
+        _devices(reqs.get("devices_per_ip")),
+        _payout(service),
+    ]
+    if kind == EXTENSION:
+        cells.append(str(service.get("status", "")).title())
     return "| " + " | ".join(cells) + " |"
 
 
@@ -153,11 +143,7 @@ def _is_dockerable(service: dict) -> bool:
 
 def _table(kind: str) -> str:
     services = [s for s in catalog.get_services() if str(s.get("status")) in {"active", "beta"}]
-    if kind == GPU:
-        selected = [s for s in services if s.get("category") == "compute"]
-        header = "| Service | Guide | Residential IP required | GPU | Min Storage | Payout | Status |"
-        divider = "|---------|-------|:-:|:-:|:-:|--------|--------|"
-    elif kind == DOCKER:
+    if kind == DOCKER:
         selected = [s for s in services if s.get("category") != "compute" and _is_dockerable(s)]
         header = "| Service | Guide | Residential IP required | VPS allowed | Devices / Acct | Devices / IP | Payout |"
         divider = "|---------|-------|:-:|:-:|:-:|:-:|--------|"
@@ -172,7 +158,7 @@ def _table(kind: str) -> str:
 
 def render(readme: str) -> str:
     """Replace every generated region, leaving all other text untouched."""
-    for kind in (DOCKER, EXTENSION, GPU):
+    for kind in (DOCKER, EXTENSION):
         begin, end = BEGIN.format(name=kind), END.format(name=kind)
         if begin not in readme or end not in readme:
             raise SystemExit(

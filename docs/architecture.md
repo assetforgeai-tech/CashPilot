@@ -47,8 +47,6 @@ cashpilot/
     _schema.yml             # Schema documentation
     bandwidth/              # Bandwidth sharing services
     depin/                  # DePIN services
-    storage/                # Storage sharing services
-    compute/                # GPU compute services
   docs/                     # Documentation and guides
     guides/                 # Per-service setup guides
   Dockerfile                # UI image: multi-stage python:3.14-alpine, su-exec, non-root

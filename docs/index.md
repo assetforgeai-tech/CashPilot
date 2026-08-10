@@ -65,7 +65,7 @@ It supports both **Docker-based services** (deployed and managed automatically) 
 
     ---
 
-    Bandwidth sharing, DePIN, storage, and GPU compute -- the broadest catalog available.
+Bandwidth sharing and DePIN providers with guided setup, runtime state, and earnings tracking.
 
 -   :material-cellphone: **Mobile-Responsive Dark UI**
 
@@ -108,8 +108,8 @@ Then open [http://localhost:8080](http://localhost:8080) and follow the setup wi
 | Earnings dashboard | **Yes** | No | No | No | No |
 | Historical charts | **Yes** | No | No | No | No |
 | Multi-node fleet management | **Yes** | No | No | No | No |
-| Service catalog with guides | **49 services** | 17 | 8 | 14 | 8 |
-| Automated earnings collection | **13 collectors** | 0 | 0 | 0 | 0 |
+| Service catalog with guides | **21 providers** | 17 | 8 | 14 | 8 |
+| Automated earnings collection | **15 collectors** | 0 | 0 | 0 | 0 |
 | Multi-arch (amd64 + arm64) | **Yes** | Yes | Yes | No | No |
 | Credential encryption | **Yes** | No | No | No | No |
 | Compose export | **Yes** | Yes | Yes | Yes | Yes |
@@ -120,7 +120,7 @@ Then open [http://localhost:8080](http://localhost:8080) and follow the setup wi
     Bandwidth sharing services generally route legitimate traffic (market research, ad verification, price comparison, content delivery) through your connection. That said, you are sharing your IP address, so review each service's terms of service and privacy policy carefully before signing up. Running these on a VPS rather than residential IP is an option for some services. **This is not legal advice.**
 
 ??? question "How much can I earn?"
-    Earnings vary widely based on location, number of devices, and which services you run. A realistic expectation for a single residential server running 10-15 services is **$30 - $100/month**. Adding more servers or GPU compute services can increase this significantly. The dashboard shows your actual earnings over time so you can optimize.
+Earnings vary widely based on location, number of devices, and which providers you run. A realistic expectation for a single residential server running several bandwidth providers is **$30 - $100/month**. Adding more workers can increase this, and the dashboard shows your actual earnings over time so you can optimize.
 
 ??? question "Can I run on a VPS or cloud server?"
     Some services require a residential IP and will not pay (or will ban) VPS/datacenter IPs. These are marked as "Residential Only" in the service catalog. Services that work on VPS are a good way to scale up without additional home hardware.

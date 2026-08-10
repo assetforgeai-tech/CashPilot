@@ -59,7 +59,7 @@ class TestNoGuideIsOrphaned:
 
     def test_the_catalog_is_not_empty(self):
         """Otherwise every assertion below is vacuously true."""
-        assert len(catalog_slugs()) >= 40
+        assert len(catalog_slugs()) >= 21
 
     def test_every_service_guide_is_in_the_nav(self):
         missing = sorted({p.stem for p in GUIDES.glob("*.md")} - NON_SERVICE - set(nav_refs()))
@@ -91,9 +91,9 @@ class TestTheIndexMatchesTheCatalog:
         assert not missing, f"absent from the guides index: {missing}"
 
     def test_the_advertised_count_is_the_real_count(self):
-        """The index said "49 services" while the catalog held 50."""
-        stated = re.search(r"\*\*(\d+) services\*\*", INDEX.read_text(encoding="utf-8"))
-        assert stated, "the index no longer states how many services there are"
+        """The index said "49 services" while the catalog held a different count."""
+        stated = re.search(r"\*\*(\d+) providers\*\*", INDEX.read_text(encoding="utf-8"))
+        assert stated, "the index no longer states how many providers there are"
         assert int(stated.group(1)) == len(catalog_slugs())
 
     def test_it_is_marked_generated(self):
@@ -105,7 +105,7 @@ class TestGuidesAreGroupedByCategory:
     def test_the_nav_uses_the_catalog_categories(self):
         text = MKDOCS.read_text(encoding="utf-8")
         block = text[text.index("  - Service Guides:") :]
-        for heading in ("Bandwidth Sharing", "DePIN", "GPU Compute", "Storage"):
+        for heading in ("Bandwidth Sharing", "DePIN"):
             assert f"- {heading}:" in block, f"nav is not grouped by {heading}"
 
     def test_the_guides_are_not_one_flat_list(self):
@@ -170,7 +170,7 @@ class TestGuideContentIsUntouched:
     """The bead is explicit: do not rewrite guide content, and referral links
     live in these files. Referral URLs are revenue."""
 
-    @pytest.mark.parametrize("slug", ["honeygain", "iproyal", "traffmonetizer"])
+    @pytest.mark.parametrize("slug", ["iproyal", "traffmonetizer"])
     def test_referral_links_survive(self, slug):
         text = (GUIDES / f"{slug}.md").read_text(encoding="utf-8")
         assert re.search(r"https?://", text), f"{slug}.md lost every link"

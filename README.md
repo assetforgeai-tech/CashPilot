@@ -18,7 +18,7 @@ CashPilot is a self-hosted platform that lets you deploy, manage, and monitor pa
 
 It supports both **Docker-based services** (deployed and managed automatically) and **browser extension / desktop-only services** (tracked via the web UI with signup links, earning estimates, and balance monitoring). Whether a service runs in a container or in your browser, CashPilot aggregates all your earnings into a unified dashboard with historical tracking.
 
-The key differentiator: a browser-based setup wizard guides you through account creation and service deployment, orchestrates containers through Docker workers, and collects earnings from 40+ services across bandwidth sharing, DePIN, storage, and GPU compute categories.
+The key differentiator: a browser-based setup wizard guides you through account creation and provider deployment, orchestrates containers through Docker workers, and collects earnings from 21 providers across bandwidth sharing and DePIN categories.
 
 ![Dashboard](docs/screenshot-dashboard.png)
 
@@ -28,7 +28,7 @@ The key differentiator: a browser-based setup wizard guides you through account 
 - **One-click container deployment** for 16+ passive income services
 - **Real-time earnings dashboard** with historical charts and trend analysis
 - **Container health monitoring** -- CPU, memory, network, and uptime at a glance
-- **Multi-category support** -- bandwidth sharing, DePIN, storage sharing, GPU compute
+- **Multi-category support** -- bandwidth sharing and DePIN providers
 - **Automatic earnings collection** from service APIs and dashboards
 - **Mobile-responsive dark UI** -- manage your fleet from any device
 - **Simple two-container setup** -- UI + Worker, no dependencies to install
@@ -107,15 +107,6 @@ These services have no Docker image. CashPilot lists them in the catalog with si
 | [Uprock](https://link.uprock.com/i/33e8492e) | [Guide](docs/guides/uprock.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto | Active |
 <!-- END GENERATED: extension-services -->
 
-### GPU Compute
-
-GPU-intensive computing services. Requires compatible hardware.
-
-<!-- BEGIN GENERATED: gpu-services -->
-| Service | Guide | Residential IP required | GPU | Min Storage | Payout | Status |
-|---------|-------|:-:|:-:|:-:|--------|--------|
-<!-- END GENERATED: gpu-services -->
-
 > **Note:** Earnings vary widely by location, hardware, and demand -- see individual guide pages in `docs/guides/` for details.
 
 ## How It Works
@@ -143,8 +134,6 @@ cashpilot/
   services/       # YAML service definitions (source of truth)
     bandwidth/    # Bandwidth sharing services
     depin/        # DePIN services
-    storage/      # Storage sharing services
-    compute/      # GPU compute services
   docs/           # Documentation and guides
 ```
 
@@ -348,7 +337,7 @@ CashPilot is built around three things that shape its whole design:
 
 - **A fleet, not a machine.** One dashboard holds the state for many servers, each running a worker. Earnings are collected centrally exactly once, so nothing is double-counted, and every figure drills down per server and per service.
 - **Earnings pulled from the providers themselves.** 15 collectors authenticate against provider APIs and dashboards and record real balances into a local history, rather than reporting that a container is running. That is what makes "running but not earning" detectable at all.
-- **Breadth beyond bandwidth.** 50 catalogued services spanning bandwidth sharing, DePIN, storage and GPU compute, each with a setup guide, a payout method, and a status that is re-checked weekly in CI.
+- **Breadth beyond bandwidth.** 21 catalogued providers spanning bandwidth sharing and DePIN, each with a setup guide, a payout method, and a status that is re-checked weekly in CI.
 
 If none of those matter to you, use whichever tool you prefer — they will all start the same containers.
 
