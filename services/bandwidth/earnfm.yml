@@ -5,9 +5,8 @@ status: active
 website: https://earn.fm
 description: >
   Earn.fm pays you for sharing your internet bandwidth. The deployable client
-  uses a UUID API key from Account Settings; the earnings collector still uses
-  the dashboard email/password login flow because no stable public balance API
-  key contract is documented.
+  uses a UUID API key from More -> Your API Key. The dashboard shows
+  residential, datacenter, referral, pending, and available earnings buckets.
 short_description: Bandwidth sharing - API-key client, lightweight Docker
 
 referral:
@@ -25,7 +24,7 @@ docker:
       label: "API Key"
       required: true
       secret: true
-      description: "Log in at <a href=\"https://app.earn.fm\">app.earn.fm</a> → click your profile icon (top right) → Account Settings → copy the API Key (UUID format)"
+      description: "Log in at <a href=\"https://app.earn.fm\">app.earn.fm</a> -> click More -> Your API Key -> copy the UUID API key"
   ports: []
   volumes: []
   command: ""
@@ -55,7 +54,7 @@ earnings:
 
 cashout:
   method: redirect
-  dashboard_url: "https://app.earn.fm/"
+  dashboard_url: "https://app.earn.fm/#/payout"
   min_amount: 3.0
   currency: USD
 
@@ -63,8 +62,8 @@ platforms: [docker, linux]
 
 collector:
   type: api
-  notes: "Supabase email/password auth. Docker client uses separate EARNFM_TOKEN UUID API key for bandwidth sharing only."
-  credential_hint: "Use your Earn.fm account email and password (same as <a href='https://app.earn.fm' target='_blank'>app.earn.fm</a> login)."
+  notes: "Dashboard visibly exposes balance, bandwidth totals, residential and datacenter earnings, referral earnings, available funds, and pending balance. Docker client uses the UUID EARNFM_TOKEN from More -> Your API Key."
+  credential_hint: "Use the API key shown under More -> Your API Key in <a href='https://app.earn.fm' target='_blank'>app.earn.fm</a>."
 
 payout:
   model: internal

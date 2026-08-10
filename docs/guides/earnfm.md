@@ -5,7 +5,7 @@
 
 ## Description
 
-Earn.fm pays you for sharing your internet bandwidth. The deployable client uses a UUID API key from Account Settings; the earnings collector still uses the dashboard email/password login flow because no stable public balance API key contract is documented.
+Earn.fm pays you for sharing your internet bandwidth. The deployable client uses a UUID API key from More -> Your API Key. The dashboard shows residential, datacenter, referral, pending, and available earnings buckets.
 
 ## Earning Estimates
 
@@ -37,7 +37,7 @@ Sign up at [Earn.fm](https://earn.fm/ref/GEISYB91).
 
 ### 2. Get your API key
 
-After signing up, go to [app.earn.fm](https://app.earn.fm) > Account Settings and copy your UUID API key.
+After signing up, go to [app.earn.fm](https://app.earn.fm) > More > Your API Key and copy your UUID API key.
 
 ### 3. Deploy with CashPilot
 
@@ -52,4 +52,4 @@ In the CashPilot web UI, find **Earn.fm** in the service catalog and click **Dep
 
 | Variable | Label | Required | Secret | Description |
 |----------|-------|:--------:|:------:|-------------|
-| `EARNFM_TOKEN` | API Key | Yes | Yes | UUID API key from app.earn.fm > Account Settings |
+| `EARNFM_TOKEN` | API Key | Yes | Yes | UUID API key from app.earn.fm > More > Your API Key |
