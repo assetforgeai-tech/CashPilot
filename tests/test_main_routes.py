@@ -1070,6 +1070,24 @@ class TestApiConfig:
             assert resp.status_code == 200
             mock_save.assert_called_once()
 
+    def test_api_set_config_dashboard_only_does_not_create_external_deployment(self, client):
+        svc = {
+            "slug": "spide",
+            "collector": {"type": "manual"},
+            "dashboard": {"credentials": [{"key": "token", "kind": "cookie"}]},
+        }
+        with (
+            _auth_owner(),
+            patch("app.main.database.set_config_bulk", new_callable=AsyncMock),
+            patch("app.main.database.get_config", new_callable=AsyncMock, return_value={"spide_token": "tok"}),
+            patch("app.main.catalog.get_service", return_value=svc),
+            patch("app.main.database.get_deployment", new_callable=AsyncMock, return_value=None),
+            patch("app.main.database.save_deployment", new_callable=AsyncMock) as mock_save,
+        ):
+            resp = client.post("/api/config", json={"data": {"spide_token": "tok"}})
+            assert resp.status_code == 200
+            mock_save.assert_not_called()
+
     def test_api_clear_service_config(self, client):
         svc = {"slug": "grass", "docker": {}}
         with (
@@ -1081,6 +1099,49 @@ class TestApiConfig:
         ):
             resp = client.delete("/api/config/grass")
             assert resp.status_code == 200
+
+    def test_api_clear_service_config_removes_dashboard_credentials(self, client):
+        svc = {
+            "slug": "spide",
+            "docker": {},
+            "collector": {"type": "manual"},
+            "dashboard": {"credentials": [{"key": "token", "kind": "cookie"}]},
+            "deploy": {"credentials": [{"key": "machine_id", "kind": "device_id"}]},
+        }
+        with (
+            _auth_owner(),
+            patch("app.main.database.delete_config_keys", new_callable=AsyncMock) as mock_delete,
+            patch("app.main.catalog.get_service", return_value=svc),
+            patch("app.main.database.get_deployment", new_callable=AsyncMock, return_value=None),
+            patch("app.main.database.remove_deployment", new_callable=AsyncMock),
+        ):
+            resp = client.delete("/api/config/spide")
+            assert resp.status_code == 200
+            assert set(mock_delete.await_args.args[0]) == {
+                "spide_token",
+                "spide_machine_id",
+                "spide_signup_bonus",
+            }
+
+    def test_api_credential_health_includes_dashboard_credentials(self, client):
+        updated = {"spide_token": "2026-08-10T00:00:00+00:00"}
+        svc = {
+            "name": "Spide",
+            "collector": {"type": "manual"},
+            "dashboard": {
+                "credentials": [
+                    {"key": "token", "label": "Token", "kind": "cookie", "secret": True, "expires_hours": 12}
+                ]
+            },
+        }
+        with (
+            _auth_owner(),
+            patch("app.main.database.get_config_updated_at", new_callable=AsyncMock, return_value=updated),
+            patch("app.main.catalog.get_service", return_value=svc),
+        ):
+            resp = client.get("/api/credentials/health")
+            assert resp.status_code == 200
+            assert any(row["service"] == "spide" for row in resp.json())
 
     def test_api_clear_config_unknown_service(self, client):
         with _auth_owner():

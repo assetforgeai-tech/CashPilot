@@ -2420,16 +2420,22 @@ async def api_credential_health(request: Request) -> list[dict[str, Any]]:
     """
     _require_auth_api(request)
 
-    from app.collectors import collector_credential_fields, credential_lifetime, durable_alternative
+    from app.collectors import collector_credential_fields, credential_lifetime, durable_alternative, service_credential_fields
 
     updated = await database.get_config_updated_at()
     now = datetime.now(UTC)
     report: list[dict[str, Any]] = []
 
-    from app.collectors import COLLECTOR_MAP
-
-    for slug in sorted(COLLECTOR_MAP):
-        fields = collector_credential_fields(slug)
+    for svc in catalog.get_services():
+        slug = svc.get("slug", "")
+        if not slug:
+            continue
+        svc = catalog.get_service(slug) or svc
+        fields = (
+            collector_credential_fields(slug, svc)
+            + service_credential_fields(slug, "deploy", svc, fallback=False)
+            + service_credential_fields(slug, "dashboard", svc, fallback=False)
+        )
         durable_fields = {field["arg"] for field in fields if field.get("durable")} | set(durable_alternative(slug))
         missing_durable = [field for field in durable_fields if f"{slug}_{field}" not in updated]
         for field in fields:
@@ -3712,13 +3718,21 @@ async def api_set_config(
 async def api_clear_service_config(request: Request, slug: str) -> dict[str, str]:
     """Remove all stored credentials (and signup bonus) for a service."""
     _require_owner(request)
-    from app.collectors import _COLLECTOR_ARGS
+    from app.collectors import collector_credential_fields, service_credential_fields
 
-    arg_keys = _COLLECTOR_ARGS.get(slug)
-    if not arg_keys:
+    svc = catalog.get_service(slug)
+    if not svc:
         raise HTTPException(status_code=404, detail="Unknown service")
 
-    config_keys = [f"{slug}_{a.lstrip('?')}" for a in arg_keys]
+    fields = (
+        collector_credential_fields(slug, svc)
+        + service_credential_fields(slug, "deploy", svc, fallback=False)
+        + service_credential_fields(slug, "dashboard", svc, fallback=False)
+    )
+    if not fields:
+        raise HTTPException(status_code=404, detail="Unknown service")
+
+    config_keys = [field["key"] for field in fields]
     config_keys.append(f"{slug}_signup_bonus")
     await database.delete_config_keys(config_keys)
 
