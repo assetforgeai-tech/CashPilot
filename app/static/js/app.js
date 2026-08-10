@@ -2978,7 +2978,8 @@ const CP = (() => {
       return;
     }
     const secrets = config._secrets || {};
-    const items = meta.map(col => {
+    const renderCard = (col, fields, sectionId, sectionLabel, clearable) => {
+      if (!fields.length) return '';
       // A collector is "configured" if any secret field has a stored value
       // (per _secrets) or any non-secret field carries a real value.
       // EVERY required field, not any field.
@@ -2988,7 +2989,7 @@ const CP = (() => {
       // make_collectors skipped it for the missing one, so it silently never
       // collected. The badge asserted the opposite of what was happening.
       const isSet = f => (f.secret ? !!secrets[f.key] : !!(config[f.key] || '').trim());
-      const required = col.fields.filter(f => f.required);
+      const required = fields.filter(f => f.required);
       const setCount = required.filter(isSet).length;
       const configured = required.length > 0 && setCount === required.length;
       const partial = setCount > 0 && setCount < required.length;
@@ -2997,7 +2998,7 @@ const CP = (() => {
         : configured
         ? '<span class="badge badge-deployed">Configured</span>'
         : '<span class="badge badge-category">Not configured</span>';
-      const fields = col.fields.map(f => {
+      const renderedFields = fields.map(f => {
         // Secret fields never receive a plaintext value from /api/config — render
         // them empty (write-only). Submitting blank preserves the stored secret.
         const isSecretSet = f.secret && !!secrets[f.key];
@@ -3020,23 +3021,37 @@ const CP = (() => {
           </div>
         </div>`;
       }).join('');
-      const clearBtn = configured && _isOwner
+      const clearBtn = clearable && configured && _isOwner
         ? `<div style="margin-top:8px; text-align:right;"><button class="btn btn-ghost btn-sm" style="color:var(--error); font-size:0.75rem;" data-action="clearServiceCredentials" data-a1="${escapeHtml(col.slug)}" data-a2="${escapeHtml(col.name)}">Clear Credentials</button></div>`
         : '';
       return `
-      <details class="collector-section" id="collector-${col.slug}">
+      <details class="collector-section" id="collector-${col.slug}-${sectionId}">
         <summary class="collector-header">
-          <span class="collector-name">${escapeHtml(col.name)}</span>
+          <span class="collector-name">${escapeHtml(col.name)} <span style="opacity:0.55; font-weight:400;">${escapeHtml(sectionLabel)}</span></span>
           ${statusBadge}
         </summary>
         <div class="collector-body">
           ${col.hint ? `<div class="form-hint" style="margin-bottom:12px;">${sanitizeHint(col.hint)}</div>` : ''}
-          ${fields}
+          ${renderedFields}
           ${clearBtn}
         </div>
       </details>`;
-    }).join('');
-    container.innerHTML = `<div class="collectors-grid">${items}</div>`;
+    };
+    const groups = [
+      { key: 'deploy_credentials', label: 'Deploy runtime', clearable: false },
+      { key: 'fields', label: 'Earnings collector', clearable: true },
+      { key: 'dashboard_credentials', label: 'Dashboard / session', clearable: false },
+    ];
+    const groupHtml = groups.map(group => {
+      const items = meta.map(col => renderCard(col, col[group.key] || [], group.key, group.label, group.clearable)).filter(Boolean);
+      if (!items.length) return '';
+      return `
+      <section class="settings-credential-group">
+        <h3 class="section-title" style="font-size:1rem; margin: 0 0 10px;">${escapeHtml(group.label)}</h3>
+        <div class="collectors-grid">${items.join('')}</div>
+      </section>`;
+    }).filter(Boolean).join('');
+    container.innerHTML = groupHtml || '<p style="color:var(--text-muted);font-size:0.85rem;">No collectors available.</p>';
   }
 
   async function saveCollectorCredentials() {

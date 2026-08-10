@@ -98,7 +98,7 @@ docker exec cashpilot-mysterium ls -l /dev/net/tun
 
 ```bash
 docker run -d --name cashpilot-mysterium \
-  --network host --restart unless-stopped \
+  --network host --restart always \
   --cap-drop ALL --cap-add NET_ADMIN \
   --device /dev/net/tun \
   --security-opt no-new-privileges:true \

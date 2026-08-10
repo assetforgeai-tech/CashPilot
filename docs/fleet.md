@@ -130,7 +130,7 @@ services:
       - CASHPILOT_API_KEY=your-shared-api-key
       - CASHPILOT_WORKER_NAME=server-b
       - CASHPILOT_WORKER_URL=http://server-b:8081
-    restart: unless-stopped
+    restart: always
     security_opt:
       - no-new-privileges:true
 

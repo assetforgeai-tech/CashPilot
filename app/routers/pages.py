@@ -95,3 +95,12 @@ async def page_proxy_pool(request: Request):
     if not auth_module.require_role(user, "owner"):
         raise HTTPException(status_code=403, detail="Owner access required")
     return deps.templates.TemplateResponse(request, "proxy_pool.html", {"user": user})
+
+@router.get("/myst-wallet", response_class=HTMLResponse)
+async def page_myst_wallet(request: Request):
+    user = auth_module.get_current_user(request)
+    if not user:
+        return deps._login_redirect()
+    if not auth_module.require_role(user, "owner"):
+        raise HTTPException(status_code=403, detail="Owner access required")
+    return deps.templates.TemplateResponse(request, "myst_wallet.html", {"user": user})

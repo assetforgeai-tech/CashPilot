@@ -85,14 +85,20 @@ def _is_secret_field(arg: str, kind: str) -> bool:
     lowered = arg.lower()
     return kind in _SECRET_KINDS or any(lowered.endswith(suffix) for suffix in database.SECRET_CONFIG_KEYS)
 
-def collector_credential_fields(slug: str, service: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-    """UI/config metadata for one collector, YAML-first with registry fallback."""
+def service_credential_fields(
+    slug: str,
+    section: str,
+    service: dict[str, Any] | None = None,
+    *,
+    fallback: bool = False,
+) -> list[dict[str, Any]]:
+    """UI/config metadata for one credential section."""
     if service is None:
         from app import catalog
 
         service = catalog.get_service(slug)
-    collector = (service or {}).get("collector") or {}
-    declared = collector.get("credentials")
+    owner = (service or {}).get(section) or {}
+    declared = owner.get("credentials")
     if isinstance(declared, list):
         fields: list[dict[str, Any]] = []
         for item in declared:
@@ -120,6 +126,9 @@ def collector_credential_fields(slug: str, service: dict[str, Any] | None = None
         if fields:
             return fields
 
+    if not fallback:
+        return []
+
     fields = []
     for arg in _COLLECTOR_ARGS.get(slug, []):
         optional = arg.startswith("?")
@@ -137,6 +146,10 @@ def collector_credential_fields(slug: str, service: dict[str, Any] | None = None
             }
         )
     return fields
+
+def collector_credential_fields(slug: str, service: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """UI/config metadata for one collector, YAML-first with registry fallback."""
+    return service_credential_fields(slug, "collector", service, fallback=True)
 
 # How long each credential actually lasts, and why it matters.
 #
@@ -364,6 +377,7 @@ __all__ = [
     "EarningsResult",
     "COLLECTOR_MAP",
     "collector_credential_fields",
+    "service_credential_fields",
     "make_collectors",
     "close_all_collectors",
 ]

@@ -281,6 +281,21 @@ _WORKER_KEY_DISCARD_AFTER = 10
 
 _ENC_PREFIX = "enc:"
 
+_MYST_WALLETS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS myst_wallets (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    wallet_fingerprint TEXT    NOT NULL UNIQUE,
+    raw_wallet_enc     TEXT    NOT NULL,
+    address            TEXT    NOT NULL DEFAULT '',
+    state              TEXT    NOT NULL DEFAULT 'AVAILABLE',
+    funding            TEXT    NOT NULL DEFAULT 'UNFUNDED',
+    leased_to_worker_id INTEGER,
+    quarantined_reason TEXT    NOT NULL DEFAULT '',
+    imported_at        TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at         TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+"""
+
 
 def encrypt_value(value: str) -> str:
     """Encrypt a string value, returning an 'enc:' prefixed token."""
@@ -463,6 +478,19 @@ CREATE TABLE IF NOT EXISTS proxy_assignments (
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY(worker_id) REFERENCES workers(id) ON DELETE CASCADE,
     FOREIGN KEY(proxy_id) REFERENCES proxy_endpoints(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS myst_wallets (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    wallet_fingerprint TEXT    NOT NULL UNIQUE,
+    raw_wallet_enc     TEXT    NOT NULL,
+    address            TEXT    NOT NULL DEFAULT '',
+    state              TEXT    NOT NULL DEFAULT 'AVAILABLE',
+    funding            TEXT    NOT NULL DEFAULT 'UNFUNDED',
+    leased_to_worker_id INTEGER,
+    quarantined_reason TEXT    NOT NULL DEFAULT '',
+    imported_at        TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at         TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS user_preferences (
@@ -2098,6 +2126,57 @@ async def list_proxy_pool() -> list[dict[str, Any]]:
                 item["udp_ok"] = bool(item["udp_ok"])
             rows.append(item)
         return rows
+    finally:
+        await db.close()
+
+async def _ensure_myst_wallets_table(db: Any) -> None:
+    await db.executescript(_MYST_WALLETS_SCHEMA)
+
+async def import_myst_wallets(raw: str) -> int:
+    from app.myst_wallets import iter_wallet_records
+
+    rows = list(iter_wallet_records(raw))
+    if not rows:
+        return 0
+    db = await _get_db()
+    try:
+        await _ensure_myst_wallets_table(db)
+        for row in rows:
+            await db.execute(
+                """
+                INSERT INTO myst_wallets (
+                    wallet_fingerprint, raw_wallet_enc, address, state, funding, updated_at
+                )
+                VALUES (?, ?, ?, 'AVAILABLE', 'UNFUNDED', datetime('now'))
+                ON CONFLICT(wallet_fingerprint) DO UPDATE SET
+                    raw_wallet_enc = excluded.raw_wallet_enc,
+                    address = excluded.address,
+                    updated_at = datetime('now')
+                """,
+                (
+                    row["wallet_fingerprint"],
+                    encrypt_value(row["raw_wallet"]),
+                    row["address"],
+                ),
+            )
+        await db.commit()
+        return len(rows)
+    finally:
+        await db.close()
+
+async def list_myst_wallets() -> list[dict[str, Any]]:
+    db = await _get_db()
+    try:
+        await _ensure_myst_wallets_table(db)
+        cursor = await db.execute(
+            """
+            SELECT id, wallet_fingerprint, address, state, funding, leased_to_worker_id,
+                   quarantined_reason, imported_at, updated_at
+            FROM myst_wallets
+            ORDER BY id DESC
+            """
+        )
+        return [dict(row) for row in await cursor.fetchall()]
     finally:
         await db.close()
 

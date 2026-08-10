@@ -31,7 +31,37 @@ _CATEGORIES = {"bandwidth", "depin", "storage", "compute"}
 _VALID_STATUSES = {"active", "beta", "broken", "dead", "dropped"}
 _EGRESS_MODES = {"proxy", "direct", "auto"}
 _EGRESS_UDP = {"required", "optional", "none"}
-_CREDENTIAL_KINDS = {"email", "password", "api_key", "token", "cookie", "cid", "device_id", "text"}
+_CREDENTIAL_KINDS = {"email", "password", "api_key", "token", "cookie", "cid", "device_id", "text", "file"}
+
+def _validate_credentials(data: dict[str, Any], path: Path, owner: str) -> list[str]:
+    errors: list[str] = []
+    section = data.get(owner)
+    if section is None:
+        return errors
+    if not isinstance(section, dict):
+        return [f"{path.name}: {owner} must be a mapping, not {type(section).__name__}"]
+    credentials = section.get("credentials")
+    if credentials is None:
+        return errors
+    if not isinstance(credentials, list):
+        return [f"{path.name}: {owner}.credentials must be a list"]
+    for i, item in enumerate(credentials):
+        if not isinstance(item, dict):
+            errors.append(f"{path.name}: {owner}.credentials[{i}] must be a mapping")
+            continue
+        key = item.get("key")
+        if not isinstance(key, str) or not key.strip():
+            errors.append(f"{path.name}: {owner}.credentials[{i}] must have a non-empty string 'key'")
+        kind = item.get("kind")
+        if kind is not None and kind not in _CREDENTIAL_KINDS:
+            errors.append(f"{path.name}: {owner}.credentials[{i}].kind must be one of {sorted(_CREDENTIAL_KINDS)}")
+        for flag in ("secret", "required", "durable"):
+            if flag in item and not isinstance(item[flag], bool):
+                errors.append(f"{path.name}: {owner}.credentials[{i}].{flag} must be boolean")
+        expires = item.get("expires_hours")
+        if expires is not None and (not isinstance(expires, (int, float)) or expires <= 0):
+            errors.append(f"{path.name}: {owner}.credentials[{i}].expires_hours must be a positive number")
+    return errors
 
 
 def _validate(data: dict[str, Any], path: Path) -> list[str]:
@@ -76,35 +106,8 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
                 if not isinstance(key, str) or not key.strip():
                     errors.append(f"{path.name}: docker.env[{i}] must have a non-empty string 'key'")
 
-    collector = data.get("collector")
-    if collector is not None:
-        if not isinstance(collector, dict):
-            errors.append(f"{path.name}: collector must be a mapping, not {type(collector).__name__}")
-        else:
-            credentials = collector.get("credentials")
-            if credentials is not None:
-                if not isinstance(credentials, list):
-                    errors.append(f"{path.name}: collector.credentials must be a list")
-                else:
-                    for i, item in enumerate(credentials):
-                        if not isinstance(item, dict):
-                            errors.append(f"{path.name}: collector.credentials[{i}] must be a mapping")
-                            continue
-                        key = item.get("key")
-                        if not isinstance(key, str) or not key.strip():
-                            errors.append(f"{path.name}: collector.credentials[{i}] must have a non-empty string 'key'")
-                        kind = item.get("kind")
-                        if kind is not None and kind not in _CREDENTIAL_KINDS:
-                            errors.append(
-                                f"{path.name}: collector.credentials[{i}].kind must be one of {sorted(_CREDENTIAL_KINDS)}"
-                            )
-                        for flag in ("secret", "required", "durable"):
-                            if flag in item and not isinstance(item[flag], bool):
-                                errors.append(f"{path.name}: collector.credentials[{i}].{flag} must be boolean")
-                        expires = item.get("expires_hours")
-                        if expires is not None:
-                            if not isinstance(expires, (int, float)) or expires <= 0:
-                                errors.append(f"{path.name}: collector.credentials[{i}].expires_hours must be a positive number")
+    for section in ("collector", "deploy", "dashboard"):
+        errors.extend(_validate_credentials(data, path, section))
 
     reqs = data.get("requirements")
     if isinstance(reqs, dict):

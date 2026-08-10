@@ -267,7 +267,7 @@ def deploy_raw(
         labels=all_labels,
         hostname=hostname or f"cashpilot-{slug}",
         detach=True,
-        restart_policy={"Name": "unless-stopped"},
+        restart_policy={"Name": "always"},
         # None means Docker's default runtime, which is what every service uses
         # unless an advanced user has deliberately opted one into another.
         runtime=runtime or None,

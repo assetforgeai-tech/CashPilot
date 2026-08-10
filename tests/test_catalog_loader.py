@@ -227,6 +227,41 @@ class TestValidate:
             tmp_path / "t.yml",
         ) == []
 
+    def test_validate_accepts_deploy_and_dashboard_credentials(self, tmp_path):
+        payload = {
+            **self._base(),
+            "deploy": {
+                "credentials": [
+                    {
+                        "key": "seed_bundle",
+                        "label": "Seed bundle",
+                        "kind": "file",
+                        "secret": True,
+                        "required": True,
+                        "source": "CashPilot secret inventory",
+                    }
+                ]
+            },
+            "dashboard": {
+                "credentials": [
+                    {
+                        "key": "token_cookie",
+                        "label": "Dashboard token",
+                        "kind": "cookie",
+                        "secret": True,
+                        "required": True,
+                        "expires_hours": 12,
+                    }
+                ]
+            },
+        }
+        assert catalog._validate(payload, tmp_path / "t.yml") == []
+
+    def test_validate_rejects_malformed_deploy_and_dashboard_credentials(self, tmp_path):
+        p = tmp_path / "t.yml"
+        assert catalog._validate({**self._base(), "deploy": {"credentials": "bad"}}, p)
+        assert catalog._validate({**self._base(), "dashboard": {"credentials": [{"key": "x", "kind": "bad"}]}}, p)
+
     def test_validate_allows_empty_image_for_non_deployable(self, tmp_path):
         # Extension/app-only services list an empty image and must still load.
         assert catalog._validate({**self._base(), "docker": {"image": ""}}, tmp_path / "t.yml") == []

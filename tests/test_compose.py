@@ -52,7 +52,7 @@ class TestServiceToCompose:
         assert result is not None
         assert result["image"] == "honeygain/honeygain:latest"
         assert result["container_name"] == "cashpilot-honeygain"
-        assert result["restart"] == "unless-stopped"
+        assert result["restart"] == "always"
 
     def test_no_image_returns_none(self):
         svc = _mock_service(image="")

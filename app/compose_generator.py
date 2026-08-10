@@ -70,7 +70,7 @@ def _service_to_compose(
     compose_svc: dict[str, Any] = {
         "image": image,
         "container_name": service_name,
-        "restart": "unless-stopped",
+        "restart": "always",
         "labels": {
             LABEL_MANAGED: "true",
             LABEL_SERVICE: slug,

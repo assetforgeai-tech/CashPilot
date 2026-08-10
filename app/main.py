@@ -3578,7 +3578,7 @@ async def api_env_info(request: Request) -> list[dict[str, Any]]:
 @app.get("/api/collectors/meta")
 async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
     _require_owner(request)
-    from app.collectors import COLLECTOR_MAP, collector_credential_fields
+    from app.collectors import collector_credential_fields, service_credential_fields
 
     # Single-sourced from database.SECRET_CONFIG_KEYS so this endpoint can never
     # disagree with the encryption-at-rest / masking logic about which config
@@ -3592,17 +3592,31 @@ async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
     # app/'. Kept in app/ they also drifted out of reach of anyone editing
     # the service they describe.
     meta = []
-    for slug in sorted(COLLECTOR_MAP.keys()):
-        svc = catalog.get_service(slug)
+    for catalog_svc in catalog.get_services():
+        slug = catalog_svc.get("slug", "")
+        if not slug:
+            continue
+        svc = catalog.get_service(slug) or catalog_svc
         name = svc.get("name", slug) if svc else slug
         fields = collector_credential_fields(slug, svc)
         for field in fields:
+            field["secret"] = bool(field.get("secret")) or field["arg"] in secret_args
+        deploy_fields = service_credential_fields(slug, "deploy", svc, fallback=False)
+        dashboard_fields = service_credential_fields(slug, "dashboard", svc, fallback=False)
+        for field in deploy_fields + dashboard_fields:
             field["secret"] = bool(field.get("secret")) or field["arg"] in secret_args
         # Payment currency for bonus offset labeling
         payment = (svc.get("payment", {}) if svc else {}) or {}
         pay_currency = payment.get("currency", "USD")
 
-        entry: dict[str, Any] = {"slug": slug, "name": name, "fields": fields, "currency": pay_currency}
+        entry: dict[str, Any] = {
+            "slug": slug,
+            "name": name,
+            "fields": fields,
+            "deploy_credentials": deploy_fields,
+            "dashboard_credentials": dashboard_fields,
+            "currency": pay_currency,
+        }
         hint = (svc.get("collector") or {}).get("credential_hint") if svc else None
         if hint:
             entry["hint"] = hint
@@ -4412,10 +4426,12 @@ async def api_fleet_api_key_reveal(request: Request) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 from app.routers import auth as auth_router  # noqa: E402
 from app.routers import pages as pages_router  # noqa: E402
+from app.routers import myst_wallets as myst_wallets_router  # noqa: E402
 from app.routers import proxies as proxies_router  # noqa: E402
 from app.routers import users as users_router  # noqa: E402
 
 app.include_router(auth_router.router)
 app.include_router(pages_router.router)
+app.include_router(myst_wallets_router.router)
 app.include_router(proxies_router.router)
 app.include_router(users_router.router)

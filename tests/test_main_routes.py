@@ -601,15 +601,15 @@ class TestApiServices:
             assert resp.json()["slug"] == "hg"
 
     def test_api_get_service_has_collector_flag(self, client):
-        # honeygain has a collector; a service without one reports False.
-        hg = {"slug": "honeygain", "name": "Honeygain", "docker": {"image": "test"}}
+        # earnapp has a collector; a service without one reports False.
+        hg = {"slug": "earnapp", "name": "EarnApp", "docker": {"image": "test"}}
         with (
             _auth_owner(),
             patch("app.main.catalog.get_service", return_value=hg),
             patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[]),
             patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[]),
         ):
-            assert client.get("/api/services/honeygain").json()["has_collector"] is True
+            assert client.get("/api/services/earnapp").json()["has_collector"] is True
         nocol = {"slug": "nodle", "name": "Nodle", "docker": {"image": "test"}}
         with (
             _auth_owner(),
@@ -2184,6 +2184,51 @@ class TestApiCollectorsMeta:
             assert proxies["fields"][0]["key"] == "proxies-sx_api_key"
             assert proxies["fields"][0]["label"] == "Peer API key"
             assert proxies["fields"][0]["source"] == "dashboard"
+
+    def test_api_collectors_meta_exposes_yaml_groups(self, client):
+        def service(slug):
+            if slug == "spide":
+                return {
+                    "name": "Spide",
+                    "payment": {"currency": "USD"},
+                    "collector": {
+                        "type": "manual",
+                        "credential_hint": "Dashboard token",
+                    },
+                    "deploy": {
+                        "credentials": [
+                            {
+                                "key": "machine_id",
+                                "label": "Machine ID",
+                                "kind": "device_id",
+                                "secret": False,
+                                "required": False,
+                                "source": "device",
+                            }
+                        ]
+                    },
+                    "dashboard": {
+                        "credentials": [
+                            {
+                                "key": "token",
+                                "label": "Dashboard token",
+                                "kind": "cookie",
+                                "secret": True,
+                                "required": True,
+                                "source": "dashboard",
+                            }
+                        ]
+                    },
+                }
+            return {"name": slug, "collector": {}, "payment": {"currency": "USD"}}
+
+        with _auth_owner(), patch("app.main.catalog.get_service", side_effect=service):
+            resp = client.get("/api/collectors/meta")
+            assert resp.status_code == 200
+            spide = next(item for item in resp.json() if item["slug"] == "spide")
+            assert "deploy_credentials" in spide
+            assert "dashboard_credentials" in spide
+            assert spide["dashboard_credentials"][0]["key"] == "spide_token"
 
 # ---------------------------------------------------------------------------
 # API: Per-node earnings

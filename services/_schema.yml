@@ -213,19 +213,36 @@
 #   credentials:
 #     - key: api_key
 #       label: "API key"
-#       kind: email | password | api_key | token | cookie | cid | device_id | text
+#       kind: email | password | api_key | token | cookie | cid | device_id | file | text
 #       secret: true/false
 #       required: true/false
 #       source: "dashboard path or docs URL where the user finds it"
 #       description: "Operator-facing instructions or expiry caveat"
 #       expires_hours: 2
 #       durable: true/false
-#     `collector.credentials` is separate from `docker.env`: a provider may use
-#     a CID/API key to run the node and a different account login/cookie to read
-#     earnings. `key` is stored as `<slug>_<key>` unless it already includes
-#     the slug prefix, so `api_key` for `proxies-sx` becomes
-#     `proxies-sx_api_key`. Keep real cookie/profile/token values out of the
-#     repo; dashboard research belongs under `../secret/providers/<slug>/`.
+#   deploy:
+#     credentials:
+#       - key: seed_bundle
+#         label: "Seed bundle"
+#         kind: file
+#         secret: true
+#         required: true
+#         source: "local secret inventory"
+#   dashboard:
+#     credentials:
+#       - key: token
+#         label: "Dashboard token"
+#         kind: cookie
+#         secret: true
+#         required: true
+#         source: "dashboard cookies"
+#   `collector.credentials` is separate from `deploy.credentials` and
+#   `dashboard.credentials`: a provider may use a CID/API key to run the node,
+#   a different account login/cookie to read earnings, and a separate cookie or
+#   token to drive dashboard setup flows. `key` is stored as `<slug>_<key>`
+#   unless it already includes the slug prefix, so `api_key` for `proxies-sx`
+#   becomes `proxies-sx_api_key`. Keep real cookie/profile/token values out of
+#   the repo; dashboard research belongs under `../secret/providers/<slug>/`.
 #   per_node_earnings: true|false
 #     The collector can break earnings down per node/machine, not just an
 #     account total. Declared here rather than branched on in app/ so adding a

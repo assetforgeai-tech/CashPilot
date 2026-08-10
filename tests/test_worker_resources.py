@@ -194,6 +194,7 @@ class TestDeployRawHardening:
         assert kwargs["pids_limit"] == orchestrator._PIDS_LIMIT
         # Nothing declared any capability, so none is added back.
         assert kwargs["cap_add"] is None
+        assert kwargs["restart_policy"] == {"Name": "always"}
 
     def test_catalog_declared_capability_is_added_back(self):
         # mysterium is the only catalog service declaring a cap; dropping ALL must not
