@@ -235,6 +235,19 @@ class TestPayoutProgressIsShownWhereTheUserLooks:
         exported = set(re.findall(r"^\s{4}([A-Za-z_][A-Za-z0-9_]*),\s*$", app_js, re.M))
         assert "loadPayoutProgress" in exported
 
+class TestSettingsFileInputs:
+    def test_file_credentials_render_as_file_inputs(self):
+        source = js_function("renderCollectors")
+        assert 'type="${inputType}"' in source
+        assert "f.kind === 'file'" in source
+        assert "data-encoding" in source
+
+    def test_duplicate_credential_keys_render_once(self):
+        source = js_function("renderCollectors")
+        assert "renderedKeys" in source
+        assert "renderedKeys.has(f.key)" in source
+        assert "fields.filter" in source
+
 
 class TestTheProgressCardKeepsItsUnitsStraight:
     """Caught in a browser: "£3.73" rendered directly above "to the 20 minimum".

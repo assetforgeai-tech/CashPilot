@@ -2978,7 +2978,13 @@ const CP = (() => {
       return;
     }
     const secrets = config._secrets || {};
+    const renderedKeys = new Set();
     const renderCard = (col, fields, sectionId, sectionLabel, clearable) => {
+      fields = fields.filter(f => {
+        if (renderedKeys.has(f.key)) return false;
+        renderedKeys.add(f.key);
+        return true;
+      });
       if (!fields.length) return '';
       // A collector is "configured" if any secret field has a stored value
       // (per _secrets) or any non-secret field carries a real value.
@@ -3003,20 +3009,24 @@ const CP = (() => {
         // them empty (write-only). Submitting blank preserves the stored secret.
         const isSecretSet = f.secret && !!secrets[f.key];
         const savedVal = f.secret ? '' : (config[f.key] || '');
-        const inputType = f.secret ? 'password' : 'text';
+        const inputType = f.kind === 'file' ? 'file' : (f.secret ? 'password' : 'text');
         const inputId = `cred-${f.key}`;
         const placeholder = f.secret
           ? (isSecretSet ? '•••••••• (set — leave blank to keep)' : 'Not set')
           : f.label;
+        const accept = f.kind === 'file' ? ' accept=".json,.db,.txt,*/*"' : '';
         return `
         <div class="form-group" style="margin-bottom:8px;">
           <label class="form-label" style="font-size:0.8rem;">${escapeHtml(f.label)}${f.required ? '' : ' <span style="opacity:0.5;">(optional)</span>'}</label>
           <div style="display:flex;gap:6px;align-items:center;">
             <input class="form-input collector-input" type="${inputType}" id="${inputId}"
                    data-config="${escapeHtml(f.key)}"
+                   data-kind="${escapeHtml(f.kind || '')}"
+                   data-encoding="${escapeHtml(f.encoding || '')}"
                    value="${escapeHtml(savedVal)}"
                    placeholder="${escapeHtml(placeholder)}"
                    ${f.secret ? 'autocomplete="new-password"' : ''}
+                   ${accept}
                    style="flex:1;">
           </div>
         </div>`;
@@ -3057,13 +3067,29 @@ const CP = (() => {
   async function saveCollectorCredentials() {
     const inputs = document.querySelectorAll('.collector-input');
     const data = {};
-    inputs.forEach(input => {
+    await Promise.all(Array.from(inputs).map(async input => {
       const key = input.dataset.config;
-      const val = input.value.trim();
-      if (val) {
-        data[key] = val;
+      if (input.type === 'file') {
+        const file = input.files && input.files[0];
+        if (!file) return;
+        const encoding = (input.dataset.encoding || '').toLowerCase();
+        if (encoding === 'base64') {
+          const buf = await file.arrayBuffer();
+          const bytes = new Uint8Array(buf);
+          let binary = '';
+          const chunk = 0x8000;
+          for (let i = 0; i < bytes.length; i += chunk) {
+            binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+          }
+          data[key] = btoa(binary);
+          return;
+        }
+        data[key] = await file.text();
+        return;
       }
-    });
+      const val = input.value.trim();
+      if (val) data[key] = val;
+    }));
 
     if (Object.keys(data).length === 0) {
       toast('No credentials to save', 'warning');

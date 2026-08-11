@@ -3730,12 +3730,32 @@ def _sanitize_credential(value: str) -> str:
     return v
 
 
+async def _sync_runtime_assets_from_config(config: dict[str, str]) -> None:
+    """Mirror runtime asset form fields into the worker-facing asset store."""
+    for svc in catalog.get_services():
+        slug = svc.get("slug", "")
+        if not slug:
+            continue
+        deploy = svc.get("deploy") or {}
+        for asset in deploy.get("runtime_assets") or []:
+            if not isinstance(asset, dict):
+                continue
+            provider = str(asset.get("provider") or slug).strip()
+            asset_kind = str(asset.get("asset_kind") or "").strip()
+            if not provider or not asset_kind:
+                continue
+            value = config.get(f"{slug}_{asset_kind}", "")
+            if value:
+                await database.save_runtime_asset(provider, asset_kind, value)
+
+
 @app.post("/api/config")
 async def api_set_config(
     request: Request, body: ConfigUpdate, _auth: dict[str, Any] = Depends(_require_owner)
 ) -> dict[str, str]:
     sanitized = {k: _sanitize_credential(v) for k, v in body.data.items()}
     await database.set_config_bulk(sanitized)
+    await _sync_runtime_assets_from_config(sanitized)
 
     # Auto-create "external" deployment records for manual-only services
     # whose collector credentials were just saved.  Without a deployment

@@ -52,6 +52,7 @@ deploy:
     - key: credentials_json
       label: "Uprock credentials.json"
       kind: file
+      encoding: text
       secret: true
       required: true
       source: "CashPilot runtime asset inventory"
@@ -59,6 +60,7 @@ deploy:
     - key: main_db
       label: "Uprock main.db"
       kind: file
+      encoding: base64
       secret: true
       required: true
       source: "CashPilot runtime asset inventory"
@@ -99,6 +101,7 @@ collector:
     - key: credentials_json
       label: "Uprock credentials.json"
       kind: file
+      encoding: text
       secret: true
       required: true
       source: "CashPilot runtime asset inventory"

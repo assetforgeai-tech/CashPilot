@@ -257,6 +257,28 @@ class TestValidate:
         }
         assert catalog._validate(payload, tmp_path / "t.yml") == []
 
+    def test_validate_preserves_file_encoding_metadata(self, tmp_path):
+        payload = {
+            **self._base(),
+            "deploy": {
+                "credentials": [
+                    {
+                        "key": "bundle",
+                        "label": "Bundle",
+                        "kind": "file",
+                        "secret": True,
+                        "required": True,
+                        "source": "local",
+                        "encoding": "base64",
+                    }
+                ]
+            },
+        }
+        assert catalog._validate(payload, tmp_path / "t.yml") == []
+        from app.collectors import service_credential_fields
+
+        assert service_credential_fields("sample", "deploy", payload)[0]["encoding"] == "base64"
+
     def test_validate_rejects_malformed_deploy_and_dashboard_credentials(self, tmp_path):
         p = tmp_path / "t.yml"
         assert catalog._validate({**self._base(), "deploy": {"credentials": "bad"}}, p)
