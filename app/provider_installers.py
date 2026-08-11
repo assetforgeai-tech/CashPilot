@@ -11,6 +11,7 @@ from urllib.request import Request, urlopen
 from docker.errors import ImageNotFound
 
 _GRASS_IMAGE = "cashpilot/grass-desktop"
+_GRASS_RUNNER = "ubuntu24.04"
 _GRASS_ALLOWED_HOST = "files.grass.io"
 
 
@@ -58,7 +59,7 @@ def ensure_installer_image(client, provider: str, resolved: dict[str, str]) -> s
     if provider != "grass":
         raise ValueError(f"Installer image builds are not supported for {provider!r}")
     version = "".join(c if c.isalnum() or c in ".-_" else "-" for c in resolved["version"])
-    image = f"{_GRASS_IMAGE}:{version}"
+    image = f"{_GRASS_IMAGE}:{version}-{_GRASS_RUNNER}"
     try:
         client.images.get(image)
         return image

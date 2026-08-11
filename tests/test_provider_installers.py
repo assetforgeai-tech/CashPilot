@@ -42,7 +42,7 @@ def test_grass_manifest_build_tags_image_by_resolved_version():
 
     image = provider_installers.ensure_installer_image(client, "grass", resolved)
 
-    assert image == "cashpilot/grass-desktop:v7.6.0"
+    assert image == "cashpilot/grass-desktop:v7.6.0-ubuntu24.04"
     dockerfile = client.images.build.call_args.kwargs["fileobj"].getvalue().decode()
     assert "FROM ubuntu:24.04" in dockerfile
     assert "grass-desktop_7.6.0_amd64.deb" in dockerfile
