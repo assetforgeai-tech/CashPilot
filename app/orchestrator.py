@@ -292,7 +292,7 @@ def deploy_raw(
     if slug == "grass" and deploy_credentials:
         provider_automation.apply_grass_store_patch(container, deploy_credentials)
     if slug == "mysterium" and deploy_credentials and deploy_credentials.get("myst_wallet_raw"):
-        myst_runtime.apply_direct_wallet(
+        address = myst_runtime.apply_direct_wallet(
             container,
             deploy_credentials,
             dashboard_password=str(
@@ -302,6 +302,7 @@ def deploy_raw(
             ),
             mmn_api_key=str(deploy_credentials.get("mmn_api_key") or deploy_credentials.get("myst_mmn_api_key") or ""),
         )
+        deploy_credentials["myst_wallet_address"] = address
     if slug == "wipter" and deploy_credentials:
         provider_automation.schedule_wipter_post_login_restart(container)
     return container.id

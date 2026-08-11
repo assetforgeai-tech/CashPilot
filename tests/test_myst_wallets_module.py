@@ -144,8 +144,17 @@ class TestMystWalletInventory:
                 wallet_id = (await database.list_myst_wallets())[0]["id"]
                 await database.update_myst_wallet(wallet_id, funding="FUNDED")
                 leased = await database.lease_myst_wallet("worker-a")
-                assert not await database.release_myst_wallet(leased["id"], "worker-b")
-                assert await database.release_myst_wallet(leased["id"], "worker-a", release_reason="SHUTDOWN")
+                assert not await database.release_myst_wallet(
+                    leased["id"],
+                    "worker-b",
+                    wallet_assignment_version=leased["wallet_assignment_version"],
+                )
+                assert await database.release_myst_wallet(
+                    leased["id"],
+                    "worker-a",
+                    release_reason="SHUTDOWN",
+                    wallet_assignment_version=leased["wallet_assignment_version"],
+                )
                 row = (await database.list_myst_wallets())[0]
                 assert row["release_reason"] == "SHUTDOWN"
 
@@ -162,6 +171,7 @@ class TestMystWalletInventory:
                 ok = await database.heartbeat_myst_wallet(
                     leased["id"],
                     "worker-a",
+                    wallet_assignment_version=leased["wallet_assignment_version"],
                     node_identity="0xnode",
                     runtime_status="healthy",
                     evidence={"dashboard_text": "secret-ish text"},
@@ -187,6 +197,7 @@ class TestMystWalletInventory:
                 ok = await database.heartbeat_myst_wallet(
                     leased["id"],
                     "worker-a",
+                    wallet_assignment_version=leased["wallet_assignment_version"],
                     runtime_status="healthy",
                     evidence={"registration_status": "Unregistered"},
                 )
@@ -210,6 +221,7 @@ class TestMystWalletInventory:
                 ok = await database.heartbeat_myst_wallet(
                     leased["id"],
                     "worker-a",
+                    wallet_assignment_version=leased["wallet_assignment_version"],
                     runtime_status="payment_required",
                     evidence={"payment_required": True, "registration_status": "Registered"},
                 )
@@ -241,6 +253,59 @@ class TestMystWalletInventory:
                 row = (await database.list_myst_wallets())[0]
                 assert row["node_identity"] == ""
                 assert row["runtime_status"] == ""
+
+        asyncio.run(run())
+
+    def test_stale_wallet_assignment_version_cannot_release(self, tmp_path):
+        async def run():
+            with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "myst.db"):
+                await database.init_db()
+                await database.import_myst_wallets("raw-wallet-one")
+                wallet_id = (await database.list_myst_wallets())[0]["id"]
+                await database.update_myst_wallet(wallet_id, funding="FUNDED")
+                leased = await database.lease_myst_wallet("worker-a")
+
+                ok = await database.release_myst_wallet(
+                    leased["id"],
+                    "worker-a",
+                    release_reason="stale",
+                    wallet_assignment_version=leased["wallet_assignment_version"] - 1,
+                )
+
+                assert not ok
+                row = (await database.list_myst_wallets())[0]
+                assert row["state"] == "LEASED"
+                assert row["release_reason"] == ""
+
+        asyncio.run(run())
+
+    def test_myst_wallet_ack_requires_current_assignment_version(self, tmp_path):
+        async def run():
+            with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "myst.db"):
+                await database.init_db()
+                await database.import_myst_wallets("raw-wallet-one")
+                wallet_id = (await database.list_myst_wallets())[0]["id"]
+                await database.update_myst_wallet(wallet_id, funding="FUNDED")
+                leased = await database.lease_myst_wallet("worker-a")
+
+                assert not await database.ack_myst_wallet(
+                    leased["id"],
+                    "worker-a",
+                    wallet_assignment_version=leased["wallet_assignment_version"] - 1,
+                    node_identity="0xnode",
+                    evidence={"raw_wallet": "must-not-store"},
+                )
+                assert await database.ack_myst_wallet(
+                    leased["id"],
+                    "worker-a",
+                    wallet_assignment_version=leased["wallet_assignment_version"],
+                    node_identity="0xnode",
+                    evidence={"raw_wallet": "must-not-store", "registration_status": "Registered"},
+                )
+                row = (await database.list_myst_wallets())[0]
+                assert row["state"] == "LEASED"
+                assert row["runtime_status"] == "wallet_imported"
+                assert row["node_identity"] == "0xnode"
 
         asyncio.run(run())
 

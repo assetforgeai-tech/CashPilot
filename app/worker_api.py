@@ -362,6 +362,17 @@ async def _sync_myst_wallet_after_deploy(deploy_credentials: dict[str, Any], con
     async with httpx.AsyncClient(timeout=15) as client:
         await _post_myst_wallet_event(
             client,
+            "ack",
+            {
+                "client_id": client_id,
+                "wallet_id": wallet_id,
+                "wallet_assignment_version": state["myst_wallet_assignment_version"],
+                "node_identity": state["myst_node_identity"],
+                "evidence": {"container_id": container_id, "deploy_state": "started"},
+            },
+        )
+        await _post_myst_wallet_event(
+            client,
             "heartbeat",
             {
                 "client_id": client_id,

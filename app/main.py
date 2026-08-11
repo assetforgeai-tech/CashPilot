@@ -1640,6 +1640,7 @@ async def _attach_myst_wallet_for_deploy(slug: str, worker_id: int, spec: dict[s
     deploy_credentials["myst_wallet_assignment_version"] = int(wallet.get("wallet_assignment_version") or 0)
     deploy_credentials["myst_wallet_id"] = str(wallet.get("id") or "")
     deploy_credentials["myst_wallet_client_id"] = str(worker["client_id"])
+    deploy_credentials["myst_wallet_address"] = str(wallet.get("address") or "")
     return wallet
 
 
@@ -4210,14 +4211,21 @@ class MystWalletReleaseRequest(BaseModel):
     client_id: str
     wallet_id: int
     release_reason: str | None = None
-    wallet_assignment_version: int | None = None
+    wallet_assignment_version: int
 
 class MystWalletHeartbeatRequest(BaseModel):
     client_id: str
     wallet_id: int
-    wallet_assignment_version: int | None = None
+    wallet_assignment_version: int
     node_identity: str = ""
     runtime_status: str = ""
+    evidence: dict[str, Any] = {}
+
+class MystWalletAckRequest(BaseModel):
+    client_id: str
+    wallet_id: int
+    wallet_assignment_version: int
+    node_identity: str = ""
     evidence: dict[str, Any] = {}
 
 class RuntimeAssetSaveRequest(BaseModel):
@@ -4282,6 +4290,20 @@ async def api_myst_wallet_heartbeat(request: Request, body: MystWalletHeartbeatR
         wallet_assignment_version=body.wallet_assignment_version,
         node_identity=body.node_identity,
         runtime_status=body.runtime_status,
+        evidence=body.evidence,
+    )
+    if not ok:
+        raise HTTPException(status_code=404, detail="MYST wallet lease not found")
+    return {"status": "ok"}
+
+@app.post("/api/myst-wallets/ack")
+async def api_myst_wallet_ack(request: Request, body: MystWalletAckRequest) -> dict[str, str]:
+    await _require_confirmed_worker(request, body.client_id)
+    ok = await database.ack_myst_wallet(
+        body.wallet_id,
+        body.client_id.strip(),
+        wallet_assignment_version=body.wallet_assignment_version,
+        node_identity=body.node_identity,
         evidence=body.evidence,
     )
     if not ok:

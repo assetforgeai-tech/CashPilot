@@ -2366,13 +2366,12 @@ async def release_myst_wallet(
     release_reason: str = "",
     wallet_assignment_version: int | None = None,
 ) -> bool:
+    if wallet_assignment_version is None:
+        return False
     db = await _get_db()
     try:
         await _ensure_myst_wallets_table(db)
-        version_clause = "" if wallet_assignment_version is None else " AND wallet_assignment_version = ?"
-        params: list[Any] = [release_reason, wallet_id, client_id]
-        if wallet_assignment_version is not None:
-            params.append(wallet_assignment_version)
+        params: list[Any] = [release_reason, wallet_id, client_id, wallet_assignment_version]
         cursor = await db.execute(
             f"""
             UPDATE myst_wallets
@@ -2382,7 +2381,7 @@ async def release_myst_wallet(
                 leased_at = NULL,
                 release_reason = ?,
                 updated_at = datetime('now')
-            WHERE id = ? AND leased_to_client_id = ?{version_clause}
+            WHERE id = ? AND leased_to_client_id = ? AND wallet_assignment_version = ?
             """,
             params,
         )
@@ -2406,14 +2405,13 @@ async def heartbeat_myst_wallet(
 ) -> bool:
     evidence = evidence or {}
     unfunded = _myst_wallet_unfunded(runtime_status, evidence)
+    if wallet_assignment_version is None:
+        return False
     db = await _get_db()
     try:
         await _ensure_myst_wallets_table(db)
-        version_clause = "" if wallet_assignment_version is None else " AND wallet_assignment_version = ?"
         if unfunded:
-            params: list[Any] = [node_identity, runtime_status, json.dumps(evidence, sort_keys=True), wallet_id, client_id]
-            if wallet_assignment_version is not None:
-                params.append(wallet_assignment_version)
+            params: list[Any] = [node_identity, runtime_status, json.dumps(evidence, sort_keys=True), wallet_id, client_id, wallet_assignment_version]
             cursor = await db.execute(
                 f"""
                 UPDATE myst_wallets
@@ -2428,14 +2426,12 @@ async def heartbeat_myst_wallet(
                     last_heartbeat_at = datetime('now'),
                     evidence_json = ?,
                     updated_at = datetime('now')
-                WHERE id = ? AND leased_to_client_id = ?{version_clause}
+                WHERE id = ? AND leased_to_client_id = ? AND wallet_assignment_version = ?
                 """,
                 params,
             )
         else:
-            params = [node_identity, runtime_status, json.dumps(evidence, sort_keys=True), wallet_id, client_id]
-            if wallet_assignment_version is not None:
-                params.append(wallet_assignment_version)
+            params = [node_identity, runtime_status, json.dumps(evidence, sort_keys=True), wallet_id, client_id, wallet_assignment_version]
             cursor = await db.execute(
                 f"""
                 UPDATE myst_wallets
@@ -2444,10 +2440,40 @@ async def heartbeat_myst_wallet(
                     last_heartbeat_at = datetime('now'),
                     evidence_json = ?,
                     updated_at = datetime('now')
-                WHERE id = ? AND leased_to_client_id = ?{version_clause}
+                WHERE id = ? AND leased_to_client_id = ? AND wallet_assignment_version = ?
                 """,
                 params,
             )
+        await db.commit()
+        return bool(cursor.rowcount)
+    finally:
+        await db.close()
+
+async def ack_myst_wallet(
+    wallet_id: int,
+    client_id: str,
+    *,
+    wallet_assignment_version: int,
+    node_identity: str = "",
+    evidence: Mapping[str, Any] | None = None,
+) -> bool:
+    evidence = {k: v for k, v in (evidence or {}).items() if k not in {"raw_wallet", "myst_wallet_raw"}}
+    db = await _get_db()
+    try:
+        await _ensure_myst_wallets_table(db)
+        params: list[Any] = [node_identity, "wallet_imported", json.dumps(evidence, sort_keys=True), wallet_id, client_id, wallet_assignment_version]
+        cursor = await db.execute(
+            """
+            UPDATE myst_wallets
+            SET node_identity = ?,
+                runtime_status = ?,
+                last_heartbeat_at = datetime('now'),
+                evidence_json = ?,
+                updated_at = datetime('now')
+            WHERE id = ? AND leased_to_client_id = ? AND wallet_assignment_version = ?
+            """,
+            params,
+        )
         await db.commit()
         return bool(cursor.rowcount)
     finally:
