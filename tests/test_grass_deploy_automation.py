@@ -120,3 +120,14 @@ def test_deploy_raw_maps_wipter_credentials_to_env_and_restarts_after_login_stat
     assert env["WIPTER_EMAIL"] == "user@example.com"
     assert env["WIPTER_PASSWORD"] == "secret"
     restart_once.assert_called_once_with(container)
+
+def test_deploy_raw_forwards_container_user_when_declared():
+    client = MagicMock()
+    client.containers.get.side_effect = orchestrator.NotFound("nope")
+    container = MagicMock(short_id="abc123", id="container-id")
+    client.containers.run.return_value = container
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        orchestrator.deploy_raw(slug="wipter", image="img:1", user="root")
+
+    assert client.containers.run.call_args.kwargs["user"] == "root"

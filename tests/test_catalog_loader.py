@@ -355,5 +355,6 @@ class TestProviderAutomationContracts:
         assert {"WIPTER_EMAIL", "WIPTER_PASSWORD"} <= keys
         assert env["WIPTER_EMAIL"]["required"] is False
         assert env["WIPTER_PASSWORD"]["required"] is False
+        assert svc["docker"]["user"] == "root"
         assert svc["deploy"]["automation"] == "env_login"
         assert {"email", "password"} <= self._credential_keys(svc, "deploy")

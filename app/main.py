@@ -1732,6 +1732,8 @@ async def api_deploy(
         "egress_mode": catalog.service_egress_mode(svc),
         "egress_udp": catalog.service_egress_udp(svc),
     }
+    if docker_conf.get("user"):
+        spec["user"] = str(docker_conf["user"])
     runtime_assets = deploy_conf.get("runtime_assets") or []
     if runtime_assets:
         spec["runtime_assets"] = runtime_assets

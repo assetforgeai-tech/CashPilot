@@ -203,6 +203,7 @@ def deploy_raw(
     installer_manifest_url: str | None = None,
     installer_platform: str | None = None,
     deploy_credentials: dict[str, str] | None = None,
+    user: str | None = None,
 ) -> str:
     """Deploy a container from a raw spec (no catalog lookup).
 
@@ -276,6 +277,7 @@ def deploy_raw(
         privileged=False,
         pids_limit=_PIDS_LIMIT,
         command=command if command else None,
+        user=user or None,
         labels=all_labels,
         hostname=hostname or f"cashpilot-{slug}",
         detach=True,

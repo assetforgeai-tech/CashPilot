@@ -15,6 +15,7 @@ referral:
 
 docker:
   image: ghcr.io/techroy23/docker-wipter:latest
+  user: root
   platforms: [linux/amd64]
   resources:
     mem_limit: "512m"

@@ -816,6 +816,7 @@ class DeploySpec(BaseModel):
     # Advanced and unsupported. Absent means Docker's default runtime, which is
     # what everything uses and what everything is tested against.
     runtime: str | None = None
+    user: str | None = None
 
 class EgressApplySpec(BaseModel):
     mode: str = proxy_egress.PROXY
@@ -1192,6 +1193,7 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             installer_manifest_url=spec.installer_manifest_url,
             installer_platform=spec.installer_platform,
             deploy_credentials=spec.deploy_credentials,
+            user=spec.user,
         )
         return {"status": "deployed", "container_id": container_id}
     except Exception:
