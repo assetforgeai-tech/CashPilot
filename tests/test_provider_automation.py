@@ -55,6 +55,14 @@ def test_wipter_setup_complete_alone_is_not_authenticated():
         "traffic_seen": False,
     }
 
+def test_wipter_status_accepts_persisted_login_state_without_log_marker():
+    assert provider_automation.wipter_status_snapshot("HTTPS Request ID abc", login_state_persisted=True) == {
+        "ok": True,
+        "authenticated": True,
+        "earning": True,
+        "traffic_seen": True,
+    }
+
 def test_wipter_post_login_restart_waits_for_real_login_state():
     from unittest.mock import MagicMock
 

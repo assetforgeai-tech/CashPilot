@@ -572,7 +572,17 @@ def _provider_evidence(slug: str, container: Any) -> dict[str, Any]:
     """Provider-specific runtime evidence for status snapshots."""
     if slug == "wipter":
         try:
-            return provider_automation.wipter_status_snapshot(container.logs(tail=300) or b"")
+            login_state = container.exec_run(
+                [
+                    "sh",
+                    "-lc",
+                    "test -s /root/.config/wipter-app/secure-credentials.json || secret-tool search service com.wipter.auth.production >/dev/null 2>&1",
+                ]
+            )
+            return provider_automation.wipter_status_snapshot(
+                container.logs(tail=300) or b"",
+                login_state_persisted=getattr(login_state, "exit_code", 1) == 0,
+            )
         except Exception as exc:
             logger.debug("Wipter evidence unavailable for %s: %s", getattr(container, "short_id", "?"), exc)
             return {}

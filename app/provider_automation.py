@@ -109,10 +109,10 @@ def uprock_status_snapshot(status_payload: str | bytes, logs: str = "") -> dict[
         "device_id": extract_uprock_device_id(logs),
     }
 
-def wipter_status_snapshot(logs: str | bytes) -> dict[str, Any]:
+def wipter_status_snapshot(logs: str | bytes, *, login_state_persisted: bool = False) -> dict[str, Any]:
     """Normalize Wipter logs into worker runtime evidence."""
     text = logs.decode(errors="replace") if isinstance(logs, bytes) else str(logs or "")
-    authenticated = bool(_WIPTER_LOGIN_READY_RE.search(text))
+    authenticated = bool(login_state_persisted or _WIPTER_LOGIN_READY_RE.search(text))
     traffic_seen = bool(_WIPTER_TRAFFIC_RE.search(text))
     return {
         "ok": authenticated or traffic_seen,

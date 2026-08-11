@@ -25,7 +25,20 @@ def test_non_uprock_provider_evidence_is_empty():
 
 def test_wipter_provider_evidence_reads_login_and_traffic_logs():
     container = MagicMock()
+    container.exec_run.return_value = MagicMock(exit_code=1)
     container.logs.return_value = b"Credential stored for service: com.wipter.auth.production\n<<< PONG"
+
+    assert orchestrator._provider_evidence("wipter", container) == {
+        "ok": True,
+        "authenticated": True,
+        "earning": True,
+        "traffic_seen": True,
+    }
+
+def test_wipter_provider_evidence_accepts_persisted_login_file():
+    container = MagicMock()
+    container.exec_run.return_value = MagicMock(exit_code=0)
+    container.logs.return_value = b"HTTPS Request ID abc"
 
     assert orchestrator._provider_evidence("wipter", container) == {
         "ok": True,
