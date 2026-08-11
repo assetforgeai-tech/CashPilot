@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from typing import Iterable
 
@@ -19,6 +20,14 @@ def wallet_address_hint(raw_wallet: str) -> str:
     value = raw_wallet.strip()
     if not value:
         return ""
+    try:
+        data = json.loads(value)
+    except json.JSONDecodeError:
+        data = None
+    if isinstance(data, dict):
+        address = str(data.get("address") or data.get("Address") or "").strip().lower()
+        if re.fullmatch(r"(0x)?[a-f0-9]{40}", address):
+            return ("0x" + address.removeprefix("0x"))[-12:]
     return value[-12:]
 
 

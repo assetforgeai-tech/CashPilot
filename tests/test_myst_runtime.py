@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 from app import myst_runtime, orchestrator
 
 RAW_WALLET = json.dumps({"address": "0x57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1", "crypto": {}})
+RAW_WALLET_BARE_ADDRESS = json.dumps({"address": "57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1", "crypto": {}})
 
 def _tar_names(blob: bytes) -> set[str]:
     with tarfile.open(fileobj=io.BytesIO(blob), mode="r") as tf:
@@ -20,6 +21,9 @@ def test_myst_state_archive_contains_wallet_remember_and_mmn_config():
     assert "keystore/remember.json" in names
     assert "config-mainnet.toml" in names
     assert any(name.startswith("keystore/UTC--") for name in names)
+
+def test_wallet_address_accepts_myst_keystore_bare_hex_address():
+    assert myst_runtime.wallet_address(RAW_WALLET_BARE_ADDRESS) == "0x57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1"
 
 def test_myst_state_archive_refuses_wallet_without_address():
     try:

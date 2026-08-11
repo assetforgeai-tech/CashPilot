@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 _ADDR_RE = re.compile(r"0x[a-fA-F0-9]{40}")
+_BARE_ADDR_RE = re.compile(r"[a-fA-F0-9]{40}")
 
 def wallet_address(raw_wallet: str) -> str:
     text = (raw_wallet or "").strip()
@@ -24,10 +25,12 @@ def wallet_address(raw_wallet: str) -> str:
             value = str(data.get(key) or "").strip()
             if _ADDR_RE.fullmatch(value):
                 return value.lower()
+            if _BARE_ADDR_RE.fullmatch(value):
+                return f"0x{value.lower()}"
     match = _ADDR_RE.search(text)
     if match:
         return match.group(0).lower()
-    raise ValueError("MYST wallet material does not contain a 0x address")
+    raise ValueError("MYST wallet material does not contain an address")
 
 def _tar_add(tf: tarfile.TarFile, name: str, data: bytes, mode: int = 0o600) -> None:
     info = tarfile.TarInfo(name)

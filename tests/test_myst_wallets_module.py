@@ -88,6 +88,10 @@ class TestMystWalletHelpers:
     def test_normalize_wallet_lines_skips_blanks(self):
         assert myst_wallets.normalize_wallet_lines(" a \n\n b \r\n") == ["a", "b"]
 
+    def test_wallet_address_hint_handles_json_keystore_address(self):
+        raw = '{"address":"57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1","crypto":{}}'
+        assert myst_wallets.wallet_address_hint(raw) == "0x57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1"[-12:]
+
 class TestMystWalletInventory:
     def test_admin_list_never_returns_raw_wallet(self, tmp_path):
         async def run():
