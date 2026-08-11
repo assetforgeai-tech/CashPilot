@@ -76,6 +76,7 @@ WIRED = [
     ("/api/earnings/payouts", "the queue where a detected payout is confirmed or rejected"),
     ("payouts/${", "the confirm/reject call, built as a template literal"),
     ("/api/admin/myst-wallets/import", "the MYST wallet import flow"),
+    ("/api/admin/myst-wallets", "the MYST wallet list refresh"),
 ]
 
 
@@ -128,6 +129,17 @@ class TestMystWalletImportIsReachable:
         page = (ROOT / "app" / "templates" / "myst_wallet.html").read_text(encoding="utf-8")
         assert 'type="file"' in page
         assert 'accept=".txt,.csv,text/plain"' in page
+
+    def test_the_page_has_a_wallet_list(self):
+        page = (ROOT / "app" / "templates" / "myst_wallet.html").read_text(encoding="utf-8")
+        assert 'id="myst-wallet-list"' in page
+        assert 'id="myst-wallet-refresh-status"' in page
+
+    def test_the_handler_is_exported_and_loaded(self):
+        app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+        exported = set(re.findall(r"^\s{4}([A-Za-z_][A-Za-z0-9_]*),\s*$", app_js, re.M))
+        assert "loadMystWallets" in exported
+        assert "loadMystWallets();" in app_js[app_js.index("switch (page) {"): app_js.index("// -----------------------------------------------------------\n  // Public API")]
 
 
 class TestTheAmountShownIsTheOneTheProviderPaid:

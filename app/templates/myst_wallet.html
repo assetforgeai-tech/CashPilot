@@ -15,5 +15,24 @@
     <button class="btn btn-primary" data-action="importMystWalletFile" data-a1="myst-wallet-file">Import wallets</button>
     <span id="myst-wallet-import-status" style="font-size:0.85rem; color:var(--text-muted);"></span>
   </div>
+
+  <div class="table-wrap" style="margin-top:20px;">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Fingerprint</th>
+          <th>State</th>
+          <th>Funding</th>
+          <th>Lease</th>
+          <th>Release</th>
+          <th>Version</th>
+          <th>Heartbeat</th>
+        </tr>
+      </thead>
+      <tbody id="myst-wallet-list"></tbody>
+    </table>
+  </div>
+  <div id="myst-wallet-refresh-status" class="empty-state" style="display:none; margin-top:16px;"></div>
 </section>
 {% endblock %}

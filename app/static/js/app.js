@@ -1595,9 +1595,45 @@ const CP = (() => {
       input.value = '';
       if (status) status.textContent = '';
       toast(`Imported ${res.imported || 0} wallet${res.imported === 1 ? '' : 's'}`, 'success');
+      await loadMystWallets();
     } catch (err) {
       if (status) status.textContent = '';
       toast(`Import failed: ${err.message}`, 'error');
+    }
+  }
+
+  async function loadMystWallets() {
+    const list = document.getElementById('myst-wallet-list');
+    const status = document.getElementById('myst-wallet-refresh-status');
+    if (!list || !status) return;
+    status.style.display = 'none';
+    status.innerHTML = '';
+    try {
+      const rows = await api('/api/admin/myst-wallets');
+      if (!rows.length) {
+        list.innerHTML = '';
+        status.className = 'empty-state';
+        status.style.display = 'block';
+        status.innerHTML = '<div class="empty-state-title">No wallets imported yet</div><div class="empty-state-text">Choose a file and import raw wallet lines.</div>';
+        return;
+      }
+      list.innerHTML = rows.map((row) => `
+        <tr>
+          <td>${escapeHtml(row.id)}</td>
+          <td style="font-family:monospace;">${escapeHtml(row.wallet_fingerprint || '')}</td>
+          <td><span class="badge badge-category">${escapeHtml(row.state || '')}</span></td>
+          <td><span class="badge ${row.funding === 'FUNDED' ? 'badge-running' : 'badge-error'}">${escapeHtml(row.funding || '')}</span></td>
+          <td>${escapeHtml(row.leased_to_client_id || '-')}</td>
+          <td>${escapeHtml(row.release_reason || '-')}</td>
+          <td>v${escapeHtml(row.wallet_assignment_version ?? 0)}</td>
+          <td>${escapeHtml(row.last_heartbeat_at || '-')}</td>
+        </tr>
+      `).join('');
+    } catch (err) {
+      list.innerHTML = '';
+      status.className = 'empty-state';
+      status.style.display = 'block';
+      status.innerHTML = `<div class="empty-state-title">Could not load wallets</div><div class="empty-state-text">${escapeHtml(err.message)}</div>`;
     }
   }
 
@@ -3633,6 +3669,9 @@ const CP = (() => {
       case 'dashboard':
         loadDashboard();
         break;
+      case 'myst-wallet':
+        loadMystWallets();
+        break;
       case 'setup':
         initWizard();
         break;
@@ -3697,6 +3736,7 @@ const CP = (() => {
     saveEnvSettings,
     toggleEnvSecret,
     importMystWalletFile,
+    loadMystWallets,
     filterCatalog,
     refreshServices,
     openClaimModal,
