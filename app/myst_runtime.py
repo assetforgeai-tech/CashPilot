@@ -9,6 +9,8 @@ import tarfile
 from datetime import UTC, datetime
 from typing import Any
 
+import bcrypt
+
 _ADDR_RE = re.compile(r"0x[a-fA-F0-9]{40}")
 _BARE_ADDR_RE = re.compile(r"[a-fA-F0-9]{40}")
 
@@ -38,7 +40,13 @@ def _tar_add(tf: tarfile.TarFile, name: str, data: bytes, mode: int = 0o600) -> 
     info.mode = mode
     tf.addfile(info, io.BytesIO(data))
 
-def state_archive(raw_wallet: str, *, mmn_api_key: str, identity_passphrase: str = "") -> bytes:
+def state_archive(
+    raw_wallet: str,
+    *,
+    mmn_api_key: str,
+    identity_passphrase: str = "",
+    dashboard_password: str = "",
+) -> bytes:
     address = wallet_address(raw_wallet)
     short = address.removeprefix("0x")
     wallet_name = f"keystore/UTC--{datetime.now(UTC).strftime('%Y-%m-%dT%H-%M-%S.000000000Z')}--{short}"
@@ -58,29 +66,14 @@ def state_archive(raw_wallet: str, *, mmn_api_key: str, identity_passphrase: str
         _tar_add(tf, wallet_name, raw_wallet.strip().encode())
         _tar_add(tf, "keystore/remember.json", json.dumps({"identity": {"address": address}}, separators=(",", ":")).encode())
         _tar_add(tf, "config-mainnet.toml", config.encode())
+        if dashboard_password:
+            _tar_add(tf, "nodeui-pass", bcrypt.hashpw(dashboard_password.encode("utf-8"), bcrypt.gensalt()).decode("ascii").encode())
     return buf.getvalue()
+
 
 def _sh_single(value: str) -> str:
     return "'" + str(value).replace("'", "'\"'\"'") + "'"
 
-def _set_dashboard_password(container: Any, password: str, *, port: int = 4449) -> None:
-    if not password:
-        return
-    script = (
-        "tmp=$(mktemp); "
-        "for old in \"$NEW_PASSWORD\" mystberry; do "
-        "curl -sS -m 10 -c $tmp -b $tmp -o /dev/null -w '%{http_code}' "
-        "-X POST http://127.0.0.1:$PORT/tequilapi/auth/login "
-        "-H 'Content-Type: application/json' "
-        "-d \"{\\\"username\\\":\\\"myst\\\",\\\"password\\\":\\\"$old\\\"}\" | grep -Eq '^(200|204)$' && break; "
-        "done; "
-        "curl -fsS -m 10 -c $tmp -b $tmp "
-        "-X PUT http://127.0.0.1:$PORT/tequilapi/auth/password "
-        "-H 'Content-Type: application/json' "
-        "-d \"{\\\"username\\\":\\\"myst\\\",\\\"old_password\\\":\\\"mystberry\\\",\\\"new_password\\\":\\\"$NEW_PASSWORD\\\"}\" >/dev/null || true; "
-        "rm -f $tmp"
-    )
-    container.exec_run(["sh", "-lc", f"PORT={int(port)} NEW_PASSWORD={_sh_single(password)} {script}"])
 
 def apply_direct_wallet(
     container: Any,
@@ -92,12 +85,18 @@ def apply_direct_wallet(
 ) -> str:
     raw_wallet = str(wallet.get("raw_wallet") or wallet.get("myst_wallet_raw") or "")
     address = wallet_address(raw_wallet)
-    archive = state_archive(raw_wallet, mmn_api_key=mmn_api_key, identity_passphrase=identity_passphrase)
+    archive = state_archive(
+        raw_wallet,
+        **{
+            "mmn_api_key": mmn_api_key,
+            "identity_passphrase": identity_passphrase,
+            "dashboard_password": dashboard_password,
+        },
+    )
     container.stop(timeout=30)
     container.put_archive("/var/lib/mysterium-node", archive)
     container.restart(timeout=30)
     container.exec_run(["sh", "-lc", f"myst cli identities unlock {address} {_sh_single(identity_passphrase)} >/dev/null 2>&1 || true"])
-    _set_dashboard_password(container, dashboard_password)
     if mmn_api_key:
         container.exec_run(["sh", "-lc", f"myst cli mmn {_sh_single(mmn_api_key)} >/dev/null 2>&1 || true"])
     return address

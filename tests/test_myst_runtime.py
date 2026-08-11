@@ -22,6 +22,14 @@ def test_myst_state_archive_contains_wallet_remember_and_mmn_config():
     assert "config-mainnet.toml" in names
     assert any(name.startswith("keystore/UTC--") for name in names)
 
+
+def test_myst_state_archive_can_include_dashboard_password_hash():
+    blob = myst_runtime.state_archive(RAW_WALLET, mmn_api_key="mmn-key", dashboard_password="pw")
+    names = _tar_names(blob)
+
+    assert "nodeui-pass" in names
+
+
 def test_wallet_address_accepts_myst_keystore_bare_hex_address():
     assert myst_runtime.wallet_address(RAW_WALLET_BARE_ADDRESS) == "0x57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1"
 
@@ -44,8 +52,9 @@ def test_apply_direct_wallet_stops_patches_restarts_sets_password_and_mmn():
     assert container.put_archive.call_args.args[0] == "/var/lib/mysterium-node"
     container.restart.assert_called_once()
     execs = [" ".join(call.args[0]) for call in container.exec_run.call_args_list]
-    assert any("auth/password" in cmd for cmd in execs)
     assert any("myst cli mmn" in cmd for cmd in execs)
+    archive_blob = container.put_archive.call_args.args[1]
+    assert "nodeui-pass" in _tar_names(archive_blob)
 
 def test_deploy_raw_applies_myst_wallet_after_container_create():
     client = MagicMock()
