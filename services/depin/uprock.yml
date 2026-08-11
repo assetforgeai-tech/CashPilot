@@ -15,7 +15,7 @@ referral:
   code: "33e8492e"
 
 docker:
-  image: ghcr.io/assetforgeai-tech/internetincome-uprock:0.0.38-browser
+  image: cashpilot/uprock-mining:auto
   platforms: [linux/amd64]
   resources:
     mem_limit: "768m"
@@ -23,7 +23,7 @@ docker:
   env: []
   ports: []
   volumes:
-    - "uprock-profile:/data/profile"
+    - "uprock-state:/root/.local/share/UpRock"
   command: ""
   network_mode: ""
   health_signals:
@@ -35,21 +35,34 @@ docker:
       state: error
 
 deploy:
-  automation: seed_bundle
-  notes: "Runtime uses a pre-authenticated full seed bundle or credentials.json + main-enabled.db bundle."
+  automation: official_deb_seed_state
+  installer_manifest_url: "https://edge.uprock.com/v1/app-download/UpRock-Mining-v0.0.38.deb"
+  installer_platform: linux-x86_64
+  notes: "Runtime uses the official UpRock Linux .deb plus a preseeded credentials.json + main.db state bundle."
   runtime_assets:
     - provider: uprock
-      asset_kind: seed_bundle
-      target: /seed/uprock-seed-bundle.tar.gz
+      asset_kind: credentials_json
+      target: /cashpilot/runtime-assets/uprock/credentials.json
+      encoding: text
+    - provider: uprock
+      asset_kind: main_db
+      target: /cashpilot/runtime-assets/uprock/main.db
       encoding: base64
   credentials:
-    - key: seed_bundle
-      label: "Uprock seed bundle"
+    - key: credentials_json
+      label: "Uprock credentials.json"
       kind: file
       secret: true
       required: true
       source: "CashPilot runtime asset inventory"
-      description: "Redacted Uprock profile seed; worker requests it by runtime asset API."
+      description: "Redacted Uprock login seed; worker requests it by runtime asset API."
+    - key: main_db
+      label: "Uprock main.db"
+      kind: file
+      secret: true
+      required: true
+      source: "CashPilot runtime asset inventory"
+      description: "Redacted Uprock app state database; worker requests it by runtime asset API."
 
 requirements:
   residential_ip: true
@@ -68,7 +81,7 @@ earnings:
   monthly_high: 5
   currency: USD
   per: "device"
-  notes: "Crypto/token-based earnings. The tested Docker automation is seed/profile based; CashPilot does not yet model seed bundle mounts."
+  notes: "Crypto/token-based earnings. The tested Docker automation uses the official Linux .deb plus preseeded login/state files."
 
 cashout:
   method: redirect
@@ -81,7 +94,7 @@ platforms: [browser-extension, android]
 
 collector:
   type: manual
-  notes: "No public earnings API confirmed. Runtime evidence points to a seed/profile based app container, not env email/password login."
+  notes: "No public earnings API confirmed. Runtime evidence points to a preseeded app container, not env email/password login."
 
 payout:
   model: unknown

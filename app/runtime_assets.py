@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import re
 
-ALLOWED_KINDS = {"seed_bundle", "cookie_bundle", "dashboard_token", "wallet_lease_ref"}
+ALLOWED_KINDS = {
+    "seed_bundle",
+    "cookie_bundle",
+    "dashboard_token",
+    "wallet_lease_ref",
+    "credentials_json",
+    "main_db",
+}
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 def validate(provider: str, asset_kind: str) -> tuple[str, str]:

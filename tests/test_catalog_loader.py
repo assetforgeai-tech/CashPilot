@@ -297,16 +297,26 @@ class TestProviderAutomationContracts:
         assert svc["deploy"]["automation"] == "store_json_patch"
         assert not svc["deploy"].get("runtime_assets")
 
-    def test_uprock_runtime_uses_seed_bundle_asset(self):
+    def test_uprock_runtime_uses_official_seed_state_assets(self):
         svc = self._svc("uprock")
-        assert svc["docker"]["image"] == "ghcr.io/assetforgeai-tech/internetincome-uprock:0.0.38-browser"
-        assert "seed_bundle" in self._credential_keys(svc, "deploy")
-        assert svc["deploy"]["automation"] == "seed_bundle"
+        assert svc["docker"]["image"] == "cashpilot/uprock-mining:auto"
+        assert svc["deploy"]["installer_manifest_url"] == (
+            "https://edge.uprock.com/v1/app-download/UpRock-Mining-v0.0.38.deb"
+        )
+        assert "uprock-state:/root/.local/share/UpRock" in svc["docker"]["volumes"]
+        assert {"credentials_json", "main_db"} <= self._credential_keys(svc, "deploy")
+        assert svc["deploy"]["automation"] == "official_deb_seed_state"
         assert svc["deploy"]["runtime_assets"] == [
             {
                 "provider": "uprock",
-                "asset_kind": "seed_bundle",
-                "target": "/seed/uprock-seed-bundle.tar.gz",
+                "asset_kind": "credentials_json",
+                "target": "/cashpilot/runtime-assets/uprock/credentials.json",
+                "encoding": "text",
+            },
+            {
+                "provider": "uprock",
+                "asset_kind": "main_db",
+                "target": "/cashpilot/runtime-assets/uprock/main.db",
                 "encoding": "base64",
             }
         ]

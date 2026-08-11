@@ -5,7 +5,7 @@
 
 ## Description
 
-Uprock is a DePIN platform that lets you earn cryptocurrency by sharing your internet connection. The tested automation uses a pre-authenticated seed/profile bundle for the desktop/browser runtime rather than email/password login at container start.
+Uprock is a DePIN platform that lets you earn cryptocurrency by sharing your internet connection. The tested automation uses the official Linux `.deb` plus a preseeded `credentials.json` and `main.db` state bundle rather than email/password login at container start.
 
 ## Earning Estimates
 
@@ -17,7 +17,7 @@ Uprock is a DePIN platform that lets you earn cryptocurrency by sharing your int
 | Payout frequency | On request |
 | Payment methods | Crypto |
 
-> Crypto/token-based earnings. CashPilot does not yet model seed bundle mounts.
+> Crypto/token-based earnings. CashPilot models the official `.deb` plus seed-state prefill.
 
 ## Requirements
 
@@ -47,10 +47,10 @@ Log in with your account, enable the extension/app, and it runs in the backgroun
 
 ## Docker Configuration
 
-No public Docker image is confirmed. Uprock is a browser extension and mobile app flow, and the tested runtime evidence points to a seed/profile based app container.
+The official Linux installer is the tested runtime source. CashPilot builds a local Docker wrapper from the `.deb` and pre-seeds the app state before launch.
 
 ## Important Notes
 
 - Android can run alongside other bandwidth-sharing apps on different devices.
-- Browser/app runtime is profile based in the audited setup.
+- Browser/app runtime is profile/state based in the audited setup.
 - No public earnings API confirmed.

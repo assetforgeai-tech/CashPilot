@@ -229,10 +229,10 @@
 #         required: true
 #         source: "local secret inventory"
 #     runtime_assets:
-#       - provider: grass
-#         asset_kind: seed_bundle
-#         target: /seed/grass-xdg-seed.tar.gz
-#         encoding: base64
+#       - provider: uprock
+#         asset_kind: credentials_json
+#         target: /cashpilot/runtime-assets/uprock/credentials.json
+#         encoding: text
 #     `runtime_assets` are server-managed secrets/assets materialized by the
 #     worker at deploy time and mounted read-only into the provider container.
 #     installer_manifest_url: "https://files.grass.io/file/.../latest.json"

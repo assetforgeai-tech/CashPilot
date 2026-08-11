@@ -11,15 +11,15 @@ from urllib.request import Request, urlopen
 from docker.errors import ImageNotFound
 
 _GRASS_IMAGE = "cashpilot/grass-desktop"
-_GRASS_RUNNER = "ubuntu24.04"
+_UPROCK_IMAGE = "cashpilot/uprock-mining"
+_RUNNER = "ubuntu24.04"
 _GRASS_ALLOWED_HOST = "files.grass.io"
-
+_UPROCK_ALLOWED_HOST = "edge.uprock.com"
 
 def _fetch_json(url: str) -> dict:
     req = Request(url, headers={"Accept": "application/json", "User-Agent": "CashPilot/1.0"})
     with urlopen(req, timeout=30) as resp:  # noqa: S310 - URL is operator/provider config, validated by caller.
         return json.loads(resp.read().decode("utf-8"))
-
 
 def _platform_key() -> str:
     os_name = platform.system().lower()
@@ -33,14 +33,27 @@ def _platform_key() -> str:
         return f"windows-{arch}"
     return f"{os_name}-{arch}"
 
-
 def _safe_grass_url(url: str) -> None:
     parsed = urlparse(url)
     if parsed.scheme != "https" or parsed.hostname != _GRASS_ALLOWED_HOST:
         raise ValueError("Grass installer URL must be https://files.grass.io/...")
 
+def _safe_uprock_url(url: str) -> None:
+    parsed = urlparse(url)
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != _UPROCK_ALLOWED_HOST
+        or "UpRock-Mining-v" not in parsed.path
+        or not parsed.path.endswith(".deb")
+    ):
+        raise ValueError("Uprock installer URL must point to an official https://edge.uprock.com/... .deb")
 
 def resolve_installer_manifest(provider: str, manifest_url: str, platform_key: str | None = None) -> dict[str, str]:
+    if provider == "uprock":
+        _safe_uprock_url(manifest_url)
+        filename = manifest_url.rstrip("/").rsplit("/", 1)[-1]
+        version = filename.removeprefix("UpRock-Mining-").removesuffix(".deb")
+        return {"platform": platform_key or "linux-x86_64", "version": version, "url": manifest_url}
     if provider != "grass":
         raise ValueError(f"Installer manifests are not supported for {provider!r}")
     _safe_grass_url(manifest_url)
@@ -54,22 +67,24 @@ def resolve_installer_manifest(provider: str, manifest_url: str, platform_key: s
     _safe_grass_url(url)
     return {"platform": key, "version": str(manifest.get("version") or "unknown"), "url": url}
 
-
 def ensure_installer_image(client, provider: str, resolved: dict[str, str]) -> str:
-    if provider != "grass":
-        raise ValueError(f"Installer image builds are not supported for {provider!r}")
+    if provider == "uprock":
+        return _ensure_image(client, _UPROCK_IMAGE, resolved, _uprock_dockerfile)
+    if provider == "grass":
+        return _ensure_image(client, _GRASS_IMAGE, resolved, _grass_dockerfile)
+    raise ValueError(f"Installer image builds are not supported for {provider!r}")
+
+def _ensure_image(client, image_base: str, resolved: dict[str, str], dockerfile_builder) -> str:
     version = "".join(c if c.isalnum() or c in ".-_" else "-" for c in resolved["version"])
-    image = f"{_GRASS_IMAGE}:{version}-{_GRASS_RUNNER}"
+    image = f"{image_base}:{version}-{_RUNNER}"
     try:
         client.images.get(image)
         return image
     except ImageNotFound:
         pass
-
-    dockerfile = _grass_dockerfile(resolved["url"])
+    dockerfile = dockerfile_builder(resolved["url"])
     client.images.build(fileobj=BytesIO(dockerfile.encode("utf-8")), tag=image, rm=True, forcerm=True, pull=True)
     return image
-
 
 def _grass_dockerfile(deb_url: str) -> str:
     _safe_grass_url(deb_url)
@@ -89,4 +104,21 @@ RUN apt-get update \\
  && rm -rf /var/lib/apt/lists/* /tmp/grass-desktop.deb
 EXPOSE 6080
 CMD ["bash", "-lc", "mkdir -p $HOME; rm -f /tmp/.X99-lock; Xvfb :99 -screen 0 1366x768x24 -nolisten tcp >/tmp/xvfb.log 2>&1 & fluxbox >/tmp/fluxbox.log 2>&1 & x11vnc -display :99 -forever -shared -nopw -listen 0.0.0.0 -xkb >/tmp/x11vnc.log 2>&1 & websockify --web=/usr/share/novnc/ 6080 localhost:5900 >/tmp/novnc.log 2>&1 & dbus-run-session sh -lc 'grass-desktop --no-sandbox || Grass --no-sandbox || /opt/Grass/grass-desktop --no-sandbox || /opt/Grass/grass --no-sandbox'"]
+"""
+
+def _uprock_dockerfile(deb_url: str) -> str:
+    _safe_uprock_url(deb_url)
+    return f"""FROM ubuntu:24.04
+ENV DEBIAN_FRONTEND=noninteractive \\
+    DISPLAY=:99 \\
+    UPROCK_OS_CONSENT_SKIP=true
+RUN apt-get update \\
+ && apt-get install -y --no-install-recommends ca-certificates curl xvfb x11vnc fluxbox novnc websockify dbus-x11 \\
+ && rm -rf /var/lib/apt/lists/*
+ADD {deb_url} /tmp/uprock-mining.deb
+RUN apt-get update \\
+ && apt-get install -y --no-install-recommends /tmp/uprock-mining.deb \\
+ && rm -rf /var/lib/apt/lists/* /tmp/uprock-mining.deb
+EXPOSE 6080
+CMD ["bash", "-lc", "set -e; mkdir -p /root/.local/share/UpRock; if [ -s /cashpilot/runtime-assets/uprock/credentials.json ]; then cp /cashpilot/runtime-assets/uprock/credentials.json /root/.local/share/UpRock/credentials.json; chmod 600 /root/.local/share/UpRock/credentials.json; fi; if [ -s /cashpilot/runtime-assets/uprock/main.db ]; then cp /cashpilot/runtime-assets/uprock/main.db /root/.local/share/UpRock/main.db; chmod 600 /root/.local/share/UpRock/main.db; fi; rm -f /tmp/.X99-lock; Xvfb :99 -screen 0 1200x800x24 -nolisten tcp >/tmp/xvfb.log 2>&1 & fluxbox >/tmp/fluxbox.log 2>&1 & x11vnc -display :99 -forever -shared -nopw -listen 0.0.0.0 -xkb >/tmp/x11vnc.log 2>&1 & websockify --web=/usr/share/novnc/ 6080 localhost:5900 >/tmp/novnc.log 2>&1 & dbus-run-session sh -lc 'uprock-mining'"]
 """
