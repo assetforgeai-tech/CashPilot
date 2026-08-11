@@ -9,7 +9,7 @@ import tarfile
 from datetime import UTC, datetime
 from typing import Any
 
-import bcrypt
+import docker
 
 _ADDR_RE = re.compile(r"0x[a-fA-F0-9]{40}")
 _BARE_ADDR_RE = re.compile(r"[a-fA-F0-9]{40}")
@@ -45,7 +45,6 @@ def state_archive(
     *,
     mmn_api_key: str,
     identity_passphrase: str = "",
-    dashboard_password: str = "",
 ) -> bytes:
     address = wallet_address(raw_wallet)
     short = address.removeprefix("0x")
@@ -66,13 +65,42 @@ def state_archive(
         _tar_add(tf, wallet_name, raw_wallet.strip().encode())
         _tar_add(tf, "keystore/remember.json", json.dumps({"identity": {"address": address}}, separators=(",", ":")).encode())
         _tar_add(tf, "config-mainnet.toml", config.encode())
-        if dashboard_password:
-            _tar_add(tf, "nodeui-pass", bcrypt.hashpw(dashboard_password.encode("utf-8"), bcrypt.gensalt()).decode("ascii").encode())
     return buf.getvalue()
 
 
 def _sh_single(value: str) -> str:
     return "'" + str(value).replace("'", "'\"'\"'") + "'"
+
+
+def _set_dashboard_password(password: str, *, port: int = 4449) -> None:
+    if not password:
+        return
+    script = f"""set -eu
+tmp=$(mktemp)
+trap 'rm -f "$tmp"' EXIT
+for old in "$NEW_PASSWORD" mystberry; do
+  status=$(curl -sS -m 10 -c "$tmp" -b "$tmp" -o /dev/null -w '%{{http_code}}' \
+    -X POST "http://127.0.0.1:{int(port)}/tequilapi/auth/login" \
+    -H 'Content-Type: application/json' \
+    -d '{{"username":"myst","password":"'"$old"'"}}' || true)
+  case "$status" in
+    200|204) break ;;
+  esac
+done
+curl -fsS -m 10 -c "$tmp" -b "$tmp" \
+  -X PUT "http://127.0.0.1:{int(port)}/tequilapi/auth/password" \
+  -H 'Content-Type: application/json' \
+  -d '{{"username":"myst","oldPassword":"mystberry","newPassword":"'"$NEW_PASSWORD"'"}}' >/dev/null
+"""
+    client = docker.from_env()
+    client.containers.run(
+        image="curlimages/curl:8.10.1",
+        command=["sh", "-ec", script],
+        environment={"NEW_PASSWORD": password},
+        network_mode="host",
+        remove=True,
+        detach=False,
+    )
 
 
 def apply_direct_wallet(
@@ -90,13 +118,13 @@ def apply_direct_wallet(
         **{
             "mmn_api_key": mmn_api_key,
             "identity_passphrase": identity_passphrase,
-            "dashboard_password": dashboard_password,
         },
     )
     container.stop(timeout=30)
     container.put_archive("/var/lib/mysterium-node", archive)
     container.restart(timeout=30)
     container.exec_run(["sh", "-lc", f"myst cli identities unlock {address} {_sh_single(identity_passphrase)} >/dev/null 2>&1 || true"])
+    _set_dashboard_password(dashboard_password)
     if mmn_api_key:
         container.exec_run(["sh", "-lc", f"myst cli mmn {_sh_single(mmn_api_key)} >/dev/null 2>&1 || true"])
     return address
