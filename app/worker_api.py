@@ -299,6 +299,109 @@ _EGRESS_MAX_BYTES = 128
 _EGRESS_CONFIG_DIR = Path(os.getenv("CASHPILOT_DATA_DIR", "/data")) / "egress"
 _EGRESS_CONFIG_FILE = _EGRESS_CONFIG_DIR / "sing-box.json"
 _RUNTIME_ASSET_DIR = Path(os.getenv("CASHPILOT_DATA_DIR", "/data")) / "runtime-assets"
+def _myst_state_path() -> Path:
+    return Path(os.getenv("CASHPILOT_DATA_DIR", "/data")) / "myst-wallet.json"
+
+def _save_myst_wallet_state(state: dict[str, Any]) -> None:
+    payload = dict(state)
+    payload.pop("myst_wallet_raw", None)
+    path = _myst_state_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+
+def _load_myst_wallet_state() -> dict[str, Any] | None:
+    path = _myst_state_path()
+    try:
+        if not path.is_file():
+            return None
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else None
+    except OSError:
+        return None
+
+async def _post_myst_wallet_event(client: httpx.AsyncClient, event: str, payload: dict[str, Any]) -> None:
+    ui_url = UI_URL or os.getenv("CASHPILOT_UI_URL", "").strip()
+    if not ui_url:
+        return
+    resp = await client.post(
+        f"{ui_url.rstrip('/')}/api/myst-wallets/{event}",
+        json=payload,
+        headers={"Authorization": f"Bearer {_active_key()}"},
+    )
+    resp.raise_for_status()
+
+async def _sync_myst_wallet_after_deploy(deploy_credentials: dict[str, Any], container_id: str) -> None:
+    wallet_id = int(deploy_credentials.get("myst_wallet_id") or 0)
+    client_id = str(deploy_credentials.get("myst_wallet_client_id") or CLIENT_ID)
+    if not wallet_id or not client_id:
+        return
+    state = {
+        "myst_wallet_id": wallet_id,
+        "myst_wallet_client_id": client_id,
+        "myst_wallet_assignment_version": int(deploy_credentials.get("myst_wallet_assignment_version") or 0),
+        "myst_node_identity": str(deploy_credentials.get("myst_node_identity") or ""),
+        "container_id": container_id,
+    }
+    _save_myst_wallet_state(state)
+    async with httpx.AsyncClient(timeout=15) as client:
+        await _post_myst_wallet_event(
+            client,
+            "heartbeat",
+            {
+                "client_id": client_id,
+                "wallet_id": wallet_id,
+                "wallet_assignment_version": state["myst_wallet_assignment_version"],
+                "node_identity": state["myst_node_identity"],
+                "runtime_status": "running",
+                "evidence": {"container_id": container_id, "deploy_state": "started"},
+            },
+        )
+
+async def _sync_myst_wallet_heartbeat() -> None:
+    state = _load_myst_wallet_state()
+    if not state:
+        return
+    wallet_id = int(state.get("myst_wallet_id") or 0)
+    client_id = str(state.get("myst_wallet_client_id") or "")
+    if not wallet_id or not client_id:
+        return
+    async with httpx.AsyncClient(timeout=15) as client:
+        await _post_myst_wallet_event(
+            client,
+            "heartbeat",
+            {
+                "client_id": client_id,
+                "wallet_id": wallet_id,
+                "wallet_assignment_version": int(state.get("myst_wallet_assignment_version") or 0),
+                "node_identity": str(state.get("myst_node_identity") or ""),
+                "runtime_status": "running",
+                "evidence": {"container_id": state.get("container_id", ""), "source": "heartbeat"},
+            },
+        )
+
+async def _release_myst_wallet_state(reason: str) -> None:
+    state = _load_myst_wallet_state()
+    if not state:
+        return
+    wallet_id = int(state.get("myst_wallet_id") or 0)
+    client_id = str(state.get("myst_wallet_client_id") or "")
+    if not wallet_id or not client_id:
+        return
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            await _post_myst_wallet_event(
+                client,
+                "release",
+                {
+                    "client_id": client_id,
+                    "wallet_id": wallet_id,
+                    "wallet_assignment_version": int(state.get("myst_wallet_assignment_version") or 0),
+                    "release_reason": reason,
+                },
+            )
+    finally:
+        with contextlib.suppress(OSError):
+            _myst_state_path().unlink()
 
 
 def _disk_usage() -> dict[str, Any] | None:
@@ -633,6 +736,8 @@ async def _heartbeat_loop() -> None:
     while True:
         try:
             await _send_heartbeat()
+            with contextlib.suppress(Exception):
+                await _sync_myst_wallet_heartbeat()
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -812,7 +917,7 @@ class DeploySpec(BaseModel):
     runtime_assets: list[RuntimeAssetSpec] = Field(default_factory=list)
     installer_manifest_url: str | None = None
     installer_platform: str | None = None
-    deploy_credentials: dict[str, str] = Field(default_factory=dict)
+    deploy_credentials: dict[str, Any] = Field(default_factory=dict)
     # Advanced and unsupported. Absent means Docker's default runtime, which is
     # what everything uses and what everything is tested against.
     runtime: str | None = None
@@ -1195,6 +1300,11 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             deploy_credentials=spec.deploy_credentials,
             user=spec.user,
         )
+        if slug == "mysterium":
+            try:
+                await _sync_myst_wallet_after_deploy(spec.deploy_credentials, container_id)
+            except Exception as exc:
+                logger.warning("MYST wallet heartbeat failed after deploy: %s", exc)
         return {"status": "deployed", "container_id": container_id}
     except Exception:
         logger.exception("Deploy failed for %s", slug)

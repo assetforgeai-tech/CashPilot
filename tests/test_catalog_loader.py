@@ -348,6 +348,11 @@ class TestProviderAutomationContracts:
         assert svc["deploy"]["automation"] == "device_key_register"
         assert "dashboard_token" in self._credential_keys(svc, "dashboard")
 
+    def test_mysterium_runtime_uses_direct_wallet_deploy_credentials(self):
+        svc = self._svc("mysterium")
+        assert svc["deploy"]["automation"] == "direct_wallet"
+        assert {"dashboard_password", "mmn_api_key"} <= self._credential_keys(svc, "deploy")
+
     def test_wipter_runtime_uses_env_login(self):
         svc = self._svc("wipter")
         env = {item["key"]: item for item in svc["docker"]["env"]}

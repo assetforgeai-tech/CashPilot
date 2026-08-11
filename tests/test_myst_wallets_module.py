@@ -11,7 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app import database, myst_wallets
+from app import database, main, myst_wallets
 
 
 @asynccontextmanager
@@ -192,5 +192,47 @@ class TestMystWalletInventory:
                 assert row["funding"] == "UNFUNDED"
                 assert row["release_reason"] == "MYST_WALLET_UNFUNDED"
                 assert row["leased_to_worker_id"] is None
+
+        asyncio.run(run())
+
+    def test_stale_wallet_assignment_version_cannot_heartbeat(self, tmp_path):
+        async def run():
+            with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "myst.db"):
+                await database.init_db()
+                await database.import_myst_wallets("raw-wallet-one")
+                wallet_id = (await database.list_myst_wallets())[0]["id"]
+                await database.update_myst_wallet(wallet_id, funding="FUNDED")
+                leased = await database.lease_myst_wallet("worker-a")
+
+                ok = await database.heartbeat_myst_wallet(
+                    leased["id"],
+                    "worker-a",
+                    wallet_assignment_version=leased["wallet_assignment_version"] - 1,
+                    node_identity="stale-node",
+                    runtime_status="stale",
+                )
+
+                assert not ok
+                row = (await database.list_myst_wallets())[0]
+                assert row["node_identity"] == ""
+                assert row["runtime_status"] == ""
+
+        asyncio.run(run())
+
+    def test_mysterium_deploy_attaches_wallet_for_worker_client(self, tmp_path):
+        async def run():
+            with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "myst.db"):
+                await database.init_db()
+                worker_id = await database.upsert_worker("worker-client", "worker", "http://worker")
+                await database.import_myst_wallets("raw-wallet-one")
+                spec = {"deploy_credentials": {"myst_dashboard_password": "pw", "myst_mmn_api_key": "mmn"}}
+                await main._attach_myst_wallet_for_deploy("mysterium", worker_id, spec)
+
+                creds = spec["deploy_credentials"]
+                assert creds["myst_wallet_raw"] == "raw-wallet-one"
+                assert creds["myst_wallet_assignment_version"] == 1
+                row = (await database.list_myst_wallets())[0]
+                assert row["state"] == "LEASED"
+                assert row["leased_to_worker_id"] == worker_id
 
         asyncio.run(run())

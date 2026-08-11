@@ -41,6 +41,24 @@ docker:
     - "/dev/net/tun"
   privileged: false
 
+deploy:
+  automation: direct_wallet
+  credentials:
+    - key: dashboard_password
+      label: "Dashboard password"
+      kind: password
+      secret: true
+      required: true
+      source: "CashPilot MYST runtime"
+      description: "Default password CashPilot sets on every node's local MYST dashboard."
+    - key: mmn_api_key
+      label: "MMN API key"
+      kind: api_key
+      secret: true
+      required: true
+      source: "my.mystnodes.com"
+      description: "Used by CashPilot after wallet import so the node can claim/register with MMN automatically."
+
 egress:
   mode: direct
   udp: required
@@ -64,7 +82,7 @@ earnings:
   monthly_high: 10
   currency: USD
   per: "device"
-  notes: "Earnings in MYST tokens. Residential IPs earn significantly more. Node WebUI at port 4449 for management. VPS accepted. Port forwarding UDP 56000-56100 strongly recommended -- without it, nodes get Strict NAT status and many VPN sessions fail, severely reducing income. Important: after first run, set your beneficiary (settlement) wallet via the node WebUI or CLI to match your mystnodes.com account -- this links on-chain earnings to your cloud dashboard."
+  notes: "Earnings in MYST tokens. Residential IPs earn significantly more. Node WebUI at port 4449 for management. VPS accepted. Port forwarding UDP 56000-56100 strongly recommended -- without it, nodes get Strict NAT status and many VPN sessions fail, severely reducing income. CashPilot direct-wallet deploy leases a funded wallet from MYST Wallet inventory, imports it into the worker, sets the dashboard password, and applies the MMN API key."
 
 cashout:
   method: auto
@@ -122,5 +140,5 @@ disclosure:
 payout:
   model: external
   chain: polygon
-  address_source: manual
-  notes: "The beneficiary wallet is set AFTER deploy, via TequilAPI or the node WebUI -- not by an env var, so it cannot be read from the container spec."
+  address_source: cashpilot_myst_wallet
+  notes: "CashPilot deploys MYST with a server-leased funded wallet and MMN API key. Wallet inventory, funding state, lease version, heartbeat, release, and quarantine live under the MYST Wallet module."
