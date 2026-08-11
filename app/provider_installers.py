@@ -72,7 +72,7 @@ def ensure_installer_image(client, provider: str, resolved: dict[str, str]) -> s
 
 def _grass_dockerfile(deb_url: str) -> str:
     _safe_grass_url(deb_url)
-    return f"""FROM debian:bookworm-slim
+    return f"""FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive \\
     DISPLAY=:99 \\
     HOME=/data/profile \\

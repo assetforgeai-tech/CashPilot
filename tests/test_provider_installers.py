@@ -44,5 +44,6 @@ def test_grass_manifest_build_tags_image_by_resolved_version():
 
     assert image == "cashpilot/grass-desktop:v7.6.0"
     dockerfile = client.images.build.call_args.kwargs["fileobj"].getvalue().decode()
+    assert "FROM ubuntu:24.04" in dockerfile
     assert "grass-desktop_7.6.0_amd64.deb" in dockerfile
     assert "novnc" in dockerfile
