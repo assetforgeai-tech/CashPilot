@@ -93,8 +93,16 @@ cashout:
 platforms: [browser-extension, android]
 
 collector:
-  type: manual
-  notes: "No public earnings API confirmed. Worker heartbeat records local daemon evidence (authenticated, earning, earn_rate, version, device_id) but does not import wallet totals or payout history."
+  type: api
+  notes: "Account-level collector refreshes the official desktop seed JWT and reads wallet total/rewards from backend.uprock.com. Per-node monetary earnings are not exposed by the local daemon/API confirmed so far; worker heartbeat still records per-node runtime evidence."
+  credentials:
+    - key: credentials_json
+      label: "Uprock credentials.json"
+      kind: file
+      secret: true
+      required: true
+      source: "CashPilot runtime asset inventory"
+      description: "Logged-in Uprock desktop seed file. Collector reads the main JWT, refreshes it, then fetches wallet/rewards."
 
 payout:
   model: unknown

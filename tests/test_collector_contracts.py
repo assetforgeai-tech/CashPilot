@@ -168,6 +168,23 @@ class TestParsingRealShapes:
         assert out.balance == fx["parsed"]
         assert out.currency == fx["currency"]
 
+    def test_uprock_refreshes_seed_token_and_reads_wallet_total(self):
+        from app.collectors.uprock import UprockCollector
+
+        fx = _fixture("uprock")
+        c = UprockCollector(credentials_json='{"main":"refresh-token"}')
+        out = self._run(
+            c,
+            [
+                {"access_token": "access-token"},
+                fx["sample"]["wallet"],
+                fx["sample"]["rewards"],
+            ],
+        )
+        assert out.error is None
+        assert out.balance == fx["parsed"]
+        assert out.currency == fx["currency"]
+
 
 class TestCredentialSelfTest:
     """The button that answers "are these credentials valid?" in a second.
@@ -236,9 +253,9 @@ class TestCredentialSelfTest:
             self._call("no-such-service")
         assert exc.value.status_code == 404
 
-    def test_a_service_with_no_collector_says_there_is_nothing_to_test(self):
+    def test_an_unconfigured_uprock_collector_names_the_missing_seed(self):
         out = self._call("uprock")
-        assert out["outcome"] in {"unsupported", "not_configured"}
+        assert out["outcome"] == "not_configured"
 
     def test_unconfigured_credentials_are_reported_as_such(self):
         out = self._call("earnapp")
@@ -345,6 +362,14 @@ class TestBuildingASingleCollector:
         assert collector is not None
         assert missing == []
         assert collector.platform == "earnapp"
+
+    def test_it_builds_uprock_from_credentials_json_seed(self):
+        from app import collectors
+
+        collector, missing = collectors.build_one("uprock", {"uprock_credentials_json": '{"main":"refresh-token"}'})
+        assert collector is not None
+        assert missing == []
+        assert collector.platform == "uprock"
 
     def test_it_names_the_missing_keys_rather_than_failing_vaguely(self):
         from app import collectors

@@ -53,5 +53,6 @@ The official Linux installer is the tested runtime source. CashPilot builds a lo
 
 - Android can run alongside other bandwidth-sharing apps on different devices.
 - Browser/app runtime is profile/state based in the audited setup.
-- No public earnings API confirmed.
+- CashPilot reads account-level wallet/reward data from `https://backend.uprock.com` by refreshing the JWT stored in the logged-in desktop `credentials.json`.
 - CashPilot reads worker-side runtime evidence from Uprock's local daemon socket: login state, earning state, earn rate, version, and desktop device ID when logs expose it.
+- Per-node monetary earnings are not exposed by the confirmed local daemon/API path; node rows remain runtime evidence only.

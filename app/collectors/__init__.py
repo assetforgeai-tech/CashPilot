@@ -22,6 +22,7 @@ from app.collectors.proxies_sx import ProxiesSxCollector
 from app.collectors.proxyrack import ProxyRackCollector
 from app.collectors.repocket import RepocketCollector
 from app.collectors.traffmonetizer import TraffmonetizerCollector
+from app.collectors.uprock import UprockCollector
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,7 @@ COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
     "proxies-sx": ProxiesSxCollector,
     "grass": GrassCollector,
     "bytelixir": BytelixirCollector,
+    "uprock": UprockCollector,
 }
 
 # Map of slug -> list of config keys needed to instantiate the collector
@@ -54,6 +56,7 @@ _COLLECTOR_ARGS: dict[str, list[str]] = {
     "packetstream": ["auth_token"],
     "proxies-sx": ["api_key"],
     "grass": ["access_token"],
+    "uprock": ["credentials_json"],
     # bytelixir_session expires ~2h after issue, so on its own this collector
     # dies the same afternoon it is set up. remember_web is the durable cookie
     # (a year) that lets the session be re-established, and xsrf_token is needed
@@ -205,6 +208,13 @@ CREDENTIAL_LIFETIMES: dict[str, dict[str, dict[str, object]]] = {
             "hours": None,
             "durable": True,
             "why": "Bearer token from browser localStorage. Re-copy it if Grass signs you out.",
+        },
+    },
+    "uprock": {
+        "credentials_json": {
+            "hours": None,
+            "durable": True,
+            "why": "Seed file from the logged-in official desktop app. Re-export it if Uprock signs the node out.",
         },
     },
 }
