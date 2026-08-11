@@ -20,6 +20,7 @@ class MystWalletUpdateIn(BaseModel):
     state: str | None = None
     funding: str | None = None
     quarantined_reason: str | None = None
+    release_reason: str | None = None
 
 
 @router.get("/api/admin/myst-wallets")
@@ -50,6 +51,7 @@ async def api_myst_wallets_update(request: Request, wallet_id: int, body: MystWa
         state=body.state,
         funding=body.funding,
         quarantined_reason=body.quarantined_reason,
+        release_reason=body.release_reason,
     )
     if not ok:
         raise HTTPException(status_code=404, detail="MYST wallet not found")

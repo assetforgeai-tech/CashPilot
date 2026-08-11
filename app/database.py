@@ -301,6 +301,8 @@ CREATE TABLE IF NOT EXISTS myst_wallets (
     leased_to_worker_id INTEGER,
     leased_to_client_id TEXT    NOT NULL DEFAULT '',
     leased_at           TEXT,
+    release_reason      TEXT    NOT NULL DEFAULT '',
+    wallet_assignment_version INTEGER NOT NULL DEFAULT 0,
     node_identity      TEXT    NOT NULL DEFAULT '',
     runtime_status     TEXT    NOT NULL DEFAULT '',
     last_heartbeat_at  TEXT,
@@ -505,6 +507,8 @@ CREATE TABLE IF NOT EXISTS myst_wallets (
     leased_to_worker_id INTEGER,
     leased_to_client_id TEXT    NOT NULL DEFAULT '',
     leased_at           TEXT,
+    release_reason      TEXT    NOT NULL DEFAULT '',
+    wallet_assignment_version INTEGER NOT NULL DEFAULT 0,
     node_identity      TEXT    NOT NULL DEFAULT '',
     runtime_status     TEXT    NOT NULL DEFAULT '',
     last_heartbeat_at  TEXT,
@@ -2188,6 +2192,10 @@ async def _ensure_myst_wallets_table(db: Any) -> None:
         await db.execute("ALTER TABLE myst_wallets ADD COLUMN leased_to_client_id TEXT NOT NULL DEFAULT ''")
     if "leased_at" not in cols:
         await db.execute("ALTER TABLE myst_wallets ADD COLUMN leased_at TEXT")
+    if "release_reason" not in cols:
+        await db.execute("ALTER TABLE myst_wallets ADD COLUMN release_reason TEXT NOT NULL DEFAULT ''")
+    if "wallet_assignment_version" not in cols:
+        await db.execute("ALTER TABLE myst_wallets ADD COLUMN wallet_assignment_version INTEGER NOT NULL DEFAULT 0")
     if "node_identity" not in cols:
         await db.execute("ALTER TABLE myst_wallets ADD COLUMN node_identity TEXT NOT NULL DEFAULT ''")
     if "runtime_status" not in cols:
@@ -2236,6 +2244,7 @@ async def list_myst_wallets() -> list[dict[str, Any]]:
         cursor = await db.execute(
             """
             SELECT id, wallet_fingerprint, address, state, funding, leased_to_worker_id,
+                   release_reason, wallet_assignment_version,
                    node_identity, runtime_status, last_heartbeat_at,
                    quarantined_reason, imported_at, updated_at
             FROM myst_wallets
@@ -2267,6 +2276,7 @@ async def update_myst_wallet(
     state: str | None = None,
     funding: str | None = None,
     quarantined_reason: str | None = None,
+    release_reason: str | None = None,
 ) -> bool:
     allowed_state = {"AVAILABLE", "LEASED", "QUARANTINED"}
     allowed_funding = {"FUNDED", "UNFUNDED"}
@@ -2287,6 +2297,9 @@ async def update_myst_wallet(
     if quarantined_reason is not None:
         updates.append("quarantined_reason = ?")
         params.append(quarantined_reason)
+    if release_reason is not None:
+        updates.append("release_reason = ?")
+        params.append(release_reason)
     if not updates:
         return False
     db = await _get_db()
@@ -2326,6 +2339,8 @@ async def lease_myst_wallet(client_id: str, worker_id: int | None = None) -> dic
                 leased_to_worker_id = ?,
                 leased_to_client_id = ?,
                 leased_at = datetime('now'),
+                release_reason = '',
+                wallet_assignment_version = wallet_assignment_version + 1,
                 updated_at = datetime('now')
             WHERE id = ?
             """,
@@ -2337,12 +2352,14 @@ async def lease_myst_wallet(client_id: str, worker_id: int | None = None) -> dic
         item["leased_to_worker_id"] = worker_id
         item["leased_to_client_id"] = client_id
         item["leased_at"] = datetime.now(UTC).isoformat()
+        item["release_reason"] = ""
+        item["wallet_assignment_version"] = int(item.get("wallet_assignment_version") or 0) + 1
         item["raw_wallet"] = decrypt_value(item.pop("raw_wallet_enc") or "")
         return item
     finally:
         await db.close()
 
-async def release_myst_wallet(wallet_id: int, client_id: str) -> bool:
+async def release_myst_wallet(wallet_id: int, client_id: str, *, release_reason: str = "") -> bool:
     db = await _get_db()
     try:
         await _ensure_myst_wallets_table(db)
@@ -2353,10 +2370,11 @@ async def release_myst_wallet(wallet_id: int, client_id: str) -> bool:
                 leased_to_worker_id = NULL,
                 leased_to_client_id = '',
                 leased_at = NULL,
+                release_reason = ?,
                 updated_at = datetime('now')
             WHERE id = ? AND leased_to_client_id = ?
             """,
-            (wallet_id, client_id),
+            (release_reason, wallet_id, client_id),
         )
         await db.commit()
         return bool(cursor.rowcount)
@@ -2398,6 +2416,7 @@ async def heartbeat_myst_wallet(
                     leased_to_worker_id = NULL,
                     leased_to_client_id = '',
                     leased_at = NULL,
+                    release_reason = 'MYST_WALLET_UNFUNDED',
                     node_identity = ?,
                     runtime_status = ?,
                     last_heartbeat_at = datetime('now'),

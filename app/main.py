@@ -4180,6 +4180,7 @@ class MystWalletLeaseRequest(BaseModel):
 class MystWalletReleaseRequest(BaseModel):
     client_id: str
     wallet_id: int
+    release_reason: str | None = None
 
 class MystWalletHeartbeatRequest(BaseModel):
     client_id: str
@@ -4232,7 +4233,11 @@ async def api_myst_wallet_lease(request: Request, body: MystWalletLeaseRequest) 
 @app.post("/api/myst-wallets/release")
 async def api_myst_wallet_release(request: Request, body: MystWalletReleaseRequest) -> dict[str, str]:
     await _require_confirmed_worker(request, body.client_id)
-    if not await database.release_myst_wallet(body.wallet_id, body.client_id.strip()):
+    if not await database.release_myst_wallet(
+        body.wallet_id,
+        body.client_id.strip(),
+        release_reason=(body.release_reason or "").strip(),
+    ):
         raise HTTPException(status_code=404, detail="MYST wallet lease not found")
     return {"status": "released"}
 

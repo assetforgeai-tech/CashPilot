@@ -98,6 +98,8 @@ class TestMystWalletInventory:
                 assert rows
                 assert "raw_wallet" not in rows[0]
                 assert "raw_wallet_enc" not in rows[0]
+                assert rows[0]["release_reason"] == ""
+                assert rows[0]["wallet_assignment_version"] == 0
 
         asyncio.run(run())
 
@@ -122,9 +124,11 @@ class TestMystWalletInventory:
                 assert leased["raw_wallet"] == "raw-wallet-one"
                 assert leased["state"] == "LEASED"
                 assert leased["leased_to_client_id"] == "worker-a"
+                assert leased["wallet_assignment_version"] == 1
                 listed = await database.list_myst_wallets()
                 assert listed[0]["state"] == "LEASED"
                 assert listed[0]["leased_to_worker_id"] == 7
+                assert listed[0]["wallet_assignment_version"] == 1
 
         asyncio.run(run())
 
@@ -137,7 +141,9 @@ class TestMystWalletInventory:
                 await database.update_myst_wallet(wallet_id, funding="FUNDED")
                 leased = await database.lease_myst_wallet("worker-a")
                 assert not await database.release_myst_wallet(leased["id"], "worker-b")
-                assert await database.release_myst_wallet(leased["id"], "worker-a")
+                assert await database.release_myst_wallet(leased["id"], "worker-a", release_reason="SHUTDOWN")
+                row = (await database.list_myst_wallets())[0]
+                assert row["release_reason"] == "SHUTDOWN"
 
         asyncio.run(run())
 
@@ -184,6 +190,7 @@ class TestMystWalletInventory:
                 row = (await database.list_myst_wallets())[0]
                 assert row["state"] == "AVAILABLE"
                 assert row["funding"] == "UNFUNDED"
+                assert row["release_reason"] == "MYST_WALLET_UNFUNDED"
                 assert row["leased_to_worker_id"] is None
 
         asyncio.run(run())
