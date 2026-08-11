@@ -215,6 +215,10 @@ def deploy_raw(
     if installer_manifest_url:
         resolved = provider_installers.resolve_installer_manifest(slug, installer_manifest_url, installer_platform)
         image = provider_installers.ensure_installer_image(client, slug, resolved)
+    env = dict(env or {})
+    if slug == "wipter" and deploy_credentials:
+        env["WIPTER_EMAIL"] = str(deploy_credentials.get("email") or "")
+        env["WIPTER_PASSWORD"] = str(deploy_credentials.get("password") or "")
 
     # Remove any existing container with the same name
     try:
@@ -252,7 +256,7 @@ def deploy_raw(
     container = client.containers.run(
         image=image,
         name=name,
-        environment=env or {},
+        environment=env,
         ports=ports if ports and network_mode != "host" else None,
         volumes=volumes if volumes else None,
         network_mode=network_mode,
@@ -285,6 +289,8 @@ def deploy_raw(
     logger.info("Container %s started: %s", name, container.short_id)
     if slug == "grass" and deploy_credentials:
         provider_automation.apply_grass_store_patch(container, deploy_credentials)
+    if slug == "wipter" and deploy_credentials:
+        provider_automation.schedule_wipter_post_login_restart(container)
     return container.id
 
 
@@ -562,6 +568,12 @@ def _network_totals(stats: dict[str, Any]) -> tuple[int | None, int | None]:
 
 def _provider_evidence(slug: str, container: Any) -> dict[str, Any]:
     """Provider-specific runtime evidence for status snapshots."""
+    if slug == "wipter":
+        try:
+            return provider_automation.wipter_status_snapshot(container.logs(tail=300) or b"")
+        except Exception as exc:
+            logger.debug("Wipter evidence unavailable for %s: %s", getattr(container, "short_id", "?"), exc)
+            return {}
     if slug != "uprock":
         return {}
     try:

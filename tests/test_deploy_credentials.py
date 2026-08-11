@@ -39,3 +39,11 @@ def test_grass_deploy_credentials_are_required_before_worker_deploy():
     assert "wynd:user_id" in exc.value.detail
     assert "accessToken" in exc.value.detail
 
+def test_wipter_deploy_credentials_map_from_stored_config_to_worker_args():
+    svc = catalog.get_service("wipter")
+
+    assert main._resolve_deploy_credentials(
+        "wipter",
+        svc,
+        {"wipter_email": "user@example.com", "wipter_password": "secret"},
+    ) == {"email": "user@example.com", "password": "secret"}

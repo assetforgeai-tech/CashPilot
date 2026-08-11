@@ -30,3 +30,44 @@ def test_uprock_status_snapshot_extracts_runtime_evidence():
         "version": "v0.0.38",
         "device_id": "uprock_00636ab7dd82d6a5",
     }
+
+def test_wipter_status_snapshot_distinguishes_login_from_setup_and_traffic():
+    logs = "\n".join(
+        [
+            "Wipter setup complete.",
+            "Credential stored for service: com.wipter.auth.production",
+            "HTTPS Request ID abc",
+        ]
+    )
+
+    assert provider_automation.wipter_status_snapshot(logs) == {
+        "ok": True,
+        "authenticated": True,
+        "earning": True,
+        "traffic_seen": True,
+    }
+
+def test_wipter_setup_complete_alone_is_not_authenticated():
+    assert provider_automation.wipter_status_snapshot("Wipter setup complete.") == {
+        "ok": False,
+        "authenticated": False,
+        "earning": False,
+        "traffic_seen": False,
+    }
+
+def test_wipter_post_login_restart_waits_for_real_login_state():
+    from unittest.mock import MagicMock
+
+    container = MagicMock()
+    container.logs.side_effect = [b"Wipter setup complete.", b"Saving new token"]
+
+    assert provider_automation.apply_wipter_post_login_restart(container, timeout_seconds=1, poll_seconds=0) is True
+    container.restart.assert_called_once()
+
+def test_wipter_restart_scheduler_returns_without_waiting():
+    from unittest.mock import MagicMock, patch
+
+    with patch("app.provider_automation.threading.Thread") as thread:
+        provider_automation.schedule_wipter_post_login_restart(MagicMock())
+
+    thread.return_value.start.assert_called_once()

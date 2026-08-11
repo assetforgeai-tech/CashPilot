@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import re
+import threading
 import tarfile
 import time
 from typing import Any
@@ -13,6 +14,14 @@ import httpx
 
 _SPIDE_DEVICE_KEY_RE = re.compile(r"\bDevice\s+key\b\s*[:=]\s*([A-Za-z0-9][A-Za-z0-9._-]{7,})", re.I)
 _UPROCK_DEVICE_ID_RE = re.compile(r"\bdevice_id=(uprock_[A-Za-z0-9._-]+)")
+_WIPTER_LOGIN_READY_RE = re.compile(
+    r"LOGIN_SUCCESS|Saving new token|Credential stored for service: com\.wipter\.auth\.production|Valid Wipter keyring secret detected",
+    re.I,
+)
+_WIPTER_TRAFFIC_RE = re.compile(
+    r"<<< PONG|Request ID|Upload:|Download:|<<< MESSAGE|Received data|>>> PING|SOCKS.*Connection established|HTTPS.*Request ID",
+    re.I,
+)
 _GRASS_STORE_PATH = "/data/profile/.local/share/io.getgrass.desktop/store.json"
 _GRASS_PATCH_PATH = "/tmp/cashpilot-grass-store-patch.json"
 _GRASS_STORE_KEYS = {
@@ -99,6 +108,71 @@ def uprock_status_snapshot(status_payload: str | bytes, logs: str = "") -> dict[
         "version": str(data.get("version") or ""),
         "device_id": extract_uprock_device_id(logs),
     }
+
+def wipter_status_snapshot(logs: str | bytes) -> dict[str, Any]:
+    """Normalize Wipter logs into worker runtime evidence."""
+    text = logs.decode(errors="replace") if isinstance(logs, bytes) else str(logs or "")
+    authenticated = bool(_WIPTER_LOGIN_READY_RE.search(text))
+    traffic_seen = bool(_WIPTER_TRAFFIC_RE.search(text))
+    return {
+        "ok": authenticated or traffic_seen,
+        "authenticated": authenticated,
+        "earning": traffic_seen,
+        "traffic_seen": traffic_seen,
+    }
+
+def _wipter_login_ready(container: Any) -> bool:
+    try:
+        logs = container.logs(tail=300) or b""
+        if _WIPTER_LOGIN_READY_RE.search(logs.decode(errors="replace") if isinstance(logs, bytes) else str(logs)):
+            return True
+    except Exception:
+        pass
+    try:
+        result = container.exec_run(
+            [
+                "sh",
+                "-lc",
+                "test -s /root/.config/wipter-app/secure-credentials.json || secret-tool search service com.wipter.auth.production >/dev/null 2>&1",
+            ]
+        )
+        return getattr(result, "exit_code", 1) == 0
+    except Exception:
+        return False
+
+def apply_wipter_post_login_restart(
+    container: Any,
+    *,
+    timeout_seconds: int = 240,
+    poll_seconds: float = 5.0,
+) -> bool:
+    """Restart Wipter once after token/keyring login state is persisted."""
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() <= deadline:
+        if _wipter_login_ready(container):
+            container.restart()
+            return True
+        time.sleep(poll_seconds)
+    return False
+
+def schedule_wipter_post_login_restart(
+    container: Any,
+    *,
+    timeout_seconds: int = 240,
+    poll_seconds: float = 5.0,
+) -> threading.Thread:
+    """Run the Wipter restart watcher in the background."""
+    thread = threading.Thread(
+        target=apply_wipter_post_login_restart,
+        kwargs={
+            "container": container,
+            "timeout_seconds": timeout_seconds,
+            "poll_seconds": poll_seconds,
+        },
+        daemon=True,
+    )
+    thread.start()
+    return thread
 
 def spide_auth_headers(credential: str) -> dict[str, str]:
     """Build Spide dashboard auth headers from a pasted bearer token or cookie."""

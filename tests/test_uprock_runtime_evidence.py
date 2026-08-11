@@ -22,3 +22,14 @@ def test_uprock_provider_evidence_reads_daemon_status_and_device_id():
 
 def test_non_uprock_provider_evidence_is_empty():
     assert orchestrator._provider_evidence("grass", MagicMock()) == {}
+
+def test_wipter_provider_evidence_reads_login_and_traffic_logs():
+    container = MagicMock()
+    container.logs.return_value = b"Credential stored for service: com.wipter.auth.production\n<<< PONG"
+
+    assert orchestrator._provider_evidence("wipter", container) == {
+        "ok": True,
+        "authenticated": True,
+        "earning": True,
+        "traffic_seen": True,
+    }

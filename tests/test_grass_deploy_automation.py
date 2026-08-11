@@ -98,3 +98,25 @@ def test_deploy_raw_applies_grass_store_patch_after_container_create():
 
     apply_patch.assert_called_once_with(container, creds)
 
+def test_deploy_raw_maps_wipter_credentials_to_env_and_restarts_after_login_state():
+    client = MagicMock()
+    client.containers.get.side_effect = orchestrator.NotFound("nope")
+    container = MagicMock(short_id="abc123", id="container-id")
+    client.containers.run.return_value = container
+
+    with (
+        patch.object(orchestrator, "_get_client", return_value=client),
+        patch.object(orchestrator.provider_automation, "schedule_wipter_post_login_restart") as restart_once,
+    ):
+        orchestrator.deploy_raw(
+            slug="wipter",
+            image="img:1",
+            env={"EXTRA": "1"},
+            deploy_credentials={"email": "user@example.com", "password": "secret"},
+        )
+
+    env = client.containers.run.call_args.kwargs["environment"]
+    assert env["EXTRA"] == "1"
+    assert env["WIPTER_EMAIL"] == "user@example.com"
+    assert env["WIPTER_PASSWORD"] == "secret"
+    restart_once.assert_called_once_with(container)
