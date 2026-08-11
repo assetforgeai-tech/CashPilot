@@ -5,6 +5,15 @@
 {% block content %}
 <section class="content-section">
   <h2 class="section-title">MYST Wallet</h2>
-  <p class="form-hint">Wallet inventory is managed here.</p>
+  <p class="form-hint">Import raw wallets from a plain text file. One wallet per line.</p>
+
+  <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; margin-top:16px;">
+    <div style="min-width:min(520px, 100%); flex:1;">
+      <label class="form-label" for="myst-wallet-file">Wallet file</label>
+      <input class="form-input" id="myst-wallet-file" type="file" accept=".txt,.csv,text/plain" />
+    </div>
+    <button class="btn btn-primary" data-action="importMystWalletFile" data-a1="myst-wallet-file">Import wallets</button>
+    <span id="myst-wallet-import-status" style="font-size:0.85rem; color:var(--text-muted);"></span>
+  </div>
 </section>
 {% endblock %}

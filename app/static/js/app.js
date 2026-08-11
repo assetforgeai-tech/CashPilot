@@ -1567,6 +1567,40 @@ const CP = (() => {
     }
   }
 
+  async function importMystWalletFile(inputId = 'myst-wallet-file') {
+    const input = document.getElementById(inputId);
+    const status = document.getElementById('myst-wallet-import-status');
+    if (!input || !input.files || !input.files.length) {
+      toast('Choose a wallet file first', 'warning');
+      return;
+    }
+
+    const file = input.files[0];
+    let raw = '';
+    try {
+      raw = await file.text();
+    } catch (err) {
+      toast(`Could not read file: ${err.message}`, 'error');
+      return;
+    }
+
+    if (!raw.trim()) {
+      toast('Wallet file is empty', 'warning');
+      return;
+    }
+
+    if (status) status.textContent = 'Importing...';
+    try {
+      const res = await api('/api/admin/myst-wallets/import', { method: 'POST', body: { raw } });
+      input.value = '';
+      if (status) status.textContent = '';
+      toast(`Imported ${res.imported || 0} wallet${res.imported === 1 ? '' : 's'}`, 'success');
+    } catch (err) {
+      if (status) status.textContent = '';
+      toast(`Import failed: ${err.message}`, 'error');
+    }
+  }
+
   // -----------------------------------------------------------
   // Change Password Modal
   // -----------------------------------------------------------
@@ -3662,6 +3696,7 @@ const CP = (() => {
     testCollectors,
     saveEnvSettings,
     toggleEnvSecret,
+    importMystWalletFile,
     filterCatalog,
     refreshServices,
     openClaimModal,

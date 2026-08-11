@@ -48,6 +48,12 @@ class TestMystWalletMenu:
             resp = client.get("/myst-wallet")
         assert resp.status_code == 200
 
+    def test_wallet_page_accepts_file_import(self, client):
+        with _auth_owner():
+            resp = client.get("/myst-wallet")
+        assert 'id="myst-wallet-file"' in resp.text
+        assert 'data-action="importMystWalletFile"' in resp.text
+
 
 class TestMystWalletApi:
     def test_wallet_list_endpoint_exists(self, client):
