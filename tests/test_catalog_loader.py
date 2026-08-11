@@ -331,3 +331,4 @@ class TestProviderAutomationContracts:
         keys = {item["key"] for item in svc["docker"]["env"]}
         assert {"WIPTER_EMAIL", "WIPTER_PASSWORD"} <= keys
         assert svc["deploy"]["automation"] == "env_login"
+        assert {"email", "password"} <= self._credential_keys(svc, "deploy")

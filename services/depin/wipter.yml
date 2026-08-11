@@ -46,6 +46,21 @@ docker:
 deploy:
   automation: env_login
   notes: "Container logs in with WIPTER_EMAIL/WIPTER_PASSWORD, persists token/keyring, then can be restarted once after login-ready markers."
+  credentials:
+    - key: email
+      label: "Wipter email"
+      kind: email
+      secret: false
+      required: true
+      source: "Wipter account"
+      description: "Mapped to WIPTER_EMAIL for the tested Docker runtime."
+    - key: password
+      label: "Wipter password"
+      kind: password
+      secret: true
+      required: true
+      source: "Wipter account"
+      description: "Mapped to WIPTER_PASSWORD. Prefer a dedicated account; CashPilot does not touch payout or security settings."
 
 requirements:
   residential_ip: true
