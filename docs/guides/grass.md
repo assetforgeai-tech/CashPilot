@@ -27,7 +27,7 @@ Grass is a decentralized network that lets you sell your unused bandwidth for AI
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Browser-Extension, Windows, Macos, Android, Ios |
+| Supported platforms | Browser-Extension, Windows, Macos, Linux, Android, Ios |
 
 ## Setup Instructions
 
@@ -41,7 +41,17 @@ For earnings collection, copy a fresh `accessToken` from the logged-in Grass das
 
 ### 3. Runtime
 
-CashPilot resolves Grass' official desktop installer manifest when a new node is installed, picks the matching Linux build, builds a local noVNC Docker wrapper, and then runs it with the saved seed/profile bundle. Restart uses the resolved image; latest is not re-resolved on every container restart.
+CashPilot resolves Grass' official desktop installer manifest when a new node is installed, picks the matching Linux build, builds a local noVNC Docker wrapper, starts Grass once so it creates `store.json`, patches the seven confirmed login fields, and restarts the node.
+
+Required deploy credentials from a confirmed logged-in Grass Desktop `store.json`:
+
+- `wynd:status`
+- `wynd:user_id`
+- `tokenExpiry`
+- `autoUpdate`
+- `wynd:authenticated`
+- `refreshToken`
+- `accessToken`
 
 ## Docker Configuration
 

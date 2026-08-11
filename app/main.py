@@ -1607,6 +1607,25 @@ class DeployRequest(BaseModel):
     env: dict[str, str] = {}
     hostname: str | None = None
 
+def _resolve_deploy_credentials(slug: str, svc: dict[str, Any] | None, config: dict[str, str]) -> dict[str, str]:
+    from app.collectors import service_credential_fields
+
+    fields = service_credential_fields(slug, "deploy", svc, fallback=False)
+    deploy_credentials: dict[str, str] = {}
+    missing = []
+    for field in fields:
+        value = str(config.get(field["key"], "")).strip()
+        if value:
+            deploy_credentials[field["arg"]] = value
+        elif field.get("required", True):
+            missing.append(field["label"])
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Missing required deployment credentials: {', '.join(missing)}",
+        )
+    return deploy_credentials
+
 
 @app.post("/api/deploy/{slug}")
 async def api_deploy(
@@ -1724,6 +1743,9 @@ async def api_deploy(
         spec["installer_manifest_url"] = manifest_url
         if deploy_conf.get("installer_platform"):
             spec["installer_platform"] = deploy_conf["installer_platform"]
+    deploy_credentials = _resolve_deploy_credentials(slug, svc, await database.get_config() or {})
+    if deploy_credentials:
+        spec["deploy_credentials"] = deploy_credentials
 
     # Command: resolve ${VAR} placeholders
     raw_command = docker_conf.get("command") or None

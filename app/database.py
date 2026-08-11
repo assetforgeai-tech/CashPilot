@@ -62,6 +62,13 @@ SECRET_CONFIG_KEYS = {
     "private_key",
     "keyfile",
     "refresh_token",
+    "store_wynd_status",
+    "store_wynd_user_id",
+    "store_token_expiry",
+    "store_auto_update",
+    "store_wynd_authenticated",
+    "store_refresh_token",
+    "store_access_token",
 }
 
 

@@ -812,6 +812,7 @@ class DeploySpec(BaseModel):
     runtime_assets: list[RuntimeAssetSpec] = Field(default_factory=list)
     installer_manifest_url: str | None = None
     installer_platform: str | None = None
+    deploy_credentials: dict[str, str] = Field(default_factory=dict)
     # Advanced and unsupported. Absent means Docker's default runtime, which is
     # what everything uses and what everything is tested against.
     runtime: str | None = None
@@ -1190,6 +1191,7 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             runtime=spec.runtime,
             installer_manifest_url=spec.installer_manifest_url,
             installer_platform=spec.installer_platform,
+            deploy_credentials=spec.deploy_credentials,
         )
         return {"status": "deployed", "container_id": container_id}
     except Exception:

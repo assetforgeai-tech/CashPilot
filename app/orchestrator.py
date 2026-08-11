@@ -16,7 +16,7 @@ from typing import Any
 import docker
 from docker.errors import APIError, DockerException, NotFound
 
-from app import provider_installers
+from app import provider_automation, provider_installers
 
 try:
     from app.catalog import critical_volume_targets, get_service, get_services
@@ -202,6 +202,7 @@ def deploy_raw(
     runtime: str | None = None,
     installer_manifest_url: str | None = None,
     installer_platform: str | None = None,
+    deploy_credentials: dict[str, str] | None = None,
 ) -> str:
     """Deploy a container from a raw spec (no catalog lookup).
 
@@ -282,6 +283,8 @@ def deploy_raw(
     )
 
     logger.info("Container %s started: %s", name, container.short_id)
+    if slug == "grass" and deploy_credentials:
+        provider_automation.apply_grass_store_patch(container, deploy_credentials)
     return container.id
 
 

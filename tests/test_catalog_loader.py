@@ -277,7 +277,7 @@ class TestProviderAutomationContracts:
     def _credential_keys(self, service, section):
         return {item["key"] for item in (service.get(section, {}).get("credentials") or [])}
 
-    def test_grass_runtime_uses_seed_bundle_asset(self):
+    def test_grass_runtime_uses_store_patch_credentials(self):
         svc = self._svc("grass")
         assert svc["docker"]["image"] == "cashpilot/grass-desktop:auto"
         assert svc["deploy"]["installer_manifest_url"] == (
@@ -285,16 +285,17 @@ class TestProviderAutomationContracts:
         )
         deploy_keys = self._credential_keys(svc, "deploy")
         assert "installer_manifest_url" in deploy_keys
-        assert "seed_bundle" in self._credential_keys(svc, "deploy")
-        assert svc["deploy"]["automation"] == "seed_bundle"
-        assert svc["deploy"]["runtime_assets"] == [
-            {
-                "provider": "grass",
-                "asset_kind": "seed_bundle",
-                "target": "/seed/grass-xdg-seed.tar.gz",
-                "encoding": "base64",
-            }
-        ]
+        assert {
+            "store_wynd_status",
+            "store_wynd_user_id",
+            "store_token_expiry",
+            "store_auto_update",
+            "store_wynd_authenticated",
+            "store_refresh_token",
+            "store_access_token",
+        } <= deploy_keys
+        assert svc["deploy"]["automation"] == "store_json_patch"
+        assert not svc["deploy"].get("runtime_assets")
 
     def test_uprock_runtime_uses_seed_bundle_asset(self):
         svc = self._svc("uprock")
