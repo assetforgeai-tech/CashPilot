@@ -99,6 +99,18 @@ class TestTheWorkerBuildMatchesItsDockerfile:
         missing = {n for n in imported if n and not n.startswith("_")} - copied
         assert not missing, f"worker_api imports modules the worker image does not contain: {sorted(missing)}"
 
+    def test_orchestrator_imports_are_all_copied(self):
+        """worker_api imports orchestrator, so orchestrator's app imports must ship too."""
+        source = (ROOT / "app" / "orchestrator.py").read_text(encoding="utf-8")
+        imported = set()
+        for line in source.splitlines():
+            m = re.match(r"\s*from app import (.+)", line)
+            if m:
+                imported |= {n.strip().split(" as ")[0] for n in m.group(1).split(",")}
+        copied = {m[:-3] for m in worker_copied_modules()}
+        missing = {n for n in imported if n and not n.startswith("_")} - copied
+        assert not missing, f"orchestrator imports modules the worker image does not contain: {sorted(missing)}"
+
 
 class TestNoModuleFallsThroughBothTriggers:
     def test_every_app_module_triggers_at_least_one_build(self):
