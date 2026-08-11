@@ -350,7 +350,10 @@ class TestProviderAutomationContracts:
 
     def test_wipter_runtime_uses_env_login(self):
         svc = self._svc("wipter")
-        keys = {item["key"] for item in svc["docker"]["env"]}
+        env = {item["key"]: item for item in svc["docker"]["env"]}
+        keys = set(env)
         assert {"WIPTER_EMAIL", "WIPTER_PASSWORD"} <= keys
+        assert env["WIPTER_EMAIL"]["required"] is False
+        assert env["WIPTER_PASSWORD"]["required"] is False
         assert svc["deploy"]["automation"] == "env_login"
         assert {"email", "password"} <= self._credential_keys(svc, "deploy")

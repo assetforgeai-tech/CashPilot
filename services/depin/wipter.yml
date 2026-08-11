@@ -22,12 +22,12 @@ docker:
   env:
     - key: WIPTER_EMAIL
       label: "Email"
-      required: true
+      required: false
       secret: false
       description: "Wipter account email. The tested container performs login itself and persists its token/keyring."
     - key: WIPTER_PASSWORD
       label: "Password"
-      required: true
+      required: false
       secret: true
       description: "Wipter account password. Prefer a dedicated account; no payout/security settings are touched by CashPilot."
   ports: []
