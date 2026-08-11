@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 
 _SPIDE_DEVICE_KEY_RE = re.compile(r"\bDevice\s+key\b\s*[:=]\s*([A-Za-z0-9][A-Za-z0-9._-]{7,})", re.I)
+_UPROCK_DEVICE_ID_RE = re.compile(r"\bdevice_id=(uprock_[A-Za-z0-9._-]+)")
 _GRASS_STORE_PATH = "/data/profile/.local/share/io.getgrass.desktop/store.json"
 _GRASS_PATCH_PATH = "/tmp/cashpilot-grass-store-patch.json"
 _GRASS_STORE_KEYS = {
@@ -80,6 +81,24 @@ def extract_spide_device_key(logs: str) -> str | None:
     """Return the first Spide CLI Device key from container logs."""
     match = _SPIDE_DEVICE_KEY_RE.search(logs or "")
     return match.group(1) if match else None
+
+def extract_uprock_device_id(logs: str) -> str | None:
+    """Return the Uprock desktop device_id from olostep websocket logs."""
+    match = _UPROCK_DEVICE_ID_RE.search(logs or "")
+    return match.group(1) if match else None
+
+def uprock_status_snapshot(status_payload: str | bytes, logs: str = "") -> dict[str, Any]:
+    """Normalize Uprock daemon.sock status plus logs into worker evidence."""
+    raw = status_payload.decode() if isinstance(status_payload, bytes) else str(status_payload or "")
+    data = json.loads(raw)
+    return {
+        "ok": data.get("status") == "ok",
+        "authenticated": bool(data.get("authenticated")),
+        "earning": bool(data.get("earning")),
+        "earn_rate": float(data.get("earn_rate") or 0),
+        "version": str(data.get("version") or ""),
+        "device_id": extract_uprock_device_id(logs),
+    }
 
 def spide_auth_headers(credential: str) -> dict[str, str]:
     """Build Spide dashboard auth headers from a pasted bearer token or cookie."""

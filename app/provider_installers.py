@@ -96,7 +96,7 @@ ENV DEBIAN_FRONTEND=noninteractive \\
     XDG_CACHE_HOME=/data/profile/.cache \\
     ELECTRON_DISABLE_SECURITY_WARNINGS=true
 RUN apt-get update \\
- && apt-get install -y --no-install-recommends ca-certificates curl xvfb x11vnc fluxbox novnc websockify dbus-x11 \\
+ && apt-get install -y --no-install-recommends ca-certificates curl xvfb x11vnc fluxbox novnc websockify dbus-x11 python3-minimal \\
  && rm -rf /var/lib/apt/lists/*
 ADD {deb_url} /tmp/grass-desktop.deb
 RUN apt-get update \\

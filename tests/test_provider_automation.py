@@ -15,3 +15,18 @@ def test_spide_auth_headers_accept_cookie_or_bearer():
 
     bearer = provider_automation.spide_auth_headers("tok456")
     assert bearer["Authorization"] == "Bearer tok456"
+
+def test_uprock_status_snapshot_extracts_runtime_evidence():
+    payload = '{"status":"ok","authenticated":true,"earning":true,"earn_rate":0.25,"version":"v0.0.38"}'
+    logs = "connected url=wss://ws.olostep.com?device_id=uprock_00636ab7dd82d6a5&platform=desktop-linux"
+
+    out = provider_automation.uprock_status_snapshot(payload, logs)
+
+    assert out == {
+        "ok": True,
+        "authenticated": True,
+        "earning": True,
+        "earn_rate": 0.25,
+        "version": "v0.0.38",
+        "device_id": "uprock_00636ab7dd82d6a5",
+    }

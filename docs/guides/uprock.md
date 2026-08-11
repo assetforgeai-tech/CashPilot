@@ -54,3 +54,4 @@ The official Linux installer is the tested runtime source. CashPilot builds a lo
 - Android can run alongside other bandwidth-sharing apps on different devices.
 - Browser/app runtime is profile/state based in the audited setup.
 - No public earnings API confirmed.
+- CashPilot reads worker-side runtime evidence from Uprock's local daemon socket: login state, earning state, earn rate, version, and desktop device ID when logs expose it.

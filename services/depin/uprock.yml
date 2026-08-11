@@ -94,7 +94,7 @@ platforms: [browser-extension, android]
 
 collector:
   type: manual
-  notes: "No public earnings API confirmed. Runtime evidence points to a preseeded app container, not env email/password login."
+  notes: "No public earnings API confirmed. Worker heartbeat records local daemon evidence (authenticated, earning, earn_rate, version, device_id) but does not import wallet totals or payout history."
 
 payout:
   model: unknown

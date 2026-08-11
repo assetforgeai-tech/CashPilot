@@ -560,6 +560,48 @@ def _network_totals(stats: dict[str, Any]) -> tuple[int | None, int | None]:
         tx += int(iface.get("tx_bytes") or 0)
     return rx, tx
 
+def _provider_evidence(slug: str, container: Any) -> dict[str, Any]:
+    """Provider-specific runtime evidence for status snapshots."""
+    if slug != "uprock":
+        return {}
+    try:
+        status = container.exec_run(
+            [
+                "sh",
+                "-lc",
+                "python3 - <<'PY'\n"
+                "import json, socket\n"
+                "s=socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)\n"
+                "s.settimeout(2)\n"
+                "s.connect('/root/.local/share/UpRock/daemon.sock')\n"
+                "s.sendall(b'{\"cmd\":\"status\"}\\n')\n"
+                "print(s.recv(4096).decode())\n"
+                "s.close()\n"
+                "PY",
+            ]
+        )
+        logs = container.exec_run(["sh", "-lc", "tail -40 /root/.local/share/UpRock/logs/mining.log 2>/dev/null || true"])
+    except Exception as exc:
+        logger.debug("Uprock evidence unavailable for %s: %s", getattr(container, "short_id", "?"), exc)
+        return {}
+    if getattr(status, "exit_code", 1) != 0:
+        return {}
+    try:
+        status_out = getattr(status, "output", b"") or b""
+        logs_out = getattr(logs, "output", b"") or b""
+        if isinstance(status_out, bytes):
+            status_text = status_out.decode("utf-8", errors="replace")
+        else:
+            status_text = str(status_out)
+        if isinstance(logs_out, bytes):
+            logs_text = logs_out.decode("utf-8", errors="replace")
+        else:
+            logs_text = str(logs_out)
+        return provider_automation.uprock_status_snapshot(status_text, logs_text)
+    except Exception as exc:
+        logger.debug("Uprock evidence parse failed for %s: %s", getattr(container, "short_id", "?"), exc)
+        return {}
+
 
 #: Concurrent `stats` calls. Bounded because the aim is to stop the heartbeat
 #: growing with the container count, not to flood the Docker daemon — an
@@ -645,6 +687,7 @@ def get_status() -> list[dict[str, Any]]:
                     "container_id": c.short_id,
                     "deployed_by": c.labels.get(LABEL_DEPLOYED_BY, "unknown"),
                     "category": c.labels.get(LABEL_CATEGORY, ""),
+                    "provider_evidence": _provider_evidence(slug, c),
                 }
             )
         except Exception as exc:
@@ -693,6 +736,7 @@ def get_status() -> list[dict[str, Any]]:
                         "container_id": c.short_id,
                         "deployed_by": "external",
                         "category": "",
+                        "provider_evidence": _provider_evidence(slug, c),
                     }
                 )
             except Exception as exc:
