@@ -128,3 +128,18 @@ def apply_direct_wallet(
     if mmn_api_key:
         container.exec_run(["sh", "-lc", f"myst cli mmn {_sh_single(mmn_api_key)} >/dev/null 2>&1 || true"])
     return address
+
+def registration_status(container: Any, address: str) -> str:
+    if not address:
+        return ""
+    try:
+        result = container.exec_run(["sh", "-lc", f"myst cli identities get {address} 2>/dev/null || true"])
+        output = result.output.decode("utf-8", "ignore") if getattr(result, "output", None) else ""
+    except Exception:
+        return ""
+    for line in output.splitlines():
+        if "registration status" not in line.lower():
+            continue
+        _, _, value = line.partition(":")
+        return value.strip()
+    return ""

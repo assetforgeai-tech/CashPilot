@@ -56,6 +56,12 @@ def test_apply_direct_wallet_stops_patches_restarts_sets_password_and_mmn():
     assert "oldPassword" in helper["command"][2]
     assert "newPassword" in helper["command"][2]
 
+def test_registration_status_parses_myst_cli_output():
+    container = MagicMock()
+    container.exec_run.return_value = MagicMock(output=b"Registration Status: Registered\nBalance: 0.1 MYST\n")
+
+    assert myst_runtime.registration_status(container, "0xabc") == "Registered"
+
 def test_deploy_raw_applies_myst_wallet_after_container_create():
     client = MagicMock()
     client.containers.get.side_effect = orchestrator.NotFound("nope")

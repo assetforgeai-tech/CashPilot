@@ -37,7 +37,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
-from app import egress, fleet_key, orchestrator, proxy_egress, singbox_config, state_backup, version
+from app import egress, fleet_key, myst_runtime, orchestrator, proxy_egress, singbox_config, state_backup, version
 
 try:
     from app.catalog import get_services as _catalog_get_services
@@ -333,6 +333,10 @@ async def _post_myst_wallet_event(client: httpx.AsyncClient, event: str, payload
 async def _sync_myst_wallet_after_deploy(deploy_credentials: dict[str, Any], container_id: str) -> None:
     wallet_id = int(deploy_credentials.get("myst_wallet_id") or 0)
     client_id = str(deploy_credentials.get("myst_wallet_client_id") or CLIENT_ID)
+    wallet_address = str(deploy_credentials.get("myst_wallet_address") or "")
+    if not wallet_address and deploy_credentials.get("myst_wallet_raw"):
+        with contextlib.suppress(ValueError):
+            wallet_address = myst_runtime.wallet_address(str(deploy_credentials.get("myst_wallet_raw") or ""))
     if not wallet_id or not client_id:
         return
     state = {
@@ -340,8 +344,20 @@ async def _sync_myst_wallet_after_deploy(deploy_credentials: dict[str, Any], con
         "myst_wallet_client_id": client_id,
         "myst_wallet_assignment_version": int(deploy_credentials.get("myst_wallet_assignment_version") or 0),
         "myst_node_identity": str(deploy_credentials.get("myst_node_identity") or ""),
+        "myst_wallet_address": wallet_address,
         "container_id": container_id,
     }
+    if container_id and wallet_address:
+        try:
+            status = await asyncio.to_thread(
+                myst_runtime.registration_status,
+                orchestrator._find_container("mysterium"),
+                wallet_address,
+            )
+        except Exception:
+            status = ""
+        if status:
+            state["myst_registration_status"] = status
     _save_myst_wallet_state(state)
     async with httpx.AsyncClient(timeout=15) as client:
         await _post_myst_wallet_event(
@@ -353,7 +369,11 @@ async def _sync_myst_wallet_after_deploy(deploy_credentials: dict[str, Any], con
                 "wallet_assignment_version": state["myst_wallet_assignment_version"],
                 "node_identity": state["myst_node_identity"],
                 "runtime_status": "running",
-                "evidence": {"container_id": container_id, "deploy_state": "started"},
+                "evidence": {
+                    "container_id": container_id,
+                    "deploy_state": "started",
+                    **({"registration_status": state["myst_registration_status"]} if state.get("myst_registration_status") else {}),
+                },
             },
         )
 
@@ -363,8 +383,22 @@ async def _sync_myst_wallet_heartbeat() -> None:
         return
     wallet_id = int(state.get("myst_wallet_id") or 0)
     client_id = str(state.get("myst_wallet_client_id") or "")
+    wallet_address = str(state.get("myst_wallet_address") or "")
     if not wallet_id or not client_id:
         return
+    registration_status = str(state.get("myst_registration_status") or "")
+    container_id = str(state.get("container_id") or "")
+    if not registration_status and container_id:
+        try:
+            status = await asyncio.to_thread(
+                myst_runtime.registration_status,
+                orchestrator._find_container("mysterium"),
+                wallet_address,
+            )
+        except Exception:
+            status = ""
+        if status:
+            registration_status = status
     async with httpx.AsyncClient(timeout=15) as client:
         await _post_myst_wallet_event(
             client,
@@ -375,7 +409,11 @@ async def _sync_myst_wallet_heartbeat() -> None:
                 "wallet_assignment_version": int(state.get("myst_wallet_assignment_version") or 0),
                 "node_identity": str(state.get("myst_node_identity") or ""),
                 "runtime_status": "running",
-                "evidence": {"container_id": state.get("container_id", ""), "source": "heartbeat"},
+                "evidence": {
+                    "container_id": state.get("container_id", ""),
+                    "source": "heartbeat",
+                    **({"registration_status": registration_status} if registration_status else {}),
+                },
             },
         )
 
