@@ -40,10 +40,13 @@ const fmtBytes = b => `${b}B`;
 const appSrc = readFileSync('app/static/js/app.js', 'utf8');
 const fnStart = appSrc.indexOf('function fmtTimestamp(');
 if (fnStart < 0) throw new Error('fmtTimestamp is gone from app/static/js/app.js');
-const fnRest = appSrc.slice(fnStart);
-const fmtTimestamp = new Function(
-  `${fnRest.slice(0, fnRest.indexOf('\n  }\n') + 4)}; return fmtTimestamp;`,
-)();
+let fnOpen = appSrc.indexOf('{', fnStart), fnDepth = 0, fnEnd = -1;
+for (let j = fnOpen; j < appSrc.length; j++) {
+  if (appSrc[j] === '{') fnDepth++;
+  else if (appSrc[j] === '}' && --fnDepth === 0) { fnEnd = j + 1; break; }
+}
+if (fnEnd < 0) throw new Error('unbalanced braces reading fmtTimestamp()');
+const fmtTimestamp = new Function(`${appSrc.slice(fnStart, fnEnd)}; return fmtTimestamp;`)();
 const CP = {fmtTimestamp};
 
 const source = [extract('staleNote'), extract('renderContainers'), extract('renderApps'), extract('countWorkerNames')].join('\n');

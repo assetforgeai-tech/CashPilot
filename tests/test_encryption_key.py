@@ -200,6 +200,8 @@ def test_empty_key_file_is_replaced_because_nothing_was_stored_under_it(tmp_path
 
 
 def test_key_file_is_created_private(tmp_path: Path):
+    if os.name == "nt":
+        pytest.skip("POSIX chmod bits are not meaningful on Windows")
     _reload({"CASHPILOT_DATA_DIR": str(tmp_path)})
     mode = (tmp_path / ".fernet_key").stat().st_mode & 0o777
     assert mode == 0o600, f"key file must not be group/world readable, got {mode:o}"

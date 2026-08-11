@@ -106,6 +106,8 @@ class TestResolveFleetKey:
 
     def test_file_permissions(self, fleet_dir: Path):
         """Generated key file should have 0o600 permissions."""
+        if os.name == "nt":
+            pytest.skip("POSIX chmod bits are not meaningful on Windows")
         with patch.dict(os.environ, {"CASHPILOT_API_KEY": ""}):
             fleet_key.resolve_fleet_key()
         key_file = fleet_dir / ".fleet_key"

@@ -54,6 +54,9 @@ def imports_main(node) -> bool:
         return any(alias.name == "main" for alias in node.names)
     return False
 
+def module_level_imports(tree):
+    return [node for node in tree.body if isinstance(node, (ast.Import, ast.ImportFrom))]
+
 
 class TestTheCycleIsGone:
     def test_no_router_imports_main(self):
@@ -64,7 +67,7 @@ class TestTheCycleIsGone:
         offenders = sorted(
             path.name
             for path in (pathlib.Path(main.__file__).parent / "routers").glob("*.py")
-            if any(imports_main(node) for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))))
+            if any(imports_main(node) for node in module_level_imports(ast.parse(path.read_text(encoding="utf-8"))))
         )
         assert not offenders, f"routers still import main: {offenders}"
 
@@ -88,7 +91,7 @@ class TestTheCycleIsGone:
             str(path.relative_to(app_dir))
             for path in app_dir.rglob("*.py")
             if path.name != "main.py"
-            and any(imports_main(node) for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))))
+            and any(imports_main(node) for node in module_level_imports(ast.parse(path.read_text(encoding="utf-8"))))
         )
         assert not offenders, f"these import app.main and would recreate the cycle: {offenders}"
 

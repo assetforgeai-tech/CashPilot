@@ -40,6 +40,7 @@ what the project can conclude from a green run.
 from __future__ import annotations
 
 import re
+import os
 from pathlib import Path
 
 import pytest
@@ -115,6 +116,8 @@ class TestTheNightlyLiveCheckAdmitsWhenItCheckedNothing:
         ids=["empty-run-is-masked-and-announced", "clean-run-stays-quiet", "real-failure-still-reddens"],
     )
     def test_the_step_behaves_correctly_when_actually_run(self, pytest_exit, expect_rc, expect_summary):
+        if os.name == "nt":
+            pytest.skip("workflow shell semantics are verified on POSIX runners")
         """Executes the step's shell against a stubbed pytest, rather than reading it.
 
         The first version of this class asserted only that one string appeared
@@ -125,7 +128,6 @@ class TestTheNightlyLiveCheckAdmitsWhenItCheckedNothing:
         instead of pytest's. A string test cannot see a bug like that; only
         running it can.
         """
-        import os
         import subprocess
         import tempfile
 
