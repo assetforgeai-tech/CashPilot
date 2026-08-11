@@ -810,6 +810,8 @@ class DeploySpec(BaseModel):
     egress_mode: str | None = None
     egress_udp: str | None = None
     runtime_assets: list[RuntimeAssetSpec] = Field(default_factory=list)
+    installer_manifest_url: str | None = None
+    installer_platform: str | None = None
     # Advanced and unsupported. Absent means Docker's default runtime, which is
     # what everything uses and what everything is tested against.
     runtime: str | None = None
@@ -1186,6 +1188,8 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             labels=spec.labels,
             resources=spec.resources,
             runtime=spec.runtime,
+            installer_manifest_url=spec.installer_manifest_url,
+            installer_platform=spec.installer_platform,
         )
         return {"status": "deployed", "container_id": container_id}
     except Exception:

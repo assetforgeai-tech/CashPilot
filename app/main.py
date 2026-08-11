@@ -1716,6 +1716,14 @@ async def api_deploy(
     runtime_assets = deploy_conf.get("runtime_assets") or []
     if runtime_assets:
         spec["runtime_assets"] = runtime_assets
+    manifest_url = deploy_conf.get("installer_manifest_url")
+    if manifest_url:
+        with contextlib.suppress(Exception):
+            config = await database.get_config()
+            manifest_url = config.get(f"{slug}_installer_manifest_url") or manifest_url
+        spec["installer_manifest_url"] = manifest_url
+        if deploy_conf.get("installer_platform"):
+            spec["installer_platform"] = deploy_conf["installer_platform"]
 
     # Command: resolve ${VAR} placeholders
     raw_command = docker_conf.get("command") or None

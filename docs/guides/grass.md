@@ -41,12 +41,13 @@ For earnings collection, copy a fresh `accessToken` from the logged-in Grass das
 
 ### 3. Runtime
 
-Current tested automation is seed/profile based. CashPilot does not yet model seed bundle mounts, so this is not an ordinary Docker env login.
+CashPilot resolves Grass' official desktop installer manifest when a new node is installed, picks the matching Linux build, builds a local noVNC Docker wrapper, and then runs it with the saved seed/profile bundle. Restart uses the resolved image; latest is not re-resolved on every container restart.
 
 ## Docker Configuration
 
-- **Image:** ``
-- **Platforms:** browser-extension, windows, macos, android, ios
+- **Image:** `cashpilot/grass-desktop:auto`
+- **Installer manifest:** `https://files.grass.io/file/grass-extension-upgrades/desktop-installer-latest.json`
+- **Platforms:** browser-extension, windows, macos, linux, android, ios
 
 ### Environment Variables
 

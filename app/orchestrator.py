@@ -16,6 +16,8 @@ from typing import Any
 import docker
 from docker.errors import APIError, DockerException, NotFound
 
+from app import provider_installers
+
 try:
     from app.catalog import critical_volume_targets, get_service, get_services
 except ImportError:
@@ -198,6 +200,8 @@ def deploy_raw(
     resources: Any = None,
     category: str = "bandwidth",
     runtime: str | None = None,
+    installer_manifest_url: str | None = None,
+    installer_platform: str | None = None,
 ) -> str:
     """Deploy a container from a raw spec (no catalog lookup).
 
@@ -207,6 +211,9 @@ def deploy_raw(
     """
     client = _get_client()
     name = _container_name(slug)
+    if installer_manifest_url:
+        resolved = provider_installers.resolve_installer_manifest(slug, installer_manifest_url, installer_platform)
+        image = provider_installers.ensure_installer_image(client, slug, resolved)
 
     # Remove any existing container with the same name
     try:

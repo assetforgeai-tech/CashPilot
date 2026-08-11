@@ -279,7 +279,12 @@ class TestProviderAutomationContracts:
 
     def test_grass_runtime_uses_seed_bundle_asset(self):
         svc = self._svc("grass")
-        assert svc["docker"]["image"] == "ghcr.io/assetforgeai-tech/internetincome-grass-desktop:7.5.1-minimal"
+        assert svc["docker"]["image"] == "cashpilot/grass-desktop:auto"
+        assert svc["deploy"]["installer_manifest_url"] == (
+            "https://files.grass.io/file/grass-extension-upgrades/desktop-installer-latest.json"
+        )
+        deploy_keys = self._credential_keys(svc, "deploy")
+        assert "installer_manifest_url" in deploy_keys
         assert "seed_bundle" in self._credential_keys(svc, "deploy")
         assert svc["deploy"]["automation"] == "seed_bundle"
         assert svc["deploy"]["runtime_assets"] == [

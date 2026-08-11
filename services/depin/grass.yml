@@ -16,13 +16,14 @@ referral:
   code: "kn8FNEPnUr2tMqE"
 
 docker:
-  image: ghcr.io/assetforgeai-tech/internetincome-grass-desktop:7.5.1-minimal
+  image: cashpilot/grass-desktop:auto
   platforms: [linux/amd64]
   resources:
     mem_limit: "768m"
     oom_score_adj: 300
   env: []
-  ports: []
+  ports:
+    - "6080:6080"
   volumes:
     - "grass-profile:/data/profile"
   command: ""
@@ -30,13 +31,23 @@ docker:
 
 deploy:
   automation: seed_bundle
-  notes: "Runtime uses a pre-authenticated XDG/profile seed bundle. Multi-node defaults stay pending until vps-test-sing confirms blank/reset device/browser IDs."
+  installer_manifest_url: "https://files.grass.io/file/grass-extension-upgrades/desktop-installer-latest.json"
+  installer_platform: linux-x86_64
+  notes: "Runtime resolves Grass' official desktop installer manifest at new-node install time, builds a local noVNC Docker wrapper from the Linux .deb, then uses a pre-authenticated XDG/profile seed bundle."
   runtime_assets:
     - provider: grass
       asset_kind: seed_bundle
       target: /seed/grass-xdg-seed.tar.gz
       encoding: base64
   credentials:
+    - key: installer_manifest_url
+      label: "Installer manifest URL"
+      kind: text
+      secret: false
+      required: false
+      source: "Grass dashboard Download button manifest"
+      default: "https://files.grass.io/file/grass-extension-upgrades/desktop-installer-latest.json"
+      description: "Override only if Grass moves its official desktop installer manifest."
     - key: seed_bundle
       label: "Grass seed bundle"
       kind: file
@@ -74,7 +85,7 @@ cashout:
   currency: GRASS
   notes: "GRASS token airdrop-based. Claim from dashboard when eligible."
 
-platforms: [browser-extension, windows, macos, android, ios]
+platforms: [browser-extension, windows, macos, linux, android, ios]
 
 collector:
   type: api
