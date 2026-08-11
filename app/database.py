@@ -2392,17 +2392,8 @@ async def release_myst_wallet(
         await db.close()
 
 def _myst_wallet_unfunded(runtime_status: str, evidence: Mapping[str, Any]) -> bool:
-    status = str(runtime_status or "").strip().lower()
-    if status in {"unfunded", "wallet_unfunded", "payment_required", "deposit_required"}:
-        return True
-    if evidence.get("payment_required") is True or evidence.get("unfunded") is True:
-        return True
-    if str(evidence.get("funding_state") or "").strip().lower() == "unfunded":
-        return True
-    if str(evidence.get("registration_status") or "").strip().lower() == "unregistered":
-        return True
-    text = str(evidence.get("dashboard_text") or "").lower()
-    return "deposit" in text or "payment required" in text
+    _ = runtime_status
+    return str(evidence.get("registration_status") or "").strip().lower() == "unregistered"
 
 async def heartbeat_myst_wallet(
     wallet_id: int,

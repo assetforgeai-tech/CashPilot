@@ -176,7 +176,30 @@ class TestMystWalletInventory:
 
         asyncio.run(run())
 
-    def test_payment_required_heartbeat_marks_wallet_unfunded(self, tmp_path):
+    def test_unregistered_heartbeat_marks_wallet_unfunded(self, tmp_path):
+        async def run():
+            with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "myst.db"):
+                await database.init_db()
+                await database.import_myst_wallets("raw-wallet-one")
+                wallet_id = (await database.list_myst_wallets())[0]["id"]
+                await database.update_myst_wallet(wallet_id, funding="FUNDED")
+                leased = await database.lease_myst_wallet("worker-a")
+                ok = await database.heartbeat_myst_wallet(
+                    leased["id"],
+                    "worker-a",
+                    runtime_status="healthy",
+                    evidence={"registration_status": "Unregistered"},
+                )
+                assert ok
+                row = (await database.list_myst_wallets())[0]
+                assert row["state"] == "AVAILABLE"
+                assert row["funding"] == "UNFUNDED"
+                assert row["release_reason"] == "MYST_WALLET_UNFUNDED"
+                assert row["leased_to_worker_id"] is None
+
+        asyncio.run(run())
+
+    def test_payment_required_without_unregistered_does_not_mark_wallet_unfunded(self, tmp_path):
         async def run():
             with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "myst.db"):
                 await database.init_db()
@@ -188,14 +211,12 @@ class TestMystWalletInventory:
                     leased["id"],
                     "worker-a",
                     runtime_status="payment_required",
-                    evidence={"payment_required": True},
+                    evidence={"payment_required": True, "registration_status": "Registered"},
                 )
                 assert ok
                 row = (await database.list_myst_wallets())[0]
-                assert row["state"] == "AVAILABLE"
-                assert row["funding"] == "UNFUNDED"
-                assert row["release_reason"] == "MYST_WALLET_UNFUNDED"
-                assert row["leased_to_worker_id"] is None
+                assert row["state"] == "LEASED"
+                assert row["funding"] == "FUNDED"
 
         asyncio.run(run())
 
