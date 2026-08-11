@@ -30,3 +30,16 @@ class TestRuntimeAssets:
                 save.assert_awaited_once_with("uprock", "credentials_json", "seed")
 
         asyncio.run(run())
+
+    def test_uprock_file_inputs_are_masked_as_configured_secrets(self, tmp_path):
+        async def run():
+            with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "assets.db"):
+                await database.init_db()
+                await database.set_config_bulk({"uprock_credentials_json": "seed", "uprock_main_db": "db"})
+                masked = await database.get_config_masked()
+                assert masked["_secrets"]["uprock_credentials_json"] is True
+                assert masked["_secrets"]["uprock_main_db"] is True
+                assert "uprock_credentials_json" not in masked
+                assert "uprock_main_db" not in masked
+
+        asyncio.run(run())

@@ -61,6 +61,8 @@ SECRET_CONFIG_KEYS = {
     "mnemonic",
     "private_key",
     "keyfile",
+    "credentials_json",
+    "main_db",
     "refresh_token",
     "store_wynd_status",
     "store_wynd_user_id",
