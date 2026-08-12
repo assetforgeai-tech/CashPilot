@@ -1031,6 +1031,23 @@ def _runtime_asset_decrypt_key(asset: RuntimeAssetSpec, spec: DeploySpec, slug: 
         ).strip()
     return ""
 
+_ADNADE_EXTENSION_IDS = ("flemjfpeajijmofcpgfgckfbmomdflck", "fpdkjdnhkakefebpekbdhillbhonfjjp")
+
+def _stage_adnade_unpacked_extensions(profile_root: Path) -> None:
+    source_root = profile_root / ".config" / "chromium" / "Default" / "Extensions"
+    target_root = profile_root / "cashpilot-extensions"
+    for ext_id in _ADNADE_EXTENSION_IDS:
+        ext_root = source_root / ext_id
+        if not ext_root.is_dir():
+            continue
+        versions = sorted((p for p in ext_root.iterdir() if (p / "manifest.json").is_file()), reverse=True)
+        if not versions:
+            continue
+        target = target_root / ext_id
+        if target.exists():
+            shutil.rmtree(target)
+        shutil.copytree(versions[0], target)
+
 async def _materialize_runtime_assets(slug: str, spec: DeploySpec) -> None:
     if not spec.runtime_assets:
         return
@@ -1066,6 +1083,8 @@ async def _materialize_runtime_assets(slug: str, spec: DeploySpec) -> None:
             host_path.mkdir(parents=True, exist_ok=True)
             with zipfile.ZipFile(io.BytesIO(data)) as archive:
                 archive.extractall(host_path)
+            if slug == "adnade":
+                _stage_adnade_unpacked_extensions(host_path / "chromeprofiledata")
             mode = "rw" if slug == "adnade" and target == "/config" else "ro"
             spec.volumes[str(_docker_host_path(host_path / "chromeprofiledata"))] = {"bind": target, "mode": mode}
             continue

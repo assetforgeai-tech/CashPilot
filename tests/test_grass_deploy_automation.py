@@ -217,7 +217,8 @@ def test_deploy_raw_maps_adnade_username_to_chrome_url():
     assert env["CUSTOM_PORT"] == "3000"
     assert env["PUID"] == "1000"
     assert env["PGID"] == "1000"
-    assert env["CHROME_CLI"] == "https://adnade.net/view.php?user=assetforge&multi=4"
+    assert env["CHROME_CLI"].endswith("https://adnade.net/view.php?user=assetforge&multi=4")
+    assert "--load-extension=/config/cashpilot-extensions/" in env["CHROME_CLI"]
     assert client.containers.run.call_args.kwargs["cap_drop"] is None
 
 

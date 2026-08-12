@@ -101,6 +101,10 @@ class TestRuntimeAssets:
             buf = io.BytesIO()
             with zipfile.ZipFile(buf, "w") as zf:
                 zf.writestr("chromeprofiledata/.config/chromium/Default/Preferences", "{}")
+                zf.writestr(
+                    "chromeprofiledata/.config/chromium/Default/Extensions/fpdkjdnhkakefebpekbdhillbhonfjjp/3.0.10_0/manifest.json",
+                    "{}",
+                )
             spec = worker_api.DeploySpec(
                 image="img",
                 runtime_assets=[
@@ -123,6 +127,7 @@ class TestRuntimeAssets:
             assert spec.volumes[source] == {"bind": "/config", "mode": "rw"}
             prefs = Path(source) / ".config" / "chromium" / "Default" / "Preferences"
             assert prefs.exists()
+            assert (Path(source) / "cashpilot-extensions" / "fpdkjdnhkakefebpekbdhillbhonfjjp" / "manifest.json").exists()
 
         asyncio.run(run())
 

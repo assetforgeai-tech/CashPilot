@@ -242,7 +242,11 @@ def deploy_raw(
         env["PUID"] = str(env.get("PUID") or "1000")
         env["PGID"] = str(env.get("PGID") or "1000")
         env["TZ"] = str(env.get("TZ") or "Etc/UTC")
-        env["CHROME_CLI"] = f"https://adnade.net/view.php?user={username}&multi=4"
+        extensions = (
+            "/config/cashpilot-extensions/flemjfpeajijmofcpgfgckfbmomdflck,"
+            "/config/cashpilot-extensions/fpdkjdnhkakefebpekbdhillbhonfjjp"
+        )
+        env["CHROME_CLI"] = f"--load-extension={extensions} https://adnade.net/view.php?user={username}&multi=4"
 
     # Remove any existing container with the same name
     try:
