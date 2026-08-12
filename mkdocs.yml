@@ -134,7 +134,6 @@ nav:
     - Overview: guides/README.md
     - Bandwidth Sharing:
       - Bitping: guides/bitping.md
-      - Bytelixir: guides/bytelixir.md
       - Earn.fm: guides/earnfm.md
       - EarnApp: guides/earnapp.md
       - IPRoyal Pawns: guides/iproyal.md
