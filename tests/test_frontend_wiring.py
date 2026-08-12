@@ -282,6 +282,13 @@ class TestSettingsFileInputs:
         assert "renderedKeys.has(f.key)" in source
         assert "fields.filter" in source
 
+class TestSettingsCredentialGroupsMatchBackend:
+    def test_the_settings_heading_matches_the_three_group_layout(self):
+        text = frontend_text()
+        assert "Provider Credentials" in text
+        assert "Deploy runtime" in text
+        assert "Dashboard / session" in text
+
 
 class TestTheProgressCardKeepsItsUnitsStraight:
     """Caught in a browser: "£3.73" rendered directly above "to the 20 minimum".
