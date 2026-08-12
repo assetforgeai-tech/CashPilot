@@ -333,13 +333,6 @@ def _docker_host_path(path: Path) -> Path:
         logger.warning("Could not resolve host path for runtime asset %s: %s", path, exc)
     return path
 
-def _make_tree_writable(path: Path) -> None:
-    for item in path.rglob("*"):
-        with contextlib.suppress(OSError):
-            item.chmod(0o777 if item.is_dir() else 0o666)
-    with contextlib.suppress(OSError):
-        path.chmod(0o777)
-
 def _myst_state_path() -> Path:
     return Path(os.getenv("CASHPILOT_DATA_DIR", "/data")) / "myst-wallet.json"
 
@@ -1073,8 +1066,6 @@ async def _materialize_runtime_assets(slug: str, spec: DeploySpec) -> None:
             host_path.mkdir(parents=True, exist_ok=True)
             with zipfile.ZipFile(io.BytesIO(data)) as archive:
                 archive.extractall(host_path)
-            if slug == "adnade" and target == "/config":
-                _make_tree_writable(host_path)
             mode = "rw" if slug == "adnade" and target == "/config" else "ro"
             spec.volumes[str(_docker_host_path(host_path / "chromeprofiledata"))] = {"bind": target, "mode": mode}
             continue

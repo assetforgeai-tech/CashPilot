@@ -239,6 +239,8 @@ def deploy_raw(
         env["CUSTOM_HTTPS_PORT"] = str(env.get("CUSTOM_HTTPS_PORT") or "3001")
         env["CUSTOM_USER"] = str(env.get("CUSTOM_USER") or "internetincome")
         env["PASSWORD"] = str(env.get("PASSWORD") or "internetincome")
+        env["PUID"] = str(env.get("PUID") or "1000")
+        env["PGID"] = str(env.get("PGID") or "1000")
         env["TZ"] = str(env.get("TZ") or "Etc/UTC")
         env["CHROME_CLI"] = f"https://adnade.net/view.php?user={username}&multi=4"
 
