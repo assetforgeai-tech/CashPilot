@@ -147,6 +147,24 @@ def test_deploy_raw_builds_proxybase_xyz_command_from_deploy_phrase():
     assert '"$CLI" wallet import "$PHASE"' in command
     assert '"$CLI" login' in command
 
+def test_deploy_raw_maps_proxybase_deploy_token_to_peer_cli_args():
+    client = MagicMock()
+    client.containers.get.side_effect = orchestrator.NotFound("nope")
+    container = MagicMock(short_id="abc123", id="container-id")
+    client.containers.run.return_value = container
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        orchestrator.deploy_raw(
+            slug="proxybase",
+            image="ghcr.io/proxybaseorg/peer-cli:latest",
+            env={"NAME": "cashpilot-node"},
+            deploy_credentials={"deploy_access_token": "deploy-token"},
+        )
+
+    env = client.containers.run.call_args.kwargs["environment"]
+    assert env["ID"] == "deploy-token"
+    assert env["NAME"] == "cashpilot-node"
+
 def test_deploy_raw_forwards_container_user_when_declared():
     client = MagicMock()
     client.containers.get.side_effect = orchestrator.NotFound("nope")

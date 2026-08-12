@@ -521,6 +521,7 @@ class TestRunningCostsAreShownWithoutBeingInvented:
         assert "Leave hidden" in block or "return;   // Leave hidden" in block
 
 
+
 class TestTheDeployStepWarnsBeforeItActs:
     """deploy-risk and preflight, the last two orphaned endpoints.
 
@@ -638,3 +639,10 @@ class TestTheWizardSelectionIsVisible:
         for path in [*JS, *TEMPLATES]:
             text = without_comments(path.read_text(encoding="utf-8"))
             assert not re.search(r'data-a[123]="this"', text), f"{path.name} passes the string 'this' as an argument"
+
+
+class TestFleetWorkerCopyUsesAStablePublicIdentity:
+    def test_the_copy_snippet_uses_public_ip_and_timestamp(self):
+        page = (ROOT / "app" / "templates" / "fleet.html").read_text(encoding="utf-8")
+        assert "CASHPILOT_WORKER_NAME=$(curl -fsS https://api.ipify.org | tr '.' '-')-$(date +%s)" in page
+        assert "CASHPILOT_WORKER_URL=http://$(curl -fsS https://api.ipify.org):8081" in page

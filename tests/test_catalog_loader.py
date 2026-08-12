@@ -353,6 +353,12 @@ class TestProviderAutomationContracts:
         assert svc["deploy"]["automation"] == "direct_wallet"
         assert {"dashboard_password", "mmn_api_key"} <= self._credential_keys(svc, "deploy")
 
+    def test_proxybase_separates_node_and_dashboard_tokens(self):
+        svc = self._svc("proxybase")
+        assert self._credential_keys(svc, "deploy") == {"deploy_access_token"}
+        assert self._credential_keys(svc, "dashboard") == {"dashboard_access_token"}
+        assert {item["key"] for item in svc["docker"]["env"]} == {"NAME"}
+
     def test_wipter_runtime_uses_env_login(self):
         svc = self._svc("wipter")
         env = {item["key"]: item for item in svc["docker"]["env"]}

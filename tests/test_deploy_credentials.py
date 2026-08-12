@@ -56,3 +56,15 @@ def test_proxybase_xyz_deploy_phrase_maps_from_settings_to_worker_args():
         svc,
         {"proxybase-xyz_phrase": "seed phrase words"},
     ) == {"phrase": "seed phrase words"}
+
+def test_proxybase_deploy_and_dashboard_tokens_stay_separate():
+    svc = catalog.get_service("proxybase")
+
+    deploy = main._resolve_deploy_credentials(
+        "proxybase",
+        svc,
+        {
+            "proxybase_deploy_access_token": "deploy-token",
+        },
+    )
+    assert deploy == {"deploy_access_token": "deploy-token"}

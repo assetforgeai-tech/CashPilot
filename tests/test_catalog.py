@@ -134,13 +134,17 @@ def test_proxybase_container_contract():
     )
 
     env_keys = {e["key"] for e in data["docker"]["env"]}
-    assert env_keys == {"ID", "NAME"}, (
-        f"ProxyBase container env must be exactly ID + NAME (the peer-cli contract), got {env_keys}"
+    assert env_keys == {"NAME"}, (
+        f"ProxyBase container env must be exactly NAME, got {env_keys}"
     )
     by_key = {e["key"]: e for e in data["docker"]["env"]}
-    assert by_key["ID"]["required"] is True, "ID (Access Token) must be required"
-    assert by_key["ID"]["secret"] is True, "ID (Access Token) must be marked secret (masked in the UI)"
     assert by_key["NAME"]["required"] is True, "NAME (Device Name) must be required"
+    deploy = {e["key"]: e for e in data["deploy"]["credentials"]}
+    dashboard = {e["key"]: e for e in data["dashboard"]["credentials"]}
+    assert deploy["deploy_access_token"]["secret"] is True
+    assert deploy["deploy_access_token"]["required"] is True
+    assert dashboard["dashboard_access_token"]["secret"] is True
+    assert dashboard["dashboard_access_token"]["required"] is True
 
     # Referral revenue guard: the signup URL must keep the referral code.
     assert data["referral"]["signup_url"] == "https://peer.proxybase.org?referral=nXzS3c6iTO", (

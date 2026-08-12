@@ -5,7 +5,7 @@
 
 ## Description
 
-ProxyBase is a bandwidth-sharing platform that pays users in cryptocurrency for sharing their unused internet connection. You authenticate the peer client with an **Access Token** from your dashboard. Residential IPs earn the most, but datacenter IPs are also supported — they currently receive less traffic than residential. Official multi-arch Docker image (amd64/arm64/armv7).
+ProxyBase is a bandwidth-sharing platform that pays users in cryptocurrency for sharing their unused internet connection. CashPilot now keeps two tokens separate: one to start the peer node, and one to read the dashboard later. Residential IPs earn the most, but datacenter IPs are also supported — they currently receive less traffic than residential. Official multi-arch Docker image (amd64/arm64/armv7).
 
 ## Earning Estimates
 
@@ -36,15 +36,18 @@ ProxyBase is a bandwidth-sharing platform that pays users in cryptocurrency for 
 
 Sign up at [ProxyBase](https://peer.proxybase.org?referral=nXzS3c6iTO). If the referral field is not pre-filled, enter referral code `nXzS3c6iTO` in the **Referral Code** box before creating your account.
 
-### 2. Get your Access Token
+### 2. Get your Access Tokens
 
-After signing up and verifying your email, open your [dashboard](https://peer.proxybase.org/dashboard) and copy your **Access Token** — it is shown in the Docker command on the setup page and looks like a short alphanumeric string.
+After signing up and verifying your email, open your [dashboard](https://peer.proxybase.org/dashboard).
+
+- Copy the **Deploy Access Token** from the Docker command on the setup page. CashPilot uses this to start the node.
+- Copy the **Dashboard Access Token** for dashboard reads and sync later. CashPilot stores it separately.
 
 ### 3. Deploy with CashPilot
 
-In the CashPilot web UI, find **ProxyBase** in the service catalog and click **Deploy**. Enter your Access Token and a device name, and CashPilot will handle the rest.
+In the CashPilot web UI, find **ProxyBase** in the service catalog and click **Deploy**. Enter the deploy token and a device name. Put the dashboard token in the dashboard/session field.
 
-> **Upgrading from an older CashPilot?** ProxyBase moved to a new client image and replaced its credentials: the old `USER_ID`/`DEVICE_NAME` values are retired and cannot be reused. Generate a fresh **Access Token** in your [dashboard](https://peer.proxybase.org/dashboard), then re-deploy ProxyBase from the catalog with it (plus a Device Name) — existing containers built on the old image have stopped earning.
+> **Upgrading from an older CashPilot?** ProxyBase moved to a new client image and replaced its credentials: the old `USER_ID`/`DEVICE_NAME` values are retired and cannot be reused. Generate fresh deploy/dashboard tokens in your [dashboard](https://peer.proxybase.org/dashboard), then re-deploy ProxyBase from the catalog with them (plus a Device Name) — existing containers built on the old image have stopped earning.
 
 ## Docker Configuration
 
@@ -55,8 +58,19 @@ In the CashPilot web UI, find **ProxyBase** in the service catalog and click **D
 
 | Variable | Label | Required | Secret | Description |
 |----------|-------|:--------:|:------:|-------------|
-| `ID` | Access Token | Yes | Yes | Your ProxyBase Access Token from the dashboard |
 | `NAME` | Device Name | Yes | No | Any name to identify this device in your ProxyBase dashboard (default: `cashpilot-{hostname}`) |
+
+### Deploy Credentials
+
+| Variable | Label | Required | Secret | Description |
+|----------|-------|:--------:|:------:|-------------|
+| `deploy_access_token` | Deploy Access Token | Yes | Yes | Token shown on the setup page; used to launch the peer node |
+
+### Dashboard Credentials
+
+| Variable | Label | Required | Secret | Description |
+|----------|-------|:--------:|:------:|-------------|
+| `dashboard_access_token` | Dashboard Access Token | Yes | Yes | Token used to read dashboard data later |
 
 ## Troubleshooting
 
@@ -64,8 +78,8 @@ In the CashPilot web UI, find **ProxyBase** in the service catalog and click **D
 
 If ProxyBase was deployed before the migration to the new client, the container is still running ProxyBase's **retired** image — it looks healthy in the dashboard but no longer earns, because the old backend was shut down. The dashboard cannot tell the retired client from the current one.
 
-Fix: **Remove** the ProxyBase service, then **Deploy** it again from the catalog and paste a fresh **Access Token** from [your dashboard](https://peer.proxybase.org/dashboard). The redeploy pulls the current `ghcr.io/proxybaseorg/peer-cli` image.
+Fix: **Remove** the ProxyBase service, then **Deploy** it again from the catalog and paste fresh deploy/dashboard tokens from [your dashboard](https://peer.proxybase.org/dashboard). The redeploy pulls the current `ghcr.io/proxybaseorg/peer-cli` image.
 
 ### Container exits immediately after deploy
 
-The client exits with `Missing ID and NAME` when it starts without credentials. CashPilot's deploy form requires both fields, so this normally can't happen — but if you deployed with an exported compose file, make sure the `ID` and `NAME` environment variables are filled in.
+The client exits with `Missing ID and NAME` when it starts without credentials. CashPilot's deploy form requires both fields, so this normally can't happen — but if you deployed with an exported compose file, make sure the `NAME` environment variable is filled in and the deploy token is present in the server-side deploy credential field.

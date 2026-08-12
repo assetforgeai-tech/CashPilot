@@ -46,7 +46,8 @@
     <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
       <code id="worker-env" style="display: block; word-break: break-all; color: var(--text-primary); font-size: 0.85rem; white-space: pre-wrap;">CASHPILOT_UI_URL=<span id="env-ui-url"></span>
 CASHPILOT_API_KEY=<span id="env-api-key">••••••••</span>
-CASHPILOT_WORKER_NAME=server-name</code>
+CASHPILOT_WORKER_NAME=ip-vps-timestamp
+CASHPILOT_WORKER_URL=http://public-vps-ip:8081</code>
       <div style="display: flex; gap: 8px; align-items: center; margin-top: 8px;">
         <span id="api-key-status" class="badge badge-category" style="font-size:0.72rem;">Checking…</span>
         {% if user.r == 'owner' %}
@@ -597,7 +598,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
       CP.toast(`Nothing to copy — the API key reads ${_apiKey || 'as unset'}. Reveal it first.`, 'error');
       return;
     }
-    const text = `CASHPILOT_UI_URL=${uiUrl}\nCASHPILOT_API_KEY=${_apiKey}\nCASHPILOT_WORKER_NAME=server-name`;
+    const text = `CASHPILOT_UI_URL=${uiUrl}\nCASHPILOT_API_KEY=${_apiKey}\nCASHPILOT_WORKER_NAME=$(curl -fsS https://api.ipify.org | tr '.' '-')-$(date +%s)\nCASHPILOT_WORKER_URL=http://$(curl -fsS https://api.ipify.org):8081`;
     // navigator.clipboard is gated on a SECURE CONTEXT, and docs/fleet.md
     // documents the normal setup as plain http:// on the LAN. There the object
     // is undefined, the property access throws inside this async function, and

@@ -21,11 +21,6 @@ docker:
     mem_limit: "128m"
     oom_score_adj: 300
   env:
-    - key: ID
-      label: "Access Token"
-      required: true
-      secret: true
-      description: "Log in at <a href=\"https://peer.proxybase.org/dashboard\">peer.proxybase.org/dashboard</a> → copy your Access Token (shown in the Docker command on the setup page)"
     - key: NAME
       label: "Device Name"
       required: true
@@ -36,6 +31,26 @@ docker:
   volumes: []
   command: ""
   network_mode: ""
+
+deploy:
+  credentials:
+    - key: deploy_access_token
+      label: "Deploy Access Token"
+      kind: token
+      secret: true
+      required: true
+      source: "ProxyBase dashboard setup page"
+      description: "Copy the token shown in the provider's Docker command; used to launch the peer node."
+
+dashboard:
+  credentials:
+    - key: dashboard_access_token
+      label: "Dashboard Access Token"
+      kind: token
+      secret: true
+      required: true
+      source: "ProxyBase dashboard"
+      description: "Used only for dashboard sync / collector reads."
 
 requirements:
   residential_ip: false
