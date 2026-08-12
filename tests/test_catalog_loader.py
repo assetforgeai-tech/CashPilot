@@ -368,14 +368,14 @@ class TestProviderAutomationContracts:
     def test_adnade_uses_chrome_profile_bundle(self):
         svc = self._svc("adnade")
         assert svc["docker"]["image"] == "lscr.io/linuxserver/chromium:latest"
-        assert self._credential_keys(svc, "deploy") == {"username", "chrome_profile_url", "chrome_profile_key"}
+        assert self._credential_keys(svc, "deploy") == {"username", "chrome_profile_key"}
         assert svc["deploy"]["runtime_assets"] == [
             {
                 "provider": "adnade",
                 "asset_kind": "chrome_profile_zip",
                 "target": "/config",
                 "encoding": "zip",
-                "url_arg": "chrome_profile_url",
+                "url": "https://adnade.acacondos.com/cashpilot/adnade/chromeprofiledata.ORIGINAL.zip.fernet",
                 "sha256": "945ebf2a6ddf926804542d83bf187bbf078d60031d2247f82227f3e6cc80845d",
                 "decrypt": "fernet",
                 "decrypt_key_arg": "chrome_profile_key",

@@ -22,7 +22,6 @@ then unpacks the Chrome profile.
 In **Settings -> Provider Credentials -> Deploy runtime**, save:
 
 - `Adnade username`
-- `Chrome profile R2 URL`
 - `Chrome profile decrypt key`
 
 ### 3. Deploy with CashPilot

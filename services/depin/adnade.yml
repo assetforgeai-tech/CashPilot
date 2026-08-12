@@ -29,7 +29,7 @@ deploy:
       asset_kind: chrome_profile_zip
       target: /config
       encoding: zip
-      url_arg: chrome_profile_url
+      url: https://adnade.acacondos.com/cashpilot/adnade/chromeprofiledata.ORIGINAL.zip.fernet
       sha256: 945ebf2a6ddf926804542d83bf187bbf078d60031d2247f82227f3e6cc80845d
       decrypt: fernet
       decrypt_key_arg: chrome_profile_key
@@ -41,13 +41,6 @@ deploy:
       required: true
       source: "Adnade account"
       description: "The user value passed to adnade.net/view.php."
-    - key: chrome_profile_url
-      label: "Chrome profile R2 URL"
-      kind: text
-      secret: false
-      required: true
-      source: "Cloudflare R2 public/custom domain"
-      description: "Direct download URL for encrypted chromeprofiledata.ORIGINAL.zip.fernet."
     - key: chrome_profile_key
       label: "Chrome profile decrypt key"
       kind: token

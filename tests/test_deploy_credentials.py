@@ -96,11 +96,9 @@ def test_adnade_username_maps_from_settings_to_worker_args():
         svc,
         {
             "adnade_username": "assetforge",
-            "adnade_chrome_profile_url": "https://example.com/profile.zip.fernet",
             "adnade_chrome_profile_key": "key",
         },
     ) == {
         "username": "assetforge",
-        "chrome_profile_url": "https://example.com/profile.zip.fernet",
         "chrome_profile_key": "key",
     }
