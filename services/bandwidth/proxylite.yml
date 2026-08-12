@@ -20,19 +20,25 @@ docker:
   resources:
     mem_limit: "128m"
     oom_score_adj: 300
-  env:
-    - key: USER_ID
-      label: "User ID"
-      required: true
-      secret: false
-      description: "Log in at <a href=\"https://lk.proxylite.ru\">lk.proxylite.ru</a> → your User ID is shown on the main dashboard page next to your email"
+  env: []
   ports: []
   volumes: []
   command: ""
   network_mode: ""
 
+deploy:
+  credentials:
+    - key: user_id
+      label: "PROXYLITE_USER_ID"
+      kind: text
+      secret: true
+      required: true
+      source: "ProxyLite dashboard"
+      description: "Log in at lk.proxylite.ru; the User ID is shown on the main dashboard page next to your email."
+
 requirements:
   residential_ip: false
+  vps_ip: true
   min_bandwidth: ""
   gpu: false
   min_storage: ""
@@ -59,8 +65,8 @@ cashout:
 platforms: [docker, windows, linux]
 
 collector:
-  type: api
-  notes: "Dashboard at lk.proxylite.ru. User ID based authentication."
+  type: manual
+  notes: "No dashboard credential is required for deploy. CashPilot counts running worker containers for node presence until a confirmed dashboard/API collector exists."
 
 payout:
   model: unknown

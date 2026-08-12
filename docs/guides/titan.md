@@ -41,7 +41,7 @@ Install Titan Browser Extension from the logged-in dashboard, then keep it enabl
 
 ### 3. Deploy
 
-CashPilot does not deploy Titan yet. Current confirmed flow is browser-extension first.
+CashPilot does not deploy Titan yet. Current confirmed flow is browser-extension first. You may save an optional dashboard session in Settings for future scrape research.
 
 ## Docker Configuration
 
@@ -54,6 +54,6 @@ No environment variables required.
 ## Dashboard Audit
 
 - Earnings page shows today's earnings and total earnings split into TNTIP and USDC.
+- Device Management shows per-device connection status, name, IP, IP quality, nodes on IP, uptime, uptime earnings, task earnings, and total earnings.
 - Earnings History shows daily rows with uptime, task runtime earnings, node uptime earnings, and total earnings.
-- Device Management exists for per-device status.
 - No stable public API contract confirmed.

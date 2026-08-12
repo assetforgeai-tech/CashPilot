@@ -165,6 +165,40 @@ def test_deploy_raw_maps_proxybase_deploy_token_to_peer_cli_args():
     assert env["ID"] == "deploy-token"
     assert env["NAME"] == "cashpilot-node"
 
+def test_deploy_raw_maps_proxylite_user_id_to_proxyservice_env():
+    client = MagicMock()
+    client.containers.get.side_effect = orchestrator.NotFound("nope")
+    container = MagicMock(short_id="abc123", id="container-id")
+    client.containers.run.return_value = container
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        orchestrator.deploy_raw(
+            slug="proxylite",
+            image="proxylite/proxyservice",
+            deploy_credentials={"user_id": "000000"},
+        )
+
+    env = client.containers.run.call_args.kwargs["environment"]
+    assert env["USER_ID"] == "000000"
+
+
+def test_deploy_raw_maps_urnetwork_auth_token_to_provider_env():
+    client = MagicMock()
+    client.containers.get.side_effect = orchestrator.NotFound("nope")
+    container = MagicMock(short_id="abc123", id="container-id")
+    client.containers.run.return_value = container
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        orchestrator.deploy_raw(
+            slug="urnetwork",
+            image="bringyour/community-provider",
+            deploy_credentials={"auth_token": "jwt-token"},
+        )
+
+    env = client.containers.run.call_args.kwargs["environment"]
+    assert env["UR_AUTH_TOKEN"] == "jwt-token"
+
+
 def test_deploy_raw_forwards_container_user_when_declared():
     client = MagicMock()
     client.containers.get.side_effect = orchestrator.NotFound("nope")

@@ -20,20 +20,26 @@ docker:
   resources:
     mem_limit: "128m"
     oom_score_adj: 300
-  env:
-    - key: UR_AUTH_TOKEN
-      label: "Auth Token"
-      required: true
-      secret: true
-      description: "Log in at <a href=\"https://app.urnetwork.com\">app.urnetwork.com</a>, press F12 -> Application -> Local Storage -> click <code>https://app.urnetwork.com</code> -> copy the <code>auth_token</code> value (a JWT starting with eyJ)"
+  env: []
   ports: []
   volumes:
     - "urnetwork-data:/root/.urnetwork"
   command: "provide"
   network_mode: ""
 
+deploy:
+  credentials:
+    - key: auth_token
+      label: "UR_AUTH_TOKEN"
+      kind: token
+      secret: true
+      required: true
+      source: "https://app.ur.network Account Settings / auth token"
+      description: "Worker runtime token for the bringyour/community-provider container. CashPilot forwards it as UR_AUTH_TOKEN."
+
 requirements:
   residential_ip: false
+  vps_ip: true
   min_bandwidth: ""
   gpu: false
   min_storage: ""
@@ -53,7 +59,7 @@ earnings:
 
 cashout:
   method: redirect
-  dashboard_url: "https://urnetwork.com/dashboard"
+  dashboard_url: "https://app.ur.network/wallet-stats"
   min_amount: 5.0
   currency: USD
 
@@ -61,7 +67,15 @@ platforms: [docker, windows, macos, linux]
 
 collector:
   type: manual
-  notes: "Logged-in client manager exposes Clients, Statistics, Providers, Wallet Stats and Account Settings. Statistics/Wallet endpoints returned 401 in the audited browser session, so no collector/API contract is confirmed."
+  credentials:
+    - key: api_key
+      label: "URNetwork API key"
+      kind: api_key
+      secret: true
+      required: false
+      source: "https://app.ur.network Account Settings > API Key Management"
+      description: "Optional future collector credential. Leave empty until CashPilot confirms the API response shape."
+  notes: "Logged-in client manager exposes Clients, Statistics, Providers, Wallet Stats, Account Settings, Balance Codes, and API Key Management. No collector/API response shape is confirmed yet."
 
 payout:
   model: external

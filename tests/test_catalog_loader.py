@@ -359,6 +359,25 @@ class TestProviderAutomationContracts:
         assert self._credential_keys(svc, "dashboard") == {"dashboard_access_token"}
         assert {item["key"] for item in svc["docker"]["env"]} == {"NAME"}
 
+    def test_proxylite_uses_deploy_user_id_only(self):
+        svc = self._svc("proxylite")
+        assert self._credential_keys(svc, "deploy") == {"user_id"}
+        assert self._credential_keys(svc, "dashboard") == set()
+        assert {item["key"] for item in svc["docker"]["env"]} == set()
+
+    def test_urnetwork_uses_deploy_auth_token_and_optional_api_key(self):
+        svc = self._svc("urnetwork")
+        assert self._credential_keys(svc, "deploy") == {"auth_token"}
+        assert self._credential_keys(svc, "collector") == {"api_key"}
+        assert self._credential_keys(svc, "dashboard") == set()
+        assert {item["key"] for item in svc["docker"]["env"]} == set()
+
+    def test_dawn_and_titan_store_optional_dashboard_sessions_only(self):
+        assert self._credential_keys(self._svc("dawn"), "dashboard") == {"dashboard_session"}
+        titan = self._svc("titan")
+        assert self._credential_keys(titan, "dashboard") == {"dashboard_session"}
+        assert titan["collector"]["per_node_earnings"] is True
+
     def test_wipter_runtime_uses_env_login(self):
         svc = self._svc("wipter")
         env = {item["key"]: item for item in svc["docker"]["env"]}

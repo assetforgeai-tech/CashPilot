@@ -5,7 +5,7 @@
 
 ## Description
 
-ProxyLite monetizes your internet traffic by sharing bandwidth with verified organizations. Works on both residential and VPS/datacenter connections. Simple setup requiring only a user ID from the dashboard. Offers a generous 15% lifetime referral commission.
+ProxyLite monetizes your internet traffic by sharing bandwidth with verified organizations. Works on both residential and VPS/datacenter connections. CashPilot deploys it with a stored `PROXYLITE_USER_ID` and then runs the container with `USER_ID`. Offers a generous 15% lifetime referral commission.
 
 ## Earning Estimates
 
@@ -37,11 +37,11 @@ Sign up at [ProxyLite](https://proxylite.ru/?r=KMUPRZIZ).
 
 ### 2. Get your credentials
 
-After signing up at [proxylite.ru](https://proxylite.ru), your User ID is visible in the dashboard at `lk.proxylite.ru`. It's a numeric ID (e.g. `521465`).
+After signing up at [proxylite.ru](https://proxylite.ru), your User ID is visible in the dashboard at `lk.proxylite.ru`. It's a numeric ID (e.g. `521465`). Save that value in CashPilot as the deploy credential `PROXYLITE_USER_ID`.
 
 ### 3. Deploy with CashPilot
 
-In the CashPilot web UI, find **ProxyLite** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
+In the CashPilot web UI, find **ProxyLite** in the service catalog and click **Deploy**. Enter only `PROXYLITE_USER_ID`. CashPilot forwards it to the container as `USER_ID`.
 
 ## Docker Configuration
 
@@ -52,4 +52,4 @@ In the CashPilot web UI, find **ProxyLite** in the service catalog and click **D
 
 | Variable | Label | Required | Secret | Description |
 |----------|-------|:--------:|:------:|-------------|
-| `USER_ID` | User ID | Yes | No | Your ProxyLite account ID (found in dashboard at lk.proxylite.ru after registration) |
+| `PROXYLITE_USER_ID` | User ID | Yes | Yes | Stored deploy credential from the ProxyLite dashboard at `lk.proxylite.ru` |

@@ -35,13 +35,13 @@ Dawn Internet is a decentralized wireless network that rewards users for sharing
 
 Sign up at [Dawn Internet](https://dawninternet.com/?code=2QLQV97F).
 
-### 2. Get your credentials
+### 2. Browser-extension flow
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+Install and keep the DAWN browser extension connected. The logged-in dashboard shows connection quality, connected state, total points, epoch points, referral points, and streak.
 
-### 3. Deploy with CashPilot
+### 3. CashPilot status
 
-In the CashPilot web UI, find **Dawn Internet** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
+CashPilot does not deploy DAWN yet. You may save an optional dashboard session in Settings for future scrape research, but no headless runtime/API contract is confirmed.
 
 ## Docker Configuration
 
@@ -50,3 +50,9 @@ In the CashPilot web UI, find **Dawn Internet** in the service catalog and click
 ### Environment Variables
 
 No environment variables required.
+
+## Dashboard Audit
+
+- Rewards page shows connected state, connection quality, total rewards, epoch rewards, referral rewards, streak, and earnings stats.
+- Referrals page shows referral code generation and referral/boost tasks.
+- No device-management page, Docker image, or public API contract confirmed.

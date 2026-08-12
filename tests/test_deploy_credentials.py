@@ -68,3 +68,22 @@ def test_proxybase_deploy_and_dashboard_tokens_stay_separate():
         },
     )
     assert deploy == {"deploy_access_token": "deploy-token"}
+
+def test_proxylite_user_id_maps_from_settings_to_worker_args():
+    svc = catalog.get_service("proxylite")
+
+    assert main._resolve_deploy_credentials(
+        "proxylite",
+        svc,
+        {"proxylite_user_id": "000000"},
+    ) == {"user_id": "000000"}
+
+
+def test_urnetwork_auth_token_maps_from_settings_to_worker_args():
+    svc = catalog.get_service("urnetwork")
+
+    assert main._resolve_deploy_credentials(
+        "urnetwork",
+        svc,
+        {"urnetwork_auth_token": "jwt-token"},
+    ) == {"auth_token": "jwt-token"}

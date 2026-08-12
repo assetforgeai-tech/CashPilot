@@ -22,6 +22,16 @@ docker:
   command: ""
   network_mode: ""
 
+dashboard:
+  credentials:
+    - key: dashboard_session
+      label: "Titan dashboard session"
+      kind: cookie
+      secret: true
+      required: false
+      source: "https://edge.titannet.info logged-in browser session"
+      description: "Optional cookie/session material for future dashboard scrape. Titan currently earns through the browser extension; no Docker/headless runtime is confirmed."
+
 requirements:
   residential_ip: true
   min_bandwidth: ""
@@ -56,7 +66,8 @@ platforms: [browser-extension]
 
 collector:
   type: scrape
-  notes: "Logged-in dashboard exposes account totals, per-device rows, and earnings history. No public API contract confirmed."
+  per_node_earnings: true
+  notes: "Logged-in dashboard exposes account totals, per-device status/IP/quality/uptime/earnings rows, task earnings, and earnings history. No public API contract confirmed."
 
 payout:
   model: unknown

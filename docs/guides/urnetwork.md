@@ -35,13 +35,15 @@ URnetwork is a decentralized VPN and bandwidth-sharing network. You earn by prov
 
 Sign up at [URnetwork](https://ur.io/?referral_code=1Q3G19).
 
-### 2. Get auth token
+### 2. Get deploy auth token
 
-Get `UR_AUTH_TOKEN` from the logged-in dashboard local storage. It is a JWT used by the community provider container.
+Get `UR_AUTH_TOKEN` from the logged-in dashboard at [app.ur.network](https://app.ur.network). This token is used by the `bringyour/community-provider` container.
+
+Optional: Account Settings also has API Key Management. Save an API key only when you want CashPilot to research/build a collector; it is not required for deploy.
 
 ### 3. Deploy with CashPilot
 
-In the CashPilot web UI, find **URnetwork** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
+In the CashPilot web UI, find **URnetwork** in the service catalog and click **Deploy**. Enter `UR_AUTH_TOKEN`; CashPilot forwards it to the worker container as `UR_AUTH_TOKEN`.
 
 ## Docker Configuration
 
@@ -52,8 +54,8 @@ In the CashPilot web UI, find **URnetwork** in the service catalog and click **D
 
 | Variable | Label | Required | Secret | Description |
 |----------|-------|:--------:|:------:|-------------|
-| `UR_AUTH_TOKEN` | Auth Token | Yes | Yes | Your URnetwork authentication token from the dashboard |
+| `UR_AUTH_TOKEN` | Deploy auth token | Yes | Yes | Stored CashPilot deploy credential forwarded to the container as `UR_AUTH_TOKEN` |
 
 ## Collector Status
 
-Logged-in client manager exposes Clients, Statistics, Providers, Wallet Stats, Account Settings, Balance Codes, Data Stats, and Payout Stats. In the audited browser session, wallet/stat endpoints returned 401 and there were 0 clients, so no collector/API contract is confirmed yet.
+Logged-in client manager exposes Clients, Statistics, Providers, Wallet Stats, Account Settings, Balance Codes, Data Stats, Payout Stats, Generate Auth Client, and API Key Management. No collector/API response shape is confirmed yet.
