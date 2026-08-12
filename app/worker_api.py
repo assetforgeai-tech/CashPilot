@@ -16,6 +16,7 @@ import asyncio
 import base64
 import contextlib
 import hmac
+import io
 import json
 import logging
 import os
@@ -26,6 +27,7 @@ import socket
 import subprocess
 import time
 import uuid
+import zipfile
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from html import escape as _esc
@@ -957,9 +959,18 @@ async def _materialize_runtime_assets(slug: str, spec: DeploySpec) -> None:
         if not provider or not asset_kind:
             raise HTTPException(status_code=400, detail=f"Invalid runtime asset ref for {slug}")
         payload = await _fetch_runtime_asset(provider, asset_kind)
-        data = base64.b64decode(payload) if str(asset.encoding or "").lower() == "base64" else payload.encode()
+        encoding = str(asset.encoding or "").lower()
+        data = base64.b64decode(payload) if encoding in {"base64", "zip"} else payload.encode()
         host_path = _RUNTIME_ASSET_DIR / slug / asset_kind
         host_path.parent.mkdir(parents=True, exist_ok=True)
+        if encoding == "zip":
+            if host_path.exists():
+                shutil.rmtree(host_path)
+            host_path.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                archive.extractall(host_path)
+            spec.volumes[str(host_path / "chromeprofiledata")] = {"bind": target, "mode": "ro"}
+            continue
         host_path.write_bytes(data)
         with contextlib.suppress(OSError):
             host_path.chmod(0o600)

@@ -231,6 +231,16 @@ def deploy_raw(
         env["PROXYBASE_XYZ_PHRASE"] = str(deploy_credentials.get("phrase") or "")
         image = provider_installers.ensure_proxybase_xyz_image(client)
         command = command or provider_installers.proxybase_xyz_command()
+    if slug == "adnade" and deploy_credentials:
+        username = str(deploy_credentials.get("username") or "").strip()
+        env["ADNADE_USERNAME"] = username
+        env["ADNADE_USE_CHROME"] = "true"
+        env["CUSTOM_PORT"] = str(env.get("CUSTOM_PORT") or "3000")
+        env["CUSTOM_HTTPS_PORT"] = str(env.get("CUSTOM_HTTPS_PORT") or "3001")
+        env["CUSTOM_USER"] = str(env.get("CUSTOM_USER") or "internetincome")
+        env["PASSWORD"] = str(env.get("PASSWORD") or "internetincome")
+        env["TZ"] = str(env.get("TZ") or "Etc/UTC")
+        env["CHROME_CLI"] = f"https://adnade.net/view.php?user={username}&multi=4"
 
     # Remove any existing container with the same name
     try:

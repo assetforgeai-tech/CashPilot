@@ -198,6 +198,25 @@ def test_deploy_raw_maps_urnetwork_auth_token_to_provider_env():
     env = client.containers.run.call_args.kwargs["environment"]
     assert env["UR_AUTH_TOKEN"] == "jwt-token"
 
+def test_deploy_raw_maps_adnade_username_to_chrome_url():
+    client = MagicMock()
+    client.containers.get.side_effect = orchestrator.NotFound("nope")
+    container = MagicMock(short_id="abc123", id="container-id")
+    client.containers.run.return_value = container
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        orchestrator.deploy_raw(
+            slug="adnade",
+            image="lscr.io/linuxserver/chromium:latest",
+            deploy_credentials={"username": "assetforge"},
+        )
+
+    env = client.containers.run.call_args.kwargs["environment"]
+    assert env["ADNADE_USERNAME"] == "assetforge"
+    assert env["ADNADE_USE_CHROME"] == "true"
+    assert env["CUSTOM_PORT"] == "3000"
+    assert env["CHROME_CLI"] == "https://adnade.net/view.php?user=assetforge&multi=4"
+
 
 def test_deploy_raw_forwards_container_user_when_declared():
     client = MagicMock()

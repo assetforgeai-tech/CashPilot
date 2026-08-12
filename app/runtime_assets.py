@@ -11,6 +11,7 @@ ALLOWED_KINDS = {
     "wallet_lease_ref",
     "credentials_json",
     "main_db",
+    "chrome_profile_zip",
 }
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 

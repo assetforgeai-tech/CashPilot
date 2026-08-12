@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import io
+import zipfile
 from unittest.mock import patch
 
 from app import database, main, runtime_assets
+from app import worker_api
 
 
 class TestRuntimeAssets:
@@ -52,6 +56,38 @@ class TestRuntimeAssets:
                 masked = await database.get_config_masked()
                 assert masked["_secrets"]["proxybase-xyz_phrase"] is True
                 assert "proxybase-xyz_phrase" not in masked
+
+        asyncio.run(run())
+
+    def test_chrome_profile_zip_is_allowed_as_runtime_asset_kind(self):
+        assert runtime_assets.validate("adnade", "chrome_profile_zip") == ("adnade", "chrome_profile_zip")
+
+    def test_worker_unpacks_chrome_profile_zip_runtime_asset(self, tmp_path):
+        async def run():
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w") as zf:
+                zf.writestr("chromeprofiledata/.config/chromium/Default/Preferences", "{}")
+            spec = worker_api.DeploySpec(
+                image="img",
+                runtime_assets=[
+                    worker_api.RuntimeAssetSpec(
+                        provider="adnade",
+                        asset_kind="chrome_profile_zip",
+                        target="/config",
+                        encoding="zip",
+                    )
+                ],
+            )
+            with (
+                patch.object(worker_api, "_RUNTIME_ASSET_DIR", tmp_path),
+                patch.object(worker_api, "_fetch_runtime_asset", return_value=base64.b64encode(buf.getvalue()).decode()),
+            ):
+                await worker_api._materialize_runtime_assets("adnade", spec)
+
+            source = next(iter(spec.volumes))
+            assert source.replace("\\", "/").endswith("chrome_profile_zip/chromeprofiledata")
+            assert spec.volumes[source] == {"bind": "/config", "mode": "ro"}
+            assert (tmp_path / "adnade" / "chrome_profile_zip" / "chromeprofiledata" / ".config" / "chromium" / "Default" / "Preferences").exists()
 
         asyncio.run(run())
 

@@ -3205,7 +3205,7 @@ const CP = (() => {
         const file = input.files && input.files[0];
         if (!file) return;
         const encoding = (input.dataset.encoding || '').toLowerCase();
-        if (encoding === 'base64') {
+        if (encoding === 'base64' || encoding === 'zip') {
           const buf = await file.arrayBuffer();
           const bytes = new Uint8Array(buf);
           let binary = '';

@@ -365,6 +365,19 @@ class TestProviderAutomationContracts:
         assert self._credential_keys(svc, "dashboard") == set()
         assert {item["key"] for item in svc["docker"]["env"]} == set()
 
+    def test_adnade_uses_chrome_profile_bundle(self):
+        svc = self._svc("adnade")
+        assert svc["docker"]["image"] == "lscr.io/linuxserver/chromium:latest"
+        assert self._credential_keys(svc, "deploy") == {"username", "chrome_profile_zip"}
+        assert svc["deploy"]["runtime_assets"] == [
+            {
+                "provider": "adnade",
+                "asset_kind": "chrome_profile_zip",
+                "target": "/config",
+                "encoding": "zip",
+            }
+        ]
+
     def test_urnetwork_uses_deploy_auth_token_and_optional_api_key(self):
         svc = self._svc("urnetwork")
         assert self._credential_keys(svc, "deploy") == {"auth_token"}
