@@ -1061,8 +1061,7 @@ async def _materialize_runtime_assets(slug: str, spec: DeploySpec) -> None:
             payload = await _fetch_runtime_asset(provider, asset_kind)
             data = base64.b64decode(payload) if encoding in {"base64", "zip"} else payload.encode()
         if encoding == "zip":
-            if host_path.exists():
-                shutil.rmtree(host_path)
+            host_path = host_path.parent / f"{asset_kind}-{int(time.time())}-{uuid.uuid4().hex[:8]}"
             host_path.mkdir(parents=True, exist_ok=True)
             with zipfile.ZipFile(io.BytesIO(data)) as archive:
                 archive.extractall(host_path)

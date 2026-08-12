@@ -119,9 +119,9 @@ class TestRuntimeAssets:
                 await worker_api._materialize_runtime_assets("adnade", spec)
 
             source = next(iter(spec.volumes))
-            assert source.replace("\\", "/").endswith("chrome_profile_zip/chromeprofiledata")
+            assert "/chrome_profile_zip-" in source.replace("\\", "/")
             assert spec.volumes[source] == {"bind": "/config", "mode": "rw"}
-            assert (tmp_path / "adnade" / "chrome_profile_zip" / "chromeprofiledata" / ".config" / "chromium" / "Default" / "Preferences").exists()
+            assert (Path(source) / ".config" / "chromium" / "Default" / "Preferences").exists()
 
         asyncio.run(run())
 
@@ -161,8 +161,8 @@ class TestRuntimeAssets:
             download.assert_awaited_once_with("https://assets.example/adnade-profile.zip.fernet", tmp_path / "adnade" / "chrome_profile_zip.download")
             decrypt.assert_called_once_with(encrypted, "fernet", key)
             source = next(iter(spec.volumes))
-            assert source.replace("\\", "/").endswith("chrome_profile_zip/chromeprofiledata")
-            assert (tmp_path / "adnade" / "chrome_profile_zip" / "chromeprofiledata" / ".config" / "chromium" / "Default" / "Preferences").exists()
+            assert "/chrome_profile_zip-" in source.replace("\\", "/")
+            assert (Path(source) / ".config" / "chromium" / "Default" / "Preferences").exists()
 
         asyncio.run(run())
 
