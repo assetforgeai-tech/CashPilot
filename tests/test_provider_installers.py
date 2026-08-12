@@ -4,6 +4,14 @@ from unittest.mock import MagicMock, patch
 
 from app import provider_installers
 
+def test_proxybase_xyz_runtime_command_imports_phrase_and_resolves_cli_path():
+    command = provider_installers.proxybase_xyz_command()
+    assert "curl -fsSL https://proxybase.xyz/install.sh | sh" in command
+    assert 'PHASE="${PROXYBASE_XYZ_PHRASE:?missing wallet phrase}"' in command
+    assert 'proxybase-cli wallet import "$PHASE"' in command
+    assert "proxybase-cli login" in command
+    assert "seller start --foreground" in command
+
 
 def test_grass_manifest_resolves_linux_amd64_url_and_version():
     manifest = {

@@ -121,6 +121,27 @@ def test_deploy_raw_maps_wipter_credentials_to_env_and_restarts_after_login_stat
     assert env["WIPTER_PASSWORD"] == "secret"
     restart_once.assert_called_once_with(container)
 
+def test_deploy_raw_builds_proxybase_xyz_command_from_deploy_phrase():
+    client = MagicMock()
+    client.containers.get.side_effect = orchestrator.NotFound("nope")
+    container = MagicMock(short_id="abc123", id="container-id")
+    client.containers.run.return_value = container
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        orchestrator.deploy_raw(
+            slug="proxybase-xyz",
+            image="ubuntu:24.04",
+            deploy_credentials={"phrase": "seed phrase words"},
+        )
+
+    command = client.containers.run.call_args.kwargs["command"]
+    assert "https://proxybase.xyz/install.sh" in command
+    env = client.containers.run.call_args.kwargs["environment"]
+    assert env["PROXYBASE_XYZ_PHRASE"] == "seed phrase words"
+    assert 'PHASE="${PROXYBASE_XYZ_PHRASE:?missing wallet phrase}"' in command
+    assert "proxybase-cli wallet import \"$PHASE\"" in command
+    assert "proxybase-cli login" in command
+
 def test_deploy_raw_forwards_container_user_when_declared():
     client = MagicMock()
     client.containers.get.side_effect = orchestrator.NotFound("nope")

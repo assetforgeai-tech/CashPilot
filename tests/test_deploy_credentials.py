@@ -47,3 +47,12 @@ def test_wipter_deploy_credentials_map_from_stored_config_to_worker_args():
         svc,
         {"wipter_email": "user@example.com", "wipter_password": "secret"},
     ) == {"email": "user@example.com", "password": "secret"}
+
+def test_proxybase_xyz_deploy_phrase_maps_from_settings_to_worker_args():
+    svc = catalog.get_service("proxybase-xyz")
+
+    assert main._resolve_deploy_credentials(
+        "proxybase-xyz",
+        svc,
+        {"proxybase-xyz_phrase": "seed phrase words"},
+    ) == {"phrase": "seed phrase words"}

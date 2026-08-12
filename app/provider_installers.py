@@ -15,6 +15,7 @@ _UPROCK_IMAGE = "cashpilot/uprock-mining"
 _RUNNER = "ubuntu24.04"
 _GRASS_ALLOWED_HOST = "files.grass.io"
 _UPROCK_ALLOWED_HOST = "edge.uprock.com"
+_PROXYBASE_XYZ_INSTALLER = "https://proxybase.xyz/install.sh"
 
 def _fetch_json(url: str) -> dict:
     req = Request(url, headers={"Accept": "application/json", "User-Agent": "CashPilot/1.0"})
@@ -122,3 +123,20 @@ RUN apt-get update \\
 EXPOSE 6080
 CMD ["bash", "-lc", "set -e; mkdir -p /root/.local/share/UpRock; if [ -s /cashpilot/runtime-assets/uprock/credentials.json ]; then cp /cashpilot/runtime-assets/uprock/credentials.json /root/.local/share/UpRock/credentials.json; chmod 600 /root/.local/share/UpRock/credentials.json; fi; if [ -s /cashpilot/runtime-assets/uprock/main.db ]; then cp /cashpilot/runtime-assets/uprock/main.db /root/.local/share/UpRock/main.db; chmod 600 /root/.local/share/UpRock/main.db; fi; rm -f /tmp/.X99-lock; Xvfb :99 -screen 0 1200x800x24 -nolisten tcp >/tmp/xvfb.log 2>&1 & fluxbox >/tmp/fluxbox.log 2>&1 & x11vnc -display :99 -forever -shared -nopw -listen 0.0.0.0 -xkb >/tmp/x11vnc.log 2>&1 & websockify --web=/usr/share/novnc/ 6080 localhost:5900 >/tmp/novnc.log 2>&1 & dbus-run-session sh -lc 'uprock-mining'"]
 """
+
+def proxybase_xyz_command() -> str:
+    return (
+        "sh -lc 'set -e; "
+        "if ! command -v curl >/dev/null 2>&1; then apt-get update && apt-get install -y --no-install-recommends curl ca-certificates; fi; "
+        f"curl -fsSL {_PROXYBASE_XYZ_INSTALLER} | sh; "
+        'CLI="$(command -v proxybase-cli || true)"; '
+        'if [ -z "$CLI" ]; then '
+        'for p in "$HOME/.local/bin/proxybase-cli" "/root/.local/bin/proxybase-cli" "/usr/local/bin/proxybase-cli"; do '
+        'if [ -x "$p" ]; then CLI="$p"; break; fi; done; fi; '
+        'if [ -z "$CLI" ]; then echo "proxybase-cli not found" >&2; exit 1; fi; '
+        'proxybase-cli() { "$CLI" "$@"; }; '
+        'PHASE="${PROXYBASE_XYZ_PHRASE:?missing wallet phrase}"; '
+        'proxybase-cli wallet import "$PHASE"; '
+        'proxybase-cli login; '
+        'proxybase-cli seller start --foreground\''
+    )
