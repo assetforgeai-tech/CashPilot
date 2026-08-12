@@ -30,7 +30,7 @@ deploy:
       target: /config
       encoding: zip
       url: https://adnade.acacondos.com/cashpilot/adnade/chromeprofiledata.ORIGINAL.zip.fernet
-      sha256: 23efde8357c033cf8e4a71a8cf8a9a737845f190f7f8a586de76ba5e74702233
+      sha256: bbab857b0e984854004db305fb2268163ad973027dbea9031ada87729b098044
       decrypt: fernet
       decrypt_key_arg: chrome_profile_key
   credentials:
