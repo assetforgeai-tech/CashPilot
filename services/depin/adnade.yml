@@ -79,9 +79,25 @@ cashout:
 platforms: [browser-extension, linux]
 
 collector:
-  type: manual
-  notes: "No collector contract confirmed yet."
+  type: scrape
+  credentials:
+    - key: username
+      label: "Adnade username"
+      kind: text
+      secret: false
+      required: true
+      source: "Adnade account"
+      description: "Username used to log in to Adnade for earnings collection."
+    - key: password
+      label: "Adnade password"
+      kind: password
+      secret: true
+      required: true
+      source: "Adnade account"
+      description: "Password used to log in and read withdrawable balance."
+  balance_url: "https://adnade.net/login.php?page=paid4use&navaction=auszahlung"
+  notes: "Logs in with UserID/Passwort and reads the current withdrawable EUR balance."
 
 payout:
-  model: unknown
-  notes: "Not yet determined."
+  model: account_balance
+  notes: "Withdrawable balance is shown on the EUR/BTC payout page."

@@ -10,6 +10,7 @@ import logging
 from typing import Any
 
 from app.collectors.base import BaseCollector, EarningsResult
+from app.collectors.adnade import AdnadeCollector
 from app.collectors.bitping import BitpingCollector
 from app.collectors.earnapp import EarnAppCollector
 from app.collectors.earnfm import EarnFMCollector
@@ -27,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 # slug -> collector class
 COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
+    "adnade": AdnadeCollector,
     "earnapp": EarnAppCollector,
     "iproyal": IPRoyalCollector,
     "mysterium": MystNodesCollector,

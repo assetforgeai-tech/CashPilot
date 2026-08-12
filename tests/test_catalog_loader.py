@@ -369,6 +369,7 @@ class TestProviderAutomationContracts:
         svc = self._svc("adnade")
         assert svc["docker"]["image"] == "lscr.io/linuxserver/chromium:latest"
         assert self._credential_keys(svc, "deploy") == {"username", "chrome_profile_key"}
+        assert self._credential_keys(svc, "collector") == {"username", "password"}
         assert svc["deploy"]["runtime_assets"] == [
             {
                 "provider": "adnade",

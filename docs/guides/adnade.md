@@ -24,7 +24,17 @@ In **Settings -> Provider Credentials -> Deploy runtime**, save:
 - `Adnade username`
 - `Chrome profile decrypt key`
 
-### 3. Deploy with CashPilot
+### 3. Save collector credentials
+
+In **Settings -> Provider Credentials -> Earnings collector**, save:
+
+- `Adnade username`
+- `Adnade password`
+
+CashPilot logs in with the official `UserID` / `Passwort` form and reads
+`Withdrawable balance` from the EUR/BTC payout page.
+
+### 4. Deploy with CashPilot
 
 CashPilot starts `lscr.io/linuxserver/chromium:latest`, downloads the encrypted
 profile on the worker, unpacks it to `/config`, and opens:

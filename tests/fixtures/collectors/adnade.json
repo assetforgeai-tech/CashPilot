@@ -1,0 +1,9 @@
+{
+  "slug": "adnade",
+  "fields": ["Withdrawable balance"],
+  "currency": "EUR",
+  "parsed": 4.44,
+  "sample": {
+    "Withdrawable balance": "4.44 EUR"
+  }
+}
