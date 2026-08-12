@@ -60,6 +60,7 @@ SECRET_CONFIG_KEYS = {
     "bearer",
     "jwt",
     "passphrase",
+    "phrase",
     "secret",
     "seed",
     "mnemonic",

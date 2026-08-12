@@ -43,3 +43,14 @@ class TestRuntimeAssets:
                 assert "uprock_main_db" not in masked
 
         asyncio.run(run())
+
+    def test_proxybase_xyz_phrase_is_masked_as_a_secret(self, tmp_path):
+        async def run():
+            with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "assets.db"):
+                await database.init_db()
+                await database.set_config_bulk({"proxybase-xyz_phrase": "seed phrase"})
+                masked = await database.get_config_masked()
+                assert masked["_secrets"]["proxybase-xyz_phrase"] is True
+                assert "proxybase-xyz_phrase" not in masked
+
+        asyncio.run(run())
