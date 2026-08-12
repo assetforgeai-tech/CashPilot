@@ -181,10 +181,11 @@ def test_proxybase_markets_referral_and_image_contract():
         "ProxyBase Markets must keep arm64 (the official installer supports aarch64 Linux)"
     )
     command = data["docker"]["command"]
-    assert "https://proxybase.xyz/install.sh" in command
+    assert "apt-get" not in command
+    assert "https://proxybase.xyz/install.sh" not in command
     assert "PHASE=\"${PROXYBASE_XYZ_PHRASE:?missing wallet phrase}\"" in command
-    assert "proxybase-cli wallet import \"$PHASE\"" in command
-    assert "proxybase-cli login" in command
+    assert "\"$CLI\" wallet import \"$PHASE\"" in command
+    assert "\"$CLI\" login" in command
     assert "seller start --foreground" in command
 
     env_keys = {e["key"] for e in data["docker"]["env"]}

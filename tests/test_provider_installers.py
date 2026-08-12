@@ -6,11 +6,25 @@ from app import provider_installers
 
 def test_proxybase_xyz_runtime_command_imports_phrase_and_resolves_cli_path():
     command = provider_installers.proxybase_xyz_command()
-    assert "curl -fsSL https://proxybase.xyz/install.sh | sh" in command
+    assert "apt-get" not in command
+    assert "curl -fsSL https://proxybase.xyz/install.sh | sh" not in command
     assert 'PHASE="${PROXYBASE_XYZ_PHRASE:?missing wallet phrase}"' in command
-    assert 'proxybase-cli wallet import "$PHASE"' in command
-    assert "proxybase-cli login" in command
+    assert '"$CLI" wallet import "$PHASE"' in command
+    assert '"$CLI" login' in command
     assert "seller start --foreground" in command
+
+def test_proxybase_xyz_installer_image_installs_cli_at_build_time():
+    client = MagicMock()
+    client.images.get.side_effect = provider_installers.ImageNotFound("missing")
+
+    image = provider_installers.ensure_proxybase_xyz_image(client)
+
+    assert image == "cashpilot/proxybase-xyz-cli:latest-ubuntu24.04"
+    dockerfile = client.images.build.call_args.kwargs["fileobj"].getvalue().decode()
+    assert "FROM ubuntu:24.04" in dockerfile
+    assert "apt-get install -y --no-install-recommends ca-certificates curl" in dockerfile
+    assert "https://proxybase.xyz/install.sh" in dockerfile
+    assert "proxybase-cli" in dockerfile
 
 
 def test_grass_manifest_resolves_linux_amd64_url_and_version():

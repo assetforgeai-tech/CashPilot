@@ -222,6 +222,7 @@ def deploy_raw(
         env["WIPTER_PASSWORD"] = str(deploy_credentials.get("password") or "")
     if slug == "proxybase-xyz" and deploy_credentials:
         env["PROXYBASE_XYZ_PHRASE"] = str(deploy_credentials.get("phrase") or "")
+        image = provider_installers.ensure_proxybase_xyz_image(client)
         command = command or provider_installers.proxybase_xyz_command()
 
     # Remove any existing container with the same name

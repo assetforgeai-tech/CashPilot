@@ -127,20 +127,25 @@ def test_deploy_raw_builds_proxybase_xyz_command_from_deploy_phrase():
     container = MagicMock(short_id="abc123", id="container-id")
     client.containers.run.return_value = container
 
-    with patch.object(orchestrator, "_get_client", return_value=client):
+    with (
+        patch.object(orchestrator, "_get_client", return_value=client),
+        patch.object(orchestrator.provider_installers, "ensure_proxybase_xyz_image", return_value="cashpilot/proxybase-xyz-cli:latest-ubuntu24.04"),
+    ):
         orchestrator.deploy_raw(
             slug="proxybase-xyz",
             image="ubuntu:24.04",
             deploy_credentials={"phrase": "seed phrase words"},
         )
 
+    assert client.containers.run.call_args.kwargs["image"] == "cashpilot/proxybase-xyz-cli:latest-ubuntu24.04"
     command = client.containers.run.call_args.kwargs["command"]
-    assert "https://proxybase.xyz/install.sh" in command
+    assert "apt-get" not in command
+    assert "https://proxybase.xyz/install.sh" not in command
     env = client.containers.run.call_args.kwargs["environment"]
     assert env["PROXYBASE_XYZ_PHRASE"] == "seed phrase words"
     assert 'PHASE="${PROXYBASE_XYZ_PHRASE:?missing wallet phrase}"' in command
-    assert "proxybase-cli wallet import \"$PHASE\"" in command
-    assert "proxybase-cli login" in command
+    assert '"$CLI" wallet import "$PHASE"' in command
+    assert '"$CLI" login' in command
 
 def test_deploy_raw_forwards_container_user_when_declared():
     client = MagicMock()
