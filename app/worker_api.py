@@ -303,6 +303,35 @@ _EGRESS_MAX_BYTES = 128
 _EGRESS_CONFIG_DIR = Path(os.getenv("CASHPILOT_DATA_DIR", "/data")) / "egress"
 _EGRESS_CONFIG_FILE = _EGRESS_CONFIG_DIR / "sing-box.json"
 _RUNTIME_ASSET_DIR = Path(os.getenv("CASHPILOT_DATA_DIR", "/data")) / "runtime-assets"
+
+def _docker_host_path(path: Path) -> Path:
+    """Translate this worker's /data path to the host path Docker will mount.
+
+    The worker writes runtime assets inside its own /data. Docker bind mounts are
+    resolved by the host daemon, not by this container, so passing /data/... makes
+    the provider see an empty host directory. For the normal named-volume setup,
+    use this container's /data mountpoint on the host.
+    """
+    raw_path = str(path).replace("\\", "/")
+    data_dir_raw = os.getenv("CASHPILOT_DATA_DIR", "/data").rstrip("/")
+    try:
+        if raw_path != data_dir_raw and not raw_path.startswith(data_dir_raw + "/"):
+            return path
+        rel = raw_path[len(data_dir_raw) :].lstrip("/")
+    except Exception:
+        return path
+    try:
+        client = orchestrator._get_client()
+        self_id = os.getenv("HOSTNAME", "")
+        container = client.containers.get(self_id)
+        for mount in container.attrs.get("Mounts", []):
+            if str(mount.get("Destination", "")).rstrip("/") == data_dir_raw:
+                source = mount.get("Source")
+                if source:
+                    return Path(source) / rel
+    except Exception as exc:
+        logger.warning("Could not resolve host path for runtime asset %s: %s", path, exc)
+    return path
 def _myst_state_path() -> Path:
     return Path(os.getenv("CASHPILOT_DATA_DIR", "/data")) / "myst-wallet.json"
 
@@ -1038,12 +1067,12 @@ async def _materialize_runtime_assets(slug: str, spec: DeploySpec) -> None:
             with zipfile.ZipFile(io.BytesIO(data)) as archive:
                 archive.extractall(host_path)
             mode = "rw" if slug == "adnade" and target == "/config" else "ro"
-            spec.volumes[str(host_path / "chromeprofiledata")] = {"bind": target, "mode": mode}
+            spec.volumes[str(_docker_host_path(host_path / "chromeprofiledata"))] = {"bind": target, "mode": mode}
             continue
         host_path.write_bytes(data)
         with contextlib.suppress(OSError):
             host_path.chmod(0o600)
-        spec.volumes[str(host_path)] = {"bind": target, "mode": "ro"}
+        spec.volumes[str(_docker_host_path(host_path))] = {"bind": target, "mode": "ro"}
 
 _BLOCKED_VOLUME_ROOTS = {
     "/",

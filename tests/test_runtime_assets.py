@@ -5,10 +5,32 @@ import base64
 import hashlib
 import io
 import zipfile
+from pathlib import Path
 from unittest.mock import patch
 
 from app import database, main, runtime_assets
 from app import worker_api
+
+
+def test_runtime_asset_path_uses_worker_data_mountpoint(monkeypatch):
+    class Container:
+        attrs = {"Mounts": [{"Destination": "/data", "Source": "/var/lib/docker/volumes/cashpilot_worker_data/_data"}]}
+
+    class Containers:
+        def get(self, container_id):
+            assert container_id == "worker-container"
+            return Container()
+
+    class Client:
+        containers = Containers()
+
+    monkeypatch.setenv("HOSTNAME", "worker-container")
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", "/data")
+    monkeypatch.setattr(worker_api.orchestrator, "_get_client", lambda: Client())
+
+    out = worker_api._docker_host_path(Path("/data/runtime-assets/adnade/chrome_profile_zip/chromeprofiledata"))
+
+    assert out == Path("/var/lib/docker/volumes/cashpilot_worker_data/_data/runtime-assets/adnade/chrome_profile_zip/chromeprofiledata")
 
 
 class TestRuntimeAssets:
