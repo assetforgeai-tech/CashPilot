@@ -76,6 +76,7 @@ SECRET_CONFIG_KEYS = {
     "store_wynd_authenticated",
     "store_refresh_token",
     "store_access_token",
+    "user_id",
 }
 
 
