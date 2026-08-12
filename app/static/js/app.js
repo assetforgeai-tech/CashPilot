@@ -3101,11 +3101,11 @@ const CP = (() => {
       return;
     }
     const secrets = config._secrets || {};
-    const renderedKeys = new Set();
     const renderCard = (col, fields, sectionId, sectionLabel, clearable) => {
+      const sectionRenderedKeys = new Set();
       fields = fields.filter(f => {
-        if (renderedKeys.has(f.key)) return false;
-        renderedKeys.add(f.key);
+        if (sectionRenderedKeys.has(f.key)) return false;
+        sectionRenderedKeys.add(f.key);
         return true;
       });
       if (!fields.length && sectionId !== 'none') return '';

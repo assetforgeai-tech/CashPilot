@@ -276,11 +276,11 @@ class TestSettingsFileInputs:
         assert "f.kind === 'file'" in source
         assert "data-encoding" in source
 
-    def test_duplicate_credential_keys_render_once(self):
+    def test_duplicate_credential_keys_render_once_per_section(self):
         source = js_function("renderCollectors")
-        assert "renderedKeys" in source
-        assert "renderedKeys.has(f.key)" in source
-        assert "fields.filter" in source
+        assert "const renderedKeys = new Set();" not in source
+        assert "const sectionRenderedKeys = new Set();" in source
+        assert "sectionRenderedKeys.has(f.key)" in source
 
 class TestSettingsCredentialGroupsMatchBackend:
     def test_the_settings_heading_matches_the_three_group_layout(self):
