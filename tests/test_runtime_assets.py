@@ -63,6 +63,17 @@ class TestRuntimeAssets:
     def test_chrome_profile_zip_is_allowed_as_runtime_asset_kind(self):
         assert runtime_assets.validate("adnade", "chrome_profile_zip") == ("adnade", "chrome_profile_zip")
 
+    def test_adnade_chrome_profile_key_is_masked_as_secret(self, tmp_path):
+        async def run():
+            with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "assets.db"):
+                await database.init_db()
+                await database.set_config_bulk({"adnade_chrome_profile_key": "key"})
+                masked = await database.get_config_masked()
+                assert masked["_secrets"]["adnade_chrome_profile_key"] is True
+                assert "adnade_chrome_profile_key" not in masked
+
+        asyncio.run(run())
+
     def test_worker_unpacks_chrome_profile_zip_runtime_asset(self, tmp_path):
         async def run():
             buf = io.BytesIO()
