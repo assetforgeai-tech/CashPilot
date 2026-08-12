@@ -3108,7 +3108,7 @@ const CP = (() => {
         renderedKeys.add(f.key);
         return true;
       });
-      if (!fields.length) return '';
+      if (!fields.length && sectionId !== 'none') return '';
       // A collector is "configured" if any secret field has a stored value
       // (per _secrets) or any non-secret field carries a real value.
       // EVERY required field, not any field.
@@ -3165,7 +3165,7 @@ const CP = (() => {
         </summary>
         <div class="collector-body">
           ${col.hint ? `<div class="form-hint" style="margin-bottom:12px;">${sanitizeHint(col.hint)}</div>` : ''}
-          ${renderedFields}
+          ${renderedFields || '<div class="form-hint">No credentials needed.</div>'}
           ${clearBtn}
         </div>
       </details>`;
@@ -3184,7 +3184,16 @@ const CP = (() => {
         <div class="collectors-grid">${items.join('')}</div>
       </section>`;
     }).filter(Boolean).join('');
-    container.innerHTML = groupHtml || '<p style="color:var(--text-muted);font-size:0.85rem;">No collectors available.</p>';
+    const noCredentialItems = meta
+      .filter(col => !['deploy_credentials', 'fields', 'dashboard_credentials'].some(key => (col[key] || []).length))
+      .map(col => renderCard(col, [], 'none', 'No credentials needed', false))
+      .filter(Boolean);
+    const noCredentialHtml = noCredentialItems.length ? `
+      <section class="settings-credential-group">
+        <h3 class="section-title" style="font-size:1rem; margin: 0 0 10px;">No credentials needed</h3>
+        <div class="collectors-grid">${noCredentialItems.join('')}</div>
+      </section>` : '';
+    container.innerHTML = groupHtml + noCredentialHtml || '<p style="color:var(--text-muted);font-size:0.85rem;">No provider credential metadata available.</p>';
   }
 
   async function saveCollectorCredentials() {

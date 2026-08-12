@@ -288,6 +288,8 @@ class TestSettingsCredentialGroupsMatchBackend:
         assert "Provider Credentials" in text
         assert "Deploy runtime" in text
         assert "Dashboard / session" in text
+        assert "No credentials needed" in text
+        assert "if (!fields.length) return ''" not in js_function("renderCollectors")
 
 
 class TestTheProgressCardKeepsItsUnitsStraight:
