@@ -1632,7 +1632,17 @@ async def _attach_myst_wallet_for_deploy(slug: str, worker_id: int, spec: dict[s
     worker = await database.get_worker(worker_id)
     if not worker or not str(worker.get("client_id") or "").strip():
         raise HTTPException(status_code=400, detail="worker client_id is required for MYST deploy")
-    wallet = await database.lease_myst_wallet(str(worker["client_id"]), worker_id=worker_id)
+    system_info = worker.get("system_info") or {}
+    public_ip = ""
+    if isinstance(system_info, str):
+        with contextlib.suppress(Exception):
+            system_info = json.loads(system_info)
+    if isinstance(system_info, dict):
+        public_ip = str(system_info.get("egress_ip") or "").strip()
+    try:
+        wallet = await database.lease_myst_wallet(str(worker["client_id"]), worker_id=worker_id, public_ip=public_ip)
+    except database.MystWalletPublicIpInUse as exc:
+        raise HTTPException(status_code=409, detail="MYST wallet already assigned to this public IP") from exc
     if not wallet:
         raise HTTPException(status_code=409, detail="No funded MYST wallet available")
     deploy_credentials = spec.setdefault("deploy_credentials", {})
@@ -4257,7 +4267,18 @@ async def _require_confirmed_worker(request: Request, client_id: str) -> None:
 @app.post("/api/myst-wallets/lease")
 async def api_myst_wallet_lease(request: Request, body: MystWalletLeaseRequest) -> dict[str, Any]:
     await _require_confirmed_worker(request, body.client_id)
-    wallet = await database.lease_myst_wallet(body.client_id.strip(), worker_id=body.worker_id)
+    worker = await database.get_worker(body.worker_id) if body.worker_id else None
+    worker_info = worker.get("system_info") if worker else {}
+    if isinstance(worker_info, str):
+        with contextlib.suppress(Exception):
+            worker_info = json.loads(worker_info)
+    public_ip = ""
+    if isinstance(worker_info, dict):
+        public_ip = str(worker_info.get("egress_ip") or "").strip()
+    try:
+        wallet = await database.lease_myst_wallet(body.client_id.strip(), worker_id=body.worker_id, public_ip=public_ip)
+    except database.MystWalletPublicIpInUse as exc:
+        raise HTTPException(status_code=409, detail="MYST wallet already assigned to this public IP") from exc
     if not wallet:
         raise HTTPException(status_code=409, detail="No funded MYST wallet available")
     return wallet
@@ -4392,11 +4413,16 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         apps=json.dumps(body.apps),
         system_info=json.dumps(body.system_info),
     )
+    with contextlib.suppress(Exception):
+        await database.reclaim_stale_myst_wallet_leases()
     myst = body.provider_states.get("mysterium") or {}
     if myst:
         evidence = dict(myst.get("evidence") or {})
         if body.system_info.get("egress_ip"):
             evidence["egress_ip"] = body.system_info.get("egress_ip")
+            evidence.setdefault("public_ip", body.system_info.get("egress_ip"))
+        if myst.get("public_ip"):
+            evidence["public_ip"] = myst.get("public_ip")
         await database.sync_myst_wallet_runtime(
             int(myst.get("wallet_id") or 0),
             cid,

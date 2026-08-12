@@ -23,6 +23,10 @@ from cryptography.fernet import Fernet, InvalidToken
 
 _logger = logging.getLogger(__name__)
 
+
+class MystWalletPublicIpInUse(RuntimeError):
+    pass
+
 DB_DIR = Path(os.getenv("CASHPILOT_DATA_DIR", "/data"))
 DB_PATH = DB_DIR / "cashpilot.db"
 
@@ -305,6 +309,7 @@ CREATE TABLE IF NOT EXISTS myst_wallets (
     wallet_assignment_version INTEGER NOT NULL DEFAULT 0,
     node_identity      TEXT    NOT NULL DEFAULT '',
     runtime_status     TEXT    NOT NULL DEFAULT '',
+    public_ip          TEXT    NOT NULL DEFAULT '',
     last_heartbeat_at  TEXT,
     evidence_json      TEXT    NOT NULL DEFAULT '{}',
     quarantined_reason TEXT    NOT NULL DEFAULT '',
@@ -511,6 +516,7 @@ CREATE TABLE IF NOT EXISTS myst_wallets (
     wallet_assignment_version INTEGER NOT NULL DEFAULT 0,
     node_identity      TEXT    NOT NULL DEFAULT '',
     runtime_status     TEXT    NOT NULL DEFAULT '',
+    public_ip          TEXT    NOT NULL DEFAULT '',
     last_heartbeat_at  TEXT,
     evidence_json      TEXT    NOT NULL DEFAULT '{}',
     quarantined_reason TEXT    NOT NULL DEFAULT '',
@@ -2200,6 +2206,8 @@ async def _ensure_myst_wallets_table(db: Any) -> None:
         await db.execute("ALTER TABLE myst_wallets ADD COLUMN node_identity TEXT NOT NULL DEFAULT ''")
     if "runtime_status" not in cols:
         await db.execute("ALTER TABLE myst_wallets ADD COLUMN runtime_status TEXT NOT NULL DEFAULT ''")
+    if "public_ip" not in cols:
+        await db.execute("ALTER TABLE myst_wallets ADD COLUMN public_ip TEXT NOT NULL DEFAULT ''")
     if "last_heartbeat_at" not in cols:
         await db.execute("ALTER TABLE myst_wallets ADD COLUMN last_heartbeat_at TEXT")
     if "evidence_json" not in cols:
@@ -2245,7 +2253,7 @@ async def list_myst_wallets() -> list[dict[str, Any]]:
             """
             SELECT id, wallet_fingerprint, address, state, funding, leased_to_worker_id,
                    release_reason, wallet_assignment_version,
-                   node_identity, runtime_status, last_heartbeat_at,
+                   node_identity, runtime_status, public_ip, last_heartbeat_at,
                    quarantined_reason, imported_at, updated_at
             FROM myst_wallets
             ORDER BY id DESC
@@ -2316,10 +2324,50 @@ async def update_myst_wallet(
     finally:
         await db.close()
 
-async def lease_myst_wallet(client_id: str, worker_id: int | None = None) -> dict[str, Any] | None:
+async def lease_myst_wallet(
+    client_id: str,
+    worker_id: int | None = None,
+    *,
+    public_ip: str = "",
+) -> dict[str, Any] | None:
     db = await _get_db()
     try:
         await _ensure_myst_wallets_table(db)
+        normalized_public_ip = (public_ip or "").strip()
+        if normalized_public_ip:
+            cursor = await db.execute(
+                """
+                SELECT id
+                FROM myst_wallets
+                WHERE state = 'LEASED' AND public_ip = ? AND leased_to_client_id != ?
+                LIMIT 1
+                """,
+                (normalized_public_ip, client_id),
+            )
+            if await cursor.fetchone():
+                raise MystWalletPublicIpInUse(normalized_public_ip)
+        cursor = await db.execute(
+            """
+            SELECT *
+            FROM myst_wallets
+            WHERE state = 'LEASED' AND leased_to_client_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (client_id,),
+        )
+        current = await cursor.fetchone()
+        if current:
+            if normalized_public_ip and not str(current["public_ip"] or "").strip():
+                await db.execute(
+                    "UPDATE myst_wallets SET public_ip = ?, updated_at = datetime('now') WHERE id = ?",
+                    (normalized_public_ip, current["id"]),
+                )
+                await db.commit()
+            item = dict(current)
+            item["public_ip"] = normalized_public_ip or item.get("public_ip", "")
+            item["raw_wallet"] = decrypt_value(item.pop("raw_wallet_enc") or "")
+            return item
         cursor = await db.execute(
             """
             SELECT *
@@ -2340,11 +2388,12 @@ async def lease_myst_wallet(client_id: str, worker_id: int | None = None) -> dic
                 leased_to_client_id = ?,
                 leased_at = datetime('now'),
                 release_reason = '',
+                public_ip = ?,
                 wallet_assignment_version = wallet_assignment_version + 1,
                 updated_at = datetime('now')
             WHERE id = ?
             """,
-            (worker_id, client_id, row["id"]),
+            (worker_id, client_id, normalized_public_ip, row["id"]),
         )
         await db.commit()
         item = dict(row)
@@ -2353,6 +2402,7 @@ async def lease_myst_wallet(client_id: str, worker_id: int | None = None) -> dic
         item["leased_to_client_id"] = client_id
         item["leased_at"] = datetime.now(UTC).isoformat()
         item["release_reason"] = ""
+        item["public_ip"] = normalized_public_ip
         item["wallet_assignment_version"] = int(item.get("wallet_assignment_version") or 0) + 1
         item["raw_wallet"] = decrypt_value(item.pop("raw_wallet_enc") or "")
         return item
@@ -2379,6 +2429,7 @@ async def release_myst_wallet(
                 leased_to_worker_id = NULL,
                 leased_to_client_id = '',
                 leased_at = NULL,
+                public_ip = '',
                 release_reason = ?,
                 updated_at = datetime('now')
             WHERE id = ? AND leased_to_client_id = ? AND wallet_assignment_version = ?
@@ -2394,6 +2445,9 @@ def _myst_wallet_unfunded(runtime_status: str, evidence: Mapping[str, Any]) -> b
     _ = runtime_status
     return str(evidence.get("registration_status") or "").strip().lower() == "unregistered"
 
+def _myst_public_ip(evidence: Mapping[str, Any]) -> str:
+    return str(evidence.get("public_ip") or evidence.get("egress_ip") or "").strip()
+
 async def sync_myst_wallet_runtime(
     wallet_id: int,
     client_id: str,
@@ -2405,6 +2459,7 @@ async def sync_myst_wallet_runtime(
 ) -> bool:
     evidence = evidence or {}
     unfunded = _myst_wallet_unfunded(runtime_status, evidence)
+    public_ip = _myst_public_ip(evidence)
     if wallet_assignment_version is None:
         return False
     db = await _get_db()
@@ -2420,6 +2475,7 @@ async def sync_myst_wallet_runtime(
                     leased_to_worker_id = NULL,
                     leased_to_client_id = '',
                     leased_at = NULL,
+                    public_ip = '',
                     release_reason = 'MYST_WALLET_UNFUNDED',
                     node_identity = ?,
                     runtime_status = ?,
@@ -2431,12 +2487,13 @@ async def sync_myst_wallet_runtime(
                 params,
             )
         else:
-            params = [node_identity, runtime_status, json.dumps(evidence, sort_keys=True), wallet_id, client_id, wallet_assignment_version]
+            params = [node_identity, runtime_status, public_ip, json.dumps(evidence, sort_keys=True), wallet_id, client_id, wallet_assignment_version]
             cursor = await db.execute(
                 f"""
                 UPDATE myst_wallets
                 SET node_identity = ?,
                     runtime_status = ?,
+                    public_ip = ?,
                     last_heartbeat_at = datetime('now'),
                     evidence_json = ?,
                     updated_at = datetime('now')
@@ -2458,15 +2515,17 @@ async def ack_myst_wallet(
     evidence: Mapping[str, Any] | None = None,
 ) -> bool:
     evidence = {k: v for k, v in (evidence or {}).items() if k not in {"raw_wallet", "myst_wallet_raw"}}
+    public_ip = _myst_public_ip(evidence)
     db = await _get_db()
     try:
         await _ensure_myst_wallets_table(db)
-        params: list[Any] = [node_identity, "wallet_imported", json.dumps(evidence, sort_keys=True), wallet_id, client_id, wallet_assignment_version]
+        params: list[Any] = [node_identity, "wallet_imported", public_ip, json.dumps(evidence, sort_keys=True), wallet_id, client_id, wallet_assignment_version]
         cursor = await db.execute(
             """
             UPDATE myst_wallets
             SET node_identity = ?,
                 runtime_status = ?,
+                public_ip = ?,
                 last_heartbeat_at = datetime('now'),
                 evidence_json = ?,
                 updated_at = datetime('now')
@@ -2476,6 +2535,36 @@ async def ack_myst_wallet(
         )
         await db.commit()
         return bool(cursor.rowcount)
+    finally:
+        await db.close()
+
+async def reclaim_stale_myst_wallet_leases(max_worker_age_seconds: int = 3600) -> int:
+    db = await _get_db()
+    try:
+        await _ensure_myst_wallets_table(db)
+        cursor = await db.execute(
+            """
+            UPDATE myst_wallets
+            SET state = 'AVAILABLE',
+                leased_to_worker_id = NULL,
+                leased_to_client_id = '',
+                leased_at = NULL,
+                public_ip = '',
+                release_reason = 'CLIENT_STALE',
+                updated_at = datetime('now')
+            WHERE state = 'LEASED'
+              AND leased_to_worker_id IS NOT NULL
+              AND leased_to_worker_id IN (
+                  SELECT id
+                  FROM workers
+                  WHERE last_heartbeat IS NULL
+                     OR last_heartbeat < datetime('now', ?)
+              )
+            """,
+            (f"-{int(max_worker_age_seconds)} seconds",),
+        )
+        await db.commit()
+        return int(cursor.rowcount or 0)
     finally:
         await db.close()
 

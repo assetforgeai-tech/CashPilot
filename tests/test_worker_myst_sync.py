@@ -78,3 +78,22 @@ def test_myst_wallet_sync_after_deploy_posts_ack_before_heartbeat(tmp_path, monk
     asyncio.run(run())
     assert [call["path"] for call in calls[:1]] == ["/api/myst-wallets/ack"]
     assert "raw_wallet" not in calls[0]["body"]["evidence"]
+
+def test_myst_provider_state_returns_public_ip_guard_payload(tmp_path, monkeypatch):
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+
+    async def run():
+        worker_api._save_myst_wallet_state(
+            {
+                "myst_wallet_id": 7,
+                "myst_wallet_client_id": "worker-a",
+                "myst_wallet_assignment_version": 3,
+                "myst_wallet_address": "0x57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1",
+                "myst_registration_status": "Registered",
+                "myst_public_ip": "8.8.8.8",
+            }
+        )
+        return await worker_api._myst_provider_state()
+
+    state = asyncio.run(run())
+    assert state["evidence"]["public_ip"] == "8.8.8.8"

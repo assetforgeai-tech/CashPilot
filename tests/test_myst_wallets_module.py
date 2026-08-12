@@ -136,6 +136,53 @@ class TestMystWalletInventory:
 
         asyncio.run(run())
 
+    def test_lease_reuses_current_worker_wallet(self, tmp_path):
+        async def run():
+            with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "myst.db"):
+                await database.init_db()
+                await database.import_myst_wallets("raw-wallet-one\nraw-wallet-two")
+                first = await database.lease_myst_wallet("worker-a", worker_id=7, public_ip="8.8.8.8")
+                second = await database.lease_myst_wallet("worker-a", worker_id=7, public_ip="8.8.8.8")
+                assert second["id"] == first["id"]
+                assert second["wallet_assignment_version"] == first["wallet_assignment_version"]
+
+        asyncio.run(run())
+
+    def test_lease_blocks_duplicate_public_ip(self, tmp_path):
+        async def run():
+            with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "myst.db"):
+                await database.init_db()
+                await database.import_myst_wallets("raw-wallet-one\nraw-wallet-two")
+                assert await database.lease_myst_wallet("worker-a", worker_id=7, public_ip="8.8.8.8")
+                with pytest.raises(database.MystWalletPublicIpInUse):
+                    await database.lease_myst_wallet("worker-b", worker_id=8, public_ip="8.8.8.8")
+
+        asyncio.run(run())
+
+    def test_stale_worker_lease_reclaims_by_worker_heartbeat(self, tmp_path):
+        async def run():
+            with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "myst.db"):
+                await database.init_db()
+                worker_id = await database.upsert_worker("worker-a", "worker", "http://worker", system_info='{"egress_ip":"8.8.8.8"}')
+                await database.import_myst_wallets("raw-wallet-one")
+                leased = await database.lease_myst_wallet("worker-a", worker_id=worker_id, public_ip="8.8.8.8")
+                db = await database._get_db()
+                try:
+                    await db.execute("UPDATE workers SET last_heartbeat = datetime('now', '-2 hours') WHERE id = ?", (worker_id,))
+                    await db.commit()
+                finally:
+                    await db.close()
+
+                count = await database.reclaim_stale_myst_wallet_leases(max_worker_age_seconds=3600)
+
+                assert count == 1
+                row = (await database.list_myst_wallets())[0]
+                assert row["id"] == leased["id"]
+                assert row["state"] == "AVAILABLE"
+                assert row["release_reason"] == "CLIENT_STALE"
+
+        asyncio.run(run())
+
     def test_only_lease_owner_can_release(self, tmp_path):
         async def run():
             with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "myst.db"):
@@ -347,6 +394,41 @@ class TestMystWalletInventory:
         assert resp.status_code == 200
         assert row["node_identity"] == "0xnode"
         assert row["runtime_status"] == "running"
+
+    def test_worker_heartbeat_reclaims_stale_myst_wallets(self, tmp_path, client):
+        async def setup():
+            with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "myst.db"):
+                await database.init_db()
+                worker_id = await database.upsert_worker("worker-a", "worker", "http://worker")
+                await database.import_myst_wallets("raw-wallet-one")
+                leased = await database.lease_myst_wallet("worker-a", worker_id=worker_id)
+                db = await database._get_db()
+                try:
+                    await db.execute("UPDATE workers SET last_heartbeat = datetime('now', '-2 hours') WHERE id = ?", (worker_id,))
+                    await db.commit()
+                finally:
+                    await db.close()
+                return leased
+
+        leased = asyncio.run(setup())
+        body = {
+            "name": "worker",
+            "client_id": "worker-a",
+            "url": "http://worker",
+            "containers": [],
+            "system_info": {"egress_ip": "8.8.8.8"},
+            "provider_states": {},
+        }
+        with (
+            patch.object(database, "DB_DIR", tmp_path),
+            patch.object(database, "DB_PATH", tmp_path / "myst.db"),
+            patch("app.main.database.reclaim_stale_myst_wallet_leases", new_callable=AsyncMock, return_value=1),
+            patch("app.main._authenticate_worker_heartbeat", new_callable=AsyncMock, return_value="ok"),
+        ):
+            resp = client.post("/api/workers/heartbeat", json=body, headers={"Authorization": "Bearer test"})
+
+        assert resp.status_code == 200
+        assert leased["id"] > 0
 
     def test_myst_wallet_heartbeat_endpoint_is_removed(self, client):
         resp = client.post(

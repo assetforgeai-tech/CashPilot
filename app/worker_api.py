@@ -415,10 +415,12 @@ async def _myst_provider_state() -> dict[str, Any] | None:
         "wallet_assignment_version": int(state.get("myst_wallet_assignment_version") or 0),
         "wallet_address": wallet_address,
         "node_identity": str(state.get("myst_node_identity") or ""),
+        "public_ip": str(state.get("myst_public_ip") or state.get("myst_wallet_public_ip") or ""),
         "runtime_status": "running",
         "evidence": {
             "container_id": state.get("container_id", ""),
             "source": "heartbeat",
+            **({"public_ip": str(state.get("myst_public_ip") or state.get("myst_wallet_public_ip") or "")} if str(state.get("myst_public_ip") or state.get("myst_wallet_public_ip") or "") else {}),
             **({"registration_status": registration_status} if registration_status else {}),
         },
     }
