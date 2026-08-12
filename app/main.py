@@ -1478,10 +1478,12 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
         if d.get("status") != "external":
             continue
         svc = catalog.get_service(slug)
+        if not svc:
+            continue
         health = health_map.get(slug, {})
         entry = {
             "slug": slug,
-            "name": svc["name"] if svc else slug,
+            "name": svc["name"],
             "container_status": "external",
             # None, not 0.0, when CashPilot has never read this service.
             #
@@ -1502,7 +1504,7 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             "cpu": "",
             "memory": "",
             "image": "",
-            "category": svc.get("category", "") if svc else "",
+            "category": svc.get("category", ""),
             "health_score": None,
             "uptime_pct": None,
             "restarts_7d": 0,
