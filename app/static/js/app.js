@@ -1602,6 +1602,77 @@ const CP = (() => {
     }
   }
 
+  let _mystWalletRows = [];
+
+  function mystWalletFilters() {
+    return {
+      state: (document.getElementById('myst-wallet-state-filter')?.value || '').trim(),
+      funding: (document.getElementById('myst-wallet-funding-filter')?.value || '').trim(),
+      query: (document.getElementById('myst-wallet-search')?.value || '').trim().toLowerCase(),
+    };
+  }
+
+  function renderMystWalletRows(rows) {
+    const list = document.getElementById('myst-wallet-list');
+    const status = document.getElementById('myst-wallet-refresh-status');
+    if (!list || !status) return;
+    const filters = mystWalletFilters();
+    const filtered = rows.filter(row => {
+      if (filters.state && row.state !== filters.state) return false;
+      if (filters.funding && row.funding !== filters.funding) return false;
+      if (!filters.query) return true;
+      const haystack = [
+        row.id, row.wallet_fingerprint, row.address, row.leased_to_client_id,
+        row.node_identity, row.runtime_status, row.public_ip,
+      ].join(' ').toLowerCase();
+      return haystack.includes(filters.query);
+    });
+    if (!filtered.length) {
+      list.innerHTML = '';
+      status.className = 'empty-state';
+      status.style.display = 'block';
+      status.innerHTML = rows.length
+        ? '<div class="empty-state-title">No wallets match the filters</div>'
+        : '<div class="empty-state-title">No wallets imported yet</div><div class="empty-state-text">Choose a file and import raw wallet lines.</div>';
+      return;
+    }
+    status.style.display = 'none';
+    list.innerHTML = filtered.map((row) => `
+      <tr>
+        <td>${escapeHtml(row.id)}</td>
+        <td style="font-family:monospace;" title="${escapeHtml(row.address || '')}">${escapeHtml(row.wallet_fingerprint || '')}</td>
+        <td><span class="badge badge-category">${escapeHtml(row.state || '')}</span></td>
+        <td><span class="badge ${row.funding === 'FUNDED' ? 'badge-running' : 'badge-error'}">${escapeHtml(row.funding || '')}</span></td>
+        <td>${escapeHtml(row.leased_to_client_id || '-')}</td>
+        <td>${escapeHtml(row.release_reason || '-')}</td>
+        <td>v${escapeHtml(row.wallet_assignment_version ?? 0)}</td>
+        <td>${escapeHtml(row.last_heartbeat_at || '-')}</td>
+        <td style="white-space:nowrap;">
+          <button class="btn btn-ghost btn-sm" data-action="updateMystWallet" data-a1="${escapeHtml(row.id)}" data-a2="funding" data-a3="${row.funding === 'FUNDED' ? 'UNFUNDED' : 'FUNDED'}">${row.funding === 'FUNDED' ? 'Unfunded' : 'Funded'}</button>
+          <button class="btn btn-ghost btn-sm" data-action="updateMystWallet" data-a1="${escapeHtml(row.id)}" data-a2="state" data-a3="${row.state === 'QUARANTINED' ? 'AVAILABLE' : 'QUARANTINED'}">${row.state === 'QUARANTINED' ? 'Available' : 'Quarantine'}</button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  function applyMystWalletFilters() {
+    renderMystWalletRows(_mystWalletRows);
+  }
+
+  async function updateMystWallet(walletId, field, value) {
+    const body = {};
+    if (field === 'funding') body.funding = value;
+    else if (field === 'state') body.state = value;
+    else return;
+    try {
+      await api(`/api/admin/myst-wallets/${encodeURIComponent(walletId)}`, { method: 'PATCH', body });
+      toast('Wallet updated', 'success');
+      await loadMystWallets();
+    } catch (err) {
+      toast(`Update failed: ${err.message}`, 'error');
+    }
+  }
+
   async function loadMystWallets() {
     const list = document.getElementById('myst-wallet-list');
     const status = document.getElementById('myst-wallet-refresh-status');
@@ -1610,25 +1681,8 @@ const CP = (() => {
     status.innerHTML = '';
     try {
       const rows = await api('/api/admin/myst-wallets');
-      if (!rows.length) {
-        list.innerHTML = '';
-        status.className = 'empty-state';
-        status.style.display = 'block';
-        status.innerHTML = '<div class="empty-state-title">No wallets imported yet</div><div class="empty-state-text">Choose a file and import raw wallet lines.</div>';
-        return;
-      }
-      list.innerHTML = rows.map((row) => `
-        <tr>
-          <td>${escapeHtml(row.id)}</td>
-          <td style="font-family:monospace;">${escapeHtml(row.wallet_fingerprint || '')}</td>
-          <td><span class="badge badge-category">${escapeHtml(row.state || '')}</span></td>
-          <td><span class="badge ${row.funding === 'FUNDED' ? 'badge-running' : 'badge-error'}">${escapeHtml(row.funding || '')}</span></td>
-          <td>${escapeHtml(row.leased_to_client_id || '-')}</td>
-          <td>${escapeHtml(row.release_reason || '-')}</td>
-          <td>v${escapeHtml(row.wallet_assignment_version ?? 0)}</td>
-          <td>${escapeHtml(row.last_heartbeat_at || '-')}</td>
-        </tr>
-      `).join('');
+      _mystWalletRows = rows;
+      renderMystWalletRows(rows);
     } catch (err) {
       list.innerHTML = '';
       status.className = 'empty-state';
@@ -3670,6 +3724,11 @@ const CP = (() => {
         loadDashboard();
         break;
       case 'myst-wallet':
+        ['myst-wallet-state-filter', 'myst-wallet-funding-filter', 'myst-wallet-search'].forEach(id => {
+          const el = document.getElementById(id);
+          if (!el) return;
+          el.addEventListener(id === 'myst-wallet-search' ? 'input' : 'change', applyMystWalletFilters);
+        });
         loadMystWallets();
         break;
       case 'setup':
@@ -3737,6 +3796,8 @@ const CP = (() => {
     toggleEnvSecret,
     importMystWalletFile,
     loadMystWallets,
+    applyMystWalletFilters,
+    updateMystWallet,
     filterCatalog,
     refreshServices,
     openClaimModal,

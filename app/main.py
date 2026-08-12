@@ -1653,6 +1653,20 @@ async def _attach_myst_wallet_for_deploy(slug: str, worker_id: int, spec: dict[s
     deploy_credentials["myst_wallet_address"] = str(wallet.get("address") or "")
     return wallet
 
+async def _release_myst_wallet_from_spec(spec: dict[str, Any], *, reason: str) -> None:
+    deploy_credentials = spec.get("deploy_credentials") or {}
+    wallet_id = int(deploy_credentials.get("myst_wallet_id") or 0)
+    client_id = str(deploy_credentials.get("myst_wallet_client_id") or "").strip()
+    version = int(deploy_credentials.get("myst_wallet_assignment_version") or 0)
+    if not wallet_id or not client_id:
+        return
+    await database.release_myst_wallet(
+        wallet_id,
+        client_id,
+        release_reason=reason,
+        wallet_assignment_version=version,
+    )
+
 
 @app.post("/api/deploy/{slug}")
 async def api_deploy(
@@ -1813,11 +1827,7 @@ async def api_deploy(
     except Exception:
         if myst_wallet and (spec.get("deploy_credentials") or {}).get("myst_wallet_client_id"):
             with contextlib.suppress(Exception):
-                await database.release_myst_wallet(
-                    int(myst_wallet["id"]),
-                    str((spec.get("deploy_credentials") or {}).get("myst_wallet_client_id") or ""),
-                    release_reason="DEPLOY_FAILED",
-                )
+                await _release_myst_wallet_from_spec(spec, reason="DEPLOY_FAILED")
         raise
     container_id = result.get("container_id", "remote")
     await database.save_deployment(slug=slug, container_id=container_id, spec=spec)
@@ -4214,23 +4224,6 @@ class EarningsImport(BaseModel):
     readings: list[EarningsReading] = Field(default_factory=list, max_length=2000)
 
 
-class MystWalletLeaseRequest(BaseModel):
-    client_id: str
-    worker_id: int | None = None
-
-class MystWalletReleaseRequest(BaseModel):
-    client_id: str
-    wallet_id: int
-    release_reason: str | None = None
-    wallet_assignment_version: int
-
-class MystWalletAckRequest(BaseModel):
-    client_id: str
-    wallet_id: int
-    wallet_assignment_version: int
-    node_identity: str = ""
-    evidence: dict[str, Any] = {}
-
 class RuntimeAssetSaveRequest(BaseModel):
     provider: str
     asset_kind: str
@@ -4263,51 +4256,6 @@ async def _require_confirmed_worker(request: Request, client_id: str) -> None:
     state = await _authenticate_worker_heartbeat(request, client_id.strip())
     if state != "ok":
         raise HTTPException(status_code=403, detail="Worker must authenticate with its own key")
-
-@app.post("/api/myst-wallets/lease")
-async def api_myst_wallet_lease(request: Request, body: MystWalletLeaseRequest) -> dict[str, Any]:
-    await _require_confirmed_worker(request, body.client_id)
-    worker = await database.get_worker(body.worker_id) if body.worker_id else None
-    worker_info = worker.get("system_info") if worker else {}
-    if isinstance(worker_info, str):
-        with contextlib.suppress(Exception):
-            worker_info = json.loads(worker_info)
-    public_ip = ""
-    if isinstance(worker_info, dict):
-        public_ip = str(worker_info.get("egress_ip") or "").strip()
-    try:
-        wallet = await database.lease_myst_wallet(body.client_id.strip(), worker_id=body.worker_id, public_ip=public_ip)
-    except database.MystWalletPublicIpInUse as exc:
-        raise HTTPException(status_code=409, detail="MYST wallet already assigned to this public IP") from exc
-    if not wallet:
-        raise HTTPException(status_code=409, detail="No funded MYST wallet available")
-    return wallet
-
-@app.post("/api/myst-wallets/release")
-async def api_myst_wallet_release(request: Request, body: MystWalletReleaseRequest) -> dict[str, str]:
-    await _require_confirmed_worker(request, body.client_id)
-    if not await database.release_myst_wallet(
-        body.wallet_id,
-        body.client_id.strip(),
-        release_reason=(body.release_reason or "").strip(),
-        wallet_assignment_version=body.wallet_assignment_version,
-    ):
-        raise HTTPException(status_code=404, detail="MYST wallet lease not found")
-    return {"status": "released"}
-
-@app.post("/api/myst-wallets/ack")
-async def api_myst_wallet_ack(request: Request, body: MystWalletAckRequest) -> dict[str, str]:
-    await _require_confirmed_worker(request, body.client_id)
-    ok = await database.ack_myst_wallet(
-        body.wallet_id,
-        body.client_id.strip(),
-        wallet_assignment_version=body.wallet_assignment_version,
-        node_identity=body.node_identity,
-        evidence=body.evidence,
-    )
-    if not ok:
-        raise HTTPException(status_code=404, detail="MYST wallet lease not found")
-    return {"status": "ok"}
 
 @app.post("/api/workers/runtime-asset")
 async def api_worker_runtime_asset(request: Request, body: RuntimeAssetRequest) -> dict[str, str]:
@@ -4413,8 +4361,6 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         apps=json.dumps(body.apps),
         system_info=json.dumps(body.system_info),
     )
-    with contextlib.suppress(Exception):
-        await database.reclaim_stale_myst_wallet_leases()
     myst = body.provider_states.get("mysterium") or {}
     if myst:
         evidence = dict(myst.get("evidence") or {})
@@ -4623,6 +4569,9 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
         await database.record_health_event(slug, "start")
         metrics.record_container_lifecycle("start", slug)
     elif body.command == "remove":
+        if slug == "mysterium":
+            recorded_spec = await database.get_deployment_spec(slug) or {}
+            await _release_myst_wallet_from_spec(recorded_spec, reason="REMOVED")
         await database.remove_deployment(slug)
         await database.record_health_event(slug, "remove")
         metrics.record_container_lifecycle("remove", slug)

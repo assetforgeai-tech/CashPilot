@@ -159,30 +159,6 @@ class TestMystWalletInventory:
 
         asyncio.run(run())
 
-    def test_stale_worker_lease_reclaims_by_worker_heartbeat(self, tmp_path):
-        async def run():
-            with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "myst.db"):
-                await database.init_db()
-                worker_id = await database.upsert_worker("worker-a", "worker", "http://worker", system_info='{"egress_ip":"8.8.8.8"}')
-                await database.import_myst_wallets("raw-wallet-one")
-                leased = await database.lease_myst_wallet("worker-a", worker_id=worker_id, public_ip="8.8.8.8")
-                db = await database._get_db()
-                try:
-                    await db.execute("UPDATE workers SET last_heartbeat = datetime('now', '-2 hours') WHERE id = ?", (worker_id,))
-                    await db.commit()
-                finally:
-                    await db.close()
-
-                count = await database.reclaim_stale_myst_wallet_leases(max_worker_age_seconds=3600)
-
-                assert count == 1
-                row = (await database.list_myst_wallets())[0]
-                assert row["id"] == leased["id"]
-                assert row["state"] == "AVAILABLE"
-                assert row["release_reason"] == "CLIENT_STALE"
-
-        asyncio.run(run())
-
     def test_only_lease_owner_can_release(self, tmp_path):
         async def run():
             with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "myst.db"):
@@ -422,7 +398,6 @@ class TestMystWalletInventory:
         with (
             patch.object(database, "DB_DIR", tmp_path),
             patch.object(database, "DB_PATH", tmp_path / "myst.db"),
-            patch("app.main.database.reclaim_stale_myst_wallet_leases", new_callable=AsyncMock, return_value=1),
             patch("app.main._authenticate_worker_heartbeat", new_callable=AsyncMock, return_value="ok"),
         ):
             resp = client.post("/api/workers/heartbeat", json=body, headers={"Authorization": "Bearer test"})
@@ -441,6 +416,11 @@ class TestMystWalletInventory:
         )
         assert resp.status_code == 404
 
+    def test_legacy_myst_wallet_worker_endpoints_are_removed(self, client):
+        for path in ("/api/myst-wallets/lease", "/api/myst-wallets/ack", "/api/myst-wallets/release"):
+            resp = client.post(path, json={"client_id": "worker-a"})
+            assert resp.status_code == 404
+
     def test_mysterium_deploy_attaches_wallet_for_worker_client(self, tmp_path):
         async def run():
             with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "myst.db"):
@@ -456,5 +436,38 @@ class TestMystWalletInventory:
                 row = (await database.list_myst_wallets())[0]
                 assert row["state"] == "LEASED"
                 assert row["leased_to_worker_id"] == worker_id
+
+        asyncio.run(run())
+
+    def test_mysterium_deploy_failure_releases_wallet_with_version(self, tmp_path):
+        async def run():
+            with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "myst.db"):
+                await database.init_db()
+                worker_id = await database.upsert_worker("worker-client", "worker", "http://worker")
+                await database.import_myst_wallets("raw-wallet-one")
+                spec = {"deploy_credentials": {"myst_dashboard_password": "pw", "myst_mmn_api_key": "mmn"}}
+                wallet = await main._attach_myst_wallet_for_deploy("mysterium", worker_id, spec)
+                ok = await database.release_myst_wallet(
+                    int(wallet["id"]),
+                    str(spec["deploy_credentials"]["myst_wallet_client_id"]),
+                    release_reason="DEPLOY_FAILED",
+                    wallet_assignment_version=int(spec["deploy_credentials"]["myst_wallet_assignment_version"]),
+                )
+                assert ok
+
+        asyncio.run(run())
+
+    def test_mysterium_remove_releases_wallet_from_recorded_spec(self, tmp_path):
+        async def run():
+            with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "myst.db"):
+                await database.init_db()
+                worker_id = await database.upsert_worker("worker-client", "worker", "http://worker")
+                await database.import_myst_wallets("raw-wallet-one")
+                spec = {"deploy_credentials": {"myst_dashboard_password": "pw", "myst_mmn_api_key": "mmn"}}
+                await main._attach_myst_wallet_for_deploy("mysterium", worker_id, spec)
+                await main._release_myst_wallet_from_spec(spec, reason="REMOVED")
+                row = (await database.list_myst_wallets())[0]
+                assert row["state"] == "AVAILABLE"
+                assert row["release_reason"] == "REMOVED"
 
         asyncio.run(run())

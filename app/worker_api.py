@@ -319,17 +319,6 @@ def _load_myst_wallet_state() -> dict[str, Any] | None:
     except OSError:
         return None
 
-async def _post_myst_wallet_event(client: httpx.AsyncClient, event: str, payload: dict[str, Any]) -> None:
-    ui_url = UI_URL or os.getenv("CASHPILOT_UI_URL", "").strip()
-    if not ui_url:
-        return
-    resp = await client.post(
-        f"{ui_url.rstrip('/')}/api/myst-wallets/{event}",
-        json=payload,
-        headers={"Authorization": f"Bearer {_active_key()}"},
-    )
-    resp.raise_for_status()
-
 async def _sync_myst_wallet_after_deploy(deploy_credentials: dict[str, Any], container_id: str) -> None:
     wallet_id = int(deploy_credentials.get("myst_wallet_id") or 0)
     client_id = str(deploy_credentials.get("myst_wallet_client_id") or CLIENT_ID)
@@ -359,34 +348,6 @@ async def _sync_myst_wallet_after_deploy(deploy_credentials: dict[str, Any], con
         if status:
             state["myst_registration_status"] = status
     _save_myst_wallet_state(state)
-    async with httpx.AsyncClient(timeout=15) as client:
-        await _post_myst_wallet_event(
-            client,
-            "ack",
-            {
-                "client_id": client_id,
-                "wallet_id": wallet_id,
-                "wallet_assignment_version": state["myst_wallet_assignment_version"],
-                "node_identity": state["myst_node_identity"],
-                "evidence": {"container_id": container_id, "deploy_state": "started"},
-            },
-        )
-        await _post_myst_wallet_event(
-            client,
-            "heartbeat",
-            {
-                "client_id": client_id,
-                "wallet_id": wallet_id,
-                "wallet_assignment_version": state["myst_wallet_assignment_version"],
-                "node_identity": state["myst_node_identity"],
-                "runtime_status": "running",
-                "evidence": {
-                    "container_id": container_id,
-                    "deploy_state": "started",
-                    **({"registration_status": state["myst_registration_status"]} if state.get("myst_registration_status") else {}),
-                },
-            },
-        )
 
 async def _myst_provider_state() -> dict[str, Any] | None:
     state = _load_myst_wallet_state()
@@ -433,21 +394,8 @@ async def _release_myst_wallet_state(reason: str) -> None:
     client_id = str(state.get("myst_wallet_client_id") or "")
     if not wallet_id or not client_id:
         return
-    try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            await _post_myst_wallet_event(
-                client,
-                "release",
-                {
-                    "client_id": client_id,
-                    "wallet_id": wallet_id,
-                    "wallet_assignment_version": int(state.get("myst_wallet_assignment_version") or 0),
-                    "release_reason": reason,
-                },
-            )
-    finally:
-        with contextlib.suppress(OSError):
-            _myst_state_path().unlink()
+    with contextlib.suppress(OSError):
+        _myst_state_path().unlink()
 
 
 def _disk_usage() -> dict[str, Any] | None:

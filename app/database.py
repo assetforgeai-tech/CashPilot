@@ -2538,36 +2538,6 @@ async def ack_myst_wallet(
     finally:
         await db.close()
 
-async def reclaim_stale_myst_wallet_leases(max_worker_age_seconds: int = 3600) -> int:
-    db = await _get_db()
-    try:
-        await _ensure_myst_wallets_table(db)
-        cursor = await db.execute(
-            """
-            UPDATE myst_wallets
-            SET state = 'AVAILABLE',
-                leased_to_worker_id = NULL,
-                leased_to_client_id = '',
-                leased_at = NULL,
-                public_ip = '',
-                release_reason = 'CLIENT_STALE',
-                updated_at = datetime('now')
-            WHERE state = 'LEASED'
-              AND leased_to_worker_id IS NOT NULL
-              AND leased_to_worker_id IN (
-                  SELECT id
-                  FROM workers
-                  WHERE last_heartbeat IS NULL
-                     OR last_heartbeat < datetime('now', ?)
-              )
-            """,
-            (f"-{int(max_worker_age_seconds)} seconds",),
-        )
-        await db.commit()
-        return int(cursor.rowcount or 0)
-    finally:
-        await db.close()
-
 async def set_worker_proxy_assignment(worker_id: int, proxy_id: int | None, mode: str = "proxy", fallback: str = "hold") -> bool:
     mode = mode if mode in {"proxy", "direct", "auto"} else "proxy"
     fallback = fallback if fallback in {"hold", "rotate"} else "hold"

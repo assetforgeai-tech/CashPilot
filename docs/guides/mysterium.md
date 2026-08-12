@@ -41,7 +41,7 @@ Sign up at [MystNodes](https://mystnodes.co/?referral_code=do7v7YOoBBpbOstKQovX2
 
 ### 2. Get your credentials
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+After signing up, CashPilot leases a funded wallet from the server-side MYST Wallet inventory, then sets the dashboard password and MMN API key for you. The dashboard login itself is no longer the runtime deploy input.
 
 ### 3. Deploy with CashPilot
 
@@ -116,8 +116,7 @@ docker logs cashpilot-mysterium 2>&1 | grep -i wireguard | tail -3   # expect "W
 
 **Your identity is safe.** It lives in the mounted data directory
 (`/var/lib/mysterium-node/keystore/`), not in the container, so recreating the
-container keeps the same node identity and its accumulated reputation. Confirm
-with `curl -s http://127.0.0.1:4050/identities` -- the address must be unchanged.
+container keeps the same node identity and its accumulated reputation.
 
 **On the host**, `/dev/net/tun` must exist (`ls -l /dev/net/tun`). If it does
 not, load the module with `modprobe tun`.

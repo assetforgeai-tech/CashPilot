@@ -16,6 +16,30 @@
     <span id="myst-wallet-import-status" style="font-size:0.85rem; color:var(--text-muted);"></span>
   </div>
 
+  <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; margin-top:16px;">
+    <div>
+      <label class="form-label" for="myst-wallet-state-filter">State</label>
+      <select class="form-input" id="myst-wallet-state-filter" data-action="applyMystWalletFilters">
+        <option value="">All</option>
+        <option value="AVAILABLE">Available</option>
+        <option value="LEASED">Leased</option>
+        <option value="QUARANTINED">Quarantined</option>
+      </select>
+    </div>
+    <div>
+      <label class="form-label" for="myst-wallet-funding-filter">Funding</label>
+      <select class="form-input" id="myst-wallet-funding-filter" data-action="applyMystWalletFilters">
+        <option value="">All</option>
+        <option value="FUNDED">Funded</option>
+        <option value="UNFUNDED">Unfunded</option>
+      </select>
+    </div>
+    <div style="min-width:min(320px, 100%); flex:1;">
+      <label class="form-label" for="myst-wallet-search">Search</label>
+      <input class="form-input" id="myst-wallet-search" type="search" placeholder="Fingerprint, lease, identity, IP" data-action="applyMystWalletFilters" />
+    </div>
+  </div>
+
   <div class="table-wrap" style="margin-top:20px;">
     <table class="data-table">
       <thead>
@@ -28,6 +52,7 @@
           <th>Release</th>
           <th>Version</th>
           <th>Heartbeat</th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody id="myst-wallet-list"></tbody>

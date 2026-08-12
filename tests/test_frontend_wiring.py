@@ -141,6 +141,16 @@ class TestMystWalletImportIsReachable:
         assert "loadMystWallets" in exported
         assert "loadMystWallets();" in app_js[app_js.index("switch (page) {"): app_js.index("// -----------------------------------------------------------\n  // Public API")]
 
+    def test_the_page_has_wallet_filters_and_row_actions(self):
+        page = (ROOT / "app" / "templates" / "myst_wallet.html").read_text(encoding="utf-8")
+        app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+        exported = set(re.findall(r"^\s{4}([A-Za-z_][A-Za-z0-9_]*),\s*$", app_js, re.M))
+        assert 'id="myst-wallet-state-filter"' in page
+        assert 'id="myst-wallet-funding-filter"' in page
+        assert 'id="myst-wallet-search"' in page
+        assert "updateMystWallet" in exported
+        assert "applyMystWalletFilters" in exported
+
 
 class TestTheAmountShownIsTheOneTheProviderPaid:
     """Caught in a real browser, not by a string test.
