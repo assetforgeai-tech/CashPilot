@@ -25,69 +25,24 @@ def test_myst_state_file_round_trips_without_raw_wallet(tmp_path, monkeypatch):
     assert "myst_wallet_raw" not in saved
 
 
-def test_myst_wallet_heartbeat_posts_versioned_payload(tmp_path, monkeypatch):
-    monkeypatch.setenv("CASHPILOT_UI_URL", "https://ui.example")
-    monkeypatch.setenv("CASHPILOT_API_KEY", "fleet-key")
+def test_myst_provider_state_includes_registration_status(tmp_path, monkeypatch):
     monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
-    calls: list[dict[str, object]] = []
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        calls.append(
+    async def run():
+        worker_api._save_myst_wallet_state(
             {
-                "path": request.url.path,
-                "body": json.loads(request.content.decode("utf-8")),
+                "myst_wallet_id": 7,
+                "myst_wallet_client_id": "worker-a",
+                "myst_wallet_assignment_version": 3,
+                "myst_registration_status": "Registered",
+                "container_id": "abc",
             }
         )
-        return httpx.Response(200, json={"status": "ok"}, request=request)
+        return await worker_api._myst_provider_state()
 
-    async def run():
-        transport = httpx.MockTransport(handler)
-        async with httpx.AsyncClient(transport=transport) as client:
-            await worker_api._post_myst_wallet_event(
-                client,
-                "heartbeat",
-                {
-                    "client_id": "worker-a",
-                    "wallet_id": 7,
-                    "wallet_assignment_version": 3,
-                    "node_identity": "0xnode",
-                    "runtime_status": "running",
-                    "evidence": {"container_id": "abc"},
-                },
-            )
-
-    asyncio.run(run())
-    assert calls[0]["path"] == "/api/myst-wallets/heartbeat"
-    assert calls[0]["body"]["wallet_assignment_version"] == 3
-
-def test_myst_wallet_heartbeat_includes_registration_status(tmp_path, monkeypatch):
-    monkeypatch.setenv("CASHPILOT_UI_URL", "https://ui.example")
-    monkeypatch.setenv("CASHPILOT_API_KEY", "fleet-key")
-    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
-    calls: list[dict[str, object]] = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        calls.append({"body": json.loads(request.content.decode("utf-8"))})
-        return httpx.Response(200, json={"status": "ok"}, request=request)
-
-    async def run():
-        transport = httpx.MockTransport(handler)
-        async with httpx.AsyncClient(transport=transport) as client:
-            await worker_api._post_myst_wallet_event(
-                client,
-                "heartbeat",
-                {
-                    "client_id": "worker-a",
-                    "wallet_id": 7,
-                    "wallet_assignment_version": 3,
-                    "node_identity": "0xnode",
-                    "runtime_status": "running",
-                    "evidence": {"registration_status": "Registered"},
-                },
-            )
-
-    asyncio.run(run())
-    assert calls[0]["body"]["evidence"]["registration_status"] == "Registered"
+    state = asyncio.run(run())
+    assert state["wallet_assignment_version"] == 3
+    assert state["evidence"]["registration_status"] == "Registered"
 
 def test_myst_wallet_sync_after_deploy_posts_ack_before_heartbeat(tmp_path, monkeypatch):
     monkeypatch.setenv("CASHPILOT_UI_URL", "https://ui.example")
@@ -121,6 +76,5 @@ def test_myst_wallet_sync_after_deploy_posts_ack_before_heartbeat(tmp_path, monk
                 await worker_api._sync_myst_wallet_after_deploy(deploy_credentials, "container-id")
 
     asyncio.run(run())
-    assert [call["path"] for call in calls[:2]] == ["/api/myst-wallets/ack", "/api/myst-wallets/heartbeat"]
+    assert [call["path"] for call in calls[:1]] == ["/api/myst-wallets/ack"]
     assert "raw_wallet" not in calls[0]["body"]["evidence"]
-    assert calls[1]["body"]["evidence"]["registration_status"] == "Registered"

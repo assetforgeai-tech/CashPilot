@@ -2394,7 +2394,7 @@ def _myst_wallet_unfunded(runtime_status: str, evidence: Mapping[str, Any]) -> b
     _ = runtime_status
     return str(evidence.get("registration_status") or "").strip().lower() == "unregistered"
 
-async def heartbeat_myst_wallet(
+async def sync_myst_wallet_runtime(
     wallet_id: int,
     client_id: str,
     *,

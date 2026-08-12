@@ -168,7 +168,7 @@ class TestMystWalletInventory:
                 wallet_id = (await database.list_myst_wallets())[0]["id"]
                 await database.update_myst_wallet(wallet_id, funding="FUNDED")
                 leased = await database.lease_myst_wallet("worker-a")
-                ok = await database.heartbeat_myst_wallet(
+                ok = await database.sync_myst_wallet_runtime(
                     leased["id"],
                     "worker-a",
                     wallet_assignment_version=leased["wallet_assignment_version"],
@@ -194,7 +194,7 @@ class TestMystWalletInventory:
                 wallet_id = (await database.list_myst_wallets())[0]["id"]
                 await database.update_myst_wallet(wallet_id, funding="FUNDED")
                 leased = await database.lease_myst_wallet("worker-a")
-                ok = await database.heartbeat_myst_wallet(
+                ok = await database.sync_myst_wallet_runtime(
                     leased["id"],
                     "worker-a",
                     wallet_assignment_version=leased["wallet_assignment_version"],
@@ -218,7 +218,7 @@ class TestMystWalletInventory:
                 wallet_id = (await database.list_myst_wallets())[0]["id"]
                 await database.update_myst_wallet(wallet_id, funding="FUNDED")
                 leased = await database.lease_myst_wallet("worker-a")
-                ok = await database.heartbeat_myst_wallet(
+                ok = await database.sync_myst_wallet_runtime(
                     leased["id"],
                     "worker-a",
                     wallet_assignment_version=leased["wallet_assignment_version"],
@@ -241,7 +241,7 @@ class TestMystWalletInventory:
                 await database.update_myst_wallet(wallet_id, funding="FUNDED")
                 leased = await database.lease_myst_wallet("worker-a")
 
-                ok = await database.heartbeat_myst_wallet(
+                ok = await database.sync_myst_wallet_runtime(
                     leased["id"],
                     "worker-a",
                     wallet_assignment_version=leased["wallet_assignment_version"] - 1,
@@ -308,6 +308,56 @@ class TestMystWalletInventory:
                 assert row["node_identity"] == "0xnode"
 
         asyncio.run(run())
+
+    def test_worker_heartbeat_updates_myst_wallet_provider_state(self, tmp_path, client):
+        async def setup():
+            with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "myst.db"):
+                await database.init_db()
+                await database.import_myst_wallets("raw-wallet-one")
+                wallet_id = (await database.list_myst_wallets())[0]["id"]
+                await database.update_myst_wallet(wallet_id, funding="FUNDED")
+                leased = await database.lease_myst_wallet("worker-a")
+                return leased
+
+        leased = asyncio.run(setup())
+        body = {
+            "name": "worker",
+            "client_id": "worker-a",
+            "url": "http://worker",
+            "containers": [],
+            "system_info": {"egress_ip": "8.8.8.8"},
+            "provider_states": {
+                "mysterium": {
+                    "wallet_id": leased["id"],
+                    "wallet_assignment_version": leased["wallet_assignment_version"],
+                    "node_identity": "0xnode",
+                    "runtime_status": "running",
+                    "evidence": {"registration_status": "Registered"},
+                }
+            },
+        }
+        with (
+            patch.object(database, "DB_DIR", tmp_path),
+            patch.object(database, "DB_PATH", tmp_path / "myst.db"),
+            patch("app.main._authenticate_worker_heartbeat", new_callable=AsyncMock, return_value="ok"),
+        ):
+            resp = client.post("/api/workers/heartbeat", json=body, headers={"Authorization": "Bearer test"})
+            row = asyncio.run(database.list_myst_wallets())[0]
+
+        assert resp.status_code == 200
+        assert row["node_identity"] == "0xnode"
+        assert row["runtime_status"] == "running"
+
+    def test_myst_wallet_heartbeat_endpoint_is_removed(self, client):
+        resp = client.post(
+            "/api/myst-wallets/" + "heartbeat",
+            json={
+                "client_id": "worker-a",
+                "wallet_id": 1,
+                "wallet_assignment_version": 1,
+            },
+        )
+        assert resp.status_code == 404
 
     def test_mysterium_deploy_attaches_wallet_for_worker_client(self, tmp_path):
         async def run():

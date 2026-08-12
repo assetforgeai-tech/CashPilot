@@ -388,15 +388,15 @@ async def _sync_myst_wallet_after_deploy(deploy_credentials: dict[str, Any], con
             },
         )
 
-async def _sync_myst_wallet_heartbeat() -> None:
+async def _myst_provider_state() -> dict[str, Any] | None:
     state = _load_myst_wallet_state()
     if not state:
-        return
+        return None
     wallet_id = int(state.get("myst_wallet_id") or 0)
     client_id = str(state.get("myst_wallet_client_id") or "")
     wallet_address = str(state.get("myst_wallet_address") or "")
     if not wallet_id or not client_id:
-        return
+        return None
     registration_status = str(state.get("myst_registration_status") or "")
     container_id = str(state.get("container_id") or "")
     if not registration_status and container_id:
@@ -410,23 +410,18 @@ async def _sync_myst_wallet_heartbeat() -> None:
             status = ""
         if status:
             registration_status = status
-    async with httpx.AsyncClient(timeout=15) as client:
-        await _post_myst_wallet_event(
-            client,
-            "heartbeat",
-            {
-                "client_id": client_id,
-                "wallet_id": wallet_id,
-                "wallet_assignment_version": int(state.get("myst_wallet_assignment_version") or 0),
-                "node_identity": str(state.get("myst_node_identity") or ""),
-                "runtime_status": "running",
-                "evidence": {
-                    "container_id": state.get("container_id", ""),
-                    "source": "heartbeat",
-                    **({"registration_status": registration_status} if registration_status else {}),
-                },
-            },
-        )
+    return {
+        "wallet_id": wallet_id,
+        "wallet_assignment_version": int(state.get("myst_wallet_assignment_version") or 0),
+        "wallet_address": wallet_address,
+        "node_identity": str(state.get("myst_node_identity") or ""),
+        "runtime_status": "running",
+        "evidence": {
+            "container_id": state.get("container_id", ""),
+            "source": "heartbeat",
+            **({"registration_status": registration_status} if registration_status else {}),
+        },
+    }
 
 async def _release_myst_wallet_state(reason: str) -> None:
     state = _load_myst_wallet_state()
@@ -684,6 +679,9 @@ async def _send_heartbeat() -> None:
             "gpu": await asyncio.to_thread(_gpu_info),
         },
     }
+    myst_state = await _myst_provider_state()
+    if myst_state:
+        payload["provider_states"] = {"mysterium": myst_state}
 
     try:
         async with httpx.AsyncClient(timeout=15) as client:
@@ -785,8 +783,6 @@ async def _heartbeat_loop() -> None:
     while True:
         try:
             await _send_heartbeat()
-            with contextlib.suppress(Exception):
-                await _sync_myst_wallet_heartbeat()
         except asyncio.CancelledError:
             raise
         except Exception:

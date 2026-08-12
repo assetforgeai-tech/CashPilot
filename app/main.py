@@ -4058,6 +4058,7 @@ class WorkerHeartbeat(BaseModel):
     containers: list[dict[str, Any]] = []
     apps: list[dict[str, Any]] = []
     system_info: dict[str, Any] = {}
+    provider_states: dict[str, dict[str, Any]] = {}
 
 
 def _android_app_status(running: object) -> str:
@@ -4213,14 +4214,6 @@ class MystWalletReleaseRequest(BaseModel):
     release_reason: str | None = None
     wallet_assignment_version: int
 
-class MystWalletHeartbeatRequest(BaseModel):
-    client_id: str
-    wallet_id: int
-    wallet_assignment_version: int
-    node_identity: str = ""
-    runtime_status: str = ""
-    evidence: dict[str, Any] = {}
-
 class MystWalletAckRequest(BaseModel):
     client_id: str
     wallet_id: int
@@ -4280,21 +4273,6 @@ async def api_myst_wallet_release(request: Request, body: MystWalletReleaseReque
     ):
         raise HTTPException(status_code=404, detail="MYST wallet lease not found")
     return {"status": "released"}
-
-@app.post("/api/myst-wallets/heartbeat")
-async def api_myst_wallet_heartbeat(request: Request, body: MystWalletHeartbeatRequest) -> dict[str, str]:
-    await _require_confirmed_worker(request, body.client_id)
-    ok = await database.heartbeat_myst_wallet(
-        body.wallet_id,
-        body.client_id.strip(),
-        wallet_assignment_version=body.wallet_assignment_version,
-        node_identity=body.node_identity,
-        runtime_status=body.runtime_status,
-        evidence=body.evidence,
-    )
-    if not ok:
-        raise HTTPException(status_code=404, detail="MYST wallet lease not found")
-    return {"status": "ok"}
 
 @app.post("/api/myst-wallets/ack")
 async def api_myst_wallet_ack(request: Request, body: MystWalletAckRequest) -> dict[str, str]:
@@ -4414,6 +4392,19 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         apps=json.dumps(body.apps),
         system_info=json.dumps(body.system_info),
     )
+    myst = body.provider_states.get("mysterium") or {}
+    if myst:
+        evidence = dict(myst.get("evidence") or {})
+        if body.system_info.get("egress_ip"):
+            evidence["egress_ip"] = body.system_info.get("egress_ip")
+        await database.sync_myst_wallet_runtime(
+            int(myst.get("wallet_id") or 0),
+            cid,
+            wallet_assignment_version=int(myst.get("wallet_assignment_version") or 0),
+            node_identity=str(myst.get("node_identity") or ""),
+            runtime_status=str(myst.get("runtime_status") or ""),
+            evidence=evidence,
+        )
     metrics.record_heartbeat(body.name)
     resp: dict[str, Any] = {"status": "ok", "worker_id": worker_id}
     if state == "enroll":
