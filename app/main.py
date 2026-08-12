@@ -308,7 +308,7 @@ async def _run_health_check() -> None:
     Docker-backed deployment missing from every online worker's current data
     now gets an explicit check_down. Scoped to "at least one worker online"
     so a fully-offline fleet (no heartbeat data to trust either way) never
-    triggers false check_downs; "external" deployments (e.g. Grass, Bytelixir)
+    triggers false check_downs; "external" deployments (e.g. Grass)
     have no container and are excluded since no worker ever reports them.
     """
     try:
@@ -1468,7 +1468,7 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             entry["image_outdated"] = _image_outdated(agg["image"], (svc.get("docker") or {}).get("image", ""))
         result.append(entry)
 
-    # Include external services (no Docker container, e.g. Grass, Bytelixir)
+    # Include external services (no Docker container, e.g. Grass)
     seen_slugs = {r["slug"] for r in result}
     deployments = await database.get_deployments()
     for d in deployments:

@@ -11,7 +11,6 @@ from typing import Any
 
 from app.collectors.base import BaseCollector, EarningsResult
 from app.collectors.bitping import BitpingCollector
-from app.collectors.bytelixir import BytelixirCollector
 from app.collectors.earnapp import EarnAppCollector
 from app.collectors.earnfm import EarnFMCollector
 from app.collectors.grass import GrassCollector
@@ -39,7 +38,6 @@ COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
     "packetstream": PacketStreamCollector,
     "proxies-sx": ProxiesSxCollector,
     "grass": GrassCollector,
-    "bytelixir": BytelixirCollector,
     "uprock": UprockCollector,
 }
 
@@ -57,13 +55,6 @@ _COLLECTOR_ARGS: dict[str, list[str]] = {
     "proxies-sx": ["api_key"],
     "grass": ["access_token"],
     "uprock": ["credentials_json"],
-    # bytelixir_session expires ~2h after issue, so on its own this collector
-    # dies the same afternoon it is set up. remember_web is the durable cookie
-    # (a year) that lets the session be re-established, and xsrf_token is needed
-    # alongside it. Both are optional so a session-only setup still works, but
-    # they must be declared here or the UI never asks for them and the values
-    # are never passed to the collector — which accepts them already.
-    "bytelixir": ["session_cookie", "?remember_web", "?xsrf_token"],
 }
 
 _SECRET_KINDS = {"password", "api_key", "token", "cookie", "bearer", "jwt", "oauth_token", "access_token"}
@@ -165,30 +156,6 @@ def collector_credential_fields(slug: str, service: dict[str, Any] | None = None
 # account password or an API key that lasts until revoked). `durable` marks the
 # long-lived alternative where a service offers both. `why` is shown to the user.
 CREDENTIAL_LIFETIMES: dict[str, dict[str, dict[str, object]]] = {
-    "bytelixir": {
-        "session_cookie": {
-            "hours": 2,
-            "durable": False,
-            "why": (
-                "Bytelixir's session cookie expires about 2 hours after it is issued. "
-                "On its own this collector stops working the same afternoon you set it up."
-            ),
-        },
-        "remember_web": {
-            "hours": 24 * 365,
-            "durable": True,
-            "why": (
-                "The durable 'remember me' cookie, good for about a year. Supply this "
-                "alongside the session cookie so the session can be re-established "
-                "instead of dying in a couple of hours."
-            ),
-        },
-        "xsrf_token": {
-            "hours": 24 * 365,
-            "durable": True,
-            "why": "Needed alongside the remember-me cookie to re-establish a session.",
-        },
-    },
     "earnapp": {
         "oauth_token": {
             "hours": None,

@@ -14,8 +14,8 @@ def test_current_operator_docs_use_current_catalog_counts():
     text = "\n".join(path.read_text(encoding="utf-8") for path in docs)
     assert "49 services" not in text
     assert "13 collectors" not in text
-    assert "21 providers" in text
-    assert "15 collectors" in text
+    assert "20 providers" in text
+    assert "12 collectors" in text
 
 
 def test_readme_has_only_live_catalog_categories():

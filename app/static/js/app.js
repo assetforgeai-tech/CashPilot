@@ -1452,11 +1452,10 @@ const CP = (() => {
       // EVERY field, not just the required ones.
       //
       // Filtering to required hid exactly the credentials this UI recommends.
-      // Bytelixir's session cookie expires in about two hours; its remember_web
-      // and xsrf_token cookies last a year and are what stop collection dying
-      // the same afternoon — and both are optional, so the credential-health
-      // panel said "a longer-lived credential exists for this service" while
-      // the modal it links to offered nowhere to put it.
+      // Some providers expose optional durable credentials next to short-lived
+      // sessions. Optional still has to render, or the credential-health panel
+      // can recommend a longer-lived credential while the modal it links to
+      // offers nowhere to put it.
       //
       // Storj is worse: its only field is optional, so the modal rendered no
       // inputs at all.

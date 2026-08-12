@@ -18,7 +18,7 @@ CashPilot is a self-hosted platform that lets you deploy, manage, and monitor pa
 
 It supports both **Docker-based services** (deployed and managed automatically) and **browser extension / desktop-only services** (tracked via the web UI with signup links, earning estimates, and balance monitoring). Whether a service runs in a container or in your browser, CashPilot aggregates all your earnings into a unified dashboard with historical tracking.
 
-The key differentiator: a browser-based setup wizard guides you through account creation and provider deployment, orchestrates containers through Docker workers, and collects earnings from 21 providers across bandwidth sharing and DePIN categories.
+The key differentiator: a browser-based setup wizard guides you through account creation and provider deployment, orchestrates containers through Docker workers, and collects earnings from 20 providers across bandwidth sharing and DePIN categories.
 
 ![Dashboard](docs/screenshot-dashboard.png)
 
@@ -102,7 +102,6 @@ These services have no Docker image. CashPilot lists them in the catalog with si
 <!-- BEGIN GENERATED: extension-services -->
 | Service | Guide | Residential IP required | VPS allowed | Devices / Acct | Devices / IP | Payout | Status |
 |---------|-------|:-:|:-:|:-:|:-:|--------|--------|
-| [Bytelixir](https://bytelixir.com/r/OYEIRE0VSZBZ) | [Guide](docs/guides/bytelixir.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto | Active |
 | [Dawn Internet](https://dawninternet.com/?code=2QLQV97F) | [Guide](docs/guides/dawn.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto | Active |
 | [Titan Network](https://edge.titannet.info/signup?inviteCode=2GKKJ495) | [Guide](docs/guides/titan.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto (USDC) | Active |
 <!-- END GENERATED: extension-services -->
@@ -336,8 +335,8 @@ There are several good open-source projects in this space, and the honest summar
 CashPilot is built around three things that shape its whole design:
 
 - **A fleet, not a machine.** One dashboard holds the state for many servers, each running a worker. Earnings are collected centrally exactly once, so nothing is double-counted, and every figure drills down per server and per service.
-- **Earnings pulled from the providers themselves.** 15 collectors authenticate against provider APIs and dashboards and record real balances into a local history, rather than reporting that a container is running. That is what makes "running but not earning" detectable at all.
-- **Breadth beyond bandwidth.** 21 catalogued providers spanning bandwidth sharing and DePIN, each with a setup guide, a payout method, and a status that is re-checked weekly in CI.
+- **Earnings pulled from the providers themselves.** 12 collectors authenticate against provider APIs and dashboards and record real balances into a local history, rather than reporting that a container is running. That is what makes "running but not earning" detectable at all.
+- **Breadth beyond bandwidth.** 20 catalogued providers spanning bandwidth sharing and DePIN, each with a setup guide, a payout method, and a status that is re-checked weekly in CI.
 
 If none of those matter to you, use whichever tool you prefer — they will all start the same containers.
 

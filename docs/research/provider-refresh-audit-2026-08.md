@@ -20,7 +20,6 @@ or official docs make the update certain.
 
 | Provider | Catalog action | Source basis | Notes |
 |---|---|---|---|
-| bytelixir | updated | <https://bytelixir.com> public pages | Windows/Android only, 50 Mbps minimum, $2 public minimum payout claim, typical $2-10/month public claim. No public API found. |
 | wipter | revived from dead to active | <https://wipter.com> and liveness check | Official site now answers. Keep scrape/manual dashboard model; no public API found. |
 
 ## 2026-08-11 bandwidth dashboard batch
@@ -56,7 +55,6 @@ or official docs make the update certain.
 
 | Provider | Status | Client model | Collector | Verdict |
 |---|---|---|---|---|
-| bytelixir | active | Windows/Android app | manual | updated; collector remains cookie scrape/manual because no official API shape found. |
 | packetstream | active | desktop client / CID | scrape | updated; current public setup is desktop-client-first, not app-only. |
 | proxybase | active | Docker/app | manual | keep; existing vendor/test guard says VPS/datacenter accepted. |
 | proxybase-xyz | active | Docker CLI marketplace | manual | keep; proxy inventory-like seller network, but still an earning provider entry until proxy-pool integration is designed separately. |
@@ -82,7 +80,7 @@ or official docs make the update certain.
 
 Provide official docs, dashboard export, or redacted API response before adding collectors for: `uprock`.
 
-Provider fields with conflicting or insufficient official public data: `bytelixir` payout threshold history, `proxybase-xyz` buyer/seller proxy-inventory split, `urnetwork` earnings API.
+Provider fields with conflicting or insufficient official public data: `proxybase-xyz` buyer/seller proxy-inventory split, `urnetwork` earnings API.
 
 ## Cross-cutting follow-up
 

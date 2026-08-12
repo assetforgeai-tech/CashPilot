@@ -25,8 +25,8 @@ class EarningsResult:
     # the collection loop stores a balance only when `error` is unset — so a
     # collector reporting a real figure with a note attached had that figure
     # silently discarded and the user was told the collector had failed.
-    # Bytelixir's API fallback did exactly this: a valid withdrawable balance,
-    # thrown away, reported as a failure.
+    # A retired cookie-scrape collector did exactly this: a valid withdrawable
+    # balance, thrown away, reported as a failure.
     warning: str | None = None
     # WHAT KIND of failure `error` describes (CashPilot-5bdm). A 401 and a
     # timeout used to be the same free-text string, so the UI could only ever

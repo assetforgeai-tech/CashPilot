@@ -385,7 +385,7 @@ CREATE TABLE IF NOT EXISTS earnings (
 -- NOT NULL column without a default, and adding a default would back-fill --
 -- which is exactly the thing the migration refuses to do, because stamping
 -- every existing credential with the moment of the upgrade once made a
--- Bytelixir cookie that had expired days earlier report as fresh.
+-- short-lived session cookie that had expired days earlier report as fresh.
 --
 -- So a fresh install had NOT NULL DEFAULT (datetime('now')) and an upgraded one
 -- had a plain nullable column, permanently. Nothing broke today because both
@@ -999,9 +999,9 @@ async def init_db() -> None:
             #
             # Doing so stamped every credential on an upgraded volume with the
             # moment of the upgrade, so the credential-health page reported all
-            # of them "fresh" — including a Bytelixir session cookie that
-            # expires after two hours and had in fact expired days earlier. An
-            # unknown age was rendered as the most favourable known age.
+            # of them "fresh" — including short-lived session cookies that had
+            # in fact expired days earlier. An unknown age was rendered as the
+            # most favourable known age.
             #
             # NULL is the honest value, and both consumers already handle it:
             # get_config_updated_at filters WHERE updated_at IS NOT NULL, and
