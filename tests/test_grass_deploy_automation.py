@@ -216,6 +216,7 @@ def test_deploy_raw_maps_adnade_username_to_chrome_url():
     assert env["ADNADE_USE_CHROME"] == "true"
     assert env["CUSTOM_PORT"] == "3000"
     assert env["CHROME_CLI"] == "https://adnade.net/view.php?user=assetforge&multi=4"
+    assert client.containers.run.call_args.kwargs["cap_drop"] is None
 
 
 def test_deploy_raw_forwards_container_user_when_declared():

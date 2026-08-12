@@ -275,6 +275,11 @@ def deploy_raw(
     }
 
     logger.info("Creating container %s from %s", name, image)
+    # linuxserver/chromium initializes nginx/dbus inside the container and needs
+    # Docker's default CHOWN/SETUID-style caps during boot. Dropping every cap
+    # leaves the browser UI port open but nginx dead-looping on chown.
+    cap_drop = None if slug == "adnade" else ["ALL"]
+
     container = client.containers.run(
         image=image,
         name=name,
@@ -289,7 +294,7 @@ def deploy_raw(
         # in-container root with Docker's full default set, which includes NET_RAW
         # (ARP/DNS spoofing on the bridge), MKNOD, SETUID and SYS_CHROOT.
         devices=devices or None,
-        cap_drop=["ALL"],
+        cap_drop=cap_drop,
         cap_add=cap_add or None,
         # no-new-privileges blocks privilege escalation via setuid binaries; privileged
         # is hardcoded off so the dangerous state is unrepresentable here rather than
