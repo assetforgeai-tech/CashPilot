@@ -4,6 +4,7 @@ import asyncio
 import base64
 import hashlib
 import io
+import os
 import zipfile
 from pathlib import Path
 from unittest.mock import patch
@@ -121,7 +122,10 @@ class TestRuntimeAssets:
             source = next(iter(spec.volumes))
             assert "/chrome_profile_zip-" in source.replace("\\", "/")
             assert spec.volumes[source] == {"bind": "/config", "mode": "rw"}
-            assert (Path(source) / ".config" / "chromium" / "Default" / "Preferences").exists()
+            prefs = Path(source) / ".config" / "chromium" / "Default" / "Preferences"
+            assert prefs.exists()
+            if os.name != "nt":
+                assert prefs.stat().st_mode & 0o002
 
         asyncio.run(run())
 
