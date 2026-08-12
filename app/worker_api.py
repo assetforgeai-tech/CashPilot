@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
+import hashlib
 import hmac
 import io
 import json
@@ -35,6 +36,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from cryptography.fernet import Fernet
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
@@ -895,6 +897,11 @@ class RuntimeAssetSpec(BaseModel):
     asset_kind: str
     target: str
     encoding: str = "text"
+    url: str | None = None
+    url_arg: str | None = None
+    sha256: str | None = None
+    decrypt: str | None = None
+    decrypt_key_arg: str | None = None
 
 class DeploySpec(BaseModel):
     image: str
@@ -946,6 +953,54 @@ async def _fetch_runtime_asset(provider: str, asset_kind: str) -> str:
         raise ValueError(f"runtime asset {provider}:{asset_kind} missing value")
     return value
 
+async def _download_runtime_asset(url: str, dest: Path) -> bytes:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+        async with client.stream("GET", url) as resp:
+            resp.raise_for_status()
+            buf = bytearray()
+            with dest.open("wb") as fh:
+                async for chunk in resp.aiter_bytes():
+                    if not chunk:
+                        continue
+                    fh.write(chunk)
+                    buf.extend(chunk)
+    return bytes(buf)
+
+def _decrypt_runtime_asset(data: bytes, mode: str | None, key: str | None) -> bytes:
+    if not mode:
+        return data
+    if mode.lower() != "fernet":
+        raise ValueError(f"Unsupported runtime asset decrypt mode: {mode}")
+    if not key:
+        raise ValueError("Missing runtime asset decrypt key")
+    return Fernet(key.encode()).decrypt(data)
+
+def _runtime_asset_url(asset: RuntimeAssetSpec, spec: DeploySpec, slug: str) -> str:
+    url = str(asset.url or "").strip()
+    if url:
+        return url
+    if asset.url_arg:
+        return str((spec.deploy_credentials or {}).get(asset.url_arg) or "").strip()
+    if slug == "adnade" and asset.asset_kind == "chrome_profile_zip":
+        return str(
+            (spec.deploy_credentials or {}).get("chrome_profile_url")
+            or os.getenv("ADNADE_CHROME_PROFILE_URL")
+            or ""
+        ).strip()
+    return ""
+
+def _runtime_asset_decrypt_key(asset: RuntimeAssetSpec, spec: DeploySpec, slug: str) -> str:
+    if asset.decrypt_key_arg:
+        return str((spec.deploy_credentials or {}).get(asset.decrypt_key_arg) or "").strip()
+    if slug == "adnade" and asset.asset_kind == "chrome_profile_zip":
+        return str(
+            (spec.deploy_credentials or {}).get("chrome_profile_key")
+            or os.getenv("ADNADE_CHROME_PROFILE_KEY")
+            or ""
+        ).strip()
+    return ""
+
 async def _materialize_runtime_assets(slug: str, spec: DeploySpec) -> None:
     if not spec.runtime_assets:
         return
@@ -958,11 +1013,24 @@ async def _materialize_runtime_assets(slug: str, spec: DeploySpec) -> None:
         asset_kind = str(asset.asset_kind or "").strip().lower()
         if not provider or not asset_kind:
             raise HTTPException(status_code=400, detail=f"Invalid runtime asset ref for {slug}")
-        payload = await _fetch_runtime_asset(provider, asset_kind)
         encoding = str(asset.encoding or "").lower()
-        data = base64.b64decode(payload) if encoding in {"base64", "zip"} else payload.encode()
         host_path = _RUNTIME_ASSET_DIR / slug / asset_kind
         host_path.parent.mkdir(parents=True, exist_ok=True)
+        download_url = _runtime_asset_url(asset, spec, slug)
+        if download_url:
+            download_path = host_path.parent / f"{asset_kind}.download"
+            data = await _download_runtime_asset(download_url, download_path)
+            expected_sha256 = str(asset.sha256 or "").strip()
+            if expected_sha256 and hashlib.sha256(data).hexdigest() != expected_sha256:
+                raise HTTPException(status_code=400, detail=f"runtime asset {provider}:{asset_kind} sha256 mismatch")
+            data = _decrypt_runtime_asset(
+                data,
+                asset.decrypt,
+                _runtime_asset_decrypt_key(asset, spec, slug),
+            )
+        else:
+            payload = await _fetch_runtime_asset(provider, asset_kind)
+            data = base64.b64decode(payload) if encoding in {"base64", "zip"} else payload.encode()
         if encoding == "zip":
             if host_path.exists():
                 shutil.rmtree(host_path)

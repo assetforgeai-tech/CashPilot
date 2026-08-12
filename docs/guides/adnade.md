@@ -13,20 +13,22 @@ profile bundle.
 
 ### 1. Prepare the Chrome profile bundle
 
-Use `chromeprofiledata.ORIGINAL.zip` that already contains the connected Dawn
-and Titan extensions.
+Use the encrypted `chromeprofiledata.ORIGINAL.zip.fernet` artifact stored in
+R2. The worker downloads it directly, decrypts it with the saved Fernet key,
+then unpacks the Chrome profile.
 
 ### 2. Save deploy credentials
 
 In **Settings -> Provider Credentials -> Deploy runtime**, save:
 
 - `Adnade username`
-- `Chrome profile bundle`
+- `Chrome profile R2 URL`
+- `Chrome profile decrypt key`
 
 ### 3. Deploy with CashPilot
 
-CashPilot starts `lscr.io/linuxserver/chromium:latest`, mounts the unpacked
-profile to `/config`, and opens:
+CashPilot starts `lscr.io/linuxserver/chromium:latest`, downloads the encrypted
+profile on the worker, unpacks it to `/config`, and opens:
 
 ```text
 https://adnade.net/view.php?user=<ADNADE_USERNAME>&multi=4

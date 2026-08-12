@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import io
 import zipfile
 from unittest.mock import patch
@@ -87,6 +88,47 @@ class TestRuntimeAssets:
             source = next(iter(spec.volumes))
             assert source.replace("\\", "/").endswith("chrome_profile_zip/chromeprofiledata")
             assert spec.volumes[source] == {"bind": "/config", "mode": "ro"}
+            assert (tmp_path / "adnade" / "chrome_profile_zip" / "chromeprofiledata" / ".config" / "chromium" / "Default" / "Preferences").exists()
+
+        asyncio.run(run())
+
+    def test_worker_downloads_decrypts_and_unpacks_direct_chrome_profile_zip(self, tmp_path):
+        async def run():
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w") as zf:
+                zf.writestr("chromeprofiledata/.config/chromium/Default/Preferences", "{}")
+            key = "test-fernet-key"
+            encrypted = b"encrypted-zip"
+            spec = worker_api.DeploySpec(
+                image="img",
+                deploy_credentials={
+                    "chrome_profile_url": "https://assets.example/adnade-profile.zip.fernet",
+                    "chrome_profile_key": key,
+                },
+                runtime_assets=[
+                    worker_api.RuntimeAssetSpec(
+                        provider="adnade",
+                        asset_kind="chrome_profile_zip",
+                        target="/config",
+                        encoding="zip",
+                        url_arg="chrome_profile_url",
+                        sha256=hashlib.sha256(encrypted).hexdigest(),
+                        decrypt="fernet",
+                        decrypt_key_arg="chrome_profile_key",
+                    )
+                ],
+            )
+            with (
+                patch.object(worker_api, "_RUNTIME_ASSET_DIR", tmp_path),
+                patch.object(worker_api, "_download_runtime_asset", return_value=encrypted) as download,
+                patch.object(worker_api, "_decrypt_runtime_asset", return_value=buf.getvalue()) as decrypt,
+            ):
+                await worker_api._materialize_runtime_assets("adnade", spec)
+
+            download.assert_awaited_once_with("https://assets.example/adnade-profile.zip.fernet", tmp_path / "adnade" / "chrome_profile_zip.download")
+            decrypt.assert_called_once_with(encrypted, "fernet", key)
+            source = next(iter(spec.volumes))
+            assert source.replace("\\", "/").endswith("chrome_profile_zip/chromeprofiledata")
             assert (tmp_path / "adnade" / "chrome_profile_zip" / "chromeprofiledata" / ".config" / "chromium" / "Default" / "Preferences").exists()
 
         asyncio.run(run())

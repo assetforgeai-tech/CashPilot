@@ -29,6 +29,10 @@ deploy:
       asset_kind: chrome_profile_zip
       target: /config
       encoding: zip
+      url_arg: chrome_profile_url
+      sha256: 945ebf2a6ddf926804542d83bf187bbf078d60031d2247f82227f3e6cc80845d
+      decrypt: fernet
+      decrypt_key_arg: chrome_profile_key
   credentials:
     - key: username
       label: "Adnade username"
@@ -37,14 +41,20 @@ deploy:
       required: true
       source: "Adnade account"
       description: "The user value passed to adnade.net/view.php."
-    - key: chrome_profile_zip
-      label: "Chrome profile bundle"
-      kind: file
-      encoding: zip
+    - key: chrome_profile_url
+      label: "Chrome profile R2 URL"
+      kind: text
+      secret: false
+      required: true
+      source: "Cloudflare R2 public/custom domain"
+      description: "Direct download URL for encrypted chromeprofiledata.ORIGINAL.zip.fernet."
+    - key: chrome_profile_key
+      label: "Chrome profile decrypt key"
+      kind: token
       secret: true
       required: true
       source: "CashPilot secret inventory"
-      description: "chromeprofiledata.ORIGINAL.zip with Dawn + Titan already connected."
+      description: "Fernet key for the encrypted Chrome profile artifact."
 
 requirements:
   residential_ip: false
