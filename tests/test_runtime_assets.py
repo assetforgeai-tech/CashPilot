@@ -98,7 +98,7 @@ class TestRuntimeAssets:
 
             source = next(iter(spec.volumes))
             assert source.replace("\\", "/").endswith("chrome_profile_zip/chromeprofiledata")
-            assert spec.volumes[source] == {"bind": "/config", "mode": "ro"}
+            assert spec.volumes[source] == {"bind": "/config", "mode": "rw"}
             assert (tmp_path / "adnade" / "chrome_profile_zip" / "chromeprofiledata" / ".config" / "chromium" / "Default" / "Preferences").exists()
 
         asyncio.run(run())

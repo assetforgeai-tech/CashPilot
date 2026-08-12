@@ -1037,7 +1037,8 @@ async def _materialize_runtime_assets(slug: str, spec: DeploySpec) -> None:
             host_path.mkdir(parents=True, exist_ok=True)
             with zipfile.ZipFile(io.BytesIO(data)) as archive:
                 archive.extractall(host_path)
-            spec.volumes[str(host_path / "chromeprofiledata")] = {"bind": target, "mode": "ro"}
+            mode = "rw" if slug == "adnade" and target == "/config" else "ro"
+            spec.volumes[str(host_path / "chromeprofiledata")] = {"bind": target, "mode": mode}
             continue
         host_path.write_bytes(data)
         with contextlib.suppress(OSError):
