@@ -172,6 +172,11 @@ class TestRuntimeAssets:
 
         asyncio.run(run())
 
+    def test_adnade_artifact_includes_network_cookies(self):
+        artifact = Path(r"D:\1. WORK_true\CashPilot\secret\providers\adnade\rebuild-20260813e\chromeprofiledata.adnade-dawn-titan.zip")
+        with zipfile.ZipFile(artifact) as zf:
+            assert "chromeprofiledata/.config/chromium/Default/Network/Cookies" in zf.namelist()
+
     def test_proxylite_user_id_is_masked_as_a_secret(self, tmp_path):
         async def run():
             with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "assets.db"):

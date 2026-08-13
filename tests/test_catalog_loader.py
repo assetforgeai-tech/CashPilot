@@ -378,7 +378,7 @@ class TestProviderAutomationContracts:
                 "target": "/config",
                 "encoding": "zip",
                 "url": "https://adnade.acacondos.com/cashpilot/adnade/chromeprofiledata.ORIGINAL.zip.fernet",
-                "sha256": "dfdc6daf34ecc502f5b1fe794cf48689a25d5f189ede109ea3a62c81da69f153",
+                "sha256": "685311d59e6b8c9df2250a874ee72474485f749f944795a0d43766ba3a9afb7b",
                 "decrypt": "fernet",
                 "decrypt_key_arg": "chrome_profile_key",
             }
