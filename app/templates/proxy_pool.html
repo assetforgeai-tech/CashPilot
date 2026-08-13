@@ -8,6 +8,7 @@
     <h2>Proxy pool</h2>
   </div>
   <div id="pool-counts" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;"></div>
+  <div id="pool-type-counts" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;"></div>
   <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:12px;padding:12px;border:1px solid var(--border-color);border-radius:var(--radius);">
     <label style="display:flex;gap:8px;align-items:center;font-size:0.85rem;color:var(--text-secondary);">
       <input type="checkbox" id="pool-scheduler-enabled">
@@ -31,6 +32,8 @@
     <button class="btn btn-ghost btn-sm" id="pool-export-filtered">Export filtered</button>
     <button class="btn btn-ghost btn-sm" id="pool-export-alive">Export alive</button>
     <button class="btn btn-ghost btn-sm" id="pool-export-dead">Export dead</button>
+    <button class="btn btn-ghost btn-sm" id="pool-export-http">Export http</button>
+    <button class="btn btn-ghost btn-sm" id="pool-export-socks5">Export socks5</button>
     <span id="pool-result" style="font-size:0.8rem;color:var(--text-muted);"></span>
   </div>
   <div class="table-wrap">
@@ -83,6 +86,11 @@ function renderPool() {
     selected: document.querySelectorAll('.pool-select:checked').length,
   };
   document.getElementById('pool-counts').innerHTML = Object.entries(counts).map(([k,v]) => countBadge(k, v)).join('');
+  const types = {
+    http: poolRows.filter(p => String(p.protocol || '').toLowerCase() === 'http').length,
+    socks5: poolRows.filter(p => String(p.protocol || '').toLowerCase() === 'socks5').length,
+  };
+  document.getElementById('pool-type-counts').innerHTML = Object.entries(types).map(([k,v]) => countBadge(k, v)).join('');
   const pages = Math.max(1, Math.ceil(rows.length / poolPageSize));
   if (poolPage > pages) poolPage = pages;
   const visible = rows.slice((poolPage - 1) * poolPageSize, poolPage * poolPageSize);
@@ -93,7 +101,7 @@ function renderPool() {
       <td class="mono-cell endpoint-cell" title="${esc(p.endpoint)}">${esc(p.endpoint)}</td>
       <td>${esc(p.protocol)}</td>
       <td>${esc(p.location || '-')}</td>
-      <td>${esc(p.status || '-')}</td>
+      <td><span class="${String(p.status || '').toLowerCase() === 'alive' ? 'pool-status-alive' : 'pool-status-dead'}">${esc(p.status || '-')}</span></td>
       <td>${esc(p.expiry_date || (p.days_left != null ? `${p.days_left}d` : '-'))}</td>
       <td>${esc(p.assigned_worker_id || '-')}</td>
     </tr>`).join('');
@@ -163,6 +171,8 @@ document.getElementById('pool-scheduler-save').addEventListener('click', saveSch
 document.getElementById('pool-export-filtered').addEventListener('click', exportFilteredPool);
 document.getElementById('pool-export-alive').addEventListener('click', () => exportPool('alive'));
 document.getElementById('pool-export-dead').addEventListener('click', () => exportPool('dead'));
+document.getElementById('pool-export-http').addEventListener('click', () => exportPool('http'));
+document.getElementById('pool-export-socks5').addEventListener('click', () => exportPool('socks5'));
 document.getElementById('pool-pager').addEventListener('click', ev => { if (ev.target.id === 'pool-prev') poolPage--; if (ev.target.id === 'pool-next') poolPage++; renderPool(); });
 document.querySelector('thead').addEventListener('click', ev => { const key = ev.target.dataset.sort; if (!key) return; poolSort = {key, dir: poolSort.key === key ? -poolSort.dir : 1}; renderPool(); });
 loadPool();

@@ -1679,7 +1679,9 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
         seen_slugs.add(slug)
 
     adnade_row = next((row for row in result if row.get("slug") == "adnade"), None)
-    if adnade_row:
+    adnade_deployment = next((row for row in deployments if row.get("slug") == "adnade"), None)
+    adnade_source = adnade_row or adnade_deployment
+    if adnade_source:
         for slug in ("dawn", "titan"):
             if slug in seen_slugs:
                 continue
@@ -1690,7 +1692,7 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             entry = {
                 "slug": slug,
                 "name": svc["name"],
-                "container_status": adnade_row.get("container_status") or "external",
+                "container_status": adnade_source.get("container_status") or adnade_source.get("status") or "external",
                 "unmanaged": True,
                 "balance": balance_map.get(slug),
                 "balance_known": slug in balance_map,
@@ -1704,8 +1706,8 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
                 "restarts_7d": health.get("restarts", 0),
                 "crashes_7d": health.get("crashes", 0),
                 "unstable": health.get("crashes", 0) >= 3,
-                "instances": adnade_row.get("instances", 0),
-                "instance_details": adnade_row.get("instance_details", []),
+                "instances": adnade_source.get("instances", 0),
+                "instance_details": adnade_source.get("instance_details", []),
                 "collector_disconnected": slug in alert_slugs,
                 "collector_needs_setup": slug not in alert_slugs and _collector_needs_setup(slug, config),
             }

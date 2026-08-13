@@ -2278,6 +2278,7 @@ async def list_myst_wallets() -> list[dict[str, Any]]:
     db = await _get_db()
     try:
         await _ensure_myst_wallets_table(db)
+        await _repair_myst_wallet_addresses(db)
         cursor = await db.execute(
             """
             SELECT id, wallet_fingerprint, address, state, funding, leased_to_worker_id,
@@ -2590,11 +2591,31 @@ async def get_worker_proxy_assignment(worker_id: int) -> dict[str, Any] | None:
     finally:
         await db.close()
 
+async def _repair_myst_wallet_addresses(db: aiosqlite.Connection) -> None:
+    from app import myst_wallets
+
+    cursor = await db.execute("SELECT id, raw_wallet_enc, address FROM myst_wallets")
+    changed = 0
+    for row in await cursor.fetchall():
+        current = str(row["address"] or "")
+        raw = decrypt_value(row["raw_wallet_enc"] or "")
+        address = myst_wallets.wallet_address_hint(raw)
+        if address and address != current and len(address) == 40:
+            await db.execute("UPDATE myst_wallets SET address = ?, updated_at = datetime('now') WHERE id = ?", (address, int(row["id"])))
+            changed += 1
+    if changed:
+        await db.commit()
+
 async def export_proxy_pool(*, status: str | None = None) -> list[dict[str, Any]]:
     rows = await list_proxy_pool()
     wanted = (status or "").strip().lower()
     if wanted:
-        rows = [row for row in rows if str(row.get("status") or "").strip().lower() == wanted]
+        rows = [
+            row
+            for row in rows
+            if str(row.get("status") or "").strip().lower() == wanted
+            or str(row.get("protocol") or "").strip().lower() == wanted
+        ]
     return rows
 
 async def update_proxy_pool_check_results(results: Mapping[int, str], *, protocols: Mapping[int, str] | None = None) -> int:

@@ -684,6 +684,7 @@ class TestInventoryTablesHaveOperatorControls:
         page = (ROOT / "app" / "templates" / "proxy_pool.html").read_text(encoding="utf-8")
         for needle in (
             'id="pool-counts"',
+            'id="pool-type-counts"',
             'id="pool-search"',
             'id="pool-recheck-selected"',
             'id="pool-recheck-all"',
@@ -694,12 +695,15 @@ class TestInventoryTablesHaveOperatorControls:
             'id="pool-export-filtered"',
             'id="pool-export-alive"',
             'id="pool-export-dead"',
+            'id="pool-export-http"',
+            'id="pool-export-socks5"',
             'data-sort="provider_name"',
             'id="pool-pager"',
             "const poolPageSize = 20",
             "confirm(`Recheck ${label}?`)",
             "exportFilteredPool",
             "/api/proxy-pool/scheduler",
+            "pool-status-alive",
         ):
             assert needle in page
 

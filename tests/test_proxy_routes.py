@@ -164,6 +164,25 @@ def test_proxy_lease_picks_one_unassigned_proxy_per_worker(tmp_path):
 
     asyncio.run(run())
 
+def test_proxy_pool_export_can_filter_by_protocol(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("vtproxy", "vtproxy")
+            await database.upsert_proxy_endpoints(
+                provider_id,
+                [
+                    {"provider_proxy_id": "a", "endpoint": "1.1.1.1:1000", "host": "1.1.1.1", "port": 1000, "protocol": "http"},
+                    {"provider_proxy_id": "b", "endpoint": "2.2.2.2:1000", "host": "2.2.2.2", "port": 1000, "protocol": "socks5"},
+                ],
+            )
+            rows = await database.export_proxy_pool(status="http")
+            assert [row["protocol"] for row in rows] == ["http"]
+
+    import asyncio
+
+    asyncio.run(run())
+
 def test_service_collect_route_calls_single_collector(client):
     class Result:
         error = None

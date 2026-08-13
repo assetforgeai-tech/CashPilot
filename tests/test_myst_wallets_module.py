@@ -90,7 +90,11 @@ class TestMystWalletHelpers:
 
     def test_wallet_address_hint_handles_json_keystore_address(self):
         raw = '{"address":"57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1","crypto":{}}'
-        assert myst_wallets.wallet_address_hint(raw) == "0x57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1"[-12:]
+        assert myst_wallets.wallet_address_hint(raw) == "57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1"
+
+    def test_wallet_address_hint_finds_nested_address_before_fallback(self):
+        raw = '{"crypto":{"version":3},"identity":{"address":"2f43a6c09c53106c8863c6605ed46fccfad2ae2e"}}'
+        assert myst_wallets.wallet_address_hint(raw) == "2f43a6c09c53106c8863c6605ed46fccfad2ae2e"
 
 class TestMystWalletInventory:
     def test_admin_list_never_returns_raw_wallet(self, tmp_path):
@@ -133,6 +137,23 @@ class TestMystWalletInventory:
                 assert listed[0]["state"] == "LEASED"
                 assert listed[0]["leased_to_worker_id"] == 7
                 assert listed[0]["wallet_assignment_version"] == 1
+
+        asyncio.run(run())
+
+    def test_list_repairs_old_short_wallet_address(self, tmp_path):
+        async def run():
+            raw = '{"address":"57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1","crypto":{}}'
+            with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "myst.db"):
+                await database.init_db()
+                await database.import_myst_wallets(raw)
+                conn = await database._get_db()
+                try:
+                    await conn.execute("UPDATE myst_wallets SET address = ?", ('"version":3}',))
+                    await conn.commit()
+                finally:
+                    await conn.close()
+                rows = await database.list_myst_wallets()
+                assert rows[0]["address"] == "57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1"
 
         asyncio.run(run())
 
