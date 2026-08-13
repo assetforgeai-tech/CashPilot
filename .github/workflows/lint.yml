@@ -2,7 +2,7 @@ name: Lint
 
 on:
   push:
-    branches: [main]
+    branches: [main, provider-standard-40834f6]
   pull_request:
     branches: [main]
 

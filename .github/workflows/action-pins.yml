@@ -18,7 +18,7 @@ on:
     paths:
       - ".github/workflows/**"
   push:
-    branches: [main]
+    branches: [main, provider-standard-40834f6]
     paths:
       - ".github/workflows/**"
   # A tag can be deleted or moved AFTER a pin is merged, so the audit is worth
