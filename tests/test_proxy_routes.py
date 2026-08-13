@@ -185,15 +185,29 @@ def test_active_services_counts_deployed_rows_not_running_only(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "summary.db"):
             await database.init_db()
-            await database.save_deployment("grass", "c1", status="running")
             await database.save_deployment("adnade", "c2", status="external")
             from app import main as app_main
             with (
-                patch("app.main._get_all_worker_containers", new_callable=AsyncMock, return_value=[]),
+                patch(
+                    "app.main._get_all_worker_containers",
+                    new_callable=AsyncMock,
+                    return_value=[
+                        {
+                            "slug": "grass",
+                            "name": "cashpilot-grass",
+                            "status": "running",
+                            "image": "grass",
+                            "_node": "w1",
+                            "_worker_id": 7,
+                            "_has_docker": True,
+                            "_is_android": False,
+                        }
+                    ],
+                ),
                 patch("app.main._require_reader", lambda request: None),
             ):
                 summary = await app_main.api_earnings_summary(object())
-            assert summary["active_services"] == 2
+            assert summary["active_services"] == 4
 
     import asyncio
     asyncio.run(run())

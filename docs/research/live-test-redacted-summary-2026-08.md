@@ -12,10 +12,10 @@
 
 | Surface | Role | Destructive Scope | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| `vps-test-sing` | Primary live-test worker | Clean/recreate allowed | pending | worker heartbeat not captured |
+| `vps-test-sing` | Primary live-test worker | Clean/recreate allowed | ready | worker `52-237-120-118-1786648057`, repo commit `8ba379a`, heartbeat HTTP 200 |
 | `vps-test-us` | Secondary live-test worker | Conditional only | pending | not touched unless needed |
 | Chrome profile 40 | Credential/session source | Read only; overwrite Settings only when stale | pending | tab inventory not captured |
-| VPS server | Source of truth | No DB/volume edits | pending | commit/version not captured |
+| VPS server | Source of truth | No DB/volume edits | ready | deployed commit `8ba379a`, UI container up |
 
 ## Provider Success Matrix
 
@@ -53,4 +53,3 @@ For every manual-only provider, provide:
 - Exact non-secret CLI command to inspect process/log state.
 - Last 30 log lines with secrets redacted.
 - CashPilot worker `provider_states` row if available.
-

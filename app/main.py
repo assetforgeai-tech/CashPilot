@@ -2589,8 +2589,11 @@ async def api_earnings_summary(request: Request) -> dict[str, Any]:
             total_adjusted += adjusted
             total_bonus_usd += bonus
 
-    deployments = await database.get_deployments()
-    summary["active_services"] = sum(1 for d in deployments if str(d.get("status") or "") != "removed")
+    try:
+        summary["active_services"] = len(await api_services_deployed(request))
+    except Exception as exc:
+        logger.warning("Could not count deployed services, reporting it as unknown: %s", exc)
+        summary["active_services"] = None
     # A total that silently omits holdings is indistinguishable from a correct
     # one. The count was already being computed in database.py and only logged;
     # it now reaches the caller so the card can say the figure is partial.
