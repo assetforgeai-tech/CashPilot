@@ -2597,16 +2597,23 @@ async def export_proxy_pool(*, status: str | None = None) -> list[dict[str, Any]
         rows = [row for row in rows if str(row.get("status") or "").strip().lower() == wanted]
     return rows
 
-async def update_proxy_pool_check_results(results: Mapping[int, str]) -> int:
+async def update_proxy_pool_check_results(results: Mapping[int, str], *, protocols: Mapping[int, str] | None = None) -> int:
     db = await _get_db()
     try:
         checked = 0
         for proxy_id, status in results.items():
             if str(status).lower() not in {"alive", "dead"}:
                 continue
+            protocol = str((protocols or {}).get(proxy_id) or "").lower()
             cur = await db.execute(
-                "UPDATE proxy_endpoints SET status = ?, last_checked_at = datetime('now') WHERE id = ?",
-                (str(status).lower(), int(proxy_id)),
+                """
+                UPDATE proxy_endpoints
+                SET status = ?,
+                    protocol = CASE WHEN ? IN ('http', 'socks5') THEN ? ELSE protocol END,
+                    last_checked_at = datetime('now')
+                WHERE id = ?
+                """,
+                (str(status).lower(), protocol, protocol, int(proxy_id)),
             )
             checked += int(cur.rowcount or 0)
         await db.commit()

@@ -185,6 +185,30 @@ class TestParsingRealShapes:
         assert out.balance == fx["parsed"]
         assert out.currency == fx["currency"]
 
+    def test_iproyal_uses_browser_like_headers(self):
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app.collectors.iproyal import IPRoyalCollector
+
+        c = IPRoyalCollector(email="a@b.c", password="x")
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json = MagicMock(side_effect=[{"access_token": "jwt"}, {"balance": 1.25}])
+        resp.raise_for_status = MagicMock()
+        with patch.object(c, "_get_client") as get_client:
+            client = MagicMock()
+            client.post = AsyncMock(return_value=resp)
+            client.get = AsyncMock(return_value=resp)
+            get_client.return_value = client
+            out = asyncio.run(c.collect())
+
+        assert out.error is None
+        kwargs = get_client.call_args.kwargs
+        assert kwargs["timeout"] == 15
+        assert kwargs["headers"]["X-Locale"] == "EN"
+        assert "Mozilla/5.0" in kwargs["headers"]["User-Agent"]
+
 
 class TestCredentialSelfTest:
     """The button that answers "are these credentials valid?" in a second.

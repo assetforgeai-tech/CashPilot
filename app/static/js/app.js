@@ -1684,7 +1684,7 @@ const CP = (() => {
     list.innerHTML = visible.map((row) => `
       <tr>
         <td>${escapeHtml(row.id)}</td>
-        <td style="font-family:monospace;" title="${escapeHtml(row.address || '')}">${escapeHtml(row.wallet_fingerprint || '')}</td>
+        <td class="mono-cell address-cell" title="${escapeHtml(row.address || '')}">${escapeHtml(row.address || '-')}</td>
         <td><span class="badge badge-category">${escapeHtml(row.state || '')}</span></td>
         <td><span class="badge ${row.funding === 'FUNDED' ? 'badge-running' : 'badge-error'}">${escapeHtml(row.funding || '')}</span></td>
         <td>${escapeHtml(row.leased_to_client_id || '-')}</td>
@@ -1737,20 +1737,32 @@ const CP = (() => {
     renderMystWalletRows(_mystWalletRows);
   }
 
-  function exportMystWallets(funding = '') {
-    if (funding) {
-      window.location.href = `/api/admin/myst-wallets/export?funding=${encodeURIComponent(funding)}`;
-      return;
-    }
-    const headers = ['id','wallet_fingerprint','state','funding','leased_to_client_id','release_reason','wallet_assignment_version','last_heartbeat_at'];
-    const csv = [headers.join(','), ...filteredMystWalletRows().map(row => headers.map(key => `"${String(row[key] ?? '').replaceAll('"', '""')}"`).join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+  function downloadTextFile(text, filename, type = 'text/plain') {
+    const blob = new Blob([text], { type });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'myst-wallet-filtered.csv';
+    link.download = filename;
+    document.body.appendChild(link);
     link.click();
+    link.remove();
     URL.revokeObjectURL(url);
+  }
+
+  async function exportMystWallets(funding = '') {
+    if (funding) {
+      try {
+        const res = await fetch(`/api/admin/myst-wallets/export?funding=${encodeURIComponent(funding)}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        downloadTextFile(await res.text(), `myst-wallet-${funding.toLowerCase()}.txt`);
+      } catch (err) {
+        toast(`Export failed: ${err.message}`, 'error');
+      }
+      return;
+    }
+    const headers = ['id','address','state','funding','leased_to_client_id','release_reason','wallet_assignment_version','last_heartbeat_at'];
+    const csv = [headers.join(','), ...filteredMystWalletRows().map(row => headers.map(key => `"${String(row[key] ?? '').replaceAll('"', '""')}"`).join(','))].join('\n');
+    downloadTextFile(csv, 'myst-wallet-filtered.csv', 'text/csv');
   }
 
   async function updateMystWallet(walletId, field, value) {

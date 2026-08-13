@@ -1644,6 +1644,41 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
         }
         _apply_service_meta(entry, svc)
         result.append(entry)
+        seen_slugs.add(slug)
+
+    adnade_row = next((row for row in result if row.get("slug") == "adnade"), None)
+    if adnade_row:
+        for slug in ("dawn", "titan"):
+            if slug in seen_slugs:
+                continue
+            svc = catalog.get_service(slug)
+            if not svc:
+                continue
+            health = health_map.get(slug, {})
+            entry = {
+                "slug": slug,
+                "name": svc["name"],
+                "container_status": adnade_row.get("container_status") or "external",
+                "unmanaged": True,
+                "balance": balance_map.get(slug),
+                "balance_known": slug in balance_map,
+                "currency": currency_map.get(slug, "USD"),
+                "cpu": "",
+                "memory": "",
+                "image": "adnade chrome profile",
+                "category": svc.get("category", ""),
+                "health_score": health.get("score"),
+                "uptime_pct": health.get("uptime_pct"),
+                "restarts_7d": health.get("restarts", 0),
+                "crashes_7d": health.get("crashes", 0),
+                "unstable": health.get("crashes", 0) >= 3,
+                "instances": adnade_row.get("instances", 0),
+                "instance_details": adnade_row.get("instance_details", []),
+                "collector_disconnected": slug in alert_slugs,
+                "collector_needs_setup": slug not in alert_slugs and _collector_needs_setup(slug, config),
+            }
+            _apply_service_meta(entry, svc)
+            result.append(entry)
 
     return result
 

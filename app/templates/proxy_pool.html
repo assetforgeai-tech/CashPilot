@@ -18,7 +18,7 @@
     <span id="pool-result" style="font-size:0.8rem;color:var(--text-muted);"></span>
   </div>
   <div class="table-wrap">
-    <table class="data-table">
+    <table class="data-table operator-table proxy-pool-table">
       <thead>
         <tr>
           <th><input type="checkbox" id="pool-select-all"></th><th data-sort="provider_name">Provider</th><th data-sort="endpoint">Endpoint</th><th data-sort="protocol">Protocol</th><th data-sort="location">Location</th><th data-sort="status">Status</th><th data-sort="expiry_date">Expiry</th><th data-sort="assigned_worker_id">Assigned</th>
@@ -69,7 +69,7 @@ function renderPool() {
     <tr>
       <td><input class="pool-select" type="checkbox" value="${esc(p.id)}"></td>
       <td>${esc(p.provider_name || '-')}</td>
-      <td>${esc(p.endpoint)}</td>
+      <td class="mono-cell endpoint-cell" title="${esc(p.endpoint)}">${esc(p.endpoint)}</td>
       <td>${esc(p.protocol)}</td>
       <td>${esc(p.location || '-')}</td>
       <td>${esc(p.status || '-')}</td>

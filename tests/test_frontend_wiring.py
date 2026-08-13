@@ -704,7 +704,7 @@ class TestInventoryTablesHaveOperatorControls:
         for needle in (
             'id="myst-wallet-counts"',
             'id="myst-wallet-search"',
-            'data-myst-sort="wallet_fingerprint"',
+            'data-myst-sort="address"',
             'id="myst-wallet-pager"',
             'data-action="exportMystWallets"',
         ):
@@ -714,6 +714,7 @@ class TestInventoryTablesHaveOperatorControls:
             "filteredMystWalletRows",
             "window.confirm(`Set wallet ${walletId} to ${value}?",
             "myst-wallet-filtered.csv",
+            "funding.toLowerCase()",
         ):
             assert needle in app_js
 

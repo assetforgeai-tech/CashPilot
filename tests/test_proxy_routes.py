@@ -124,13 +124,20 @@ def test_proxy_pool_export_and_recheck_are_owner_only_and_wired(client):
             {"id": 2, "host": "2.2.2.2", "port": 1001},
             {"id": 3, "host": "3.3.3.3", "port": 1002},
         ]),
-        patch("app.routers.proxies._tcp_alive", new_callable=AsyncMock, side_effect=[True, False, True]),
+        patch("app.routers.proxies._probe_proxy", new_callable=AsyncMock, side_effect=[
+            {"status": "alive", "protocol": "socks5"},
+            {"status": "dead", "protocol": ""},
+            {"status": "alive", "protocol": "http"},
+        ]),
         patch("app.routers.proxies.database.update_proxy_pool_check_results", new_callable=AsyncMock, return_value=3) as mark,
     ):
         recheck = client.post("/api/proxy-pool/recheck", json={"proxy_ids": [1, 2, 3]})
     assert recheck.status_code == 200
     assert recheck.json()["checked"] == 3
-    mark.assert_awaited_once_with({1: "alive", 2: "dead", 3: "alive"})
+    mark.assert_awaited_once_with(
+        {1: "alive", 2: "dead", 3: "alive"},
+        protocols={1: "socks5", 2: "", 3: "http"},
+    )
 
 def test_proxy_lease_picks_one_unassigned_proxy_per_worker(tmp_path):
     async def run():

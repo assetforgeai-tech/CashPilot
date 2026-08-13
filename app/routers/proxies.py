@@ -34,14 +34,33 @@ class ProxyAssignmentIn(BaseModel):
 class ProxyRecheckIn(BaseModel):
     proxy_ids: list[int] | None = None
 
-async def _tcp_alive(host: str, port: int, timeout: float = 5.0) -> bool:
+async def _probe_proxy(host: str, port: int, timeout: float = 5.0) -> dict[str, str]:
+    host = host.strip()
+    if not host or port <= 0:
+        return {"status": "dead", "protocol": ""}
     try:
-        _, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
+        reader, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
+        writer.write(b"\x05\x01\x00")
+        await writer.drain()
+        data = await asyncio.wait_for(reader.readexactly(2), timeout=timeout)
         writer.close()
         await writer.wait_closed()
-        return True
+        if data[0] == 5:
+            return {"status": "alive", "protocol": "socks5"}
     except Exception:
-        return False
+        pass
+    try:
+        reader, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
+        writer.write(b"CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\n\r\n")
+        await writer.drain()
+        data = await asyncio.wait_for(reader.read(64), timeout=timeout)
+        writer.close()
+        await writer.wait_closed()
+        if data.startswith(b"HTTP/"):
+            return {"status": "alive", "protocol": "http"}
+    except Exception:
+        pass
+    return {"status": "dead", "protocol": ""}
 
 
 @router.get("/api/proxy-providers")
@@ -118,10 +137,11 @@ async def api_proxy_pool_recheck(request: Request, body: ProxyRecheckIn) -> dict
     rows = await database.list_proxy_pool()
     targets = [row for row in rows if not wanted or int(row["id"]) in wanted]
     checks = await asyncio.gather(
-        *(_tcp_alive(str(row.get("host") or "").strip(), int(row.get("port") or 0)) for row in targets)
+        *(_probe_proxy(str(row.get("host") or "").strip(), int(row.get("port") or 0)) for row in targets)
     )
-    results = {int(row["id"]): ("alive" if ok else "dead") for row, ok in zip(targets, checks, strict=False)}
-    checked = await database.update_proxy_pool_check_results(results)
+    results = {int(row["id"]): str(check.get("status") or "dead") for row, check in zip(targets, checks, strict=False)}
+    protocols = {int(row["id"]): str(check.get("protocol") or "") for row, check in zip(targets, checks, strict=False)}
+    checked = await database.update_proxy_pool_check_results(results, protocols=protocols)
     return {"status": "ok", "checked": checked, "alive": sum(1 for v in results.values() if v == "alive"), "dead": sum(1 for v in results.values() if v == "dead")}
 
 
