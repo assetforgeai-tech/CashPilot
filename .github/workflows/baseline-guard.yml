@@ -1,0 +1,19 @@
+name: Baseline Guard
+
+on:
+  push:
+    branches: [provider-standard-40834f6]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Check approved deploy baseline
+        run: python3 scripts/check_deploy_baseline.py
