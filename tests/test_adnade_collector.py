@@ -1,7 +1,7 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.collectors.adnade import AdnadeCollector
+from app.collectors.adnade import AdnadeCollector, parse_withdrawable_balance
 from app.collectors.base import KIND_AUTH, KIND_SHAPE
 
 
@@ -37,6 +37,11 @@ def test_adnade_collector_logs_in_and_reads_withdrawable_balance():
     assert result.currency == "EUR"
 
 
+def test_adnade_balance_parser_handles_markup_between_label_and_amount():
+    html = "<td>Withdrawable balance:</td><td><strong>4.44</strong> EUR</td>"
+    assert parse_withdrawable_balance(html) == 4.44
+
+
 def test_adnade_collector_marks_login_redirect_as_auth_failure():
     result = _collect([_response("Login", url="https://adnade.net/login.php")])
     assert result.error_kind == KIND_AUTH
@@ -45,4 +50,3 @@ def test_adnade_collector_marks_login_redirect_as_auth_failure():
 def test_adnade_collector_marks_missing_balance_as_shape_failure():
     result = _collect([_response("Account Dashboard"), _response("Withdrawal page changed")])
     assert result.error_kind == KIND_SHAPE
-

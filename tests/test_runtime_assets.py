@@ -5,10 +5,32 @@ import base64
 import hashlib
 import io
 import zipfile
+from pathlib import Path
 from unittest.mock import patch
 
 from app import database, main, runtime_assets
 from app import worker_api
+
+
+def test_runtime_asset_path_uses_worker_data_mountpoint(monkeypatch):
+    class Container:
+        attrs = {"Mounts": [{"Destination": "/data", "Source": "/var/lib/docker/volumes/cashpilot_worker_data/_data"}]}
+
+    class Containers:
+        def get(self, container_id):
+            assert container_id == "worker-container"
+            return Container()
+
+    class Client:
+        containers = Containers()
+
+    monkeypatch.setenv("HOSTNAME", "worker-container")
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", "/data")
+    monkeypatch.setattr(worker_api.orchestrator, "_get_client", lambda: Client())
+
+    out = worker_api._docker_host_path(Path("/data/runtime-assets/adnade/chrome_profile_zip/chromeprofiledata"))
+
+    assert out == Path("/var/lib/docker/volumes/cashpilot_worker_data/_data/runtime-assets/adnade/chrome_profile_zip/chromeprofiledata")
 
 
 class TestRuntimeAssets:
@@ -79,6 +101,10 @@ class TestRuntimeAssets:
             buf = io.BytesIO()
             with zipfile.ZipFile(buf, "w") as zf:
                 zf.writestr("chromeprofiledata/.config/chromium/Default/Preferences", "{}")
+                zf.writestr(
+                    "chromeprofiledata/.config/chromium/Default/Extensions/fpdkjdnhkakefebpekbdhillbhonfjjp/3.0.10_0/manifest.json",
+                    "{}",
+                )
             spec = worker_api.DeploySpec(
                 image="img",
                 runtime_assets=[
@@ -97,9 +123,11 @@ class TestRuntimeAssets:
                 await worker_api._materialize_runtime_assets("adnade", spec)
 
             source = next(iter(spec.volumes))
-            assert source.replace("\\", "/").endswith("chrome_profile_zip/chromeprofiledata")
-            assert spec.volumes[source] == {"bind": "/config", "mode": "ro"}
-            assert (tmp_path / "adnade" / "chrome_profile_zip" / "chromeprofiledata" / ".config" / "chromium" / "Default" / "Preferences").exists()
+            assert "/chrome_profile_zip-" in source.replace("\\", "/")
+            assert spec.volumes[source] == {"bind": "/config", "mode": "rw"}
+            prefs = Path(source) / ".config" / "chromium" / "Default" / "Preferences"
+            assert prefs.exists()
+            assert (Path(source) / "cashpilot-extensions" / "fpdkjdnhkakefebpekbdhillbhonfjjp" / "manifest.json").exists()
 
         asyncio.run(run())
 
@@ -133,8 +161,9 @@ class TestRuntimeAssets:
             ):
                 await worker_api._materialize_runtime_assets("adnade", spec)
 
-            titan_sw = tmp_path / "adnade" / "chrome_profile_zip" / "chromeprofiledata" / ".config" / "chromium" / "Default" / "Extensions" / "flemjfpeajijmofcpgfgckfbmomdflck" / "0.1.6_0" / "service-worker.js"
-            dawn_bg = tmp_path / "adnade" / "chrome_profile_zip" / "chromeprofiledata" / ".config" / "chromium" / "Default" / "Extensions" / "fpdkjdnhkakefebpekbdhillbhonfjjp" / "3.0.10_0" / "background.js"
+            source = Path(next(iter(spec.volumes)))
+            titan_sw = source / ".config" / "chromium" / "Default" / "Extensions" / "flemjfpeajijmofcpgfgckfbmomdflck" / "0.1.6_0" / "service-worker.js"
+            dawn_bg = source / ".config" / "chromium" / "Default" / "Extensions" / "fpdkjdnhkakefebpekbdhillbhonfjjp" / "3.0.10_0" / "background.js"
             assert "agentConfig.isUserScriptsEnabled = true" in titan_sw.read_text()
             assert dawn_bg.read_text() == "dawn"
 
@@ -176,10 +205,15 @@ class TestRuntimeAssets:
             download.assert_awaited_once_with("https://assets.example/adnade-profile.zip.fernet", tmp_path / "adnade" / "chrome_profile_zip.download")
             decrypt.assert_called_once_with(encrypted, "fernet", key)
             source = next(iter(spec.volumes))
-            assert source.replace("\\", "/").endswith("chrome_profile_zip/chromeprofiledata")
-            assert (tmp_path / "adnade" / "chrome_profile_zip" / "chromeprofiledata" / ".config" / "chromium" / "Default" / "Preferences").exists()
+            assert "/chrome_profile_zip-" in source.replace("\\", "/")
+            assert (Path(source) / ".config" / "chromium" / "Default" / "Preferences").exists()
 
         asyncio.run(run())
+
+    def test_adnade_artifact_includes_network_cookies(self):
+        artifact = Path(r"D:\1. WORK_true\CashPilot\secret\providers\adnade\rebuild-20260813e\chromeprofiledata.adnade-dawn-titan.zip")
+        with zipfile.ZipFile(artifact) as zf:
+            assert "chromeprofiledata/.config/chromium/Default/Network/Cookies" in zf.namelist()
 
     def test_proxylite_user_id_is_masked_as_a_secret(self, tmp_path):
         async def run():

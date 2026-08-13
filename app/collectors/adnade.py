@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+from html import unescape
 
 import httpx
 
@@ -17,7 +18,9 @@ WITHDRAWAL_URL = f"{BASE_URL}/login.php?page=paid4use&navaction=auszahlung"
 
 
 def parse_withdrawable_balance(html: str) -> float:
-    match = re.search(r"Withdrawable\s+balance:\s*([\d.,]+)\s*EUR", html, re.IGNORECASE)
+    text = unescape(re.sub(r"<[^>]+>", " ", html))
+    text = re.sub(r"\s+", " ", text)
+    match = re.search(r"Withdrawable\s+balance:\s*([\d.,]+)\s*EUR", text, re.IGNORECASE)
     if not match:
         raise ValueError("Withdrawable balance field missing")
     return float(match.group(1).replace(",", ""))
@@ -78,4 +81,3 @@ class AdnadeCollector(BaseCollector):
                 error=str(exc),
                 error_kind=base.classify_exception(exc),
             )
-

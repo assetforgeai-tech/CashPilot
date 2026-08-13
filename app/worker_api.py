@@ -303,6 +303,37 @@ _EGRESS_MAX_BYTES = 128
 _EGRESS_CONFIG_DIR = Path(os.getenv("CASHPILOT_DATA_DIR", "/data")) / "egress"
 _EGRESS_CONFIG_FILE = _EGRESS_CONFIG_DIR / "sing-box.json"
 _RUNTIME_ASSET_DIR = Path(os.getenv("CASHPILOT_DATA_DIR", "/data")) / "runtime-assets"
+
+def _docker_host_path(path: Path) -> Path:
+    """Translate this worker's /data path to the host path Docker will mount.
+
+    The worker writes runtime assets inside its own /data. Docker bind mounts are
+    resolved by the host daemon, not by this container, so passing /data/... makes
+    the provider see an empty host directory. For the normal named-volume setup,
+    use this container's /data mountpoint on the host.
+    """
+    raw_path = str(path).replace("\\", "/")
+    data_dir_raw = os.getenv("CASHPILOT_DATA_DIR", "/data").rstrip("/")
+    try:
+        if raw_path != data_dir_raw and not raw_path.startswith(data_dir_raw + "/"):
+            return path
+        rel = raw_path[len(data_dir_raw) :].lstrip("/")
+    except Exception:
+        return path
+    try:
+        client = orchestrator._get_client()
+        self_id = os.getenv("HOSTNAME", "")
+        container = client.containers.get(self_id)
+        for mount in container.attrs.get("Mounts", []):
+            if str(mount.get("Destination", "")).rstrip("/") == data_dir_raw:
+                source = mount.get("Source")
+                if source:
+                    return Path(source) / rel
+    except Exception as exc:
+        logger.warning("Could not resolve host path for runtime asset %s: %s", path, exc)
+    return path
+
+_ADNADE_EXTENSION_IDS = ("flemjfpeajijmofcpgfgckfbmomdflck", "fpdkjdnhkakefebpekbdhillbhonfjjp")
 _ADNADE_TITAN_SERVICE_WORKER = (
     Path(".config")
     / "chromium"
@@ -1011,6 +1042,21 @@ def _runtime_asset_decrypt_key(asset: RuntimeAssetSpec, spec: DeploySpec, slug: 
         ).strip()
     return ""
 
+def _stage_adnade_unpacked_extensions(profile_root: Path) -> None:
+    source_root = profile_root / ".config" / "chromium" / "Default" / "Extensions"
+    target_root = profile_root / "cashpilot-extensions"
+    for ext_id in _ADNADE_EXTENSION_IDS:
+        ext_root = source_root / ext_id
+        if not ext_root.is_dir():
+            continue
+        versions = sorted((p for p in ext_root.iterdir() if (p / "manifest.json").is_file()), reverse=True)
+        if not versions:
+            continue
+        target = target_root / ext_id
+        if target.exists():
+            shutil.rmtree(target)
+        shutil.copytree(versions[0], target)
+
 def _patch_adnade_chrome_profile(profile_path: Path) -> None:
     service_worker = profile_path / _ADNADE_TITAN_SERVICE_WORKER
     try:
@@ -1063,19 +1109,21 @@ async def _materialize_runtime_assets(slug: str, spec: DeploySpec) -> None:
             payload = await _fetch_runtime_asset(provider, asset_kind)
             data = base64.b64decode(payload) if encoding in {"base64", "zip"} else payload.encode()
         if encoding == "zip":
-            if host_path.exists():
-                shutil.rmtree(host_path)
+            host_path = host_path.parent / f"{asset_kind}-{int(time.time())}-{uuid.uuid4().hex[:8]}"
             host_path.mkdir(parents=True, exist_ok=True)
             with zipfile.ZipFile(io.BytesIO(data)) as archive:
                 archive.extractall(host_path)
+            if slug == "adnade":
+                _stage_adnade_unpacked_extensions(host_path / "chromeprofiledata")
             if slug == "adnade" and asset_kind == "chrome_profile_zip":
                 _patch_adnade_chrome_profile(host_path / "chromeprofiledata")
-            spec.volumes[str(host_path / "chromeprofiledata")] = {"bind": target, "mode": "ro"}
+            mode = "rw" if slug == "adnade" and target == "/config" else "ro"
+            spec.volumes[str(_docker_host_path(host_path / "chromeprofiledata"))] = {"bind": target, "mode": mode}
             continue
         host_path.write_bytes(data)
         with contextlib.suppress(OSError):
             host_path.chmod(0o600)
-        spec.volumes[str(host_path)] = {"bind": target, "mode": "ro"}
+        spec.volumes[str(_docker_host_path(host_path))] = {"bind": target, "mode": "ro"}
 
 _BLOCKED_VOLUME_ROOTS = {
     "/",

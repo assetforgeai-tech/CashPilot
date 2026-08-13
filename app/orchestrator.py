@@ -235,12 +235,18 @@ def deploy_raw(
         username = str(deploy_credentials.get("username") or "").strip()
         env["ADNADE_USERNAME"] = username
         env["ADNADE_USE_CHROME"] = "true"
-        env["CUSTOM_PORT"] = str(env.get("CUSTOM_PORT") or "3000")
-        env["CUSTOM_HTTPS_PORT"] = str(env.get("CUSTOM_HTTPS_PORT") or "3001")
+        env["CUSTOM_PORT"] = str(env.get("CUSTOM_PORT") or "3500")
+        env["CUSTOM_HTTPS_PORT"] = str(env.get("CUSTOM_HTTPS_PORT") or "3501")
         env["CUSTOM_USER"] = str(env.get("CUSTOM_USER") or "internetincome")
         env["PASSWORD"] = str(env.get("PASSWORD") or "internetincome")
+        env["PUID"] = str(env.get("PUID") or "1000")
+        env["PGID"] = str(env.get("PGID") or "1000")
         env["TZ"] = str(env.get("TZ") or "Etc/UTC")
-        env["CHROME_CLI"] = f"https://adnade.net/view.php?user={username}&multi=4"
+        extensions = (
+            "/config/.config/chromium/Default/Extensions/flemjfpeajijmofcpgfgckfbmomdflck/0.1.6_0,"
+            "/config/.config/chromium/Default/Extensions/fpdkjdnhkakefebpekbdhillbhonfjjp/3.0.10_0"
+        )
+        env["CHROME_CLI"] = f"--load-extension={extensions} https://adnade.net/view.php?user={username}&multi=4"
 
     # Remove any existing container with the same name
     try:
@@ -275,6 +281,11 @@ def deploy_raw(
     }
 
     logger.info("Creating container %s from %s", name, image)
+    # linuxserver/chromium initializes nginx/dbus inside the container and needs
+    # Docker's default CHOWN/SETUID-style caps during boot. Dropping every cap
+    # leaves the browser UI port open but nginx dead-looping on chown.
+    cap_drop = None if slug == "adnade" else ["ALL"]
+
     container = client.containers.run(
         image=image,
         name=name,
@@ -289,7 +300,7 @@ def deploy_raw(
         # in-container root with Docker's full default set, which includes NET_RAW
         # (ARP/DNS spoofing on the bridge), MKNOD, SETUID and SYS_CHROOT.
         devices=devices or None,
-        cap_drop=["ALL"],
+        cap_drop=cap_drop,
         cap_add=cap_add or None,
         # no-new-privileges blocks privilege escalation via setuid binaries; privileged
         # is hardcoded off so the dangerous state is unrepresentable here rather than
