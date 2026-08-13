@@ -27,6 +27,10 @@ async def page_dashboard(request: Request):
         return RedirectResponse("/login", status_code=303)
     return deps.templates.TemplateResponse(request, "dashboard.html", {"user": user})
 
+@router.get("/dashboard", response_class=HTMLResponse)
+async def page_dashboard_alias(request: Request):
+    return await page_dashboard(request)
+
 
 @router.get("/setup", response_class=HTMLResponse)
 async def page_setup(request: Request):

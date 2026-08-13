@@ -356,12 +356,13 @@ async def api_proxy_pool_import(request: Request, body: ProxyImportIn) -> dict[s
     proxies = _parse_proxy_import(body.text)
     if not proxies:
         raise HTTPException(status_code=400, detail="No valid proxies found")
-    await database.upsert_proxy_endpoints(provider_id, proxies)
+    last_id = await database.upsert_proxy_endpoints(provider_id, proxies)
     result: dict[str, Any] = {"status": "ok", "imported": len(proxies), "provider_id": provider_id}
     if body.recheck:
         config = await database.get_config() or {}
         settings = _proxy_scheduler_settings(config if isinstance(config, dict) else {})
-        result["recheck"] = await run_proxy_pool_recheck(proxy_ids=None, concurrency=body.concurrency or settings["concurrency"])
+        recent_ids = list(range(max(1, int(last_id or 0) - len(proxies) + 1), int(last_id or 0) + 1)) if last_id else []
+        result["recheck"] = await run_proxy_pool_recheck(proxy_ids=recent_ids or None, concurrency=body.concurrency or settings["concurrency"])
     return result
 
 @router.post("/api/proxy-pool/recheck")

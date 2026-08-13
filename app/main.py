@@ -19,7 +19,6 @@ import time
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from zoneinfo import ZoneInfo
 
 import httpx
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MISSED
@@ -186,25 +185,6 @@ async def _run_proxy_pool_recheck_scheduler() -> None:
         result.get("rotated", 0),
         result.get("rotate_errors", 0),
     )
-
-async def _run_proxy_provider_expiry_sync() -> None:
-    from app.proxy_providers.vtproxy import sync_vtproxy_provider
-
-    providers = await database.list_proxy_providers()
-    synced = 0
-    for provider in providers:
-        if not provider.get("enabled") or provider.get("type") != "vtproxy":
-            continue
-        full = await database.get_proxy_provider(int(provider["id"]), include_secret=True)
-        if not full:
-            continue
-        try:
-            await sync_vtproxy_provider(full)
-            synced += 1
-        except Exception as exc:
-            logger.warning("Proxy provider expiry sync failed for %s: %s", provider.get("name"), exc)
-    logger.info("Proxy provider expiry sync complete synced=%s", synced)
-
 
 # Login rate limiting moved to app.login_rate_limit (bead sux) — it was the last
 # thing the routers genuinely needed from this module, and extracting it is what
@@ -1162,17 +1142,6 @@ async def lifespan(app: FastAPI):
         "interval",
         minutes=1,
         id="proxy_pool_recheck",
-        max_instances=1,
-        coalesce=True,
-        misfire_grace_time=300,
-    )
-    scheduler.add_job(
-        _run_proxy_provider_expiry_sync,
-        "cron",
-        hour=2,
-        minute=0,
-        timezone=ZoneInfo("Asia/Ho_Chi_Minh"),
-        id="proxy_provider_expiry_sync",
         max_instances=1,
         coalesce=True,
         misfire_grace_time=300,
@@ -2620,21 +2589,8 @@ async def api_earnings_summary(request: Request) -> dict[str, Any]:
             total_adjusted += adjusted
             total_bonus_usd += bonus
 
-    # Count active (running) services from worker data.
-    #
-    # None, not 0, when the count could not be taken. _get_all_worker_containers
-    # opens SQLite, so a locked or busy database — or a JSON-decode failure on a
-    # worker row — lands here while containers are in fact running, and "0"
-    # reads as "nothing is running". Logged at WARNING rather than DEBUG: DEBUG
-    # is off in production, so the only two places that could have said anything
-    # both said nothing (CashPilot-45k).
-    active: int | None = None
-    try:
-        worker_containers = await _get_all_worker_containers()
-        active = sum(1 for s in worker_containers if s.get("status") == "running")
-    except Exception as exc:
-        logger.warning("Could not count active services, reporting it as unknown: %s", exc)
-    summary["active_services"] = active
+    deployments = await database.get_deployments()
+    summary["active_services"] = sum(1 for d in deployments if str(d.get("status") or "") != "removed")
     # A total that silently omits holdings is indistinguishable from a correct
     # one. The count was already being computed in database.py and only logged;
     # it now reaches the caller so the card can say the figure is partial.
