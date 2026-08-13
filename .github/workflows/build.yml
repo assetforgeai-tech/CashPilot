@@ -74,6 +74,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - name: Check approved deploy baseline
+        run: python3 scripts/check_deploy_baseline.py
       - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
