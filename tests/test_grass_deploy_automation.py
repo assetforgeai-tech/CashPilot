@@ -218,7 +218,10 @@ def test_deploy_raw_maps_adnade_username_to_chrome_url():
     assert env["CUSTOM_HTTPS_PORT"] == "3501"
     assert env["PUID"] == "1000"
     assert env["PGID"] == "1000"
-    assert env["CHROME_CLI"] == "--incognito https://adnade.net/view.php?user=assetforge&multi=4"
+    assert env["CHROME_CLI"].startswith("--incognito --load-extension=")
+    assert "fpdkjdnhkakefebpekbdhillbhonfjjp" in env["CHROME_CLI"]
+    assert "flemjfpeajijmofcpgfgckfbmomdflck" in env["CHROME_CLI"]
+    assert env["CHROME_CLI"].endswith("https://adnade.net/view.php?user=assetforge&multi=4")
     assert client.containers.run.call_args.kwargs["cap_drop"] is None
 
 

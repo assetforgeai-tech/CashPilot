@@ -242,7 +242,11 @@ def deploy_raw(
         env["PUID"] = str(env.get("PUID") or "1000")
         env["PGID"] = str(env.get("PGID") or "1000")
         env["TZ"] = str(env.get("TZ") or "Etc/UTC")
-        env["CHROME_CLI"] = f"--incognito https://adnade.net/view.php?user={username}&multi=4"
+        extensions = (
+            "/config/.config/chromium/Default/Extensions/flemjfpeajijmofcpgfgckfbmomdflck/0.1.6_0,"
+            "/config/.config/chromium/Default/Extensions/fpdkjdnhkakefebpekbdhillbhonfjjp/3.0.10_0"
+        )
+        env["CHROME_CLI"] = f"--incognito --load-extension={extensions} https://adnade.net/view.php?user={username}&multi=4"
 
     # Remove any existing container with the same name
     try:
