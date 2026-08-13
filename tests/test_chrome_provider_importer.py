@@ -15,10 +15,10 @@ def test_importer_extension_manifest_is_loadable():
 
 
 def test_importer_saves_through_cashpilot_settings_api_only():
-    saver = (EXT / "save_to_cashpilot.js").read_text(encoding="utf-8")
-    assert 'fetch("/api/config"' in saver
-    assert 'credentials: "same-origin"' in saver
-    assert "http://42.96.13.215" not in saver
+    popup = (EXT / "popup.js").read_text(encoding="utf-8")
+    assert 'fetch("/api/config"' in popup
+    assert 'credentials: "same-origin"' in popup
+    assert "http://42.96.13.215" in popup
 
 
 def test_importer_has_explicit_provider_key_mapping():
@@ -42,3 +42,10 @@ def test_popup_requires_scan_before_save_and_hides_values():
     assert 'document.getElementById("save").disabled = true' in popup
     assert "Object.keys(payload.data)" in popup
     assert "JSON.stringify(payload.data)" not in popup
+
+
+def test_popup_saves_in_one_script_injection():
+    popup = (EXT / "popup.js").read_text(encoding="utf-8")
+    assert popup.count("chrome.scripting.executeScript") == 2
+    assert "files: [\"save_to_cashpilot.js\"]" not in popup
+    assert "window.__cashpilotSaveImportedProviderConfig" not in popup

@@ -59,16 +59,24 @@ async function save() {
       throw new Error(`Open ${server}/settings and sign in first`);
     }
     const tab = tabs.find(t => (t.url || "").includes("/settings")) || tabs[0];
-    const [result] = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      files: ["save_to_cashpilot.js"],
-    });
     const saved = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      func: payload => window.__cashpilotSaveImportedProviderConfig(payload),
+      func: async payload => {
+        const resp = await fetch("/api/config", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data: payload?.data || {} }),
+        });
+        if (!resp.ok) {
+          const detail = await resp.text().catch(() => "");
+          return { status: "error", error: `${resp.status} ${detail}`.trim() };
+        }
+        return { status: "saved" };
+      },
       args: [{ data: lastImport.data }],
     });
-    if (result && saved[0]?.result?.status === "saved") {
+    if (saved[0]?.result?.status === "saved") {
       setStatus(`<div class="ok">Saved ${Object.keys(lastImport.data).length} setting(s) to CashPilot.</div>`);
       document.getElementById("save").disabled = true;
       return;
