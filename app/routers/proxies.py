@@ -7,6 +7,9 @@ from typing import Any
 import asyncio
 import csv
 import io
+import json
+import re
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse
@@ -39,6 +42,98 @@ class ProxySchedulerIn(BaseModel):
     enabled: bool = False
     interval_minutes: int = 15
     concurrency: int = 8
+
+class ProxyImportIn(BaseModel):
+    text: str
+    provider_name: str = "manual"
+    recheck: bool = True
+    concurrency: int | None = None
+
+def _normalize_proxy_record(parts: list[str], *, location: str = "", protocol: str = "") -> dict[str, Any] | None:
+    if len(parts) == 1 and not protocol:
+        value = parts[0].strip()
+        if not value:
+            return None
+        if value.startswith("{") and value.endswith("}"):
+            try:
+                obj = json.loads(value)
+            except Exception:
+                obj = {}
+            if isinstance(obj, dict):
+                host = str(obj.get("host") or obj.get("ip") or "").strip()
+                port = int(obj.get("port") or 0)
+                if host and port > 0:
+                    return {
+                        "host": host,
+                        "port": port,
+                        "username": str(obj.get("username") or obj.get("user") or "").strip(),
+                        "password": str(obj.get("password") or obj.get("pass") or "").strip(),
+                        "protocol": str(obj.get("protocol") or "socks5").strip().lower(),
+                        "location": str(obj.get("location") or location or "").strip(),
+                    }
+            return None
+        parsed = urlparse(value if "://" in value else f"//{value}", scheme="socks5")
+        host = parsed.hostname or ""
+        port = int(parsed.port or 0)
+        if not host or port <= 0:
+            return None
+        return {
+            "host": host,
+            "port": port,
+            "username": parsed.username or "",
+            "password": parsed.password or "",
+            "protocol": (parsed.scheme or protocol or "socks5").lower(),
+            "location": location,
+        }
+    if len(parts) >= 4 and re.match(r"^\d+\.\d+\.\d+\.\d+$", parts[0].strip()) and parts[1].strip().isdigit():
+        host, port = parts[0].strip(), int(parts[1].strip())
+        username = parts[2].strip()
+        password = parts[3].strip()
+        proto = protocol or (parts[4].strip().lower() if len(parts) > 4 and parts[4].strip().lower() in {"http", "socks5"} else "socks5")
+        if len(parts) > 5 and parts[5].strip():
+            location = parts[5].strip()
+        return {"host": host, "port": port, "username": username, "password": password, "protocol": proto, "location": location}
+    if len(parts) >= 2 and parts[0].strip() and parts[1].strip().isdigit():
+        host, port = parts[0].strip(), int(parts[1].strip())
+        username = parts[2].strip() if len(parts) > 2 else ""
+        password = parts[3].strip() if len(parts) > 3 else ""
+        proto = protocol or (parts[4].strip().lower() if len(parts) > 4 and parts[4].strip().lower() in {"http", "socks5"} else "socks5")
+        if len(parts) > 5 and parts[5].strip():
+            location = parts[5].strip()
+        return {"host": host, "port": port, "username": username, "password": password, "protocol": proto, "location": location}
+    return None
+
+def _parse_proxy_import(text: str) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for raw_line in str(text or "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("#"):
+            continue
+        if line.startswith("{") and line.endswith("}"):
+            parsed = _normalize_proxy_record([line])
+            if parsed:
+                rows.append(parsed)
+            continue
+        if "\t" in line or "," in line:
+            delimiter = "\t" if "\t" in line else ","
+            parts = [part.strip() for part in line.split(delimiter)]
+            parsed = _normalize_proxy_record(parts)
+            if parsed:
+                rows.append(parsed)
+            continue
+        if "@" in line or "://" in line:
+            parsed = _normalize_proxy_record([line])
+            if parsed:
+                rows.append(parsed)
+            continue
+        if ":" in line:
+            parts = [part.strip() for part in line.split(":")]
+            parsed = _normalize_proxy_record(parts)
+            if parsed:
+                rows.append(parsed)
+    return rows
 
 async def _probe_proxy(host: str, port: int, timeout: float = 5.0) -> dict[str, str]:
     host = host.strip()
@@ -222,9 +317,15 @@ async def api_proxy_pool_scheduler_save(request: Request, body: ProxySchedulerIn
     return {"status": "ok", **settings}
 
 @router.get("/api/proxy-pool/export")
-async def api_proxy_pool_export(request: Request, status: str | None = None) -> PlainTextResponse:
+async def api_proxy_pool_export(
+    request: Request,
+    status: str | None = None,
+    provider: str | None = None,
+    location: str | None = None,
+    protocol: str | None = None,
+) -> PlainTextResponse:
     deps._require_owner(request)
-    rows = await database.export_proxy_pool(status=status)
+    rows = await database.export_proxy_pool(status=status, provider=provider, location=location, protocol=protocol)
     buf = io.StringIO()
     writer = csv.DictWriter(
         buf,
@@ -244,6 +345,24 @@ async def api_proxy_pool_export(request: Request, status: str | None = None) -> 
     writer.writeheader()
     writer.writerows(rows)
     return PlainTextResponse(buf.getvalue(), media_type="text/csv")
+
+@router.post("/api/proxy-pool/import")
+async def api_proxy_pool_import(request: Request, body: ProxyImportIn) -> dict[str, Any]:
+    deps._require_owner(request)
+    if not body.text.strip():
+        raise HTTPException(status_code=400, detail="Proxy input is required")
+    provider_name = body.provider_name.strip() or "manual"
+    provider_id = await database.upsert_proxy_provider(provider_name, "manual", enabled=True)
+    proxies = _parse_proxy_import(body.text)
+    if not proxies:
+        raise HTTPException(status_code=400, detail="No valid proxies found")
+    await database.upsert_proxy_endpoints(provider_id, proxies)
+    result: dict[str, Any] = {"status": "ok", "imported": len(proxies), "provider_id": provider_id}
+    if body.recheck:
+        config = await database.get_config() or {}
+        settings = _proxy_scheduler_settings(config if isinstance(config, dict) else {})
+        result["recheck"] = await run_proxy_pool_recheck(proxy_ids=None, concurrency=body.concurrency or settings["concurrency"])
+    return result
 
 @router.post("/api/proxy-pool/recheck")
 async def api_proxy_pool_recheck(request: Request, body: ProxyRecheckIn) -> dict[str, Any]:

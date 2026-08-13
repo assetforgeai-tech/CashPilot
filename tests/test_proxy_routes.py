@@ -127,6 +127,25 @@ def test_proxy_pool_export_and_recheck_are_owner_only_and_wired(client):
     assert recheck.json()["checked"] == 3
     mark.assert_awaited_once_with(proxy_ids=[1, 2, 3], concurrency=4)
 
+def test_proxy_pool_import_supports_paste_payloads(client):
+    payload = """1.1.1.1:1000
+2.2.2.2:2000:user:pass
+http://3.3.3.3:3000
+socks5://user:pass@4.4.4.4:4000
+"""
+    with (
+        patch("app.main.auth.get_current_user", return_value=_owner_user()),
+        patch("app.routers.proxies.database.upsert_proxy_provider", new_callable=AsyncMock, return_value=9),
+        patch("app.routers.proxies.database.upsert_proxy_endpoints", new_callable=AsyncMock, return_value=4) as upsert,
+        patch("app.routers.proxies.database.get_config", new_callable=AsyncMock, return_value={}),
+        patch("app.routers.proxies.run_proxy_pool_recheck", new_callable=AsyncMock, return_value={"checked": 4, "alive": 4, "dead": 0, "rotated": 0}) as recheck,
+    ):
+        resp = client.post("/api/proxy-pool/import", json={"text": payload, "provider_name": "manual", "recheck": True})
+    assert resp.status_code == 200
+    assert resp.json()["imported"] == 4
+    upsert.assert_awaited_once()
+    recheck.assert_awaited_once()
+
 def test_proxy_pool_scheduler_settings_are_persisted(client):
     with (
         patch("app.main.auth.get_current_user", return_value=_owner_user()),
@@ -136,6 +155,26 @@ def test_proxy_pool_scheduler_settings_are_persisted(client):
         resp = client.post("/api/proxy-pool/scheduler", json={"enabled": True, "interval_minutes": 30, "concurrency": 6})
     assert resp.status_code == 200
     save.assert_awaited_once()
+
+def test_proxy_pool_export_filters_by_provider_and_location(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("vtproxy", "vtproxy")
+            await database.upsert_proxy_endpoints(
+                provider_id,
+                [
+                    {"provider_proxy_id": "a", "endpoint": "1.1.1.1:1000", "host": "1.1.1.1", "port": 1000, "location": "sg", "status": "alive"},
+                    {"provider_proxy_id": "b", "endpoint": "2.2.2.2:1000", "host": "2.2.2.2", "port": 1000, "location": "us", "status": "dead"},
+                ],
+            )
+            rows = await database.export_proxy_pool(provider="vtproxy", location="sg")
+            assert len(rows) == 1
+            assert rows[0]["location"] == "sg"
+
+    import asyncio
+
+    asyncio.run(run())
 
 def test_proxy_lease_picks_one_unassigned_proxy_per_worker(tmp_path):
     async def run():
@@ -176,7 +215,7 @@ def test_proxy_pool_export_can_filter_by_protocol(tmp_path):
                     {"provider_proxy_id": "b", "endpoint": "2.2.2.2:1000", "host": "2.2.2.2", "port": 1000, "protocol": "socks5"},
                 ],
             )
-            rows = await database.export_proxy_pool(status="http")
+            rows = await database.export_proxy_pool(protocol="http")
             assert [row["protocol"] for row in rows] == ["http"]
 
     import asyncio

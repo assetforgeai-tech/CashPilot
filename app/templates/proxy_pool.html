@@ -27,14 +27,28 @@
   </div>
   <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;">
     <input class="form-input" id="pool-search" type="search" placeholder="Search provider, endpoint, location, status" style="max-width:360px;">
+    <select class="form-select" id="pool-provider-filter" style="max-width:180px;"><option value="">All providers</option></select>
+    <select class="form-select" id="pool-location-filter" style="max-width:180px;"><option value="">All locations</option></select>
     <button class="btn btn-secondary btn-sm" id="pool-recheck-selected">Recheck selected</button>
     <button class="btn btn-secondary btn-sm" id="pool-recheck-all">Recheck all</button>
     <button class="btn btn-ghost btn-sm" id="pool-export-filtered">Export filtered</button>
-    <button class="btn btn-ghost btn-sm" id="pool-export-alive">Export alive</button>
-    <button class="btn btn-ghost btn-sm" id="pool-export-dead">Export dead</button>
+    <button class="btn btn-ghost btn-sm" id="pool-export-provider">Export provider</button>
+    <button class="btn btn-ghost btn-sm" id="pool-export-location">Export location</button>
     <button class="btn btn-ghost btn-sm" id="pool-export-http">Export http</button>
     <button class="btn btn-ghost btn-sm" id="pool-export-socks5">Export socks5</button>
     <span id="pool-result" style="font-size:0.8rem;color:var(--text-muted);"></span>
+  </div>
+  <div style="display:grid;grid-template-columns:minmax(240px,1fr) minmax(160px,220px) auto auto;gap:8px;align-items:end;margin-bottom:12px;">
+    <div>
+      <label class="form-label" for="pool-import-text">Paste proxies</label>
+      <textarea class="form-textarea" id="pool-import-text" rows="4" placeholder="host:port, host:port:user:pass, user:pass@host:port, CSV, JSONL"></textarea>
+    </div>
+    <div>
+      <label class="form-label" for="pool-import-provider">Provider</label>
+      <input class="form-input" id="pool-import-provider" value="manual">
+    </div>
+    <input class="form-input" id="pool-import-file" type="file" accept=".txt,.csv,.json,.jsonl">
+    <button class="btn btn-primary btn-sm" id="pool-import-submit">Import proxies</button>
   </div>
   <div class="table-wrap">
     <table class="data-table operator-table proxy-pool-table">
@@ -69,7 +83,11 @@ let poolSort = {key: 'provider_name', dir: 1};
 const poolPageSize = 20;
 function filteredPool() {
   const q = (document.getElementById('pool-search').value || '').toLowerCase();
-  return poolRows.filter(p => !q || ['provider_name','endpoint','protocol','location','status','expiry_date','assigned_worker_id'].some(k => String(p[k] ?? '').toLowerCase().includes(q)))
+  const provider = document.getElementById('pool-provider-filter').value;
+  const location = document.getElementById('pool-location-filter').value;
+  return poolRows.filter(p => (!q || ['provider_name','endpoint','protocol','location','status','expiry_date','assigned_worker_id'].some(k => String(p[k] ?? '').toLowerCase().includes(q)))
+      && (!provider || String(p.provider_name || '') === provider)
+      && (!location || String(p.location || '') === location))
     .sort((a, b) => String(a[poolSort.key] ?? '').localeCompare(String(b[poolSort.key] ?? '')) * poolSort.dir);
 }
 function countBadge(label, value) {
@@ -91,6 +109,7 @@ function renderPool() {
     socks5: poolRows.filter(p => String(p.protocol || '').toLowerCase() === 'socks5').length,
   };
   document.getElementById('pool-type-counts').innerHTML = Object.entries(types).map(([k,v]) => countBadge(k, v)).join('');
+  renderPoolFilters();
   const pages = Math.max(1, Math.ceil(rows.length / poolPageSize));
   if (poolPage > pages) poolPage = pages;
   const visible = rows.slice((poolPage - 1) * poolPageSize, poolPage * poolPageSize);
@@ -109,6 +128,15 @@ function renderPool() {
     <button class="btn btn-ghost btn-sm" id="pool-prev" ${poolPage <= 1 ? 'disabled' : ''}>Prev</button>
     <span style="font-size:0.8rem;color:var(--text-muted);">Page ${poolPage} / ${pages} (${rows.length})</span>
     <button class="btn btn-ghost btn-sm" id="pool-next" ${poolPage >= pages ? 'disabled' : ''}>Next</button>`;
+}
+function renderPoolFilters() {
+  for (const [id, key, label] of [['pool-provider-filter','provider_name','All providers'], ['pool-location-filter','location','All locations']]) {
+    const el = document.getElementById(id);
+    const current = el.value;
+    const values = [...new Set(poolRows.map(p => String(p[key] || '').trim()).filter(Boolean))].sort();
+    el.innerHTML = `<option value="">${label}</option>` + values.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+    el.value = values.includes(current) ? current : '';
+  }
 }
 function selectedPoolIds() {
   return [...document.querySelectorAll('.pool-select:checked')].map(x => Number(x.value)).filter(Boolean);
@@ -145,8 +173,18 @@ async function recheckPool(ids) {
   loadPool();
 }
 function exportPool(status) {
-  const suffix = status ? `?status=${encodeURIComponent(status)}` : '';
+  const params = new URLSearchParams();
+  if (status === 'http' || status === 'socks5') params.set('protocol', status);
+  else if (status) params.set('status', status);
+  const suffix = params.toString() ? `?${params.toString()}` : '';
   window.location.href = `/api/proxy-pool/export${suffix}`;
+}
+function exportPoolScope(kind) {
+  const params = new URLSearchParams();
+  const value = document.getElementById(kind === 'provider' ? 'pool-provider-filter' : 'pool-location-filter').value;
+  if (!value) { alert(`Choose a ${kind} first`); return; }
+  params.set(kind, value);
+  window.location.href = `/api/proxy-pool/export?${params.toString()}`;
 }
 function csvCell(value) {
   return `"${String(value ?? '').replaceAll('"', '""')}"`;
@@ -163,16 +201,29 @@ function exportFilteredPool() {
   URL.revokeObjectURL(url);
 }
 document.getElementById('pool-search').addEventListener('input', () => { poolPage = 1; renderPool(); });
+document.getElementById('pool-provider-filter').addEventListener('change', () => { poolPage = 1; renderPool(); });
+document.getElementById('pool-location-filter').addEventListener('change', () => { poolPage = 1; renderPool(); });
 document.getElementById('pool-select-all').addEventListener('change', ev => { document.querySelectorAll('.pool-select').forEach(x => x.checked = ev.target.checked); updatePoolSelectionCount(); });
 document.getElementById('pool-rows').addEventListener('change', ev => { if (ev.target.classList.contains('pool-select')) updatePoolSelectionCount(); });
 document.getElementById('pool-recheck-selected').addEventListener('click', () => recheckPool(selectedPoolIds()));
 document.getElementById('pool-recheck-all').addEventListener('click', () => recheckPool(null));
 document.getElementById('pool-scheduler-save').addEventListener('click', saveScheduler);
 document.getElementById('pool-export-filtered').addEventListener('click', exportFilteredPool);
-document.getElementById('pool-export-alive').addEventListener('click', () => exportPool('alive'));
-document.getElementById('pool-export-dead').addEventListener('click', () => exportPool('dead'));
+document.getElementById('pool-export-provider').addEventListener('click', () => exportPoolScope('provider'));
+document.getElementById('pool-export-location').addEventListener('click', () => exportPoolScope('location'));
 document.getElementById('pool-export-http').addEventListener('click', () => exportPool('http'));
 document.getElementById('pool-export-socks5').addEventListener('click', () => exportPool('socks5'));
+document.getElementById('pool-import-submit').addEventListener('click', async () => {
+  const file = document.getElementById('pool-import-file').files[0];
+  const text = (document.getElementById('pool-import-text').value || '') + (file ? `\n${await file.text()}` : '');
+  if (!text.trim()) { alert('Paste proxies or choose a file first'); return; }
+  if (!confirm('Import proxies into pool?')) return;
+  const res = await fetch('/api/proxy-pool/import', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({text, provider_name: document.getElementById('pool-import-provider').value || 'manual', recheck: true, concurrency: schedulerBody().concurrency})}).then(r => r.json());
+  document.getElementById('pool-result').textContent = `Imported ${res.imported || 0}`;
+  document.getElementById('pool-import-text').value = '';
+  document.getElementById('pool-import-file').value = '';
+  loadPool();
+});
 document.getElementById('pool-pager').addEventListener('click', ev => { if (ev.target.id === 'pool-prev') poolPage--; if (ev.target.id === 'pool-next') poolPage++; renderPool(); });
 document.querySelector('thead').addEventListener('click', ev => { const key = ev.target.dataset.sort; if (!key) return; poolSort = {key, dir: poolSort.key === key ? -poolSort.dir : 1}; renderPool(); });
 loadPool();

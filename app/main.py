@@ -19,6 +19,7 @@ import time
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MISSED
@@ -185,6 +186,24 @@ async def _run_proxy_pool_recheck_scheduler() -> None:
         result.get("rotated", 0),
         result.get("rotate_errors", 0),
     )
+
+async def _run_proxy_provider_expiry_sync() -> None:
+    from app.proxy_providers.vtproxy import sync_vtproxy_provider
+
+    providers = await database.list_proxy_providers()
+    synced = 0
+    for provider in providers:
+        if not provider.get("enabled") or provider.get("type") != "vtproxy":
+            continue
+        full = await database.get_proxy_provider(int(provider["id"]), include_secret=True)
+        if not full:
+            continue
+        try:
+            await sync_vtproxy_provider(full)
+            synced += 1
+        except Exception as exc:
+            logger.warning("Proxy provider expiry sync failed for %s: %s", provider.get("name"), exc)
+    logger.info("Proxy provider expiry sync complete synced=%s", synced)
 
 
 # Login rate limiting moved to app.login_rate_limit (bead sux) — it was the last
@@ -1143,6 +1162,17 @@ async def lifespan(app: FastAPI):
         "interval",
         minutes=1,
         id="proxy_pool_recheck",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=300,
+    )
+    scheduler.add_job(
+        _run_proxy_provider_expiry_sync,
+        "cron",
+        hour=2,
+        minute=0,
+        timezone=ZoneInfo("Asia/Ho_Chi_Minh"),
+        id="proxy_provider_expiry_sync",
         max_instances=1,
         coalesce=True,
         misfire_grace_time=300,

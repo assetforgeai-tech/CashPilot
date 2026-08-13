@@ -2615,16 +2615,26 @@ async def _repair_myst_wallet_addresses(db: aiosqlite.Connection, *, limit: int 
     if changed:
         await db.commit()
 
-async def export_proxy_pool(*, status: str | None = None) -> list[dict[str, Any]]:
+async def export_proxy_pool(
+    *,
+    status: str | None = None,
+    provider: str | None = None,
+    location: str | None = None,
+    protocol: str | None = None,
+) -> list[dict[str, Any]]:
     rows = await list_proxy_pool()
-    wanted = (status or "").strip().lower()
-    if wanted:
-        rows = [
-            row
-            for row in rows
-            if str(row.get("status") or "").strip().lower() == wanted
-            or str(row.get("protocol") or "").strip().lower() == wanted
-        ]
+    wanted_status = (status or "").strip().lower()
+    wanted_provider = (provider or "").strip().lower()
+    wanted_location = (location or "").strip().lower()
+    wanted_protocol = (protocol or "").strip().lower()
+    if wanted_status:
+        rows = [row for row in rows if str(row.get("status") or "").strip().lower() == wanted_status]
+    if wanted_provider:
+        rows = [row for row in rows if str(row.get("provider_name") or "").strip().lower() == wanted_provider]
+    if wanted_location:
+        rows = [row for row in rows if str(row.get("location") or "").strip().lower() == wanted_location]
+    if wanted_protocol:
+        rows = [row for row in rows if str(row.get("protocol") or "").strip().lower() == wanted_protocol]
     return rows
 
 async def update_proxy_pool_check_results(results: Mapping[int, str], *, protocols: Mapping[int, str] | None = None) -> int:
