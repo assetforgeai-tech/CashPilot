@@ -38,26 +38,31 @@
       <label class="form-label" for="myst-wallet-search">Search</label>
       <input class="form-input" id="myst-wallet-search" type="search" placeholder="Fingerprint, lease, identity, IP" data-action="applyMystWalletFilters" />
     </div>
+    <button class="btn btn-ghost btn-sm" data-action="exportMystWallets" data-a1="">Export filtered</button>
+    <button class="btn btn-ghost btn-sm" data-action="exportMystWallets" data-a1="FUNDED">Export funded</button>
+    <button class="btn btn-ghost btn-sm" data-action="exportMystWallets" data-a1="UNFUNDED">Export unfunded</button>
   </div>
+  <div id="myst-wallet-counts" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:14px;"></div>
 
   <div class="table-wrap" style="margin-top:20px;">
     <table class="data-table">
       <thead>
         <tr>
-          <th>ID</th>
-          <th>Fingerprint</th>
-          <th>State</th>
-          <th>Funding</th>
-          <th>Lease</th>
-          <th>Release</th>
-          <th>Version</th>
-          <th>Heartbeat</th>
+          <th data-myst-sort="id">ID</th>
+          <th data-myst-sort="wallet_fingerprint">Fingerprint</th>
+          <th data-myst-sort="state">State</th>
+          <th data-myst-sort="funding">Funding</th>
+          <th data-myst-sort="leased_to_client_id">Lease</th>
+          <th data-myst-sort="release_reason">Release</th>
+          <th data-myst-sort="wallet_assignment_version">Version</th>
+          <th data-myst-sort="last_heartbeat_at">Heartbeat</th>
           <th>Actions</th>
         </tr>
       </thead>
       <tbody id="myst-wallet-list"></tbody>
     </table>
   </div>
+  <div id="myst-wallet-pager" style="display:flex; gap:8px; align-items:center; justify-content:flex-end; margin-top:12px;"></div>
   <div id="myst-wallet-refresh-status" class="empty-state" style="display:none; margin-top:16px;"></div>
 </section>
 {% endblock %}

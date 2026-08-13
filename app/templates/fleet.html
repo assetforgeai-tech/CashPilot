@@ -72,6 +72,10 @@ CASHPILOT_WORKER_URL=http://public-vps-ip:8081</code>
 <div class="section-header">
   <h2 class="section-title">Workers</h2>
 </div>
+<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;">
+  <input class="form-input" id="fleet-search" type="search" placeholder="Search worker, URL, IP, provider state" style="max-width:360px;">
+  <span id="fleet-counts" style="display:flex;flex-wrap:wrap;gap:8px;"></span>
+</div>
 
 <!-- Is this fleet worth running?
      The card needs an electricity price to answer that, and until now there was
@@ -109,6 +113,7 @@ CASHPILOT_WORKER_URL=http://public-vps-ip:8081</code>
     <div class="empty-state-title">Loading fleet...</div>
   </div>
 </div>
+<div id="fleet-pager" style="display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:12px;"></div>
 {% endblock %}
 
 {% block scripts %}
@@ -118,6 +123,9 @@ CASHPILOT_WORKER_URL=http://public-vps-ip:8081</code>
   let _apiKeyRevealed = false;
   let _apiKey = '';
   let _apiKeySet = false;
+  let _fleetPage = 1;
+  let _fleetRows = [];
+  const _fleetPageSize = 20;
   const _isOwner = {{ 'true' if user.r == 'owner' else 'false' }};
 
   document.getElementById('env-ui-url').textContent = window.location.origin;
@@ -186,7 +194,8 @@ CASHPILOT_WORKER_URL=http://public-vps-ip:8081</code>
         }
       }
 
-      renderWorkers(workers);
+      _fleetRows = workers || [];
+      renderWorkers(_fleetRows);
       loadFleetEconomics();
       loadPowerSettings();
     } catch (err) {
@@ -310,21 +319,55 @@ CASHPILOT_WORKER_URL=http://public-vps-ip:8081</code>
     return counts;
   }
 
+  function workerMatchesQuery(w, q) {
+    if (!q) return true;
+    const haystack = [
+      w.name, w.client_id, w.url, w.status,
+      JSON.stringify(w.system_info || {}),
+      JSON.stringify(w.provider_states || {}),
+    ].join(' ').toLowerCase();
+    return haystack.includes(q);
+  }
+
+  function renderFleetCounts(all, filtered) {
+    const el = document.getElementById('fleet-counts');
+    if (!el) return;
+    const now = Date.now();
+    const counts = {
+      total: all.length,
+      online: all.filter(w => w.status === 'online').length,
+      offline: all.filter(w => w.status !== 'online').length,
+      stale: all.filter(w => {
+        const ts = Date.parse(String(w.last_heartbeat || '').replace(' ', 'T') + 'Z');
+        return Number.isFinite(ts) && now - ts > 5 * 60 * 1000;
+      }).length,
+      filtered: filtered.length,
+    };
+    el.innerHTML = Object.entries(counts).map(([k, v]) => `<span class="badge badge-category">${esc(k)}: ${esc(v)}</span>`).join('');
+  }
+
   function renderWorkers(workers) {
     const container = document.getElementById('fleet-workers');
     if (!container) return;
+    const q = (document.getElementById('fleet-search')?.value || '').toLowerCase();
+    const all = workers || [];
+    const visibleRows = all.filter(w => workerMatchesQuery(w, q));
+    renderFleetCounts(all, visibleRows);
+    const pages = Math.max(1, Math.ceil(visibleRows.length / _fleetPageSize));
+    if (_fleetPage > pages) _fleetPage = pages;
+    const pageRows = visibleRows.slice((_fleetPage - 1) * _fleetPageSize, _fleetPage * _fleetPageSize);
 
-    const nameCounts = countWorkerNames(workers);
+    const nameCounts = countWorkerNames(all);
 
     let html = '';
 
-    if (workers.length === 0) {
+    if (visibleRows.length === 0) {
       html = `<div class="empty-state" style="padding: 40px 20px;">
-        <div class="empty-state-title">No workers registered</div>
-        <div class="empty-state-text">Deploy a CashPilot Worker on your servers to see them here.</div>
+        <div class="empty-state-title">${all.length ? 'No workers match the search' : 'No workers registered'}</div>
+        <div class="empty-state-text">${all.length ? 'Clear the search to show every worker.' : 'Deploy a CashPilot Worker on your servers to see them here.'}</div>
       </div>`;
     } else {
-      for (const w of workers) {
+      for (const w of pageRows) {
         const isOnline = w.status === 'online';
         const statusClass = isOnline ? 'running' : 'stopped';
         const borderColor = isOnline ? 'var(--success)' : 'var(--text-muted)';
@@ -394,6 +437,13 @@ CASHPILOT_WORKER_URL=http://public-vps-ip:8081</code>
       }
     }
     container.innerHTML = html;
+    const pager = document.getElementById('fleet-pager');
+    if (pager) {
+      pager.innerHTML = `
+        <button class="btn btn-ghost btn-sm" id="fleet-prev" ${_fleetPage <= 1 ? 'disabled' : ''}>Prev</button>
+        <span style="font-size:0.8rem;color:var(--text-muted);">Page ${_fleetPage} / ${pages} (${visibleRows.length})</span>
+        <button class="btn btn-ghost btn-sm" id="fleet-next" ${_fleetPage >= pages ? 'disabled' : ''}>Next</button>`;
+    }
   }
 
   function fmtBytes(b) {
@@ -549,6 +599,12 @@ CASHPILOT_WORKER_URL=http://public-vps-ip:8081</code>
   }
 
   document.getElementById('power-save').addEventListener('click', savePowerSettings);
+  document.getElementById('fleet-search')?.addEventListener('input', () => { _fleetPage = 1; renderWorkers(_fleetRows); });
+  document.getElementById('fleet-pager')?.addEventListener('click', (e) => {
+    if (e.target.id === 'fleet-prev') _fleetPage = Math.max(1, _fleetPage - 1);
+    if (e.target.id === 'fleet-next') _fleetPage += 1;
+    renderWorkers(_fleetRows);
+  });
 
   document.getElementById('fleet-workers').addEventListener('click', async function(e) {
     // Per-machine power. machine_economics needs BOTH a tariff and a wattage;

@@ -679,6 +679,55 @@ class TestFleetShowsProviderStates:
         assert "provider_states" in page
         assert "provider states" in page
 
+class TestInventoryTablesHaveOperatorControls:
+    def test_proxy_pool_has_counts_search_sort_export_recheck_and_pagination(self):
+        page = (ROOT / "app" / "templates" / "proxy_pool.html").read_text(encoding="utf-8")
+        for needle in (
+            'id="pool-counts"',
+            'id="pool-search"',
+            'id="pool-recheck-selected"',
+            'id="pool-recheck-all"',
+            'id="pool-export-filtered"',
+            'id="pool-export-alive"',
+            'id="pool-export-dead"',
+            'data-sort="provider_name"',
+            'id="pool-pager"',
+            "const poolPageSize = 20",
+            "confirm(`Recheck ${label}?`)",
+            "exportFilteredPool",
+        ):
+            assert needle in page
+
+    def test_myst_wallet_has_counts_search_sort_export_confirm_and_pagination(self):
+        page = (ROOT / "app" / "templates" / "myst_wallet.html").read_text(encoding="utf-8")
+        app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+        for needle in (
+            'id="myst-wallet-counts"',
+            'id="myst-wallet-search"',
+            'data-myst-sort="wallet_fingerprint"',
+            'id="myst-wallet-pager"',
+            'data-action="exportMystWallets"',
+        ):
+            assert needle in page
+        for needle in (
+            "const _mystWalletPageSize = 20",
+            "filteredMystWalletRows",
+            "window.confirm(`Set wallet ${walletId} to ${value}?",
+            "myst-wallet-filtered.csv",
+        ):
+            assert needle in app_js
+
+    def test_fleet_has_counts_search_and_pagination(self):
+        page = (ROOT / "app" / "templates" / "fleet.html").read_text(encoding="utf-8")
+        for needle in (
+            'id="fleet-counts"',
+            'id="fleet-search"',
+            'id="fleet-pager"',
+            "const _fleetPageSize = 20",
+            "renderFleetCounts",
+        ):
+            assert needle in page
+
 
 class TestFleetWorkerCopyUsesAStablePublicIdentity:
     def test_the_copy_snippet_uses_public_ip_and_timestamp(self):

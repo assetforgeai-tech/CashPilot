@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
+import asyncio
+import csv
+import io
+
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 from app import database, deps, proxy_egress
@@ -25,6 +30,18 @@ class ProxyAssignmentIn(BaseModel):
     proxy_id: int | None = None
     mode: str = "proxy"
     fallback: str = "hold"
+
+class ProxyRecheckIn(BaseModel):
+    proxy_ids: list[int] | None = None
+
+async def _tcp_alive(host: str, port: int, timeout: float = 5.0) -> bool:
+    try:
+        _, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
+        writer.close()
+        await writer.wait_closed()
+        return True
+    except Exception:
+        return False
 
 
 @router.get("/api/proxy-providers")
@@ -69,6 +86,43 @@ async def api_proxy_provider_sync(request: Request, provider_id: int) -> dict[st
 async def api_proxy_pool(request: Request) -> list[dict[str, Any]]:
     deps._require_owner(request)
     return await database.list_proxy_pool()
+
+@router.get("/api/proxy-pool/export")
+async def api_proxy_pool_export(request: Request, status: str | None = None) -> PlainTextResponse:
+    deps._require_owner(request)
+    rows = await database.export_proxy_pool(status=status)
+    buf = io.StringIO()
+    writer = csv.DictWriter(
+        buf,
+        fieldnames=[
+            "id",
+            "provider_name",
+            "endpoint",
+            "protocol",
+            "location",
+            "status",
+            "expiry_date",
+            "assigned_worker_id",
+            "last_checked_at",
+        ],
+        extrasaction="ignore",
+    )
+    writer.writeheader()
+    writer.writerows(rows)
+    return PlainTextResponse(buf.getvalue(), media_type="text/csv")
+
+@router.post("/api/proxy-pool/recheck")
+async def api_proxy_pool_recheck(request: Request, body: ProxyRecheckIn) -> dict[str, Any]:
+    deps._require_owner(request)
+    wanted = {int(x) for x in (body.proxy_ids or []) if int(x) > 0}
+    rows = await database.list_proxy_pool()
+    targets = [row for row in rows if not wanted or int(row["id"]) in wanted]
+    checks = await asyncio.gather(
+        *(_tcp_alive(str(row.get("host") or "").strip(), int(row.get("port") or 0)) for row in targets)
+    )
+    results = {int(row["id"]): ("alive" if ok else "dead") for row, ok in zip(targets, checks, strict=False)}
+    checked = await database.update_proxy_pool_check_results(results)
+    return {"status": "ok", "checked": checked, "alive": sum(1 for v in results.values() if v == "alive"), "dead": sum(1 for v in results.values() if v == "dead")}
 
 
 @router.post("/api/workers/{worker_id}/proxy-assignment")

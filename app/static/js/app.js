@@ -1620,6 +1620,9 @@ const CP = (() => {
   }
 
   let _mystWalletRows = [];
+  let _mystWalletPage = 1;
+  let _mystWalletSort = { key: 'id', dir: -1 };
+  const _mystWalletPageSize = 20;
 
   function mystWalletFilters() {
     return {
@@ -1627,6 +1630,23 @@ const CP = (() => {
       funding: (document.getElementById('myst-wallet-funding-filter')?.value || '').trim(),
       query: (document.getElementById('myst-wallet-search')?.value || '').trim().toLowerCase(),
     };
+  }
+
+  function renderMystWalletCounts(rows, filtered) {
+    const el = document.getElementById('myst-wallet-counts');
+    if (!el) return;
+    const counts = {
+      total: rows.length,
+      funded: rows.filter(r => r.funding === 'FUNDED').length,
+      unfunded: rows.filter(r => r.funding === 'UNFUNDED').length,
+      available: rows.filter(r => r.state === 'AVAILABLE').length,
+      leased: rows.filter(r => r.state === 'LEASED').length,
+      quarantined: rows.filter(r => r.state === 'QUARANTINED').length,
+      filtered: filtered.length,
+    };
+    el.innerHTML = Object.entries(counts).map(([k, v]) =>
+      `<span class="badge badge-category">${escapeHtml(k)}: ${escapeHtml(v)}</span>`
+    ).join('');
   }
 
   function renderMystWalletRows(rows) {
@@ -1644,8 +1664,12 @@ const CP = (() => {
       ].join(' ').toLowerCase();
       return haystack.includes(filters.query);
     });
+    filtered.sort((a, b) => String(a[_mystWalletSort.key] ?? '').localeCompare(String(b[_mystWalletSort.key] ?? ''), undefined, {numeric: true}) * _mystWalletSort.dir);
+    renderMystWalletCounts(rows, filtered);
     if (!filtered.length) {
       list.innerHTML = '';
+      const pager = document.getElementById('myst-wallet-pager');
+      if (pager) pager.innerHTML = '';
       status.className = 'empty-state';
       status.style.display = 'block';
       status.innerHTML = rows.length
@@ -1653,8 +1677,11 @@ const CP = (() => {
         : '<div class="empty-state-title">No wallets imported yet</div><div class="empty-state-text">Choose a file and import raw wallet lines.</div>';
       return;
     }
+    const pages = Math.max(1, Math.ceil(filtered.length / _mystWalletPageSize));
+    if (_mystWalletPage > pages) _mystWalletPage = pages;
+    const visible = filtered.slice((_mystWalletPage - 1) * _mystWalletPageSize, _mystWalletPage * _mystWalletPageSize);
     status.style.display = 'none';
-    list.innerHTML = filtered.map((row) => `
+    list.innerHTML = visible.map((row) => `
       <tr>
         <td>${escapeHtml(row.id)}</td>
         <td style="font-family:monospace;" title="${escapeHtml(row.address || '')}">${escapeHtml(row.wallet_fingerprint || '')}</td>
@@ -1670,10 +1697,60 @@ const CP = (() => {
         </td>
       </tr>
     `).join('');
+    const pager = document.getElementById('myst-wallet-pager');
+    if (pager) {
+      pager.innerHTML = `
+        <button class="btn btn-ghost btn-sm" data-action="mystWalletPage" data-a1="prev" ${_mystWalletPage <= 1 ? 'disabled' : ''}>Prev</button>
+        <span style="font-size:0.8rem;color:var(--text-muted);">Page ${_mystWalletPage} / ${pages} (${filtered.length})</span>
+        <button class="btn btn-ghost btn-sm" data-action="mystWalletPage" data-a1="next" ${_mystWalletPage >= pages ? 'disabled' : ''}>Next</button>`;
+    }
+  }
+
+  function filteredMystWalletRows() {
+    const filters = mystWalletFilters();
+    const filtered = _mystWalletRows.filter(row => {
+      if (filters.state && row.state !== filters.state) return false;
+      if (filters.funding && row.funding !== filters.funding) return false;
+      if (!filters.query) return true;
+      const haystack = [
+        row.id, row.wallet_fingerprint, row.address, row.leased_to_client_id,
+        row.node_identity, row.runtime_status, row.public_ip,
+      ].join(' ').toLowerCase();
+      return haystack.includes(filters.query);
+    });
+    return filtered.sort((a, b) => String(a[_mystWalletSort.key] ?? '').localeCompare(String(b[_mystWalletSort.key] ?? ''), undefined, {numeric: true}) * _mystWalletSort.dir);
   }
 
   function applyMystWalletFilters() {
+    _mystWalletPage = 1;
     renderMystWalletRows(_mystWalletRows);
+  }
+
+  function mystWalletPage(dir) {
+    if (dir === 'prev') _mystWalletPage = Math.max(1, _mystWalletPage - 1);
+    if (dir === 'next') _mystWalletPage += 1;
+    renderMystWalletRows(_mystWalletRows);
+  }
+
+  function sortMystWallets(key) {
+    _mystWalletSort = { key, dir: _mystWalletSort.key === key ? -_mystWalletSort.dir : 1 };
+    renderMystWalletRows(_mystWalletRows);
+  }
+
+  function exportMystWallets(funding = '') {
+    if (funding) {
+      window.location.href = `/api/admin/myst-wallets/export?funding=${encodeURIComponent(funding)}`;
+      return;
+    }
+    const headers = ['id','wallet_fingerprint','state','funding','leased_to_client_id','release_reason','wallet_assignment_version','last_heartbeat_at'];
+    const csv = [headers.join(','), ...filteredMystWalletRows().map(row => headers.map(key => `"${String(row[key] ?? '').replaceAll('"', '""')}"`).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'myst-wallet-filtered.csv';
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   async function updateMystWallet(walletId, field, value) {
@@ -1681,6 +1758,8 @@ const CP = (() => {
     if (field === 'funding') body.funding = value;
     else if (field === 'state') body.state = value;
     else return;
+    const dangerous = value === 'UNFUNDED' || value === 'QUARANTINED';
+    if (dangerous && !window.confirm(`Set wallet ${walletId} to ${value}? This changes wallet allocation state.`)) return;
     try {
       await api(`/api/admin/myst-wallets/${encodeURIComponent(walletId)}`, { method: 'PATCH', body });
       toast('Wallet updated', 'success');
@@ -3785,6 +3864,10 @@ const CP = (() => {
           if (!el) return;
           el.addEventListener(id === 'myst-wallet-search' ? 'input' : 'change', applyMystWalletFilters);
         });
+        document.querySelectorAll('[data-myst-sort]').forEach(el => {
+          el.style.cursor = 'pointer';
+          el.addEventListener('click', () => sortMystWallets(el.dataset.mystSort));
+        });
         loadMystWallets();
         break;
       case 'setup':
@@ -3853,6 +3936,9 @@ const CP = (() => {
     importMystWalletFile,
     loadMystWallets,
     applyMystWalletFilters,
+    mystWalletPage,
+    sortMystWallets,
+    exportMystWallets,
     updateMystWallet,
     filterCatalog,
     refreshServices,

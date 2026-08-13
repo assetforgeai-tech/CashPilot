@@ -96,6 +96,42 @@ def test_worker_proxy_lease_applies_to_worker(client):
     lease_fn.assert_awaited_once_with(7)
     apply.assert_awaited_once()
 
+def test_proxy_pool_export_and_recheck_are_owner_only_and_wired(client):
+    rows = [
+        {
+            "id": 1,
+            "provider_name": "vtproxy",
+            "endpoint": "1.1.1.1:1000",
+            "protocol": "socks5",
+            "location": "sg",
+            "status": "alive",
+            "assigned_worker_id": None,
+        }
+    ]
+    with (
+        patch("app.main.auth.get_current_user", return_value=_owner_user()),
+        patch("app.routers.proxies.database.export_proxy_pool", new_callable=AsyncMock, return_value=rows),
+    ):
+        export = client.get("/api/proxy-pool/export?status=alive")
+    assert export.status_code == 200
+    assert "provider_name" in export.text
+    assert "vtproxy" in export.text
+
+    with (
+        patch("app.main.auth.get_current_user", return_value=_owner_user()),
+        patch("app.routers.proxies.database.list_proxy_pool", new_callable=AsyncMock, return_value=[
+            {"id": 1, "host": "1.1.1.1", "port": 1000},
+            {"id": 2, "host": "2.2.2.2", "port": 1001},
+            {"id": 3, "host": "3.3.3.3", "port": 1002},
+        ]),
+        patch("app.routers.proxies._tcp_alive", new_callable=AsyncMock, side_effect=[True, False, True]),
+        patch("app.routers.proxies.database.update_proxy_pool_check_results", new_callable=AsyncMock, return_value=3) as mark,
+    ):
+        recheck = client.post("/api/proxy-pool/recheck", json={"proxy_ids": [1, 2, 3]})
+    assert recheck.status_code == 200
+    assert recheck.json()["checked"] == 3
+    mark.assert_awaited_once_with({1: "alive", 2: "dead", 3: "alive"})
+
 def test_proxy_lease_picks_one_unassigned_proxy_per_worker(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):

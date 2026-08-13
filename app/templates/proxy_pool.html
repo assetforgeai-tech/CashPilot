@@ -7,16 +7,27 @@
   <div class="section-header">
     <h2>Proxy pool</h2>
   </div>
+  <div id="pool-counts" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;"></div>
+  <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;">
+    <input class="form-input" id="pool-search" type="search" placeholder="Search provider, endpoint, location, status" style="max-width:360px;">
+    <button class="btn btn-secondary btn-sm" id="pool-recheck-selected">Recheck selected</button>
+    <button class="btn btn-secondary btn-sm" id="pool-recheck-all">Recheck all</button>
+    <button class="btn btn-ghost btn-sm" id="pool-export-filtered">Export filtered</button>
+    <button class="btn btn-ghost btn-sm" id="pool-export-alive">Export alive</button>
+    <button class="btn btn-ghost btn-sm" id="pool-export-dead">Export dead</button>
+    <span id="pool-result" style="font-size:0.8rem;color:var(--text-muted);"></span>
+  </div>
   <div class="table-wrap">
     <table class="data-table">
       <thead>
         <tr>
-          <th>Provider</th><th>Endpoint</th><th>Protocol</th><th>Location</th><th>Status</th><th>Expiry</th><th>Assigned</th>
+          <th><input type="checkbox" id="pool-select-all"></th><th data-sort="provider_name">Provider</th><th data-sort="endpoint">Endpoint</th><th data-sort="protocol">Protocol</th><th data-sort="location">Location</th><th data-sort="status">Status</th><th data-sort="expiry_date">Expiry</th><th data-sort="assigned_worker_id">Assigned</th>
         </tr>
       </thead>
       <tbody id="pool-rows"></tbody>
     </table>
   </div>
+  <div id="pool-pager" style="display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:12px;"></div>
 </section>
 {% endblock %}
 {% block scripts %}
@@ -25,9 +36,38 @@ function esc(value) {
   return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 async function loadPool() {
-  const rows = await fetch('/api/proxy-pool').then(r => r.json());
-  document.getElementById('pool-rows').innerHTML = rows.map(p => `
+  poolRows = await fetch('/api/proxy-pool').then(r => r.json());
+  renderPool();
+}
+let poolRows = [];
+let poolPage = 1;
+let poolSort = {key: 'provider_name', dir: 1};
+const poolPageSize = 20;
+function filteredPool() {
+  const q = (document.getElementById('pool-search').value || '').toLowerCase();
+  return poolRows.filter(p => !q || ['provider_name','endpoint','protocol','location','status','expiry_date','assigned_worker_id'].some(k => String(p[k] ?? '').toLowerCase().includes(q)))
+    .sort((a, b) => String(a[poolSort.key] ?? '').localeCompare(String(b[poolSort.key] ?? '')) * poolSort.dir);
+}
+function countBadge(label, value) {
+  return `<span class="badge badge-category">${esc(label)}: ${value}</span>`;
+}
+function renderPool() {
+  const rows = filteredPool();
+  const counts = {
+    total: poolRows.length,
+    alive: poolRows.filter(p => String(p.status || '').toLowerCase() === 'alive').length,
+    dead: poolRows.filter(p => String(p.status || '').toLowerCase() === 'dead').length,
+    leased: poolRows.filter(p => p.assigned_worker_id).length,
+    available: poolRows.filter(p => !p.assigned_worker_id).length,
+    selected: document.querySelectorAll('.pool-select:checked').length,
+  };
+  document.getElementById('pool-counts').innerHTML = Object.entries(counts).map(([k,v]) => countBadge(k, v)).join('');
+  const pages = Math.max(1, Math.ceil(rows.length / poolPageSize));
+  if (poolPage > pages) poolPage = pages;
+  const visible = rows.slice((poolPage - 1) * poolPageSize, poolPage * poolPageSize);
+  document.getElementById('pool-rows').innerHTML = visible.map(p => `
     <tr>
+      <td><input class="pool-select" type="checkbox" value="${esc(p.id)}"></td>
       <td>${esc(p.provider_name || '-')}</td>
       <td>${esc(p.endpoint)}</td>
       <td>${esc(p.protocol)}</td>
@@ -36,7 +76,56 @@ async function loadPool() {
       <td>${esc(p.expiry_date || (p.days_left != null ? `${p.days_left}d` : '-'))}</td>
       <td>${esc(p.assigned_worker_id || '-')}</td>
     </tr>`).join('');
+  document.getElementById('pool-pager').innerHTML = `
+    <button class="btn btn-ghost btn-sm" id="pool-prev" ${poolPage <= 1 ? 'disabled' : ''}>Prev</button>
+    <span style="font-size:0.8rem;color:var(--text-muted);">Page ${poolPage} / ${pages} (${rows.length})</span>
+    <button class="btn btn-ghost btn-sm" id="pool-next" ${poolPage >= pages ? 'disabled' : ''}>Next</button>`;
 }
+function selectedPoolIds() {
+  return [...document.querySelectorAll('.pool-select:checked')].map(x => Number(x.value)).filter(Boolean);
+}
+function updatePoolSelectionCount() {
+  const selected = document.querySelectorAll('.pool-select:checked').length;
+  const counts = document.getElementById('pool-counts');
+  if (!counts) return;
+  const badge = [...counts.querySelectorAll('.badge')].find(x => x.textContent.trim().startsWith('selected:'));
+  if (badge) badge.textContent = `selected: ${selected}`;
+}
+async function recheckPool(ids) {
+  const label = ids && ids.length ? `${ids.length} selected proxies` : 'all proxies';
+  if (!confirm(`Recheck ${label}?`)) return;
+  const res = await fetch('/api/proxy-pool/recheck', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({proxy_ids: ids && ids.length ? ids : null})}).then(r => r.json());
+  document.getElementById('pool-result').textContent = `Checked ${res.checked || 0}`;
+  loadPool();
+}
+function exportPool(status) {
+  const suffix = status ? `?status=${encodeURIComponent(status)}` : '';
+  window.location.href = `/api/proxy-pool/export${suffix}`;
+}
+function csvCell(value) {
+  return `"${String(value ?? '').replaceAll('"', '""')}"`;
+}
+function exportFilteredPool() {
+  const headers = ['id','provider_name','endpoint','protocol','location','status','expiry_date','assigned_worker_id','last_checked_at'];
+  const csv = [headers.join(','), ...filteredPool().map(row => headers.map(key => csvCell(row[key])).join(','))].join('\n');
+  const blob = new Blob([csv], {type: 'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'proxy-pool-filtered.csv';
+  link.click();
+  URL.revokeObjectURL(url);
+}
+document.getElementById('pool-search').addEventListener('input', () => { poolPage = 1; renderPool(); });
+document.getElementById('pool-select-all').addEventListener('change', ev => { document.querySelectorAll('.pool-select').forEach(x => x.checked = ev.target.checked); updatePoolSelectionCount(); });
+document.getElementById('pool-rows').addEventListener('change', ev => { if (ev.target.classList.contains('pool-select')) updatePoolSelectionCount(); });
+document.getElementById('pool-recheck-selected').addEventListener('click', () => recheckPool(selectedPoolIds()));
+document.getElementById('pool-recheck-all').addEventListener('click', () => recheckPool(null));
+document.getElementById('pool-export-filtered').addEventListener('click', exportFilteredPool);
+document.getElementById('pool-export-alive').addEventListener('click', () => exportPool('alive'));
+document.getElementById('pool-export-dead').addEventListener('click', () => exportPool('dead'));
+document.getElementById('pool-pager').addEventListener('click', ev => { if (ev.target.id === 'pool-prev') poolPage--; if (ev.target.id === 'pool-next') poolPage++; renderPool(); });
+document.querySelector('thead').addEventListener('click', ev => { const key = ev.target.dataset.sort; if (!key) return; poolSort = {key, dir: poolSort.key === key ? -poolSort.dir : 1}; renderPool(); });
 loadPool();
 </script>
 {% endblock %}
