@@ -103,6 +103,43 @@ class TestRuntimeAssets:
 
         asyncio.run(run())
 
+    def test_worker_auto_starts_titan_rewarding_in_adnade_profile_bundle(self, tmp_path):
+        async def run():
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w") as zf:
+                zf.writestr(
+                    "chromeprofiledata/.config/chromium/Default/Extensions/flemjfpeajijmofcpgfgckfbmomdflck/0.1.6_0/service-worker.js",
+                    "chrome.runtime.onStartup.addListener(() => {\n"
+                    "    if (result.autoRun && agentConfig.refreshToken) {\n"
+                    "        startAgent()\n"
+                    "    }\n"
+                    "});\n",
+                )
+                zf.writestr("chromeprofiledata/.config/chromium/Default/Extensions/fpdkjdnhkakefebpekbdhillbhonfjjp/3.0.10_0/background.js", "dawn")
+            spec = worker_api.DeploySpec(
+                image="img",
+                runtime_assets=[
+                    worker_api.RuntimeAssetSpec(
+                        provider="adnade",
+                        asset_kind="chrome_profile_zip",
+                        target="/config",
+                        encoding="zip",
+                    )
+                ],
+            )
+            with (
+                patch.object(worker_api, "_RUNTIME_ASSET_DIR", tmp_path),
+                patch.object(worker_api, "_fetch_runtime_asset", return_value=base64.b64encode(buf.getvalue()).decode()),
+            ):
+                await worker_api._materialize_runtime_assets("adnade", spec)
+
+            titan_sw = tmp_path / "adnade" / "chrome_profile_zip" / "chromeprofiledata" / ".config" / "chromium" / "Default" / "Extensions" / "flemjfpeajijmofcpgfgckfbmomdflck" / "0.1.6_0" / "service-worker.js"
+            dawn_bg = tmp_path / "adnade" / "chrome_profile_zip" / "chromeprofiledata" / ".config" / "chromium" / "Default" / "Extensions" / "fpdkjdnhkakefebpekbdhillbhonfjjp" / "3.0.10_0" / "background.js"
+            assert "agentConfig.isUserScriptsEnabled = true" in titan_sw.read_text()
+            assert dawn_bg.read_text() == "dawn"
+
+        asyncio.run(run())
+
     def test_worker_downloads_decrypts_and_unpacks_direct_chrome_profile_zip(self, tmp_path):
         async def run():
             buf = io.BytesIO()

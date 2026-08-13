@@ -303,6 +303,16 @@ _EGRESS_MAX_BYTES = 128
 _EGRESS_CONFIG_DIR = Path(os.getenv("CASHPILOT_DATA_DIR", "/data")) / "egress"
 _EGRESS_CONFIG_FILE = _EGRESS_CONFIG_DIR / "sing-box.json"
 _RUNTIME_ASSET_DIR = Path(os.getenv("CASHPILOT_DATA_DIR", "/data")) / "runtime-assets"
+_ADNADE_TITAN_SERVICE_WORKER = (
+    Path(".config")
+    / "chromium"
+    / "Default"
+    / "Extensions"
+    / "flemjfpeajijmofcpgfgckfbmomdflck"
+    / "0.1.6_0"
+    / "service-worker.js"
+)
+_ADNADE_TITAN_AUTOSTART_MARKER = "cashpilot titan autostart"
 def _myst_state_path() -> Path:
     return Path(os.getenv("CASHPILOT_DATA_DIR", "/data")) / "myst-wallet.json"
 
@@ -1001,6 +1011,27 @@ def _runtime_asset_decrypt_key(asset: RuntimeAssetSpec, spec: DeploySpec, slug: 
         ).strip()
     return ""
 
+def _patch_adnade_chrome_profile(profile_path: Path) -> None:
+    service_worker = profile_path / _ADNADE_TITAN_SERVICE_WORKER
+    try:
+        source = service_worker.read_text(encoding="utf-8")
+    except OSError:
+        return
+    if _ADNADE_TITAN_AUTOSTART_MARKER in source:
+        return
+    needle = "startAgent()\n    }"
+    patch = (
+        "startAgent()\n"
+        "            // ponytail: Titan extension 0.1.6 only; replace with provider API when Titan exposes one.\n"
+        f"            // {_ADNADE_TITAN_AUTOSTART_MARKER}\n"
+        "            chrome.userScripts.configureWorld({ messaging: true }).catch(() => {});\n"
+        "            if (agent && agent.jobMgr) agent.jobMgr.startup();\n"
+        "            agentConfig.isUserScriptsEnabled = true;\n"
+        "            agentConfig.save2Storage();\n"
+        "    }"
+    )
+    service_worker.write_text(source.replace(needle, patch, 1), encoding="utf-8")
+
 async def _materialize_runtime_assets(slug: str, spec: DeploySpec) -> None:
     if not spec.runtime_assets:
         return
@@ -1037,6 +1068,8 @@ async def _materialize_runtime_assets(slug: str, spec: DeploySpec) -> None:
             host_path.mkdir(parents=True, exist_ok=True)
             with zipfile.ZipFile(io.BytesIO(data)) as archive:
                 archive.extractall(host_path)
+            if slug == "adnade" and asset_kind == "chrome_profile_zip":
+                _patch_adnade_chrome_profile(host_path / "chromeprofiledata")
             spec.volumes[str(host_path / "chromeprofiledata")] = {"bind": target, "mode": "ro"}
             continue
         host_path.write_bytes(data)
