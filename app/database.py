@@ -2591,10 +2591,19 @@ async def get_worker_proxy_assignment(worker_id: int) -> dict[str, Any] | None:
     finally:
         await db.close()
 
-async def _repair_myst_wallet_addresses(db: aiosqlite.Connection) -> None:
+async def _repair_myst_wallet_addresses(db: aiosqlite.Connection, *, limit: int = 300) -> None:
     from app import myst_wallets
 
-    cursor = await db.execute("SELECT id, raw_wallet_enc, address FROM myst_wallets")
+    cursor = await db.execute(
+        """
+        SELECT id, raw_wallet_enc, address
+        FROM myst_wallets
+        WHERE length(coalesce(address, '')) != 40
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (max(1, int(limit)),),
+    )
     changed = 0
     for row in await cursor.fetchall():
         current = str(row["address"] or "")
