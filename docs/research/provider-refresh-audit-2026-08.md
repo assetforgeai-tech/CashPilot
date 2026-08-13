@@ -2,8 +2,10 @@
 
 Status: implementation snapshot. Source priority is official site/docs/dashboard/API/GitHub first. No hidden dashboard/API fields are guessed.
 
-Catalog source-of-truth after deletion batch: 21 providers total; 16 bandwidth,
-5 DePIN; 15 Docker deployable; 15 collectors.
+Catalog source-of-truth after deletion batch: 21 providers total; 15 bandwidth,
+6 DePIN. Current operator docs track 10 normalized provider runtimes and 13
+collector implementations; exact per-provider readiness lives in the service
+YAML and Settings readiness badges.
 
 ## Logged-in dashboard workflow
 

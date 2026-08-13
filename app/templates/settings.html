@@ -18,6 +18,24 @@
   </div>
 </div>
 
+<div class="card settings-section">
+  <h3 class="settings-section-title">Auto deploy</h3>
+  <p class="settings-section-desc">
+    When enabled, stable workers receive deployable providers from the server in sequence.
+  </p>
+  <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border-color);">
+    <label class="form-label" for="autodeploy-enabled">Deploy to stable workers</label>
+    <input class="settings-config-input" type="checkbox" id="autodeploy-enabled" data-config="cashpilot_auto_deploy_enabled" value="true">
+  </div>
+  <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:center;padding:10px 0;">
+    <label class="form-label" for="autodeploy-delay">Provider delay seconds</label>
+    <input class="form-input settings-config-input" type="number" min="0" step="1" id="autodeploy-delay" data-config="cashpilot_auto_deploy_delay_seconds" value="10">
+  </div>
+  <div style="display:flex;justify-content:flex-end;margin-top:12px;">
+    <button class="btn btn-ghost" data-action="saveEnvSettings">Save auto deploy</button>
+  </div>
+</div>
+
 <!-- Credential health.
      Several providers issue short-lived session cookies — a few hours in the
      worst case. When one dies, collection stops and NOTHING says so: the

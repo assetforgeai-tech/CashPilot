@@ -345,6 +345,9 @@ CASHPILOT_WORKER_URL=http://public-vps-ip:8081</code>
                   : w.enrollment === 'pending'
                   ? `<span style="font-size:0.7rem; padding:2px 6px; border-radius:4px; background:var(--bg-hover); color:var(--text-muted);" title="This worker has been issued its own key but has not used it yet, so the shared key still works for it for a short while. It clears itself on the worker's next heartbeat.">enrolling</span>`
                   : ''}
+                ${(w.provider_states && (w.provider_states.proxy || w.provider_states.mysterium))
+                  ? `<span style="font-size:0.7rem; padding:2px 6px; border-radius:4px; background:var(--bg-hover); color:var(--text-muted);" title="Worker provider state from heartbeat">provider states</span>`
+                  : ''}
                 <code style="font-size:0.68rem; color:var(--text-muted); background:var(--bg-hover); padding:1px 5px; border-radius:3px;" title="This worker's client_id — the id CashPilot keys it on. Two rows with the same name always have different ids; this is how to tell which is which.">${esc(w.client_id || ('#' + w.id))}</code>
               </div>
               ${_isOwner ? `<button class="btn btn-danger btn-sm btn-remove-worker" data-worker-id="${w.id}" data-worker-name="${esc(w.name)}" data-worker-client="${esc(w.client_id || '')}" title="Remove worker">Remove</button>` : ''}

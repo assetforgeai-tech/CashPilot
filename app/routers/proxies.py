@@ -92,3 +92,20 @@ async def api_worker_proxy_assignment(request: Request, worker_id: int, body: Pr
 
     applied = await _proxy_to_worker(worker_id, "POST", "/api/egress/apply", json=payload, timeout=30)
     return {"status": "ok", "applied": applied}
+
+@router.post("/api/workers/{worker_id}/proxy-lease")
+async def api_worker_proxy_lease(request: Request, worker_id: int) -> dict[str, Any]:
+    deps._require_owner(request)
+    lease = await database.lease_proxy_for_worker(worker_id)
+    if not lease:
+        raise HTTPException(status_code=404, detail="No available proxy")
+    worker = await database.get_worker(worker_id)
+    payload = {
+        "mode": lease.get("mode") or proxy_egress.PROXY,
+        "worker_name": (worker or {}).get("name") or str(worker_id),
+        "proxy": lease if (lease.get("proxy_id") and lease.get("mode") != proxy_egress.DIRECT) else None,
+    }
+    from app.main import _proxy_to_worker
+
+    applied = await _proxy_to_worker(worker_id, "POST", "/api/egress/apply", json=payload, timeout=30)
+    return {"status": "ok", "lease": lease, "applied": applied}

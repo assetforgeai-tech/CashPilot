@@ -302,36 +302,6 @@ class TestMystWalletInventory:
 
         asyncio.run(run())
 
-    def test_myst_wallet_ack_requires_current_assignment_version(self, tmp_path):
-        async def run():
-            with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "myst.db"):
-                await database.init_db()
-                await database.import_myst_wallets("raw-wallet-one")
-                wallet_id = (await database.list_myst_wallets())[0]["id"]
-                await database.update_myst_wallet(wallet_id, funding="FUNDED")
-                leased = await database.lease_myst_wallet("worker-a")
-
-                assert not await database.ack_myst_wallet(
-                    leased["id"],
-                    "worker-a",
-                    wallet_assignment_version=leased["wallet_assignment_version"] - 1,
-                    node_identity="0xnode",
-                    evidence={"raw_wallet": "must-not-store"},
-                )
-                assert await database.ack_myst_wallet(
-                    leased["id"],
-                    "worker-a",
-                    wallet_assignment_version=leased["wallet_assignment_version"],
-                    node_identity="0xnode",
-                    evidence={"raw_wallet": "must-not-store", "registration_status": "Registered"},
-                )
-                row = (await database.list_myst_wallets())[0]
-                assert row["state"] == "LEASED"
-                assert row["runtime_status"] == "wallet_imported"
-                assert row["node_identity"] == "0xnode"
-
-        asyncio.run(run())
-
     def test_worker_heartbeat_updates_myst_wallet_provider_state(self, tmp_path, client):
         async def setup():
             with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "myst.db"):

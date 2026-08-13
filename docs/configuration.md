@@ -49,6 +49,23 @@ defensible on its own; together they are impossible to guess.
 | `CASHPILOT_WORKER_ALLOW_METADATA` | `false` | Allow proxying to cloud metadata IPs. Leave off. | — |
 | `CASHPILOT_WORKER_URL_POLICY` | strict | How worker URLs are validated. | — |
 
+## Runtime Settings
+
+The Settings page stores runtime policy and provider material in the database, not in `CASHPILOT_*` environment variables. It is the operator source of truth for auto deploy, proxy pool rotation, the MYST default dashboard password, and provider credentials.
+
+Provider credentials are grouped by purpose:
+
+- **Deploy runtime**: sent to workers and may require recreating a provider when changed.
+- **Earnings collector**: used by server collectors and should trigger reverify/recollect, not a worker redeploy.
+- **Dashboard / session**: used for dashboard/API/session access and should not be echoed back to the browser.
+- **Credential health**: shows freshness/status only; raw secret values remain write-only.
+
+Auto deploy is off by default. When enabled, the server waits for three healthy worker heartbeats, then deploys missing deployable providers sequentially with the configured per-provider delay.
+
+Proxy Pool leases are worker-level. A worker gets one default proxy for sing-box egress; when health checks mark that proxy dead, the server rotates the lease and the worker restarts only sing-box. Direct providers continue to run without a proxy lease.
+
+MYST Wallet is a separate asset inventory. Wallet lease/reclaim follows the normal worker heartbeat plus `provider_states`, and funding state is derived from the node registration status when it can be read.
+
 ## Worker
 
 | Variable | Default | What it does | Precedence |

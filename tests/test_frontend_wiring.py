@@ -119,6 +119,17 @@ class TestThePayoutQueueIsReachable:
         assert 'data-action="rejectPayout"' in queue
         assert "onclick=" not in queue, "CSP has no unsafe-inline; an inline handler would never fire"
 
+class TestProviderCollectNowIsReachable:
+    def test_each_deployed_row_can_collect_just_that_provider(self):
+        row = js_function("renderServiceRow")
+        assert 'data-action="collectServiceNow"' in row
+        assert 'Collect this provider now' in row
+
+    def test_collect_now_calls_the_provider_endpoint(self):
+        source = js_function("collectServiceNow")
+        assert "/api/services/${encodeURIComponent(slug)}/collect" in source
+        assert "loadServicesTable()" in source
+
 class TestMystWalletImportIsReachable:
     def test_the_handler_is_exported_from_cp(self):
         app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
@@ -290,6 +301,17 @@ class TestSettingsCredentialGroupsMatchBackend:
         assert "Dashboard / session" in text
         assert "No credentials needed" in text
         assert "if (!fields.length) return ''" not in js_function("renderCollectors")
+
+class TestAutoDeploySettingsAreRenderedAndSaved:
+    def test_the_settings_page_has_the_toggle_and_delay_inputs(self):
+        settings = (ROOT / "app" / "templates" / "settings.html").read_text(encoding="utf-8")
+        assert 'data-config="cashpilot_auto_deploy_enabled"' in settings
+        assert 'data-config="cashpilot_auto_deploy_delay_seconds"' in settings
+
+    def test_the_frontend_loads_settings_config(self):
+        text = frontend_text()
+        assert "renderSettingsConfig(config);" in text
+        assert ".settings-config-input" in text
 
 
 class TestTheProgressCardKeepsItsUnitsStraight:
@@ -639,6 +661,23 @@ class TestTheWizardSelectionIsVisible:
         for path in [*JS, *TEMPLATES]:
             text = without_comments(path.read_text(encoding="utf-8"))
             assert not re.search(r'data-a[123]="this"', text), f"{path.name} passes the string 'this' as an argument"
+
+class TestCatalogShowsReadiness:
+    def test_catalog_card_renders_readiness_badges(self):
+        source = js_function("renderCatalogCard")
+        text = frontend_text()
+        assert "readinessBadges(svc)" in source
+        assert "Deploy runtime" in text
+        assert "Earnings collector" in text
+        assert "Dashboard / session" in text
+        assert "egress" in text
+
+
+class TestFleetShowsProviderStates:
+    def test_fleet_worker_rows_render_provider_states(self):
+        page = (ROOT / "app" / "templates" / "fleet.html").read_text(encoding="utf-8")
+        assert "provider_states" in page
+        assert "provider states" in page
 
 
 class TestFleetWorkerCopyUsesAStablePublicIdentity:

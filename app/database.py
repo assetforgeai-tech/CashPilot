@@ -1701,6 +1701,14 @@ async def get_deployment(slug: str) -> dict[str, Any] | None:
         await db.close()
 
 
+async def set_deployment_status(slug: str, status: str) -> None:
+    db = await _get_db()
+    try:
+        await db.execute("UPDATE deployments SET status = ? WHERE slug = ?", (status, slug))
+        await db.commit()
+    finally:
+        await db.close()
+
 async def remove_deployment(slug: str) -> None:
     db = await _get_db()
     try:
@@ -2018,6 +2026,24 @@ async def set_worker_status(worker_id: int, status: str) -> None:
     try:
         await db.execute("UPDATE workers SET status = ? WHERE id = ?", (status, worker_id))
         await db.commit()
+    finally:
+        await db.close()
+
+async def count_worker_heartbeats(worker_id: int, *, healthy_only: bool = True) -> int:
+    db = await _get_db()
+    try:
+        if healthy_only:
+            cursor = await db.execute(
+                "SELECT COUNT(*) AS cnt FROM workers WHERE id = ? AND status = 'online' AND last_heartbeat IS NOT NULL",
+                (worker_id,),
+            )
+        else:
+            cursor = await db.execute(
+                "SELECT COUNT(*) AS cnt FROM workers WHERE id = ? AND last_heartbeat IS NOT NULL",
+                (worker_id,),
+            )
+        row = await cursor.fetchone()
+        return int(row["cnt"]) if row else 0
     finally:
         await db.close()
 
@@ -2509,38 +2535,6 @@ async def sync_myst_wallet_runtime(
     finally:
         await db.close()
 
-async def ack_myst_wallet(
-    wallet_id: int,
-    client_id: str,
-    *,
-    wallet_assignment_version: int,
-    node_identity: str = "",
-    evidence: Mapping[str, Any] | None = None,
-) -> bool:
-    evidence = {k: v for k, v in (evidence or {}).items() if k not in {"raw_wallet", "myst_wallet_raw"}}
-    public_ip = _myst_public_ip(evidence)
-    db = await _get_db()
-    try:
-        await _ensure_myst_wallets_table(db)
-        params: list[Any] = [node_identity, "wallet_imported", public_ip, json.dumps(evidence, sort_keys=True), wallet_id, client_id, wallet_assignment_version]
-        cursor = await db.execute(
-            """
-            UPDATE myst_wallets
-            SET node_identity = ?,
-                runtime_status = ?,
-                public_ip = ?,
-                last_heartbeat_at = datetime('now'),
-                evidence_json = ?,
-                updated_at = datetime('now')
-            WHERE id = ? AND leased_to_client_id = ? AND wallet_assignment_version = ?
-            """,
-            params,
-        )
-        await db.commit()
-        return bool(cursor.rowcount)
-    finally:
-        await db.close()
-
 async def set_worker_proxy_assignment(worker_id: int, proxy_id: int | None, mode: str = "proxy", fallback: str = "hold") -> bool:
     mode = mode if mode in {"proxy", "direct", "auto"} else "proxy"
     fallback = fallback if fallback in {"hold", "rotate"} else "hold"
@@ -2595,6 +2589,31 @@ async def get_worker_proxy_assignment(worker_id: int) -> dict[str, Any] | None:
         return data
     finally:
         await db.close()
+
+async def lease_proxy_for_worker(worker_id: int) -> dict[str, Any] | None:
+    db = await _get_db()
+    try:
+        await db.execute(
+            """
+            INSERT INTO proxy_assignments (worker_id, proxy_id, mode, fallback, applied_at)
+            SELECT ?, pe.id, 'proxy', 'hold', datetime('now')
+            FROM proxy_endpoints pe
+            LEFT JOIN proxy_assignments pa ON pa.proxy_id = pe.id
+            WHERE pa.proxy_id IS NULL
+            ORDER BY pe.id
+            LIMIT 1
+            ON CONFLICT(worker_id) DO UPDATE SET
+                proxy_id = excluded.proxy_id,
+                mode = excluded.mode,
+                fallback = excluded.fallback,
+                applied_at = excluded.applied_at
+            """,
+            (worker_id,),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+    return await get_worker_proxy_assignment(worker_id)
 
 async def get_proxy_endpoint(proxy_id: int) -> dict[str, Any] | None:
     db = await _get_db()

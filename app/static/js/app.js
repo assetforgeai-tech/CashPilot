@@ -1144,6 +1144,11 @@ const CP = (() => {
     const claimBtn = `<button class="btn btn-icon ${eligible ? 'btn-success' : ''}" data-action="openClaimModal" data-a1="${escapeHtml(svc.slug)}" title="${claimTitle}"${claimDisabled ? ' disabled' : ''}>
            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
          </button>`;
+    const collectBtn = _canWrite
+      ? `<button class="btn btn-icon" data-action="collectServiceNow" data-a1="${escapeHtml(svc.slug)}" title="Collect this provider now">
+           ${ICON_RESTART}
+         </button>`
+      : '';
 
     // Instance badge (shown next to status)
     const instanceLabel = !isExternal && instances > 0
@@ -1168,9 +1173,9 @@ const CP = (() => {
       const chevron = `<button class="btn btn-icon expand-toggle" data-action="toggleInstances" data-stop="1" data-a1="${escapeHtml(svc.slug)}" title="Expand instances">
         <svg class="expand-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
       </button>`;
-      actionBtns = `<div class="action-btns">${claimBtn}${settingsBtn}${chevron}</div>`;
+      actionBtns = `<div class="action-btns">${claimBtn}${collectBtn}${settingsBtn}${chevron}</div>`;
     } else if (isExternal) {
-      actionBtns = `<div class="action-btns">${claimBtn}${settingsBtn}</div>`;
+      actionBtns = `<div class="action-btns">${claimBtn}${collectBtn}${settingsBtn}</div>`;
     } else {
       // Single instance — build container buttons targeting the right node
       const inst = details[0] || {};
@@ -1187,6 +1192,7 @@ const CP = (() => {
         : (noDocker ? ' disabled title="No Docker access"' : '');
       actionBtns = `<div class="action-btns">
           ${claimBtn}
+          ${collectBtn}
           ${settingsBtn}
           ${_canWrite ? `
           <button class="btn btn-icon" data-action="restartService" data-a1="'${escapeHtml(svc.slug)}${wParam}" title="Restart"${disabledAttr}>
@@ -1298,6 +1304,18 @@ const CP = (() => {
   function refreshServices() {
     loadServicesTable();
     toast('Services refreshed', 'info');
+  }
+
+  async function collectServiceNow(slug) {
+    if (!slug) return;
+    try {
+      const result = await api(`/api/services/${encodeURIComponent(slug)}/collect`, { method: 'POST' });
+      const balance = result.balance == null ? '' : `: ${formatCurrency(result.balance, result.currency || 'USD')}`;
+      toast(`Collected ${slug}${balance}`, 'success');
+      await Promise.all([loadDashboardStats(), loadServicesTable(), loadCollectorAlerts()]);
+    } catch (err) {
+      toast(`Collect failed: ${err.message}`, 'error');
+    }
   }
 
   async function _waitForChart() {
@@ -2586,6 +2604,20 @@ const CP = (() => {
     container.innerHTML = filtered.map(renderCatalogCard).join('');
   }
 
+  function readinessBadges(svc) {
+    const deploy = svc.docker && svc.docker.image ? 'Deploy runtime' : 'No deploy';
+    const collector = svc.has_collector ? 'Earnings collector' : 'No collector';
+    const dashboard = (svc.cashout && svc.cashout.dashboard_url) || svc.website ? 'Dashboard / session' : 'No dashboard';
+    const egress = (svc.egress && svc.egress.mode) ? `egress: ${svc.egress.mode}` : 'egress: unknown';
+    return `
+      <div class="platform-badges" style="margin-top:8px;">
+        <span class="platform-badge">${escapeHtml(deploy)}</span>
+        <span class="platform-badge">${escapeHtml(collector)}</span>
+        <span class="platform-badge">${escapeHtml(dashboard)}</span>
+        <span class="platform-badge">${escapeHtml(egress)}</span>
+      </div>`;
+  }
+
   function renderCatalogCard(svc) {
     const initial = (svc.name || '?')[0].toUpperCase();
     const earning = svc.earnings
@@ -2632,7 +2664,8 @@ const CP = (() => {
         ${statusBadge}
         ${svc.requirements && svc.requirements.residential_ip ? '<span class="badge badge-residential">Residential IP</span>' : ''}
       </div>
-      ${platformBadges ? `<div class="platform-badges" style="margin-top:8px;">${platformBadges}</div>` : ''}
+    ${platformBadges ? `<div class="platform-badges" style="margin-top:8px;">${platformBadges}</div>` : ''}
+      ${readinessBadges(svc)}
       <div class="service-stats" style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border-color);">
         <span></span>
         ${actionBtn}
@@ -2961,6 +2994,7 @@ const CP = (() => {
         api('/api/collectors/meta').catch(() => []),
       ]);
       renderEnvVars(envInfo, config);
+      renderSettingsConfig(config);
       renderCollectors(collectorsMeta, config);
       loadCredentialHealth();
     } catch (err) {
@@ -3061,6 +3095,19 @@ const CP = (() => {
     </div>`;
   }
 
+  function renderSettingsConfig(config) {
+    document.querySelectorAll('.settings-config-input').forEach(input => {
+      const key = input.dataset.config;
+      if (!key) return;
+      const value = config[key];
+      if (input.type === 'checkbox') {
+        input.checked = String(value || '').toLowerCase() === 'true';
+      } else if (value != null && value !== '') {
+        input.value = value;
+      }
+    });
+  }
+
   function toggleEnvSecret(inputId, btn) {
     const input = document.getElementById(inputId);
     if (!input) return;
@@ -3073,12 +3120,13 @@ const CP = (() => {
   }
 
   async function saveEnvSettings() {
-    const inputs = document.querySelectorAll('.env-var-input:not(:disabled)');
+    const inputs = document.querySelectorAll('.env-var-input:not(:disabled), .settings-config-input:not(:disabled)');
     const data = {};
     inputs.forEach(input => {
-      const val = input.value.trim();
+      const key = input.dataset.envKey || input.dataset.config;
+      const val = input.type === 'checkbox' ? (input.checked ? 'true' : 'false') : input.value.trim();
       if (val) {
-        data[input.dataset.envKey] = val;
+        data[key] = val;
       }
     });
     if (Object.keys(data).length === 0) {
@@ -3823,6 +3871,7 @@ const CP = (() => {
     loadCredentialHealth,
     loadPayoutProgress,
     loadDeployRisk,
+    collectServiceNow,
     confirmPayout,
     rejectPayout,
     // Exposed for fleet.html, which rendered running costs with a bare

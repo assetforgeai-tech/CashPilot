@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app import database
 
 
 @asynccontextmanager
@@ -81,3 +82,66 @@ def test_worker_proxy_assignment_sticks(client):
     assert resp.status_code == 200
     assert setter.await_count == 1
     apply.assert_awaited_once()
+
+def test_worker_proxy_lease_applies_to_worker(client):
+    lease = {"worker_id": 7, "proxy_id": 3, "mode": "proxy", "host": "proxy.example.com", "port": 8080, "protocol": "http"}
+    with (
+        patch("app.main.auth.get_current_user", return_value=_owner_user()),
+        patch("app.main.database.lease_proxy_for_worker", new_callable=AsyncMock, return_value=lease) as lease_fn,
+        patch("app.main.database.get_worker", new_callable=AsyncMock, return_value={"id": 7, "name": "w7"}),
+        patch("app.main._proxy_to_worker", new_callable=AsyncMock, return_value={"status": "ok"}) as apply,
+    ):
+        resp = client.post("/api/workers/7/proxy-lease")
+    assert resp.status_code == 200
+    lease_fn.assert_awaited_once_with(7)
+    apply.assert_awaited_once()
+
+def test_proxy_lease_picks_one_unassigned_proxy_per_worker(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("vtproxy", "vtproxy")
+            await database.upsert_proxy_endpoints(
+                provider_id,
+                [
+                    {"provider_proxy_id": "a", "endpoint": "1.1.1.1:1000", "host": "1.1.1.1", "port": 1000},
+                    {"provider_proxy_id": "b", "endpoint": "2.2.2.2:1000", "host": "2.2.2.2", "port": 1000},
+                ],
+            )
+            worker_a = await database.upsert_worker("worker-a", "a", "http://a")
+            worker_b = await database.upsert_worker("worker-b", "b", "http://b")
+
+            first = await database.lease_proxy_for_worker(worker_a)
+            second = await database.lease_proxy_for_worker(worker_b)
+            again = await database.lease_proxy_for_worker(worker_a)
+
+            assert first and second
+            assert first["proxy_id"] != second["proxy_id"]
+            assert again["proxy_id"] == first["proxy_id"]
+
+    import asyncio
+
+    asyncio.run(run())
+
+def test_service_collect_route_calls_single_collector(client):
+    class Result:
+        error = None
+        platform = "adnade"
+        balance = 1.25
+        currency = "USD"
+    class Collector:
+        async def close(self):
+            return None
+
+    with (
+        patch("app.main.auth.get_current_user", return_value=_owner_user()),
+        patch("app.main.catalog.get_service", return_value={"name": "Adnade", "slug": "adnade"}),
+        patch("app.main.database.get_config", new_callable=AsyncMock, return_value={}),
+        patch("app.collectors.build_one", return_value=(Collector(), [])),
+        patch("app.main._collect_bounded", new_callable=AsyncMock, return_value=Result()),
+        patch("app.main.database.upsert_earnings", new_callable=AsyncMock) as upsert,
+        patch("app.main._detect_payout", new_callable=AsyncMock, return_value=None),
+    ):
+        resp = client.post("/api/services/adnade/collect")
+    assert resp.status_code == 200
+    upsert.assert_awaited_once()

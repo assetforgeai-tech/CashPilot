@@ -101,6 +101,68 @@ def _spawn(coro) -> asyncio.Task:
     task.add_done_callback(_on_done)
     return task
 
+_AUTO_DEPLOY_LOCKS: dict[int, asyncio.Lock] = {}
+_AUTO_DEPLOY_ACTIVE: set[int] = set()
+_WORKER_HEARTBEAT_STREAKS: dict[int, int] = {}
+
+def _auto_deploy_settings(config: dict[str, str]) -> dict[str, Any]:
+    enabled = str(config.get("cashpilot_auto_deploy_enabled", "")).strip().lower() in {"1", "true", "yes", "on"}
+    delay = int(str(config.get("cashpilot_auto_deploy_delay_seconds", "10") or "10").strip() or 10)
+    include_server = str(config.get("cashpilot_autodeploy_include_server", "")).strip().lower() in {"1", "true", "yes", "on"}
+    return {"enabled": enabled, "delay_seconds": max(0, delay), "include_server": include_server}
+
+def _auto_deploy_slugs(services: list[dict[str, Any]]) -> list[str]:
+    return [svc.get("slug", "") for svc in services if svc.get("slug") and svc.get("status") not in _UNDEPLOYABLE_STATUSES and (svc.get("docker") or {}).get("image")]
+
+def _worker_allowed_for_auto_deploy(worker: dict[str, Any], config: dict[str, str]) -> bool:
+    if str(worker.get("name") or "").strip().lower() == "cashpilot" and not _auto_deploy_settings(config)["include_server"]:
+        return False
+    return True
+
+async def _auto_deploy_one(worker_id: int, slug: str) -> None:
+    await api_deploy(
+        Request({"type": "http", "method": "POST", "path": f"/api/deploy/{slug}", "headers": []}),
+        slug,
+        DeployRequest(env={}),
+        worker_id=worker_id,
+        _auth={"r": "owner"},
+    )
+
+async def _run_auto_deploy_batch(worker_id: int, slugs: list[str], *, delay_seconds: int = 10) -> None:
+    if worker_id in _AUTO_DEPLOY_ACTIVE:
+        return
+    _AUTO_DEPLOY_ACTIVE.add(worker_id)
+    lock = _AUTO_DEPLOY_LOCKS.setdefault(worker_id, asyncio.Lock())
+    try:
+        async with lock:
+            for slug in slugs:
+                try:
+                    await _auto_deploy_one(worker_id, slug)
+                except Exception as exc:
+                    logger.warning("Auto deploy failed for %s on worker %s: %s", slug, worker_id, exc)
+                if delay_seconds:
+                    await asyncio.sleep(delay_seconds)
+    finally:
+        _AUTO_DEPLOY_ACTIVE.discard(worker_id)
+
+async def _maybe_auto_deploy_after_heartbeat(worker_id: int) -> None:
+    config = await database.get_config() or {}
+    settings = _auto_deploy_settings(config)
+    if not settings["enabled"]:
+        return
+    worker = await database.get_worker(worker_id)
+    if not worker or not _worker_allowed_for_auto_deploy(worker, config):
+        return
+    streak = _WORKER_HEARTBEAT_STREAKS.get(worker_id, 0) + 1
+    _WORKER_HEARTBEAT_STREAKS[worker_id] = streak
+    if streak < 3:
+        return
+    deployed = {d["slug"] for d in await database.get_deployments()}
+    services = [svc for svc in catalog.get_services() if svc.get("slug") not in deployed]
+    slugs = _auto_deploy_slugs(services)
+    if slugs:
+        _spawn(_run_auto_deploy_batch(worker_id, slugs, delay_seconds=settings["delay_seconds"]))
+
 
 # Login rate limiting moved to app.login_rate_limit (bead sux) — it was the last
 # thing the routers genuinely needed from this module, and extracting it is what
@@ -825,6 +887,42 @@ async def _run_collection() -> None:
             # is in the alert list the bell is about to show.
             global _collection_has_run
             _collection_has_run = True
+
+async def _run_single_collection(slug: str) -> dict[str, Any]:
+    from app import collectors
+
+    service = catalog.get_service(slug)
+    if not service:
+        raise HTTPException(status_code=404, detail=f"Unknown service '{slug}'")
+    config = await database.get_config() or {}
+    collector, missing = collectors.build_one(slug, config)
+    if collector is None:
+        if missing:
+            raise HTTPException(status_code=400, detail=f"Missing collector credentials: {', '.join(missing)}")
+        raise HTTPException(status_code=400, detail=f"{service.get('name') or slug} has no earnings collector")
+    try:
+        result = await _collect_bounded(collector)
+    finally:
+        with contextlib.suppress(Exception):
+            await collector.close()
+    if result.error:
+        safe_error = notify.redact(result.error)
+        await database.record_alert("collector", result.platform, safe_error, category=getattr(result, "error_kind", None))
+        raise HTTPException(status_code=502, detail=safe_error)
+    payout_alert = await _detect_payout(result)
+    await database.upsert_earnings(
+        platform=result.platform,
+        balance=result.balance,
+        currency=result.currency,
+        fx_rate_usd=exchange_rates.to_usd(1.0, result.currency),
+    )
+    return {
+        "status": "collected",
+        "platform": result.platform,
+        "balance": result.balance,
+        "currency": result.currency,
+        "payout_detected": bool(payout_alert),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1627,6 +1725,30 @@ def _resolve_deploy_credentials(slug: str, svc: dict[str, Any] | None, config: d
             detail=f"Missing required deployment credentials: {', '.join(missing)}",
         )
     return deploy_credentials
+
+def _changed_credential_sections(data: dict[str, str]) -> dict[str, set[str]]:
+    from app.collectors import collector_credential_fields, service_credential_fields
+
+    changed = {"deploy": set(), "collector": set(), "dashboard": set()}
+    keys = set(data)
+    for svc in catalog.get_services():
+        slug = str(svc.get("slug") or "")
+        if not slug:
+            continue
+        for section, fields in (
+            ("deploy", service_credential_fields(slug, "deploy", svc, fallback=False)),
+            ("collector", collector_credential_fields(slug, svc)),
+            ("dashboard", service_credential_fields(slug, "dashboard", svc, fallback=False)),
+        ):
+            if any(field.get("key") in keys for field in fields):
+                changed[section].add(slug)
+    return changed
+
+async def _mark_redeploy_needed_for_config_change(changed: dict[str, set[str]]) -> None:
+    for slug in sorted(changed.get("deploy") or []):
+        row = await database.get_deployment(slug)
+        if row and row.get("status") != "needs_redeploy":
+            await database.set_deployment_status(slug, "needs_redeploy")
 
 async def _attach_myst_wallet_for_deploy(slug: str, worker_id: int, spec: dict[str, Any]) -> dict[str, Any] | None:
     if slug != "mysterium":
@@ -2521,6 +2643,11 @@ async def api_collect(request: Request) -> dict[str, str]:
     _spawn(_run_collection())
     return {"status": "collection_started"}
 
+
+@app.post("/api/services/{slug}/collect")
+async def api_collect_service(request: Request, slug: str) -> dict[str, Any]:
+    _require_writer(request)
+    return await _run_single_collection(slug)
 
 _MAX_ALERT_ERROR_LEN = 200
 
@@ -3810,6 +3937,8 @@ async def api_set_config(
     sanitized = {k: _sanitize_credential(v) for k, v in body.data.items()}
     await database.set_config_bulk(sanitized)
     await _sync_runtime_assets_from_config(sanitized)
+    changed_sections = _changed_credential_sections(sanitized)
+    await _mark_redeploy_needed_for_config_change(changed_sections)
 
     # Auto-create "external" deployment records for manual-only services
     # whose collector credentials were just saved.  Without a deployment
@@ -4408,6 +4537,7 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
     earnings = await _earnings_for_worker(body)
     if earnings is not None:
         resp["earnings"] = earnings
+    _spawn(_maybe_auto_deploy_after_heartbeat(worker_id))
     return resp
 
 
@@ -4420,6 +4550,7 @@ async def api_list_workers(request: Request) -> list[dict[str, Any]]:
     ui_version = version.current()
     for w in workers:
         _parse_worker_json(w)
+        w["provider_states"] = await _worker_provider_states(w)
         # Skew is judged here, where the UI's own version is known, rather than
         # in the browser: the fleet page would otherwise have to learn what the
         # UI is running and re-implement the comparison. Both sides must be
@@ -4485,6 +4616,32 @@ def _parse_worker_json(w: dict[str, Any]) -> None:
         w["container_count"] = len(w["containers"])
         w["running_count"] = sum(1 for c in w["containers"] if c.get("status") == "running")
 
+async def _worker_provider_states(worker: dict[str, Any]) -> dict[str, Any]:
+    states: dict[str, Any] = {}
+    assignment = await database.get_worker_proxy_assignment(int(worker.get("id") or 0))
+    if assignment:
+        states["proxy"] = {
+            "mode": assignment.get("mode") or "proxy",
+            "fallback": assignment.get("fallback") or "hold",
+            "proxy_id": assignment.get("proxy_id"),
+            "provider_name": assignment.get("provider_name") or "",
+            "endpoint": assignment.get("endpoint") or "",
+            "status": assignment.get("status") or "",
+        }
+    client_id = str(worker.get("client_id") or "")
+    myst_rows = await database.list_myst_wallets()
+    leased = next((row for row in myst_rows if str(row.get("leased_to_client_id") or "") == client_id), None)
+    if leased:
+        states["mysterium"] = {
+            "wallet_id": leased.get("id"),
+            "wallet_assignment_version": leased.get("wallet_assignment_version") or 0,
+            "node_identity": leased.get("node_identity") or "",
+            "runtime_status": leased.get("runtime_status") or "",
+            "public_ip": leased.get("public_ip") or "",
+            "release_reason": leased.get("release_reason") or "",
+        }
+    return states
+
 
 @app.get("/api/workers/{worker_id}")
 async def api_get_worker(request: Request, worker_id: int) -> dict[str, Any]:
@@ -4494,6 +4651,7 @@ async def api_get_worker(request: Request, worker_id: int) -> dict[str, Any]:
     if not worker:
         raise HTTPException(status_code=404, detail="Worker not found")
     _parse_worker_json(worker)
+    worker["provider_states"] = await _worker_provider_states(worker)
     return worker
 
 
