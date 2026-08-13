@@ -687,6 +687,10 @@ class TestInventoryTablesHaveOperatorControls:
             'id="pool-search"',
             'id="pool-recheck-selected"',
             'id="pool-recheck-all"',
+            'id="pool-scheduler-enabled"',
+            'id="pool-scheduler-interval"',
+            'id="pool-scheduler-concurrency"',
+            'id="pool-scheduler-save"',
             'id="pool-export-filtered"',
             'id="pool-export-alive"',
             'id="pool-export-dead"',
@@ -695,6 +699,7 @@ class TestInventoryTablesHaveOperatorControls:
             "const poolPageSize = 20",
             "confirm(`Recheck ${label}?`)",
             "exportFilteredPool",
+            "/api/proxy-pool/scheduler",
         ):
             assert needle in page
 

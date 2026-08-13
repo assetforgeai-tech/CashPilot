@@ -33,6 +33,12 @@ class ProxyAssignmentIn(BaseModel):
 
 class ProxyRecheckIn(BaseModel):
     proxy_ids: list[int] | None = None
+    concurrency: int | None = None
+
+class ProxySchedulerIn(BaseModel):
+    enabled: bool = False
+    interval_minutes: int = 15
+    concurrency: int = 8
 
 async def _probe_proxy(host: str, port: int, timeout: float = 5.0) -> dict[str, str]:
     host = host.strip()
@@ -61,6 +67,90 @@ async def _probe_proxy(host: str, port: int, timeout: float = 5.0) -> dict[str, 
     except Exception:
         pass
     return {"status": "dead", "protocol": ""}
+
+async def _probe_proxy_confirmed(
+    host: str,
+    port: int,
+    *,
+    retries: int = 3,
+    retry_delay: float = 5.0,
+) -> dict[str, str]:
+    for attempt in range(max(1, retries)):
+        result = await _probe_proxy(host, port)
+        if result.get("status") == "alive":
+            return result
+        if attempt < retries - 1:
+            await asyncio.sleep(retry_delay)
+    return {"status": "dead", "protocol": ""}
+
+def _proxy_scheduler_settings(config: dict[str, Any]) -> dict[str, Any]:
+    enabled = str(config.get("proxy_pool_recheck_enabled", "")).strip().lower() in {"1", "true", "yes", "on"}
+    interval = int(str(config.get("proxy_pool_recheck_interval_minutes", "15") or "15").strip() or 15)
+    concurrency = int(str(config.get("proxy_pool_recheck_concurrency", "8") or "8").strip() or 8)
+    return {
+        "enabled": enabled,
+        "interval_minutes": min(1440, max(1, interval)),
+        "concurrency": min(64, max(1, concurrency)),
+    }
+
+async def _apply_proxy_to_worker(worker_id: int, proxy: dict[str, Any]) -> dict[str, Any]:
+    worker = await database.get_worker(worker_id)
+    payload = {
+        "mode": proxy_egress.PROXY,
+        "worker_name": (worker or {}).get("name") or str(worker_id),
+        "proxy": proxy,
+    }
+    from app.main import _proxy_to_worker  # local import avoids main -> router cycle at startup
+
+    return await _proxy_to_worker(worker_id, "POST", "/api/egress/apply", json=payload, timeout=30)
+
+async def run_proxy_pool_recheck(*, proxy_ids: list[int] | None = None, concurrency: int = 8) -> dict[str, Any]:
+    wanted = {int(x) for x in (proxy_ids or []) if int(x) > 0}
+    rows = await database.list_proxy_pool()
+    targets = [row for row in rows if not wanted or int(row["id"]) in wanted]
+    semaphore = asyncio.Semaphore(min(64, max(1, int(concurrency or 8))))
+
+    async def check(row: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str]]:
+        async with semaphore:
+            result = await _probe_proxy_confirmed(str(row.get("host") or "").strip(), int(row.get("port") or 0))
+            return row, result
+
+    checks = await asyncio.gather(*(check(row) for row in targets))
+    results = {int(row["id"]): str(result.get("status") or "dead") for row, result in checks}
+    protocols = {int(row["id"]): str(result.get("protocol") or "") for row, result in checks}
+    checked = await database.update_proxy_pool_check_results(results, protocols=protocols)
+
+    alive_rows = [row for row, result in checks if result.get("status") == "alive"]
+    rotated = 0
+    rotate_errors = 0
+    for row, result in checks:
+        if result.get("status") != "dead" or not row.get("assigned_worker_id"):
+            continue
+        replacement = next((candidate for candidate in alive_rows if not candidate.get("assigned_worker_id") and int(candidate["id"]) != int(row["id"])), None)
+        if not replacement:
+            continue
+        proxy = await database.get_proxy_endpoint(int(replacement["id"]))
+        if not proxy:
+            continue
+        worker_id = int(row["assigned_worker_id"])
+        try:
+            ok = await database.set_worker_proxy_assignment(worker_id, int(replacement["id"]), proxy_egress.PROXY, "rotate")
+            if not ok:
+                rotate_errors += 1
+                continue
+            await _apply_proxy_to_worker(worker_id, proxy)
+            replacement["assigned_worker_id"] = worker_id
+            rotated += 1
+        except Exception:
+            rotate_errors += 1
+    return {
+        "status": "ok",
+        "checked": checked,
+        "alive": sum(1 for v in results.values() if v == "alive"),
+        "dead": sum(1 for v in results.values() if v == "dead"),
+        "rotated": rotated,
+        "rotate_errors": rotate_errors,
+    }
 
 
 @router.get("/api/proxy-providers")
@@ -106,6 +196,31 @@ async def api_proxy_pool(request: Request) -> list[dict[str, Any]]:
     deps._require_owner(request)
     return await database.list_proxy_pool()
 
+@router.get("/api/proxy-pool/scheduler")
+async def api_proxy_pool_scheduler(request: Request) -> dict[str, Any]:
+    deps._require_owner(request)
+    config = await database.get_config() or {}
+    return _proxy_scheduler_settings(config if isinstance(config, dict) else {})
+
+@router.post("/api/proxy-pool/scheduler")
+async def api_proxy_pool_scheduler_save(request: Request, body: ProxySchedulerIn) -> dict[str, Any]:
+    deps._require_owner(request)
+    settings = _proxy_scheduler_settings(
+        {
+            "proxy_pool_recheck_enabled": body.enabled,
+            "proxy_pool_recheck_interval_minutes": body.interval_minutes,
+            "proxy_pool_recheck_concurrency": body.concurrency,
+        }
+    )
+    await database.set_config_bulk(
+        {
+            "proxy_pool_recheck_enabled": "true" if settings["enabled"] else "false",
+            "proxy_pool_recheck_interval_minutes": str(settings["interval_minutes"]),
+            "proxy_pool_recheck_concurrency": str(settings["concurrency"]),
+        }
+    )
+    return {"status": "ok", **settings}
+
 @router.get("/api/proxy-pool/export")
 async def api_proxy_pool_export(request: Request, status: str | None = None) -> PlainTextResponse:
     deps._require_owner(request)
@@ -133,16 +248,9 @@ async def api_proxy_pool_export(request: Request, status: str | None = None) -> 
 @router.post("/api/proxy-pool/recheck")
 async def api_proxy_pool_recheck(request: Request, body: ProxyRecheckIn) -> dict[str, Any]:
     deps._require_owner(request)
-    wanted = {int(x) for x in (body.proxy_ids or []) if int(x) > 0}
-    rows = await database.list_proxy_pool()
-    targets = [row for row in rows if not wanted or int(row["id"]) in wanted]
-    checks = await asyncio.gather(
-        *(_probe_proxy(str(row.get("host") or "").strip(), int(row.get("port") or 0)) for row in targets)
-    )
-    results = {int(row["id"]): str(check.get("status") or "dead") for row, check in zip(targets, checks, strict=False)}
-    protocols = {int(row["id"]): str(check.get("protocol") or "") for row, check in zip(targets, checks, strict=False)}
-    checked = await database.update_proxy_pool_check_results(results, protocols=protocols)
-    return {"status": "ok", "checked": checked, "alive": sum(1 for v in results.values() if v == "alive"), "dead": sum(1 for v in results.values() if v == "dead")}
+    config = await database.get_config() or {}
+    settings = _proxy_scheduler_settings(config if isinstance(config, dict) else {})
+    return await run_proxy_pool_recheck(proxy_ids=body.proxy_ids, concurrency=body.concurrency or settings["concurrency"])
 
 
 @router.post("/api/workers/{worker_id}/proxy-assignment")

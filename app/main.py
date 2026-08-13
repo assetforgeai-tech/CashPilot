@@ -104,6 +104,7 @@ def _spawn(coro) -> asyncio.Task:
 _AUTO_DEPLOY_LOCKS: dict[int, asyncio.Lock] = {}
 _AUTO_DEPLOY_ACTIVE: set[int] = set()
 _WORKER_HEARTBEAT_STREAKS: dict[int, int] = {}
+_proxy_pool_last_recheck: datetime | None = None
 
 def _auto_deploy_settings(config: dict[str, str]) -> dict[str, Any]:
     enabled = str(config.get("cashpilot_auto_deploy_enabled", "")).strip().lower() in {"1", "true", "yes", "on"}
@@ -162,6 +163,28 @@ async def _maybe_auto_deploy_after_heartbeat(worker_id: int) -> None:
     slugs = _auto_deploy_slugs(services)
     if slugs:
         _spawn(_run_auto_deploy_batch(worker_id, slugs, delay_seconds=settings["delay_seconds"]))
+
+async def _run_proxy_pool_recheck_scheduler() -> None:
+    global _proxy_pool_last_recheck
+    from app.routers.proxies import _proxy_scheduler_settings, run_proxy_pool_recheck
+
+    config = await database.get_config() or {}
+    settings = _proxy_scheduler_settings(config if isinstance(config, dict) else {})
+    if not settings["enabled"]:
+        return
+    now = datetime.now(UTC)
+    if _proxy_pool_last_recheck and now - _proxy_pool_last_recheck < timedelta(minutes=settings["interval_minutes"]):
+        return
+    _proxy_pool_last_recheck = now
+    result = await run_proxy_pool_recheck(concurrency=settings["concurrency"])
+    logger.info(
+        "Proxy pool scheduler checked=%s alive=%s dead=%s rotated=%s rotate_errors=%s",
+        result.get("checked", 0),
+        result.get("alive", 0),
+        result.get("dead", 0),
+        result.get("rotated", 0),
+        result.get("rotate_errors", 0),
+    )
 
 
 # Login rate limiting moved to app.login_rate_limit (bead sux) — it was the last
@@ -1111,6 +1134,15 @@ async def lifespan(app: FastAPI):
         "interval",
         minutes=2,
         id="stale_workers",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=300,
+    )
+    scheduler.add_job(
+        _run_proxy_pool_recheck_scheduler,
+        "interval",
+        minutes=1,
+        id="proxy_pool_recheck",
         max_instances=1,
         coalesce=True,
         misfire_grace_time=300,

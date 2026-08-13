@@ -8,6 +8,22 @@
     <h2>Proxy pool</h2>
   </div>
   <div id="pool-counts" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;"></div>
+  <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:12px;padding:12px;border:1px solid var(--border-color);border-radius:var(--radius);">
+    <label style="display:flex;gap:8px;align-items:center;font-size:0.85rem;color:var(--text-secondary);">
+      <input type="checkbox" id="pool-scheduler-enabled">
+      Auto recheck
+    </label>
+    <div style="width:160px;">
+      <label class="form-label" for="pool-scheduler-interval">Interval minutes</label>
+      <input class="form-input" id="pool-scheduler-interval" type="number" min="1" max="1440" step="1" value="15">
+    </div>
+    <div style="width:160px;">
+      <label class="form-label" for="pool-scheduler-concurrency">Parallel checks</label>
+      <input class="form-input" id="pool-scheduler-concurrency" type="number" min="1" max="64" step="1" value="8">
+    </div>
+    <button class="btn btn-secondary btn-sm" id="pool-scheduler-save">Save scheduler</button>
+    <span id="pool-scheduler-result" style="font-size:0.8rem;color:var(--text-muted);"></span>
+  </div>
   <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;">
     <input class="form-input" id="pool-search" type="search" placeholder="Search provider, endpoint, location, status" style="max-width:360px;">
     <button class="btn btn-secondary btn-sm" id="pool-recheck-selected">Recheck selected</button>
@@ -36,7 +52,12 @@ function esc(value) {
   return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 async function loadPool() {
-  poolRows = await fetch('/api/proxy-pool').then(r => r.json());
+  const [rows, scheduler] = await Promise.all([
+    fetch('/api/proxy-pool').then(r => r.json()),
+    fetch('/api/proxy-pool/scheduler').then(r => r.json()).catch(() => null),
+  ]);
+  poolRows = rows;
+  if (scheduler) renderScheduler(scheduler);
   renderPool();
 }
 let poolRows = [];
@@ -91,11 +112,28 @@ function updatePoolSelectionCount() {
   const badge = [...counts.querySelectorAll('.badge')].find(x => x.textContent.trim().startsWith('selected:'));
   if (badge) badge.textContent = `selected: ${selected}`;
 }
+function renderScheduler(settings) {
+  document.getElementById('pool-scheduler-enabled').checked = !!settings.enabled;
+  document.getElementById('pool-scheduler-interval').value = settings.interval_minutes || 15;
+  document.getElementById('pool-scheduler-concurrency').value = settings.concurrency || 8;
+}
+function schedulerBody() {
+  return {
+    enabled: document.getElementById('pool-scheduler-enabled').checked,
+    interval_minutes: Number(document.getElementById('pool-scheduler-interval').value || 15),
+    concurrency: Number(document.getElementById('pool-scheduler-concurrency').value || 8),
+  };
+}
+async function saveScheduler() {
+  const res = await fetch('/api/proxy-pool/scheduler', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(schedulerBody())}).then(r => r.json());
+  renderScheduler(res);
+  document.getElementById('pool-scheduler-result').textContent = 'Saved';
+}
 async function recheckPool(ids) {
   const label = ids && ids.length ? `${ids.length} selected proxies` : 'all proxies';
   if (!confirm(`Recheck ${label}?`)) return;
-  const res = await fetch('/api/proxy-pool/recheck', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({proxy_ids: ids && ids.length ? ids : null})}).then(r => r.json());
-  document.getElementById('pool-result').textContent = `Checked ${res.checked || 0}`;
+  const res = await fetch('/api/proxy-pool/recheck', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({proxy_ids: ids && ids.length ? ids : null, concurrency: schedulerBody().concurrency})}).then(r => r.json());
+  document.getElementById('pool-result').textContent = `Checked ${res.checked || 0}; rotated ${res.rotated || 0}`;
   loadPool();
 }
 function exportPool(status) {
@@ -121,6 +159,7 @@ document.getElementById('pool-select-all').addEventListener('change', ev => { do
 document.getElementById('pool-rows').addEventListener('change', ev => { if (ev.target.classList.contains('pool-select')) updatePoolSelectionCount(); });
 document.getElementById('pool-recheck-selected').addEventListener('click', () => recheckPool(selectedPoolIds()));
 document.getElementById('pool-recheck-all').addEventListener('click', () => recheckPool(null));
+document.getElementById('pool-scheduler-save').addEventListener('click', saveScheduler);
 document.getElementById('pool-export-filtered').addEventListener('click', exportFilteredPool);
 document.getElementById('pool-export-alive').addEventListener('click', () => exportPool('alive'));
 document.getElementById('pool-export-dead').addEventListener('click', () => exportPool('dead'));
