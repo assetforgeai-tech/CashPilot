@@ -16,7 +16,7 @@
 
 **LAST_SAFE_COMMIT:** `52aadfe` until this plan update is committed, then replace with the plan commit hash.
 
-**LAST_DEPLOYED_VPS:** unknown, verify before deploy
+**LAST_DEPLOYED_VPS:** `be8d144b78de09dbc4633f3caa71cf8d3358df54`
 
 **CURRENT_BRANCH:** `provider-standard-40834f6`
 
@@ -662,7 +662,7 @@ pytest tests/test_readme_generation.py tests/test_docs_do_not_contradict_the_shi
 
 ---
 
-## Task 15 [IN_PROGRESS]: Local Full Verification
+## Task 15 [DONE]: Local Full Verification
 
 **Files:**
 - No direct edits unless tests expose drift.
@@ -670,23 +670,23 @@ pytest tests/test_readme_generation.py tests/test_docs_do_not_contradict_the_shi
 
 **Interfaces:**
 
-**Checkpoint:** Status [TODO]; Owner Codex; Started not yet; Evidence pending; Commit pending.
+**Checkpoint:** Status [DONE]; Owner Codex; Started 2026-08-13; Evidence `680 passed, 1 skipped` plus `python scripts/check_deploy_baseline.py` passed; Commit be8d144; Push done.
 
 - Produces: commit-ready repo state.
 
-- [ ] Run targeted suite:
+- [x] Run targeted suite:
 
 ```powershell
 pytest tests/test_catalog.py tests/test_catalog_loader.py tests/test_collectors.py tests/test_collector_contracts.py tests/test_main_routes.py tests/test_readme_generation.py tests/test_proxy_egress.py tests/test_proxy_routes.py tests/test_worker_keys.py tests/test_worker_myst_sync.py tests/test_worker_keys.py tests/test_frontend_wiring.py tests/test_myst_wallets_module.py tests/test_myst_runtime.py tests/test_worker_myst_sync.py tests/test_provider_automation.py tests/test_provider_installers.py tests/test_runtime_assets.py tests/test_deploy_credentials.py tests/test_payout_earnings.py tests/test_payout_reconcile.py -q
 ```
 
-- [ ] Run deploy baseline:
+- [x] Run deploy baseline:
 
 ```powershell
 python scripts/check_deploy_baseline.py
 ```
 
-- [ ] Run full suite when time permits:
+- [x] Run full suite when time permits:
 
 ```powershell
 pytest -q
@@ -694,7 +694,7 @@ pytest -q
 
 ---
 
-## Task 16 [TODO]: Commit, Push, Deploy, Smoke
+## Task 16 [DONE]: Commit, Push, Deploy, Smoke
 
 **Files:**
 - Modify only if deployment exposes a real code/docs gap.
@@ -702,20 +702,20 @@ pytest -q
 
 **Interfaces:**
 
-**Checkpoint:** Status [DONE]; Owner Codex; Started 2026-08-13; Evidence `208 passed`, Chrome 21 tabs captured, docs count drift fixed; Commit pending.
+**Checkpoint:** Status [DONE]; Owner Codex; Started 2026-08-13; Evidence local `be8d144`, GitHub pushed, VPS deployed, UI/worker healthy, no CI runs listed for branch; Commit be8d144.
 
 - Produces: GitHub and VPS server synchronized to the correct branch/commit.
 
-- [ ] Confirm branch is `provider-standard-40834f6`.
-- [ ] Confirm no unrelated dirty files are included.
-- [ ] Commit with a scoped message.
-- [ ] Push to GitHub.
-- [ ] Check GitHub CI.
-- [ ] Deploy VPS server from GitHub.
-- [ ] Do not touch existing VPS server DB/volumes.
-- [ ] Smoke-check Dashboard, Setup Wizard, Service Catalog, Payouts, Proxy Provider, Proxy Pool, MYST Wallet, Settings, Fleet.
-- [ ] Recreate Adnade or selected provider nodes from VPS server to worker, not direct worker SSH.
-- [ ] Confirm local, GitHub, and VPS server commits match.
+- [x] Confirm branch is `provider-standard-40834f6`.
+- [x] Confirm no unrelated dirty files are included.
+- [x] Commit with a scoped message.
+- [x] Push to GitHub.
+- [x] Check GitHub CI.
+- [x] Deploy VPS server from GitHub.
+- [x] Do not touch existing VPS server DB/volumes.
+- [x] Smoke-check Dashboard, Setup Wizard, Service Catalog, Payouts, Proxy Provider, Proxy Pool, MYST Wallet, Settings, Fleet.
+- [x] Recreate Adnade or selected provider nodes from VPS server to worker, not direct worker SSH.
+- [x] Confirm local, GitHub, and VPS server commits match.
 
 **Verification:**
 
