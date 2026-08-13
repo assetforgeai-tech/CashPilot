@@ -23,16 +23,52 @@ def test_importer_saves_through_cashpilot_settings_api_only():
 
 def test_importer_has_explicit_provider_key_mapping():
     extractor = (EXT / "extractor.js").read_text(encoding="utf-8")
+    for slug in (
+        "adnade",
+        "bitping",
+        "dawn",
+        "earnapp",
+        "earnfm",
+        "grass",
+        "iproyal",
+        "mysterium",
+        "packetstream",
+        "proxies_sx",
+        "proxybase",
+        "proxybase-xyz",
+        "proxylite",
+        "proxyrack",
+        "repocket",
+        "spide",
+        "titan",
+        "traffmonetizer",
+        "uprock",
+        "urnetwork",
+        "wipter",
+    ):
+        assert slug in extractor
     for key in (
+        "adnade_username",
+        "bitping_dashboard_session",
         "dawn_dashboard_session",
+        "earnapp_oauth_token",
+        "earnfm_token",
+        "iproyalpawns_email",
+        "myst_mmn_api_key",
         "titan_dashboard_session",
         "traffmonetizer_token",
         "packetstream_auth_token",
+        "proxies_sx_api_key",
+        "proxybase-xyz_phrase",
         "grass_store_access_token",
         "spide_dashboard_token",
         "urnetwork_auth_token",
         "proxybase_dashboard_access_token",
         "proxylite_user_id",
+        "proxyrack_api_key",
+        "repocket_rp_api_key",
+        "uprock_credentials_json",
+        "wipter_email",
     ):
         assert key in extractor
 
