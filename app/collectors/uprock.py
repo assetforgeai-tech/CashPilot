@@ -70,7 +70,7 @@ class UprockCollector(BaseCollector):
             access_token = str(refreshed.get("access_token") or "")
             if not access_token:
                 raise KeyError("access_token")
-            wallet = await self._get_json("/transactions/wallet/", access_token)
+            wallet = await self._get_json("/transactions/wallet", access_token)
             await self._get_json("/transactions/rewards", access_token)
             return EarningsResult(platform=self.platform, balance=round(_money(wallet), 4), currency="USD")
         except PermissionError as exc:

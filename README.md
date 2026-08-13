@@ -336,7 +336,7 @@ There are several good open-source projects in this space, and the honest summar
 CashPilot is built around three things that shape its whole design:
 
 - **A fleet, not a machine.** One dashboard holds the state for many servers, each running a worker. Earnings are collected centrally exactly once, so nothing is double-counted, and every figure drills down per server and per service.
-- **Earnings pulled from the providers themselves.** 13 collectors authenticate against provider APIs and dashboards and record real balances into a local history, rather than reporting that a container is running. That is what makes "running but not earning" detectable at all.
+- **Earnings pulled from the providers themselves.** 15 collectors authenticate against provider APIs and dashboards and record real balances into a local history, rather than reporting that a container is running. That is what makes "running but not earning" detectable at all.
 - **Breadth beyond bandwidth.** 21 catalogued providers spanning bandwidth sharing and DePIN, each with a setup guide, a payout method, and a status that is re-checked weekly in CI.
 
 If none of those matter to you, use whichever tool you prefer — they will all start the same containers.

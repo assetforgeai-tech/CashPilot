@@ -12,6 +12,7 @@ from typing import Any
 from app.collectors.base import BaseCollector, EarningsResult
 from app.collectors.adnade import AdnadeCollector
 from app.collectors.bitping import BitpingCollector
+from app.collectors.dawn import DawnCollector
 from app.collectors.earnapp import EarnAppCollector
 from app.collectors.earnfm import EarnFMCollector
 from app.collectors.grass import GrassCollector
@@ -23,6 +24,7 @@ from app.collectors.proxyrack import ProxyRackCollector
 from app.collectors.repocket import RepocketCollector
 from app.collectors.traffmonetizer import TraffmonetizerCollector
 from app.collectors.uprock import UprockCollector
+from app.collectors.titan import TitanCollector
 
 logger = logging.getLogger(__name__)
 
@@ -36,11 +38,13 @@ COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
     "repocket": RepocketCollector,
     "proxyrack": ProxyRackCollector,
     "bitping": BitpingCollector,
+    "dawn": DawnCollector,
     "earnfm": EarnFMCollector,
     "packetstream": PacketStreamCollector,
     "proxies-sx": ProxiesSxCollector,
     "grass": GrassCollector,
     "uprock": UprockCollector,
+    "titan": TitanCollector,
 }
 
 # Map of slug -> list of config keys needed to instantiate the collector
@@ -57,6 +61,8 @@ _COLLECTOR_ARGS: dict[str, list[str]] = {
     "proxies-sx": ["api_key"],
     "grass": ["access_token"],
     "uprock": ["credentials_json"],
+    "dawn": ["dashboard_session"],
+    "titan": ["dashboard_session"],
 }
 
 _SECRET_KINDS = {"password", "api_key", "token", "cookie", "bearer", "jwt", "oauth_token", "access_token"}
@@ -177,6 +183,20 @@ CREDENTIAL_LIFETIMES: dict[str, dict[str, dict[str, object]]] = {
             "hours": None,
             "durable": True,
             "why": "Bearer token from browser localStorage. Re-copy it if Grass signs you out.",
+        },
+    },
+    "dawn": {
+        "dashboard_session": {
+            "hours": None,
+            "durable": True,
+            "why": "Cookie/session string from the logged-in Dawn dashboard. Re-copy it if Dawn signs you out.",
+        },
+    },
+    "titan": {
+        "dashboard_session": {
+            "hours": None,
+            "durable": True,
+            "why": "Cookie/session string from the logged-in Titan dashboard. Re-copy it if Titan signs you out.",
         },
     },
     "uprock": {

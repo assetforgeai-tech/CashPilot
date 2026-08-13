@@ -393,8 +393,10 @@ class TestProviderAutomationContracts:
 
     def test_dawn_and_titan_store_optional_dashboard_sessions_only(self):
         assert self._credential_keys(self._svc("dawn"), "dashboard") == {"dashboard_session"}
+        assert self._credential_keys(self._svc("dawn"), "collector") == {"dashboard_session"}
         titan = self._svc("titan")
         assert self._credential_keys(titan, "dashboard") == {"dashboard_session"}
+        assert self._credential_keys(titan, "collector") == {"dashboard_session"}
         assert titan["collector"]["per_node_earnings"] is True
 
     def test_wipter_runtime_uses_env_login(self):

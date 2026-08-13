@@ -1,0 +1,12 @@
+{
+  "currency": "TNTIP",
+  "fields": [
+    "Total Earnings"
+  ],
+  "note": "logged-in Titan dashboard session cookie; parse total device earnings from device management",
+  "parsed": 591.926,
+  "sample": {
+    "Total Earnings": 591.926
+  },
+  "slug": "titan"
+}

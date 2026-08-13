@@ -66,6 +66,14 @@ platforms: [browser-extension]
 
 collector:
   type: scrape
+  credentials:
+    - key: dashboard_session
+      label: "Titan dashboard session"
+      kind: cookie
+      secret: true
+      required: true
+      source: "https://edge.titannet.info logged-in browser session"
+      description: "Logged-in cookie/session string used by CashPilot to read Titan rewards and device state."
   per_node_earnings: true
   notes: "Logged-in dashboard exposes account totals, per-device status/IP/quality/uptime/earnings rows, task earnings, and earnings history. No public API contract confirmed."
 

@@ -66,6 +66,14 @@ platforms: [browser-extension]
 
 collector:
   type: scrape
+  credentials:
+    - key: dashboard_session
+      label: "DAWN dashboard session"
+      kind: cookie
+      secret: true
+      required: true
+      source: "https://dashboard.dawninternet.com logged-in browser session"
+      description: "Logged-in cookie/session string used by CashPilot to read Dawn rewards and connection state."
   notes: "Logged-in dashboard exposes connection quality, connected state, total points, epoch points, referral points, streak, and earnings tables. No public API or headless node setup confirmed."
 
 payout:

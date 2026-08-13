@@ -175,7 +175,7 @@ CashPilot tracks **21 providers** across two active categories:
 - **Bandwidth Sharing** (15 providers) -- Share your internet bandwidth for passive income
 - **DePIN** (6 providers) -- Decentralized physical infrastructure networks
 
-Of these, **10 providers** can be deployed and managed automatically via Docker, and **13 collectors** can read earnings from provider APIs or dashboards. The rest are browser extension or desktop-only providers tracked in the catalog with signup links and earning estimates.
+Of these, **10 providers** can be deployed and managed automatically via Docker, and **15 collectors** can read earnings from provider APIs or dashboards. The rest are browser extension or desktop-only providers tracked in the catalog with signup links and earning estimates.
 
 The server-side Settings page is where you keep provider runtime assets, collector secrets, dashboard/session credentials, proxy policy, MYST default password, and auto-deploy policy. The worker bootstrap command is in `client command setup script.txt` and is the canonical way to add a new VPS worker.
 

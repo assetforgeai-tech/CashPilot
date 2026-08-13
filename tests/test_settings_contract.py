@@ -115,3 +115,55 @@ def test_credential_health_marks_expiring_credentials(tmp_path):
             assert "secret-cookie" not in str(rows)
 
     asyncio.run(run())
+
+def test_startup_backfills_deploy_only_and_dashboard_only_tracking_rows(tmp_path):
+    deploy_only = {
+        "slug": "proxylite",
+        "deploy": {"credentials": [{"key": "user_id", "required": True}]},
+    }
+    dashboard_only = {
+        "slug": "dawn",
+        "dashboard": {"credentials": [{"key": "dashboard_session", "required": False}]},
+    }
+
+    async def run():
+        with (
+            patch.object(database, "DB_DIR", tmp_path),
+            patch.object(database, "DB_PATH", tmp_path / "settings.db"),
+            patch.object(main.catalog, "get_services", return_value=[deploy_only, dashboard_only]),
+            patch.object(main.catalog, "get_service", side_effect=lambda slug: {"proxylite": deploy_only, "dawn": dashboard_only}.get(slug)),
+        ):
+            await database.init_db()
+            await database.set_config_bulk(
+                {
+                    "proxylite_user_id": "user-1",
+                    "dawn_dashboard_session": "session",
+                }
+            )
+
+            tracked = await main._track_fully_configured_services()
+
+            assert tracked == 2
+            assert (await database.get_deployment("proxylite"))["status"] == "external"
+            assert (await database.get_deployment("dawn"))["status"] == "external"
+
+    asyncio.run(run())
+
+def test_saving_deploy_only_credentials_tracks_that_service(tmp_path):
+    svc = {
+        "slug": "proxybase-xyz",
+        "deploy": {"credentials": [{"key": "phrase", "required": True}]},
+    }
+
+    async def run():
+        with (
+            patch.object(database, "DB_DIR", tmp_path),
+            patch.object(database, "DB_PATH", tmp_path / "settings.db"),
+            patch.object(main.catalog, "get_service", return_value=svc),
+        ):
+            await database.init_db()
+            await database.set_config_bulk({"proxybase-xyz_phrase": "phrase"})
+
+            assert main._service_tracking_ready("proxybase-xyz", await database.get_config())
+
+    asyncio.run(run())

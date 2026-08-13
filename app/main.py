@@ -689,8 +689,36 @@ async def _warm_collector_alerts() -> None:
             logger.warning("Could not tell whether a collection has run before: %s", exc)
 
 
+def _service_tracking_ready(slug: str, config: dict[str, str]) -> bool:
+    """True when a service has enough stored material to belong on Dashboard.
+
+    Some providers have no earnings collector yet but are still deployed from
+    CashPilot credentials (for example ProxyLite's user id). The dashboard's
+    deployed table is the operator view of tracked providers, so deploy and
+    dashboard/session credentials must create the same placeholder row that
+    collector credentials already did.
+    """
+    from app.collectors import fully_configured_slugs
+
+    if slug in fully_configured_slugs(config):
+        return True
+    svc = catalog.get_service(slug) or {}
+    for section in ("deploy", "dashboard", "collector"):
+        fields = ((svc.get(section) or {}).get("credentials") or [])
+        if not fields:
+            continue
+        required = [f for f in fields if f.get("required", True)]
+        keys = [f"{slug}_{f.get('key')}" for f in fields if f.get("key")]
+        if required:
+            required_keys = [f"{slug}_{f.get('key')}" for f in required if f.get("key")]
+            if required_keys and all(config.get(key) for key in required_keys):
+                return True
+        elif any(config.get(key) for key in keys):
+            return True
+    return False
+
 async def _track_fully_configured_services() -> int:
-    """Give every fully-credentialled service a deployment row, so it is collected.
+    """Give every configured service a deployment row, so Dashboard tracks it.
 
     Collection iterates DEPLOYMENT ROWS (``make_collectors``), so a service with
     no row is never collected however complete its credentials are. Saving
@@ -708,16 +736,17 @@ async def _track_fully_configured_services() -> int:
 
     Returns the number of rows created, for the log line and the tests.
     """
-    from app.collectors import fully_configured_slugs
-
     try:
         config = await database.get_config() or {}
         if not isinstance(config, dict):
             return 0
         existing = {d.get("slug") for d in await database.get_deployments()}
         tracked = 0
-        for slug in sorted(fully_configured_slugs(config)):
+        for svc in catalog.get_services():
+            slug = svc.get("slug")
             if slug in existing or not catalog.get_service(slug):
+                continue
+            if not _service_tracking_ready(slug, config):
                 continue
             await database.save_deployment(slug=slug, container_id="", status="external")
             tracked += 1
@@ -3943,8 +3972,6 @@ async def api_set_config(
     # Auto-create "external" deployment records for manual-only services
     # whose collector credentials were just saved.  Without a deployment
     # row, _run_collection() will never instantiate the collector.
-    from app.collectors import fully_configured_slugs
-
     # Completeness is judged against the MERGED config, not this request.
     #
     # set_config_bulk UPSERTS, so a credential set can legitimately arrive
@@ -3960,8 +3987,11 @@ async def api_set_config(
     # shared with the startup backfill so the two can never disagree about which
     # services are ready to collect.
     stored = await database.get_config() or {}
-    for slug in fully_configured_slugs(stored):
+    touched_slugs = {key.split("_", 1)[0] for key in sanitized if "_" in key}
+    for slug in sorted(touched_slugs):
         if not any(k.startswith(f"{slug}_") for k in sanitized):
+            continue
+        if not _service_tracking_ready(slug, stored):
             continue
         svc = catalog.get_service(slug)
         if not svc:
