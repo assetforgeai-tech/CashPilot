@@ -17,7 +17,7 @@ docker:
     mem_limit: "768m"
     oom_score_adj: 300
   env: []
-  ports: ["4000:3000"]
+  ports: ["4000:3500"]
   volumes: []
   command: ""
   network_mode: ""
@@ -30,7 +30,7 @@ deploy:
       target: /config
       encoding: zip
       url: https://adnade.acacondos.com/cashpilot/adnade/chromeprofiledata.ORIGINAL.zip.fernet
-      sha256: bbab857b0e984854004db305fb2268163ad973027dbea9031ada87729b098044
+      sha256: d6bd159cd68c7affd2cd016fb74a67ccc879609c61321c39e332d8e1528c062c
       decrypt: fernet
       decrypt_key_arg: chrome_profile_key
   credentials:

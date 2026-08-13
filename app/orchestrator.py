@@ -235,18 +235,14 @@ def deploy_raw(
         username = str(deploy_credentials.get("username") or "").strip()
         env["ADNADE_USERNAME"] = username
         env["ADNADE_USE_CHROME"] = "true"
-        env["CUSTOM_PORT"] = str(env.get("CUSTOM_PORT") or "3000")
-        env["CUSTOM_HTTPS_PORT"] = str(env.get("CUSTOM_HTTPS_PORT") or "3001")
+        env["CUSTOM_PORT"] = str(env.get("CUSTOM_PORT") or "3500")
+        env["CUSTOM_HTTPS_PORT"] = str(env.get("CUSTOM_HTTPS_PORT") or "3501")
         env["CUSTOM_USER"] = str(env.get("CUSTOM_USER") or "internetincome")
         env["PASSWORD"] = str(env.get("PASSWORD") or "internetincome")
         env["PUID"] = str(env.get("PUID") or "1000")
         env["PGID"] = str(env.get("PGID") or "1000")
         env["TZ"] = str(env.get("TZ") or "Etc/UTC")
-        extensions = (
-            "/config/cashpilot-extensions/flemjfpeajijmofcpgfgckfbmomdflck,"
-            "/config/cashpilot-extensions/fpdkjdnhkakefebpekbdhillbhonfjjp"
-        )
-        env["CHROME_CLI"] = f"--load-extension={extensions} https://adnade.net/view.php?user={username}&multi=4"
+        env["CHROME_CLI"] = f"--incognito https://adnade.net/view.php?user={username}&multi=4"
 
     # Remove any existing container with the same name
     try:

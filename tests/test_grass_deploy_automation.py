@@ -214,11 +214,11 @@ def test_deploy_raw_maps_adnade_username_to_chrome_url():
     env = client.containers.run.call_args.kwargs["environment"]
     assert env["ADNADE_USERNAME"] == "assetforge"
     assert env["ADNADE_USE_CHROME"] == "true"
-    assert env["CUSTOM_PORT"] == "3000"
+    assert env["CUSTOM_PORT"] == "3500"
+    assert env["CUSTOM_HTTPS_PORT"] == "3501"
     assert env["PUID"] == "1000"
     assert env["PGID"] == "1000"
-    assert env["CHROME_CLI"].endswith("https://adnade.net/view.php?user=assetforge&multi=4")
-    assert "--load-extension=/config/cashpilot-extensions/" in env["CHROME_CLI"]
+    assert env["CHROME_CLI"] == "--incognito https://adnade.net/view.php?user=assetforge&multi=4"
     assert client.containers.run.call_args.kwargs["cap_drop"] is None
 
 
