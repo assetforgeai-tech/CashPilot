@@ -246,7 +246,7 @@ def deploy_raw(
             "/config/.config/chromium/Default/Extensions/flemjfpeajijmofcpgfgckfbmomdflck/0.1.6_0,"
             "/config/.config/chromium/Default/Extensions/fpdkjdnhkakefebpekbdhillbhonfjjp/3.0.10_0"
         )
-        env["CHROME_CLI"] = f"--incognito --load-extension={extensions} https://adnade.net/view.php?user={username}&multi=4"
+        env["CHROME_CLI"] = f"--load-extension={extensions} https://adnade.net/view.php?user={username}&multi=4"
 
     # Remove any existing container with the same name
     try:
