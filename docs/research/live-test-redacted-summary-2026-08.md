@@ -12,10 +12,40 @@
 
 | Surface | Role | Destructive Scope | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| `vps-test-sing` | Primary live-test worker | Clean/recreate allowed | ready | worker `52-237-120-118-1786648057`, repo commit `8ba379a`, heartbeat HTTP 200 |
+| `vps-test-sing` | Primary live-test worker | Clean/recreate allowed | blocked | worker `52-237-120-118-1786648057`, repo commit `8ba379a`, heartbeat HTTP 200; server cannot reach public `:8081` |
 | `vps-test-us` | Secondary live-test worker | Conditional only | pending | not touched unless needed |
 | Chrome profile 40 | Credential/session source | Read only; overwrite Settings only when stale | pending | tab inventory not captured |
-| VPS server | Source of truth | No DB/volume edits | ready | deployed commit `8ba379a`, UI container up |
+| VPS server | Source of truth | No DB/volume edits | ready | deployed commit `bfe5835`, source-built UI/worker containers up, `active_services=19` matches deployed rows |
+
+## Current Blocker
+
+`vps-test-sing` publishes worker `0.0.0.0:8081`, and local checks on that VPS return `200` from `http://127.0.0.1:8081/api/health`. The VPS server times out when calling `http://52.237.120.118:8081`, so server-first deploys return `503 Worker communication failed`.
+
+Required infra fix before continuing live rollout: allow inbound TCP `8081` to `vps-test-sing` from the VPS server public IP `42.96.13.215` in the cloud/network security group. Host `ufw` is inactive; the block is outside the container/app path.
+
+## First Rollout Attempt
+
+| Provider | Result | Cause |
+| --- | --- | --- |
+| adnade | blocked | worker communication failed |
+| bitping | blocked | worker communication failed |
+| grass | blocked | worker communication failed |
+| mysterium | blocked | worker communication failed |
+| proxybase | blocked | worker communication failed |
+| proxybase-xyz | blocked | worker communication failed |
+| proxylite | blocked | worker communication failed |
+| spide | blocked | worker communication failed |
+| uprock | blocked | worker communication failed |
+| urnetwork | blocked | worker communication failed |
+| wipter | blocked | worker communication failed |
+| earnapp | blocked | missing deploy field: Node UUID |
+| earnfm | blocked | missing deploy field: API Key |
+| iproyal | blocked | missing deploy fields: Email, Password |
+| packetstream | blocked | missing deploy field: Client ID |
+| proxies-sx | blocked | missing deploy field: API key |
+| proxyrack | blocked | missing deploy field: Device UUID |
+| repocket | blocked | missing deploy fields: Email, API Key |
+| traffmonetizer | blocked | missing deploy field: Token |
 
 ## Provider Success Matrix
 
