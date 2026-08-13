@@ -1,0 +1,6 @@
+{
+  "baseline_sha": "40834f6",
+  "baseline_name": "cashpilot-provider-ui-standard",
+  "locked_at": "2026-08-13",
+  "notes": "Approved UI baseline. Develop forward from this SHA only; deploy guards must fail on unrelated or accidental commits."
+}
