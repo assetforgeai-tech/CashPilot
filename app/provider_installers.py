@@ -160,6 +160,6 @@ def proxybase_xyz_command() -> str:
         '"$CLI" wallet import "$PHASE"; '
         '"$CLI" login; '
         '"$CLI" seller start; '
-        '"$CLI" seller stop >/dev/null 2>&1 || true; '
-        '"$CLI" seller start --foreground\''
+        'touch /root/.proxybase/seller.log; '
+        'tail -n +1 -F /root/.proxybase/seller.log\''
     )
