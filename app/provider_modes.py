@@ -27,8 +27,18 @@ def supported_modes(slug: str) -> set[str]:
     return {"direct"}
 
 
+def default_deploy_mode(slug: str) -> str:
+    modes = supported_modes(slug)
+    if {"direct", "proxy"} <= modes:
+        return "both"
+    if "proxy" in modes:
+        return "proxy"
+    return "direct"
+
 def expand_requested(slug: str, mode: str | None) -> list[str]:
     if not mode:
+        mode = default_deploy_mode(slug)
+    if mode == "legacy":
         return ["legacy"]
     wanted = ["direct", "proxy"] if mode == "both" else [mode]
     supported = supported_modes(slug)

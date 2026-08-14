@@ -130,6 +130,17 @@ class TestProviderCollectNowIsReachable:
         assert "/api/services/${encodeURIComponent(slug)}/collect" in source
         assert "loadServicesTable()" in source
 
+class TestDeployModeSelect:
+    def test_dual_mode_services_can_select_both_by_default(self):
+        source = js_function("deployModeSelect")
+        assert "modes.includes('direct') && modes.includes('proxy')" in source
+        assert "const selected = canBoth ? 'both'" in source
+
+    def test_deploy_posts_selected_mode(self):
+        source = js_function("_deployToWorkers")
+        assert "data-deploy-mode-for" in source
+        assert "body: { env, mode }" in source
+
 class TestMystWalletImportIsReachable:
     def test_the_handler_is_exported_from_cp(self):
         app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")

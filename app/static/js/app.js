@@ -981,9 +981,10 @@ const CP = (() => {
   function deployModeSelect(svc, prefix = 'deploy-mode') {
     const modes = Array.isArray(svc.supported_modes) ? svc.supported_modes : [];
     if (!modes.length) return '';
-    const selected = modes.includes('both') ? 'both' : (modes.includes('proxy') ? 'proxy' : 'direct');
+    const canBoth = modes.includes('direct') && modes.includes('proxy');
+    const selected = canBoth ? 'both' : (modes.includes('proxy') ? 'proxy' : 'direct');
     const options = ['direct', 'proxy', 'both'].map(mode => {
-      const allowed = modes.includes(mode);
+      const allowed = mode === 'both' ? canBoth : modes.includes(mode);
       return `<option value="${mode}"${mode === selected ? ' selected' : ''}${allowed ? '' : ' disabled'}>${mode}</option>`;
     }).join('');
     return `

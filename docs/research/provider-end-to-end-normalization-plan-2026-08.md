@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Normalize all 21 CashPilot providers so server Settings, Setup Wizard, Service Catalog, Dashboard, Payouts, Proxy Provider, Proxy Pool, MYST Wallet, and Fleet all agree with the worker runtime and can deploy/recover providers automatically.
+**Goal:** Normalize all 18 active CashPilot providers so server Settings, Setup Wizard, Service Catalog, Dashboard, Payouts, Proxy Provider, Proxy Pool, MYST Wallet, and Fleet all agree with the worker runtime and can deploy/recover providers automatically.
 
 **Architecture:** CashPilot server is the only source of truth for provider catalog, credentials, runtime assets, proxy leases, MYST wallet leases, auto-deploy policy, payout metadata, and earnings collection. Workers enroll, heartbeat, receive server commands, apply a single worker-level proxy egress via sing-box, deploy providers sequentially, and report `provider_states`. Proxy Pool and MYST Wallet do not run their own heartbeat loops; they reconcile from CashPilot worker heartbeat plus provider state evidence.
 
@@ -10,13 +10,13 @@
 
 ## Execution Ledger
 
-**RESUME_FROM:** Task 15 / Step 1
+**RESUME_FROM:** Task 17 / Step 1
 
 **CURRENT_STATUS:** [IN_PROGRESS]
 
-**LAST_SAFE_COMMIT:** `52aadfe` until this plan update is committed, then replace with the plan commit hash.
+**LAST_SAFE_COMMIT:** `42c02df`
 
-**LAST_DEPLOYED_VPS:** `be8d144b78de09dbc4633f3caa71cf8d3358df54`
+**LAST_DEPLOYED_VPS:** `42c02df`
 
 **CURRENT_BRANCH:** `provider-standard-40834f6`
 
@@ -52,15 +52,17 @@
 | 2026-08-13 | [DONE] | Credential health now has regression coverage for age/status without leaking values. | The settings panel must show freshness and expiry truth without printing secrets. | Health UI can warn before provider collection dies. | pending |
 | 2026-08-13 | [DONE] | Worker bootstrap contract verified against existing fleet UI and worker key tests. | Current code already uses public IP/timestamp copy snippet, public worker URL, stable client_id, worker key re-enrollment, and MYST provider state on worker heartbeat. | No extra runtime logic added for Task 5. | pending |
 | 2026-08-13 | [DONE] | Auto-deploy policy now has server-side toggle/delay and sequential worker batch behavior. | Stable workers can be auto-sequenced from heartbeat after 3 healthy beats, with per-worker locking and deployable-only filtering. | Auto deploy is opt-in, per-worker, and continues after per-provider failure. | pending |
+| 2026-08-15 | [CHANGED] | Adnade, Dawn, and Titan are removed from the active plan scope. | User explicitly dropped the three Chrome-extension providers; active catalog now has 18 providers. | Remaining work targets active providers only and docs/tests must use 18-provider source-of-truth. | `42c02df` |
+| 2026-08-15 | [IN_PROGRESS] | Add provider instance mode UI/API wiring as the first core runtime checkpoint. | Providers need direct/proxy/both instances on the same worker without container collisions. | Setup Wizard and Service Detail now send deploy `mode`; VPS is deployed at `42c02df`. | `42c02df` |
 
 ### Open Drift
 
 | Status | Area | Drift | Next Action |
 | --- | --- | --- | --- |
-| [TODO] | VPS deploy | `LAST_DEPLOYED_VPS` not verified in this plan file yet. | Verify VPS commit before first deploy. |
+| [DONE] | VPS deploy | `LAST_DEPLOYED_VPS` verified at `42c02df`. | Continue provider runtime normalization from current deployed commit. |
 | [TODO] | Chrome audit | Chrome profile 40 tab inventory not captured in this plan file yet. | Capture provider tab list during Task 1. |
 | [TODO] | Credentials | Some server Settings credentials may be missing/expired. | Audit and write gaps to local secret file. |
-| [TODO] | Plan commit | Plan has edits after `52aadfe`. | Commit plan update, then replace `LAST_SAFE_COMMIT` with the new hash. |
+| [IN_PROGRESS] | Provider runtime | Active catalog has 18 providers, but runtime contracts still need full normalization against manual setup scripts. | Execute Task 17. |
 
 ### Deploy Checkpoint
 
@@ -75,10 +77,7 @@
 
 | Provider | Status | Deploy Runtime | Earnings Collector | Dashboard / Session | Payout | Proxy / Direct | Runtime Test | UI Ready | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| adnade | [IN_PROGRESS] | R2 encrypted Chrome profile + username | user/password | Chrome/session if needed | collector-backed | direct/profile runtime | partial | partial | Dawn stable; Titan auto-enable still needs final server-flow validation. |
-| dawn | [TODO] | profile/session truth | needs_user_info | Chrome tab audit | needs_user_info | direct/provider-specific | pending | pending | Chrome audit captured; collector/payout requires proven API or scrape shape. |
 | grass | [TODO] | 7 store.json keys | existing/verify | dashboard audit | needs_user_info | direct | prior manual success, needs codified test | partial | Keys: `wynd:status`, `wynd:user_id`, `tokenExpiry`, `autoUpdate`, `wynd:authenticated`, `refreshToken`, `accessToken`. |
-| titan | [TODO] | extension/profile state | needs_user_info | Chrome tab audit | needs_user_info | direct/provider-specific | partial | pending | Titan must auto-on in Adnade profile; collector/payout requires proven API or scrape shape. |
 | uprock | [TODO] | `credentials.json` + `main.db` | limited/no API unless confirmed | dashboard audit | needs_user_info | direct | prior manual success | partial | Official runtime only. |
 | wipter | [TODO] | email/password | scrape/manual unless API confirmed | dashboard audit | needs_user_info | provider tunnel namespace | partial | partial | Needs login marker verification. |
 | bitping | [TODO] | catalog deploy credential audit | existing/verify | dashboard audit | payout audit | direct | pending | pending | Direct provider. |
@@ -99,7 +98,7 @@
 
 ## Global Constraints
 
-- Normalize all 21 providers in `services/bandwidth/*.yml` and `services/depin/*.yml`.
+- Normalize all 18 active providers in `services/bandwidth/*.yml` and `services/depin/*.yml`.
 - No provider client deploy test on VPS server.
 - Provider client deploy tests run on test workers, primarily `vps-test-sing`.
 - VPS server is deploy source of truth; provider nodes are created through server-to-worker flow.
@@ -161,7 +160,7 @@ Settings, credential health, runtime assets, worker heartbeat/provider_states, p
 Dashboard, Setup Wizard, Service Catalog, Payouts, Proxy Provider, Proxy Pool, MYST Wallet, Settings, and Fleet expose exactly what backend supports.
 
 ### Milestone 4: Provider Contracts
-All 21 providers have deploy runtime, earnings collector, dashboard/session, payout, proxy mode, and readiness metadata filled or explicitly marked `needs_user_info`.
+All 18 active providers have deploy runtime, earnings collector, dashboard/session, payout, proxy mode, and readiness metadata filled or explicitly marked `needs_user_info`.
 
 ### Milestone 5: Server-First Live Validation
 VPS server is deployed from GitHub, workers enroll via the bootstrap script, and provider nodes are recreated only from server commands.
@@ -204,7 +203,7 @@ VPS server is deployed from GitHub, workers enroll via the bootstrap script, and
 
 - Produces: complete 21-provider matrix with runtime, collector, dashboard/session, payout, proxy, MYST dependency, UI readiness, missing credentials.
 
-- [x] Load all provider YAML files and list the 21 provider slugs.
+- [x] Load all provider YAML files and list the active provider slugs.
 - [x] For each provider, record `category`, `deployable`, `container image`, `deploy credentials`, `runtime assets`, `collector credentials`, `dashboard/session credentials`, `payout fields`, `egress mode`, `proxy requirement`, `MYST dependency`, `UI readiness`.
 - [x] Search docs/UI/tests for stale provider names and stale counts.
 - [x] Connect to Chrome profile 40 and read all provider tab URL/title/page state. If the Chrome connector fails, fix the connection path or use an approved fallback; do not skip Chrome audit.
@@ -471,10 +470,7 @@ pytest tests/test_myst_wallets_module.py tests/test_myst_runtime.py tests/test_w
 - Modify: `services/bandwidth/spide.yml`
 - Modify: `services/bandwidth/traffmonetizer.yml`
 - Modify: `services/bandwidth/urnetwork.yml`
-- Modify: `services/depin/adnade.yml`
-- Modify: `services/depin/dawn.yml`
 - Modify: `services/depin/grass.yml`
-- Modify: `services/depin/titan.yml`
 - Modify: `services/depin/uprock.yml`
 - Modify: `services/depin/wipter.yml`
 - Test: `tests/test_catalog.py`, `tests/test_catalog_loader.py`, `tests/test_provider_automation.py`, `tests/test_provider_installers.py`
@@ -726,8 +722,46 @@ git log --oneline -1
 
 ---
 
+## Task 17 [IN_PROGRESS]: Active Provider Runtime Normalization
+
+**Files:**
+- Modify: `app/provider_modes.py`
+- Modify: `app/main.py`
+- Modify: `app/orchestrator.py`
+- Modify: `app/worker_api.py`
+- Modify: `services/bandwidth/*.yml`
+- Modify: `services/depin/*.yml`
+- Reference only: `D:\1. WORK_true\CashPilot\provider-runtime\provider_code_setup_node\*.py`
+- Test: provider runtime/mode/deploy contract tests.
+
+**Interfaces:**
+
+**Checkpoint:** Status [DONE]; Owner Codex; Started 2026-08-15; Evidence `1242 passed, 7 skipped`; `python scripts/check_deploy_baseline.py` passed; Commit pending.
+
+- Produces: active 18 providers can be represented as direct, proxy, or both runtime instances without name/volume/container collisions.
+
+- [x] Read every manual provider setup script under `provider-runtime/provider_code_setup_node`.
+- [x] Build the source-of-truth provider mode matrix from manual scripts and catalog YAML.
+- [x] Fix any wrong `direct`, `proxy`, or `both` classification.
+- [x] Add tests that every active catalog provider has supported modes and rejected unsupported modes.
+- [x] Add tests that `both` expands to two unique instance IDs.
+- [x] Add tests that proxy-mode deployment attaches a proxy and direct-mode deployment does not.
+- [x] Keep EarnApp proxy-only and non-Docker constraints explicit.
+- [x] Keep MYST direct-only with wallet lease separate from proxy pool.
+- [x] Run local full verification.
+- [ ] Commit, push, deploy VPS from GitHub, verify CI and container health.
+
+**Verification:**
+
+```powershell
+pytest tests/test_provider_modes.py tests/test_main_routes.py tests/test_proxy_routes.py tests/test_worker_keys.py -q
+pytest -q
+```
+
+---
+
 ## Self-Review
 
-- Spec coverage: all 21 providers, Dashboard, Setup Wizard, Service Catalog, Payouts, Proxy Provider, Proxy Pool, MYST Wallet, Settings, Fleet, auto-deploy, proxy lease, MYST lease, worker heartbeat, Chrome credential audit, docs, commit/push/deploy are covered.
+- Spec coverage: all 18 active providers, Dashboard, Setup Wizard, Service Catalog, Payouts, Proxy Provider, Proxy Pool, MYST Wallet, Settings, Fleet, auto-deploy, proxy lease, MYST lease, worker heartbeat, Chrome credential audit, docs, commit/push/deploy are covered.
 - Redundant logic removed: separate MYST heartbeat and generic unused asset abstractions are not part of the final design.
 - Type consistency: credential groups remain Deploy runtime, Earnings collector, Dashboard / session; runtime truth remains worker heartbeat plus provider_states; proxy lease remains worker-level; MYST wallet lease remains server asset inventory.

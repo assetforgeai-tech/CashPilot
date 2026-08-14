@@ -16,6 +16,7 @@ def test_proxy_instance_runs_provider_inside_singbox_sidecar_namespace():
         container_id = orchestrator.deploy_raw(
             slug="bitping-proxy",
             image="bitping/bitpingd:latest",
+            labels={"cashpilot.provider": "bitping", "cashpilot.instance_mode": "proxy"},
             proxy={"host": "1.2.3.4", "port": 1080, "protocol": "socks5"},
         )
 
@@ -27,3 +28,5 @@ def test_proxy_instance_runs_provider_inside_singbox_sidecar_namespace():
     assert "/dev/net/tun:/dev/net/tun" in sidecar_call.kwargs["devices"]
     assert provider_call.kwargs["network_mode"] == "container:cashpilot-bitping-proxy-egress"
     assert provider_call.kwargs["name"] == "cashpilot-bitping-proxy"
+    assert provider_call.kwargs["labels"]["cashpilot.provider"] == "bitping"
+    assert provider_call.kwargs["labels"]["cashpilot.instance_mode"] == "proxy"

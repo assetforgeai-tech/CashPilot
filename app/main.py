@@ -125,7 +125,7 @@ async def _auto_deploy_one(worker_id: int, slug: str) -> None:
     await api_deploy(
         Request({"type": "http", "method": "POST", "path": f"/api/deploy/{slug}", "headers": []}),
         slug,
-        DeployRequest(env={}),
+        DeployRequest(env={}, mode=provider_modes.default_deploy_mode(slug)),
         worker_id=worker_id,
         _auth={"r": "owner"},
     )
@@ -1525,7 +1525,7 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
     }
     slug_agg: dict[str, dict[str, Any]] = {}
     for s in statuses:
-        slug = s["slug"]
+        slug = s.get("provider") or s["slug"]
         if slug not in slug_agg:
             slug_agg[slug] = {
                 "instances": [],
@@ -1562,6 +1562,8 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             detail = {
                 "node": inst.get("_node", "unknown"),
                 "worker_id": inst.get("_worker_id"),
+                "instance_slug": inst.get("instance_slug") or inst.get("slug"),
+                "mode": inst.get("instance_mode") or "",
                 "status": inst.get("status", "unknown"),
                 # None reaches the UI as null, which renders as an em dash. A
                 # formatted "0.00" would be indistinguishable from a real idle

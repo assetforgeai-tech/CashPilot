@@ -755,11 +755,15 @@ def get_status() -> list[dict[str, Any]]:
             if (c.labels or {}).get("cashpilot.role") == "egress-sidecar":
                 continue
             seen_ids.add(c.id)
-            slug = c.labels.get(LABEL_SERVICE, "unknown")
+            slug = c.labels.get("cashpilot.provider") or c.labels.get(LABEL_SERVICE, "unknown")
+            instance_slug = c.labels.get(LABEL_SERVICE, slug)
+            instance_mode = c.labels.get("cashpilot.instance_mode", "")
             cpu_pct, mem_mb, net_rx, net_tx = labeled_stats.get(c.id, (0.0, 0.0, None, None))
             results.append(
                 {
                     "slug": slug,
+                    "instance_slug": instance_slug,
+                    "instance_mode": instance_mode,
                     "name": c.name,
                     "status": c.status,
                     "image": c.image.tags[0] if c.image.tags else str(c.image.short_id),
@@ -897,10 +901,14 @@ def get_status_light() -> list[dict[str, Any]]:
             if (c.labels or {}).get("cashpilot.role") == "egress-sidecar":
                 continue
             seen_ids.add(c.id)
-            slug = c.labels.get(LABEL_SERVICE, "unknown")
+            slug = c.labels.get("cashpilot.provider") or c.labels.get(LABEL_SERVICE, "unknown")
+            instance_slug = c.labels.get(LABEL_SERVICE, slug)
+            instance_mode = c.labels.get("cashpilot.instance_mode", "")
             results.append(
                 {
                     "slug": slug,
+                    "instance_slug": instance_slug,
+                    "instance_mode": instance_mode,
                     "name": c.name,
                     "status": c.status,
                     "image": c.image.tags[0] if c.image.tags else str(c.image.short_id),
