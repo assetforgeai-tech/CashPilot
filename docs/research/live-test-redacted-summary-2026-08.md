@@ -19,25 +19,25 @@
 
 ## Current Blocker
 
-`vps-test-sing` publishes worker `0.0.0.0:8081`, and local checks on that VPS return `200` from `http://127.0.0.1:8081/api/health`. The VPS server times out when calling `http://52.237.120.118:8081`, so server-first deploys return `503 Worker communication failed`.
+Resolved: `vps-test-sing` now answers the VPS server on `http://52.237.120.118:8081/api/health`.
 
-Required infra fix before continuing live rollout: allow inbound TCP `8081` to `vps-test-sing` from the VPS server public IP `42.96.13.215` in the cloud/network security group. Host `ufw` is inactive; the block is outside the container/app path.
+First post-firewall rollout used worker `52-237-120-118-1786648057` and proxy lease `vtproxy` endpoint `dc-t5.proxyvt.com:41231`.
 
 ## First Rollout Attempt
 
 | Provider | Result | Cause |
 | --- | --- | --- |
-| adnade | blocked | worker communication failed |
-| bitping | blocked | worker communication failed |
-| grass | blocked | worker communication failed |
-| mysterium | blocked | worker communication failed |
-| proxybase | blocked | worker communication failed |
-| proxybase-xyz | blocked | worker communication failed |
-| proxylite | blocked | worker communication failed |
-| spide | blocked | worker communication failed |
-| uprock | blocked | worker communication failed |
-| urnetwork | blocked | worker communication failed |
-| wipter | blocked | worker communication failed |
+| adnade | failed | worker deploy failed after R2 profile download; no container created |
+| bitping | running | container `cashpilot-bitping` running after 5-minute check |
+| grass | running | container `cashpilot-grass` running after 5-minute check |
+| mysterium | partial | container running, but logs show TUN/sudo permission failure during WireGuard session |
+| proxybase | running | container `cashpilot-proxybase` running after 5-minute check |
+| proxybase-xyz | failed | container restarts; CLI reports missing seller config |
+| proxylite | running | container `cashpilot-proxylite` running after 5-minute check |
+| spide | failed | container restarts; CLI zip checksum mismatch |
+| uprock | failed | worker deploy failed; no container created |
+| urnetwork | running | container `cashpilot-urnetwork` running after 5-minute check |
+| wipter | running | container `cashpilot-wipter` running after 5-minute check |
 | earnapp | blocked | missing deploy field: Node UUID |
 | earnfm | blocked | missing deploy field: API Key |
 | iproyal | blocked | missing deploy fields: Email, Password |
