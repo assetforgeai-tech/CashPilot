@@ -981,7 +981,7 @@ async def _fetch_runtime_asset(provider: str, asset_kind: str) -> str:
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
             f"{UI_URL.rstrip('/')}/api/workers/runtime-asset",
-            headers={"Authorization": f"Bearer {API_KEY}"},
+            headers={"Authorization": f"Bearer {_active_key()}"},
             json={"client_id": CLIENT_ID, "provider": provider, "asset_kind": asset_kind},
         )
     if resp.status_code == 404:

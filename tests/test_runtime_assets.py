@@ -210,6 +210,47 @@ class TestRuntimeAssets:
 
         asyncio.run(run())
 
+    def test_worker_fetches_runtime_assets_with_active_worker_key(self):
+        async def run():
+            seen = {}
+
+            class Response:
+                status_code = 200
+
+                def raise_for_status(self):
+                    pass
+
+                def json(self):
+                    return {"value": "seed"}
+
+            class Client:
+                def __init__(self, *args, **kwargs):
+                    pass
+
+                async def __aenter__(self):
+                    return self
+
+                async def __aexit__(self, *args):
+                    return None
+
+                async def post(self, url, *, headers, json):
+                    seen["headers"] = headers
+                    seen["json"] = json
+                    return Response()
+
+            with (
+                patch.object(worker_api, "UI_URL", "http://ui"),
+                patch.object(worker_api, "API_KEY", "shared"),
+                patch.object(worker_api, "_worker_key", "own-worker-key"),
+                patch.object(worker_api.httpx, "AsyncClient", Client),
+            ):
+                value = await worker_api._fetch_runtime_asset("uprock", "credentials_json")
+
+            assert value == "seed"
+            assert seen["headers"] == {"Authorization": "Bearer own-worker-key"}
+
+        asyncio.run(run())
+
     def test_adnade_artifact_includes_network_cookies(self):
         artifact = Path(r"D:\1. WORK_true\CashPilot\secret\providers\adnade\rebuild-20260813e\chromeprofiledata.adnade-dawn-titan.zip")
         with zipfile.ZipFile(artifact) as zf:
