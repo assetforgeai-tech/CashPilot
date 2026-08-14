@@ -41,6 +41,25 @@ docker:
   network_mode: ""
   privileged: false
 
+deploy:
+  credentials:
+    - key: api_key
+      label: "Peer API key"
+      kind: api_key
+      secret: true
+      required: true
+      env: API_KEY
+      source: "Proxies.sx dashboard - peer API key"
+      description: "API key used by the peer runtime."
+    - key: agent_name
+      label: "Agent name"
+      kind: text
+      secret: false
+      required: false
+      env: AGENT_NAME
+      source: "CashPilot worker name"
+      description: "Optional override; blank uses cashpilot-{hostname}."
+
 requirements:
   residential_ip: true
   vps_ip: false

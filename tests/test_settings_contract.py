@@ -25,7 +25,7 @@ def test_changed_deploy_credentials_mark_only_matching_deployed_provider(tmp_pat
             grass = await database.get_deployment("grass")
             proxies_sx = await database.get_deployment("proxies-sx")
             assert grass["status"] == "needs_redeploy"
-            assert proxies_sx["status"] == "running"
+            assert proxies_sx["status"] == "needs_redeploy"
 
     asyncio.run(run())
 
@@ -38,7 +38,7 @@ def test_dashboard_and_collector_credentials_do_not_mark_redeploy():
         }
     )
 
-    assert changed["deploy"] == set()
+    assert changed["deploy"] == {"proxies-sx"}
     assert changed["dashboard"] == {"proxybase"}
     assert changed["collector"] == {"proxies-sx"}
 

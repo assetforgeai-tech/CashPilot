@@ -41,6 +41,21 @@ docker:
 deploy:
   automation: device_key_register
   notes: "Download and run the official Linux CLI zip, parse the Device key from stdout, then register it in the dashboard."
+  credentials:
+    - key: email
+      label: "Email"
+      kind: email
+      secret: false
+      required: true
+      source: "Spide account"
+      description: "Account email used to log in and create a device registration token."
+    - key: password
+      label: "Password"
+      kind: password
+      secret: true
+      required: true
+      source: "Spide account"
+      description: "Account password used to log in and create a device registration token."
 
 dashboard:
   credentials:

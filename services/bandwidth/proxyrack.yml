@@ -44,6 +44,25 @@ docker:
   network_mode: ""
   privileged: false
 
+deploy:
+  credentials:
+    - key: api_key
+      label: "API Key"
+      kind: api_key
+      secret: true
+      required: false
+      env: API_KEY
+      source: "ProxyRack dashboard"
+      description: "Optional API key used to auto-register the device."
+    - key: device_name
+      label: "Device name"
+      kind: text
+      secret: false
+      required: false
+      env: DEVICE_NAME
+      source: "CashPilot worker name"
+      description: "Optional override for the dashboard device name."
+
 requirements:
   residential_ip: false
   devices_per_account: 500

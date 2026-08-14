@@ -33,6 +33,17 @@ docker:
   network_mode: ""
   privileged: false
 
+deploy:
+  credentials:
+    - key: cid
+      label: "Client ID"
+      kind: text
+      secret: false
+      required: true
+      env: CID
+      source: "PacketStream dashboard setup command"
+      description: "CID shown in PacketStream's Docker setup command."
+
 requirements:
   residential_ip: true
   min_bandwidth: ""

@@ -31,6 +31,17 @@ docker:
   network_mode: ""
   privileged: false
 
+deploy:
+  credentials:
+    - key: token
+      label: "API Key"
+      kind: api_key
+      secret: true
+      required: true
+      env: EARNFM_TOKEN
+      source: "Earn.fm dashboard -> More -> Your API Key"
+      description: "UUID API key used by the Earn.fm Docker client."
+
 requirements:
   residential_ip: true
   vps_ip: true

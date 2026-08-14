@@ -113,7 +113,7 @@ def service_credential_fields(
                 "required": item.get("required", True) is not False,
                 "source": item.get("source") or "dashboard",
             }
-            for optional in ("description", "expires_hours", "durable", "encoding"):
+            for optional in ("description", "expires_hours", "durable", "encoding", "env"):
                 if optional in item:
                     field[optional] = item[optional]
             fields.append(field)

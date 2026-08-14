@@ -4,6 +4,7 @@ import pytest
 from fastapi import HTTPException
 
 from app import catalog, main
+from app.collectors import service_credential_fields
 
 
 def test_grass_deploy_credentials_map_from_stored_config_to_worker_args():
@@ -87,3 +88,34 @@ def test_urnetwork_auth_token_maps_from_settings_to_worker_args():
         svc,
         {"urnetwork_auth_token": "jwt-token"},
     ) == {"auth_token": "jwt-token"}
+
+def test_settings_deploy_credentials_cover_node_creation_inputs_from_runtime_scripts():
+    expected = {
+        "bitping": {"email", "password"},
+        "earnapp": {"uuid", "oauth_refresh_token", "oauth_token", "xsrf_token", "brd_sess_id", "cg_uuid"},
+        "earnfm": {"token"},
+        "packetstream": {"cid"},
+        "iproyal": {"email", "password", "device_name", "device_id"},
+        "proxies-sx": {"api_key", "agent_name"},
+        "proxyrack": {"api_key", "device_name"},
+        "repocket": {"email", "api_key"},
+        "traffmonetizer": {"token", "device_name"},
+        "spide": {"email", "password"},
+    }
+
+    for slug, args in expected.items():
+        fields = {field["arg"] for field in service_credential_fields(slug, "deploy", catalog.get_service(slug), fallback=False)}
+        assert args <= fields, slug
+
+def test_deploy_config_fields_can_feed_docker_env():
+    svc = catalog.get_service("repocket")
+    env = {}
+
+    main._apply_deploy_config_to_env(
+        "repocket",
+        svc,
+        {"repocket_email": "user@example.com", "repocket_api_key": "api-key"},
+        env,
+    )
+
+    assert env == {"RP_EMAIL": "user@example.com", "RP_API_KEY": "api-key"}

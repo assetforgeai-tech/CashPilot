@@ -39,6 +39,25 @@ docker:
   network_mode: ""
   privileged: false
 
+deploy:
+  credentials:
+    - key: token
+      label: "Token"
+      kind: token
+      secret: true
+      required: true
+      env: TRAFFMONETIZER_TOKEN
+      source: "Traffmonetizer dashboard"
+      description: "Token passed to the node runtime."
+    - key: device_name
+      label: "Device name"
+      kind: text
+      secret: false
+      required: false
+      env: TRAFFMONETIZER_DEVICE_NAME
+      source: "CashPilot worker name"
+      description: "Optional override; blank uses cashpilot-{hostname}."
+
 requirements:
   residential_ip: false
   devices_per_ip: 0

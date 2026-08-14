@@ -1835,6 +1835,17 @@ def _resolve_deploy_credentials(slug: str, svc: dict[str, Any] | None, config: d
         )
     return deploy_credentials
 
+def _apply_deploy_config_to_env(slug: str, svc: dict[str, Any] | None, config: dict[str, str], env: dict[str, str]) -> None:
+    from app.collectors import service_credential_fields
+
+    for field in service_credential_fields(slug, "deploy", svc, fallback=False):
+        env_key = str(field.get("env") or "").strip()
+        if not env_key:
+            continue
+        value = str(config.get(field["key"], "")).strip()
+        if value:
+            env[env_key] = value
+
 def _changed_credential_sections(data: dict[str, str]) -> dict[str, set[str]]:
     from app.collectors import collector_credential_fields, service_credential_fields
 
@@ -1937,6 +1948,8 @@ async def api_deploy(
     if not image:
         raise HTTPException(status_code=400, detail=f"Service '{slug}' has no Docker image")
 
+    config = await database.get_config() or {}
+
     # Build full env: YAML defaults + user overrides + {hostname} substitution.
     #
     # The substitution runs LAST, over the merged result, because it used to run
@@ -1953,7 +1966,10 @@ async def api_deploy(
     env: dict[str, str] = {}
     for var in docker_conf.get("env", []):
         env[var["key"]] = str(var.get("default", ""))
+    _apply_deploy_config_to_env(slug, svc, config, env)
     env.update(body.env or {})
+    if slug == "proxyrack" and not str(env.get("UUID") or "").strip():
+        env["UUID"] = secrets.token_hex(32).upper()
     env = {k: v.replace("{hostname}", hn) if isinstance(v, str) else v for k, v in env.items()}
 
     # What this service was ACTUALLY deployed with, if anything. Loaded before
@@ -2027,7 +2043,7 @@ async def api_deploy(
         spec["installer_manifest_url"] = manifest_url
         if deploy_conf.get("installer_platform"):
             spec["installer_platform"] = deploy_conf["installer_platform"]
-    deploy_credentials = _resolve_deploy_credentials(slug, svc, await database.get_config() or {})
+    deploy_credentials = _resolve_deploy_credentials(slug, svc, config)
     if deploy_credentials:
         spec["deploy_credentials"] = deploy_credentials
     # Command: resolve ${VAR} placeholders

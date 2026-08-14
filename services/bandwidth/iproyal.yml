@@ -50,6 +50,41 @@ docker:
   network_mode: ""
   privileged: false
 
+deploy:
+  credentials:
+    - key: email
+      label: "Email"
+      kind: email
+      secret: false
+      required: true
+      env: IPROYALPAWNS_EMAIL
+      source: "Pawns account"
+      description: "Account email passed to the node as -email."
+    - key: password
+      label: "Password"
+      kind: password
+      secret: true
+      required: true
+      env: IPROYALPAWNS_PASSWORD
+      source: "Pawns account"
+      description: "Account password passed to the node as -password."
+    - key: device_name
+      label: "Device name"
+      kind: text
+      secret: false
+      required: false
+      env: IPROYALPAWNS_DEVICE_NAME
+      source: "CashPilot worker name"
+      description: "Optional override; blank uses cashpilot-{hostname}."
+    - key: device_id
+      label: "Device ID"
+      kind: text
+      secret: false
+      required: false
+      env: IPROYALPAWNS_DEVICE_ID
+      source: "CashPilot worker name"
+      description: "Optional override; blank uses cashpilot-{hostname}."
+
 requirements:
   residential_ip: true
   vps_ip: false

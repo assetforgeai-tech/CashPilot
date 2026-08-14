@@ -22,7 +22,7 @@ async def test_proxy_mode_attaches_proxy_and_direct_mode_does_not(monkeypatch):
         return None
 
     async def empty_config(*_args, **_kwargs):
-        return {}
+        return {"bitping_email": "user@example.com", "bitping_password": "secret"}
 
     async def fake_proxy(_worker_id: int):
         return {"proxy_id": 9, "host": "1.2.3.4", "port": 1080, "protocol": "socks5"}

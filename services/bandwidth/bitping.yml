@@ -41,6 +41,23 @@ docker:
     Credentials are then persisted in the /root/.bitping volume mount.
     No environment variables are needed.
 
+deploy:
+  credentials:
+    - key: email
+      label: "Email"
+      kind: email
+      secret: false
+      required: true
+      source: "Bitping account"
+      description: "Account email used for the initial bitpingd login."
+    - key: password
+      label: "Password"
+      kind: password
+      secret: true
+      required: true
+      source: "Bitping account"
+      description: "Account password used for the initial bitpingd login."
+
 requirements:
   residential_ip: false
   min_bandwidth: ""

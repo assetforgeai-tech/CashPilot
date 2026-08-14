@@ -40,6 +40,52 @@ docker:
   network_mode: ""
   privileged: false
 
+deploy:
+  credentials:
+    - key: uuid
+      label: "Node UUID"
+      kind: text
+      secret: false
+      required: true
+      env: EARNAPP_UUID
+      source: "EarnApp node install/link flow"
+      description: "UUID of the EarnApp node to run/link."
+    - key: oauth_refresh_token
+      label: "OAuth refresh token"
+      kind: token
+      secret: true
+      required: true
+      source: "EarnApp logged-in browser cookie"
+      description: "oauth-refresh-token cookie used by the node link flow."
+    - key: oauth_token
+      label: "OAuth token"
+      kind: token
+      secret: true
+      required: true
+      source: "EarnApp logged-in browser cookie"
+      description: "oauth-token cookie used by the node link flow."
+    - key: xsrf_token
+      label: "XSRF token"
+      kind: token
+      secret: true
+      required: true
+      source: "EarnApp logged-in browser cookie"
+      description: "xsrf-token cookie used by the node link flow."
+    - key: brd_sess_id
+      label: "BRD session ID"
+      kind: token
+      secret: true
+      required: true
+      source: "EarnApp logged-in browser cookie"
+      description: "brd_sess_id cookie used by the node link flow."
+    - key: cg_uuid
+      label: "CG UUID"
+      kind: text
+      secret: false
+      required: true
+      source: "EarnApp logged-in browser cookie"
+      description: "cg_uuid cookie used by the node link flow."
+
 requirements:
   residential_ip: true
   vps_ip: false
