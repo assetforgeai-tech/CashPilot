@@ -212,7 +212,6 @@ def available_runtimes() -> set[str]:
 
 def deploy_raw(
     slug: str,
-    provider_slug: str | None = None,
     image: str,
     env: dict[str, str] | None = None,
     ports: dict[str, int] | None = None,
@@ -229,6 +228,7 @@ def deploy_raw(
     installer_manifest_url: str | None = None,
     installer_platform: str | None = None,
     deploy_credentials: dict[str, Any] | None = None,
+    provider_slug: str | None = None,
     user: str | None = None,
     proxy: dict[str, Any] | None = None,
 ) -> str:
