@@ -22,7 +22,7 @@ def test_current_operator_docs_use_current_catalog_counts():
 
     assert "49 services" not in text
     assert "20 providers" not in text
-    assert "12 collectors" not in text
+    assert "15 collectors" not in text
     assert f"{provider_count} providers" in text
     assert f"Bandwidth Sharing** ({bandwidth_count} providers)" in text
     assert f"DePIN** ({depin_count} providers)" in text

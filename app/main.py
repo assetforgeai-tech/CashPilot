@@ -1456,6 +1456,12 @@ def _apply_service_meta(entry: dict[str, Any], svc: dict[str, Any] | None) -> No
         entry["referral_url"] = referral.get("signup_url", "")
     entry["website"] = svc.get("website", "")
 
+def _service_supported_modes(svc: dict[str, Any] | None) -> list[str]:
+    slug = str((svc or {}).get("slug") or "")
+    if not slug:
+        return []
+    return sorted(provider_modes.supported_modes(slug))
+
 
 @app.get("/api/services/deployed")
 async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
@@ -1746,8 +1752,6 @@ async def api_services_available(request: Request) -> list[dict[str, Any]]:
     # collector module.
     from app.collectors import COLLECTOR_MAP as collector_map
 
-    # Also check worker containers for deployed status (catches externally-deployed services)
-    worker_containers = await _get_all_worker_containers()
     available = []
     for svc in services:
         if svc.get("status") in _UNDEPLOYABLE_STATUSES:
@@ -1758,6 +1762,7 @@ async def api_services_available(request: Request) -> list[dict[str, Any]]:
         svc["deployed"] = slug in deployed_slugs
         svc["manual_only"] = not has_image
         svc["node_count"] = sum(1 for i in instances if i["slug"] == slug)
+        svc["supported_modes"] = _service_supported_modes(svc)
         # The setup wizard reads this endpoint, and it needs to know whether
         # earnings tracking takes a SECOND set of credentials — the service
         # detail view already says so, and the wizard is the screen a new user
@@ -1778,13 +1783,10 @@ async def api_get_service(request: Request, slug: str) -> dict[str, Any]:
     deployments = await database.get_deployments()
     instances = await database.list_provider_instances()
     deployed_slugs = {d["slug"] for d in deployments} | {i["slug"] for i in instances}
-    worker_nodes: set[str] = set()
-    for c in worker_containers:
-        if c.get("slug") == slug:
-            worker_nodes.add(c.get("_node", "unknown"))
 
     svc["deployed"] = slug in deployed_slugs
     svc["node_count"] = len([i for i in instances if i["slug"] == slug])
+    svc["supported_modes"] = _service_supported_modes(svc)
 
     # Flag whether earnings tracking uses separate credentials (entered in
     # Settings → Collectors), so the deploy UI can tell users the container

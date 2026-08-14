@@ -978,6 +978,23 @@ const CP = (() => {
     }).join('');
   }
 
+  function deployModeSelect(svc, prefix = 'deploy-mode') {
+    const modes = Array.isArray(svc.supported_modes) ? svc.supported_modes : [];
+    if (!modes.length) return '';
+    const selected = modes.includes('both') ? 'both' : (modes.includes('proxy') ? 'proxy' : 'direct');
+    const options = ['direct', 'proxy', 'both'].map(mode => {
+      const allowed = modes.includes(mode);
+      return `<option value="${mode}"${mode === selected ? ' selected' : ''}${allowed ? '' : ' disabled'}>${mode}</option>`;
+    }).join('');
+    return `
+      <div class="form-group">
+        <label class="form-label">Mode</label>
+        <select class="form-input" data-deploy-mode-for="${svc.slug}" id="${prefix}-${svc.slug}">
+          ${options}
+        </select>
+      </div>`;
+  }
+
   // The class is a parameter rather than unified, deliberately: the setup wizard
   // and the detail view can both be in the DOM at once, and their deploy
   // handlers select by class. One shared class would make each pick up the
@@ -2491,6 +2508,7 @@ const CP = (() => {
       </div>
 
       ${envFields}
+      ${deployModeSelect(svc, 'setup-deploy-mode')}
 
       ${svc.has_collector ? collectorCredentialsNotice(svc.slug) : ''}
 
@@ -2596,6 +2614,9 @@ const CP = (() => {
       return;
     }
 
+    const modeSelect = document.querySelector(`[data-deploy-mode-for="${slug}"]`);
+    const mode = modeSelect ? modeSelect.value : null;
+
     // Preflight, at the deploy step — which is where the backend's own comments
     // say it belongs, "not buried in an FAQ". It has been computed since 1.10.x
     // and asked by nothing.
@@ -2618,7 +2639,7 @@ const CP = (() => {
     let ok = 0, fail = 0;
     for (const wid of workerIds) {
       try {
-        await api(`/api/deploy/${slug}?worker_id=${wid}`, { method: 'POST', body: { env } });
+        await api(`/api/deploy/${slug}?worker_id=${wid}`, { method: 'POST', body: { env, mode } });
         ok++;
       } catch (err) {
         fail++;
@@ -2900,6 +2921,7 @@ const CP = (() => {
 
       html += `<h4 style="margin-bottom: 12px; font-size: 0.95rem;">Deploy</h4>`;
       html += envFields;
+      html += deployModeSelect(svc, 'detail-deploy-mode');
 
       // Earnings tracking uses SEPARATE credentials (Settings → Collectors).
       // The fields above only configure the container that earns; they don't
