@@ -35,18 +35,27 @@
       add("wipter_password", pick([storeMatch(/password/i), inputValue("password")]), "Wipter password");
     },
     traffmonetizer: () => add("traffmonetizer_token", pick([storeMatch(/access.*token|jwt|token/i), jsonStoreMatch(/token/i)]), "Traffmonetizer token"),
-    packetstream: () => add("packetstream_auth_token", pick([cookieValue("auth"), cookie, storeMatch(/auth|token/i), jsonStoreMatch(/auth|token/i)]), "PacketStream auth token"),
+    packetstream: () => {
+      add("packetstream_auth_token", pick([cookieValue("auth"), cookie, storeMatch(/auth|token/i), jsonStoreMatch(/auth|token/i)]), "PacketStream auth token");
+      add("packetstream_cid", pick([queryValue("psr"), inputValue("referral-link").match(/[?&]psr=([^&\s]+)/i)?.[1], textMatch(/[?&]psr=([^&\s]+)/i, 1)]), "PacketStream CID");
+    },
     bitping: () => add("bitping_dashboard_session", pick([cookie, storeMatch(/token|session|auth/i), jsonStoreMatch(/token|session|auth/i)]), "Bitping session"),
-    earnapp: () => add("earnapp_oauth_token", pick([cookieValue("oauth-refresh-token"), cookieValue("refresh-token"), cookie, storeMatch(/oauth.*token|refresh.*token/i), jsonStoreMatch(/oauth.*token|refresh.*token/i)]), "EarnApp oauth token"),
+    earnapp: () => {
+      add("earnapp_oauth_refresh_token", pick([cookieValue("oauth-refresh-token"), cookieValue("refresh-token"), storeMatch(/oauth.*refresh|refresh.*token/i), jsonStoreMatch(/oauth.*refresh|refresh.*token/i)]), "EarnApp oauth refresh token");
+      add("earnapp_oauth_token", pick([cookieValue("oauth-token"), cookieValue("oauth-refresh-token"), cookieValue("refresh-token"), storeMatch(/oauth.*token|refresh.*token/i), jsonStoreMatch(/oauth.*token|refresh.*token/i)]), "EarnApp oauth token");
+      add("earnapp_xsrf_token", pick([cookieValue("XSRF-TOKEN"), cookieValue("xsrf-token"), storeMatch(/xsrf/i), jsonStoreMatch(/xsrf/i)]), "EarnApp XSRF token");
+      add("earnapp_brd_sess_id", pick([cookieValue("brd_sess_id"), storeMatch(/brd.*sess/i), jsonStoreMatch(/brd.*sess/i)]), "EarnApp BRD session id");
+      add("earnapp_cg_uuid", pick([cookieValue("cg_uuid"), storeMatch(/cg.*uuid/i), jsonStoreMatch(/cg.*uuid/i)]), "EarnApp CG UUID");
+    },
     earnfm: () => add("earnfm_token", pick([storeMatch(/api.*key|uuid|token/i), jsonStoreMatch(/api.*key|uuid|token/i)]), "Earn.fm API key"),
     iproyal: () => {
-      add("iproyalpawns_email", pick([inputValue("email"), storeMatch(/email/i), textMatch(/email[:\s]+([^\s@]+@[^\s@]+)/i, 1)]), "IPRoyal email");
-      add("iproyalpawns_password", pick([inputValue("password"), storeMatch(/password/i)]), "IPRoyal password");
-      add("iproyalpawns_device_name", pick([inputValue("device-name"), inputValue("device_name"), textMatch(/device name[:\s]+([^\s]+)/i, 1)]), "IPRoyal device name");
-      add("iproyalpawns_device_id", pick([inputValue("device-id"), inputValue("device_id"), textMatch(/device id[:\s]+([^\s]+)/i, 1)]), "IPRoyal device id");
+      add("iproyal_email", pick([inputValue("email"), storeMatch(/email/i), textMatch(/email[:\s]+([^\s@]+@[^\s@]+)/i, 1)]), "IPRoyal email");
+      add("iproyal_password", pick([inputValue("password"), storeMatch(/password/i)]), "IPRoyal password");
+      add("iproyal_device_name", pick([inputValue("device-name"), inputValue("device_name"), textMatch(/device name[:\s]+([^\s]+)/i, 1)]), "IPRoyal device name");
+      add("iproyal_device_id", pick([inputValue("device-id"), inputValue("device_id"), textMatch(/device id[:\s]+([^\s]+)/i, 1)]), "IPRoyal device id");
     },
     packetstream2: () => {},
-    proxies_sx: () => add("proxies_sx_api_key", pick([storeMatch(/api.*key|token/i), jsonStoreMatch(/api.*key|token/i)]), "Proxies.sx API key"),
+    proxies_sx: () => add("proxies-sx_api_key", pick([storeMatch(/api.*key|token/i), jsonStoreMatch(/api.*key|token/i)]), "Proxies.sx API key"),
     proxybase_xyz: () => add("proxybase-xyz_phrase", pick([storeMatch(/phase|phrase|mnemonic|seed/i), jsonStoreMatch(/phase|phrase|mnemonic|seed/i)]), "ProxyBase Markets wallet phrase"),
     proxybase: () => {
       const token = pick([storeMatch(/access.*token|token/i), jsonStoreMatch(/access.*token|token/i)]);
@@ -56,8 +65,8 @@
     proxylite: () => add("proxylite_user_id", pick([textMatch(/(?:User\s*ID|USER_ID)\D+(\d{3,})/i, 1), storeMatch(/user[_-]?id|userid/i), inputValue("user_id")]), "ProxyLite user id"),
     proxyrack: () => add("proxyrack_api_key", pick([headerLike("api-key"), storeMatch(/api.*key|token/i), jsonStoreMatch(/api.*key|token/i)]), "ProxyRack API key"),
     repocket: () => {
-      add("repocket_rp_email", pick([inputValue("email"), storeMatch(/email/i), textMatch(/email[:\s]+([^\s@]+@[^\s]+)/i, 1)]), "Repocket email");
-      add("repocket_rp_api_key", pick([storeMatch(/api.*key|token/i), jsonStoreMatch(/api.*key|token/i)]), "Repocket API key");
+      add("repocket_email", pick([inputValue("email"), storeMatch(/email/i), textMatch(/email[:\s]+([^\s@]+@[^\s]+)/i, 1)]), "Repocket email");
+      add("repocket_api_key", pick([storeMatch(/api.*key|token/i), jsonStoreMatch(/api.*key|token/i)]), "Repocket API key");
     },
     spide: () => add("spide_dashboard_token", pick([cookie, storeMatch(/token|jwt|session/i), jsonStoreMatch(/token|jwt|session/i)]), "Spide dashboard token"),
     urnetwork: () => {
@@ -65,8 +74,8 @@
       add("urnetwork_api_key", pick([storeMatch(/api.*key|apikey/i), jsonStoreMatch(/api.*key|apikey/i)]), "URnetwork API key");
     },
     mysterium: () => {
-      add("myst_dashboard_password", pick([storeMatch(/password/i), inputValue("password")]), "MYST dashboard password");
-      add("myst_mmn_api_key", pick([storeMatch(/mmn.*key|api.*key|token/i), jsonStoreMatch(/mmn.*key|api.*key|token/i)]), "MYST MMN key");
+      add("mysterium_dashboard_password", pick([storeMatch(/password/i), inputValue("password")]), "MYST dashboard password");
+      add("mysterium_mmn_api_key", pick([storeMatch(/mmn.*key|api.*key|token/i), jsonStoreMatch(/mmn.*key|api.*key|token/i)]), "MYST MMN key");
     },
   };
 
@@ -202,6 +211,14 @@
   function cookieValue(name) {
     const match = cookie.match(new RegExp(`(?:^|;\\s*)${name.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")}=([^;]+)`));
     return match ? decodeURIComponent(match[1]) : "";
+  }
+
+  function queryValue(name) {
+    try {
+      return new URL(href).searchParams.get(name) || "";
+    } catch (_) {
+      return "";
+    }
   }
 
   function textMatch(regex, group = 1) {

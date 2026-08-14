@@ -4073,6 +4073,29 @@ def _sanitize_credential(value: str) -> str:
         v = unquote(v)
     return v
 
+_CONFIG_KEY_ALIASES = {
+    "iproyalpawns_email": "iproyal_email",
+    "iproyalpawns_password": "iproyal_password",
+    "iproyalpawns_device_name": "iproyal_device_name",
+    "iproyalpawns_device_id": "iproyal_device_id",
+    "proxies_sx_api_key": "proxies-sx_api_key",
+    "repocket_rp_email": "repocket_email",
+    "repocket_rp_api_key": "repocket_api_key",
+    "myst_dashboard_password": "mysterium_dashboard_password",
+    "myst_mmn_api_key": "mysterium_mmn_api_key",
+}
+
+def _normalize_config_update(data: dict[str, str]) -> dict[str, str]:
+    canonical = {
+        key: _sanitize_credential(value)
+        for key, value in data.items()
+        if key not in _CONFIG_KEY_ALIASES
+    }
+    for key, value in data.items():
+        if key in _CONFIG_KEY_ALIASES:
+            canonical.setdefault(_CONFIG_KEY_ALIASES[key], _sanitize_credential(value))
+    return canonical
+
 
 async def _sync_runtime_assets_from_config(config: dict[str, str]) -> None:
     """Mirror runtime asset form fields into the worker-facing asset store."""
@@ -4097,7 +4120,7 @@ async def _sync_runtime_assets_from_config(config: dict[str, str]) -> None:
 async def api_set_config(
     request: Request, body: ConfigUpdate, _auth: dict[str, Any] = Depends(_require_owner)
 ) -> dict[str, str]:
-    sanitized = {k: _sanitize_credential(v) for k, v in body.data.items()}
+    sanitized = _normalize_config_update(body.data)
     await database.set_config_bulk(sanitized)
     await _sync_runtime_assets_from_config(sanitized)
     changed_sections = _changed_credential_sections(sanitized)

@@ -46,13 +46,16 @@ def test_importer_has_explicit_provider_key_mapping():
         assert slug in extractor
     for key in (
         "bitping_dashboard_session",
+        "earnapp_oauth_refresh_token",
         "earnapp_oauth_token",
         "earnfm_token",
-        "iproyalpawns_email",
-        "myst_mmn_api_key",
+        "iproyal_email",
+        "iproyal_password",
+        "mysterium_mmn_api_key",
         "traffmonetizer_token",
         "packetstream_auth_token",
-        "proxies_sx_api_key",
+        "packetstream_cid",
+        "proxies-sx_api_key",
         "proxybase-xyz_phrase",
         "grass_store_access_token",
         "spide_dashboard_token",
@@ -60,11 +63,29 @@ def test_importer_has_explicit_provider_key_mapping():
         "proxybase_dashboard_access_token",
         "proxylite_user_id",
         "proxyrack_api_key",
-        "repocket_rp_api_key",
+        "repocket_api_key",
         "uprock_credentials_json",
         "wipter_email",
     ):
         assert key in extractor
+
+def test_importer_keys_are_backend_settings_keys():
+    from app import catalog
+    from app.collectors import collector_credential_fields, service_credential_fields
+
+    extractor = (EXT / "extractor.js").read_text(encoding="utf-8")
+    imported = set(__import__("re").findall(r'add\("([^"]+)"', extractor))
+    known = set()
+    for svc in catalog.get_services():
+        slug = svc["slug"]
+        fields = (
+            collector_credential_fields(slug, svc)
+            + service_credential_fields(slug, "deploy", svc, fallback=False)
+            + service_credential_fields(slug, "dashboard", svc, fallback=False)
+        )
+        known.update(field["key"] for field in fields)
+
+    assert imported <= known
 
 
 def test_popup_requires_scan_before_save_and_hides_values():

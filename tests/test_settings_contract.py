@@ -43,6 +43,23 @@ def test_dashboard_and_collector_credentials_do_not_mark_redeploy():
     assert changed["collector"] == {"proxies-sx"}
 
 
+def test_config_save_normalizes_legacy_importer_keys():
+    normalized = main._normalize_config_update(
+        {
+            "iproyalpawns_email": "user@example.com",
+            "proxies_sx_api_key": "psx-token",
+            "repocket_rp_api_key": "rp-key",
+            "myst_mmn_api_key": "mmn-key",
+        }
+    )
+
+    assert normalized == {
+        "iproyal_email": "user@example.com",
+        "proxies-sx_api_key": "psx-token",
+        "repocket_api_key": "rp-key",
+        "mysterium_mmn_api_key": "mmn-key",
+    }
+
 def test_credential_health_reports_age_without_values(tmp_path):
     async def run():
         with (
