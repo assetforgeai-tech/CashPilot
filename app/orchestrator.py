@@ -323,8 +323,11 @@ def deploy_raw(
             image="ghcr.io/sagernet/sing-box:latest",
             name=sidecar_name,
             environment={"SINGBOX_CONFIG_B64": encoded_config},
-            entrypoint=["/bin/sh", "-c"],
-            command='printf "%s" "$SINGBOX_CONFIG_B64" | base64 -d > /tmp/sing-box.json && exec sing-box run -c /tmp/sing-box.json',
+            entrypoint=[
+                "/bin/sh",
+                "-c",
+                'printf "%s" "$SINGBOX_CONFIG_B64" | base64 -d > /tmp/sing-box.json && exec sing-box run -c /tmp/sing-box.json',
+            ],
             cap_add=["NET_ADMIN"],
             devices=["/dev/net/tun:/dev/net/tun"],
             labels={
