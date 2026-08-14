@@ -55,6 +55,7 @@ def test_apply_direct_wallet_stops_patches_restarts_sets_password_and_mmn():
     assert helper["environment"] == {"NEW_PASSWORD": "pw"}
     assert "oldPassword" in helper["command"][2]
     assert "newPassword" in helper["command"][2]
+    assert 'if [ "$old" = "$NEW_PASSWORD" ]; then exit 0; fi' in helper["command"][2]
 
 def test_registration_status_parses_myst_cli_output():
     container = MagicMock()

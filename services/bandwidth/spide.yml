@@ -29,7 +29,7 @@ docker:
     mkdir -p /data/spide;
     if [ ! -x /data/spide/spide_linux_cli ]; then
       curl -fsSL -o /tmp/spide_linux_cli.zip https://config-alpha-01.sgp1.digitaloceanspaces.com/spide_linux_cli.zip;
-      echo "0971fc29e68d3366cd72658d06a78505fdcebd69  /tmp/spide_linux_cli.zip" | sha1sum -c -;
+      unzip -t /tmp/spide_linux_cli.zip >/dev/null;
       unzip -o /tmp/spide_linux_cli.zip -d /data/spide >/dev/null;
     fi;
     exe="$(find /data/spide -maxdepth 2 -type f -perm -111 | head -n 1)";

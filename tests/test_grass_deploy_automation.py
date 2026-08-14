@@ -146,6 +146,7 @@ def test_deploy_raw_builds_proxybase_xyz_command_from_deploy_phrase():
     assert 'PHASE="${PROXYBASE_XYZ_PHRASE:?missing wallet phrase}"' in command
     assert '"$CLI" wallet import "$PHASE"' in command
     assert '"$CLI" login' in command
+    assert '"$CLI" seller start; ' in command
 
 def test_deploy_raw_maps_proxybase_deploy_token_to_peer_cli_args():
     client = MagicMock()

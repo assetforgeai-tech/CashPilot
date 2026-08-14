@@ -84,7 +84,10 @@ for old in "$NEW_PASSWORD" mystberry; do
     -H 'Content-Type: application/json' \
     -d '{{"username":"myst","password":"'"$old"'"}}' || true)
   case "$status" in
-    200|204) break ;;
+    200|204)
+      if [ "$old" = "$NEW_PASSWORD" ]; then exit 0; fi
+      break
+      ;;
   esac
 done
 curl -fsS -m 10 -c "$tmp" -b "$tmp" \
