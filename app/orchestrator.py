@@ -232,7 +232,8 @@ def deploy_raw(
     if slug == "proxylite" and deploy_credentials:
         env["USER_ID"] = str(deploy_credentials.get("user_id") or "")
     if slug == "urnetwork" and deploy_credentials:
-        env["UR_AUTH_TOKEN"] = str(deploy_credentials.get("auth_token") or "")
+        env["UR_EMAIL"] = str(deploy_credentials.get("email") or "")
+        env["UR_PASSWORD"] = str(deploy_credentials.get("password") or "")
     if slug == "proxybase-xyz" and deploy_credentials:
         env["PROXYBASE_XYZ_PHRASE"] = str(deploy_credentials.get("phrase") or "")
         image = provider_installers.ensure_proxybase_xyz_image(client)

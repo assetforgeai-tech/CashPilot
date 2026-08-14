@@ -29,13 +29,20 @@ docker:
 
 deploy:
   credentials:
-    - key: auth_token
-      label: "UR_AUTH_TOKEN"
-      kind: token
+    - key: email
+      label: "Email"
+      kind: email
+      secret: false
+      required: true
+      source: "URNetwork account"
+      description: "URNetwork account email used for provider login."
+    - key: password
+      label: "Password"
+      kind: password
       secret: true
       required: true
-      source: "https://app.ur.network Account Settings / auth token"
-      description: "Worker runtime token for the bringyour/community-provider container. CashPilot forwards it as UR_AUTH_TOKEN."
+      source: "URNetwork account"
+      description: "URNetwork account password used for provider login."
 
 requirements:
   residential_ip: false

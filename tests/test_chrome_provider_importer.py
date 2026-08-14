@@ -58,7 +58,7 @@ def test_importer_has_explicit_provider_key_mapping():
         "proxybase-xyz_phrase",
         "grass_store_access_token",
         "spide_dashboard_token",
-        "urnetwork_auth_token",
+        "urnetwork_api_key",
         "proxybase_dashboard_access_token",
         "proxylite_user_id",
         "proxyrack_api_key",

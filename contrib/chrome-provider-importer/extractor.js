@@ -70,7 +70,6 @@
     },
     spide: () => add("spide_dashboard_token", pick([cookie, storeMatch(/token|jwt|session/i), jsonStoreMatch(/token|jwt|session/i)]), "Spide dashboard token"),
     urnetwork: () => {
-      add("urnetwork_auth_token", pick([storeMatch(/auth.*token|access.*token|jwt/i), jsonStoreMatch(/auth.*token|access.*token|jwt/i)]), "URnetwork auth token");
       add("urnetwork_api_key", pick([storeMatch(/api.*key|apikey/i), jsonStoreMatch(/api.*key|apikey/i)]), "URnetwork API key");
     },
     mysterium: () => {

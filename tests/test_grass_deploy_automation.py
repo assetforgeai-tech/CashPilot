@@ -185,7 +185,7 @@ def test_deploy_raw_maps_proxylite_user_id_to_proxyservice_env():
     assert env["USER_ID"] == "000000"
 
 
-def test_deploy_raw_maps_urnetwork_auth_token_to_provider_env():
+def test_deploy_raw_maps_urnetwork_email_password_to_provider_env():
     client = MagicMock()
     client.containers.get.side_effect = orchestrator.NotFound("nope")
     container = MagicMock(short_id="abc123", id="container-id")
@@ -195,11 +195,12 @@ def test_deploy_raw_maps_urnetwork_auth_token_to_provider_env():
         orchestrator.deploy_raw(
             slug="urnetwork",
             image="bringyour/community-provider",
-            deploy_credentials={"auth_token": "jwt-token"},
+            deploy_credentials={"email": "user@example.com", "password": "secret"},
         )
 
     env = client.containers.run.call_args.kwargs["environment"]
-    assert env["UR_AUTH_TOKEN"] == "jwt-token"
+    assert env["UR_EMAIL"] == "user@example.com"
+    assert env["UR_PASSWORD"] == "secret"
 
 
 def test_deploy_raw_forwards_container_user_when_declared():

@@ -80,14 +80,26 @@ def test_proxylite_user_id_maps_from_settings_to_worker_args():
     ) == {"user_id": "000000"}
 
 
-def test_urnetwork_auth_token_maps_from_settings_to_worker_args():
+def test_urnetwork_email_password_maps_from_settings_to_worker_args():
     svc = catalog.get_service("urnetwork")
 
     assert main._resolve_deploy_credentials(
         "urnetwork",
         svc,
-        {"urnetwork_auth_token": "jwt-token"},
-    ) == {"auth_token": "jwt-token"}
+        {"urnetwork_email": "user@example.com", "urnetwork_password": "secret"},
+    ) == {"email": "user@example.com", "password": "secret"}
+
+def test_proxyrack_deploy_runtime_requires_only_api_key():
+    svc = catalog.get_service("proxyrack")
+    fields = service_credential_fields("proxyrack", "deploy", svc, fallback=False)
+
+    assert [field["arg"] for field in fields] == ["api_key"]
+    assert fields[0]["required"] is True
+    assert main._resolve_deploy_credentials(
+        "proxyrack",
+        svc,
+        {"proxyrack_api_key": "api-key"},
+    ) == {"api_key": "api-key"}
 
 def test_settings_deploy_credentials_cover_node_creation_inputs_from_runtime_scripts():
     expected = {
@@ -97,9 +109,10 @@ def test_settings_deploy_credentials_cover_node_creation_inputs_from_runtime_scr
         "packetstream": {"cid"},
         "iproyal": {"email", "password", "device_name", "device_id"},
         "proxies-sx": {"api_key", "agent_name"},
-        "proxyrack": {"api_key", "device_name"},
+        "proxyrack": {"api_key"},
         "repocket": {"email", "api_key"},
         "traffmonetizer": {"token", "device_name"},
+        "urnetwork": {"email", "password"},
         "spide": {"email", "password"},
     }
 

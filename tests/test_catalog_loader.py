@@ -365,12 +365,18 @@ class TestProviderAutomationContracts:
         assert self._credential_keys(svc, "dashboard") == set()
         assert {item["key"] for item in svc["docker"]["env"]} == set()
 
-    def test_urnetwork_uses_deploy_auth_token_and_optional_api_key(self):
+    def test_urnetwork_uses_email_password_and_optional_api_key(self):
         svc = self._svc("urnetwork")
-        assert self._credential_keys(svc, "deploy") == {"auth_token"}
+        assert self._credential_keys(svc, "deploy") == {"email", "password"}
         assert self._credential_keys(svc, "collector") == {"api_key"}
         assert self._credential_keys(svc, "dashboard") == set()
         assert {item["key"] for item in svc["docker"]["env"]} == set()
+
+    def test_proxyrack_uses_deploy_api_key_only(self):
+        svc = self._svc("proxyrack")
+        assert self._credential_keys(svc, "deploy") == {"api_key"}
+        field = svc["deploy"]["credentials"][0]
+        assert field["required"] is True
 
     def test_wipter_runtime_uses_env_login(self):
         svc = self._svc("wipter")
