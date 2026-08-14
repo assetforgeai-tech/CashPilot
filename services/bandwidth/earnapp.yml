@@ -42,14 +42,6 @@ docker:
 
 deploy:
   credentials:
-    - key: uuid
-      label: "Node UUID"
-      kind: text
-      secret: false
-      required: true
-      env: EARNAPP_UUID
-      source: "EarnApp node install/link flow"
-      description: "UUID of the EarnApp node to run/link."
     - key: oauth_refresh_token
       label: "OAuth refresh token"
       kind: token
