@@ -12,7 +12,7 @@
 
 | Surface | Role | Destructive Scope | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| `vps-test-sing` | Primary live-test worker | Clean/recreate allowed | blocked | worker `52-237-120-118-1786648057`, repo commit `8ba379a`, heartbeat HTTP 200; server cannot reach public `:8081` |
+| `vps-test-sing` | Primary live-test worker | Clean/recreate allowed | active | worker `52-237-120-118-1786648057`, repo commit `8ba379a`, heartbeat HTTP 200; server now reaches public `:8081` |
 | `vps-test-us` | Secondary live-test worker | Conditional only | pending | not touched unless needed |
 | Chrome profile 40 | Credential/session source | Read only; overwrite Settings only when stale | pending | tab inventory not captured |
 | VPS server | Source of truth | No DB/volume edits | ready | deployed commit `bfe5835`, source-built UI/worker containers up, `active_services=19` matches deployed rows |
@@ -32,7 +32,7 @@ First post-firewall rollout used worker `52-237-120-118-1786648057` and proxy le
 | grass | running | container `cashpilot-grass` running after 5-minute check |
 | mysterium | partial | container running, but logs show TUN/sudo permission failure during WireGuard session |
 | proxybase | running | container `cashpilot-proxybase` running after 5-minute check |
-| proxybase-xyz | failed | container restarts; CLI reports missing seller config |
+| proxybase-xyz | running | container now uses `HOME=/home/proxybase`; seller daemon running in foreground |
 | proxylite | running | container `cashpilot-proxylite` running after 5-minute check |
 | spide | failed | container restarts; CLI zip checksum mismatch |
 | uprock | failed | worker deploy failed; no container created |
