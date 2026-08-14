@@ -1527,6 +1527,8 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
     slug_agg: dict[str, dict[str, Any]] = {}
     for s in statuses:
         slug = s.get("provider") or s["slug"]
+        if not catalog.get_service(slug):
+            continue
         if slug not in slug_agg:
             slug_agg[slug] = {
                 "instances": [],

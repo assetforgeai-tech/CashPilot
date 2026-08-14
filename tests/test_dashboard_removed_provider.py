@@ -44,6 +44,46 @@ def test_deployed_services_hides_removed_catalog_slugs():
     assert "grass" in slugs
     assert "bytelixir" not in slugs
 
+def test_deployed_services_hides_removed_catalog_container_statuses():
+    containers = [
+        {
+            "slug": "adnade",
+            "name": "cashpilot-adnade",
+            "status": "running",
+            "image": "cashpilot/adnade:old",
+            "cpu_percent": 1.0,
+            "memory_mb": 10.0,
+            "deployed_by": "worker",
+            "category": "bandwidth",
+        },
+        {
+            "slug": "bitping",
+            "name": "cashpilot-bitping",
+            "status": "running",
+            "image": "bitping/bitpingd:latest",
+            "cpu_percent": 1.0,
+            "memory_mb": 10.0,
+            "deployed_by": "worker",
+            "category": "bandwidth",
+        },
+    ]
+    with (
+        TestClient(app, raise_server_exceptions=False) as client,
+        patch("app.main.auth.get_current_user", return_value=_reader()),
+        patch("app.main._get_all_worker_containers", new_callable=AsyncMock, return_value=containers),
+        patch("app.main.database.get_earnings_summary", new_callable=AsyncMock, return_value=[]),
+        patch("app.main.database.get_health_scores", new_callable=AsyncMock, return_value=[]),
+        patch("app.main.database.get_config", new_callable=AsyncMock, return_value={}),
+        patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[]),
+        patch("app.main.database.list_provider_instances", new_callable=AsyncMock, return_value=[]),
+    ):
+        resp = client.get("/api/services/deployed")
+
+    assert resp.status_code == 200
+    slugs = [row["slug"] for row in resp.json()]
+    assert "bitping" in slugs
+    assert "adnade" not in slugs
+
 def test_provider_instances_group_under_canonical_provider_slug():
     containers = [
         {
