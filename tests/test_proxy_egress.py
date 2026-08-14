@@ -85,6 +85,7 @@ def test_singbox_config_uses_tun_and_socks_outbound():
         worker_name="vps-main",
     )
     assert config["inbounds"][0]["type"] == "tun"
+    assert len(config["inbounds"][0]["interface_name"]) <= 15
     assert config["outbounds"][0]["type"] == "socks"
     assert config["route"]["final"] == "proxy-out"
 

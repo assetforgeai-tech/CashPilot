@@ -26,7 +26,7 @@ def render_tun_proxy_config(proxy: dict[str, Any], *, worker_name: str) -> dict[
             {
                 "type": "tun",
                 "tag": "tun-in",
-                "interface_name": f"cp-egress-{worker_name}",
+                "interface_name": "cp-egress",
                 "address": ["172.31.255.1/30"],
                 "auto_route": True,
                 "strict_route": True,
