@@ -143,12 +143,12 @@ def test_deploy_raw_builds_proxybase_xyz_command_from_deploy_phrase():
     assert "https://proxybase.xyz/install.sh" not in command
     env = client.containers.run.call_args.kwargs["environment"]
     assert env["PROXYBASE_XYZ_PHRASE"] == "seed phrase words"
+    assert "export HOME=/home/proxybase" in command
     assert 'PHASE="${PROXYBASE_XYZ_PHRASE:?missing wallet phrase}"' in command
     assert '"$CLI" wallet import "$PHASE"' in command
     assert '"$CLI" login' in command
     assert "seller_config.json" in command
-    assert '"$CLI" seller start; ' in command
-    assert "tail -n +1 -F /home/proxybase/.proxybase/seller.log" in command
+    assert 'exec "$CLI" seller start --foreground' in command
 
 def test_deploy_raw_maps_proxybase_deploy_token_to_peer_cli_args():
     client = MagicMock()

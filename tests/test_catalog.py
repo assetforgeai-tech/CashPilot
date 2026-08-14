@@ -191,7 +191,7 @@ def test_proxybase_markets_referral_and_image_contract():
     assert "\"$CLI\" wallet import \"$PHASE\"" in command
     assert "\"$CLI\" login" in command
     assert "seller_config.json" in command
-    assert "tail -n +1 -F /home/proxybase/.proxybase/seller.log" in command
+    assert "seller start --foreground" in command
 
     env_keys = {e["key"] for e in data["docker"]["env"]}
     assert env_keys == {"BACKEND_URL"}

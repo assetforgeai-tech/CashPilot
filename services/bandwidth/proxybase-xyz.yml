@@ -33,15 +33,16 @@ docker:
   volumes:
     - "proxybase-xyz-data:/home/proxybase/.proxybase"
   command: >-
-    sh -lc 'set -e; CLI="$(command -v proxybase-cli || true)"; if [ -z "$CLI" ]; then for p in "$HOME/.local/bin/proxybase-cli" "/root/.local/bin/proxybase-cli" "/usr/local/bin/proxybase-cli"; do if [ -x "$p" ]; then CLI="$p"; break; fi; done; fi; if [ -z "$CLI" ]; then echo "proxybase-cli not found" >&2; exit 1; fi; PHASE="${PROXYBASE_XYZ_PHRASE:?missing wallet phrase}"; "$CLI" wallet import "$PHASE"; "$CLI" login; if [ ! -s /home/proxybase/.proxybase/seller_config.json ]; then printf "{\"upstream_proxies\":[],\"no_direct\":false}" > /home/proxybase/.proxybase/seller_config.json; fi; "$CLI" seller start; touch /home/proxybase/.proxybase/seller.log; tail -n +1 -F /home/proxybase/.proxybase/seller.log'
+    sh -lc 'set -e; export HOME=/home/proxybase; mkdir -p "$HOME/.proxybase"; CLI="$(command -v proxybase-cli || true)"; if [ -z "$CLI" ]; then for p in "$HOME/.local/bin/proxybase-cli" "/root/.local/bin/proxybase-cli" "/usr/local/bin/proxybase-cli"; do if [ -x "$p" ]; then CLI="$p"; break; fi; done; fi; if [ -z "$CLI" ]; then echo "proxybase-cli not found" >&2; exit 1; fi; PHASE="${PROXYBASE_XYZ_PHRASE:?missing wallet phrase}"; "$CLI" wallet import "$PHASE"; "$CLI" login; if [ ! -s "$HOME/.proxybase/seller_config.json" ]; then printf "{\"upstream_proxies\":[],\"no_direct\":false}" > "$HOME/.proxybase/seller_config.json"; fi; exec "$CLI" seller start --foreground'
   network_mode: ""
   setup: >
     CashPilot builds a local image with the official Linux CLI, imports the configured
     wallet phrase at runtime with <code>proxybase-cli wallet import</code>, runs
     <code>proxybase-cli login</code>, then starts selling bandwidth with
-    If the seller config is missing in the volume, CashPilot seeds the direct-mode
-    default before <code>seller start</code>, then keeps the container alive by
-    following the seller log. No dashboard token is required.
+    CashPilot runs the CLI with <code>HOME=/home/proxybase</code> so wallet,
+    session, and seller config all use the mounted state directory. If the seller
+    config is missing, it seeds the direct-mode default, then runs
+    <code>seller start --foreground</code>. No dashboard token is required.
 
 deploy:
   credentials:

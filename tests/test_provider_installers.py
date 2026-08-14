@@ -8,12 +8,12 @@ def test_proxybase_xyz_runtime_command_imports_phrase_and_resolves_cli_path():
     command = provider_installers.proxybase_xyz_command()
     assert "apt-get" not in command
     assert "curl -fsSL https://proxybase.xyz/install.sh | sh" not in command
+    assert "export HOME=/home/proxybase" in command
     assert 'PHASE="${PROXYBASE_XYZ_PHRASE:?missing wallet phrase}"' in command
     assert '"$CLI" wallet import "$PHASE"' in command
     assert '"$CLI" login' in command
     assert 'seller_config.json' in command
-    assert '"$CLI" seller start; ' in command
-    assert "tail -n +1 -F /home/proxybase/.proxybase/seller.log" in command
+    assert 'exec "$CLI" seller start --foreground' in command
 
 def test_proxybase_xyz_installer_image_installs_cli_at_build_time():
     client = MagicMock()

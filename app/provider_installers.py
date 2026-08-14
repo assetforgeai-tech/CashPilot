@@ -151,6 +151,7 @@ RUN curl -fsSL {installer_url} | sh \\
 def proxybase_xyz_command() -> str:
     return (
         "sh -lc 'set -e; "
+        "export HOME=/home/proxybase; mkdir -p \"$HOME/.proxybase\"; "
         'CLI="$(command -v proxybase-cli || true)"; '
         'if [ -z "$CLI" ]; then '
         'for p in "$HOME/.local/bin/proxybase-cli" "/root/.local/bin/proxybase-cli" "/usr/local/bin/proxybase-cli"; do '
@@ -159,8 +160,6 @@ def proxybase_xyz_command() -> str:
         'PHASE="${PROXYBASE_XYZ_PHRASE:?missing wallet phrase}"; '
         '"$CLI" wallet import "$PHASE"; '
         '"$CLI" login; '
-        'if [ ! -s /home/proxybase/.proxybase/seller_config.json ]; then printf \'{"upstream_proxies":[],"no_direct":false}\' > /home/proxybase/.proxybase/seller_config.json; fi; '
-        '"$CLI" seller start; '
-        'touch /home/proxybase/.proxybase/seller.log; '
-        'tail -n +1 -F /home/proxybase/.proxybase/seller.log\''
+        'if [ ! -s "$HOME/.proxybase/seller_config.json" ]; then printf \'{"upstream_proxies":[],"no_direct":false}\' > "$HOME/.proxybase/seller_config.json"; fi; '
+        'exec "$CLI" seller start --foreground\''
     )
