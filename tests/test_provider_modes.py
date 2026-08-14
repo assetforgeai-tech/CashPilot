@@ -19,16 +19,16 @@ def test_earnapp_is_proxy_only():
     assert provider_modes.supported_modes("earnapp") == {"proxy"}
 
 def test_sample_scripts_mode_matrix_is_locked():
-    assert provider_modes.supported_modes("earnfm") == {"proxy"}
+    assert provider_modes.supported_modes("earnfm") == {"direct", "proxy"}
     assert provider_modes.supported_modes("iproyal") == {"proxy"}
     assert provider_modes.supported_modes("mysterium") == {"direct"}
     assert provider_modes.supported_modes("repocket") == {"direct", "proxy"}
 
 def test_default_deploy_mode_matches_provider_capability():
     assert provider_modes.default_deploy_mode("bitping") == "both"
-    assert provider_modes.default_deploy_mode("earnfm") == "proxy"
+    assert provider_modes.default_deploy_mode("earnfm") == "both"
     assert provider_modes.default_deploy_mode("mysterium") == "direct"
 
 def test_missing_mode_expands_to_provider_default_not_legacy():
     assert provider_modes.expand_requested("bitping", None) == ["direct", "proxy"]
-    assert provider_modes.expand_requested("earnfm", None) == ["proxy"]
+    assert provider_modes.expand_requested("earnfm", None) == ["direct", "proxy"]

@@ -21,7 +21,6 @@ from app.collectors.proxies_sx import ProxiesSxCollector
 from app.collectors.proxyrack import ProxyRackCollector
 from app.collectors.repocket import RepocketCollector
 from app.collectors.traffmonetizer import TraffmonetizerCollector
-from app.collectors.uprock import UprockCollector
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +37,6 @@ COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
     "packetstream": PacketStreamCollector,
     "proxies-sx": ProxiesSxCollector,
     "grass": GrassCollector,
-    "uprock": UprockCollector,
 }
 
 # Map of slug -> list of config keys needed to instantiate the collector
@@ -54,7 +52,6 @@ _COLLECTOR_ARGS: dict[str, list[str]] = {
     "packetstream": ["auth_token"],
     "proxies-sx": ["api_key"],
     "grass": ["access_token"],
-    "uprock": ["credentials_json"],
 }
 
 _SECRET_KINDS = {"password", "api_key", "token", "cookie", "bearer", "jwt", "oauth_token", "access_token"}
@@ -120,6 +117,9 @@ def service_credential_fields(
         if fields:
             return fields
 
+    if section == "collector" and owner.get("type") == "manual":
+        return []
+
     if not fallback:
         return []
 
@@ -177,13 +177,6 @@ CREDENTIAL_LIFETIMES: dict[str, dict[str, dict[str, object]]] = {
             "why": "Bearer token from browser localStorage. Re-copy it if Grass signs you out.",
         },
     },
-    "uprock": {
-        "credentials_json": {
-            "hours": None,
-            "durable": True,
-            "why": "Seed file from the logged-in official desktop app. Re-export it if Uprock signs the node out.",
-        },
-    },
 }
 
 
@@ -229,6 +222,8 @@ def make_collectors(
 
         cls = COLLECTOR_MAP[slug]
         fields = collector_credential_fields(slug)
+        if not fields:
+            continue
 
         # Resolve constructor kwargs from config
         kwargs: dict[str, str] = {}

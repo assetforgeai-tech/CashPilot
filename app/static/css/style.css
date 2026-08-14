@@ -839,9 +839,14 @@ img { max-width: 100%; }
 .status-dot.unknown { background: var(--warning); }
 .status-dot.error   { background: var(--warning); }
 .status-dot.external { background: var(--accent-secondary); }
+.status-dot.not_deployed { background: var(--text-muted); }
 .badge-external {
   background: var(--accent-secondary-soft);
   color: var(--accent-secondary);
+}
+.badge-not_deployed {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
 }
 .badge-instances {
   background: var(--bg-tertiary);

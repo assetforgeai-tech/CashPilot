@@ -168,22 +168,11 @@ class TestParsingRealShapes:
         assert out.balance == fx["parsed"]
         assert out.currency == fx["currency"]
 
-    def test_uprock_refreshes_seed_token_and_reads_wallet_total(self):
-        from app.collectors.uprock import UprockCollector
+    def test_uprock_is_manual_only_and_has_no_runtime_collector_contract(self):
+        from app import collectors
 
-        fx = _fixture("uprock")
-        c = UprockCollector(credentials_json='{"main":"refresh-token"}')
-        out = self._run(
-            c,
-            [
-                {"access_token": "access-token"},
-                fx["sample"]["wallet"],
-                fx["sample"]["rewards"],
-            ],
-        )
-        assert out.error is None
-        assert out.balance == fx["parsed"]
-        assert out.currency == fx["currency"]
+        assert "uprock" not in collectors.COLLECTOR_MAP
+        assert collectors.build_one("uprock", {"uprock_credentials_json": "{}"}) == (None, [])
 
     def test_iproyal_uses_browser_like_headers(self):
         import asyncio
@@ -276,10 +265,6 @@ class TestCredentialSelfTest:
         with pytest.raises(HTTPException) as exc:
             self._call("no-such-service")
         assert exc.value.status_code == 404
-
-    def test_an_unconfigured_uprock_collector_names_the_missing_seed(self):
-        out = self._call("uprock")
-        assert out["outcome"] == "not_configured"
 
     def test_unconfigured_credentials_are_reported_as_such(self):
         out = self._call("earnapp")
@@ -387,13 +372,12 @@ class TestBuildingASingleCollector:
         assert missing == []
         assert collector.platform == "earnapp"
 
-    def test_it_builds_uprock_from_credentials_json_seed(self):
+    def test_manual_uprock_has_no_collector(self):
         from app import collectors
 
         collector, missing = collectors.build_one("uprock", {"uprock_credentials_json": '{"main":"refresh-token"}'})
-        assert collector is not None
+        assert collector is None
         assert missing == []
-        assert collector.platform == "uprock"
 
     def test_it_names_the_missing_keys_rather_than_failing_vaguely(self):
         from app import collectors

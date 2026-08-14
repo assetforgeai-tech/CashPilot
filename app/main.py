@@ -1739,6 +1739,38 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
         result.append(entry)
         seen_slugs.add(slug)
 
+    for svc in catalog.get_services():
+        slug = svc.get("slug", "")
+        if not slug or slug in seen_slugs or svc.get("status") in _UNDEPLOYABLE_STATUSES:
+            continue
+        entry = {
+            "slug": slug,
+            "name": svc["name"],
+            "container_status": "not_deployed",
+            "unmanaged": False,
+            "balance": balance_map.get(slug),
+            "balance_known": slug in balance_map,
+            "currency": currency_map.get(slug, "USD"),
+            "cpu": None,
+            "memory": None,
+            "stats_unknown": 0,
+            "image": (svc.get("docker") or {}).get("image", ""),
+            "category": svc.get("category", ""),
+            "health_score": None,
+            "uptime_pct": None,
+            "restarts_7d": 0,
+            "crashes_7d": 0,
+            "unstable": False,
+            "instances": 0,
+            "instance_details": [],
+            "collector_disconnected": slug in alert_slugs,
+            "collector_needs_setup": False,
+            "image_outdated": False,
+        }
+        _apply_service_meta(entry, svc)
+        result.append(entry)
+        seen_slugs.add(slug)
+
     return result
 
 
@@ -2666,7 +2698,8 @@ async def api_earnings_summary(request: Request) -> dict[str, Any]:
             total_bonus_usd += bonus
 
     try:
-        summary["active_services"] = len(await api_services_deployed(request))
+        deployed_rows = await api_services_deployed(request)
+        summary["active_services"] = sum(1 for row in deployed_rows if row.get("container_status") != "not_deployed")
     except Exception as exc:
         logger.warning("Could not count deployed services, reporting it as unknown: %s", exc)
         summary["active_services"] = None

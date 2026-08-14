@@ -554,7 +554,7 @@ const CP = (() => {
   }
 
   function sortServices(services, breakdownMap) {
-    const statusOrder = { running: 0, external: 1, restarting: 2, paused: 3, stopped: 4, exited: 5, error: 6 };
+    const statusOrder = { running: 0, external: 1, restarting: 2, paused: 3, stopped: 4, exited: 5, error: 6, not_deployed: 7 };
     services.sort((a, b) => {
       let va, vb;
       switch (_sortCol) {
@@ -1021,7 +1021,7 @@ const CP = (() => {
   function renderServiceRow(svc, bk) {
     const isExternal = svc.container_status === 'external';
     const statusClass = isExternal ? 'external' : (svc.container_status || 'stopped').toLowerCase();
-    const statusLabel = isExternal ? 'External' : statusClass.charAt(0).toUpperCase() + statusClass.slice(1);
+    const statusLabel = isExternal ? 'External' : (statusClass === 'not_deployed' ? 'Not deployed' : statusClass.charAt(0).toUpperCase() + statusClass.slice(1));
     const instances = svc.instances || 0;
     const details = svc.instance_details || [];
     const isMulti = details.length > 1;

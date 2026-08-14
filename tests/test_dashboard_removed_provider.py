@@ -85,9 +85,31 @@ def test_provider_instances_group_under_canonical_provider_slug():
 
     assert resp.status_code == 200
     rows = resp.json()
-    assert [row["slug"] for row in rows] == ["bitping"]
-    assert rows[0]["instances"] == 2
-    assert {item["mode"] for item in rows[0]["instance_details"]} == {"direct", "proxy"}
+    by_slug = {row["slug"]: row for row in rows}
+    assert len(rows) == 18
+    assert by_slug["bitping"]["instances"] == 2
+    assert {item["mode"] for item in by_slug["bitping"]["instance_details"]} == {"direct", "proxy"}
+    assert by_slug["earnapp"]["container_status"] == "not_deployed"
+
+def test_dashboard_lists_active_catalog_providers_even_before_deploy():
+    with (
+        TestClient(app, raise_server_exceptions=False) as client,
+        patch("app.main.auth.get_current_user", return_value=_reader()),
+        patch("app.main._get_all_worker_containers", new_callable=AsyncMock, return_value=[]),
+        patch("app.main.database.get_earnings_summary", new_callable=AsyncMock, return_value=[]),
+        patch("app.main.database.get_health_scores", new_callable=AsyncMock, return_value=[]),
+        patch("app.main.database.get_config", new_callable=AsyncMock, return_value={}),
+        patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[]),
+        patch("app.main.database.list_provider_instances", new_callable=AsyncMock, return_value=[]),
+    ):
+        resp = client.get("/api/services/deployed")
+
+    assert resp.status_code == 200
+    rows = resp.json()
+    assert len(rows) == 18
+    by_slug = {row["slug"]: row for row in rows}
+    assert by_slug["proxylite"]["container_status"] == "not_deployed"
+    assert by_slug["proxylite"]["collector_needs_setup"] is False
 
 @pytest.mark.asyncio
 async def test_auto_deploy_uses_provider_default_mode():

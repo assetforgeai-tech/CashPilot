@@ -2,6 +2,7 @@ from __future__ import annotations
 
 BOTH = {
     "bitping",
+    "earnfm",
     "grass",
     "proxylite",
     "proxybase",
@@ -13,7 +14,7 @@ BOTH = {
     "uprock",
     "urnetwork",
 }
-PROXY_ONLY = {"earnapp", "earnfm", "iproyal", "packetstream", "proxies-sx", "wipter"}
+PROXY_ONLY = {"earnapp", "iproyal", "packetstream", "proxies-sx", "wipter"}
 DIRECT_ONLY = {"mysterium"}
 
 

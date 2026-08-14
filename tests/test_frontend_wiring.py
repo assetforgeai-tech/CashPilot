@@ -130,6 +130,11 @@ class TestProviderCollectNowIsReachable:
         assert "/api/services/${encodeURIComponent(slug)}/collect" in source
         assert "loadServicesTable()" in source
 
+    def test_dashboard_renders_not_deployed_catalog_rows_legibly(self):
+        source = js_function("renderServiceRow")
+        assert "Not deployed" in source
+        assert "badge-not_deployed" in (ROOT / "app" / "static" / "css" / "style.css").read_text(encoding="utf-8")
+
 class TestDeployModeSelect:
     def test_dual_mode_services_can_select_both_by_default(self):
         source = js_function("deployModeSelect")

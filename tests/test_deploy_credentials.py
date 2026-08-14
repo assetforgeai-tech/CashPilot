@@ -4,7 +4,7 @@ import pytest
 from fastapi import HTTPException
 
 from app import catalog, main
-from app.collectors import service_credential_fields
+from app.collectors import collector_credential_fields, service_credential_fields
 
 
 def test_grass_deploy_credentials_map_from_stored_config_to_worker_args():
@@ -106,6 +106,28 @@ def test_settings_deploy_credentials_cover_node_creation_inputs_from_runtime_scr
     for slug, args in expected.items():
         fields = {field["arg"] for field in service_credential_fields(slug, "deploy", catalog.get_service(slug), fallback=False)}
         assert args <= fields, slug
+
+def test_settings_collector_credentials_cover_provider_collector_notes():
+    expected = {
+        "bitping": {"email", "password"},
+        "earnfm": {"email", "password"},
+        "iproyal": {"email", "password"},
+        "packetstream": {"auth_token"},
+        "proxies-sx": {"api_key"},
+        "proxyrack": {"api_key"},
+        "repocket": {"email", "password"},
+        "traffmonetizer": {"token"},
+    }
+
+    for slug, args in expected.items():
+        fields = {field["arg"] for field in collector_credential_fields(slug, catalog.get_service(slug))}
+        assert args <= fields, slug
+
+def test_node_count_only_providers_have_no_earnings_collector_inputs():
+    for slug in ("proxylite", "proxybase-xyz", "uprock", "wipter"):
+        svc = catalog.get_service(slug)
+        assert (svc.get("collector") or {}).get("type") == "manual"
+        assert collector_credential_fields(slug, svc) == []
 
 def test_deploy_config_fields_can_feed_docker_env():
     svc = catalog.get_service("repocket")

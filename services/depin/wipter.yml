@@ -92,8 +92,8 @@ cashout:
 platforms: [docker, windows, macos, linux, android]
 
 collector:
-  type: scrape
-  notes: "No public earnings API documented. Runtime login and traffic markers are known from the tested Docker automation."
+  type: manual
+  notes: "Node-count/status only. No public earnings API documented; runtime login and traffic markers come from worker heartbeat/provider state."
 
 payout:
   model: unknown
