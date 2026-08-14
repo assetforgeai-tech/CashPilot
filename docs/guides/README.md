@@ -4,7 +4,7 @@
 
 Setup and configuration for every service CashPilot supports.
 
-**21 providers** across 2 categories. The table is sortable — click a heading to reorder it.
+**18 providers** across 2 categories. The table is sortable — click a heading to reorder it.
 
 !!! tip "Choosing what to run"
 
@@ -36,10 +36,7 @@ Setup and configuration for every service CashPilot supports.
 
 | Service | Needs | Runs as | Minimum payout | Status |
 |---|---|---|---|---|
-| [Adnade](adnade.md) | — | Docker | — | active |
-| [Dawn Internet](dawn.md) | Residential IP | App only | — | active |
 | [Grass](grass.md) | Residential IP | Docker | — | active |
-| [Titan Network](titan.md) | Residential IP | App only | — | active |
 | [Uprock](uprock.md) | Residential IP | Docker | $5 | active |
 | [Wipter](wipter.md) | Residential IP | Docker | $20 | active |
 

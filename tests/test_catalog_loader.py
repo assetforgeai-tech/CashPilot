@@ -290,7 +290,7 @@ class TestValidate:
 
     def test_all_shipped_services_pass_validation(self):
         # Guard: no real catalog entry is dropped by the loader's validation.
-        assert len(catalog.load_services()) >= 20
+        assert len(catalog.load_services()) >= 18
 
 class TestProviderAutomationContracts:
     def _svc(self, slug):
@@ -365,39 +365,12 @@ class TestProviderAutomationContracts:
         assert self._credential_keys(svc, "dashboard") == set()
         assert {item["key"] for item in svc["docker"]["env"]} == set()
 
-    def test_adnade_uses_chrome_profile_bundle(self):
-        svc = self._svc("adnade")
-        assert svc["docker"]["image"] == "lscr.io/linuxserver/chromium:latest"
-        assert svc["docker"]["ports"] == ["4000:3500"]
-        assert self._credential_keys(svc, "deploy") == {"username", "chrome_profile_key"}
-        assert self._credential_keys(svc, "collector") == {"username", "password"}
-        assert svc["deploy"]["runtime_assets"] == [
-            {
-                "provider": "adnade",
-                "asset_kind": "chrome_profile_zip",
-                "target": "/config",
-                "encoding": "zip",
-                "url": "https://adnade.acacondos.com/cashpilot/adnade/chromeprofiledata.ORIGINAL.zip.fernet",
-                "sha256": "8bd3d7ae3766b63a33f55fad463f062e238010de03cc6e3681f1a2beb12cc8f4",
-                "decrypt": "fernet",
-                "decrypt_key_arg": "chrome_profile_key",
-            }
-        ]
-
     def test_urnetwork_uses_deploy_auth_token_and_optional_api_key(self):
         svc = self._svc("urnetwork")
         assert self._credential_keys(svc, "deploy") == {"auth_token"}
         assert self._credential_keys(svc, "collector") == {"api_key"}
         assert self._credential_keys(svc, "dashboard") == set()
         assert {item["key"] for item in svc["docker"]["env"]} == set()
-
-    def test_dawn_and_titan_store_optional_dashboard_sessions_only(self):
-        assert self._credential_keys(self._svc("dawn"), "dashboard") == {"dashboard_session"}
-        assert self._credential_keys(self._svc("dawn"), "collector") == {"dashboard_session"}
-        titan = self._svc("titan")
-        assert self._credential_keys(titan, "dashboard") == {"dashboard_session"}
-        assert self._credential_keys(titan, "collector") == {"dashboard_session"}
-        assert titan["collector"]["per_node_earnings"] is True
 
     def test_wipter_runtime_uses_env_login(self):
         svc = self._svc("wipter")

@@ -185,7 +185,7 @@ def test_active_services_counts_deployed_rows_not_running_only(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "summary.db"):
             await database.init_db()
-            await database.save_deployment("adnade", "c2", status="external")
+            await database.save_deployment("proxylite", "c2", status="external")
             from app import main as app_main
             with (
                 patch(
@@ -207,7 +207,7 @@ def test_active_services_counts_deployed_rows_not_running_only(tmp_path):
                 patch("app.main._require_reader", lambda request: None),
             ):
                 summary = await app_main.api_earnings_summary(object())
-            assert summary["active_services"] == 4
+            assert summary["active_services"] == 2
 
     import asyncio
     asyncio.run(run())
@@ -271,7 +271,7 @@ def test_proxy_pool_export_can_filter_by_protocol(tmp_path):
 def test_service_collect_route_calls_single_collector(client):
     class Result:
         error = None
-        platform = "adnade"
+        platform = "grass"
         balance = 1.25
         currency = "USD"
     class Collector:
@@ -280,13 +280,13 @@ def test_service_collect_route_calls_single_collector(client):
 
     with (
         patch("app.main.auth.get_current_user", return_value=_owner_user()),
-        patch("app.main.catalog.get_service", return_value={"name": "Adnade", "slug": "adnade"}),
+        patch("app.main.catalog.get_service", return_value={"name": "Grass", "slug": "grass"}),
         patch("app.main.database.get_config", new_callable=AsyncMock, return_value={}),
         patch("app.collectors.build_one", return_value=(Collector(), [])),
         patch("app.main._collect_bounded", new_callable=AsyncMock, return_value=Result()),
         patch("app.main.database.upsert_earnings", new_callable=AsyncMock) as upsert,
         patch("app.main._detect_payout", new_callable=AsyncMock, return_value=None),
     ):
-        resp = client.post("/api/services/adnade/collect")
+        resp = client.post("/api/services/grass/collect")
     assert resp.status_code == 200
     upsert.assert_awaited_once()

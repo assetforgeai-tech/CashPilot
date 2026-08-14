@@ -333,17 +333,6 @@ def _docker_host_path(path: Path) -> Path:
         logger.warning("Could not resolve host path for runtime asset %s: %s", path, exc)
     return path
 
-_ADNADE_EXTENSION_IDS = ("flemjfpeajijmofcpgfgckfbmomdflck", "fpdkjdnhkakefebpekbdhillbhonfjjp")
-_ADNADE_TITAN_SERVICE_WORKER = (
-    Path(".config")
-    / "chromium"
-    / "Default"
-    / "Extensions"
-    / "flemjfpeajijmofcpgfgckfbmomdflck"
-    / "0.1.6_0"
-    / "service-worker.js"
-)
-_ADNADE_TITAN_AUTOSTART_MARKER = "cashpilot titan autostart"
 def _myst_state_path() -> Path:
     return Path(os.getenv("CASHPILOT_DATA_DIR", "/data")) / "myst-wallet.json"
 
@@ -959,6 +948,7 @@ class DeploySpec(BaseModel):
     resources: ResourceSpec | None = None
     egress_mode: str | None = None
     egress_udp: str | None = None
+    proxy: dict[str, Any] | None = None
     runtime_assets: list[RuntimeAssetSpec] = Field(default_factory=list)
     installer_manifest_url: str | None = None
     installer_platform: str | None = None
@@ -1023,60 +1013,12 @@ def _runtime_asset_url(asset: RuntimeAssetSpec, spec: DeploySpec, slug: str) -> 
         return url
     if asset.url_arg:
         return str((spec.deploy_credentials or {}).get(asset.url_arg) or "").strip()
-    if slug == "adnade" and asset.asset_kind == "chrome_profile_zip":
-        return str(
-            (spec.deploy_credentials or {}).get("chrome_profile_url")
-            or os.getenv("ADNADE_CHROME_PROFILE_URL")
-            or ""
-        ).strip()
     return ""
 
 def _runtime_asset_decrypt_key(asset: RuntimeAssetSpec, spec: DeploySpec, slug: str) -> str:
     if asset.decrypt_key_arg:
         return str((spec.deploy_credentials or {}).get(asset.decrypt_key_arg) or "").strip()
-    if slug == "adnade" and asset.asset_kind == "chrome_profile_zip":
-        return str(
-            (spec.deploy_credentials or {}).get("chrome_profile_key")
-            or os.getenv("ADNADE_CHROME_PROFILE_KEY")
-            or ""
-        ).strip()
     return ""
-
-def _stage_adnade_unpacked_extensions(profile_root: Path) -> None:
-    source_root = profile_root / ".config" / "chromium" / "Default" / "Extensions"
-    target_root = profile_root / "cashpilot-extensions"
-    for ext_id in _ADNADE_EXTENSION_IDS:
-        ext_root = source_root / ext_id
-        if not ext_root.is_dir():
-            continue
-        versions = sorted((p for p in ext_root.iterdir() if (p / "manifest.json").is_file()), reverse=True)
-        if not versions:
-            continue
-        target = target_root / ext_id
-        if target.exists():
-            shutil.rmtree(target)
-        shutil.copytree(versions[0], target)
-
-def _patch_adnade_chrome_profile(profile_path: Path) -> None:
-    service_worker = profile_path / _ADNADE_TITAN_SERVICE_WORKER
-    try:
-        source = service_worker.read_text(encoding="utf-8")
-    except OSError:
-        return
-    if _ADNADE_TITAN_AUTOSTART_MARKER in source:
-        return
-    needle = "startAgent()\n    }"
-    patch = (
-        "startAgent()\n"
-        "            // ponytail: Titan extension 0.1.6 only; replace with provider API when Titan exposes one.\n"
-        f"            // {_ADNADE_TITAN_AUTOSTART_MARKER}\n"
-        "            chrome.userScripts.configureWorld({ messaging: true }).catch(() => {});\n"
-        "            if (agent && agent.jobMgr) agent.jobMgr.startup();\n"
-        "            agentConfig.isUserScriptsEnabled = true;\n"
-        "            agentConfig.save2Storage();\n"
-        "    }"
-    )
-    service_worker.write_text(source.replace(needle, patch, 1), encoding="utf-8")
 
 async def _materialize_runtime_assets(slug: str, spec: DeploySpec) -> None:
     if not spec.runtime_assets:
@@ -1113,12 +1055,7 @@ async def _materialize_runtime_assets(slug: str, spec: DeploySpec) -> None:
             host_path.mkdir(parents=True, exist_ok=True)
             with zipfile.ZipFile(io.BytesIO(data)) as archive:
                 archive.extractall(host_path)
-            if slug == "adnade":
-                _stage_adnade_unpacked_extensions(host_path / "chromeprofiledata")
-            if slug == "adnade" and asset_kind == "chrome_profile_zip":
-                _patch_adnade_chrome_profile(host_path / "chromeprofiledata")
-            mode = "rw" if slug == "adnade" and target == "/config" else "ro"
-            spec.volumes[str(_docker_host_path(host_path / "chromeprofiledata"))] = {"bind": target, "mode": mode}
+            spec.volumes[str(_docker_host_path(host_path / "chromeprofiledata"))] = {"bind": target, "mode": "ro"}
             continue
         host_path.write_bytes(data)
         with contextlib.suppress(OSError):
@@ -1454,6 +1391,7 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             installer_platform=spec.installer_platform,
             deploy_credentials=spec.deploy_credentials,
             user=spec.user,
+            proxy=spec.proxy,
         )
         if slug == "mysterium":
             try:

@@ -67,7 +67,6 @@ Services CashPilot can deploy and manage automatically via Docker.
 <!-- BEGIN GENERATED: docker-services -->
 | Service | Guide | Residential IP required | VPS allowed | Devices / Acct | Devices / IP | Payout |
 |---------|-------|:-:|:-:|:-:|:-:|--------|
-| [Adnade](https://adnade.net) | [Guide](docs/guides/adnade.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto |
 | [Bitping](https://app.bitping.com) | [Guide](docs/guides/bitping.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto (SOL) |
 | [Earn.fm](https://earn.fm/ref/GEISYB91) | [Guide](docs/guides/earnfm.md) | ✅ | ✅ | ? \*\*\* | 1 | Crypto |
 | [EarnApp](https://earnapp.com/i/TSMD9wSm) \*\*\*\* | [Guide](docs/guides/earnapp.md) | ✅ | ❌ | 15 | ? \*\*\* | PayPal, Amazon Gift Card, Wise |
@@ -103,8 +102,6 @@ These services have no Docker image. CashPilot lists them in the catalog with si
 <!-- BEGIN GENERATED: extension-services -->
 | Service | Guide | Residential IP required | VPS allowed | Devices / Acct | Devices / IP | Payout | Status |
 |---------|-------|:-:|:-:|:-:|:-:|--------|--------|
-| [Dawn Internet](https://dawninternet.com/?code=2QLQV97F) | [Guide](docs/guides/dawn.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto | Active |
-| [Titan Network](https://edge.titannet.info/signup?inviteCode=2GKKJ495) | [Guide](docs/guides/titan.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto (USDC) | Active |
 <!-- END GENERATED: extension-services -->
 
 > **Note:** Earnings vary widely by location, hardware, and demand -- see individual guide pages in `docs/guides/` for details.

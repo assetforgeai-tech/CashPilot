@@ -12,20 +12,20 @@ def test_changed_deploy_credentials_mark_only_matching_deployed_provider(tmp_pat
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "settings.db"):
             await database.init_db()
             await database.save_deployment("grass", "container-1", status="running", spec={"image": "grass"})
-            await database.save_deployment("adnade", "container-2", status="running", spec={"image": "adnade"})
+            await database.save_deployment("proxies-sx", "container-2", status="running", spec={"image": "proxies-sx"})
 
             changed = main._changed_credential_sections(
                 {
                     "grass_store_access_token": "new-token",
-                    "adnade_password": "collector-only",
+                    "proxies-sx_api_key": "collector-only",
                 }
             )
             await main._mark_redeploy_needed_for_config_change(changed)
 
             grass = await database.get_deployment("grass")
-            adnade = await database.get_deployment("adnade")
+            proxies_sx = await database.get_deployment("proxies-sx")
             assert grass["status"] == "needs_redeploy"
-            assert adnade["status"] == "running"
+            assert proxies_sx["status"] == "running"
 
     asyncio.run(run())
 
@@ -34,13 +34,13 @@ def test_dashboard_and_collector_credentials_do_not_mark_redeploy():
     changed = main._changed_credential_sections(
         {
             "proxybase_dashboard_access_token": "dashboard-token",
-            "adnade_password": "collector-password",
+            "proxies-sx_api_key": "collector-token",
         }
     )
 
     assert changed["deploy"] == set()
     assert changed["dashboard"] == {"proxybase"}
-    assert changed["collector"] == {"adnade"}
+    assert changed["collector"] == {"proxies-sx"}
 
 
 def test_credential_health_reports_age_without_values(tmp_path):
@@ -122,7 +122,7 @@ def test_startup_backfills_deploy_only_and_dashboard_only_tracking_rows(tmp_path
         "deploy": {"credentials": [{"key": "user_id", "required": True}]},
     }
     dashboard_only = {
-        "slug": "dawn",
+        "slug": "dashboard-only",
         "dashboard": {"credentials": [{"key": "dashboard_session", "required": False}]},
     }
 
@@ -131,13 +131,13 @@ def test_startup_backfills_deploy_only_and_dashboard_only_tracking_rows(tmp_path
             patch.object(database, "DB_DIR", tmp_path),
             patch.object(database, "DB_PATH", tmp_path / "settings.db"),
             patch.object(main.catalog, "get_services", return_value=[deploy_only, dashboard_only]),
-            patch.object(main.catalog, "get_service", side_effect=lambda slug: {"proxylite": deploy_only, "dawn": dashboard_only}.get(slug)),
+            patch.object(main.catalog, "get_service", side_effect=lambda slug: {"proxylite": deploy_only, "dashboard-only": dashboard_only}.get(slug)),
         ):
             await database.init_db()
             await database.set_config_bulk(
                 {
                     "proxylite_user_id": "user-1",
-                    "dawn_dashboard_session": "session",
+                    "dashboard-only_dashboard_session": "session",
                 }
             )
 
@@ -145,7 +145,7 @@ def test_startup_backfills_deploy_only_and_dashboard_only_tracking_rows(tmp_path
 
             assert tracked == 2
             assert (await database.get_deployment("proxylite"))["status"] == "external"
-            assert (await database.get_deployment("dawn"))["status"] == "external"
+            assert (await database.get_deployment("dashboard-only"))["status"] == "external"
 
     asyncio.run(run())
 

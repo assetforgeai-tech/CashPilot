@@ -10,13 +10,15 @@ from __future__ import annotations
 import logging
 import os
 import time
+import base64
+import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 import docker
 from docker.errors import APIError, DockerException, NotFound
 
-from app import myst_runtime, provider_automation, provider_installers
+from app import myst_runtime, provider_automation, provider_installers, singbox_config
 
 try:
     from app.catalog import critical_volume_targets, get_service, get_services
@@ -84,6 +86,9 @@ def _get_client() -> docker.DockerClient:
 
 def _container_name(slug: str) -> str:
     return f"{CONTAINER_PREFIX}{slug}"
+
+def _sidecar_name(slug: str) -> str:
+    return f"{_container_name(slug)}-egress"
 
 
 def _find_container(slug: str):
@@ -204,6 +209,7 @@ def deploy_raw(
     installer_platform: str | None = None,
     deploy_credentials: dict[str, Any] | None = None,
     user: str | None = None,
+    proxy: dict[str, Any] | None = None,
 ) -> str:
     """Deploy a container from a raw spec (no catalog lookup).
 
@@ -231,28 +237,18 @@ def deploy_raw(
         env["PROXYBASE_XYZ_PHRASE"] = str(deploy_credentials.get("phrase") or "")
         image = provider_installers.ensure_proxybase_xyz_image(client)
         command = command or provider_installers.proxybase_xyz_command()
-    if slug == "adnade" and deploy_credentials:
-        username = str(deploy_credentials.get("username") or "").strip()
-        env["ADNADE_USERNAME"] = username
-        env["ADNADE_USE_CHROME"] = "true"
-        env["CUSTOM_PORT"] = str(env.get("CUSTOM_PORT") or "3500")
-        env["CUSTOM_HTTPS_PORT"] = str(env.get("CUSTOM_HTTPS_PORT") or "3501")
-        env["CUSTOM_USER"] = str(env.get("CUSTOM_USER") or "internetincome")
-        env["PASSWORD"] = str(env.get("PASSWORD") or "internetincome")
-        env["PUID"] = str(env.get("PUID") or "1000")
-        env["PGID"] = str(env.get("PGID") or "1000")
-        env["TZ"] = str(env.get("TZ") or "Etc/UTC")
-        extensions = (
-            "/config/.config/chromium/Default/Extensions/flemjfpeajijmofcpgfgckfbmomdflck/0.1.6_0,"
-            "/config/.config/chromium/Default/Extensions/fpdkjdnhkakefebpekbdhillbhonfjjp/3.0.10_0"
-        )
-        env["CHROME_CLI"] = f"--load-extension={extensions} https://adnade.net/view.php?user={username}&multi=4"
-
     # Remove any existing container with the same name
     try:
         old = client.containers.get(name)
         logger.info("Removing existing container %s", name)
         old.remove(force=True)
+    except NotFound:
+        pass
+    sidecar_name = _sidecar_name(slug)
+    try:
+        old_sidecar = client.containers.get(sidecar_name)
+        logger.info("Removing existing egress sidecar %s", sidecar_name)
+        old_sidecar.remove(force=True)
     except NotFound:
         pass
 
@@ -280,12 +276,31 @@ def deploy_raw(
         key: res[key] for key in ("mem_limit", "mem_reservation", "oom_score_adj") if res.get(key) is not None
     }
 
-    logger.info("Creating container %s from %s", name, image)
-    # linuxserver/chromium initializes nginx/dbus inside the container and needs
-    # Docker's default CHOWN/SETUID-style caps during boot. Dropping every cap
-    # leaves the browser UI port open but nginx dead-looping on chown.
-    cap_drop = None if slug == "adnade" else ["ALL"]
+    if proxy and not network_mode:
+        config = singbox_config.render_tun_proxy_config(proxy, worker_name=slug)
+        encoded_config = base64.b64encode(json.dumps(config).encode()).decode()
+        logger.info("Creating egress sidecar %s", sidecar_name)
+        client.containers.run(
+            image="ghcr.io/sagernet/sing-box:latest",
+            name=sidecar_name,
+            environment={"SINGBOX_CONFIG_B64": encoded_config},
+            command='sh -lc "printf %s \\"$SINGBOX_CONFIG_B64\\" | base64 -d > /tmp/sing-box.json && exec sing-box run -c /tmp/sing-box.json"',
+            cap_add=["NET_ADMIN"],
+            devices=["/dev/net/tun:/dev/net/tun"],
+            labels={
+                LABEL_SERVICE: slug,
+                LABEL_MANAGED: "true",
+                LABEL_VERSION: "1",
+                LABEL_CATEGORY: category,
+                LABEL_DEPLOYED_BY: "worker",
+                "cashpilot.role": "egress-sidecar",
+            },
+            detach=True,
+            restart_policy={"Name": "always"},
+        )
+        network_mode = f"container:{sidecar_name}"
 
+    logger.info("Creating container %s from %s", name, image)
     container = client.containers.run(
         image=image,
         name=name,
@@ -300,7 +315,7 @@ def deploy_raw(
         # in-container root with Docker's full default set, which includes NET_RAW
         # (ARP/DNS spoofing on the bridge), MKNOD, SETUID and SYS_CHROOT.
         devices=devices or None,
-        cap_drop=cap_drop,
+        cap_drop=["ALL"],
         cap_add=cap_add or None,
         # no-new-privileges blocks privilege escalation via setuid binaries; privileged
         # is hardcoded off so the dangerous state is unrepresentable here rather than
@@ -737,6 +752,8 @@ def get_status() -> list[dict[str, Any]]:
     labeled_stats = _collect_stats_bulk(list(labeled))
     for c in labeled:
         try:
+            if (c.labels or {}).get("cashpilot.role") == "egress-sidecar":
+                continue
             seen_ids.add(c.id)
             slug = c.labels.get(LABEL_SERVICE, "unknown")
             cpu_pct, mem_mb, net_rx, net_tx = labeled_stats.get(c.id, (0.0, 0.0, None, None))
@@ -877,6 +894,8 @@ def get_status_light() -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     for c in labeled:
         try:
+            if (c.labels or {}).get("cashpilot.role") == "egress-sidecar":
+                continue
             seen_ids.add(c.id)
             slug = c.labels.get(LABEL_SERVICE, "unknown")
             results.append(

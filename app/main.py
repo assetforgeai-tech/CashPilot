@@ -54,6 +54,7 @@ from app import (
     preflight,
     producer_state,
     provider_automation,
+    provider_modes,
     setup_token,
     update_check,
     version,
@@ -1476,6 +1477,11 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
     health_scores = await database.get_health_scores(7)
     health_map = {h["slug"]: h for h in health_scores}
 
+    provider_instances = await database.list_provider_instances()
+    instances_by_slug: dict[str, list[dict[str, Any]]] = {}
+    for inst in provider_instances:
+        instances_by_slug.setdefault(inst["slug"], []).append(inst)
+
     # Build set of slugs with collector errors (disconnected)
     alert_slugs = {a["platform"] for a in _collector_alerts}
 
@@ -1628,6 +1634,54 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
 
     # Include external services (no Docker container, e.g. Grass)
     seen_slugs = {r["slug"] for r in result}
+    for slug, inst_rows in instances_by_slug.items():
+        if slug in seen_slugs:
+            continue
+        svc = catalog.get_service(slug)
+        if not svc:
+            continue
+        health = health_map.get(slug, {})
+        result.append(
+            {
+                "slug": slug,
+                "name": svc["name"],
+                "container_status": "running" if any(r.get("status") == "running" for r in inst_rows) else (inst_rows[0].get("status") or "unknown"),
+                "unmanaged": False,
+                "balance": balance_map.get(slug),
+                "balance_known": slug in balance_map,
+                "currency": currency_map.get(slug, "USD"),
+                "cpu": None,
+                "memory": None,
+                "stats_unknown": 0,
+                "image": "",
+                "category": svc.get("category", ""),
+                "health_score": health.get("score"),
+                "uptime_pct": health.get("uptime_pct"),
+                "restarts_7d": health.get("restarts", 0),
+                "crashes_7d": health.get("crashes", 0),
+                "unstable": health.get("crashes", 0) >= 3,
+                "instances": len(inst_rows),
+                "instance_details": [
+                    {
+                        "node": "worker",
+                        "worker_id": r.get("worker_id"),
+                        "status": r.get("status", "unknown"),
+                        "cpu": None,
+                        "memory": None,
+                        "container_name": r.get("container_id", ""),
+                        "has_docker": True,
+                        "is_android": False,
+                        "unmanaged": False,
+                    }
+                    for r in inst_rows
+                ],
+                "collector_disconnected": slug in alert_slugs,
+                "collector_needs_setup": slug not in alert_slugs and _collector_needs_setup(slug, config),
+                "image_outdated": False,
+            }
+        )
+        seen_slugs.add(slug)
+
     deployments = await database.get_deployments()
     for d in deployments:
         slug = d["slug"]
@@ -1677,42 +1731,6 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
         result.append(entry)
         seen_slugs.add(slug)
 
-    adnade_row = next((row for row in result if row.get("slug") == "adnade"), None)
-    adnade_deployment = next((row for row in deployments if row.get("slug") == "adnade"), None)
-    adnade_source = adnade_row or adnade_deployment
-    if adnade_source:
-        for slug in ("dawn", "titan"):
-            if slug in seen_slugs:
-                continue
-            svc = catalog.get_service(slug)
-            if not svc:
-                continue
-            health = health_map.get(slug, {})
-            entry = {
-                "slug": slug,
-                "name": svc["name"],
-                "container_status": adnade_source.get("container_status") or adnade_source.get("status") or "external",
-                "unmanaged": True,
-                "balance": balance_map.get(slug),
-                "balance_known": slug in balance_map,
-                "currency": currency_map.get(slug, "USD"),
-                "cpu": "",
-                "memory": "",
-                "image": "adnade chrome profile",
-                "category": svc.get("category", ""),
-                "health_score": health.get("score"),
-                "uptime_pct": health.get("uptime_pct"),
-                "restarts_7d": health.get("restarts", 0),
-                "crashes_7d": health.get("crashes", 0),
-                "unstable": health.get("crashes", 0) >= 3,
-                "instances": adnade_source.get("instances", 0),
-                "instance_details": adnade_source.get("instance_details", []),
-                "collector_disconnected": slug in alert_slugs,
-                "collector_needs_setup": slug not in alert_slugs and _collector_needs_setup(slug, config),
-            }
-            _apply_service_meta(entry, svc)
-            result.append(entry)
-
     return result
 
 
@@ -1722,24 +1740,14 @@ async def api_services_available(request: Request) -> list[dict[str, Any]]:
     _require_auth_api(request)
     services = catalog.get_services()
     deployments = await database.get_deployments()
-    deployed_slugs = {d["slug"] for d in deployments}
+    instances = await database.list_provider_instances()
+    deployed_slugs = {d["slug"] for d in deployments} | {i["slug"] for i in instances}
     # Imported here rather than at module scope: app.collectors pulls in every
     # collector module.
     from app.collectors import COLLECTOR_MAP as collector_map
 
     # Also check worker containers for deployed status (catches externally-deployed services)
     worker_containers = await _get_all_worker_containers()
-    worker_slugs: set[str] = set()
-    worker_node_counts: dict[str, set[str]] = {}
-    for c in worker_containers:
-        slug = c.get("slug", "")
-        if slug:
-            worker_slugs.add(slug)
-            node = c.get("_node", "unknown")
-            if slug not in worker_node_counts:
-                worker_node_counts[slug] = set()
-            worker_node_counts[slug].add(node)
-
     available = []
     for svc in services:
         if svc.get("status") in _UNDEPLOYABLE_STATUSES:
@@ -1747,9 +1755,9 @@ async def api_services_available(request: Request) -> list[dict[str, Any]]:
         docker_conf = svc.get("docker", {})
         has_image = bool(docker_conf and docker_conf.get("image"))
         slug = svc.get("slug", "")
-        svc["deployed"] = slug in deployed_slugs or slug in worker_slugs
+        svc["deployed"] = slug in deployed_slugs
         svc["manual_only"] = not has_image
-        svc["node_count"] = len(worker_node_counts.get(slug, set()))
+        svc["node_count"] = sum(1 for i in instances if i["slug"] == slug)
         # The setup wizard reads this endpoint, and it needs to know whether
         # earnings tracking takes a SECOND set of credentials — the service
         # detail view already says so, and the wizard is the screen a new user
@@ -1768,16 +1776,15 @@ async def api_get_service(request: Request, slug: str) -> dict[str, Any]:
 
     # Enrich with deployment status (same logic as /api/services/available)
     deployments = await database.get_deployments()
-    deployed_slugs = {d["slug"] for d in deployments}
-    worker_containers = await _get_all_worker_containers()
-    worker_slugs = {c["slug"] for c in worker_containers if c.get("slug")}
+    instances = await database.list_provider_instances()
+    deployed_slugs = {d["slug"] for d in deployments} | {i["slug"] for i in instances}
     worker_nodes: set[str] = set()
     for c in worker_containers:
         if c.get("slug") == slug:
             worker_nodes.add(c.get("_node", "unknown"))
 
-    svc["deployed"] = slug in deployed_slugs or slug in worker_slugs
-    svc["node_count"] = len(worker_nodes)
+    svc["deployed"] = slug in deployed_slugs
+    svc["node_count"] = len([i for i in instances if i["slug"] == slug])
 
     # Flag whether earnings tracking uses separate credentials (entered in
     # Settings → Collectors), so the deploy UI can tell users the container
@@ -1803,6 +1810,7 @@ async def api_status(request: Request) -> list[dict[str, Any]]:
 class DeployRequest(BaseModel):
     env: dict[str, str] = {}
     hostname: str | None = None
+    mode: str | None = None
 
 def _resolve_deploy_credentials(slug: str, svc: dict[str, Any] | None, config: dict[str, str]) -> dict[str, str]:
     from app.collectors import service_credential_fields
@@ -1888,6 +1896,14 @@ async def _release_myst_wallet_from_spec(spec: dict[str, Any], *, reason: str) -
         wallet_assignment_version=version,
     )
 
+async def _proxy_for_worker_instance(worker_id: int) -> dict[str, Any]:
+    proxy = await database.get_worker_proxy_assignment(worker_id)
+    if not proxy or not proxy.get("proxy_id"):
+        proxy = await database.lease_proxy_for_worker(worker_id)
+    if not proxy or not proxy.get("proxy_id"):
+        raise HTTPException(status_code=409, detail="No proxy available for this worker")
+    return proxy
+
 
 @app.post("/api/deploy/{slug}")
 async def api_deploy(
@@ -1896,7 +1912,7 @@ async def api_deploy(
     body: DeployRequest,
     worker_id: int | None = None,
     _auth: dict[str, Any] = Depends(_require_owner),
-) -> dict[str, str]:
+) -> dict[str, Any]:
     worker_id = await _resolve_worker_id(worker_id)
     svc = catalog.get_service(slug)
     if not svc:
@@ -2010,10 +2026,6 @@ async def api_deploy(
     deploy_credentials = _resolve_deploy_credentials(slug, svc, await database.get_config() or {})
     if deploy_credentials:
         spec["deploy_credentials"] = deploy_credentials
-    myst_wallet: dict[str, Any] | None = None
-    if slug == "mysterium":
-        myst_wallet = await _attach_myst_wallet_for_deploy(slug, worker_id, spec)
-
     # Command: resolve ${VAR} placeholders
     raw_command = docker_conf.get("command") or None
     if raw_command:
@@ -2044,19 +2056,63 @@ async def api_deploy(
             logger.info("Redeploying %s from its recorded spec: %s", slug, "; ".join(divergence))
 
     try:
-        result = await _proxy_worker_deploy(worker_id, slug, spec)
-    except Exception:
-        if myst_wallet and (spec.get("deploy_credentials") or {}).get("myst_wallet_client_id"):
-            with contextlib.suppress(Exception):
-                await _release_myst_wallet_from_spec(spec, reason="DEPLOY_FAILED")
-        raise
-    container_id = result.get("container_id", "remote")
-    await database.save_deployment(slug=slug, container_id=container_id, spec=spec)
-    await database.record_health_event(slug, "start", f"deployed to worker {worker_id}")
-    metrics.record_container_lifecycle("deploy", slug)
+        modes = provider_modes.expand_requested(slug, body.mode)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    deployed: list[dict[str, str]] = []
+    for mode in modes:
+        instance_slug = slug if mode == "legacy" else f"{slug}-{mode}"
+        instance_spec = json.loads(json.dumps(spec))
+        instance_spec.setdefault("labels", {})
+        instance_spec["labels"]["cashpilot.provider"] = slug
+        instance_spec["labels"]["cashpilot.instance_mode"] = mode
+        if mode == "proxy":
+            instance_spec["proxy"] = await _proxy_for_worker_instance(worker_id)
+            instance_spec["egress_mode"] = "proxy"
+        elif mode == "direct":
+            instance_spec["egress_mode"] = "direct"
+
+        myst_wallet: dict[str, Any] | None = None
+        if slug == "mysterium":
+            myst_wallet = await _attach_myst_wallet_for_deploy(slug, worker_id, instance_spec)
+        try:
+            result = await _proxy_worker_deploy(worker_id, instance_slug, instance_spec)
+        except Exception:
+            if myst_wallet and (instance_spec.get("deploy_credentials") or {}).get("myst_wallet_client_id"):
+                with contextlib.suppress(Exception):
+                    await _release_myst_wallet_from_spec(instance_spec, reason="DEPLOY_FAILED")
+            await database.save_provider_instance(
+                slug,
+                instance_slug,
+                worker_id=worker_id,
+                mode="direct" if mode == "legacy" else mode,
+                status="failed",
+                spec=instance_spec,
+            )
+            raise
+        container_id = result.get("container_id", "remote")
+        await database.save_provider_instance(
+            slug,
+            instance_slug,
+            worker_id=worker_id,
+            mode="direct" if mode == "legacy" else mode,
+            container_id=container_id,
+            proxy_id=int((instance_spec.get("proxy") or {}).get("proxy_id") or 0) or None,
+            status="running",
+            spec=instance_spec,
+        )
+        if mode == "legacy":
+            await database.save_deployment(slug=slug, container_id=container_id, spec=instance_spec)
+        deployed.append({"instance_id": instance_slug, "container_id": container_id, "mode": mode})
+        await database.record_health_event(slug, "start", f"deployed {instance_slug} to worker {worker_id}")
+        metrics.record_container_lifecycle("deploy", slug)
+
     _spawn(_run_post_deploy_automation(slug, worker_id, hn))
     _spawn(_run_collection())
-    response: dict[str, Any] = {"status": "deployed", "container_id": container_id}
+    response: dict[str, Any] = {"status": "deployed", "instances": deployed}
+    if deployed:
+        response["container_id"] = deployed[-1]["container_id"]
     if divergence:
         response["kept_from_previous_deployment"] = divergence
     return response

@@ -24,9 +24,7 @@ def test_importer_saves_through_cashpilot_settings_api_only():
 def test_importer_has_explicit_provider_key_mapping():
     extractor = (EXT / "extractor.js").read_text(encoding="utf-8")
     for slug in (
-        "adnade",
         "bitping",
-        "dawn",
         "earnapp",
         "earnfm",
         "grass",
@@ -40,7 +38,6 @@ def test_importer_has_explicit_provider_key_mapping():
         "proxyrack",
         "repocket",
         "spide",
-        "titan",
         "traffmonetizer",
         "uprock",
         "urnetwork",
@@ -48,14 +45,11 @@ def test_importer_has_explicit_provider_key_mapping():
     ):
         assert slug in extractor
     for key in (
-        "adnade_username",
         "bitping_dashboard_session",
-        "dawn_dashboard_session",
         "earnapp_oauth_token",
         "earnfm_token",
         "iproyalpawns_email",
         "myst_mmn_api_key",
-        "titan_dashboard_session",
         "traffmonetizer_token",
         "packetstream_auth_token",
         "proxies_sx_api_key",

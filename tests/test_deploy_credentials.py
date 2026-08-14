@@ -87,18 +87,3 @@ def test_urnetwork_auth_token_maps_from_settings_to_worker_args():
         svc,
         {"urnetwork_auth_token": "jwt-token"},
     ) == {"auth_token": "jwt-token"}
-
-def test_adnade_username_maps_from_settings_to_worker_args():
-    svc = catalog.get_service("adnade")
-
-    assert main._resolve_deploy_credentials(
-        "adnade",
-        svc,
-        {
-            "adnade_username": "assetforge",
-            "adnade_chrome_profile_key": "key",
-        },
-    ) == {
-        "username": "assetforge",
-        "chrome_profile_key": "key",
-    }

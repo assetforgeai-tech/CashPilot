@@ -422,6 +422,22 @@ CREATE TABLE IF NOT EXISTS deployments (
     status             TEXT NOT NULL DEFAULT 'running'
 );
 
+CREATE TABLE IF NOT EXISTS provider_instances (
+    instance_id    TEXT PRIMARY KEY,
+    slug           TEXT NOT NULL,
+    worker_id      INTEGER,
+    mode           TEXT NOT NULL DEFAULT 'direct' CHECK(mode IN ('direct', 'proxy')),
+    container_id   TEXT NOT NULL DEFAULT '',
+    sidecar_id     TEXT NOT NULL DEFAULT '',
+    proxy_id       INTEGER,
+    status         TEXT NOT NULL DEFAULT 'planned',
+    spec_encrypted TEXT NOT NULL DEFAULT '',
+    deployed_at    TEXT,
+    updated_at     TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY(worker_id) REFERENCES workers(id) ON DELETE SET NULL,
+    FOREIGN KEY(proxy_id) REFERENCES proxy_endpoints(id) ON DELETE SET NULL
+);
+
 CREATE TABLE IF NOT EXISTS users (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     username   TEXT    NOT NULL UNIQUE,
@@ -615,6 +631,9 @@ CREATE INDEX IF NOT EXISTS idx_earnings_date
 
 CREATE INDEX IF NOT EXISTS idx_workers_status
     ON workers (status);
+
+CREATE INDEX IF NOT EXISTS idx_provider_instances_slug
+    ON provider_instances (slug, worker_id, mode);
 
 CREATE INDEX IF NOT EXISTS idx_health_events_slug
     ON health_events (slug, created_at);
@@ -851,7 +870,7 @@ async def _encrypt_legacy_plaintext_credentials(db: Any) -> int:
 #: missing a column -- an interrupted upgrade, a restored backup, a hand-edited
 #: file -- could never be repaired, because the gate would say there was nothing
 #: to do. The guards are idempotent and cheap; the version is for the operator.
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 
 async def init_db() -> None:
@@ -1717,6 +1736,111 @@ async def remove_deployment(slug: str) -> None:
     finally:
         await db.close()
 
+
+async def save_provider_instance(
+    slug: str,
+    instance_id: str,
+    *,
+    worker_id: int | None = None,
+    mode: str = "direct",
+    container_id: str = "",
+    sidecar_id: str = "",
+    proxy_id: int | None = None,
+    status: str = "planned",
+    spec: dict[str, Any] | None = None,
+) -> None:
+    spec_encrypted = ""
+    if spec is not None:
+        try:
+            spec_encrypted = encrypt_value(json.dumps(spec, sort_keys=True))
+        except (TypeError, ValueError):
+            _logger.error("Could not serialise provider instance spec for %s", instance_id, exc_info=True)
+    else:
+        existing = await get_provider_instance(instance_id)
+        if existing:
+            spec_encrypted = existing.get("spec_encrypted") or ""
+
+    db = await _get_db()
+    try:
+        await db.execute(
+            """
+            INSERT INTO provider_instances
+                (instance_id, slug, worker_id, mode, container_id, sidecar_id, proxy_id, status, spec_encrypted, deployed_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? != '' THEN datetime('now') ELSE NULL END, datetime('now'))
+            ON CONFLICT(instance_id) DO UPDATE SET
+                slug = excluded.slug,
+                worker_id = excluded.worker_id,
+                mode = excluded.mode,
+                container_id = excluded.container_id,
+                sidecar_id = excluded.sidecar_id,
+                proxy_id = excluded.proxy_id,
+                status = excluded.status,
+                spec_encrypted = excluded.spec_encrypted,
+                deployed_at = COALESCE(excluded.deployed_at, provider_instances.deployed_at),
+                updated_at = datetime('now')
+            """,
+            (instance_id, slug, worker_id, mode, container_id, sidecar_id, proxy_id, status, spec_encrypted, container_id),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+async def get_provider_instance(instance_id: str) -> dict[str, Any] | None:
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT * FROM provider_instances WHERE instance_id = ?", (instance_id,))
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        await db.close()
+
+async def get_provider_instance_spec(instance_id: str) -> dict[str, Any] | None:
+    row = await get_provider_instance(instance_id)
+    blob = (row or {}).get("spec_encrypted") or ""
+    if not blob:
+        return None
+    raw = decrypt_value(blob)
+    if not raw:
+        return None
+    try:
+        spec = json.loads(raw)
+    except ValueError:
+        return None
+    return spec if isinstance(spec, dict) else None
+
+async def list_provider_instances(
+    *, slug: str | None = None, worker_id: int | None = None
+) -> list[dict[str, Any]]:
+    clauses = []
+    params: list[Any] = []
+    if slug is not None:
+        clauses.append("slug = ?")
+        params.append(slug)
+    if worker_id is not None:
+        clauses.append("worker_id = ?")
+        params.append(worker_id)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'provider_instances'")
+        if not await cursor.fetchone():
+            return []
+        cursor = await db.execute(
+            f"SELECT * FROM provider_instances {where} ORDER BY slug, mode, instance_id",
+            params,
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        await db.close()
+
+async def remove_provider_instance(instance_id: str) -> None:
+    db = await _get_db()
+    try:
+        await db.execute("DELETE FROM provider_instances WHERE instance_id = ?", (instance_id,))
+        await db.commit()
+    finally:
+        await db.close()
 
 # --- Users ---
 

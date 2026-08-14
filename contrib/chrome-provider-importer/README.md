@@ -22,8 +22,6 @@ Values are never printed in the popup. The extension only saves keys explicitly 
 
 ## Supported import keys
 
-- Dawn: `dawn_dashboard_session`
-- Titan: `titan_dashboard_session`
 - Traffmonetizer: `traffmonetizer_token`
 - PacketStream: `packetstream_auth_token`
 - Grass: `grass_access_token`, `grass_store_access_token`, `grass_store_refresh_token`, `grass_store_token_expiry`, `grass_store_wynd_user_id`

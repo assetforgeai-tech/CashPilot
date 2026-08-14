@@ -13,8 +13,6 @@
   const jsonStores = scanJsonStores(stores);
 
   const readers = {
-    dawn: () => add("dawn_dashboard_session", cookie, "Dawn dashboard cookie/session string"),
-    titan: () => add("titan_dashboard_session", cookie, "Titan dashboard cookie/session string"),
     grass: () => {
       add("grass_store_wynd_status", pick([
         textMatch(/Registration Status:\s*(Registered|Unregistered)/i, 1),
@@ -35,11 +33,6 @@
     wipter: () => {
       add("wipter_email", pick([storeMatch(/email/i), inputValue("email"), textMatch(/email[:\s]+([^\s@]+@[^\s@]+)/i, 1)]), "Wipter email");
       add("wipter_password", pick([storeMatch(/password/i), inputValue("password")]), "Wipter password");
-    },
-    adnade: () => {
-      add("adnade_username", pick([storeMatch(/user|username/i), inputValue("user"), inputValue("username"), textMatch(/user[:\s]+([^\s]+)/i, 1)]), "AdNade user");
-      add("adnade_chrome_profile_key", pick([storeMatch(/chrome.*key|profile.*key|decrypt.*key/i), jsonStoreMatch(/chrome.*key|profile.*key|decrypt.*key/i)]), "AdNade profile key");
-      add("adnade_cookie", cookie, "AdNade session cookie");
     },
     traffmonetizer: () => add("traffmonetizer_token", pick([storeMatch(/access.*token|jwt|token/i), jsonStoreMatch(/token/i)]), "Traffmonetizer token"),
     packetstream: () => add("packetstream_auth_token", pick([cookieValue("auth"), cookie, storeMatch(/auth|token/i), jsonStoreMatch(/auth|token/i)]), "PacketStream auth token"),
@@ -87,12 +80,9 @@
   };
 
   function detectSlug(hostname, url, pageText) {
-    if (hostname.includes("dashboard.dawninternet.com")) return "dawn";
-    if (hostname.includes("titannet.info")) return "titan";
     if (hostname.includes("app.grass.io")) return "grass";
     if (hostname.includes("uprock.com")) return "uprock";
     if (hostname.includes("wipter.com")) return "wipter";
-    if (hostname.includes("adnade.net")) return "adnade";
     if (hostname.includes("traffmonetizer.com")) return "traffmonetizer";
     if (hostname.includes("app.packetstream.io") || hostname.includes("packetstream.io")) return "packetstream";
     if (hostname.includes("app.bitping.com") || hostname.includes("nodes.bitping.com")) return "bitping";
