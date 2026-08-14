@@ -146,6 +146,7 @@ def test_deploy_raw_builds_proxybase_xyz_command_from_deploy_phrase():
     assert 'PHASE="${PROXYBASE_XYZ_PHRASE:?missing wallet phrase}"' in command
     assert '"$CLI" wallet import "$PHASE"' in command
     assert '"$CLI" login' in command
+    assert "seller_config.json" in command
     assert '"$CLI" seller start; ' in command
     assert "tail -n +1 -F /root/.proxybase/seller.log" in command
 

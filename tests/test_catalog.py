@@ -190,6 +190,7 @@ def test_proxybase_markets_referral_and_image_contract():
     assert "PHASE=\"${PROXYBASE_XYZ_PHRASE:?missing wallet phrase}\"" in command
     assert "\"$CLI\" wallet import \"$PHASE\"" in command
     assert "\"$CLI\" login" in command
+    assert "seller_config.json" in command
     assert "tail -n +1 -F /root/.proxybase/seller.log" in command
 
     env_keys = {e["key"] for e in data["docker"]["env"]}
