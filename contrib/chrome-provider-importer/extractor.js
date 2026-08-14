@@ -39,7 +39,7 @@
       add("packetstream_auth_token", pick([cookieValue("auth"), cookie, storeMatch(/auth|token/i), jsonStoreMatch(/auth|token/i)]), "PacketStream auth token");
       add("packetstream_cid", pick([queryValue("psr"), inputValue("referral-link").match(/[?&]psr=([^&\s]+)/i)?.[1], textMatch(/[?&]psr=([^&\s]+)/i, 1)]), "PacketStream CID");
     },
-    bitping: () => add("bitping_dashboard_session", pick([cookie, storeMatch(/token|session|auth/i), jsonStoreMatch(/token|session|auth/i)]), "Bitping session"),
+    bitping: () => {},
     earnapp: () => {
       add("earnapp_oauth_refresh_token", pick([cookieValue("oauth-refresh-token"), cookieValue("refresh-token"), storeMatch(/oauth.*refresh|refresh.*token/i), jsonStoreMatch(/oauth.*refresh|refresh.*token/i)]), "EarnApp oauth refresh token");
       add("earnapp_oauth_token", pick([cookieValue("oauth-token"), cookieValue("oauth-refresh-token"), cookieValue("refresh-token"), storeMatch(/oauth.*token|refresh.*token/i), jsonStoreMatch(/oauth.*token|refresh.*token/i)]), "EarnApp oauth token");

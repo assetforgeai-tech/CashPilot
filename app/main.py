@@ -55,6 +55,7 @@ from app import (
     producer_state,
     provider_automation,
     provider_modes,
+    provider_runtime,
     setup_token,
     update_check,
     version,
@@ -4069,6 +4070,13 @@ async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
             "dashboard_credentials": dashboard_fields,
             "currency": pay_currency,
         }
+        runtime = provider_runtime.catalog_runtime(slug)
+        if runtime:
+            entry["runtime"] = runtime
+            entry["collector_kind"] = runtime["collector_kind"]
+            entry["manual_only"] = runtime["manual_only"]
+            entry["count_only"] = runtime["count_only"]
+            entry["supported_modes"] = runtime["modes"]
         hint = (svc.get("collector") or {}).get("credential_hint") if svc else None
         if hint:
             entry["hint"] = hint

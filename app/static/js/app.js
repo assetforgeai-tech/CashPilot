@@ -2719,9 +2719,17 @@ const CP = (() => {
 
   function readinessBadges(svc) {
     const deploy = svc.docker && svc.docker.image ? 'Deploy runtime' : 'No deploy';
-    const collector = svc.has_collector ? 'Earnings collector' : 'No collector';
+    const runtime = svc.runtime || {};
+    const collector = runtime.collector_kind === 'count_only'
+      ? 'Count only'
+      : runtime.collector_kind === 'dashboard_only'
+      ? 'Dashboard only'
+      : svc.has_collector ? 'Earnings collector' : 'No collector';
     const dashboard = (svc.cashout && svc.cashout.dashboard_url) || svc.website ? 'Dashboard / session' : 'No dashboard';
-    const egress = (svc.egress && svc.egress.mode) ? `egress: ${svc.egress.mode}` : 'egress: unknown';
+    const modes = Array.isArray(runtime.modes) && runtime.modes.length
+      ? runtime.modes.join('+')
+      : (svc.egress && svc.egress.mode) || 'unknown';
+    const egress = `mode: ${modes}`;
     return `
       <div class="platform-badges" style="margin-top:8px;">
         <span class="platform-badge">${escapeHtml(deploy)}</span>
@@ -3284,7 +3292,9 @@ const CP = (() => {
       const setCount = required.filter(isSet).length;
       const configured = required.length > 0 && setCount === required.length;
       const partial = setCount > 0 && setCount < required.length;
-      const statusBadge = partial
+      const statusBadge = sectionId === 'none'
+        ? '<span class="badge badge-category">No credentials</span>'
+        : partial
         ? '<span class="badge badge-warning" title="Some required credentials are missing, so this service is not being collected">Incomplete</span>'
         : configured
         ? '<span class="badge badge-deployed">Configured</span>'
@@ -3327,7 +3337,7 @@ const CP = (() => {
         </summary>
         <div class="collector-body">
           ${col.hint ? `<div class="form-hint" style="margin-bottom:12px;">${sanitizeHint(col.hint)}</div>` : ''}
-          ${renderedFields || '<div class="form-hint">No credentials needed.</div>'}
+          ${renderedFields || `<div class="form-hint">${col.count_only ? 'Count-only provider. CashPilot tracks node count, not earnings.' : col.manual_only ? 'Manual/dashboard-only provider. No earnings collector credentials are required.' : 'No credentials needed.'}</div>`}
           ${clearBtn}
         </div>
       </details>`;

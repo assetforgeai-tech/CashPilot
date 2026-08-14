@@ -15,9 +15,12 @@ from typing import Any
 
 import yaml
 
+from app import provider_runtime
+
 logger = logging.getLogger(__name__)
 
-SERVICES_DIR = Path(__file__).resolve().parent.parent / "services"
+_DEFAULT_SERVICES_DIR = Path(__file__).resolve().parent.parent / "services"
+SERVICES_DIR = _DEFAULT_SERVICES_DIR
 
 # In-memory cache
 _services: list[dict[str, Any]] = []
@@ -132,6 +135,15 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
 
     return errors
 
+def _runtime_validation_errors(data: dict[str, Any], path: Path) -> list[str]:
+    if SERVICES_DIR.resolve() != _DEFAULT_SERVICES_DIR.resolve():
+        return []
+    slug = data.get("slug")
+    status = data.get("status")
+    if status not in {"broken", "dead", "dropped"} and slug not in provider_runtime.ACTIVE_SLUGS:
+        return [f"{path.name}: active service {slug!r} is not in provider-runtime truth matrix"]
+    return []
+
 
 def _load_from_disk() -> list[dict[str, Any]]:
     """Walk services/ recursively and parse all .yml/.yaml files."""
@@ -154,11 +166,12 @@ def _load_from_disk() -> list[dict[str, Any]]:
             logger.error("Expected a mapping in %s, got %s", path, type(data).__name__)
             continue
 
-        errors = _validate(data, path)
+        errors = [*_validate(data, path), *_runtime_validation_errors(data, path)]
         if errors:
             for err in errors:
                 logger.warning("Validation: %s", err)
             continue
+        data["runtime"] = provider_runtime.catalog_runtime(str(data.get("slug") or ""))
         services.append(data)
 
     # Also pick up .yaml extension
@@ -171,11 +184,12 @@ def _load_from_disk() -> list[dict[str, Any]]:
             logger.error("Failed to parse %s: %s", path, exc)
             continue
         if isinstance(data, dict):
-            errors = _validate(data, path)
+            errors = [*_validate(data, path), *_runtime_validation_errors(data, path)]
             if errors:
                 for err in errors:
                     logger.warning("Validation: %s", err)
                 continue
+            data["runtime"] = provider_runtime.catalog_runtime(str(data.get("slug") or ""))
             services.append(data)
 
     return services

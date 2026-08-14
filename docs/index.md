@@ -109,7 +109,7 @@ Then open [http://localhost:8080](http://localhost:8080) and follow the setup wi
 | Historical charts | **Yes** | No | No | No | No |
 | Multi-node fleet management | **Yes** | No | No | No | No |
 | Service catalog with guides | **18 providers** | 17 | 8 | 14 | 8 |
-| Automated earnings collection | **12 collectors** | 0 | 0 | 0 | 0 |
+| Automated earnings collection | **11 collectors** | 0 | 0 | 0 | 0 |
 | Multi-arch (amd64 + arm64) | **Yes** | Yes | Yes | No | No |
 | Credential encryption | **Yes** | No | No | No | No |
 | Compose export | **Yes** | Yes | Yes | Yes | Yes |

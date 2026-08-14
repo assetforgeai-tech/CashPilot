@@ -45,7 +45,6 @@ def test_importer_has_explicit_provider_key_mapping():
     ):
         assert slug in extractor
     for key in (
-        "bitping_dashboard_session",
         "earnapp_oauth_refresh_token",
         "earnapp_oauth_token",
         "earnfm_token",

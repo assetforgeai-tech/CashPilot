@@ -58,16 +58,6 @@ deploy:
       source: "Bitping account"
       description: "Account password used for the initial bitpingd login."
 
-dashboard:
-  credentials:
-    - key: dashboard_session
-      label: "Dashboard session"
-      kind: cookie
-      secret: true
-      required: false
-      source: "nodes.bitping.com logged-in browser session"
-      description: "Optional dashboard cookie/session captured from Chrome for node-status audits."
-
 requirements:
   residential_ip: false
   min_bandwidth: ""

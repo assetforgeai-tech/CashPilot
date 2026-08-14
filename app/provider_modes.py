@@ -1,40 +1,18 @@
 from __future__ import annotations
 
-BOTH = {
-    "bitping",
-    "earnfm",
-    "grass",
-    "proxylite",
-    "proxybase",
-    "proxybase-xyz",
-    "proxyrack",
-    "repocket",
-    "spide",
-    "traffmonetizer",
-    "uprock",
-    "urnetwork",
-}
-PROXY_ONLY = {"earnapp", "iproyal", "packetstream", "proxies-sx", "wipter"}
-DIRECT_ONLY = {"mysterium"}
+from app import provider_runtime
+
+BOTH = {slug for slug, runtime in provider_runtime.PROVIDERS.items() if set(runtime.modes) == {"direct", "proxy"}}
+PROXY_ONLY = {slug for slug, runtime in provider_runtime.PROVIDERS.items() if runtime.modes == ("proxy",)}
+DIRECT_ONLY = {slug for slug, runtime in provider_runtime.PROVIDERS.items() if runtime.modes == ("direct",)}
 
 
 def supported_modes(slug: str) -> set[str]:
-    if slug in BOTH:
-        return {"direct", "proxy"}
-    if slug in PROXY_ONLY:
-        return {"proxy"}
-    if slug in DIRECT_ONLY:
-        return {"direct"}
-    return {"direct"}
+    return provider_runtime.supported_modes(slug)
 
 
 def default_deploy_mode(slug: str) -> str:
-    modes = supported_modes(slug)
-    if {"direct", "proxy"} <= modes:
-        return "both"
-    if "proxy" in modes:
-        return "proxy"
-    return "direct"
+    return provider_runtime.default_mode(slug)
 
 def expand_requested(slug: str, mode: str | None) -> list[str]:
     if not mode:

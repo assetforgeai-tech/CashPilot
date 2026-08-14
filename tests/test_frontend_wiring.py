@@ -302,6 +302,8 @@ class TestSettingsFileInputs:
         assert 'type="${inputType}"' in source
         assert "f.kind === 'file'" in source
         assert "data-encoding" in source
+        assert "Count-only provider." in source
+        assert "Manual/dashboard-only provider." in source
 
     def test_duplicate_credential_keys_render_once_per_section(self):
         source = js_function("renderCollectors")
@@ -316,6 +318,7 @@ class TestSettingsCredentialGroupsMatchBackend:
         assert "Deploy runtime" in text
         assert "Dashboard / session" in text
         assert "No credentials needed" in text
+        assert "No credentials" in text
         assert "if (!fields.length) return ''" not in js_function("renderCollectors")
 
 class TestAutoDeploySettingsAreRenderedAndSaved:
@@ -681,12 +684,15 @@ class TestTheWizardSelectionIsVisible:
 class TestCatalogShowsReadiness:
     def test_catalog_card_renders_readiness_badges(self):
         source = js_function("renderCatalogCard")
+        badges = js_function("readinessBadges")
         text = frontend_text()
         assert "readinessBadges(svc)" in source
         assert "Deploy runtime" in text
         assert "Earnings collector" in text
         assert "Dashboard / session" in text
-        assert "egress" in text
+        assert "Count only" in text
+        assert "Dashboard only" in text
+        assert "mode:" in badges
 
 
 class TestFleetShowsProviderStates:

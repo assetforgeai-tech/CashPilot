@@ -184,3 +184,16 @@ def test_saving_deploy_only_credentials_tracks_that_service(tmp_path):
             assert main._service_tracking_ready("proxybase-xyz", await database.get_config())
 
     asyncio.run(run())
+
+def test_collectors_meta_carries_runtime_contract_for_all_providers():
+    async def run():
+        with patch.object(main, "_require_owner", lambda request: {"uid": 1}):
+            rows = await main.api_collectors_meta(object())
+            by_slug = {row["slug"]: row for row in rows}
+            assert len(by_slug) == 18
+            assert by_slug["proxylite"]["count_only"] is True
+            assert by_slug["proxybase"]["manual_only"] is True
+            assert by_slug["bitping"]["manual_only"] is False
+            assert by_slug["earnfm"]["supported_modes"] == ["direct", "proxy"]
+
+    asyncio.run(run())

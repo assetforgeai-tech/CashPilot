@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from app import catalog, provider_runtime
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SERVICES_DIR = PROJECT_ROOT / "services"
 CATEGORIES = {"bandwidth", "depin", "storage", "compute"}
@@ -88,6 +90,17 @@ def test_no_duplicate_slugs():
         slugs.append(data["slug"])
     duplicates = [s for s in slugs if slugs.count(s) > 1]
     assert not duplicates, f"Duplicate slugs found: {set(duplicates)}"
+
+def test_catalog_is_enriched_from_provider_runtime_truth():
+    services = {svc["slug"]: svc for svc in catalog.get_services()}
+    assert set(services) == set(provider_runtime.ACTIVE_SLUGS)
+    for slug, runtime in provider_runtime.PROVIDERS.items():
+        assert services[slug]["runtime"]["modes"] == list(runtime.modes)
+        assert services[slug]["runtime"]["collector_kind"] == runtime.collector_kind
+
+def test_bitping_has_no_stale_dashboard_session_field():
+    svc = catalog.get_service("bitping")
+    assert not (svc.get("dashboard") or {}).get("credentials")
 
 
 def test_repocket_container_env_keys():
