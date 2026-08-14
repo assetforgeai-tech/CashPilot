@@ -159,8 +159,8 @@ def proxybase_xyz_command() -> str:
         'PHASE="${PROXYBASE_XYZ_PHRASE:?missing wallet phrase}"; '
         '"$CLI" wallet import "$PHASE"; '
         '"$CLI" login; '
-        'if [ ! -s /root/.proxybase/seller_config.json ]; then printf \'{"upstream_proxies":[],"no_direct":false}\' > /root/.proxybase/seller_config.json; fi; '
+        'if [ ! -s /home/proxybase/.proxybase/seller_config.json ]; then printf \'{"upstream_proxies":[],"no_direct":false}\' > /home/proxybase/.proxybase/seller_config.json; fi; '
         '"$CLI" seller start; '
-        'touch /root/.proxybase/seller.log; '
-        'tail -n +1 -F /root/.proxybase/seller.log\''
+        'touch /home/proxybase/.proxybase/seller.log; '
+        'tail -n +1 -F /home/proxybase/.proxybase/seller.log\''
     )

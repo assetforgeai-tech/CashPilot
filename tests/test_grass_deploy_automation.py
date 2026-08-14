@@ -148,7 +148,7 @@ def test_deploy_raw_builds_proxybase_xyz_command_from_deploy_phrase():
     assert '"$CLI" login' in command
     assert "seller_config.json" in command
     assert '"$CLI" seller start; ' in command
-    assert "tail -n +1 -F /root/.proxybase/seller.log" in command
+    assert "tail -n +1 -F /home/proxybase/.proxybase/seller.log" in command
 
 def test_deploy_raw_maps_proxybase_deploy_token_to_peer_cli_args():
     client = MagicMock()

@@ -13,7 +13,7 @@ def test_proxybase_xyz_runtime_command_imports_phrase_and_resolves_cli_path():
     assert '"$CLI" login' in command
     assert 'seller_config.json' in command
     assert '"$CLI" seller start; ' in command
-    assert "tail -n +1 -F /root/.proxybase/seller.log" in command
+    assert "tail -n +1 -F /home/proxybase/.proxybase/seller.log" in command
 
 def test_proxybase_xyz_installer_image_installs_cli_at_build_time():
     client = MagicMock()
