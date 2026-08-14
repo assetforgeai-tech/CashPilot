@@ -953,6 +953,7 @@ class DeploySpec(BaseModel):
     installer_manifest_url: str | None = None
     installer_platform: str | None = None
     deploy_credentials: dict[str, Any] = Field(default_factory=dict)
+    provider_slug: str | None = None
     # Advanced and unsupported. Absent means Docker's default runtime, which is
     # what everything uses and what everything is tested against.
     runtime: str | None = None
@@ -1373,6 +1374,7 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
         container_id = await asyncio.to_thread(
             orchestrator.deploy_raw,
             slug=slug,
+            provider_slug=spec.provider_slug,
             image=spec.image,
             env=spec.env,
             ports=spec.ports,

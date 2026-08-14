@@ -2119,6 +2119,7 @@ async def api_deploy(
     for mode in modes:
         instance_slug = slug if mode == "legacy" else f"{slug}-{mode}"
         instance_spec = json.loads(json.dumps(spec))
+        instance_spec["provider_slug"] = slug
         instance_spec.setdefault("labels", {})
         instance_spec["labels"]["cashpilot.provider"] = slug
         instance_spec["labels"]["cashpilot.instance_mode"] = mode

@@ -212,6 +212,7 @@ def available_runtimes() -> set[str]:
 
 def deploy_raw(
     slug: str,
+    provider_slug: str | None = None,
     image: str,
     env: dict[str, str] | None = None,
     ports: dict[str, int] | None = None,
@@ -239,22 +240,23 @@ def deploy_raw(
     """
     client = _get_client()
     name = _container_name(slug)
+    provider = provider_slug or slug
     if installer_manifest_url:
-        resolved = provider_installers.resolve_installer_manifest(slug, installer_manifest_url, installer_platform)
-        image = provider_installers.ensure_installer_image(client, slug, resolved)
+        resolved = provider_installers.resolve_installer_manifest(provider, installer_manifest_url, installer_platform)
+        image = provider_installers.ensure_installer_image(client, provider, resolved)
     env = dict(env or {})
-    if slug == "wipter" and deploy_credentials:
+    if provider == "wipter" and deploy_credentials:
         env["WIPTER_EMAIL"] = str(deploy_credentials.get("email") or "")
         env["WIPTER_PASSWORD"] = str(deploy_credentials.get("password") or "")
-    if slug == "proxybase" and deploy_credentials:
+    if provider == "proxybase" and deploy_credentials:
         env["ID"] = str(deploy_credentials.get("deploy_access_token") or "")
         env["NAME"] = str(env.get("NAME") or "")
-    if slug == "proxylite" and deploy_credentials:
+    if provider == "proxylite" and deploy_credentials:
         env["USER_ID"] = str(deploy_credentials.get("user_id") or "")
-    if slug == "urnetwork" and deploy_credentials:
+    if provider == "urnetwork" and deploy_credentials:
         env["UR_API_KEY"] = str(deploy_credentials.get("api_key") or "")
         command = command or "provide"
-    if slug == "proxybase-xyz" and deploy_credentials:
+    if provider == "proxybase-xyz" and deploy_credentials:
         env["PROXYBASE_XYZ_PHRASE"] = str(deploy_credentials.get("phrase") or "")
         image = provider_installers.ensure_proxybase_xyz_image(client)
         command = command or provider_installers.proxybase_xyz_command()
@@ -321,7 +323,8 @@ def deploy_raw(
             image="ghcr.io/sagernet/sing-box:latest",
             name=sidecar_name,
             environment={"SINGBOX_CONFIG_B64": encoded_config},
-            command='sh -lc "printf %s \\"$SINGBOX_CONFIG_B64\\" | base64 -d > /tmp/sing-box.json && exec sing-box run -c /tmp/sing-box.json"',
+            entrypoint=["sh", "-lc"],
+            command='printf %s "$SINGBOX_CONFIG_B64" | base64 -d > /tmp/sing-box.json && exec sing-box run -c /tmp/sing-box.json',
             cap_add=["NET_ADMIN"],
             devices=["/dev/net/tun:/dev/net/tun"],
             labels={
@@ -363,7 +366,7 @@ def deploy_raw(
         command=command if command else None,
         user=user or None,
         labels=all_labels,
-        hostname=hostname or f"cashpilot-{slug}",
+        hostname=None if network_mode else (hostname or f"cashpilot-{slug}"),
         detach=True,
         restart_policy={"Name": "always"},
         # None means Docker's default runtime, which is what every service uses

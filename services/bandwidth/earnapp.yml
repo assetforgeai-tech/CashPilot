@@ -22,11 +22,6 @@ docker:
     mem_limit: "256m"
     oom_score_adj: 300
   env:
-    - key: EARNAPP_UUID
-      label: "Node UUID"
-      required: true
-      secret: false
-      description: "Your EarnApp node ID (run 'earnapp showid' to get it, or generate one with the sdk-node-id format)"
     - key: EARNAPP_TERM
       label: "Accept Terms"
       required: false
