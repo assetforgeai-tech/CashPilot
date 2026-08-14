@@ -4,6 +4,7 @@ import asyncio
 import base64
 import hashlib
 import io
+import stat
 import zipfile
 from pathlib import Path
 from unittest.mock import patch
@@ -248,6 +249,31 @@ class TestRuntimeAssets:
 
             assert value == "seed"
             assert seen["headers"] == {"Authorization": "Bearer own-worker-key"}
+
+        asyncio.run(run())
+
+    def test_worker_materialized_file_runtime_assets_are_container_readable(self, tmp_path):
+        async def run():
+            spec = worker_api.DeploySpec(
+                image="img",
+                runtime_assets=[
+                    worker_api.RuntimeAssetSpec(
+                        provider="uprock",
+                        asset_kind="credentials_json",
+                        target="/cashpilot/runtime-assets/uprock/credentials.json",
+                        encoding="text",
+                    )
+                ],
+            )
+            with (
+                patch.object(worker_api, "_RUNTIME_ASSET_DIR", tmp_path),
+                patch.object(worker_api, "_fetch_runtime_asset", return_value="seed"),
+            ):
+                await worker_api._materialize_runtime_assets("uprock", spec)
+
+            source = Path(next(iter(spec.volumes)))
+            assert source.read_text() == "seed"
+            assert source.stat().st_mode & stat.S_IROTH
 
         asyncio.run(run())
 

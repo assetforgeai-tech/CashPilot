@@ -1122,7 +1122,7 @@ async def _materialize_runtime_assets(slug: str, spec: DeploySpec) -> None:
             continue
         host_path.write_bytes(data)
         with contextlib.suppress(OSError):
-            host_path.chmod(0o600)
+            host_path.chmod(0o644)
         spec.volumes[str(_docker_host_path(host_path))] = {"bind": target, "mode": "ro"}
 
 _BLOCKED_VOLUME_ROOTS = {
