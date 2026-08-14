@@ -160,6 +160,6 @@ def proxybase_xyz_command() -> str:
         '"$CLI" wallet import "$PHASE"; '
         '"$CLI" login; '
         '"$CLI" seller start; '
-        "trap '\"$CLI\" seller stop >/dev/null 2>&1 || true' INT TERM EXIT; "
-        'while :; do "$CLI" seller status || true; sleep 300; done\''
+        '"$CLI" seller stop >/dev/null 2>&1 || true; '
+        '"$CLI" seller start --foreground\''
     )

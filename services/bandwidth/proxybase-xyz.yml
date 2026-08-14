@@ -33,13 +33,13 @@ docker:
   volumes:
     - "proxybase-xyz-data:/root/.proxybase"
   command: >-
-    sh -lc 'set -e; CLI="$(command -v proxybase-cli || true)"; if [ -z "$CLI" ]; then for p in "$HOME/.local/bin/proxybase-cli" "/root/.local/bin/proxybase-cli" "/usr/local/bin/proxybase-cli"; do if [ -x "$p" ]; then CLI="$p"; break; fi; done; fi; if [ -z "$CLI" ]; then echo "proxybase-cli not found" >&2; exit 1; fi; PHASE="${PROXYBASE_XYZ_PHRASE:?missing wallet phrase}"; "$CLI" wallet import "$PHASE"; "$CLI" login; "$CLI" seller start; trap '"'"'"$CLI" seller stop >/dev/null 2>&1 || true'"'"' INT TERM EXIT; while :; do "$CLI" seller status || true; sleep 300; done'
+    sh -lc 'set -e; CLI="$(command -v proxybase-cli || true)"; if [ -z "$CLI" ]; then for p in "$HOME/.local/bin/proxybase-cli" "/root/.local/bin/proxybase-cli" "/usr/local/bin/proxybase-cli"; do if [ -x "$p" ]; then CLI="$p"; break; fi; done; fi; if [ -z "$CLI" ]; then echo "proxybase-cli not found" >&2; exit 1; fi; PHASE="${PROXYBASE_XYZ_PHRASE:?missing wallet phrase}"; "$CLI" wallet import "$PHASE"; "$CLI" login; "$CLI" seller start; "$CLI" seller stop >/dev/null 2>&1 || true; "$CLI" seller start --foreground'
   network_mode: ""
   setup: >
     CashPilot builds a local image with the official Linux CLI, imports the configured
     wallet phrase at runtime with <code>proxybase-cli wallet import</code>, runs
     <code>proxybase-cli login</code>, then starts selling bandwidth with
-    <code>seller start</code>, then keeps the container alive while the CLI daemon runs. No dashboard token is required.
+    <code>seller start</code> once to seed the seller config, then keeps the container alive with <code>seller start --foreground</code>. No dashboard token is required.
 
 deploy:
   credentials:

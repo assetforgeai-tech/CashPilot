@@ -12,7 +12,7 @@ def test_proxybase_xyz_runtime_command_imports_phrase_and_resolves_cli_path():
     assert '"$CLI" wallet import "$PHASE"' in command
     assert '"$CLI" login' in command
     assert '"$CLI" seller start; ' in command
-    assert "seller status" in command
+    assert '"$CLI" seller start --foreground' in command
 
 def test_proxybase_xyz_installer_image_installs_cli_at_build_time():
     client = MagicMock()
