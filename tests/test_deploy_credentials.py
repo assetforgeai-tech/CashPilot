@@ -80,14 +80,14 @@ def test_proxylite_user_id_maps_from_settings_to_worker_args():
     ) == {"user_id": "000000"}
 
 
-def test_urnetwork_email_password_maps_from_settings_to_worker_args():
+def test_urnetwork_api_key_maps_from_settings_to_worker_args():
     svc = catalog.get_service("urnetwork")
 
     assert main._resolve_deploy_credentials(
         "urnetwork",
         svc,
-        {"urnetwork_email": "user@example.com", "urnetwork_password": "secret"},
-    ) == {"email": "user@example.com", "password": "secret"}
+        {"urnetwork_api_key": "api-key"},
+    ) == {"api_key": "api-key"}
 
 def test_proxyrack_deploy_runtime_requires_only_api_key():
     svc = catalog.get_service("proxyrack")
@@ -112,7 +112,7 @@ def test_settings_deploy_credentials_cover_node_creation_inputs_from_runtime_scr
         "proxyrack": {"api_key"},
         "repocket": {"email", "api_key"},
         "traffmonetizer": {"token", "device_name"},
-        "urnetwork": {"email", "password"},
+        "urnetwork": {"api_key"},
         "spide": {"email", "password"},
     }
 
@@ -130,6 +130,7 @@ def test_settings_collector_credentials_cover_provider_collector_notes():
         "proxyrack": {"api_key"},
         "repocket": {"email", "password"},
         "traffmonetizer": {"token"},
+        "urnetwork": {"email", "password"},
     }
 
     for slug, args in expected.items():

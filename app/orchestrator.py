@@ -14,6 +14,7 @@ import base64
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
+from urllib.request import Request, urlopen
 
 import docker
 from docker.errors import APIError, DockerException, NotFound
@@ -89,6 +90,25 @@ def _container_name(slug: str) -> str:
 
 def _sidecar_name(slug: str) -> str:
     return f"{_container_name(slug)}-egress"
+
+def _urnetwork_auth_code(api_key: str) -> str:
+    req = Request(
+        "https://api.bringyour.com/auth/code-create",
+        data=b'{"uses":1,"duration_minutes":1440}',
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    with urlopen(req, timeout=60) as resp:  # noqa: S310 - fixed provider API endpoint.
+        payload = json.loads(resp.read().decode("utf-8"))
+    code = payload.get("auth_code") or payload.get("code")
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    code = code or data.get("auth_code") or data.get("code")
+    if not code:
+        raise RuntimeError("URNetwork auth_code empty")
+    return str(code)
 
 
 def _find_container(slug: str):
@@ -232,8 +252,8 @@ def deploy_raw(
     if slug == "proxylite" and deploy_credentials:
         env["USER_ID"] = str(deploy_credentials.get("user_id") or "")
     if slug == "urnetwork" and deploy_credentials:
-        env["UR_EMAIL"] = str(deploy_credentials.get("email") or "")
-        env["UR_PASSWORD"] = str(deploy_credentials.get("password") or "")
+        env["UR_API_KEY"] = str(deploy_credentials.get("api_key") or "")
+        command = command or "provide"
     if slug == "proxybase-xyz" and deploy_credentials:
         env["PROXYBASE_XYZ_PHRASE"] = str(deploy_credentials.get("phrase") or "")
         image = provider_installers.ensure_proxybase_xyz_image(client)
@@ -268,6 +288,22 @@ def deploy_raw(
         client.images.pull(image)
     except APIError as exc:
         logger.warning("Failed to pull image %s: %s (trying local)", image, exc)
+
+    if slug == "urnetwork" and deploy_credentials:
+        api_key = str(deploy_credentials.get("api_key") or "")
+        if not api_key:
+            raise RuntimeError("URNetwork API key is required")
+        urn_volumes = volumes or {"urnetwork-data": {"bind": "/root/.urnetwork", "mode": "rw"}}
+        client.containers.run(
+            image=image,
+            volumes=urn_volumes,
+            network_mode="bridge",
+            entrypoint="/usr/local/sbin/bringyour-provider",
+            command=["auth", _urnetwork_auth_code(api_key)],
+            detach=False,
+            remove=True,
+        )
+        volumes = urn_volumes
 
     # Durable resource limits (only passed when explicitly set, so Docker
     # defaults are preserved otherwise). memswap is deliberately left unset:

@@ -35,15 +35,15 @@ URnetwork is a decentralized VPN and bandwidth-sharing network. You earn by prov
 
 Sign up at [URnetwork](https://ur.io/?referral_code=1Q3G19).
 
-### 2. Prepare deploy credentials
+### 2. Get deploy API key
 
-Use your URNetwork account email and password as the deploy credentials.
+Get an API key from Account Settings > API Key Management at [app.ur.network](https://app.ur.network). CashPilot uses it to create a one-time provider auth code before starting the node.
 
-Optional: Account Settings also has API Key Management. Save an API key only when you want CashPilot to research/build a collector; it is not required for deploy.
+For dashboard/collector checks, save your URNetwork account email and password in the Earnings collector section.
 
 ### 3. Deploy with CashPilot
 
-In the CashPilot web UI, find **URnetwork** in the service catalog and click **Deploy**. Enter the account email and password in Settings -> Deploy runtime.
+In the CashPilot web UI, find **URnetwork** in the service catalog and click **Deploy**. Enter the API key in Settings -> Deploy runtime.
 
 ## Docker Configuration
 
@@ -54,8 +54,7 @@ In the CashPilot web UI, find **URnetwork** in the service catalog and click **D
 
 | Variable | Label | Required | Secret | Description |
 |----------|-------|:--------:|:------:|-------------|
-| `UR_EMAIL` | Email | Yes | No | URNetwork account email |
-| `UR_PASSWORD` | Password | Yes | Yes | URNetwork account password |
+| `UR_API_KEY` | API key | Yes | Yes | Stored CashPilot deploy credential used to create the provider auth code |
 
 ## Collector Status
 

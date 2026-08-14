@@ -365,10 +365,10 @@ class TestProviderAutomationContracts:
         assert self._credential_keys(svc, "dashboard") == set()
         assert {item["key"] for item in svc["docker"]["env"]} == set()
 
-    def test_urnetwork_uses_email_password_and_optional_api_key(self):
+    def test_urnetwork_uses_api_key_for_deploy_and_email_password_for_collector(self):
         svc = self._svc("urnetwork")
-        assert self._credential_keys(svc, "deploy") == {"email", "password"}
-        assert self._credential_keys(svc, "collector") == {"api_key"}
+        assert self._credential_keys(svc, "deploy") == {"api_key"}
+        assert self._credential_keys(svc, "collector") == {"email", "password"}
         assert self._credential_keys(svc, "dashboard") == set()
         assert {item["key"] for item in svc["docker"]["env"]} == set()
 

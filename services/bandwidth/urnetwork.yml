@@ -29,20 +29,13 @@ docker:
 
 deploy:
   credentials:
-    - key: email
-      label: "Email"
-      kind: email
-      secret: false
-      required: true
-      source: "URNetwork account"
-      description: "URNetwork account email used for provider login."
-    - key: password
-      label: "Password"
-      kind: password
+    - key: api_key
+      label: "URNetwork API key"
+      kind: api_key
       secret: true
       required: true
-      source: "URNetwork account"
-      description: "URNetwork account password used for provider login."
+      source: "https://app.ur.network Account Settings > API Key Management"
+      description: "API key used to create a one-time provider auth code before starting the node."
 
 requirements:
   residential_ip: false
@@ -75,14 +68,21 @@ platforms: [docker, windows, macos, linux]
 collector:
   type: manual
   credentials:
-    - key: api_key
-      label: "URNetwork API key"
-      kind: api_key
+    - key: email
+      label: "Email"
+      kind: email
+      secret: false
+      required: true
+      source: "URNetwork account"
+      description: "Account email used for dashboard/collector login."
+    - key: password
+      label: "Password"
+      kind: password
       secret: true
-      required: false
-      source: "https://app.ur.network Account Settings > API Key Management"
-      description: "Optional future collector credential. Leave empty until CashPilot confirms the API response shape."
-  notes: "Logged-in client manager exposes Clients, Statistics, Providers, Wallet Stats, Account Settings, Balance Codes, and API Key Management. No collector/API response shape is confirmed yet."
+      required: true
+      source: "URNetwork account"
+      description: "Account password used for dashboard/collector login."
+  notes: "Logged-in client manager exposes Clients, Statistics, Providers, Wallet Stats, Account Settings, Balance Codes, and API Key Management. Collector is dashboard/session based; no API response shape is confirmed yet."
 
 payout:
   model: external

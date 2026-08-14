@@ -185,22 +185,31 @@ def test_deploy_raw_maps_proxylite_user_id_to_proxyservice_env():
     assert env["USER_ID"] == "000000"
 
 
-def test_deploy_raw_maps_urnetwork_email_password_to_provider_env():
+def test_deploy_raw_authenticates_urnetwork_with_api_key_before_provider_start():
     client = MagicMock()
     client.containers.get.side_effect = orchestrator.NotFound("nope")
     container = MagicMock(short_id="abc123", id="container-id")
     client.containers.run.return_value = container
 
-    with patch.object(orchestrator, "_get_client", return_value=client):
+    with (
+        patch.object(orchestrator, "_get_client", return_value=client),
+        patch.object(orchestrator, "_urnetwork_auth_code", return_value="auth-code") as auth_code,
+    ):
         orchestrator.deploy_raw(
             slug="urnetwork",
             image="bringyour/community-provider",
-            deploy_credentials={"email": "user@example.com", "password": "secret"},
+            volumes={"urnetwork-data": {"bind": "/root/.urnetwork", "mode": "rw"}},
+            deploy_credentials={"api_key": "api-key"},
         )
 
-    env = client.containers.run.call_args.kwargs["environment"]
-    assert env["UR_EMAIL"] == "user@example.com"
-    assert env["UR_PASSWORD"] == "secret"
+    auth_code.assert_called_once_with("api-key")
+    auth_call, provider_call = client.containers.run.call_args_list[-2:]
+    assert auth_call.kwargs["entrypoint"] == "/usr/local/sbin/bringyour-provider"
+    assert auth_call.kwargs["command"] == ["auth", "auth-code"]
+    assert auth_call.kwargs["remove"] is True
+    assert auth_call.kwargs["volumes"] == {"urnetwork-data": {"bind": "/root/.urnetwork", "mode": "rw"}}
+    assert provider_call.kwargs["command"] == "provide"
+    assert provider_call.kwargs["environment"]["UR_API_KEY"] == "api-key"
 
 
 def test_deploy_raw_forwards_container_user_when_declared():

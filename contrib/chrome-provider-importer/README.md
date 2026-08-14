@@ -26,7 +26,7 @@ Values are never printed in the popup. The extension only saves keys explicitly 
 - PacketStream: `packetstream_auth_token`, `packetstream_cid`
 - Grass: `grass_access_token`, `grass_store_access_token`, `grass_store_refresh_token`, `grass_store_token_expiry`, `grass_store_wynd_user_id`
 - Spide: `spide_dashboard_token`
-- URnetwork: `urnetwork_api_key`
+- URnetwork: `urnetwork_api_key`, `urnetwork_email`, `urnetwork_password`
 - ProxyBase dashboard: `proxybase_dashboard_access_token`
 - ProxyLite: `proxylite_user_id`
 - IPRoyal Pawns: `iproyal_email`, `iproyal_password`, `iproyal_device_name`, `iproyal_device_id`
