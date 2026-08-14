@@ -73,6 +73,21 @@ platforms: [docker, linux]
 
 collector:
   type: api
+  credentials:
+    - key: email
+      label: "Email"
+      kind: email
+      secret: false
+      required: true
+      source: "Earn.fm account"
+      description: "Account email used by the earnings collector."
+    - key: password
+      label: "Password"
+      kind: password
+      secret: true
+      required: true
+      source: "Earn.fm account"
+      description: "Account password used by the earnings collector."
   notes: "Dashboard visibly exposes balance, bandwidth totals, residential and datacenter earnings, referral earnings, available funds, and pending balance. Docker client uses the UUID EARNFM_TOKEN from More -> Your API Key."
   credential_hint: "Use the API key shown under More -> Your API Key in <a href='https://app.earn.fm' target='_blank'>app.earn.fm</a>."
 

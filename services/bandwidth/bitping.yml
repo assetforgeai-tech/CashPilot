@@ -88,6 +88,21 @@ platforms: [docker, windows, macos, linux]
 
 collector:
   type: api
+  credentials:
+    - key: email
+      label: "Email"
+      kind: email
+      secret: false
+      required: true
+      source: "Bitping account"
+      description: "Account email used by the earnings collector."
+    - key: password
+      label: "Password"
+      kind: password
+      secret: true
+      required: true
+      source: "Bitping account"
+      description: "Account password used by the earnings collector."
   notes: "Dashboard at app.bitping.com. Credentials persisted in /root/.bitping volume."
   credential_hint: "Use your Bitping account email and password (same as <a href='https://nodes.bitping.com' target='_blank'>nodes.bitping.com</a>)."
 

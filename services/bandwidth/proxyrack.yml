@@ -87,6 +87,14 @@ platforms: [docker, windows, macos, linux]
 
 collector:
   type: api
+  credentials:
+    - key: api_key
+      label: "API Key"
+      kind: api_key
+      secret: true
+      required: true
+      source: "ProxyRack dashboard"
+      description: "Api-Key header used by the earnings collector."
   notes: "Dashboard behind Cloudflare. May need API key from browser session. Per-device earnings visible."
   credential_hint: "Log in at <a href='https://peer.proxyrack.com' target='_blank'>peer.proxyrack.com</a>, press F12 → Network, find any API request and copy the <b>Api-Key</b> header value."
 

@@ -378,6 +378,14 @@ class TestProviderAutomationContracts:
         field = svc["deploy"]["credentials"][0]
         assert field["required"] is True
 
+    def test_catalog_collector_credentials_match_collector_runtime(self):
+        from app.collectors import _COLLECTOR_ARGS
+
+        for slug, args in _COLLECTOR_ARGS.items():
+            svc = self._svc(slug)
+            expected = {arg.lstrip("?") for arg in args}
+            assert self._credential_keys(svc, "collector") == expected, slug
+
     def test_wipter_runtime_uses_env_login(self):
         svc = self._svc("wipter")
         env = {item["key"]: item for item in svc["docker"]["env"]}
