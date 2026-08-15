@@ -98,22 +98,7 @@ def _ensure_image(client, image_base: str, resolved: dict[str, str], dockerfile_
 
 def _grass_dockerfile(deb_url: str) -> str:
     _safe_grass_url(deb_url)
-    return f"""FROM ubuntu:24.04
-ENV DEBIAN_FRONTEND=noninteractive \\
-    DISPLAY=:99 \\
-    HOME=/data/profile \\
-    XDG_CONFIG_HOME=/data/profile/.config \\
-    XDG_CACHE_HOME=/data/profile/.cache \\
-    ELECTRON_DISABLE_SECURITY_WARNINGS=true
-RUN apt-get update \\
- && apt-get install -y --no-install-recommends ca-certificates curl xvfb x11vnc fluxbox novnc websockify dbus-x11 python3-minimal \\
- && rm -rf /var/lib/apt/lists/*
-ADD {deb_url} /tmp/grass-desktop.deb
-RUN apt-get update \\
- && apt-get install -y --no-install-recommends /tmp/grass-desktop.deb xdotool \\
- && rm -rf /var/lib/apt/lists/* /tmp/grass-desktop.deb
-RUN cat >/usr/local/bin/cashpilot-grass <<'SH' && sed -i 's/\\r$//' /usr/local/bin/cashpilot-grass && chmod +x /usr/local/bin/cashpilot-grass
-#!/bin/sh
+    runner = """#!/bin/sh
 set -eu
 mkdir -p "$HOME"
 rm -f /tmp/.X99-lock
@@ -123,13 +108,13 @@ x11vnc -display :99 -forever -shared -nopw -listen 0.0.0.0 -xkb >/tmp/x11vnc.log
 websockify --web=/usr/share/novnc/ 6080 localhost:5900 >/tmp/novnc.log 2>&1 &
 dbus-run-session sh -lc 'grass-desktop --no-sandbox || Grass --no-sandbox || /opt/Grass/grass-desktop --no-sandbox || /opt/Grass/grass --no-sandbox' &
 grass_pid=$!
-if [ "${{TRY_AUTOLOGIN:-true}}" = "true" ] && [ -n "${{USER_EMAIL:-}}" ] && [ -n "${{USER_PASSWORD:-}}" ]; then
+if [ "${TRY_AUTOLOGIN:-true}" = "true" ] && [ -n "${USER_EMAIL:-}" ] && [ -n "${USER_PASSWORD:-}" ]; then
   for _ in $(seq 1 90); do
     wid="$(DISPLAY=:99 xdotool search --onlyvisible --name '^Grass$' 2>/dev/null | head -n1 || true)"
     [ -n "$wid" ] && break
     sleep 1
   done
-  if [ -n "${{wid:-}}" ]; then
+  if [ -n "${wid:-}" ]; then
     DISPLAY=:99 xdotool windowactivate --sync "$wid" || true
     sleep 2
     DISPLAY=:99 xdotool mousemove 150 226 click 1 key ctrl+a BackSpace type --delay 80 -- "$USER_EMAIL" || true
@@ -144,7 +129,23 @@ if [ "${{TRY_AUTOLOGIN:-true}}" = "true" ] && [ -n "${{USER_EMAIL:-}}" ] && [ -n
   fi
 fi
 wait "$grass_pid"
-SH
+"""
+    return f"""FROM ubuntu:24.04
+ENV DEBIAN_FRONTEND=noninteractive \\
+    DISPLAY=:99 \\
+    HOME=/data/profile \\
+    XDG_CONFIG_HOME=/data/profile/.config \\
+    XDG_CACHE_HOME=/data/profile/.cache \\
+    ELECTRON_DISABLE_SECURITY_WARNINGS=true
+RUN apt-get update \\
+ && apt-get install -y --no-install-recommends ca-certificates curl xvfb x11vnc fluxbox novnc websockify dbus-x11 python3-minimal \\
+ && rm -rf /var/lib/apt/lists/*
+ADD {deb_url} /tmp/grass-desktop.deb
+RUN apt-get update \\
+ && apt-get install -y --no-install-recommends /tmp/grass-desktop.deb xdotool \\
+ && rm -rf /var/lib/apt/lists/* /tmp/grass-desktop.deb
+RUN python3 -c 'from pathlib import Path; Path("/usr/local/bin/cashpilot-grass").write_text({json.dumps(runner)}, newline="\\n")' \\
+ && chmod +x /usr/local/bin/cashpilot-grass
 EXPOSE 6080
 CMD ["cashpilot-grass"]
 """
