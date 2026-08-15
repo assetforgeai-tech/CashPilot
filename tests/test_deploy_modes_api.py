@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 import pytest
 from fastapi import HTTPException
 from starlette.requests import Request
@@ -120,8 +122,8 @@ async def test_proxyrack_parallel_modes_get_separate_uuid_and_device_names(monke
     direct_env = specs["proxyrack-direct"]["env"]
     proxy_env = specs["proxyrack-proxy"]["env"]
     assert direct_env["UUID"] != proxy_env["UUID"]
-    assert direct_env["DEVICE_NAME"] == "worker-1-direct"
-    assert proxy_env["DEVICE_NAME"] == "worker-1-proxy"
+    assert re.fullmatch(r"\d{14}\.worker-1\.d", direct_env["DEVICE_NAME"])
+    assert re.fullmatch(r"\d{14}\.worker-1\.p", proxy_env["DEVICE_NAME"])
 
 @pytest.mark.asyncio
 async def test_traffmonetizer_parallel_modes_get_separate_device_names(monkeypatch):
@@ -168,12 +170,120 @@ async def test_traffmonetizer_parallel_modes_get_separate_device_names(monkeypat
 
     direct_env = specs["traffmonetizer-direct"]["env"]
     proxy_env = specs["traffmonetizer-proxy"]["env"]
-    assert order == ["traffmonetizer-proxy", "traffmonetizer-direct"]
-    assert sleeps == [180]
-    assert direct_env["TRAFFMONETIZER_DEVICE_NAME"] == "worker-1-direct-tm"
-    assert proxy_env["TRAFFMONETIZER_DEVICE_NAME"] == "worker-1-proxy-tm"
-    assert "--device-name worker-1-direct-tm" in specs["traffmonetizer-direct"]["command"]
-    assert "--device-name worker-1-proxy-tm" in specs["traffmonetizer-proxy"]["command"]
+    assert order == ["traffmonetizer-direct", "traffmonetizer-proxy"]
+    assert sleeps == [300]
+    assert re.fullmatch(r"\d{14}\.worker-1\.d", direct_env["TRAFFMONETIZER_DEVICE_NAME"])
+    assert re.fullmatch(r"\d{14}\.worker-1\.p", proxy_env["TRAFFMONETIZER_DEVICE_NAME"])
+    assert f"--device-name {direct_env['TRAFFMONETIZER_DEVICE_NAME']}" in specs["traffmonetizer-direct"]["command"]
+    assert f"--device-name {proxy_env['TRAFFMONETIZER_DEVICE_NAME']}" in specs["traffmonetizer-proxy"]["command"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("slug", "mode", "expected_fields", "expected_suffix"),
+    [
+        ("iproyal", "proxy", ("IPROYALPAWNS_DEVICE_NAME", "IPROYALPAWNS_DEVICE_ID"), "p"),
+        ("proxies-sx", "proxy", ("AGENT_NAME",), "p"),
+        ("proxybase", "both", ("NAME",), None),
+        ("proxyrack", "both", ("DEVICE_NAME",), None),
+        ("traffmonetizer", "both", ("TRAFFMONETIZER_DEVICE_NAME",), None),
+    ],
+)
+async def test_standard_device_identity_uses_worker_egress_ip(monkeypatch, slug, mode, expected_fields, expected_suffix):
+    specs: dict[str, dict] = {}
+
+    async def fake_deploy(_worker_id: int, instance_slug: str, spec: dict) -> dict[str, str]:
+        specs[instance_slug] = spec
+        return {"container_id": f"{instance_slug}-cid"}
+
+    async def noop(*_args, **_kwargs):
+        return None
+
+    async def config(*_args, **_kwargs):
+        return {
+            "iproyal_email": "user@example.com",
+            "iproyal_password": "secret",
+            "proxies-sx_api_key": "api-key",
+            "proxybase_deploy_access_token": "deploy-token",
+            "proxyrack_api_key": "proxy-key",
+            "traffmonetizer_token": "tm-token",
+        }
+
+    async def fake_proxy(_worker_id: int):
+        return {"proxy_id": 9, "host": "1.2.3.4", "port": 1080, "protocol": "socks5"}
+
+    async def fake_worker(_worker_id: int):
+        return {"id": _worker_id, "name": "worker-1", "system_info": {"egress_ip": "8.8.8.8"}}
+
+    async def fake_sleep(_seconds: int):
+        return None
+
+    def close_spawn(coro):
+        coro.close()
+
+    monkeypatch.setattr(main.database, "get_deployment_spec", noop)
+    monkeypatch.setattr(main.database, "get_config", config)
+    monkeypatch.setattr(main.database, "get_worker", fake_worker)
+    monkeypatch.setattr(main.database, "save_provider_instance", noop)
+    monkeypatch.setattr(main.database, "record_health_event", noop)
+    monkeypatch.setattr(main, "_proxy_for_worker_instance", fake_proxy)
+    monkeypatch.setattr(main, "_proxy_worker_deploy", fake_deploy)
+    monkeypatch.setattr(main.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(main, "_spawn", close_spawn)
+
+    await main.api_deploy(
+        _request(f"/api/deploy/{slug}"),
+        slug,
+        main.DeployRequest(env={}, hostname="worker-1", mode=mode),
+        worker_id=7,
+        _auth={"r": "owner"},
+    )
+
+    suffix = expected_suffix or None
+    assert specs
+    for _instance_slug, spec in specs.items():
+        env = spec["env"]
+        for field in expected_fields:
+            value = env[field]
+            assert re.fullmatch(r"\d{14}\.8\.8\.8\.8\.[dp]", value)
+            if suffix is not None:
+                assert value.endswith(f".{suffix}")
+        if slug == "proxyrack":
+            assert re.fullmatch(r"[A-F0-9]{64}", env["UUID"])
+
+
+@pytest.mark.asyncio
+async def test_spide_device_registration_uses_standard_device_identity(monkeypatch):
+    captured: list[dict[str, str]] = []
+
+    async def config(key=None, *_args, **_kwargs):
+        return "dash-token" if key == "spide_dashboard_token" else {"spide_dashboard_token": "dash-token"}
+
+    async def fake_worker(_worker_id: int):
+        return {"id": _worker_id, "name": "worker-1", "system_info": {"egress_ip": "8.8.8.8"}}
+
+    async def fake_logs(_worker_id: int, _slug: str, *, lines: int = 200):
+        return {"logs": f"Device key: {_slug.upper()}1234"}
+
+    async def fake_register(token: str, device_key: str, *, title: str, base_url: str = "https://spide.network"):
+        captured.append({"token": token, "device_key": device_key, "title": title, "base_url": base_url})
+        return {"status": "ok"}
+
+    async def noop(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(main.database, "get_config", config)
+    monkeypatch.setattr(main.database, "get_worker", fake_worker)
+    monkeypatch.setattr(main.database, "record_health_event", noop)
+    monkeypatch.setattr(main, "_proxy_worker_logs", fake_logs)
+    monkeypatch.setattr(main.provider_automation, "register_spide_device", fake_register)
+
+    await main._run_post_deploy_automation("spide", 7, "worker-1", ["direct", "proxy"])
+
+    assert [item["token"] for item in captured] == ["dash-token", "dash-token"]
+    assert [item["device_key"] for item in captured] == ["SPIDE-DIRECT1234", "SPIDE-PROXY1234"]
+    assert re.fullmatch(r"\d{14}\.8\.8\.8\.8\.d", captured[0]["title"])
+    assert re.fullmatch(r"\d{14}\.8\.8\.8\.8\.p", captured[1]["title"])
 
 @pytest.mark.asyncio
 async def test_host_systemd_deploy_is_blocked(monkeypatch):

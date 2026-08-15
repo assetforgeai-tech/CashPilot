@@ -1974,6 +1974,31 @@ async def _proxy_for_worker_instance(worker_id: int) -> dict[str, Any]:
     return proxy
 
 
+_DEVICE_IDENTITY_ENV_KEYS: dict[str, tuple[str, ...]] = {
+    "iproyal": ("IPROYALPAWNS_DEVICE_NAME", "IPROYALPAWNS_DEVICE_ID"),
+    "proxies-sx": ("AGENT_NAME",),
+    "proxybase": ("NAME",),
+    "proxyrack": ("DEVICE_NAME",),
+    "traffmonetizer": ("TRAFFMONETIZER_DEVICE_NAME",),
+}
+
+def _standard_device_identity(worker: dict[str, Any] | None, mode: str, fallback_hostname: str) -> str:
+    suffix = "p" if mode == "proxy" else "d"
+    source = egress.egress_of(worker) or str((worker or {}).get("name") or "").strip() or fallback_hostname
+    return f"{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}.{source}.{suffix}"
+
+def _apply_standard_device_identity(
+    slug: str,
+    env: dict[str, str],
+    *,
+    worker: dict[str, Any] | None,
+    mode: str,
+    fallback_hostname: str,
+) -> None:
+    identity = _standard_device_identity(worker, mode, fallback_hostname)
+    for key in _DEVICE_IDENTITY_ENV_KEYS.get(slug, ()):
+        env[key] = identity
+
 @app.post("/api/deploy/{slug}")
 async def api_deploy(
     request: Request,
@@ -2146,8 +2171,9 @@ async def api_deploy(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     if slug == "traffmonetizer" and set(modes) == {"direct", "proxy"}:
-        modes = ["proxy", "direct"]
+        modes = ["direct", "proxy"]
     deployed: list[dict[str, str]] = []
+    identity_worker: dict[str, Any] | None = None
     for idx, mode in enumerate(modes):
         instance_slug = slug if mode == "legacy" else f"{slug}-{mode}"
         instance_spec = json.loads(json.dumps(spec))
@@ -2158,17 +2184,16 @@ async def api_deploy(
         if slug == "proxyrack" and mode in {"direct", "proxy"}:
             instance_env = instance_spec.setdefault("env", {})
             instance_env["UUID"] = secrets.token_hex(32).upper()
-            instance_env["DEVICE_NAME"] = f"{hn}-{mode}"
-        if slug == "traffmonetizer" and mode in {"direct", "proxy"}:
+        if mode in {"direct", "proxy"}:
             instance_env = instance_spec.setdefault("env", {})
-            base_name = str(instance_env.get("TRAFFMONETIZER_DEVICE_NAME") or f"{hn}-tm").strip()
-            if base_name.endswith("-tm"):
-                base_name = base_name[:-3]
-            instance_env["TRAFFMONETIZER_DEVICE_NAME"] = f"{base_name}-{mode}-tm"
-            if raw_command:
+            if slug in _DEVICE_IDENTITY_ENV_KEYS and identity_worker is None:
+                with contextlib.suppress(Exception):
+                    identity_worker = await database.get_worker(worker_id)
+            _apply_standard_device_identity(slug, instance_env, worker=identity_worker, mode=mode, fallback_hostname=hn)
+            if raw_command and slug in _DEVICE_IDENTITY_ENV_KEYS:
                 instance_spec["command"] = re.sub(
                     r"\$\{(\w+)\}",
-                    lambda m: instance_env.get(m.group(1), m.group(0)),
+                    lambda m, env=instance_env: env.get(m.group(1), m.group(0)),
                     raw_command,
                 )
         if instance_spec.get("volumes"):
@@ -2214,9 +2239,9 @@ async def api_deploy(
         await database.record_health_event(slug, "start", f"deployed {instance_slug} to worker {worker_id}")
         metrics.record_container_lifecycle("deploy", slug)
         if slug == "traffmonetizer" and idx == 0 and len(modes) > 1:
-            await asyncio.sleep(180)
+            await asyncio.sleep(300)
 
-    _spawn(_run_post_deploy_automation(slug, worker_id, hn))
+    _spawn(_run_post_deploy_automation(slug, worker_id, hn, [d["mode"] for d in deployed]))
     _spawn(_run_collection())
     response: dict[str, Any] = {"status": "deployed", "instances": deployed}
     if deployed:
@@ -2225,14 +2250,17 @@ async def api_deploy(
         response["kept_from_previous_deployment"] = divergence
     return response
 
-async def _run_post_deploy_automation(slug: str, worker_id: int, hostname: str) -> None:
+async def _run_post_deploy_automation(slug: str, worker_id: int, hostname: str, modes: list[str] | None = None) -> None:
     svc = catalog.get_service(slug)
     deploy = (svc or {}).get("deploy") or {}
     if deploy.get("automation") != "device_key_register" or slug != "spide":
         return
-    await _register_spide_device_from_worker_logs(worker_id, hostname)
+    for mode in modes or ["legacy"]:
+        instance_slug = slug if mode == "legacy" else f"{slug}-{mode}"
+        identity_mode = "direct" if mode == "legacy" else mode
+        await _register_spide_device_from_worker_logs(worker_id, instance_slug, identity_mode, hostname)
 
-async def _register_spide_device_from_worker_logs(worker_id: int, hostname: str) -> None:
+async def _register_spide_device_from_worker_logs(worker_id: int, instance_slug: str, mode: str, hostname: str) -> None:
     token = await database.get_config("spide_dashboard_token")
     if not token:
         await database.record_health_event("spide", "setup_needed", "dashboard token missing for device registration")
@@ -2240,7 +2268,7 @@ async def _register_spide_device_from_worker_logs(worker_id: int, hostname: str)
     device_key = None
     for _ in range(12):
         try:
-            payload = await _proxy_worker_logs(worker_id, "spide", lines=200)
+            payload = await _proxy_worker_logs(worker_id, instance_slug, lines=200)
             device_key = provider_automation.extract_spide_device_key(payload.get("logs", ""))
             if device_key:
                 break
@@ -2251,7 +2279,12 @@ async def _register_spide_device_from_worker_logs(worker_id: int, hostname: str)
         await database.record_health_event("spide", "setup_waiting", "Device key not visible in worker logs yet")
         return
     try:
-            await provider_automation.register_spide_device(str(token), device_key, title=f"{hostname}-spide")
+        worker = await database.get_worker(worker_id)
+        await provider_automation.register_spide_device(
+            str(token),
+            device_key,
+            title=_standard_device_identity(worker, mode, hostname),
+        )
     except Exception as exc:
         logger.warning("Spide device registration failed: %s", exc)
         await database.record_health_event("spide", "setup_failed", "dashboard device registration failed")
