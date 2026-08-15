@@ -49,8 +49,8 @@
     },
     earnfm: () => add("earnfm_token", pick([storeMatch(/api.*key|uuid|token/i), jsonStoreMatch(/api.*key|uuid|token/i)]), "Earn.fm API key"),
     iproyal: () => {
-      add("iproyal_email", pick([inputValue("email"), storeMatch(/email/i), textMatch(/email[:\s]+([^\s@]+@[^\s@]+)/i, 1)]), "IPRoyal email");
-      add("iproyal_password", pick([inputValue("password"), storeMatch(/password/i)]), "IPRoyal password");
+      add("iproyal_collector_email", pick([inputValue("email"), storeMatch(/email/i), textMatch(/email[:\s]+([^\s@]+@[^\s@]+)/i, 1)]), "IPRoyal collector email");
+      add("iproyal_collector_password", pick([inputValue("password"), storeMatch(/password/i)]), "IPRoyal collector password");
       add("iproyal_device_name", pick([inputValue("device-name"), inputValue("device_name"), textMatch(/device name[:\s]+([^\s]+)/i, 1)]), "IPRoyal device name");
       add("iproyal_device_id", pick([inputValue("device-id"), inputValue("device_id"), textMatch(/device id[:\s]+([^\s]+)/i, 1)]), "IPRoyal device id");
     },

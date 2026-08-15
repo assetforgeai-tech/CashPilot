@@ -521,6 +521,16 @@ CREATE TABLE IF NOT EXISTS proxy_assignments (
     FOREIGN KEY(proxy_id) REFERENCES proxy_endpoints(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS proxy_provider_masks (
+    proxy_id      INTEGER NOT NULL,
+    provider_slug TEXT    NOT NULL,
+    reason        TEXT    NOT NULL DEFAULT '',
+    masked_at     TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY(proxy_id, provider_slug),
+    FOREIGN KEY(proxy_id) REFERENCES proxy_endpoints(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS myst_wallets (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
     wallet_fingerprint TEXT    NOT NULL UNIQUE,
@@ -634,6 +644,9 @@ CREATE INDEX IF NOT EXISTS idx_workers_status
 
 CREATE INDEX IF NOT EXISTS idx_provider_instances_slug
     ON provider_instances (slug, worker_id, mode);
+
+CREATE INDEX IF NOT EXISTS idx_proxy_provider_masks_provider
+    ON proxy_provider_masks(provider_slug, proxy_id);
 
 CREATE INDEX IF NOT EXISTS idx_health_events_slug
     ON health_events (slug, created_at);
@@ -870,7 +883,7 @@ async def _encrypt_legacy_plaintext_credentials(db: Any) -> int:
 #: missing a column -- an interrupted upgrade, a restored backup, a hand-edited
 #: file -- could never be repaired, because the gate would say there was nothing
 #: to do. The guards are idempotent and cheap; the version is for the operator.
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 
 
 async def init_db() -> None:
@@ -1007,6 +1020,23 @@ async def init_db() -> None:
         if "spec_encrypted" not in deployment_cols:
             applied.append("deployments.spec_encrypted")
             await db.execute("ALTER TABLE deployments ADD COLUMN spec_encrypted TEXT NOT NULL DEFAULT ''")
+
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS proxy_provider_masks (
+                proxy_id      INTEGER NOT NULL,
+                provider_slug TEXT    NOT NULL,
+                reason        TEXT    NOT NULL DEFAULT '',
+                masked_at     TEXT    NOT NULL DEFAULT (datetime('now')),
+                updated_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY(proxy_id, provider_slug),
+                FOREIGN KEY(proxy_id) REFERENCES proxy_endpoints(id) ON DELETE CASCADE
+            )
+            """
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_proxy_provider_masks_provider ON proxy_provider_masks(provider_slug, proxy_id)"
+        )
         # Migrate config table: add updated_at so credential age is knowable.
         # Existing rows are left NULL — see the note on the back-fill below.
         # (This comment used to say they receive the migration time, which is
@@ -2343,6 +2373,44 @@ async def list_proxy_pool() -> list[dict[str, Any]]:
     finally:
         await db.close()
 
+async def mask_proxy_for_provider(proxy_id: int, provider_slug: str, reason: str = "") -> bool:
+    provider_slug = str(provider_slug or "").strip()
+    if int(proxy_id or 0) <= 0 or not provider_slug:
+        return False
+    db = await _get_db()
+    try:
+        cur = await db.execute("SELECT id FROM proxy_endpoints WHERE id = ?", (int(proxy_id),))
+        if not await cur.fetchone():
+            return False
+        await db.execute(
+            """
+            INSERT INTO proxy_provider_masks (proxy_id, provider_slug, reason, masked_at, updated_at)
+            VALUES (?, ?, ?, datetime('now'), datetime('now'))
+            ON CONFLICT(proxy_id, provider_slug) DO UPDATE SET
+                reason = excluded.reason,
+                updated_at = datetime('now')
+            """,
+            (int(proxy_id), provider_slug, str(reason or "")),
+        )
+        await db.commit()
+        return True
+    finally:
+        await db.close()
+
+async def proxy_masked_for_provider(proxy_id: int, provider_slug: str) -> bool:
+    provider_slug = str(provider_slug or "").strip()
+    if int(proxy_id or 0) <= 0 or not provider_slug:
+        return False
+    db = await _get_db()
+    try:
+        cur = await db.execute(
+            "SELECT 1 FROM proxy_provider_masks WHERE proxy_id = ? AND provider_slug = ? LIMIT 1",
+            (int(proxy_id), provider_slug),
+        )
+        return bool(await cur.fetchone())
+    finally:
+        await db.close()
+
 async def _ensure_myst_wallets_table(db: Any) -> None:
     await db.executescript(_MYST_WALLETS_SCHEMA)
     cursor = await db.execute("PRAGMA table_info(myst_wallets)")
@@ -2785,16 +2853,29 @@ async def update_proxy_pool_check_results(results: Mapping[int, str], *, protoco
     finally:
         await db.close()
 
-async def lease_proxy_for_worker(worker_id: int) -> dict[str, Any] | None:
+async def lease_proxy_for_worker(worker_id: int, *, provider_slug: str | None = None) -> dict[str, Any] | None:
+    provider_slug = str(provider_slug or "").strip()
+    mask_clause = ""
+    params: list[Any] = [worker_id]
+    if provider_slug:
+        mask_clause = """
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM proxy_provider_masks ppm
+                  WHERE ppm.proxy_id = pe.id AND ppm.provider_slug = ?
+              )
+        """
+        params.append(provider_slug)
     db = await _get_db()
     try:
         await db.execute(
-            """
+            f"""
             INSERT INTO proxy_assignments (worker_id, proxy_id, mode, fallback, applied_at)
             SELECT ?, pe.id, 'proxy', 'hold', datetime('now')
             FROM proxy_endpoints pe
             LEFT JOIN proxy_assignments pa ON pa.proxy_id = pe.id
             WHERE pa.proxy_id IS NULL
+            {mask_clause}
             ORDER BY pe.id
             LIMIT 1
             ON CONFLICT(worker_id) DO UPDATE SET
@@ -2803,12 +2884,16 @@ async def lease_proxy_for_worker(worker_id: int) -> dict[str, Any] | None:
                 fallback = excluded.fallback,
                 applied_at = excluded.applied_at
             """,
-            (worker_id,),
+            params,
         )
         await db.commit()
     finally:
         await db.close()
-    return await get_worker_proxy_assignment(worker_id)
+    assignment = await get_worker_proxy_assignment(worker_id)
+    if assignment and provider_slug and assignment.get("proxy_id"):
+        if await proxy_masked_for_provider(int(assignment["proxy_id"]), provider_slug):
+            return None
+    return assignment
 
 async def get_proxy_endpoint(proxy_id: int) -> dict[str, Any] | None:
     db = await _get_db()

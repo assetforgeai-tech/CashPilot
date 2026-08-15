@@ -117,14 +117,16 @@ platforms: [docker, windows, macos, linux, android, ios]
 collector:
   type: api
   credentials:
-    - key: email
+    - key: collector_email
+      arg: email
       label: "Email"
       kind: email
       secret: false
       required: true
       source: "Pawns account"
       description: "Account email used by the earnings collector."
-    - key: password
+    - key: collector_password
+      arg: password
       label: "Password"
       kind: password
       secret: true

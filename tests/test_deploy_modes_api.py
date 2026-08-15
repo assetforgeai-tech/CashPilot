@@ -27,7 +27,7 @@ async def test_proxy_mode_attaches_proxy_and_direct_mode_does_not(monkeypatch):
     async def empty_config(*_args, **_kwargs):
         return {"bitping_email": "user@example.com", "bitping_password": "secret"}
 
-    async def fake_proxy(_worker_id: int):
+    async def fake_proxy(_worker_id: int, **_kwargs):
         return {"proxy_id": 9, "host": "1.2.3.4", "port": 1080, "protocol": "socks5"}
 
     def close_spawn(coro):
@@ -208,7 +208,7 @@ async def test_standard_device_identity_uses_worker_egress_ip(monkeypatch, slug,
             "traffmonetizer_token": "tm-token",
         }
 
-    async def fake_proxy(_worker_id: int):
+    async def fake_proxy(_worker_id: int, **_kwargs):
         return {"proxy_id": 9, "host": "1.2.3.4", "port": 1080, "protocol": "socks5"}
 
     async def fake_worker(_worker_id: int):
@@ -216,6 +216,9 @@ async def test_standard_device_identity_uses_worker_egress_ip(monkeypatch, slug,
 
     async def fake_sleep(_seconds: int):
         return None
+
+    async def fake_logs(_worker_id: int, _slug: str, lines: int = 50):
+        return {"logs": "running"}
 
     def close_spawn(coro):
         coro.close()
@@ -227,6 +230,7 @@ async def test_standard_device_identity_uses_worker_egress_ip(monkeypatch, slug,
     monkeypatch.setattr(main.database, "record_health_event", noop)
     monkeypatch.setattr(main, "_proxy_for_worker_instance", fake_proxy)
     monkeypatch.setattr(main, "_proxy_worker_deploy", fake_deploy)
+    monkeypatch.setattr(main, "_proxy_worker_logs", fake_logs)
     monkeypatch.setattr(main.asyncio, "sleep", fake_sleep)
     monkeypatch.setattr(main, "_spawn", close_spawn)
 
@@ -250,6 +254,78 @@ async def test_standard_device_identity_uses_worker_egress_ip(monkeypatch, slug,
         if slug == "proxyrack":
             assert re.fullmatch(r"[A-F0-9]{64}", env["UUID"])
 
+
+@pytest.mark.asyncio
+async def test_iproyal_proxy_masks_ip_used_and_retries(monkeypatch):
+    specs: list[dict] = []
+    masked: list[tuple[int, str, str]] = []
+    removed: list[str] = []
+    proxy_ids = [1, 2]
+    log_calls = 0
+
+    async def fake_deploy(_worker_id: int, _instance_slug: str, spec: dict) -> dict[str, str]:
+        specs.append(spec)
+        return {"container_id": f"cid-{len(specs)}"}
+
+    async def config(*_args, **_kwargs):
+        return {"iproyal_email": "user@example.com", "iproyal_password": "secret"}
+
+    async def fake_proxy(_worker_id: int, **kwargs):
+        assert kwargs == {"provider_slug": "iproyal"}
+        proxy_id = proxy_ids.pop(0)
+        return {"proxy_id": proxy_id, "host": f"1.1.1.{proxy_id}", "port": 1080, "protocol": "socks5"}
+
+    async def fake_worker(_worker_id: int):
+        return {"id": _worker_id, "name": "worker-1", "system_info": '{"egress_ip": "8.8.8.8"}'}
+
+    async def fake_logs(_worker_id: int, _slug: str, lines: int = 50):
+        nonlocal log_calls
+        log_calls += 1
+        return {"logs": '{"error":"ip_used"}' if log_calls == 1 else "running"}
+
+    async def fake_mask(proxy_id: int, provider_slug: str, reason: str):
+        masked.append((proxy_id, provider_slug, reason))
+        return True
+
+    async def fake_command(_worker_id: int, command: str, slug: str, *, params=None):
+        assert command == "remove"
+        removed.append(slug)
+        return {"status": "ok"}
+
+    async def noop(*_args, **_kwargs):
+        return None
+
+    async def fake_sleep(_seconds: int):
+        return None
+
+    def close_spawn(coro):
+        coro.close()
+
+    monkeypatch.setattr(main.database, "get_deployment_spec", noop)
+    monkeypatch.setattr(main.database, "get_config", config)
+    monkeypatch.setattr(main.database, "get_worker", fake_worker)
+    monkeypatch.setattr(main.database, "save_provider_instance", noop)
+    monkeypatch.setattr(main.database, "record_health_event", noop)
+    monkeypatch.setattr(main.database, "mask_proxy_for_provider", fake_mask)
+    monkeypatch.setattr(main, "_proxy_for_worker_instance", fake_proxy)
+    monkeypatch.setattr(main, "_proxy_worker_deploy", fake_deploy)
+    monkeypatch.setattr(main, "_proxy_worker_logs", fake_logs)
+    monkeypatch.setattr(main, "_proxy_worker_command", fake_command)
+    monkeypatch.setattr(main.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(main, "_spawn", close_spawn)
+
+    response = await main.api_deploy(
+        _request("/api/deploy/iproyal"),
+        "iproyal",
+        main.DeployRequest(env={}, hostname="worker-1", mode="proxy"),
+        worker_id=7,
+        _auth={"r": "owner"},
+    )
+
+    assert response["status"] == "deployed"
+    assert [spec["proxy"]["proxy_id"] for spec in specs] == [1, 2]
+    assert masked == [(1, "iproyal", "ip_used")]
+    assert removed == ["iproyal-proxy"]
 
 @pytest.mark.asyncio
 async def test_spide_device_registration_uses_standard_device_identity(monkeypatch):

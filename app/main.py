@@ -1965,13 +1965,54 @@ async def _release_myst_wallet_from_spec(spec: dict[str, Any], *, reason: str) -
         wallet_assignment_version=version,
     )
 
-async def _proxy_for_worker_instance(worker_id: int) -> dict[str, Any]:
+async def _proxy_for_worker_instance(worker_id: int, *, provider_slug: str | None = None) -> dict[str, Any]:
     proxy = await database.get_worker_proxy_assignment(worker_id)
+    if proxy and provider_slug and proxy.get("proxy_id"):
+        if await database.proxy_masked_for_provider(int(proxy["proxy_id"]), provider_slug):
+            proxy = None
     if not proxy or not proxy.get("proxy_id"):
-        proxy = await database.lease_proxy_for_worker(worker_id)
+        proxy = await database.lease_proxy_for_worker(worker_id, provider_slug=provider_slug)
     if not proxy or not proxy.get("proxy_id"):
         raise HTTPException(status_code=409, detail="No proxy available for this worker")
     return proxy
+
+def _pawns_log_has_ip_used(logs: str) -> bool:
+    return "ip_used" in str(logs or "").lower()
+
+async def _wait_for_pawns_ip_used(worker_id: int, instance_slug: str) -> bool:
+    for _ in range(12):
+        payload = await _proxy_worker_logs(worker_id, instance_slug, lines=200)
+        if _pawns_log_has_ip_used(payload.get("logs", "")):
+            return True
+        await asyncio.sleep(5)
+    return False
+
+async def _deploy_iproyal_proxy_with_retry(
+    worker_id: int,
+    instance_slug: str,
+    spec: dict[str, Any],
+    *,
+    attempts: int = 20,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    last_error: str | None = None
+    for attempt in range(1, max(1, attempts) + 1):
+        attempt_spec = json.loads(json.dumps(spec))
+        proxy = await _proxy_for_worker_instance(worker_id, provider_slug="iproyal")
+        attempt_spec["proxy"] = proxy
+        attempt_spec["egress_mode"] = "proxy"
+        result = await _proxy_worker_deploy(worker_id, instance_slug, attempt_spec)
+        if await _wait_for_pawns_ip_used(worker_id, instance_slug):
+            proxy_id = int((proxy or {}).get("proxy_id") or 0)
+            if proxy_id:
+                await database.mask_proxy_for_provider(proxy_id, "iproyal", "ip_used")
+                await database.record_health_event("iproyal", "proxy_masked", f"masked proxy {proxy_id} after ip_used")
+            with contextlib.suppress(Exception):
+                await _proxy_worker_command(worker_id, "remove", instance_slug)
+            last_error = f"ip_used on proxy {proxy_id or 'unknown'}"
+            logger.warning("IPRoyal Pawns attempt %d/%d hit ip_used; rotating proxy", attempt, attempts)
+            continue
+        return result, attempt_spec
+    raise HTTPException(status_code=409, detail=last_error or "IPRoyal Pawns failed after proxy rotation")
 
 
 _DEVICE_IDENTITY_ENV_KEYS: dict[str, tuple[str, ...]] = {
@@ -2197,7 +2238,7 @@ async def api_deploy(
                 )
         if instance_spec.get("volumes"):
             instance_spec["volumes"] = _mode_scoped_named_volumes(instance_spec["volumes"], mode)
-        if mode == "proxy":
+        if mode == "proxy" and slug != "iproyal":
             instance_spec["proxy"] = await _proxy_for_worker_instance(worker_id)
             instance_spec["egress_mode"] = "proxy"
         elif mode == "direct":
@@ -2207,7 +2248,10 @@ async def api_deploy(
         if slug == "mysterium":
             myst_wallet = await _attach_myst_wallet_for_deploy(slug, worker_id, instance_spec)
         try:
-            result = await _proxy_worker_deploy(worker_id, instance_slug, instance_spec)
+            if slug == "iproyal" and mode == "proxy":
+                result, instance_spec = await _deploy_iproyal_proxy_with_retry(worker_id, instance_slug, instance_spec)
+            else:
+                result = await _proxy_worker_deploy(worker_id, instance_slug, instance_spec)
         except Exception:
             if myst_wallet and (instance_spec.get("deploy_credentials") or {}).get("myst_wallet_client_id"):
                 with contextlib.suppress(Exception):
@@ -4207,8 +4251,8 @@ def _sanitize_credential(value: str) -> str:
     return v
 
 _CONFIG_KEY_ALIASES = {
-    "iproyalpawns_email": "iproyal_email",
-    "iproyalpawns_password": "iproyal_password",
+    "iproyalpawns_email": "iproyal_collector_email",
+    "iproyalpawns_password": "iproyal_collector_password",
     "iproyalpawns_device_name": "iproyal_device_name",
     "iproyalpawns_device_id": "iproyal_device_id",
     "proxies_sx_api_key": "proxies-sx_api_key",

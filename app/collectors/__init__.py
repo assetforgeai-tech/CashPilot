@@ -99,7 +99,7 @@ def service_credential_fields(
             if not raw_key:
                 continue
             config_key = raw_key if raw_key.startswith(f"{slug}_") else f"{slug}_{raw_key}"
-            arg = config_key.removeprefix(f"{slug}_")
+            arg = str(item.get("arg") or config_key.removeprefix(f"{slug}_")).strip()
             kind = str(item.get("kind") or _kind_for_arg(arg))
             field: dict[str, Any] = {
                 "key": config_key,

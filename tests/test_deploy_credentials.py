@@ -169,6 +169,19 @@ def test_settings_collector_credentials_cover_provider_collector_notes():
         fields = {field["arg"] for field in collector_credential_fields(slug, catalog.get_service(slug))}
         assert args <= fields, slug
 
+def test_iproyal_runtime_and_collector_credentials_are_separate():
+    svc = catalog.get_service("iproyal")
+
+    deploy_fields = {field["key"]: field["arg"] for field in service_credential_fields("iproyal", "deploy", svc, fallback=False)}
+    collector_fields = {field["key"]: field["arg"] for field in collector_credential_fields("iproyal", svc)}
+
+    assert deploy_fields["iproyal_email"] == "email"
+    assert deploy_fields["iproyal_password"] == "password"
+    assert collector_fields == {
+        "iproyal_collector_email": "email",
+        "iproyal_collector_password": "password",
+    }
+
 def test_node_count_only_providers_have_no_earnings_collector_inputs():
     for slug in ("proxylite", "proxybase-xyz", "uprock", "wipter"):
         svc = catalog.get_service(slug)

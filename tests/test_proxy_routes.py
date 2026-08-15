@@ -249,6 +249,34 @@ def test_proxy_lease_picks_one_unassigned_proxy_per_worker(tmp_path):
 
     asyncio.run(run())
 
+def test_proxy_mask_is_provider_specific_for_pawns(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("vtproxy", "vtproxy")
+            await database.upsert_proxy_endpoints(
+                provider_id,
+                [
+                    {"provider_proxy_id": "a", "endpoint": "1.1.1.1:1000", "host": "1.1.1.1", "port": 1000},
+                    {"provider_proxy_id": "b", "endpoint": "2.2.2.2:1000", "host": "2.2.2.2", "port": 1000},
+                ],
+            )
+            worker_a = await database.upsert_worker("worker-a", "a", "http://a")
+            worker_b = await database.upsert_worker("worker-b", "b", "http://b")
+
+            first = await database.lease_proxy_for_worker(worker_a)
+            assert first
+            assert await database.mask_proxy_for_provider(int(first["proxy_id"]), "iproyal", "ip_used")
+            pawns = await database.lease_proxy_for_worker(worker_a, provider_slug="iproyal")
+            generic = await database.lease_proxy_for_worker(worker_b)
+
+            assert pawns and pawns["proxy_id"] != first["proxy_id"]
+            assert generic and generic["proxy_id"] == first["proxy_id"]
+
+    import asyncio
+
+    asyncio.run(run())
+
 def test_proxy_pool_export_can_filter_by_protocol(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
