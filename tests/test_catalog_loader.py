@@ -307,8 +307,15 @@ class TestProviderAutomationContracts:
         )
         assert self._credential_keys(svc, "deploy") == {"email", "password"}
         assert {item["env"] for item in svc["deploy"]["credentials"]} == {"USER_EMAIL", "USER_PASSWORD"}
-        assert svc["deploy"]["automation"] == "env_login"
-        assert not svc["deploy"].get("runtime_assets")
+        assert svc["deploy"]["automation"] == "official_deb_seed_profile"
+        assert svc["deploy"]["runtime_assets"] == [
+            {
+                "provider": "grass",
+                "asset_kind": "seed_bundle",
+                "target": "/cashpilot/runtime-assets/grass/profile.tar.gz",
+                "encoding": "base64",
+            }
+        ]
 
     def test_uprock_runtime_uses_official_seed_state_assets(self):
         svc = self._svc("uprock")

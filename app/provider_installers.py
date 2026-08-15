@@ -107,6 +107,9 @@ Xvfb :99 -screen 0 1280x720x24 -nolisten tcp >/tmp/xvfb.log 2>&1 &
 fluxbox >/tmp/fluxbox.log 2>&1 &
 x11vnc -display :99 -forever -shared -nopw -listen 0.0.0.0 -xkb >/tmp/x11vnc.log 2>&1 &
 websockify --web=/usr/share/novnc/ 6080 localhost:5900 >/tmp/novnc.log 2>&1 &
+if [ -s /cashpilot/runtime-assets/grass/profile.tar.gz ]; then
+  tar -xzf /cashpilot/runtime-assets/grass/profile.tar.gz -C "$HOME"
+fi
 dbus-run-session sh -lc 'grass-desktop --no-sandbox || Grass --no-sandbox || /opt/Grass/grass-desktop --no-sandbox || /opt/Grass/grass --no-sandbox' &
 grass_pid=$!
 if [ "${TRY_AUTOLOGIN:-true}" = "true" ] && [ -n "${USER_EMAIL:-}" ] && [ -n "${USER_PASSWORD:-}" ]; then

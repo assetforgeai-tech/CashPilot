@@ -30,9 +30,14 @@ docker:
   network_mode: ""
 
 deploy:
-  automation: env_login
+  automation: official_deb_seed_profile
   installer_manifest_url: "https://files.grass.io/file/grass-extension-upgrades/desktop-installer-latest.json"
-  notes: "Runtime builds the official Grass Desktop Linux package and logs in with Grass account email/password. Collector still uses the Grass dashboard accessToken."
+  notes: "Runtime builds the official Grass Desktop Linux package and seeds the logged-in desktop profile bundle when present. Email/password stay available for manual fallback. Collector still uses the Grass dashboard accessToken."
+  runtime_assets:
+    - provider: grass
+      asset_kind: seed_bundle
+      target: /cashpilot/runtime-assets/grass/profile.tar.gz
+      encoding: base64
   credentials:
     - key: email
       label: "Email"

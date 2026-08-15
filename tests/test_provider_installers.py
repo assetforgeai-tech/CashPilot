@@ -76,6 +76,7 @@ def test_grass_manifest_build_tags_image_by_resolved_version():
     assert "xdotool" in dockerfile
     assert "base64.b64decode" in dockerfile
     script = base64.b64decode(re.search(r"b64decode\('([^']+)'\)", dockerfile).group(1)).decode()
+    assert "tar -xzf /cashpilot/runtime-assets/grass/profile.tar.gz -C \"$HOME\"" in script
     assert "mousemove 270 607 click 1" in script
     assert ".grass-configured" not in script
     assert "USER_EMAIL" in script
