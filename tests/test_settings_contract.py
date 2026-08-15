@@ -148,24 +148,18 @@ def test_credential_health_dedupes_shared_keys_across_sections(tmp_path):
                 }
             ]
         },
-        "deploy": {
-            "credentials": [
-                {
-                    "key": "token",
-                    "label": "Token",
-                    "kind": "token",
-                    "required": True,
-                    "description": "deploy token",
-                },
-                {
-                    "key": "device_name",
-                    "label": "Device name",
-                    "kind": "text",
-                    "required": False,
-                },
-            ]
-        },
-    }
+            "deploy": {
+                "credentials": [
+                    {
+                        "key": "token",
+                        "label": "Token",
+                        "kind": "token",
+                        "required": True,
+                        "description": "deploy token",
+                    },
+                ]
+            },
+        }
 
     async def run():
         with (
@@ -176,9 +170,9 @@ def test_credential_health_dedupes_shared_keys_across_sections(tmp_path):
             patch.object(main.catalog, "get_service", return_value=fake_service),
         ):
             await database.init_db()
-            await database.set_config_bulk({"traffmonetizer_token": "token", "traffmonetizer_device_name": "worker-tm"})
+            await database.set_config_bulk({"traffmonetizer_token": "token"})
             rows = await main.api_credential_health(object())
-            assert [(row["service"], row["field"]) for row in rows] == [("traffmonetizer", "token"), ("traffmonetizer", "device_name")]
+            assert [(row["service"], row["field"]) for row in rows] == [("traffmonetizer", "token")]
 
     asyncio.run(run())
 

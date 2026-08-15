@@ -49,14 +49,6 @@ deploy:
       env: TRAFFMONETIZER_TOKEN
       source: "Traffmonetizer dashboard"
       description: "Token passed to the node runtime."
-    - key: device_name
-      label: "Device name"
-      kind: text
-      secret: false
-      required: false
-      env: TRAFFMONETIZER_DEVICE_NAME
-      source: "CashPilot worker name"
-      description: "Optional override; blank uses {hostname}-tm."
 
 requirements:
   residential_ip: false

@@ -140,7 +140,7 @@ def test_settings_deploy_credentials_cover_node_creation_inputs_from_runtime_scr
         "proxies-sx": {"api_key", "agent_name"},
         "proxyrack": {"api_key"},
         "repocket": {"email", "api_key"},
-        "traffmonetizer": {"token", "device_name"},
+        "traffmonetizer": {"token"},
         "urnetwork": {"api_key"},
         "spide": {"email", "password"},
     }
@@ -148,6 +148,9 @@ def test_settings_deploy_credentials_cover_node_creation_inputs_from_runtime_scr
     for slug, args in expected.items():
         fields = {field["arg"] for field in service_credential_fields(slug, "deploy", catalog.get_service(slug), fallback=False)}
         assert args <= fields, slug
+
+    tm_fields = {field["arg"] for field in service_credential_fields("traffmonetizer", "deploy", catalog.get_service("traffmonetizer"), fallback=False)}
+    assert "device_name" not in tm_fields
 
 def test_settings_collector_credentials_cover_provider_collector_notes():
     expected = {
