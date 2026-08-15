@@ -71,6 +71,10 @@ def test_grass_manifest_build_tags_image_by_resolved_version():
     assert "FROM ubuntu:24.04" in dockerfile
     assert "grass-desktop_7.6.0_amd64.deb" in dockerfile
     assert "novnc" in dockerfile
+    assert "xdotool" in dockerfile
+    assert "mousemove 177 479 click 1" in dockerfile
+    assert "USER_EMAIL" in dockerfile
+    assert "USER_PASSWORD" in dockerfile
 
 def test_uprock_deb_url_resolves_as_linux_amd64_installer():
     resolved = provider_installers.resolve_installer_manifest(

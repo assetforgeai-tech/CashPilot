@@ -14,7 +14,7 @@ def test_deploy_raw_maps_grass_account_credentials_to_env():
     with patch.object(orchestrator, "_get_client", return_value=client):
         orchestrator.deploy_raw(
             slug="grass",
-            image="mrcolorrain/grass-desktop",
+            image="cashpilot/grass-desktop:auto",
             env={"USER_EMAIL": "user@example.com", "USER_PASSWORD": "secret"},
             deploy_credentials={"email": "user@example.com", "password": "secret"},
         )

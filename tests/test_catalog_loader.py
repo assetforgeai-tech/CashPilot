@@ -301,7 +301,10 @@ class TestProviderAutomationContracts:
 
     def test_grass_runtime_uses_env_login_credentials(self):
         svc = self._svc("grass")
-        assert svc["docker"]["image"] == "mrcolorrain/grass-desktop"
+        assert svc["docker"]["image"] == "cashpilot/grass-desktop:auto"
+        assert svc["deploy"]["installer_manifest_url"] == (
+            "https://files.grass.io/file/grass-extension-upgrades/desktop-installer-latest.json"
+        )
         assert self._credential_keys(svc, "deploy") == {"email", "password"}
         assert {item["env"] for item in svc["deploy"]["credentials"]} == {"USER_EMAIL", "USER_PASSWORD"}
         assert svc["deploy"]["automation"] == "env_login"

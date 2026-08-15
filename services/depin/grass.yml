@@ -16,7 +16,7 @@ referral:
   code: "kn8FNEPnUr2tMqE"
 
 docker:
-  image: mrcolorrain/grass-desktop
+  image: cashpilot/grass-desktop:auto
   platforms: [linux/amd64]
   resources:
     mem_limit: "768m"
@@ -31,7 +31,8 @@ docker:
 
 deploy:
   automation: env_login
-  notes: "Runtime uses mrcolorrain/grass-desktop and logs in with Grass account email/password. Collector still uses the Grass dashboard accessToken."
+  installer_manifest_url: "https://files.grass.io/file/grass-extension-upgrades/desktop-installer-latest.json"
+  notes: "Runtime builds the official Grass Desktop Linux package and logs in with Grass account email/password. Collector still uses the Grass dashboard accessToken."
   credentials:
     - key: email
       label: "Email"

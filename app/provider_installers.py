@@ -110,10 +110,43 @@ RUN apt-get update \\
  && rm -rf /var/lib/apt/lists/*
 ADD {deb_url} /tmp/grass-desktop.deb
 RUN apt-get update \\
- && apt-get install -y --no-install-recommends /tmp/grass-desktop.deb \\
+ && apt-get install -y --no-install-recommends /tmp/grass-desktop.deb xdotool \\
  && rm -rf /var/lib/apt/lists/* /tmp/grass-desktop.deb
+RUN cat >/usr/local/bin/cashpilot-grass <<'SH' && chmod +x /usr/local/bin/cashpilot-grass
+#!/bin/sh
+set -eu
+mkdir -p "$HOME"
+rm -f /tmp/.X99-lock
+Xvfb :99 -screen 0 1280x720x24 -nolisten tcp >/tmp/xvfb.log 2>&1 &
+fluxbox >/tmp/fluxbox.log 2>&1 &
+x11vnc -display :99 -forever -shared -nopw -listen 0.0.0.0 -xkb >/tmp/x11vnc.log 2>&1 &
+websockify --web=/usr/share/novnc/ 6080 localhost:5900 >/tmp/novnc.log 2>&1 &
+dbus-run-session sh -lc 'grass-desktop --no-sandbox || Grass --no-sandbox || /opt/Grass/grass-desktop --no-sandbox || /opt/Grass/grass --no-sandbox' &
+grass_pid=$!
+if [ "${{TRY_AUTOLOGIN:-true}}" = "true" ] && [ -n "${{USER_EMAIL:-}}" ] && [ -n "${{USER_PASSWORD:-}}" ]; then
+  for _ in $(seq 1 90); do
+    wid="$(DISPLAY=:99 xdotool search --onlyvisible --name '^Grass$' 2>/dev/null | head -n1 || true)"
+    [ -n "$wid" ] && break
+    sleep 1
+  done
+  if [ -n "${{wid:-}}" ]; then
+    DISPLAY=:99 xdotool windowactivate --sync "$wid" || true
+    sleep 2
+    DISPLAY=:99 xdotool mousemove 150 226 click 1 key ctrl+a BackSpace type --delay 80 -- "$USER_EMAIL" || true
+    DISPLAY=:99 xdotool mousemove 145 296 click 1 || true
+    sleep 6
+    DISPLAY=:99 xdotool mousemove 177 479 click 1 || true
+    sleep 3
+    DISPLAY=:99 xdotool mousemove 130 226 click 1 type --delay 80 -- "$USER_PASSWORD" || true
+    DISPLAY=:99 xdotool mousemove 160 340 click 1 || true
+    sleep 20
+    date -u +%FT%TZ > "$HOME/.grass-configured"
+  fi
+fi
+wait "$grass_pid"
+SH
 EXPOSE 6080
-CMD ["bash", "-lc", "mkdir -p $HOME; rm -f /tmp/.X99-lock; Xvfb :99 -screen 0 1366x768x24 -nolisten tcp >/tmp/xvfb.log 2>&1 & fluxbox >/tmp/fluxbox.log 2>&1 & x11vnc -display :99 -forever -shared -nopw -listen 0.0.0.0 -xkb >/tmp/x11vnc.log 2>&1 & websockify --web=/usr/share/novnc/ 6080 localhost:5900 >/tmp/novnc.log 2>&1 & dbus-run-session sh -lc 'grass-desktop --no-sandbox || Grass --no-sandbox || /opt/Grass/grass-desktop --no-sandbox || /opt/Grass/grass --no-sandbox'"]
+CMD ["cashpilot-grass"]
 """
 
 def _uprock_dockerfile(deb_url: str) -> str:
