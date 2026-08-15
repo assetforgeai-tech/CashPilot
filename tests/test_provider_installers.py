@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import re
 from unittest.mock import MagicMock, patch
 
 from app import provider_installers
@@ -72,10 +74,11 @@ def test_grass_manifest_build_tags_image_by_resolved_version():
     assert "grass-desktop_7.6.0_amd64.deb" in dockerfile
     assert "novnc" in dockerfile
     assert "xdotool" in dockerfile
-    assert "write_text" in dockerfile
-    assert "mousemove 177 479 click 1" in dockerfile
-    assert "USER_EMAIL" in dockerfile
-    assert "USER_PASSWORD" in dockerfile
+    assert "base64.b64decode" in dockerfile
+    script = base64.b64decode(re.search(r"b64decode\('([^']+)'\)", dockerfile).group(1)).decode()
+    assert "mousemove 177 479 click 1" in script
+    assert "USER_EMAIL" in script
+    assert "USER_PASSWORD" in script
 
 def test_uprock_deb_url_resolves_as_linux_amd64_installer():
     resolved = provider_installers.resolve_installer_manifest(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import platform
 from io import BytesIO
@@ -130,6 +131,7 @@ if [ "${TRY_AUTOLOGIN:-true}" = "true" ] && [ -n "${USER_EMAIL:-}" ] && [ -n "${
 fi
 wait "$grass_pid"
 """
+    runner_b64 = base64.b64encode(runner.encode()).decode()
     return f"""FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive \\
     DISPLAY=:99 \\
@@ -144,7 +146,7 @@ ADD {deb_url} /tmp/grass-desktop.deb
 RUN apt-get update \\
  && apt-get install -y --no-install-recommends /tmp/grass-desktop.deb xdotool \\
  && rm -rf /var/lib/apt/lists/* /tmp/grass-desktop.deb
-RUN python3 -c 'from pathlib import Path; Path("/usr/local/bin/cashpilot-grass").write_text({json.dumps(runner)}, newline="\\n")' \\
+RUN python3 -c "import base64,pathlib; pathlib.Path('/usr/local/bin/cashpilot-grass').write_bytes(base64.b64decode('{runner_b64}'))" \\
  && chmod +x /usr/local/bin/cashpilot-grass
 EXPOSE 6080
 CMD ["cashpilot-grass"]
