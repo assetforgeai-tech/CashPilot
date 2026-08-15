@@ -10,24 +10,11 @@ from app.collectors import collector_credential_fields, service_credential_field
 def test_grass_deploy_credentials_map_from_stored_config_to_worker_args():
     svc = catalog.get_service("grass")
     config = {
-        "grass_store_wynd_status": '"CONNECTED"',
-        "grass_store_wynd_user_id": "user",
-        "grass_store_token_expiry": "1817965755",
-        "grass_store_auto_update": "true",
-        "grass_store_wynd_authenticated": "true",
-        "grass_store_refresh_token": "refresh",
-        "grass_store_access_token": "access",
+        "grass_email": "user@example.com",
+        "grass_password": "secret",
     }
 
-    assert main._resolve_deploy_credentials("grass", svc, config) == {
-        "store_wynd_status": '"CONNECTED"',
-        "store_wynd_user_id": "user",
-        "store_token_expiry": "1817965755",
-        "store_auto_update": "true",
-        "store_wynd_authenticated": "true",
-        "store_refresh_token": "refresh",
-        "store_access_token": "access",
-    }
+    assert main._resolve_deploy_credentials("grass", svc, config) == {"email": "user@example.com", "password": "secret"}
 
 
 def test_grass_deploy_credentials_are_required_before_worker_deploy():
@@ -37,8 +24,8 @@ def test_grass_deploy_credentials_are_required_before_worker_deploy():
         main._resolve_deploy_credentials("grass", svc, {})
 
     assert exc.value.status_code == 400
-    assert "wynd:user_id" in exc.value.detail
-    assert "accessToken" in exc.value.detail
+    assert "Email" in exc.value.detail
+    assert "Password" in exc.value.detail
 
 def test_wipter_deploy_credentials_map_from_stored_config_to_worker_args():
     svc = catalog.get_service("wipter")
@@ -135,6 +122,7 @@ def test_settings_deploy_credentials_cover_node_creation_inputs_from_runtime_scr
         "bitping": {"email", "password"},
         "earnapp": {"oauth_refresh_token", "oauth_token", "xsrf_token", "brd_sess_id", "cg_uuid"},
         "earnfm": {"token"},
+        "grass": {"email", "password"},
         "packetstream": {"cid"},
         "iproyal": {"email", "password", "device_name", "device_id"},
         "proxies-sx": {"api_key", "agent_name"},

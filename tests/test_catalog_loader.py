@@ -299,24 +299,12 @@ class TestProviderAutomationContracts:
     def _credential_keys(self, service, section):
         return {item["key"] for item in (service.get(section, {}).get("credentials") or [])}
 
-    def test_grass_runtime_uses_store_patch_credentials(self):
+    def test_grass_runtime_uses_env_login_credentials(self):
         svc = self._svc("grass")
-        assert svc["docker"]["image"] == "cashpilot/grass-desktop:auto"
-        assert svc["deploy"]["installer_manifest_url"] == (
-            "https://files.grass.io/file/grass-extension-upgrades/desktop-installer-latest.json"
-        )
-        deploy_keys = self._credential_keys(svc, "deploy")
-        assert "installer_manifest_url" in deploy_keys
-        assert {
-            "store_wynd_status",
-            "store_wynd_user_id",
-            "store_token_expiry",
-            "store_auto_update",
-            "store_wynd_authenticated",
-            "store_refresh_token",
-            "store_access_token",
-        } <= deploy_keys
-        assert svc["deploy"]["automation"] == "store_json_patch"
+        assert svc["docker"]["image"] == "mrcolorrain/grass-desktop"
+        assert self._credential_keys(svc, "deploy") == {"email", "password"}
+        assert {item["env"] for item in svc["deploy"]["credentials"]} == {"USER_EMAIL", "USER_PASSWORD"}
+        assert svc["deploy"]["automation"] == "env_login"
         assert not svc["deploy"].get("runtime_assets")
 
     def test_uprock_runtime_uses_official_seed_state_assets(self):

@@ -16,82 +16,39 @@ referral:
   code: "kn8FNEPnUr2tMqE"
 
 docker:
-  image: cashpilot/grass-desktop:auto
+  image: mrcolorrain/grass-desktop
   platforms: [linux/amd64]
   resources:
     mem_limit: "768m"
     oom_score_adj: 300
   env: []
   ports:
+    - "5900:5900"
     - "6080:6080"
-  volumes:
-    - "grass-profile:/data/profile"
+  volumes: []
   command: ""
   network_mode: ""
 
 deploy:
-  automation: store_json_patch
-  installer_manifest_url: "https://files.grass.io/file/grass-extension-upgrades/desktop-installer-latest.json"
-  installer_platform: linux-x86_64
-  notes: "Runtime resolves Grass' official desktop installer manifest at new-node install time, builds a local noVNC Docker wrapper from the Linux .deb, waits for Grass to create store.json, patches the seven confirmed auth/session fields, then restarts Grass."
+  automation: env_login
+  notes: "Runtime uses mrcolorrain/grass-desktop and logs in with Grass account email/password. Collector still uses the Grass dashboard accessToken."
   credentials:
-    - key: installer_manifest_url
-      label: "Installer manifest URL"
-      kind: text
-      secret: false
-      required: false
-      source: "Grass dashboard Download button manifest"
-      default: "https://files.grass.io/file/grass-extension-upgrades/desktop-installer-latest.json"
-      description: "Override only if Grass moves its official desktop installer manifest."
-    - key: store_wynd_status
-      label: "store.json wynd:status"
-      kind: text
+    - key: email
+      label: "Email"
+      kind: email
       secret: true
       required: true
-      source: "Logged-in Grass Desktop store.json"
-      description: "Copy the wynd:status value from a confirmed logged-in seed."
-    - key: store_wynd_user_id
-      label: "store.json wynd:user_id"
-      kind: text
+      source: "Grass account"
+      env: USER_EMAIL
+      description: "Grass account email used by the desktop Docker runtime."
+    - key: password
+      label: "Password"
+      kind: password
       secret: true
       required: true
-      source: "Logged-in Grass Desktop store.json"
-      description: "Copy the wynd:user_id value from a confirmed logged-in seed."
-    - key: store_token_expiry
-      label: "store.json tokenExpiry"
-      kind: text
-      secret: true
-      required: true
-      source: "Logged-in Grass Desktop store.json"
-      description: "Copy the tokenExpiry value from a confirmed logged-in seed."
-    - key: store_auto_update
-      label: "store.json autoUpdate"
-      kind: text
-      secret: true
-      required: true
-      source: "Logged-in Grass Desktop store.json"
-      description: "Copy the autoUpdate value from a confirmed logged-in seed."
-    - key: store_wynd_authenticated
-      label: "store.json wynd:authenticated"
-      kind: text
-      secret: true
-      required: true
-      source: "Logged-in Grass Desktop store.json"
-      description: "Copy the wynd:authenticated value from a confirmed logged-in seed."
-    - key: store_refresh_token
-      label: "store.json refreshToken"
-      kind: token
-      secret: true
-      required: true
-      source: "Logged-in Grass Desktop store.json"
-      description: "Copy the refreshToken value from a confirmed logged-in seed."
-    - key: store_access_token
-      label: "store.json accessToken"
-      kind: token
-      secret: true
-      required: true
-      source: "Logged-in Grass Desktop store.json"
-      description: "Copy the accessToken value from a confirmed logged-in seed."
+      source: "Grass account"
+      env: USER_PASSWORD
+      description: "Grass account password used by the desktop Docker runtime."
 
 requirements:
   residential_ip: true
@@ -126,7 +83,7 @@ platforms: [browser-extension, windows, macos, linux, android, ios]
 
 collector:
   type: api
-  notes: "Dashboard API at app.grass.io. Auth via accessToken. Tested runtime login is seed/profile based; CashPilot does not yet model seed bundle mounts."
+  notes: "Dashboard API at app.grass.io. Auth via accessToken. Runtime login uses email/password separately."
   credentials:
     - key: access_token
       label: "Access Token"

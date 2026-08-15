@@ -34,7 +34,7 @@ PROVIDERS: dict[str, ProviderRuntime] = {
     "bitping": ProviderRuntime("bitping", "bitping.py", "bitping.py", ("direct", "proxy"), "earnings"),
     "earnapp": ProviderRuntime("earnapp", "earnapp.py", "", ("proxy",), "earnings"),
     "earnfm": ProviderRuntime("earnfm", "earn.fm.py", "earn.fm.py", ("direct", "proxy"), "earnings"),
-    "grass": ProviderRuntime("grass", "Grass.py", "Grass.py", ("direct", "proxy"), "earnings"),
+    "grass": ProviderRuntime("grass", "Grass.py", "Grass.py", ("proxy",), "earnings"),
     "iproyal": ProviderRuntime("iproyal", "pawns.py", "pawns.py", ("proxy",), "earnings"),
     "mysterium": ProviderRuntime("mysterium", "MYST.py", "MYST.py", ("direct",), "earnings"),
     "packetstream": ProviderRuntime("packetstream", "packetstream.py", "packetstream.py", ("proxy",), "earnings"),

@@ -403,8 +403,6 @@ def deploy_raw(
     )
 
     logger.info("Container %s started: %s", name, container.short_id)
-    if slug == "grass" and deploy_credentials:
-        provider_automation.apply_grass_store_patch(container, deploy_credentials)
     if slug == "mysterium" and deploy_credentials and deploy_credentials.get("myst_wallet_raw"):
         address = myst_runtime.apply_direct_wallet(
             container,
