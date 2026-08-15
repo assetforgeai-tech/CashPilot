@@ -1900,6 +1900,16 @@ def _apply_deploy_config_to_env(slug: str, svc: dict[str, Any] | None, config: d
         if value:
             env[env_key] = value
 
+def _deploy_config_env_overrides(slug: str, svc: dict[str, Any] | None, config: dict[str, str]) -> dict[str, str]:
+    from app.collectors import service_credential_fields
+
+    overrides: dict[str, str] = {}
+    for field in service_credential_fields(slug, "deploy", svc, fallback=False):
+        env_key = str(field.get("env") or "").strip()
+        if env_key and str(config.get(field["key"], "")).strip():
+            overrides[env_key] = str(config[field["key"]]).strip()
+    return overrides
+
 def _changed_credential_sections(data: dict[str, str]) -> dict[str, set[str]]:
     from app.collectors import collector_credential_fields, service_credential_fields
 
@@ -2201,7 +2211,11 @@ async def api_deploy(
                 continue
             host_part, target = raw.split(":")[0], raw.split(":")[1]
             keys_by_target.setdefault(target, set()).update(m.group(1) for m in re.finditer(r"\$\{(\w+)\}", host_part))
-        spec, divergence = _merge_recorded_spec(spec, recorded, body.env or {}, keys_by_target)
+        runtime_env_overrides = {**_deploy_config_env_overrides(slug, svc, config), **(body.env or {})}
+        spec, divergence = _merge_recorded_spec(spec, recorded, runtime_env_overrides, keys_by_target)
+        if raw_command and (set(runtime_env_overrides) & set(re.findall(r"\$\{(\w+)\}", raw_command))):
+            merged_env = spec.get("env") or {}
+            spec["command"] = re.sub(r"\$\{(\w+)\}", lambda m: merged_env.get(m.group(1), m.group(0)), raw_command)
         if divergence:
             logger.info("Redeploying %s from its recorded spec: %s", slug, "; ".join(divergence))
 

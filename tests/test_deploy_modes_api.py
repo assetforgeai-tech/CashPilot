@@ -328,6 +328,63 @@ async def test_iproyal_proxy_masks_ip_used_and_retries(monkeypatch):
     assert removed == ["iproyal-proxy"]
 
 @pytest.mark.asyncio
+async def test_redeploy_uses_current_runtime_settings_over_recorded_env(monkeypatch):
+    specs: list[dict] = []
+
+    async def fake_deploy(_worker_id: int, _instance_slug: str, spec: dict) -> dict[str, str]:
+        specs.append(spec)
+        return {"container_id": "cid"}
+
+    async def recorded(*_args, **_kwargs):
+        return {
+            "env": {
+                "IPROYALPAWNS_EMAIL": "old@example.com",
+                "IPROYALPAWNS_PASSWORD": "old-secret",
+            },
+            "command": "-email old@example.com -password old-secret",
+        }
+
+    async def config(*_args, **_kwargs):
+        return {"iproyal_email": "new@example.com", "iproyal_password": "new-secret"}
+
+    async def fake_proxy(_worker_id: int, **_kwargs):
+        return {"proxy_id": 2, "host": "2.2.2.2", "port": 1080, "protocol": "socks5"}
+
+    async def fake_logs(_worker_id: int, _slug: str, lines: int = 50):
+        return {"logs": "running"}
+
+    async def noop(*_args, **_kwargs):
+        return None
+
+    async def fake_sleep(_seconds: int):
+        return None
+
+    def close_spawn(coro):
+        coro.close()
+
+    monkeypatch.setattr(main.database, "get_deployment_spec", recorded)
+    monkeypatch.setattr(main.database, "get_config", config)
+    monkeypatch.setattr(main.database, "save_provider_instance", noop)
+    monkeypatch.setattr(main.database, "record_health_event", noop)
+    monkeypatch.setattr(main, "_proxy_for_worker_instance", fake_proxy)
+    monkeypatch.setattr(main, "_proxy_worker_deploy", fake_deploy)
+    monkeypatch.setattr(main, "_proxy_worker_logs", fake_logs)
+    monkeypatch.setattr(main.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(main, "_spawn", close_spawn)
+
+    await main.api_deploy(
+        _request("/api/deploy/iproyal"),
+        "iproyal",
+        main.DeployRequest(env={}, hostname="worker-1", mode="proxy"),
+        worker_id=7,
+        _auth={"r": "owner"},
+    )
+
+    assert specs[0]["env"]["IPROYALPAWNS_EMAIL"] == "new@example.com"
+    assert "new@example.com" in specs[0]["command"]
+    assert "old@example.com" not in specs[0]["command"]
+
+@pytest.mark.asyncio
 async def test_spide_device_registration_uses_standard_device_identity(monkeypatch):
     captured: list[dict[str, str]] = []
 
