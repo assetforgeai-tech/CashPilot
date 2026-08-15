@@ -254,7 +254,7 @@ def test_iproyal_and_traffmonetizer_device_names_follow_worker_source():
     iproyal_env = {item["key"]: item for item in iproyal["docker"]["env"]}
     assert iproyal_env["IPROYALPAWNS_DEVICE_NAME"]["default"] == "{hostname}"
     assert iproyal_env["IPROYALPAWNS_DEVICE_ID"]["default"] == "{hostname}"
-    assert "-accept-tos" not in iproyal["docker"]["command"]
+    assert "-accept-tos" in iproyal["docker"]["command"]
 
     tm_env = {item["key"]: item for item in tm["docker"]["env"]}
     assert tm_env["TRAFFMONETIZER_DEVICE_NAME"]["default"] == "{hostname}-tm"
