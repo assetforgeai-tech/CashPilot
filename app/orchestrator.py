@@ -293,7 +293,7 @@ def deploy_raw(
     except APIError as exc:
         logger.warning("Failed to pull image %s: %s (trying local)", image, exc)
 
-    if slug == "urnetwork" and deploy_credentials:
+    if provider == "urnetwork" and deploy_credentials:
         api_key = str(deploy_credentials.get("api_key") or "")
         if not api_key:
             raise RuntimeError("URNetwork API key is required")
@@ -308,7 +308,7 @@ def deploy_raw(
             remove=True,
         )
         volumes = urn_volumes
-    if slug == "bitping" and deploy_credentials:
+    if provider == "bitping" and deploy_credentials:
         email = str(deploy_credentials.get("email") or "").strip()
         password = str(deploy_credentials.get("password") or "").strip()
         if not email or not password:
