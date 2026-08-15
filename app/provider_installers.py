@@ -118,8 +118,11 @@ if [ "${TRY_AUTOLOGIN:-true}" = "true" ] && [ -n "${USER_EMAIL:-}" ] && [ -n "${
   if [ -n "${wid:-}" ]; then
     DISPLAY=:99 xdotool windowactivate --sync "$wid" || true
     sleep 2
-    DISPLAY=:99 xdotool mousemove 270 607 click 1 || true
+    DISPLAY=:99 xdotool mousemove 255 210 click 1 || true
     sleep 3
+    DISPLAY=:99 xdotool mousemove 275 587 click 1 || true
+    DISPLAY=:99 xdotool mousemove 270 607 click 1 || true
+    sleep 2
     DISPLAY=:99 xdotool mousemove 100 202 click 1 key ctrl+a BackSpace type --delay 80 -- "$USER_EMAIL" || true
     DISPLAY=:99 xdotool mousemove 170 273 click 1 || true
     DISPLAY=:99 xdotool mousemove 170 366 click 1 || true
