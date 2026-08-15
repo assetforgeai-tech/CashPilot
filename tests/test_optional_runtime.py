@@ -115,6 +115,18 @@ class TestTheAllowlistComesFromTheDaemon:
         assert "runsc" not in literals, "the validator must not carry a hardcoded runtime name"
 
 
+    def test_instance_slug_uses_provider_slug_for_capability_allowlist(self):
+        worker_api._validate_deploy_spec(
+            spec(provider_slug="bitping", cap_add=["NET_RAW"]),
+            slug="bitping-proxy",
+        )
+
+    def test_instance_slug_uses_provider_slug_for_host_network_allowlist(self):
+        worker_api._validate_deploy_spec(
+            spec(provider_slug="mysterium", network_mode="host", cap_add=["NET_ADMIN"], devices=["/dev/net/tun"]),
+            slug="mysterium-direct",
+        )
+
 class TestReadingTheDaemon:
     def test_it_returns_what_docker_reports(self):
         client = MagicMock()

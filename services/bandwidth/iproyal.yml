@@ -37,16 +37,16 @@ docker:
       required: false
       secret: false
       description: "Name shown in your Pawns dashboard (passed as -device-name flag)"
-      default: "cashpilot-{hostname}"
+      default: "{hostname}"
     - key: IPROYALPAWNS_DEVICE_ID
       label: "Device ID"
       required: false
       secret: false
       description: "Unique device identifier (passed as -device-id flag)"
-      default: "cashpilot-{hostname}"
+      default: "{hostname}"
   ports: []
   volumes: []
-  command: "-email ${IPROYALPAWNS_EMAIL} -password ${IPROYALPAWNS_PASSWORD} -device-name ${IPROYALPAWNS_DEVICE_NAME} -device-id ${IPROYALPAWNS_DEVICE_ID} -accept-tos"
+  command: "-email ${IPROYALPAWNS_EMAIL} -password ${IPROYALPAWNS_PASSWORD} -device-name ${IPROYALPAWNS_DEVICE_NAME} -device-id ${IPROYALPAWNS_DEVICE_ID}"
   network_mode: ""
   privileged: false
 
@@ -75,7 +75,7 @@ deploy:
       required: false
       env: IPROYALPAWNS_DEVICE_NAME
       source: "CashPilot worker name"
-      description: "Optional override; blank uses cashpilot-{hostname}."
+      description: "Optional override; blank uses {hostname}."
     - key: device_id
       label: "Device ID"
       kind: text
@@ -83,7 +83,7 @@ deploy:
       required: false
       env: IPROYALPAWNS_DEVICE_ID
       source: "CashPilot worker name"
-      description: "Optional override; blank uses cashpilot-{hostname}."
+      description: "Optional override; blank uses {hostname}."
 
 requirements:
   residential_ip: true

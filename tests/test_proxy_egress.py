@@ -88,6 +88,9 @@ def test_singbox_config_uses_tun_and_socks_outbound():
     assert len(config["inbounds"][0]["interface_name"]) <= 15
     assert config["outbounds"][0]["type"] == "socks"
     assert config["route"]["final"] == "proxy-out"
+    assert config["dns"]["strategy"] == "ipv4_only"
+    assert {"port": 53, "outbound": "direct"} in config["route"]["rules"]
+    assert {"domain": ["dc-t5.proxyvt.com"], "outbound": "direct"} in config["route"]["rules"]
 
 def test_http_proxy_never_satisfies_udp_required():
     from app import proxy_egress

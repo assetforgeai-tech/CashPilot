@@ -231,6 +231,8 @@ def deploy_raw(
     provider_slug: str | None = None,
     user: str | None = None,
     proxy: dict[str, Any] | None = None,
+    sysctls: dict[str, str] | None = None,
+    shm_size: str | None = None,
 ) -> str:
     """Deploy a container from a raw spec (no catalog lookup).
 
@@ -249,8 +251,8 @@ def deploy_raw(
         env["WIPTER_EMAIL"] = str(deploy_credentials.get("email") or "")
         env["WIPTER_PASSWORD"] = str(deploy_credentials.get("password") or "")
     if provider == "proxybase" and deploy_credentials:
-        env["ID"] = str(deploy_credentials.get("deploy_access_token") or "")
         env["NAME"] = str(env.get("NAME") or "")
+        command = [str(deploy_credentials.get("deploy_access_token") or ""), env["NAME"]]
     if provider == "proxylite" and deploy_credentials:
         env["USER_ID"] = str(deploy_credentials.get("user_id") or "")
     if provider == "urnetwork" and deploy_credentials:
@@ -306,6 +308,22 @@ def deploy_raw(
             remove=True,
         )
         volumes = urn_volumes
+    if slug == "bitping" and deploy_credentials:
+        email = str(deploy_credentials.get("email") or "").strip()
+        password = str(deploy_credentials.get("password") or "").strip()
+        if not email or not password:
+            raise RuntimeError("Bitping email and password are required")
+        bitping_volumes = volumes or {"bitpingd-volume": {"bind": "/root/.bitpingd", "mode": "rw"}}
+        client.containers.run(
+            image=image,
+            volumes=bitping_volumes,
+            network_mode="bridge",
+            entrypoint="/app/bitpingd",
+            command=["login", "--email", email, "--password", password],
+            detach=False,
+            remove=True,
+        )
+        volumes = bitping_volumes
 
     # Durable resource limits (only passed when explicitly set, so Docker
     # defaults are preserved otherwise). memswap is deliberately left unset:
@@ -322,7 +340,7 @@ def deploy_raw(
         client.containers.run(
             image="ghcr.io/sagernet/sing-box:latest",
             name=sidecar_name,
-            environment={"SINGBOX_CONFIG_B64": encoded_config},
+            environment={"SINGBOX_CONFIG_B64": encoded_config, "ENABLE_DEPRECATED_LEGACY_DNS_SERVERS": "true"},
             entrypoint=[
                 "/bin/sh",
                 "-c",
@@ -368,6 +386,8 @@ def deploy_raw(
         pids_limit=_PIDS_LIMIT,
         command=command if command else None,
         user=user or None,
+        sysctls=sysctls or None,
+        shm_size=shm_size or None,
         labels=all_labels,
         hostname=None if network_mode else (hostname or f"cashpilot-{slug}"),
         detach=True,

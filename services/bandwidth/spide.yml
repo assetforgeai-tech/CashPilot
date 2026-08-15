@@ -40,6 +40,7 @@ docker:
 
 deploy:
   automation: device_key_register
+  deploy_surface: host_systemd
   notes: "Download and run the official Linux CLI zip, parse the Device key from stdout, then register it in the dashboard."
   credentials:
     - key: email

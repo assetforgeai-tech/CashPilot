@@ -36,6 +36,7 @@ docker:
   privileged: false
 
 deploy:
+  deploy_surface: host_systemd
   credentials:
     - key: oauth_refresh_token
       label: "OAuth refresh token"
@@ -119,3 +120,14 @@ collector:
 payout:
   model: internal
   notes: "Balance held by EarnApp; redeemed to Amazon/Wise/PayPal."
+
+runtime_notes:
+  source: "provider-runtime/provider_code_setup_node/earnapp.py"
+  deploy_surface: host_systemd
+  docker_status: "not authoritative"
+  notes: >-
+    The tested runtime source installs the official Linux node on the host via
+    Bright Data's install.sh, links the UUID through EarnApp browser cookies, and
+    restarts earnapp/earnapp_upgrader systemd services. The community Docker
+    image remains catalogued only as a legacy placeholder until CashPilot has a
+    host-systemd provider runner.

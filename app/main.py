@@ -1463,6 +1463,21 @@ def _service_supported_modes(svc: dict[str, Any] | None) -> list[str]:
         return []
     return sorted(provider_modes.supported_modes(slug))
 
+def _service_deploy_surface(svc: dict[str, Any] | None) -> str:
+    deploy = (svc or {}).get("deploy") or {}
+    return str(deploy.get("deploy_surface") or "docker")
+
+
+def _mode_scoped_named_volumes(volumes: dict[str, Any], mode: str) -> dict[str, Any]:
+    if mode == "legacy":
+        return volumes
+    scoped: dict[str, Any] = {}
+    for source, mount in volumes.items():
+        if str(source).startswith(("/", ".", "~")):
+            scoped[source] = mount
+        else:
+            scoped[f"{source}-{mode}"] = mount
+    return scoped
 
 @app.get("/api/services/deployed")
 async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
@@ -1795,9 +1810,11 @@ async def api_services_available(request: Request) -> list[dict[str, Any]]:
             continue  # Known non-functional — hide completely
         docker_conf = svc.get("docker", {})
         has_image = bool(docker_conf and docker_conf.get("image"))
+        deploy_surface = _service_deploy_surface(svc)
         slug = svc.get("slug", "")
         svc["deployed"] = slug in deployed_slugs
-        svc["manual_only"] = not has_image
+        svc["deploy_surface"] = deploy_surface
+        svc["manual_only"] = deploy_surface == "host_systemd" or not has_image
         svc["node_count"] = sum(1 for i in instances if i["slug"] == slug)
         svc["supported_modes"] = _service_supported_modes(svc)
         # The setup wizard reads this endpoint, and it needs to know whether
@@ -1823,6 +1840,8 @@ async def api_get_service(request: Request, slug: str) -> dict[str, Any]:
 
     svc["deployed"] = slug in deployed_slugs
     svc["node_count"] = len([i for i in instances if i["slug"] == slug])
+    svc["deploy_surface"] = _service_deploy_surface(svc)
+    svc["manual_only"] = svc["deploy_surface"] == "host_systemd" or not bool((svc.get("docker") or {}).get("image"))
     svc["supported_modes"] = _service_supported_modes(svc)
 
     # Flag whether earnings tracking uses separate credentials (entered in
@@ -1979,6 +1998,15 @@ async def api_deploy(
 
     docker_conf = svc.get("docker", {})
     deploy_conf = svc.get("deploy", {}) or {}
+    deploy_surface = _service_deploy_surface(svc)
+    if deploy_surface == "host_systemd":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Service '{slug}' is marked host_systemd in the catalog. "
+                "CashPilot worker deploy is not implemented for host-systemd providers yet."
+            ),
+        )
     image = docker_conf.get("image")
     if not image:
         raise HTTPException(status_code=400, detail=f"Service '{slug}' has no Docker image")
@@ -2062,6 +2090,8 @@ async def api_deploy(
         # starts, registers and earns nothing.
         "devices": docker_conf.get("devices") or None,
         "privileged": docker_conf.get("privileged", False),
+        "sysctls": docker_conf.get("sysctls") or None,
+        "shm_size": docker_conf.get("shm_size") or None,
         "egress_mode": catalog.service_egress_mode(svc),
         "egress_udp": catalog.service_egress_udp(svc),
     }
@@ -2123,6 +2153,8 @@ async def api_deploy(
         instance_spec.setdefault("labels", {})
         instance_spec["labels"]["cashpilot.provider"] = slug
         instance_spec["labels"]["cashpilot.instance_mode"] = mode
+        if instance_spec.get("volumes"):
+            instance_spec["volumes"] = _mode_scoped_named_volumes(instance_spec["volumes"], mode)
         if mode == "proxy":
             instance_spec["proxy"] = await _proxy_for_worker_instance(worker_id)
             instance_spec["egress_mode"] = "proxy"
@@ -2199,7 +2231,7 @@ async def _register_spide_device_from_worker_logs(worker_id: int, hostname: str)
         await database.record_health_event("spide", "setup_waiting", "Device key not visible in worker logs yet")
         return
     try:
-        await provider_automation.register_spide_device(str(token), device_key, title=f"cashpilot-{hostname}")
+            await provider_automation.register_spide_device(str(token), device_key, title=f"{hostname}-spide")
     except Exception as exc:
         logger.warning("Spide device registration failed: %s", exc)
         await database.record_health_event("spide", "setup_failed", "dashboard device registration failed")
@@ -4072,6 +4104,7 @@ async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
             "deploy_credentials": deploy_fields,
             "dashboard_credentials": dashboard_fields,
             "currency": pay_currency,
+            "deploy_surface": _service_deploy_surface(svc),
         }
         runtime = provider_runtime.catalog_runtime(slug)
         if runtime:

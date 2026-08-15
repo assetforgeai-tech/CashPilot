@@ -24,6 +24,7 @@ def test_proxy_instance_runs_provider_inside_singbox_sidecar_namespace():
     sidecar_call, provider_call = client.containers.run.call_args_list
     assert sidecar_call.kwargs["name"] == "cashpilot-bitping-proxy-egress"
     assert sidecar_call.kwargs["image"] == "ghcr.io/sagernet/sing-box:latest"
+    assert sidecar_call.kwargs["environment"]["ENABLE_DEPRECATED_LEGACY_DNS_SERVERS"] == "true"
     assert sidecar_call.kwargs["cap_add"] == ["NET_ADMIN"]
     assert "/dev/net/tun:/dev/net/tun" in sidecar_call.kwargs["devices"]
     assert provider_call.kwargs["network_mode"] == "container:cashpilot-bitping-proxy-egress"

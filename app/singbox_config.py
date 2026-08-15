@@ -22,6 +22,10 @@ def render_tun_proxy_config(proxy: dict[str, Any], *, worker_name: str) -> dict[
         outbound["password"] = proxy["password"]
     return {
         "log": {"level": "info"},
+        "dns": {
+            "servers": [{"tag": "cf", "address": "1.1.1.1", "detour": "direct"}],
+            "strategy": "ipv4_only",
+        },
         "inbounds": [
             {
                 "type": "tun",
@@ -34,5 +38,12 @@ def render_tun_proxy_config(proxy: dict[str, Any], *, worker_name: str) -> dict[
             }
         ],
         "outbounds": [outbound, {"type": "direct", "tag": "direct"}],
-        "route": {"final": "proxy-out"},
+        "route": {
+            "auto_detect_interface": True,
+            "rules": [
+                {"port": 53, "outbound": "direct"},
+                {"domain": [proxy["host"]], "outbound": "direct"},
+            ],
+            "final": "proxy-out",
+        },
     }

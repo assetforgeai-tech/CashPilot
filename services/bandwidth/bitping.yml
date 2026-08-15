@@ -15,7 +15,7 @@ referral:
   signup_url: "https://app.bitping.com"
 
 docker:
-  image: bitping/bitpingd
+  image: bitping/bitpingd:latest
   platforms: [linux/amd64, linux/arm64]
   resources:
     mem_limit: "192m"
@@ -23,7 +23,7 @@ docker:
   env: []
   ports: []
   volumes:
-    - "bitping-data:/root/.bitping"
+    - "bitpingd-volume:/root/.bitpingd"
   command: ""
   network_mode: ""
   privileged: false
@@ -37,9 +37,10 @@ docker:
   # Scoped per-slug, so it grants nothing to any other service.
   cap_add: [NET_RAW]
   notes: >
-    Initial authentication is interactive via the container's web UI.
-    Credentials are then persisted in the /root/.bitping volume mount.
-    No environment variables are needed.
+    CashPilot runs the tested one-shot login first:
+    /app/bitpingd login --email ... --password ...
+    Credentials are then persisted in the /root/.bitpingd volume mount before
+    the long-running bitpingd container starts.
 
 deploy:
   credentials:

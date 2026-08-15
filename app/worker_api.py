@@ -954,6 +954,8 @@ class DeploySpec(BaseModel):
     installer_platform: str | None = None
     deploy_credentials: dict[str, Any] = Field(default_factory=dict)
     provider_slug: str | None = None
+    sysctls: dict[str, str] | None = None
+    shm_size: str | None = None
     # Advanced and unsupported. Absent means Docker's default runtime, which is
     # what everything uses and what everything is tested against.
     runtime: str | None = None
@@ -1288,16 +1290,17 @@ def _validate_runtime(runtime: str | None) -> None:
 
 def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
     _validate_runtime(spec.runtime)
+    provider_slug = spec.provider_slug or slug
     if spec.privileged:
         raise HTTPException(status_code=403, detail="Privileged containers are not allowed")
     if spec.cap_add:
         requested = {c.upper() for c in spec.cap_add}
-        blocked = requested - _catalog_allowed_capabilities(slug)
+        blocked = requested - _catalog_allowed_capabilities(provider_slug)
         if blocked:
             raise HTTPException(status_code=403, detail=f"Blocked capabilities: {', '.join(sorted(blocked))}")
     if spec.devices:
         requested_devices = {str(d).split(":")[0].rstrip("/") for d in spec.devices}
-        blocked_devices = requested_devices - _catalog_allowed_devices(slug)
+        blocked_devices = requested_devices - _catalog_allowed_devices(provider_slug)
         if blocked_devices:
             raise HTTPException(
                 status_code=403,
@@ -1305,7 +1308,7 @@ def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
             )
     if spec.network_mode not in _ALLOWED_NETWORK_MODES:
         raise HTTPException(status_code=403, detail=f"Network mode '{spec.network_mode}' is not allowed")
-    if spec.network_mode == "host" and slug not in _catalog_host_network_slugs():
+    if spec.network_mode == "host" and provider_slug not in _catalog_host_network_slugs():
         raise HTTPException(status_code=403, detail=f"Network mode 'host' is not allowed for '{slug}'")
     for source in spec.volumes:
         if not source.startswith("/"):
@@ -1394,6 +1397,8 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             deploy_credentials=spec.deploy_credentials,
             user=spec.user,
             proxy=spec.proxy,
+            sysctls=spec.sysctls,
+            shm_size=spec.shm_size,
         )
         if slug == "mysterium":
             try:

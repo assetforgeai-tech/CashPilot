@@ -346,6 +346,7 @@ class TestProviderAutomationContracts:
     def test_spide_runtime_uses_device_key_registration(self):
         svc = self._svc("spide")
         assert svc["deploy"]["automation"] == "device_key_register"
+        assert svc["deploy"]["deploy_surface"] == "host_systemd"
         assert "dashboard_token" in self._credential_keys(svc, "dashboard")
 
     def test_mysterium_runtime_uses_direct_wallet_deploy_credentials(self):
@@ -358,12 +359,23 @@ class TestProviderAutomationContracts:
         assert self._credential_keys(svc, "deploy") == {"deploy_access_token"}
         assert self._credential_keys(svc, "dashboard") == {"dashboard_access_token"}
         assert {item["key"] for item in svc["docker"]["env"]} == {"NAME"}
+        assert {item["default"] for item in svc["docker"]["env"] if item["key"] == "NAME"} == {"{hostname}"}
 
     def test_proxylite_uses_deploy_user_id_only(self):
         svc = self._svc("proxylite")
         assert self._credential_keys(svc, "deploy") == {"user_id"}
         assert self._credential_keys(svc, "dashboard") == set()
         assert {item["key"] for item in svc["docker"]["env"]} == set()
+        assert svc["deploy"]["deploy_surface"] == "host_systemd"
+
+    def test_proxybase_xyz_uses_host_systemd_surface(self):
+        svc = self._svc("proxybase-xyz")
+        assert svc["deploy"]["deploy_surface"] == "host_systemd"
+        assert self._credential_keys(svc, "deploy") == {"phrase"}
+
+    def test_earnapp_uses_host_systemd_surface(self):
+        svc = self._svc("earnapp")
+        assert svc["deploy"]["deploy_surface"] == "host_systemd"
 
     def test_urnetwork_uses_api_key_for_deploy_and_email_password_for_collector(self):
         svc = self._svc("urnetwork")
@@ -371,6 +383,12 @@ class TestProviderAutomationContracts:
         assert self._credential_keys(svc, "collector") == {"email", "password"}
         assert self._credential_keys(svc, "dashboard") == set()
         assert {item["key"] for item in svc["docker"]["env"]} == set()
+
+    def test_earnfm_uses_api_key_for_deploy_and_email_password_for_collector(self):
+        svc = self._svc("earnfm")
+        assert self._credential_keys(svc, "deploy") == {"token"}
+        assert self._credential_keys(svc, "collector") == {"email", "password"}
+        assert "email/password" in svc["collector"]["credential_hint"]
 
     def test_proxyrack_uses_deploy_api_key_only(self):
         svc = self._svc("proxyrack")

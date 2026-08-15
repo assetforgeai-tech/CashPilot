@@ -2358,7 +2358,9 @@ const CP = (() => {
     let manualNotice = '';
     if (isManual) {
       const platforms = (svc.platforms || []).map(p => p.charAt(0).toUpperCase() + p.slice(1)).join('/');
-      manualNotice = `<div class="manual-notice">${platforms || 'Desktop'} only — earnings tracking available</div>`;
+      manualNotice = svc.deploy_surface === 'host_systemd'
+        ? '<div class="manual-notice">Host systemd runtime — CashPilot deploy runner pending</div>'
+        : `<div class="manual-notice">${platforms || 'Desktop'} only — earnings tracking available</div>`;
     }
 
     return `
@@ -2458,6 +2460,9 @@ const CP = (() => {
       const manualBtnLabel = isDeployed && dashboardUrl
         ? `Dashboard for ${escapeHtml(svc.name)}`
         : `Sign Up for ${escapeHtml(svc.name)}`;
+      const manualReason = svc.deploy_surface === 'host_systemd'
+        ? 'Host systemd runtime — CashPilot worker deploy is not implemented for this provider yet.'
+        : `${platforms || 'Desktop'} only — no Docker image available for automated deployment.`;
       return `
       <div class="card" style="margin-bottom: 16px;" id="setup-${svc.slug}">
         <div class="card-header">
@@ -2466,7 +2471,7 @@ const CP = (() => {
         </div>
         <div style="padding: 8px 0;">
           <p style="color: var(--warning, #f59e0b); margin-bottom: 12px;">
-            <strong>${platforms || 'Desktop'} only</strong> — no Docker image available for automated deployment.
+            <strong>${escapeHtml(manualReason)}</strong>
           </p>
           <p style="color: var(--text-secondary); margin-bottom: 16px;">
             Install the app on your device, then CashPilot will track your earnings automatically.

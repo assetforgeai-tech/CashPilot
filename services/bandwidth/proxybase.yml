@@ -26,7 +26,7 @@ docker:
       required: true
       secret: false
       description: "Any name to identify this device in your ProxyBase dashboard"
-      default: "cashpilot-{hostname}"
+      default: "{hostname}"
   ports: []
   volumes: []
   command: ""

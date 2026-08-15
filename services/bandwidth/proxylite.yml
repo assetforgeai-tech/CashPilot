@@ -15,7 +15,7 @@ referral:
   code: "KMUPRZIZ"
 
 docker:
-  image: proxylite/proxyservice
+  image: ""
   platforms: [linux/amd64, linux/arm64]
   resources:
     mem_limit: "128m"
@@ -27,6 +27,7 @@ docker:
   network_mode: ""
 
 deploy:
+  deploy_surface: host_systemd
   credentials:
     - key: user_id
       label: "PROXYLITE_USER_ID"
@@ -66,7 +67,7 @@ platforms: [docker, windows, linux]
 
 collector:
   type: manual
-  notes: "No dashboard credential is required for deploy. CashPilot counts running worker containers for node presence until a confirmed dashboard/API collector exists."
+  notes: "Source runtime is host-systemd. Install.sh on the host accepts the user ID and starts the node outside Docker; CashPilot should only collect status/count until a host runner exists."
 
 payout:
   model: unknown

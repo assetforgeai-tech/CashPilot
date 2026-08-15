@@ -193,21 +193,14 @@ def test_proxybase_markets_referral_and_image_contract():
         f"ProxyBase Markets signup_url must keep our referral code, got {data['referral']['signup_url']}"
     )
 
-    assert data["docker"]["image"] == "ubuntu:24.04"
+    assert data["docker"]["image"] == ""
+    assert data["deploy"]["deploy_surface"] == "host_systemd"
     assert "linux/arm64" in data["docker"]["platforms"], (
         "ProxyBase Markets must keep arm64 (the official installer supports aarch64 Linux)"
     )
-    command = data["docker"]["command"]
-    assert "apt-get" not in command
-    assert "https://proxybase.xyz/install.sh" not in command
-    assert "PHASE=\"${PROXYBASE_XYZ_PHRASE:?missing wallet phrase}\"" in command
-    assert "\"$CLI\" wallet import \"$PHASE\"" in command
-    assert "\"$CLI\" login" in command
-    assert "seller_config.json" in command
-    assert "seller start --foreground" in command
+    assert data["docker"]["command"] == ""
 
-    env_keys = {e["key"] for e in data["docker"]["env"]}
-    assert env_keys == {"BACKEND_URL"}
+    assert data["docker"]["env"] == []
     deploy = {e["key"]: e for e in data["deploy"]["credentials"]}
     assert deploy["phrase"]["kind"] == "text"
     assert deploy["phrase"]["secret"] is True
@@ -226,7 +219,7 @@ def test_proxies_sx_bandwidth_service_contract():
     assert data["requirements"]["residential_ip"] is True
     assert data["requirements"]["vps_ip"] is False
     assert data["egress"] == {
-        "mode": "direct",
+        "mode": "proxy",
         "udp": "none",
         "reason": data["egress"]["reason"],
     }
@@ -235,7 +228,7 @@ def test_proxies_sx_bandwidth_service_contract():
     assert set(env) == {"API_KEY", "AGENT_NAME"}
     assert env["API_KEY"]["required"] is True
     assert env["API_KEY"]["secret"] is True
-    assert env["AGENT_NAME"]["default"] == "cashpilot-{hostname}"
+    assert env["AGENT_NAME"]["default"] == "docker-peer"
 
     assert data["collector"]["type"] == "api"
     assert data["collector"]["per_node_earnings"] is True
@@ -243,3 +236,42 @@ def test_proxies_sx_bandwidth_service_contract():
     assert credentials["api_key"]["kind"] == "api_key"
     assert credentials["api_key"]["secret"] is True
     assert credentials["api_key"]["required"] is True
+
+def test_bitping_uses_tested_login_volume_path():
+    with open(SERVICES_DIR / "bandwidth" / "bitping.yml") as f:
+        data = yaml.safe_load(f)
+
+    assert data["docker"]["image"] == "bitping/bitpingd:latest"
+    assert data["docker"]["volumes"] == ["bitpingd-volume:/root/.bitpingd"]
+    assert "bitpingd login" in data["docker"]["notes"]
+
+def test_iproyal_and_traffmonetizer_device_names_follow_worker_source():
+    with open(SERVICES_DIR / "bandwidth" / "iproyal.yml") as f:
+        iproyal = yaml.safe_load(f)
+    with open(SERVICES_DIR / "bandwidth" / "traffmonetizer.yml") as f:
+        tm = yaml.safe_load(f)
+
+    iproyal_env = {item["key"]: item for item in iproyal["docker"]["env"]}
+    assert iproyal_env["IPROYALPAWNS_DEVICE_NAME"]["default"] == "{hostname}"
+    assert iproyal_env["IPROYALPAWNS_DEVICE_ID"]["default"] == "{hostname}"
+    assert "-accept-tos" not in iproyal["docker"]["command"]
+
+    tm_env = {item["key"]: item for item in tm["docker"]["env"]}
+    assert tm_env["TRAFFMONETIZER_DEVICE_NAME"]["default"] == "{hostname}-tm"
+
+def test_proxyrack_device_name_uses_worker_name_not_uuid_literal():
+    with open(SERVICES_DIR / "bandwidth" / "proxyrack.yml") as f:
+        data = yaml.safe_load(f)
+
+    env = {item["key"]: item for item in data["docker"]["env"]}
+    assert env["DEVICE_NAME"]["default"] == "{hostname}"
+
+def test_wipter_matches_tested_container_runtime_knobs():
+    with open(SERVICES_DIR / "depin" / "wipter.yml") as f:
+        data = yaml.safe_load(f)
+
+    docker = data["docker"]
+    assert set(docker["cap_add"]) == {"NET_ADMIN", "NET_RAW"}
+    assert docker["sysctls"] == {"net.ipv4.ip_forward": "1"}
+    assert docker["shm_size"] == "2gb"
+    assert docker["ports"] == ["5900:5900", "6080:6080"]

@@ -37,7 +37,7 @@ docker:
       required: false
       secret: false
       description: "Friendly name for the device in dashboard"
-      default: "Device-${UUID}"
+      default: "{hostname}"
   ports: []
   volumes: []
   command: ""
