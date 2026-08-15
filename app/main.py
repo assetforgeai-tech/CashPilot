@@ -2238,7 +2238,7 @@ async def api_deploy(
         await database.record_health_event(slug, "start", f"deployed {instance_slug} to worker {worker_id}")
         metrics.record_container_lifecycle("deploy", slug)
         if slug == "traffmonetizer" and idx == 0 and len(modes) > 1:
-            await asyncio.sleep(300)
+            await asyncio.sleep(600)
 
     _spawn(_run_post_deploy_automation(slug, worker_id, hn, [d["mode"] for d in deployed]))
     _spawn(_run_collection())

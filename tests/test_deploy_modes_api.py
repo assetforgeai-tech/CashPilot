@@ -171,7 +171,7 @@ async def test_traffmonetizer_parallel_modes_get_separate_device_names(monkeypat
     direct_env = specs["traffmonetizer-direct"]["env"]
     proxy_env = specs["traffmonetizer-proxy"]["env"]
     assert order == ["traffmonetizer-direct", "traffmonetizer-proxy"]
-    assert sleeps == [300]
+    assert sleeps == [600]
     assert re.fullmatch(r"\d{14}\.worker-1\.d", direct_env["TRAFFMONETIZER_DEVICE_NAME"])
     assert re.fullmatch(r"\d{14}\.worker-1\.p", proxy_env["TRAFFMONETIZER_DEVICE_NAME"])
     assert f"--device-name {direct_env['TRAFFMONETIZER_DEVICE_NAME']}" in specs["traffmonetizer-direct"]["command"]
