@@ -112,7 +112,7 @@ ADD {deb_url} /tmp/grass-desktop.deb
 RUN apt-get update \\
  && apt-get install -y --no-install-recommends /tmp/grass-desktop.deb xdotool \\
  && rm -rf /var/lib/apt/lists/* /tmp/grass-desktop.deb
-RUN cat >/usr/local/bin/cashpilot-grass <<'SH' && chmod +x /usr/local/bin/cashpilot-grass
+RUN cat >/usr/local/bin/cashpilot-grass <<'SH' && sed -i 's/\\r$//' /usr/local/bin/cashpilot-grass && chmod +x /usr/local/bin/cashpilot-grass
 #!/bin/sh
 set -eu
 mkdir -p "$HOME"
