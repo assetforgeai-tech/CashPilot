@@ -12,6 +12,12 @@ from app import main
 def _request(path: str = "/api/deploy/bitping") -> Request:
     return Request({"type": "http", "method": "POST", "path": path, "headers": []})
 
+def _patch_alive_proxy_probe(monkeypatch):
+    async def fake_probe(_host: str, _port: int, timeout: float = 5.0):
+        return {"status": "alive", "protocol": "socks5"}
+
+    monkeypatch.setattr("app.routers.proxies._probe_proxy_confirmed", fake_probe)
+
 
 @pytest.mark.asyncio
 async def test_proxy_mode_attaches_proxy_and_direct_mode_does_not(monkeypatch):
@@ -233,6 +239,8 @@ async def test_standard_device_identity_uses_worker_egress_ip(monkeypatch, slug,
     monkeypatch.setattr(main, "_proxy_worker_logs", fake_logs)
     monkeypatch.setattr(main.asyncio, "sleep", fake_sleep)
     monkeypatch.setattr(main, "_spawn", close_spawn)
+    if slug == "iproyal":
+        _patch_alive_proxy_probe(monkeypatch)
 
     await main.api_deploy(
         _request(f"/api/deploy/{slug}"),
@@ -313,6 +321,7 @@ async def test_iproyal_proxy_masks_ip_used_and_retries(monkeypatch):
     monkeypatch.setattr(main, "_proxy_worker_command", fake_command)
     monkeypatch.setattr(main.asyncio, "sleep", fake_sleep)
     monkeypatch.setattr(main, "_spawn", close_spawn)
+    _patch_alive_proxy_probe(monkeypatch)
 
     response = await main.api_deploy(
         _request("/api/deploy/iproyal"),
@@ -375,6 +384,7 @@ async def test_iproyal_proxy_masks_tls_failure_and_retries(monkeypatch):
     monkeypatch.setattr(main, "_proxy_worker_command", noop)
     monkeypatch.setattr(main.asyncio, "sleep", fake_sleep)
     monkeypatch.setattr(main, "_spawn", close_spawn)
+    _patch_alive_proxy_probe(monkeypatch)
 
     await main.api_deploy(
         _request("/api/deploy/iproyal"),
@@ -386,6 +396,134 @@ async def test_iproyal_proxy_masks_tls_failure_and_retries(monkeypatch):
 
     assert [spec["proxy"]["proxy_id"] for spec in specs] == [4, 5]
     assert masked == [(4, "iproyal", "tls_failed")]
+
+@pytest.mark.asyncio
+async def test_iproyal_proxy_reprobes_and_updates_protocol_before_deploy(monkeypatch):
+    specs: list[dict] = []
+    updates: list[tuple[dict, dict | None]] = []
+
+    async def fake_deploy(_worker_id: int, _instance_slug: str, spec: dict) -> dict[str, str]:
+        specs.append(spec)
+        return {"container_id": "cid"}
+
+    async def config(*_args, **_kwargs):
+        return {"iproyal_email": "user@example.com", "iproyal_password": "secret"}
+
+    async def fake_proxy(_worker_id: int, **kwargs):
+        assert kwargs == {"provider_slug": "iproyal"}
+        return {"proxy_id": 7, "host": "1.1.1.7", "port": 1080, "protocol": "http"}
+
+    async def fake_probe(host: str, port: int, timeout: float = 5.0):
+        assert host == "1.1.1.7"
+        assert port == 1080
+        return {"status": "alive", "protocol": "socks5"}
+
+    async def fake_update(results, *, protocols=None):
+        updates.append((dict(results), dict(protocols or {})))
+        return 1
+
+    async def fake_logs(_worker_id: int, _slug: str, lines: int = 50):
+        return {"logs": "running"}
+
+    async def noop(*_args, **_kwargs):
+        return None
+
+    async def fake_sleep(_seconds: int):
+        return None
+
+    def close_spawn(coro):
+        coro.close()
+
+    monkeypatch.setattr(main.database, "get_deployment_spec", noop)
+    monkeypatch.setattr(main.database, "get_config", config)
+    monkeypatch.setattr(main.database, "save_provider_instance", noop)
+    monkeypatch.setattr(main.database, "record_health_event", noop)
+    monkeypatch.setattr(main.database, "update_proxy_pool_check_results", fake_update)
+    monkeypatch.setattr(main, "_proxy_for_worker_instance", fake_proxy)
+    monkeypatch.setattr(main, "_proxy_worker_deploy", fake_deploy)
+    monkeypatch.setattr(main, "_proxy_worker_logs", fake_logs)
+    monkeypatch.setattr(main.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(main, "_spawn", close_spawn)
+    monkeypatch.setattr("app.routers.proxies._probe_proxy_confirmed", fake_probe)
+
+    await main.api_deploy(
+        _request("/api/deploy/iproyal"),
+        "iproyal",
+        main.DeployRequest(env={}, hostname="worker-1", mode="proxy"),
+        worker_id=7,
+        _auth={"r": "owner"},
+    )
+
+    assert specs[0]["proxy"]["protocol"] == "socks5"
+    assert updates == [({7: "alive"}, {7: "socks5"})]
+
+@pytest.mark.asyncio
+async def test_iproyal_proxy_probe_failure_masks_and_rotates(monkeypatch):
+    specs: list[dict] = []
+    masked: list[tuple[int, str, str]] = []
+    proxy_ids = [11, 12]
+
+    async def fake_deploy(_worker_id: int, _instance_slug: str, spec: dict) -> dict[str, str]:
+        specs.append(spec)
+        return {"container_id": f"cid-{len(specs)}"}
+
+    async def config(*_args, **_kwargs):
+        return {"iproyal_email": "user@example.com", "iproyal_password": "secret"}
+
+    async def fake_proxy(_worker_id: int, **kwargs):
+        assert kwargs == {"provider_slug": "iproyal"}
+        proxy_id = proxy_ids.pop(0)
+        return {"proxy_id": proxy_id, "host": f"1.1.1.{proxy_id}", "port": 1080, "protocol": "socks5"}
+
+    async def fake_probe(host: str, _port: int, timeout: float = 5.0):
+        if host.endswith(".11"):
+            return {"status": "dead", "protocol": ""}
+        return {"status": "alive", "protocol": "socks5"}
+
+    async def fake_mask(proxy_id: int, provider_slug: str, reason: str):
+        masked.append((proxy_id, provider_slug, reason))
+        return True
+
+    async def fake_command(_worker_id: int, command: str, slug: str, *, params=None):
+        assert command == "remove"
+        assert slug == "iproyal-proxy"
+        return {"status": "ok"}
+
+    async def noop(*_args, **_kwargs):
+        return None
+
+    async def fake_sleep(_seconds: int):
+        return None
+
+    def close_spawn(coro):
+        coro.close()
+
+    monkeypatch.setattr(main.database, "get_deployment_spec", noop)
+    monkeypatch.setattr(main.database, "get_config", config)
+    monkeypatch.setattr(main.database, "save_provider_instance", noop)
+    monkeypatch.setattr(main.database, "record_health_event", noop)
+    monkeypatch.setattr(main.database, "mask_proxy_for_provider", fake_mask)
+    monkeypatch.setattr(main, "_proxy_for_worker_instance", fake_proxy)
+    monkeypatch.setattr(main, "_proxy_worker_deploy", fake_deploy)
+    async def fake_logs(*_args, **_kwargs):
+        return {"logs": "running"}
+
+    monkeypatch.setattr(main, "_proxy_worker_logs", fake_logs)
+    monkeypatch.setattr(main, "_proxy_worker_command", fake_command)
+    monkeypatch.setattr(main.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(main, "_spawn", close_spawn)
+    monkeypatch.setattr("app.routers.proxies._probe_proxy_confirmed", fake_probe)
+
+    await main.api_deploy(
+        _request("/api/deploy/iproyal"),
+        "iproyal",
+        main.DeployRequest(env={}, hostname="worker-1", mode="proxy"),
+        worker_id=7,
+        _auth={"r": "owner"},
+    )
+
+    assert [spec["proxy"]["proxy_id"] for spec in specs] == [12]
+    assert masked == [(11, "iproyal", "proxy_probe_failed")]
 
 @pytest.mark.asyncio
 async def test_redeploy_uses_current_runtime_settings_over_recorded_env(monkeypatch):
@@ -431,6 +569,7 @@ async def test_redeploy_uses_current_runtime_settings_over_recorded_env(monkeypa
     monkeypatch.setattr(main, "_proxy_worker_logs", fake_logs)
     monkeypatch.setattr(main.asyncio, "sleep", fake_sleep)
     monkeypatch.setattr(main, "_spawn", close_spawn)
+    _patch_alive_proxy_probe(monkeypatch)
 
     await main.api_deploy(
         _request("/api/deploy/iproyal"),

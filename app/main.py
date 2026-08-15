@@ -1986,6 +1986,27 @@ async def _proxy_for_worker_instance(worker_id: int, *, provider_slug: str | Non
         raise HTTPException(status_code=409, detail="No proxy available for this worker")
     return proxy
 
+async def _resolve_pawns_proxy_protocol(proxy: dict[str, Any]) -> dict[str, Any] | None:
+    proxy_id = int(proxy.get("proxy_id") or 0)
+    host = str(proxy.get("host") or "").strip()
+    try:
+        port = int(proxy.get("port") or 0)
+    except Exception:
+        return None
+    if not proxy_id or not host or port <= 0:
+        return None
+    from app.routers.proxies import _probe_proxy_confirmed
+
+    result = await _probe_proxy_confirmed(host, port)
+    if result.get("status") != "alive":
+        return None
+    detected = str(result.get("protocol") or "").strip().lower()
+    if detected in {"http", "socks5"} and detected != str(proxy.get("protocol") or "").strip().lower():
+        await database.update_proxy_pool_check_results({proxy_id: "alive"}, protocols={proxy_id: detected})
+        proxy = dict(proxy)
+        proxy["protocol"] = detected
+    return proxy
+
 def _pawns_log_failure_reason(logs: str) -> str:
     text = str(logs or "").lower()
     if "ip_used" in text:
@@ -2013,7 +2034,17 @@ async def _deploy_iproyal_proxy_with_retry(
     last_error: str | None = None
     for attempt in range(1, max(1, attempts) + 1):
         attempt_spec = json.loads(json.dumps(spec))
-        proxy = await _proxy_for_worker_instance(worker_id, provider_slug="iproyal")
+        raw_proxy = await _proxy_for_worker_instance(worker_id, provider_slug="iproyal")
+        proxy = await _resolve_pawns_proxy_protocol(raw_proxy)
+        if not proxy:
+            proxy_id = int((raw_proxy or {}).get("proxy_id") or 0)
+            if proxy_id:
+                await database.mask_proxy_for_provider(proxy_id, "iproyal", "proxy_probe_failed")
+                await database.record_health_event("iproyal", "proxy_masked", f"masked proxy {proxy_id} after proxy_probe_failed")
+            with contextlib.suppress(Exception):
+                await _proxy_worker_command(worker_id, "remove", instance_slug)
+            last_error = "proxy_probe_failed"
+            continue
         attempt_spec["proxy"] = proxy
         attempt_spec["egress_mode"] = "proxy"
         result = await _proxy_worker_deploy(worker_id, instance_slug, attempt_spec)
