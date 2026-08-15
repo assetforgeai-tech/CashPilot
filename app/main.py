@@ -1986,16 +1986,22 @@ async def _proxy_for_worker_instance(worker_id: int, *, provider_slug: str | Non
         raise HTTPException(status_code=409, detail="No proxy available for this worker")
     return proxy
 
-def _pawns_log_has_ip_used(logs: str) -> bool:
-    return "ip_used" in str(logs or "").lower()
+def _pawns_log_failure_reason(logs: str) -> str:
+    text = str(logs or "").lower()
+    if "ip_used" in text:
+        return "ip_used"
+    if "tls:" in text or "x509:" in text or "certificate" in text:
+        return "tls_failed"
+    return ""
 
-async def _wait_for_pawns_ip_used(worker_id: int, instance_slug: str) -> bool:
+async def _wait_for_pawns_proxy_failure(worker_id: int, instance_slug: str) -> str:
     for _ in range(12):
         payload = await _proxy_worker_logs(worker_id, instance_slug, lines=200)
-        if _pawns_log_has_ip_used(payload.get("logs", "")):
-            return True
+        reason = _pawns_log_failure_reason(payload.get("logs", ""))
+        if reason:
+            return reason
         await asyncio.sleep(5)
-    return False
+    return ""
 
 async def _deploy_iproyal_proxy_with_retry(
     worker_id: int,
@@ -2011,15 +2017,16 @@ async def _deploy_iproyal_proxy_with_retry(
         attempt_spec["proxy"] = proxy
         attempt_spec["egress_mode"] = "proxy"
         result = await _proxy_worker_deploy(worker_id, instance_slug, attempt_spec)
-        if await _wait_for_pawns_ip_used(worker_id, instance_slug):
+        failure_reason = await _wait_for_pawns_proxy_failure(worker_id, instance_slug)
+        if failure_reason:
             proxy_id = int((proxy or {}).get("proxy_id") or 0)
             if proxy_id:
-                await database.mask_proxy_for_provider(proxy_id, "iproyal", "ip_used")
-                await database.record_health_event("iproyal", "proxy_masked", f"masked proxy {proxy_id} after ip_used")
+                await database.mask_proxy_for_provider(proxy_id, "iproyal", failure_reason)
+                await database.record_health_event("iproyal", "proxy_masked", f"masked proxy {proxy_id} after {failure_reason}")
             with contextlib.suppress(Exception):
                 await _proxy_worker_command(worker_id, "remove", instance_slug)
-            last_error = f"ip_used on proxy {proxy_id or 'unknown'}"
-            logger.warning("IPRoyal Pawns attempt %d/%d hit ip_used; rotating proxy", attempt, attempts)
+            last_error = f"{failure_reason} on proxy {proxy_id or 'unknown'}"
+            logger.warning("IPRoyal Pawns attempt %d/%d hit %s; rotating proxy", attempt, attempts, failure_reason)
             continue
         return result, attempt_spec
     raise HTTPException(status_code=409, detail=last_error or "IPRoyal Pawns failed after proxy rotation")
