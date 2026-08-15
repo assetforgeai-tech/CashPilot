@@ -163,6 +163,8 @@ async def test_traffmonetizer_parallel_modes_get_separate_device_names(monkeypat
     proxy_env = specs["traffmonetizer-proxy"]["env"]
     assert direct_env["TRAFFMONETIZER_DEVICE_NAME"] == "worker-1-direct-tm"
     assert proxy_env["TRAFFMONETIZER_DEVICE_NAME"] == "worker-1-proxy-tm"
+    assert "--device-name worker-1-direct-tm" in specs["traffmonetizer-direct"]["command"]
+    assert "--device-name worker-1-proxy-tm" in specs["traffmonetizer-proxy"]["command"]
 
 @pytest.mark.asyncio
 async def test_host_systemd_deploy_is_blocked(monkeypatch):

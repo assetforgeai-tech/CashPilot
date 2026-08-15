@@ -2163,6 +2163,12 @@ async def api_deploy(
             if base_name.endswith("-tm"):
                 base_name = base_name[:-3]
             instance_env["TRAFFMONETIZER_DEVICE_NAME"] = f"{base_name}-{mode}-tm"
+            if raw_command:
+                instance_spec["command"] = re.sub(
+                    r"\$\{(\w+)\}",
+                    lambda m: instance_env.get(m.group(1), m.group(0)),
+                    raw_command,
+                )
         if instance_spec.get("volumes"):
             instance_spec["volumes"] = _mode_scoped_named_volumes(instance_spec["volumes"], mode)
         if mode == "proxy":
