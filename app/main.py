@@ -2933,6 +2933,7 @@ async def api_credential_health(request: Request) -> list[dict[str, Any]]:
         if not slug:
             continue
         svc = catalog.get_service(slug) or svc
+        seen_keys: set[str] = set()
         fields = (
             collector_credential_fields(slug, svc)
             + service_credential_fields(slug, "deploy", svc, fallback=False)
@@ -2942,6 +2943,9 @@ async def api_credential_health(request: Request) -> list[dict[str, Any]]:
         missing_durable = [field for field in durable_fields if f"{slug}_{field}" not in updated]
         for field in fields:
             key = field["key"]
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
             stamp = updated.get(key)
             if not stamp:
                 continue  # not configured; nothing to report an age for

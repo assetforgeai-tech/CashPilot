@@ -133,6 +133,55 @@ def test_credential_health_marks_expiring_credentials(tmp_path):
 
     asyncio.run(run())
 
+def test_credential_health_dedupes_shared_keys_across_sections(tmp_path):
+    fake_service = {
+        "slug": "traffmonetizer",
+        "name": "Traffmonetizer",
+        "collector": {
+            "credentials": [
+                {
+                    "key": "token",
+                    "label": "Token",
+                    "kind": "token",
+                    "required": True,
+                    "description": "collector token",
+                }
+            ]
+        },
+        "deploy": {
+            "credentials": [
+                {
+                    "key": "token",
+                    "label": "Token",
+                    "kind": "token",
+                    "required": True,
+                    "description": "deploy token",
+                },
+                {
+                    "key": "device_name",
+                    "label": "Device name",
+                    "kind": "text",
+                    "required": False,
+                },
+            ]
+        },
+    }
+
+    async def run():
+        with (
+            patch.object(database, "DB_DIR", tmp_path),
+            patch.object(database, "DB_PATH", tmp_path / "settings.db"),
+            patch.object(main, "_require_auth_api", lambda request: {"uid": 1}),
+            patch.object(main.catalog, "get_services", return_value=[fake_service]),
+            patch.object(main.catalog, "get_service", return_value=fake_service),
+        ):
+            await database.init_db()
+            await database.set_config_bulk({"traffmonetizer_token": "token", "traffmonetizer_device_name": "worker-tm"})
+            rows = await main.api_credential_health(object())
+            assert [(row["service"], row["field"]) for row in rows] == [("traffmonetizer", "token"), ("traffmonetizer", "device_name")]
+
+    asyncio.run(run())
+
 def test_startup_backfills_deploy_only_and_dashboard_only_tracking_rows(tmp_path):
     deploy_only = {
         "slug": "proxylite",
