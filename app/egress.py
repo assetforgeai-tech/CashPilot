@@ -40,6 +40,7 @@ this to fail, and the reason it ships as-is.
 from __future__ import annotations
 
 import ipaddress
+import json
 from typing import Any
 
 # What kind of connection the worker sits on. UNKNOWN is the default and is
@@ -161,6 +162,11 @@ def egress_of(worker: dict[str, Any] | None) -> str | None:
     if not worker:
         return None
     info = worker.get("system_info") or {}
+    if isinstance(info, str):
+        try:
+            info = json.loads(info)
+        except json.JSONDecodeError:
+            return None
     if not isinstance(info, dict):
         return None
     return public_ip(info.get("egress_ip"))
@@ -171,6 +177,11 @@ def network_type_of(worker: dict[str, Any] | None) -> str:
     if not worker:
         return UNKNOWN
     info = worker.get("system_info") or {}
+    if isinstance(info, str):
+        try:
+            info = json.loads(info)
+        except json.JSONDecodeError:
+            return UNKNOWN
     if not isinstance(info, dict):
         return UNKNOWN
     return normalise_network_type(info.get("egress_network_type"))

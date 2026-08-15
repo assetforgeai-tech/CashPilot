@@ -1976,7 +1976,6 @@ async def _proxy_for_worker_instance(worker_id: int) -> dict[str, Any]:
 
 _DEVICE_IDENTITY_ENV_KEYS: dict[str, tuple[str, ...]] = {
     "iproyal": ("IPROYALPAWNS_DEVICE_NAME", "IPROYALPAWNS_DEVICE_ID"),
-    "proxies-sx": ("AGENT_NAME",),
     "proxybase": ("NAME",),
     "proxyrack": ("DEVICE_NAME",),
     "traffmonetizer": ("TRAFFMONETIZER_DEVICE_NAME",),

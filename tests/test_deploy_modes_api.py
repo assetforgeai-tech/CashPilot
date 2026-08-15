@@ -183,7 +183,6 @@ async def test_traffmonetizer_parallel_modes_get_separate_device_names(monkeypat
     ("slug", "mode", "expected_fields", "expected_suffix"),
     [
         ("iproyal", "proxy", ("IPROYALPAWNS_DEVICE_NAME", "IPROYALPAWNS_DEVICE_ID"), "p"),
-        ("proxies-sx", "proxy", ("AGENT_NAME",), "p"),
         ("proxybase", "both", ("NAME",), None),
         ("proxyrack", "both", ("DEVICE_NAME",), None),
         ("traffmonetizer", "both", ("TRAFFMONETIZER_DEVICE_NAME",), None),
@@ -213,7 +212,7 @@ async def test_standard_device_identity_uses_worker_egress_ip(monkeypatch, slug,
         return {"proxy_id": 9, "host": "1.2.3.4", "port": 1080, "protocol": "socks5"}
 
     async def fake_worker(_worker_id: int):
-        return {"id": _worker_id, "name": "worker-1", "system_info": {"egress_ip": "8.8.8.8"}}
+        return {"id": _worker_id, "name": "worker-1", "system_info": '{"egress_ip": "8.8.8.8"}'}
 
     async def fake_sleep(_seconds: int):
         return None
