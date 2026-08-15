@@ -161,7 +161,7 @@ def test_settings_collector_credentials_cover_provider_collector_notes():
         "proxies-sx": {"api_key"},
         "proxyrack": {"api_key"},
         "repocket": {"email", "password"},
-        "traffmonetizer": {"token"},
+        "traffmonetizer": {"email", "password"},
         "urnetwork": {"email", "password"},
     }
 

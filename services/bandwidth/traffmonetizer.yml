@@ -26,7 +26,7 @@ docker:
       label: "Token"
       required: true
       secret: true
-      description: "Log in at <a href=\"https://app.traffmonetizer.com\">app.traffmonetizer.com</a>, press F12 → Application → Local Storage → click <code>https://app.traffmonetizer.com</code> → copy the <code>token</code> value (a long JWT starting with eyJ)"
+      description: "Log in at <a href=\"https://app.traffmonetizer.com/dashboard\">app.traffmonetizer.com/dashboard</a>, then copy <strong>Your application token</strong> from the dashboard card."
     - key: TRAFFMONETIZER_DEVICE_NAME
       label: "Device name"
       required: false
@@ -84,15 +84,22 @@ platforms: [docker, windows, macos, android]
 collector:
   type: api
   credentials:
-    - key: token
-      label: "Token"
-      kind: token
+    - key: email
+      label: "Email"
+      kind: email
+      secret: false
+      required: true
+      source: "Traffmonetizer account"
+      description: "Account email used by the earnings collector."
+    - key: password
+      label: "Password"
+      kind: password
       secret: true
       required: true
-      source: "Traffmonetizer browser localStorage"
-      description: "access_token/token used by the earnings collector."
-  notes: "reCAPTCHA blocks programmatic login. Token extracted from browser Local Storage at app.traffmonetizer.com (same as deployment token)."
-  credential_hint: "Log in at <a href='https://app.traffmonetizer.com' target='_blank'>app.traffmonetizer.com</a>, press F12 → Application → Local Storage → <b>token</b> value (a long JWT starting with <code>eyJ</code>)."
+      source: "Traffmonetizer account"
+      description: "Account password used by the earnings collector."
+  notes: "Collector logs in with email/password, then reads the balance API using the dashboard session token."
+  credential_hint: "Enter your Traffmonetizer account email and password. Deploy still uses the dashboard's <strong>Your application token</strong>."
 
 payout:
   model: internal

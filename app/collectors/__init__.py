@@ -44,7 +44,7 @@ _COLLECTOR_ARGS: dict[str, list[str]] = {
     "earnapp": ["oauth_token"],
     "iproyal": ["email", "password"],
     "mysterium": ["email", "password"],
-    "traffmonetizer": ["token"],
+    "traffmonetizer": ["email", "password"],
     "repocket": ["email", "password"],
     "proxyrack": ["api_key"],
     "bitping": ["email", "password"],

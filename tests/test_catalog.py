@@ -258,6 +258,8 @@ def test_iproyal_and_traffmonetizer_device_names_follow_worker_source():
 
     tm_env = {item["key"]: item for item in tm["docker"]["env"]}
     assert tm_env["TRAFFMONETIZER_DEVICE_NAME"]["default"] == "{hostname}-tm"
+    assert "email and password" in tm["collector"]["credential_hint"]
+    assert "Local Storage" not in tm["collector"]["credential_hint"]
 
 def test_proxyrack_device_name_uses_worker_name_not_uuid_literal():
     with open(SERVICES_DIR / "bandwidth" / "proxyrack.yml") as f:
