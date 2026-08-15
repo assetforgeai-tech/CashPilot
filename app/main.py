@@ -2145,8 +2145,10 @@ async def api_deploy(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    if slug == "traffmonetizer" and set(modes) == {"direct", "proxy"}:
+        modes = ["proxy", "direct"]
     deployed: list[dict[str, str]] = []
-    for mode in modes:
+    for idx, mode in enumerate(modes):
         instance_slug = slug if mode == "legacy" else f"{slug}-{mode}"
         instance_spec = json.loads(json.dumps(spec))
         instance_spec["provider_slug"] = slug
@@ -2211,6 +2213,8 @@ async def api_deploy(
         deployed.append({"instance_id": instance_slug, "container_id": container_id, "mode": mode})
         await database.record_health_event(slug, "start", f"deployed {instance_slug} to worker {worker_id}")
         metrics.record_container_lifecycle("deploy", slug)
+        if slug == "traffmonetizer" and idx == 0 and len(modes) > 1:
+            await asyncio.sleep(180)
 
     _spawn(_run_post_deploy_automation(slug, worker_id, hn))
     _spawn(_run_collection())

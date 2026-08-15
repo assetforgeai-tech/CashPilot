@@ -126,9 +126,12 @@ async def test_proxyrack_parallel_modes_get_separate_uuid_and_device_names(monke
 @pytest.mark.asyncio
 async def test_traffmonetizer_parallel_modes_get_separate_device_names(monkeypatch):
     specs: dict[str, dict] = {}
+    order: list[str] = []
+    sleeps: list[int] = []
 
     async def fake_deploy(_worker_id: int, instance_slug: str, spec: dict) -> dict[str, str]:
         specs[instance_slug] = spec
+        order.append(instance_slug)
         return {"container_id": f"{instance_slug}-cid"}
 
     async def noop(*_args, **_kwargs):
@@ -140,6 +143,9 @@ async def test_traffmonetizer_parallel_modes_get_separate_device_names(monkeypat
     async def proxy(_worker_id: int):
         return {"proxy_id": 9, "host": "1.2.3.4", "port": 1080, "protocol": "socks5"}
 
+    async def fake_sleep(seconds: int):
+        sleeps.append(seconds)
+
     def close_spawn(coro):
         coro.close()
 
@@ -149,6 +155,7 @@ async def test_traffmonetizer_parallel_modes_get_separate_device_names(monkeypat
     monkeypatch.setattr(main.database, "record_health_event", noop)
     monkeypatch.setattr(main, "_proxy_for_worker_instance", proxy)
     monkeypatch.setattr(main, "_proxy_worker_deploy", fake_deploy)
+    monkeypatch.setattr(main.asyncio, "sleep", fake_sleep)
     monkeypatch.setattr(main, "_spawn", close_spawn)
 
     await main.api_deploy(
@@ -161,6 +168,8 @@ async def test_traffmonetizer_parallel_modes_get_separate_device_names(monkeypat
 
     direct_env = specs["traffmonetizer-direct"]["env"]
     proxy_env = specs["traffmonetizer-proxy"]["env"]
+    assert order == ["traffmonetizer-proxy", "traffmonetizer-direct"]
+    assert sleeps == [180]
     assert direct_env["TRAFFMONETIZER_DEVICE_NAME"] == "worker-1-direct-tm"
     assert proxy_env["TRAFFMONETIZER_DEVICE_NAME"] == "worker-1-proxy-tm"
     assert "--device-name worker-1-direct-tm" in specs["traffmonetizer-direct"]["command"]
