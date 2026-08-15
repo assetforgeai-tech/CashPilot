@@ -118,15 +118,16 @@ if [ "${TRY_AUTOLOGIN:-true}" = "true" ] && [ -n "${USER_EMAIL:-}" ] && [ -n "${
   if [ -n "${wid:-}" ]; then
     DISPLAY=:99 xdotool windowactivate --sync "$wid" || true
     sleep 2
-    DISPLAY=:99 xdotool mousemove 150 226 click 1 key ctrl+a BackSpace type --delay 80 -- "$USER_EMAIL" || true
-    DISPLAY=:99 xdotool mousemove 145 296 click 1 || true
-    sleep 6
+    DISPLAY=:99 xdotool mousemove 270 607 click 1 || true
+    sleep 3
+    DISPLAY=:99 xdotool mousemove 100 202 click 1 key ctrl+a BackSpace type --delay 80 -- "$USER_EMAIL" || true
+    DISPLAY=:99 xdotool mousemove 170 273 click 1 || true
+    DISPLAY=:99 xdotool mousemove 170 366 click 1 || true
+    sleep 8
     DISPLAY=:99 xdotool mousemove 177 479 click 1 || true
     sleep 3
-    DISPLAY=:99 xdotool mousemove 130 226 click 1 type --delay 80 -- "$USER_PASSWORD" || true
+    DISPLAY=:99 xdotool mousemove 130 226 click 1 key ctrl+a BackSpace type --delay 80 -- "$USER_PASSWORD" || true
     DISPLAY=:99 xdotool mousemove 160 340 click 1 || true
-    sleep 20
-    date -u +%FT%TZ > "$HOME/.grass-configured"
   fi
 fi
 wait "$grass_pid"
