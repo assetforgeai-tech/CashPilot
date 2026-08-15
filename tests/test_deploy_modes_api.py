@@ -124,6 +124,47 @@ async def test_proxyrack_parallel_modes_get_separate_uuid_and_device_names(monke
     assert proxy_env["DEVICE_NAME"] == "worker-1-proxy"
 
 @pytest.mark.asyncio
+async def test_traffmonetizer_parallel_modes_get_separate_device_names(monkeypatch):
+    specs: dict[str, dict] = {}
+
+    async def fake_deploy(_worker_id: int, instance_slug: str, spec: dict) -> dict[str, str]:
+        specs[instance_slug] = spec
+        return {"container_id": f"{instance_slug}-cid"}
+
+    async def noop(*_args, **_kwargs):
+        return None
+
+    async def config(*_args, **_kwargs):
+        return {"traffmonetizer_token": "token"}
+
+    async def proxy(_worker_id: int):
+        return {"proxy_id": 9, "host": "1.2.3.4", "port": 1080, "protocol": "socks5"}
+
+    def close_spawn(coro):
+        coro.close()
+
+    monkeypatch.setattr(main.database, "get_deployment_spec", noop)
+    monkeypatch.setattr(main.database, "get_config", config)
+    monkeypatch.setattr(main.database, "save_provider_instance", noop)
+    monkeypatch.setattr(main.database, "record_health_event", noop)
+    monkeypatch.setattr(main, "_proxy_for_worker_instance", proxy)
+    monkeypatch.setattr(main, "_proxy_worker_deploy", fake_deploy)
+    monkeypatch.setattr(main, "_spawn", close_spawn)
+
+    await main.api_deploy(
+        _request("/api/deploy/traffmonetizer"),
+        "traffmonetizer",
+        main.DeployRequest(env={}, hostname="worker-1", mode="both"),
+        worker_id=7,
+        _auth={"r": "owner"},
+    )
+
+    direct_env = specs["traffmonetizer-direct"]["env"]
+    proxy_env = specs["traffmonetizer-proxy"]["env"]
+    assert direct_env["TRAFFMONETIZER_DEVICE_NAME"] == "worker-1-direct-tm"
+    assert proxy_env["TRAFFMONETIZER_DEVICE_NAME"] == "worker-1-proxy-tm"
+
+@pytest.mark.asyncio
 async def test_host_systemd_deploy_is_blocked(monkeypatch):
     async def noop(*_args, **_kwargs):
         return None

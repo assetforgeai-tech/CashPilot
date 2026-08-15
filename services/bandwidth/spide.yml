@@ -5,9 +5,10 @@ status: active
 website: https://spide.network
 description: >
   Spide is a bandwidth-sharing service that lets you monetize unused internet
-  bandwidth. Uses an optional machine ID for device tracking. Available through
-  community Docker images from the income-generator project.
-short_description: Bandwidth sharing - machine ID based
+  bandwidth. Uses an optional machine ID for device tracking. CashPilot runs
+  the official Linux CLI in Docker and registers the emitted Device key through
+  the dashboard API, with direct and proxy modes deployed separately.
+short_description: Bandwidth sharing - CLI device-key registration
 
 referral:
   signup_url: "https://spide.network/register.html?f3bc51"
@@ -30,7 +31,7 @@ docker:
     if [ ! -s /data/spide/machine-id ]; then tr -d - < /proc/sys/kernel/random/uuid > /data/spide/machine-id; fi;
     cp /data/spide/machine-id /etc/machine-id;
     if [ ! -x /data/spide/spide_linux_cli ]; then
-      curl -fsSL -o /tmp/spide_linux_cli.zip https://config-alpha-01.sgp1.digitaloceanspaces.com/spide_linux_cli.zip;
+      curl -fsSL -o /tmp/spide_linux_cli.zip https://pub-bf426a5300a643d2884389c8985f5181.r2.dev/spide_linux_cli.zip;
       unzip -t /tmp/spide_linux_cli.zip >/dev/null;
       unzip -o /tmp/spide_linux_cli.zip -d /data/spide >/dev/null;
     fi;
@@ -40,8 +41,8 @@ docker:
 
 deploy:
   automation: device_key_register
-  deploy_surface: host_systemd
-  notes: "Download and run the official Linux CLI zip, parse the Device key from stdout, then register it in the dashboard."
+  deploy_surface: docker
+  notes: "Download and run the official Linux CLI zip, parse the Device key from stdout, then register it in the dashboard. Deploy direct and proxy instances separately."
   credentials:
     - key: email
       label: "Email"

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 
-def render_tun_proxy_config(proxy: dict[str, Any], *, worker_name: str) -> dict[str, Any]:
+def render_tun_proxy_config(proxy: dict[str, Any], *, worker_name: str, udp_direct: bool = False) -> dict[str, Any]:
     protocol = str(proxy.get("protocol") or "socks5").lower()
     outbound_type = "http" if protocol == "http" else "socks"
     outbound: dict[str, Any] = {
@@ -20,6 +20,17 @@ def render_tun_proxy_config(proxy: dict[str, Any], *, worker_name: str) -> dict[
         outbound["username"] = proxy["username"]
     if proxy.get("password"):
         outbound["password"] = proxy["password"]
+    route_rules = [
+        {"port": 53, "outbound": "direct"},
+        {"domain": [proxy["host"]], "outbound": "direct"},
+    ]
+    if udp_direct:
+        route_rules.extend(
+            [
+                {"network": "udp", "outbound": "direct"},
+                {"network": "tcp", "outbound": "proxy-out"},
+            ]
+        )
     return {
         "log": {"level": "info"},
         "dns": {
@@ -40,10 +51,7 @@ def render_tun_proxy_config(proxy: dict[str, Any], *, worker_name: str) -> dict[
         "outbounds": [outbound, {"type": "direct", "tag": "direct"}],
         "route": {
             "auto_detect_interface": True,
-            "rules": [
-                {"port": 53, "outbound": "direct"},
-                {"domain": [proxy["host"]], "outbound": "direct"},
-            ],
+            "rules": route_rules,
             "final": "proxy-out",
         },
     }

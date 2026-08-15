@@ -346,7 +346,7 @@ class TestProviderAutomationContracts:
     def test_spide_runtime_uses_device_key_registration(self):
         svc = self._svc("spide")
         assert svc["deploy"]["automation"] == "device_key_register"
-        assert svc["deploy"]["deploy_surface"] == "host_systemd"
+        assert svc["deploy"]["deploy_surface"] == "docker"
         assert "dashboard_token" in self._credential_keys(svc, "dashboard")
 
     def test_mysterium_runtime_uses_direct_wallet_deploy_credentials(self):

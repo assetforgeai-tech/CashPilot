@@ -334,7 +334,11 @@ def deploy_raw(
     }
 
     if proxy and not network_mode:
-        config = singbox_config.render_tun_proxy_config(proxy, worker_name=slug)
+        config = singbox_config.render_tun_proxy_config(
+            proxy,
+            worker_name=slug,
+            udp_direct=provider == "traffmonetizer",
+        )
         encoded_config = base64.b64encode(json.dumps(config).encode()).decode()
         logger.info("Creating egress sidecar %s", sidecar_name)
         client.containers.run(

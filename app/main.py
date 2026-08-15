@@ -2157,6 +2157,12 @@ async def api_deploy(
             instance_env = instance_spec.setdefault("env", {})
             instance_env["UUID"] = secrets.token_hex(32).upper()
             instance_env["DEVICE_NAME"] = f"{hn}-{mode}"
+        if slug == "traffmonetizer" and mode in {"direct", "proxy"}:
+            instance_env = instance_spec.setdefault("env", {})
+            base_name = str(instance_env.get("TRAFFMONETIZER_DEVICE_NAME") or f"{hn}-tm").strip()
+            if base_name.endswith("-tm"):
+                base_name = base_name[:-3]
+            instance_env["TRAFFMONETIZER_DEVICE_NAME"] = f"{base_name}-{mode}-tm"
         if instance_spec.get("volumes"):
             instance_spec["volumes"] = _mode_scoped_named_volumes(instance_spec["volumes"], mode)
         if mode == "proxy":

@@ -92,6 +92,24 @@ def test_singbox_config_uses_tun_and_socks_outbound():
     assert {"port": 53, "outbound": "direct"} in config["route"]["rules"]
     assert {"domain": ["dc-t5.proxyvt.com"], "outbound": "direct"} in config["route"]["rules"]
 
+def test_singbox_config_can_route_udp_direct_for_traffmonetizer_proxy():
+    from app.singbox_config import render_tun_proxy_config
+
+    config = render_tun_proxy_config(
+        {
+            "host": "dc-t5.proxyvt.com",
+            "port": 45884,
+            "username": "user123",
+            "password": "pass456",
+            "protocol": "socks5",
+        },
+        worker_name="traffmonetizer-proxy",
+        udp_direct=True,
+    )
+    assert {"network": "udp", "outbound": "direct"} in config["route"]["rules"]
+    assert {"network": "tcp", "outbound": "proxy-out"} in config["route"]["rules"]
+    assert config["route"]["final"] == "proxy-out"
+
 def test_http_proxy_never_satisfies_udp_required():
     from app import proxy_egress
 
