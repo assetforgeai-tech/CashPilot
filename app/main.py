@@ -2153,6 +2153,10 @@ async def api_deploy(
         instance_spec.setdefault("labels", {})
         instance_spec["labels"]["cashpilot.provider"] = slug
         instance_spec["labels"]["cashpilot.instance_mode"] = mode
+        if slug == "proxyrack" and mode in {"direct", "proxy"}:
+            instance_env = instance_spec.setdefault("env", {})
+            instance_env["UUID"] = secrets.token_hex(32).upper()
+            instance_env["DEVICE_NAME"] = f"{hn}-{mode}"
         if instance_spec.get("volumes"):
             instance_spec["volumes"] = _mode_scoped_named_volumes(instance_spec["volumes"], mode)
         if mode == "proxy":
