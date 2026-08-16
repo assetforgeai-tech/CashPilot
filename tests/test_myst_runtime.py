@@ -57,6 +57,22 @@ def test_apply_direct_wallet_stops_patches_restarts_sets_password_and_mmn():
     assert "newPassword" in helper["command"][2]
     assert 'if [ "$old" = "$NEW_PASSWORD" ]; then exit 0; fi' in helper["command"][2]
 
+def test_apply_direct_wallet_keeps_deploy_alive_when_password_reset_fails():
+    container = MagicMock()
+    with patch.object(myst_runtime.docker, "from_env") as docker_from_env:
+        docker_from_env.return_value.containers.run.side_effect = myst_runtime.docker.errors.ContainerError(
+            container="curl",
+            exit_status=22,
+            command="curl",
+            image="curlimages/curl",
+            stderr=b"401",
+        )
+
+        address = myst_runtime.apply_direct_wallet(container, {"raw_wallet": RAW_WALLET}, dashboard_password="pw", mmn_api_key="mmn")
+
+    assert address == "0x57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1"
+    container.exec_run.assert_any_call(["sh", "-lc", "myst cli mmn 'mmn' >/dev/null 2>&1 || true"])
+
 def test_registration_status_parses_myst_cli_output():
     container = MagicMock()
     container.exec_run.return_value = MagicMock(output=b"Registration Status: Registered\nBalance: 0.1 MYST\n")

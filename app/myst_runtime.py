@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import re
 import tarfile
 from datetime import UTC, datetime
@@ -11,6 +12,7 @@ from typing import Any
 
 import docker
 
+logger = logging.getLogger(__name__)
 _ADDR_RE = re.compile(r"0x[a-fA-F0-9]{40}")
 _BARE_ADDR_RE = re.compile(r"[a-fA-F0-9]{40}")
 
@@ -127,7 +129,11 @@ def apply_direct_wallet(
     container.put_archive("/var/lib/mysterium-node", archive)
     container.restart(timeout=30)
     container.exec_run(["sh", "-lc", f"myst cli identities unlock {address} {_sh_single(identity_passphrase)} >/dev/null 2>&1 || true"])
-    _set_dashboard_password(dashboard_password)
+    try:
+        _set_dashboard_password(dashboard_password)
+    except docker.errors.ContainerError as exc:
+        # ponytail: Tequilapi auth flow changes across MYST releases; keep node deploy alive, revisit when UI password automation is required.
+        logger.warning("Could not set MYST dashboard password: %s", exc)
     if mmn_api_key:
         container.exec_run(["sh", "-lc", f"myst cli mmn {_sh_single(mmn_api_key)} >/dev/null 2>&1 || true"])
     return address
