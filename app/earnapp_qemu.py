@@ -89,6 +89,7 @@ def render_qemu_command(identity: EarnAppQemuIdentity) -> str:
               Type=oneshot
               EnvironmentFile=/etc/earnapp-bootstrap.env
               ExecStart=/root/install_earnapp_fixed.sh
+              TimeoutStartSec=0
               RemainAfterExit=yes
 
               [Install]

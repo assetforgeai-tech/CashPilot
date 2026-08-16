@@ -21,6 +21,7 @@ def test_earnapp_qemu_command_boots_ubuntu_2404_with_random_hardware_and_guest_s
     assert "format=qcow2,serial=" not in command
     assert "manufacturer=CashPilot" in command
     assert "[ systemctl, enable, --now, earnapp-bootstrap.service ]" in command
+    assert "TimeoutStartSec=0" in command
     assert "systemctl restart earnapp earnapp_upgrader" in command
     assert "https://brightdata.com/static/earnapp/install.sh" in command
     assert "https://earnapp.com/dashboard/api/link_device" in command
