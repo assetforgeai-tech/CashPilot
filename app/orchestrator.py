@@ -339,7 +339,7 @@ def deploy_raw(
         config = singbox_config.render_tun_proxy_config(
             proxy,
             worker_name=slug,
-            udp_direct=provider == "traffmonetizer",
+            udp_direct=provider in {"traffmonetizer", "mysterium"},
             interface_name="cpegress" if provider == "repocket" else "cp-egress",
         )
         encoded_config = base64.b64encode(json.dumps(config).encode()).decode()

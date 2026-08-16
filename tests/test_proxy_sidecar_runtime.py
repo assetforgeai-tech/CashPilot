@@ -31,3 +31,22 @@ def test_proxy_instance_runs_provider_inside_singbox_sidecar_namespace():
     assert provider_call.kwargs["name"] == "cashpilot-bitping-proxy"
     assert provider_call.kwargs["labels"]["cashpilot.provider"] == "bitping"
     assert provider_call.kwargs["labels"]["cashpilot.instance_mode"] == "proxy"
+
+def test_mysterium_proxy_routes_udp_direct():
+    client = MagicMock()
+    client.containers.get.side_effect = [orchestrator.NotFound("nope"), orchestrator.NotFound("nope")]
+    client.containers.run.side_effect = [MagicMock(id="sidecar-id"), MagicMock(id="provider-id")]
+
+    with (
+        patch.object(orchestrator, "_get_client", return_value=client),
+        patch.object(orchestrator.singbox_config, "render_tun_proxy_config", return_value={}) as render,
+    ):
+        orchestrator.deploy_raw(
+            slug="mysterium-proxy",
+            provider_slug="mysterium",
+            image="mysteriumnetwork/myst:latest",
+            labels={"cashpilot.provider": "mysterium", "cashpilot.instance_mode": "proxy"},
+            proxy={"host": "1.2.3.4", "port": 1080, "protocol": "socks5"},
+        )
+
+    assert render.call_args.kwargs["udp_direct"] is True
