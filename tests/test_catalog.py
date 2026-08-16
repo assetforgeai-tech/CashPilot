@@ -273,7 +273,7 @@ def test_wipter_matches_tested_container_runtime_knobs():
         data = yaml.safe_load(f)
 
     docker = data["docker"]
-    assert set(docker["cap_add"]) == {"NET_ADMIN", "NET_RAW"}
+    assert set(docker["cap_add"]) == {"NET_ADMIN", "NET_RAW", "DAC_OVERRIDE"}
     assert docker["sysctls"] == {"net.ipv4.ip_forward": "1"}
     assert docker["shm_size"] == "2gb"
     assert docker["ports"] == ["5900:5900", "6080:6080"]

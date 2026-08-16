@@ -38,7 +38,7 @@ docker:
     - "wipter-data:/root/.config/wipter-app"
   command: ""
   network_mode: ""
-  cap_add: [NET_ADMIN, NET_RAW]
+  cap_add: [NET_ADMIN, NET_RAW, DAC_OVERRIDE]
   sysctls:
     net.ipv4.ip_forward: "1"
   shm_size: "2gb"

@@ -2488,7 +2488,7 @@ def _merge_recorded_spec(
     # identity. As with env, a hostname the operator typed THIS deploy still
     # wins - a non-empty catalog_spec value is what they just asked for.
     for field in ("command", "network_mode", "cap_add", "resources"):
-        if field in recorded and recorded.get(field) != catalog_spec.get(field):
+        if recorded.get(field) and recorded.get(field) != catalog_spec.get(field):
             divergence.append(f"{field}: keeping the deployed value")
             merged[field] = recorded[field]
 

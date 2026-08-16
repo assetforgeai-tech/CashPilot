@@ -704,3 +704,13 @@ async def test_host_systemd_service_list_marks_manual_only(monkeypatch):
 
     assert earnapp["deploy_surface"] == "host_systemd"
     assert earnapp["manual_only"] is True
+
+def test_recorded_empty_cap_add_does_not_block_new_catalog_caps():
+    merged, divergence = main._merge_recorded_spec(
+        {"cap_add": ["NET_ADMIN"]},
+        {"cap_add": None},
+        {},
+    )
+
+    assert merged["cap_add"] == ["NET_ADMIN"]
+    assert divergence == []
