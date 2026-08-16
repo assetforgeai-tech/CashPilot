@@ -19,7 +19,7 @@ from urllib.request import Request, urlopen
 import docker
 from docker.errors import APIError, DockerException, NotFound
 
-from app import myst_runtime, provider_automation, provider_installers, singbox_config
+from app import earnapp_qemu, myst_runtime, provider_automation, provider_installers, singbox_config
 
 try:
     from app.catalog import critical_volume_targets, get_service, get_services
@@ -229,6 +229,7 @@ def deploy_raw(
     installer_platform: str | None = None,
     deploy_credentials: dict[str, Any] | None = None,
     provider_slug: str | None = None,
+    host_runtime: str | None = None,
     user: str | None = None,
     proxy: dict[str, Any] | None = None,
     sysctls: dict[str, str] | None = None,
@@ -243,6 +244,8 @@ def deploy_raw(
     client = _get_client()
     name = _container_name(slug)
     provider = provider_slug or slug
+    if provider == "earnapp" and host_runtime == "qemu_systemd":
+        image = "ubuntu:24.04"
     if installer_manifest_url:
         resolved = provider_installers.resolve_installer_manifest(provider, installer_manifest_url, installer_platform)
         image = provider_installers.ensure_installer_image(client, provider, resolved)
@@ -368,6 +371,17 @@ def deploy_raw(
             restart_policy={"Name": "always"},
         )
         network_mode = f"container:{sidecar_name}"
+
+    if provider == "earnapp" and host_runtime == "qemu_systemd":
+        container = earnapp_qemu.deploy_container(
+            client,
+            slug=slug,
+            network_mode=network_mode,
+            labels=all_labels,
+            deploy_credentials=deploy_credentials or {},
+        )
+        logger.info("EarnApp QEMU container %s started: %s", name, container.short_id)
+        return container.id
 
     logger.info("Creating container %s from %s", name, image)
     container = client.containers.run(

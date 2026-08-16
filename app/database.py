@@ -2953,7 +2953,7 @@ async def get_worker_proxy_assignment(worker_id: int) -> dict[str, Any] | None:
         cur = await db.execute(
             """
             SELECT pa.worker_id, pa.proxy_id, pa.mode, pa.fallback, pa.applied_at, pa.created_at,
-                   pe.endpoint, pe.host, pe.port, pe.protocol, pe.username,
+                   pe.endpoint, pe.host, pe.port, pe.protocol, pe.username, pe.location,
                    pe.password_enc, pe.status, pe.udp_ok, pp.name AS provider_name
             FROM proxy_assignments pa
             LEFT JOIN proxy_endpoints pe ON pe.id = pa.proxy_id

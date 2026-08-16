@@ -695,7 +695,7 @@ async def test_spide_device_registration_uses_standard_device_identity(monkeypat
     assert re.fullmatch(r"\d{14}\.8\.8\.8\.8\.p", captured[1]["title"])
 
 @pytest.mark.asyncio
-async def test_host_systemd_deploy_is_blocked(monkeypatch):
+async def test_non_earnapp_host_systemd_deploy_is_blocked(monkeypatch):
     async def noop(*_args, **_kwargs):
         return None
 
@@ -706,13 +706,13 @@ async def test_host_systemd_deploy_is_blocked(monkeypatch):
     monkeypatch.setattr(main.database, "get_config", config)
 
     with pytest.raises(HTTPException) as exc:
-        await main.api_deploy(_request(), "earnapp", main.DeployRequest(env={}, mode="direct"), worker_id=7, _auth={"r": "owner"})
+        await main.api_deploy(_request(), "proxybase-xyz", main.DeployRequest(env={}, mode="direct"), worker_id=7, _auth={"r": "owner"})
 
     assert exc.value.status_code == 400
     assert "host_systemd" in str(exc.value.detail)
 
 @pytest.mark.asyncio
-async def test_host_systemd_service_is_marked_manual_only(monkeypatch):
+async def test_earnapp_host_systemd_service_is_deployable_via_qemu(monkeypatch):
     async def noop(*_args, **_kwargs):
         return []
 
@@ -723,10 +723,10 @@ async def test_host_systemd_service_is_marked_manual_only(monkeypatch):
     svc = await main.api_get_service(_request("/api/services/earnapp"), "earnapp")
 
     assert svc["deploy_surface"] == "host_systemd"
-    assert svc["manual_only"] is True
+    assert svc["manual_only"] is False
 
 @pytest.mark.asyncio
-async def test_host_systemd_service_list_marks_manual_only(monkeypatch):
+async def test_earnapp_host_systemd_service_list_is_deployable_via_qemu(monkeypatch):
     async def noop(*_args, **_kwargs):
         return []
 
@@ -738,7 +738,7 @@ async def test_host_systemd_service_list_marks_manual_only(monkeypatch):
     earnapp = next(s for s in services if s["slug"] == "earnapp")
 
     assert earnapp["deploy_surface"] == "host_systemd"
-    assert earnapp["manual_only"] is True
+    assert earnapp["manual_only"] is False
 
 def test_recorded_empty_cap_add_does_not_block_new_catalog_caps():
     merged, divergence = main._merge_recorded_spec(

@@ -954,6 +954,7 @@ class DeploySpec(BaseModel):
     installer_platform: str | None = None
     deploy_credentials: dict[str, Any] = Field(default_factory=dict)
     provider_slug: str | None = None
+    host_runtime: str | None = None
     sysctls: dict[str, str] | None = None
     shm_size: str | None = None
     # Advanced and unsupported. Absent means Docker's default runtime, which is
@@ -1397,6 +1398,7 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             installer_platform=spec.installer_platform,
             deploy_credentials=spec.deploy_credentials,
             user=spec.user,
+            host_runtime=spec.host_runtime,
             proxy=spec.proxy,
             sysctls=spec.sysctls,
             shm_size=spec.shm_size,

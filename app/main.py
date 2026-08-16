@@ -1815,7 +1815,7 @@ async def api_services_available(request: Request) -> list[dict[str, Any]]:
         slug = svc.get("slug", "")
         svc["deployed"] = slug in deployed_slugs
         svc["deploy_surface"] = deploy_surface
-        svc["manual_only"] = deploy_surface == "host_systemd" or not has_image
+        svc["manual_only"] = (deploy_surface == "host_systemd" and slug != "earnapp") or not has_image
         svc["node_count"] = sum(1 for i in instances if i["slug"] == slug)
         svc["supported_modes"] = _service_supported_modes(svc)
         # The setup wizard reads this endpoint, and it needs to know whether
@@ -1842,7 +1842,7 @@ async def api_get_service(request: Request, slug: str) -> dict[str, Any]:
     svc["deployed"] = slug in deployed_slugs
     svc["node_count"] = len([i for i in instances if i["slug"] == slug])
     svc["deploy_surface"] = _service_deploy_surface(svc)
-    svc["manual_only"] = svc["deploy_surface"] == "host_systemd" or not bool((svc.get("docker") or {}).get("image"))
+    svc["manual_only"] = (svc["deploy_surface"] == "host_systemd" and slug != "earnapp") or not bool((svc.get("docker") or {}).get("image"))
     svc["supported_modes"] = _service_supported_modes(svc)
 
     # Flag whether earnings tracking uses separate credentials (entered in
@@ -1871,7 +1871,13 @@ class DeployRequest(BaseModel):
     hostname: str | None = None
     mode: str | None = None
 
-def _resolve_deploy_credentials(slug: str, svc: dict[str, Any] | None, config: dict[str, str]) -> dict[str, str]:
+def _resolve_deploy_credentials(
+    slug: str,
+    svc: dict[str, Any] | None,
+    config: dict[str, str],
+    *,
+    allow_missing: bool = False,
+) -> dict[str, str]:
     from app.collectors import service_credential_fields
 
     fields = service_credential_fields(slug, "deploy", svc, fallback=False)
@@ -1883,12 +1889,26 @@ def _resolve_deploy_credentials(slug: str, svc: dict[str, Any] | None, config: d
             deploy_credentials[field["arg"]] = value
         elif field.get("required", True):
             missing.append(field["label"])
-    if missing:
+    if missing and not allow_missing:
         raise HTTPException(
             status_code=400,
             detail=f"Missing required deployment credentials: {', '.join(missing)}",
         )
     return deploy_credentials
+
+def _require_deploy_credentials(slug: str, svc: dict[str, Any] | None, deploy_credentials: dict[str, Any]) -> None:
+    from app.collectors import service_credential_fields
+
+    missing = [
+        field["label"]
+        for field in service_credential_fields(slug, "deploy", svc, fallback=False)
+        if field.get("required", True) and not str(deploy_credentials.get(field["arg"]) or "").strip()
+    ]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Missing required deployment credentials: {', '.join(missing)}",
+        )
 
 def _apply_deploy_config_to_env(slug: str, svc: dict[str, Any] | None, config: dict[str, str], env: dict[str, str]) -> None:
     from app.collectors import service_credential_fields
@@ -1984,15 +2004,29 @@ async def _release_myst_wallet_from_spec(spec: dict[str, Any], *, reason: str) -
     )
 
 async def _proxy_for_worker_instance(worker_id: int, *, provider_slug: str | None = None) -> dict[str, Any]:
-    proxy = await database.get_worker_proxy_assignment(worker_id)
-    if proxy and provider_slug and proxy.get("proxy_id"):
-        if await database.proxy_masked_for_provider(int(proxy["proxy_id"]), provider_slug):
-            proxy = None
-    if not proxy or not proxy.get("proxy_id"):
-        proxy = await database.lease_proxy_for_worker(worker_id, provider_slug=provider_slug)
-    if not proxy or not proxy.get("proxy_id"):
-        raise HTTPException(status_code=409, detail="No proxy available for this worker")
-    return proxy
+    attempts = 1000 if provider_slug == "earnapp" else 20
+    for _ in range(attempts):
+        proxy = await database.get_worker_proxy_assignment(worker_id)
+        if proxy and provider_slug and proxy.get("proxy_id"):
+            if await database.proxy_masked_for_provider(int(proxy["proxy_id"]), provider_slug):
+                proxy = None
+            elif provider_slug == "earnapp" and _proxy_location_is_vietnam(proxy):
+                await database.mask_proxy_for_provider(int(proxy["proxy_id"]), provider_slug, "earnapp_vietnam_proxy")
+                await database.set_worker_proxy_assignment(worker_id, None)
+                proxy = None
+        if not proxy or not proxy.get("proxy_id"):
+            proxy = await database.lease_proxy_for_worker(worker_id, provider_slug=provider_slug)
+        if proxy and proxy.get("proxy_id"):
+            if provider_slug == "earnapp" and _proxy_location_is_vietnam(proxy):
+                await database.mask_proxy_for_provider(int(proxy["proxy_id"]), provider_slug, "earnapp_vietnam_proxy")
+                await database.set_worker_proxy_assignment(worker_id, None)
+                continue
+            return proxy
+    raise HTTPException(status_code=409, detail="No proxy available for this worker")
+
+def _proxy_location_is_vietnam(proxy: dict[str, Any]) -> bool:
+    loc = str(proxy.get("location") or "").strip().lower()
+    return loc in {"vn", "viet nam", "vietnam", "việt nam"} or "vietnam" in loc or "viet nam" in loc
 
 async def _resolve_pawns_proxy_protocol(proxy: dict[str, Any]) -> dict[str, Any] | None:
     proxy_id = int(proxy.get("proxy_id") or 0)
@@ -2127,7 +2161,7 @@ async def api_deploy(
     docker_conf = svc.get("docker", {})
     deploy_conf = svc.get("deploy", {}) or {}
     deploy_surface = _service_deploy_surface(svc)
-    if deploy_surface == "host_systemd":
+    if deploy_surface == "host_systemd" and slug != "earnapp":
         raise HTTPException(
             status_code=400,
             detail=(
@@ -2135,7 +2169,7 @@ async def api_deploy(
                 "CashPilot worker deploy is not implemented for host-systemd providers yet."
             ),
         )
-    image = docker_conf.get("image")
+    image = "ubuntu:24.04" if slug == "earnapp" else docker_conf.get("image")
     if not image:
         raise HTTPException(status_code=400, detail=f"Service '{slug}' has no Docker image")
 
@@ -2223,6 +2257,8 @@ async def api_deploy(
         "egress_mode": catalog.service_egress_mode(svc),
         "egress_udp": catalog.service_egress_udp(svc),
     }
+    if slug == "earnapp":
+        spec["host_runtime"] = "qemu_systemd"
     if docker_conf.get("user"):
         spec["user"] = str(docker_conf["user"])
     runtime_assets = deploy_conf.get("runtime_assets") or []
@@ -2236,7 +2272,7 @@ async def api_deploy(
         spec["installer_manifest_url"] = manifest_url
         if deploy_conf.get("installer_platform"):
             spec["installer_platform"] = deploy_conf["installer_platform"]
-    deploy_credentials = _resolve_deploy_credentials(slug, svc, config)
+    deploy_credentials = _resolve_deploy_credentials(slug, svc, config, allow_missing=slug == "earnapp")
     if deploy_credentials:
         spec["deploy_credentials"] = deploy_credentials
     # Command: resolve ${VAR} placeholders
@@ -2288,6 +2324,17 @@ async def api_deploy(
         instance_spec.setdefault("labels", {})
         instance_spec["labels"]["cashpilot.provider"] = slug
         instance_spec["labels"]["cashpilot.instance_mode"] = mode
+        if slug == "earnapp":
+            with contextlib.suppress(Exception):
+                lease = await database.lease_earnapp_account(worker_id, instance_slug)
+                cookies = {k: str(v) for k, v in (lease.get("cookies") or {}).items() if str(v).strip()}
+                if cookies:
+                    instance_spec.setdefault("deploy_credentials", {}).update(cookies)
+                    account_name = str(lease.get("account_name") or "")
+                    if account_name:
+                        instance_spec["deploy_credentials"]["earnapp_account_name"] = account_name
+                        instance_spec["labels"]["cashpilot.earnapp.account"] = account_name
+            _require_deploy_credentials(slug, svc, instance_spec.get("deploy_credentials") or {})
         if slug == "earnfm" and mode == "direct":
             instance_spec.setdefault("env", {})["GODEBUG"] = "http2client=0"
             instance_spec["network_mode"] = "host"
@@ -2320,7 +2367,10 @@ async def api_deploy(
         if instance_spec.get("volumes"):
             instance_spec["volumes"] = _mode_scoped_named_volumes(instance_spec["volumes"], mode)
         if mode == "proxy" and slug != "iproyal":
-            instance_spec["proxy"] = await _proxy_for_worker_instance(worker_id)
+            if slug == "earnapp":
+                instance_spec["proxy"] = await _proxy_for_worker_instance(worker_id, provider_slug=slug)
+            else:
+                instance_spec["proxy"] = await _proxy_for_worker_instance(worker_id)
             instance_spec["egress_mode"] = "proxy"
         elif mode == "direct":
             instance_spec["egress_mode"] = "direct"
