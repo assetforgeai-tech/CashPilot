@@ -332,6 +332,12 @@ class TestAutoDeploySettingsAreRenderedAndSaved:
         assert "renderSettingsConfig(config);" in text
         assert ".settings-config-input" in text
 
+    def test_base_cache_busts_first_party_static_assets(self):
+        base = (ROOT / "app" / "templates" / "base.html").read_text(encoding="utf-8")
+        assert '/static/css/style.css?v={{ csp_nonce(request) }}' in base
+        assert '/static/js/app.js?v={{ csp_nonce(request) }}' in base
+        assert '/static/js/delegate.js?v={{ csp_nonce(request) }}' in base
+
 
 class TestTheProgressCardKeepsItsUnitsStraight:
     """Caught in a browser: "£3.73" rendered directly above "to the 20 minimum".
