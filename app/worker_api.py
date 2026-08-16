@@ -1259,6 +1259,7 @@ def _catalog_host_network_slugs() -> set[str]:
 # catalog services that declare it (checked separately below, by slug). `container:<id>`
 # (namespace join) and any other value are rejected outright.
 _ALLOWED_NETWORK_MODES = {None, "", "bridge", "none", "host"}
+_HOST_NETWORK_DIRECT_EXCEPTIONS = {"earnfm"}
 
 
 def _validate_runtime(runtime: str | None) -> None:
@@ -1308,7 +1309,7 @@ def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
             )
     if spec.network_mode not in _ALLOWED_NETWORK_MODES:
         raise HTTPException(status_code=403, detail=f"Network mode '{spec.network_mode}' is not allowed")
-    if spec.network_mode == "host" and provider_slug not in _catalog_host_network_slugs():
+    if spec.network_mode == "host" and provider_slug not in (_catalog_host_network_slugs() | _HOST_NETWORK_DIRECT_EXCEPTIONS):
         raise HTTPException(status_code=403, detail=f"Network mode 'host' is not allowed for '{slug}'")
     for source in spec.volumes:
         if not source.startswith("/"):

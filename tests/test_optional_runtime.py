@@ -127,6 +127,12 @@ class TestTheAllowlistComesFromTheDaemon:
             slug="mysterium-direct",
         )
 
+    def test_earnfm_direct_host_network_exception_is_allowed(self):
+        worker_api._validate_deploy_spec(
+            spec(provider_slug="earnfm", network_mode="host", hostname="eapp"),
+            slug="earnfm-direct",
+        )
+
 class TestReadingTheDaemon:
     def test_it_returns_what_docker_reports(self):
         client = MagicMock()
