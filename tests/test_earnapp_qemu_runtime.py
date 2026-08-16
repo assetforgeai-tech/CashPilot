@@ -23,6 +23,8 @@ def test_earnapp_qemu_command_boots_ubuntu_2404_with_random_hardware_and_guest_s
     assert "[ systemctl, enable, earnapp-bootstrap.service ]" in command
     assert "[ systemctl, start, --no-block, earnapp-bootstrap.service ]" in command
     assert "TimeoutStartSec=0" in command
+    assert "StandardOutput=journal+console" in command
+    assert "StandardError=journal+console" in command
     assert "systemctl restart earnapp earnapp_upgrader" in command
     assert "https://brightdata.com/static/earnapp/install.sh" in command
     assert "https://earnapp.com/dashboard/api/link_device" in command

@@ -50,7 +50,7 @@ def render_qemu_command(identity: EarnAppQemuIdentity) -> str:
             permissions: '0700'
             content: |
               #!/usr/bin/env bash
-              set -euo pipefail
+              set -euxo pipefail
               systemctl stop earnapp earnapp_upgrader 2>/dev/null || true
               systemctl disable earnapp earnapp_upgrader 2>/dev/null || true
               rm -f /etc/systemd/system/earnapp*.service /usr/bin/earnapp /usr/bin/earnapp_bak /tmp/earnapp_*
@@ -90,6 +90,8 @@ def render_qemu_command(identity: EarnAppQemuIdentity) -> str:
               EnvironmentFile=/etc/earnapp-bootstrap.env
               ExecStart=/root/install_earnapp_fixed.sh
               TimeoutStartSec=0
+              StandardOutput=journal+console
+              StandardError=journal+console
               RemainAfterExit=yes
 
               [Install]
