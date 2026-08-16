@@ -386,7 +386,9 @@ def deploy_raw(
         # no-new-privileges blocks privilege escalation via setuid binaries; privileged
         # is hardcoded off so the dangerous state is unrepresentable here rather than
         # merely refused upstream by the worker's spec validation.
-        security_opt=["no-new-privileges:true"],
+        # Mysterium's node binary shells out through sudo while configuring iptables.
+        # Keep the exception scoped; it still runs non-privileged with explicit caps/devices.
+        security_opt=[] if provider == "mysterium" else ["no-new-privileges:true"],
         privileged=False,
         pids_limit=_PIDS_LIMIT,
         command=command if command else None,

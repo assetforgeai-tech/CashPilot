@@ -123,9 +123,20 @@ class TestTheAllowlistComesFromTheDaemon:
 
     def test_instance_slug_uses_provider_slug_for_host_network_allowlist(self):
         worker_api._validate_deploy_spec(
-            spec(provider_slug="mysterium", network_mode="host", cap_add=["NET_ADMIN"], devices=["/dev/net/tun"]),
+            spec(provider_slug="mysterium", network_mode="host", cap_add=["NET_ADMIN", "SETUID", "SETGID"], devices=["/dev/net/tun"]),
             slug="mysterium-direct",
         )
+
+    def test_mysterium_disables_no_new_privileges_for_iptables_sudo(self):
+        captured = {}
+        client = MagicMock()
+        client.containers.get.side_effect = orchestrator.NotFound("nope")
+        client.containers.run.side_effect = lambda **kwargs: captured.update(kwargs) or MagicMock(short_id="abc123")
+
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            orchestrator.deploy_raw(slug="mysterium-direct", provider_slug="mysterium", image="img:1")
+
+        assert captured["security_opt"] == []
 
     def test_earnfm_direct_host_network_exception_is_allowed(self):
         worker_api._validate_deploy_spec(
