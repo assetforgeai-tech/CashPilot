@@ -16,6 +16,9 @@ def test_earnapp_qemu_command_boots_ubuntu_2404_with_random_hardware_and_guest_s
     assert "qemu-system-x86_64" in command
     assert f"-uuid {identity.uuid}" in command
     assert f"mac={identity.mac}" in command
+    assert "file=earnapp.qcow2,if=none,id=drive0,format=qcow2" in command
+    assert f"virtio-blk-pci,drive=drive0,serial={identity.serial}" in command
+    assert "format=qcow2,serial=" not in command
     assert "manufacturer=CashPilot" in command
     assert "[ systemctl, enable, --now, earnapp-bootstrap.service ]" in command
     assert "systemctl restart earnapp earnapp_upgrader" in command
