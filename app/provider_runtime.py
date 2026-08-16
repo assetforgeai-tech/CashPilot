@@ -41,7 +41,7 @@ PROVIDERS: dict[str, ProviderRuntime] = {
     "proxies-sx": ProviderRuntime("proxies-sx", "proxies.sx.py", "proxies.sx.py", ("proxy",), "earnings"),
     "proxybase": ProviderRuntime("proxybase", "proxybase.org.py", "proxybase.org.py", ("direct", "proxy"), "dashboard_only"),
     "proxybase-xyz": ProviderRuntime("proxybase-xyz", "proxybase.xyz.py", "proxybase.xyz.py", ("direct", "proxy"), "count_only"),
-    "proxylite": ProviderRuntime("proxylite", "lk.proxylite.ru.py", "lk.proxylite.ru.py", ("direct", "proxy"), "count_only"),
+    "proxylite": ProviderRuntime("proxylite", "lk.proxylite.ru.py", "lk.proxylite.ru.py", ("direct",), "count_only"),
     "proxyrack": ProviderRuntime("proxyrack", "proxyrack.org.py", "proxyrack.org.py", ("direct", "proxy"), "earnings"),
     "repocket": ProviderRuntime("repocket", "repocket.py", "repocket.py", ("direct", "proxy"), "earnings"),
     "spide": ProviderRuntime("spide", "spide.py", "spide.py", ("direct", "proxy"), "dashboard_only"),

@@ -32,7 +32,7 @@ def test_default_deploy_mode_matches_provider_capability():
     assert provider_modes.default_deploy_mode("bitping") == "both"
     assert provider_modes.default_deploy_mode("earnfm") == "both"
     assert provider_modes.default_deploy_mode("mysterium") == "direct"
-    assert provider_modes.default_deploy_mode("proxylite") == "both"
+    assert provider_modes.default_deploy_mode("proxylite") == "direct"
     assert provider_modes.default_deploy_mode("wipter") == "proxy"
 
 def test_missing_mode_expands_to_provider_default_not_legacy():
