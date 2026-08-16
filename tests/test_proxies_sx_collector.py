@@ -72,3 +72,17 @@ class TestProxiesSxCollector:
 
         assert result.error is not None
         assert "API key" in result.error
+
+    def test_per_node_treats_online_status_as_online(self):
+        from app.collectors.proxies_sx import ProxiesSxCollector
+
+        client = _client()
+        client.get.return_value = _response(
+            200,
+            {"devices": [{"deviceId": "agent-1", "name": "n1", "status": "online"}]},
+        )
+
+        with patch("app.collectors.proxies_sx.httpx.AsyncClient", return_value=client):
+            devices = asyncio.run(ProxiesSxCollector(api_key="k").get_per_node_earnings())
+
+        assert devices[0]["online"] is True

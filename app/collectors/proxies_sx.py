@@ -112,7 +112,7 @@ class ProxiesSxCollector(BaseCollector):
                     "device_id": device.get("deviceId") or device.get("device_id") or device.get("id") or "",
                     "name": device.get("name") or device.get("agentName") or "",
                     "status": device.get("status") or device.get("state") or "",
-                    "online": bool(device.get("online") or str(device.get("status", "")).lower() in {"connected", "listed", "earning"}),
+                    "online": bool(device.get("online") or str(device.get("status", "")).lower() in {"online", "connected", "listed", "earning"}),
                     "earning": str(device.get("status", "")).lower() == "earning" or bool(device.get("earning")),
                     "country": device.get("country") or device.get("countryCode") or "",
                     "ip": device.get("ip") or device.get("publicIp") or "",
