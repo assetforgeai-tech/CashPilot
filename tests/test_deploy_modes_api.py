@@ -714,3 +714,13 @@ def test_recorded_empty_cap_add_does_not_block_new_catalog_caps():
 
     assert merged["cap_add"] == ["NET_ADMIN"]
     assert divergence == []
+
+def test_recorded_cap_add_can_expand_to_catalog_superset():
+    merged, divergence = main._merge_recorded_spec(
+        {"cap_add": ["NET_ADMIN", "SETUID", "SETGID"]},
+        {"cap_add": ["NET_ADMIN"]},
+        {},
+    )
+
+    assert merged["cap_add"] == ["NET_ADMIN", "SETUID", "SETGID"]
+    assert divergence == []

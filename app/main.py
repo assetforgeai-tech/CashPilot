@@ -2487,10 +2487,19 @@ def _merge_recorded_spec(
     # None, and rebuilding from that would silently give the service a new
     # identity. As with env, a hostname the operator typed THIS deploy still
     # wins - a non-empty catalog_spec value is what they just asked for.
-    for field in ("command", "network_mode", "cap_add", "resources"):
+    for field in ("command", "network_mode", "resources"):
         if recorded.get(field) and recorded.get(field) != catalog_spec.get(field):
             divergence.append(f"{field}: keeping the deployed value")
             merged[field] = recorded[field]
+
+    recorded_caps = set(recorded.get("cap_add") or [])
+    catalog_caps = set(catalog_spec.get("cap_add") or [])
+    if recorded_caps and recorded_caps != catalog_caps:
+        if catalog_caps.issuperset(recorded_caps):
+            merged["cap_add"] = catalog_spec.get("cap_add")
+        else:
+            divergence.append("cap_add: keeping the deployed value")
+            merged["cap_add"] = recorded.get("cap_add")
 
     stored_hostname = recorded.get("hostname")
     if stored_hostname and not catalog_spec.get("hostname") and stored_hostname != catalog_spec.get("hostname"):
