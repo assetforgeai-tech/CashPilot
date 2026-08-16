@@ -133,6 +133,28 @@ class TestTheAllowlistComesFromTheDaemon:
             slug="earnfm-direct",
         )
 
+    def test_earnfm_host_network_keeps_hostname_when_deploying(self):
+        captured = {}
+        client = MagicMock()
+        client.containers.get.side_effect = orchestrator.NotFound("nope")
+
+        def fake_run(**kwargs):
+            captured.update(kwargs)
+            return MagicMock(short_id="abc123")
+
+        client.containers.run.side_effect = fake_run
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            orchestrator.deploy_raw(
+                slug="earnfm",
+                image="earnfm/earnfm-client:latest",
+                env={"EARNFM_TOKEN": "token"},
+                network_mode="host",
+                hostname="eapp",
+            )
+
+        assert captured["network_mode"] == "host"
+        assert captured["hostname"] == "eapp"
+
 class TestReadingTheDaemon:
     def test_it_returns_what_docker_reports(self):
         client = MagicMock()
