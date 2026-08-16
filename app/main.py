@@ -5266,12 +5266,14 @@ async def api_fleet_api_key_reveal(request: Request) -> dict[str, str]:
 # splitting the low-regression route groups into app.routers.
 # ---------------------------------------------------------------------------
 from app.routers import auth as auth_router  # noqa: E402
+from app.routers import earnapp_accounts as earnapp_accounts_router  # noqa: E402
 from app.routers import pages as pages_router  # noqa: E402
 from app.routers import myst_wallets as myst_wallets_router  # noqa: E402
 from app.routers import proxies as proxies_router  # noqa: E402
 from app.routers import users as users_router  # noqa: E402
 
 app.include_router(auth_router.router)
+app.include_router(earnapp_accounts_router.router)
 app.include_router(pages_router.router)
 app.include_router(myst_wallets_router.router)
 app.include_router(proxies_router.router)

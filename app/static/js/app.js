@@ -3123,6 +3123,7 @@ const CP = (() => {
       renderEnvVars(envInfo, config);
       renderSettingsConfig(config);
       renderCollectors(collectorsMeta, config);
+      loadEarnAppAccounts();
       loadCredentialHealth();
     } catch (err) {
       // Say what happened. /api/env-info and /api/collectors/meta each carry
@@ -3149,10 +3150,89 @@ const CP = (() => {
 
   function settingsPanelsFailed(err) {
     const message = settingsLoadFailureMessage(err);
-    ['env-vars-container', 'collectors-container'].forEach(id => {
+    ['env-vars-container', 'collectors-container', 'earnapp-account-pool'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.innerHTML = `<p style="color:var(--error);font-size:0.85rem;">${escapeHtml(message)}</p>`;
     });
+  }
+
+  async function loadEarnAppAccounts() {
+    const container = document.getElementById('earnapp-account-pool');
+    if (!container) return;
+    try {
+      const data = await api('/api/admin/earnapp-accounts');
+      const rows = data.accounts || [];
+      const c = data.counts || {};
+      const counts = `Total ${c.total || 0} · Valid ${c.valid || 0} · Disabled ${c.disabled || 0} · Expired ${c.expired || 0} · Auth failed ${c.auth_failed || 0} · Active leases ${c.active_leases || 0}`;
+      if (!rows.length) {
+        container.innerHTML = `<div class="form-hint">${escapeHtml(counts)}</div><p style="color:var(--text-muted);font-size:0.85rem;">No EarnApp accounts imported.</p>`;
+        return;
+      }
+      container.innerHTML = `
+        <div class="form-hint" style="margin-bottom:8px;">${escapeHtml(counts)}</div>
+        <div style="overflow:auto;">
+          <table class="data-table">
+            <thead><tr><th>Account</th><th>State</th><th>Assigned nodes</th><th>Updated</th><th>Actions</th></tr></thead>
+            <tbody>${rows.map(row => `
+              <tr>
+                <td>${escapeHtml(row.account_name)}</td>
+                <td><span class="badge ${row.state === 'VALID' ? 'badge-deployed' : 'badge-warning'}">${escapeHtml(row.state)}</span></td>
+                <td>${escapeHtml(row.assigned_nodes || 0)}</td>
+                <td>${escapeHtml((row.updated_at || '').slice(0, 19))}</td>
+                <td style="white-space:nowrap;">
+                  <button class="btn btn-ghost btn-sm" data-action="setEarnAppAccountState" data-a1="${escapeHtml(row.id)}" data-a2="${row.state === 'DISABLED' ? 'VALID' : 'DISABLED'}">${row.state === 'DISABLED' ? 'Enable' : 'Disable'}</button>
+                  <button class="btn btn-ghost btn-sm" style="color:var(--error);" data-action="deleteEarnAppAccount" data-a1="${escapeHtml(row.id)}" data-a2="${escapeHtml(row.account_name)}">Delete</button>
+                </td>
+              </tr>`).join('')}</tbody>
+          </table>
+        </div>`;
+    } catch (err) {
+      container.innerHTML = `<p style="color:var(--error);font-size:0.85rem;">Could not load EarnApp account pool: ${escapeHtml(err.message)}</p>`;
+    }
+  }
+
+  async function importEarnAppAccount() {
+    const fileInput = document.getElementById('earnapp-account-file');
+    const nameInput = document.getElementById('earnapp-account-name');
+    const rawInput = document.getElementById('earnapp-account-raw');
+    const file = fileInput && fileInput.files && fileInput.files[0];
+    const raw = file ? await file.text() : (rawInput ? rawInput.value : '');
+    const fileName = (nameInput && nameInput.value.trim()) || (file && file.name) || '';
+    if (!fileName || !String(raw || '').trim()) {
+      toast('EarnApp account name and cookie content are required', 'warning');
+      return;
+    }
+    try {
+      await api('/api/admin/earnapp-accounts/import', { method: 'POST', body: { file_name: fileName, raw } });
+      if (rawInput) rawInput.value = '';
+      if (fileInput) fileInput.value = '';
+      toast('EarnApp account imported', 'success');
+      loadEarnAppAccounts();
+    } catch (err) {
+      toast(`Import failed: ${err.message}`, 'error');
+    }
+  }
+
+  async function setEarnAppAccountState(id, state) {
+    if (!confirm(`Set EarnApp account state to ${state}?`)) return;
+    try {
+      await api(`/api/admin/earnapp-accounts/${encodeURIComponent(id)}`, { method: 'PATCH', body: { state } });
+      toast('EarnApp account updated', 'success');
+      loadEarnAppAccounts();
+    } catch (err) {
+      toast(`Update failed: ${err.message}`, 'error');
+    }
+  }
+
+  async function deleteEarnAppAccount(id, name) {
+    if (!confirm(`Delete EarnApp account ${name}? Existing active leases stay recorded; it will not be assigned to new nodes.`)) return;
+    try {
+      await api(`/api/admin/earnapp-accounts/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      toast('EarnApp account deleted', 'success');
+      loadEarnAppAccounts();
+    } catch (err) {
+      toast(`Delete failed: ${err.message}`, 'error');
+    }
   }
 
   function renderEnvVars(envInfo, config) {
@@ -3982,6 +4062,10 @@ const CP = (() => {
     saveCollectorCredentials,
     testCollectors,
     saveEnvSettings,
+    loadEarnAppAccounts,
+    importEarnAppAccount,
+    setEarnAppAccountState,
+    deleteEarnAppAccount,
     toggleEnvSecret,
     importMystWalletFile,
     loadMystWallets,

@@ -50,6 +50,31 @@
   <div id="credential-health-body"></div>
 </div>
 
+<div class="card settings-section">
+  <h3 class="settings-section-title">EarnApp Account Pool</h3>
+  <p class="settings-section-desc">
+    Import one EarnApp cookie file per account. The file name becomes the account key; values stay encrypted and are leased evenly to EarnApp nodes later.
+  </p>
+  <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:start;padding:10px 0;border-bottom:1px solid var(--border-color);">
+    <label class="form-label" for="earnapp-account-file">Cookie file</label>
+    <input class="form-input" type="file" id="earnapp-account-file" accept=".txt,.json,.env,*/*">
+  </div>
+  <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:start;padding:10px 0;border-bottom:1px solid var(--border-color);">
+    <label class="form-label" for="earnapp-account-name">Account name</label>
+    <input class="form-input" type="text" id="earnapp-account-name" placeholder="assetforgeai.gmail.com">
+  </div>
+  <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:start;padding:10px 0;">
+    <label class="form-label" for="earnapp-account-raw">Cookie content</label>
+    <textarea class="form-input" id="earnapp-account-raw" rows="5" placeholder="oauth_token=..."></textarea>
+  </div>
+  <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end;">
+    <button class="btn btn-primary" data-action="importEarnAppAccount">Import / replace account</button>
+  </div>
+  <div id="earnapp-account-pool" style="margin-top:16px;">
+    <p style="color: var(--text-muted); font-size: 0.85rem;">Loading...</p>
+  </div>
+</div>
+
 <!-- Provider credentials -->
 <div class="card settings-section">
   <h3 class="settings-section-title">Provider Credentials</h3>

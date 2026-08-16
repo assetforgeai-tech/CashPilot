@@ -13,6 +13,7 @@ import json
 import logging
 import math
 import os
+import re
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -318,6 +319,31 @@ CREATE TABLE IF NOT EXISTS myst_wallets (
     quarantined_reason TEXT    NOT NULL DEFAULT '',
     imported_at        TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_at         TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+"""
+
+_EARNAPP_ACCOUNTS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS earnapp_accounts (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_name   TEXT    NOT NULL UNIQUE,
+    cookies_enc    TEXT    NOT NULL,
+    state          TEXT    NOT NULL DEFAULT 'VALID',
+    created_at     TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at     TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS earnapp_account_leases (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id     INTEGER NOT NULL,
+    worker_id      INTEGER NOT NULL,
+    instance_id    TEXT    NOT NULL,
+    state          TEXT    NOT NULL DEFAULT 'ACTIVE',
+    leased_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+    last_heartbeat_at TEXT,
+    released_at    TEXT,
+    release_reason TEXT NOT NULL DEFAULT '',
+    UNIQUE(worker_id, instance_id),
+    FOREIGN KEY(account_id) REFERENCES earnapp_accounts(id) ON DELETE CASCADE
 );
 """
 
@@ -1037,6 +1063,7 @@ async def init_db() -> None:
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_proxy_provider_masks_provider ON proxy_provider_masks(provider_slug, proxy_id)"
         )
+        await db.executescript(_EARNAPP_ACCOUNTS_SCHEMA)
         # Migrate config table: add updated_at so credential age is knowable.
         # Existing rows are left NULL — see the note on the back-fill below.
         # (This comment used to say they receive the migration time, which is
@@ -2408,6 +2435,169 @@ async def proxy_masked_for_provider(proxy_id: int, provider_slug: str) -> bool:
             (int(proxy_id), provider_slug),
         )
         return bool(await cur.fetchone())
+    finally:
+        await db.close()
+
+def _earnapp_account_name(file_name: str) -> str:
+    name = Path(str(file_name or "").strip()).name
+    return re.sub(r"\.(json|txt|env)$", "", name, flags=re.IGNORECASE).strip()
+
+def parse_earnapp_account_payload(raw: str) -> dict[str, str]:
+    raw = str(raw or "").strip()
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        data = {}
+        for line in raw.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            data[key.strip()] = value.strip().strip("'\"")
+    allowed = {"oauth_refresh_token", "oauth_token", "xsrf_token", "brd_sess_id", "cg_uuid"}
+    return {k: str(v) for k, v in data.items() if k in allowed and str(v).strip()}
+
+async def _ensure_earnapp_accounts_table(db: Any) -> None:
+    await db.executescript(_EARNAPP_ACCOUNTS_SCHEMA)
+
+async def upsert_earnapp_account(account_name: str, raw: str | Mapping[str, Any]) -> int:
+    account_name = _earnapp_account_name(account_name)
+    if not account_name:
+        raise ValueError("account_name required")
+    cookies = dict(raw) if isinstance(raw, Mapping) else parse_earnapp_account_payload(str(raw))
+    if not cookies:
+        raise ValueError("no earnapp cookies found")
+    db = await _get_db()
+    try:
+        await _ensure_earnapp_accounts_table(db)
+        cursor = await db.execute(
+            """
+            INSERT INTO earnapp_accounts (account_name, cookies_enc, state, updated_at)
+            VALUES (?, ?, 'VALID', datetime('now'))
+            ON CONFLICT(account_name) DO UPDATE SET
+                cookies_enc = excluded.cookies_enc,
+                state = 'VALID',
+                updated_at = datetime('now')
+            RETURNING id
+            """,
+            (account_name, encrypt_value(json.dumps(cookies, sort_keys=True))),
+        )
+        row = await cursor.fetchone()
+        await db.commit()
+        return int(row["id"])
+    finally:
+        await db.close()
+
+async def list_earnapp_accounts(include_deleted: bool = False) -> list[dict[str, Any]]:
+    db = await _get_db()
+    try:
+        await _ensure_earnapp_accounts_table(db)
+        where = "" if include_deleted else "WHERE a.state != 'DELETED'"
+        cursor = await db.execute(
+            f"""
+            SELECT a.id, a.account_name, a.state, a.created_at, a.updated_at,
+                   SUM(CASE WHEN l.state = 'ACTIVE' THEN 1 ELSE 0 END) AS assigned_nodes
+            FROM earnapp_accounts a
+            LEFT JOIN earnapp_account_leases l ON l.account_id = a.id
+            {where}
+            GROUP BY a.id
+            ORDER BY a.account_name
+            """
+        )
+        return [
+            {
+                "id": int(row["id"]),
+                "account_name": row["account_name"],
+                "state": row["state"],
+                "assigned_nodes": int(row["assigned_nodes"] or 0),
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+            }
+            for row in await cursor.fetchall()
+        ]
+    finally:
+        await db.close()
+
+async def update_earnapp_account_state(account_id: int, state: str) -> bool:
+    state = str(state or "").strip().upper()
+    if state not in {"VALID", "DISABLED", "EXPIRED", "AUTH_FAILED", "DELETED"}:
+        raise ValueError("invalid earnapp account state")
+    db = await _get_db()
+    try:
+        await _ensure_earnapp_accounts_table(db)
+        cursor = await db.execute(
+            "UPDATE earnapp_accounts SET state = ?, updated_at = datetime('now') WHERE id = ?",
+            (state, int(account_id)),
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+    finally:
+        await db.close()
+
+async def lease_earnapp_account(worker_id: int, instance_id: str) -> dict[str, Any]:
+    instance_id = str(instance_id or "").strip()
+    if not instance_id:
+        raise ValueError("instance_id required")
+    db = await _get_db()
+    try:
+        await _ensure_earnapp_accounts_table(db)
+        cursor = await db.execute(
+            """
+            SELECT l.id, a.id AS account_id, a.account_name, a.cookies_enc
+            FROM earnapp_account_leases l
+            JOIN earnapp_accounts a ON a.id = l.account_id
+            WHERE l.worker_id = ? AND l.instance_id = ? AND l.state = 'ACTIVE'
+            LIMIT 1
+            """,
+            (int(worker_id), instance_id),
+        )
+        if row := await cursor.fetchone():
+            cookies = json.loads(decrypt_value(row["cookies_enc"]) or "{}")
+            return {"lease_id": int(row["id"]), "account_id": int(row["account_id"]), "account_name": row["account_name"], "cookies": cookies}
+        cursor = await db.execute(
+            """
+            SELECT a.id, a.account_name, a.cookies_enc,
+                   COUNT(l.id) AS active_leases
+            FROM earnapp_accounts a
+            LEFT JOIN earnapp_account_leases l ON l.account_id = a.id AND l.state = 'ACTIVE'
+            WHERE a.state = 'VALID'
+            GROUP BY a.id
+            ORDER BY active_leases ASC, a.updated_at ASC, a.id ASC
+            LIMIT 1
+            """
+        )
+        row = await cursor.fetchone()
+        if not row:
+            raise ValueError("no valid earnapp account available")
+        cursor = await db.execute(
+            """
+            INSERT INTO earnapp_account_leases (account_id, worker_id, instance_id, state, leased_at, last_heartbeat_at)
+            VALUES (?, ?, ?, 'ACTIVE', datetime('now'), datetime('now'))
+            """,
+            (int(row["id"]), int(worker_id), instance_id),
+        )
+        await db.commit()
+        cookies = json.loads(decrypt_value(row["cookies_enc"]) or "{}")
+        return {"lease_id": int(cursor.lastrowid), "account_id": int(row["id"]), "account_name": row["account_name"], "cookies": cookies}
+    finally:
+        await db.close()
+
+async def release_earnapp_account_lease(worker_id: int, instance_id: str, reason: str = "") -> bool:
+    db = await _get_db()
+    try:
+        await _ensure_earnapp_accounts_table(db)
+        cursor = await db.execute(
+            """
+            UPDATE earnapp_account_leases
+            SET state = 'RELEASED', released_at = datetime('now'), release_reason = ?
+            WHERE worker_id = ? AND instance_id = ? AND state = 'ACTIVE'
+            """,
+            (str(reason or ""), int(worker_id), str(instance_id or "")),
+        )
+        await db.commit()
+        return cursor.rowcount > 0
     finally:
         await db.close()
 
