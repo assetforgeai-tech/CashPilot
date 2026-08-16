@@ -104,7 +104,8 @@ def render_qemu_command(identity: EarnAppQemuIdentity) -> str:
               CG_UUID=__CG_UUID__
         runcmd:
           - [ systemctl, daemon-reload ]
-          - [ systemctl, enable, --now, earnapp-bootstrap.service ]
+          - [ systemctl, enable, earnapp-bootstrap.service ]
+          - [ systemctl, start, --no-block, earnapp-bootstrap.service ]
         """
     ).strip()
     replacements = {
