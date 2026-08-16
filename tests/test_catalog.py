@@ -228,7 +228,7 @@ def test_proxies_sx_bandwidth_service_contract():
     assert set(env) == {"API_KEY", "AGENT_NAME"}
     assert env["API_KEY"]["required"] is True
     assert env["API_KEY"]["secret"] is True
-    assert env["AGENT_NAME"]["default"] == "docker-peer"
+    assert env["AGENT_NAME"]["default"] == "{hostname}"
 
     assert data["collector"]["type"] == "api"
     assert data["collector"]["per_node_earnings"] is True

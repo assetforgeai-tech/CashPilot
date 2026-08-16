@@ -28,7 +28,7 @@ docker:
       required: false
       secret: false
       description: "Device name shown in the Proxies.sx peer dashboard."
-      default: "docker-peer"
+      default: "{hostname}"
   ports: []
   volumes:
     - "proxies-sx-data:/app"
@@ -57,8 +57,8 @@ deploy:
       secret: false
       required: false
       env: AGENT_NAME
-      source: "CashPilot worker name"
-      description: "Optional override; blank uses docker-peer."
+      source: "CashPilot worker hostname"
+      description: "Optional override; blank uses the worker hostname."
 
 requirements:
   residential_ip: true
