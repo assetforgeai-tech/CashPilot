@@ -51,7 +51,8 @@ def test_deploy_raw_uses_earnapp_qemu_runtime_instead_of_provider_docker_image()
     assert kwargs["restart_policy"] == {"Name": "always"}
     assert kwargs["environment"]["OAUTH_TOKEN"] == "token"
     assert kwargs["labels"]["cashpilot.host-runtime"] == "qemu_systemd"
-    assert "qemu-system-x86_64" in kwargs["command"]
+    assert kwargs["command"][:2] == ["/bin/bash", "-lc"]
+    assert "qemu-system-x86_64" in kwargs["command"][2]
     assert kwargs["network_mode"] == "container:cashpilot-earnapp-proxy-egress"
 
 @pytest.mark.asyncio
