@@ -9,6 +9,7 @@ os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.requests import Request
 
 from app.main import app
 from app import database, main, myst_wallets
@@ -28,6 +29,9 @@ def _owner():
 
 def _auth_owner():
     return patch("app.main.auth.get_current_user", return_value=_owner())
+
+def _request(path: str = "/api/workers/1/command") -> Request:
+    return Request({"type": "http", "method": "POST", "path": path, "headers": []})
 
 
 @pytest.fixture
@@ -460,5 +464,45 @@ class TestMystWalletInventory:
                 row = (await database.list_myst_wallets())[0]
                 assert row["state"] == "AVAILABLE"
                 assert row["release_reason"] == "REMOVED"
+
+        asyncio.run(run())
+
+    def test_worker_command_deploy_attaches_myst_wallet(self, tmp_path):
+        async def run():
+            with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "myst.db"):
+                await database.init_db()
+                worker_id = await database.upsert_worker("worker-client", "worker", "http://worker")
+                await database.import_myst_wallets("raw-wallet-one")
+                sent_specs = []
+
+                async def fake_proxy(_worker_id, _method, _path, *, json=None):
+                    sent_specs.append(json)
+                    return {"container_id": "myst-cid"}
+
+                async def noop(*_args, **_kwargs):
+                    return None
+
+                with (
+                    patch.object(main, "_require_owner", return_value=_owner()),
+                    patch.object(main, "_proxy_to_worker", side_effect=fake_proxy),
+                    patch.object(database, "save_deployment", side_effect=noop),
+                    patch.object(database, "record_health_event", side_effect=noop),
+                    patch.object(main, "_run_collection", side_effect=noop),
+                ):
+                    result = await main.api_worker_command(
+                        _request(),
+                        worker_id,
+                        main.WorkerCommand(
+                            command="deploy",
+                            slug="mysterium",
+                            spec={"deploy_credentials": {"dashboard_password": "pw", "mmn_api_key": "mmn"}},
+                        ),
+                    )
+
+                creds = sent_specs[0]["deploy_credentials"]
+                assert result["container_id"] == "myst-cid"
+                assert creds["myst_wallet_raw"] == "raw-wallet-one"
+                assert creds["myst_wallet_id"]
+                assert creds["myst_wallet_client_id"] == "worker-client"
 
         asyncio.run(run())

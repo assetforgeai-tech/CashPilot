@@ -5120,7 +5120,15 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
                 status_code=409 if deploy_status == "broken" else 410,
                 detail=f"Service '{body.slug}' is no longer available for deployment ({deploy_status})",
             )
-        result = await _proxy_to_worker(worker_id, "POST", f"/api/containers/{body.slug}/deploy", json=body.spec)
+        spec = body.spec if isinstance(body.spec, dict) else {}
+        await _attach_myst_wallet_for_deploy(body.slug, worker_id, spec)
+        try:
+            result = await _proxy_to_worker(worker_id, "POST", f"/api/containers/{body.slug}/deploy", json=spec)
+        except Exception:
+            if body.slug == "mysterium":
+                with contextlib.suppress(Exception):
+                    await _release_myst_wallet_from_spec(spec, reason="DEPLOY_FAILED")
+            raise
     elif body.command in ("stop", "restart", "start"):
         result = await _proxy_to_worker(worker_id, "POST", f"/api/containers/{body.slug}/{body.command}")
     elif body.command == "remove":
@@ -5141,7 +5149,7 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
         await database.save_deployment(
             slug=slug,
             container_id=container_id,
-            spec=body.spec if isinstance(body.spec, dict) else None,
+            spec=spec if isinstance(spec, dict) else None,
         )
         await database.record_health_event(slug, "start", f"deployed to worker {worker_id}")
         metrics.record_container_lifecycle("deploy", slug)
