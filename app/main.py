@@ -2274,6 +2274,7 @@ async def api_deploy(
         instance_spec["labels"]["cashpilot.provider"] = slug
         instance_spec["labels"]["cashpilot.instance_mode"] = mode
         if slug == "earnfm" and mode == "direct":
+            instance_spec.setdefault("env", {})["GODEBUG"] = "http2client=0"
             instance_spec["network_mode"] = "host"
             instance_spec["hostname"] = "eapp"
         if slug == "proxyrack" and mode in {"direct", "proxy"}:

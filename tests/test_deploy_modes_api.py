@@ -295,6 +295,7 @@ async def test_earnfm_direct_uses_host_network_and_eapp_hostname(monkeypatch):
         _auth={"r": "owner"},
     )
 
+    assert specs["earnfm-direct"]["env"]["GODEBUG"] == "http2client=0"
     assert specs["earnfm-direct"]["network_mode"] == "host"
     assert specs["earnfm-direct"]["hostname"] == "eapp"
 
