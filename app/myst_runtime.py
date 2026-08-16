@@ -15,6 +15,7 @@ import bcrypt
 logger = logging.getLogger(__name__)
 _ADDR_RE = re.compile(r"0x[a-fA-F0-9]{40}")
 _BARE_ADDR_RE = re.compile(r"[a-fA-F0-9]{40}")
+_ACTIVE_SERVICES = "wireguard,dvpn,data_transfer,monitoring,scraping"
 
 def wallet_address(raw_wallet: str) -> str:
     text = (raw_wallet or "").strip()
@@ -52,7 +53,7 @@ def state_archive(
     short = address.removeprefix("0x")
     wallet_name = f"keystore/UTC--{datetime.now(UTC).strftime('%Y-%m-%dT%H-%M-%S.000000000Z')}--{short}"
     config = (
-        'active-services = "dvpn,data_transfer,monitoring,scraping"\n\n'
+        f'active-services = "{_ACTIVE_SERVICES}"\n\n'
         "[terms]\n"
         "  consumer-agreed = true\n"
         "  provider-agreed = true\n"
@@ -110,6 +111,14 @@ def apply_direct_wallet(
     container.exec_run(["sh", "-lc", f"myst cli identities unlock {address} {_sh_single(identity_passphrase)} >/dev/null 2>&1 || true"])
     if mmn_api_key:
         container.exec_run(["sh", "-lc", f"myst cli mmn {_sh_single(mmn_api_key)} >/dev/null 2>&1 || true"])
+    container.exec_run(
+        [
+            "sh",
+            "-lc",
+            "myst cli service list 2>/dev/null | grep -qi 'Type: wireguard' || "
+            f"myst cli service start {address} wireguard >/dev/null 2>&1 || true",
+        ]
+    )
     return address
 
 def registration_status(container: Any, address: str) -> str:

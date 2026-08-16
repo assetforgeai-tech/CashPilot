@@ -21,6 +21,9 @@ def test_myst_state_archive_contains_wallet_remember_and_mmn_config():
     assert "keystore/remember.json" in names
     assert "config-mainnet.toml" in names
     assert any(name.startswith("keystore/UTC--") for name in names)
+    with tarfile.open(fileobj=io.BytesIO(blob), mode="r") as tf:
+        config = tf.extractfile("config-mainnet.toml").read().decode("utf-8")
+    assert 'active-services = "wireguard,dvpn,data_transfer,monitoring,scraping"' in config
 
 
 def test_wallet_address_accepts_myst_keystore_bare_hex_address():
@@ -46,6 +49,7 @@ def test_apply_direct_wallet_stops_patches_restarts_sets_password_and_mmn():
     container.restart.assert_called_once()
     execs = [" ".join(call.args[0]) for call in container.exec_run.call_args_list]
     assert any("myst cli mmn" in cmd for cmd in execs)
+    assert any("service start" in cmd and "wireguard" in cmd for cmd in execs)
     archive = container.put_archive.call_args_list[1].args[1]
     assert b"nodeui-pass" in archive
 
