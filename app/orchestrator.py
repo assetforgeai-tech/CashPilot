@@ -355,6 +355,7 @@ def deploy_raw(
             ],
             cap_add=["NET_ADMIN"],
             devices=["/dev/net/tun:/dev/net/tun"],
+            ports=ports if provider == "mysterium" and ports else None,
             labels={
                 LABEL_SERVICE: slug,
                 LABEL_MANAGED: "true",

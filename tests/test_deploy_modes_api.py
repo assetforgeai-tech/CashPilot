@@ -361,6 +361,9 @@ async def test_mysterium_parallel_modes_keep_direct_host_and_proxy_sidecar(monke
     assert specs["mysterium-proxy"]["network_mode"] is None
     assert specs["mysterium-proxy"]["proxy"]["proxy_id"] == 9
     assert "4449/tcp" not in specs["mysterium-proxy"]["ports"]
+    assert "56000/udp" in specs["mysterium-proxy"]["ports"]
+    assert "56020/udp" in specs["mysterium-proxy"]["ports"]
+    assert "--udp.ports=56000:56020" in specs["mysterium-proxy"]["command"]
     assert leases == [
         ("worker-a:mysterium-direct", "8.8.8.8"),
         ("worker-a:mysterium-proxy", "1.2.3.4"),

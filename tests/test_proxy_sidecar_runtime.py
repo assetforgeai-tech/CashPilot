@@ -50,3 +50,24 @@ def test_mysterium_proxy_routes_udp_direct():
         )
 
     assert render.call_args.kwargs["udp_direct"] is True
+
+def test_mysterium_proxy_publishes_udp_ports_on_sidecar():
+    client = MagicMock()
+    client.containers.get.side_effect = [orchestrator.NotFound("nope"), orchestrator.NotFound("nope")]
+    sidecar = MagicMock(short_id="side", id="sidecar-id")
+    provider = MagicMock(short_id="provider", id="provider-id")
+    client.containers.run.side_effect = [sidecar, provider]
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        orchestrator.deploy_raw(
+            slug="mysterium-proxy",
+            provider_slug="mysterium",
+            image="mysteriumnetwork/myst:latest",
+            ports={"56000/udp": 56000, "56020/udp": 56020},
+            labels={"cashpilot.provider": "mysterium", "cashpilot.instance_mode": "proxy"},
+            proxy={"host": "1.2.3.4", "port": 1080, "protocol": "socks5"},
+        )
+
+    sidecar_call, provider_call = client.containers.run.call_args_list
+    assert sidecar_call.kwargs["ports"] == {"56000/udp": 56000, "56020/udp": 56020}
+    assert provider_call.kwargs["ports"] is None

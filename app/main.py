@@ -1040,6 +1040,7 @@ async def _check_stale_workers() -> None:
 
 FLEET_API_KEY = fleet_key.resolve_fleet_key()
 HOSTNAME_PREFIX = os.getenv("CASHPILOT_HOSTNAME_PREFIX", "cashpilot")
+MYST_PROXY_UDP_PORTS = range(56000, 56021)
 COLLECT_INTERVAL_MIN = int(os.getenv("CASHPILOT_COLLECT_INTERVAL", "60"))
 STALE_WORKER_SECONDS = 180  # Mark worker offline after 3 missed heartbeats
 
@@ -2293,7 +2294,14 @@ async def api_deploy(
             instance_spec["hostname"] = "eapp"
         if slug == "mysterium" and mode == "proxy":
             instance_spec["network_mode"] = None
-            instance_spec["ports"] = {}
+            instance_spec["ports"] = {f"{port}/udp": port for port in MYST_PROXY_UDP_PORTS}
+            command_text = str(instance_spec.get("command") or "")
+            if "--udp.ports=" not in command_text:
+                instance_spec["command"] = command_text.replace(
+                    " service ",
+                    f" --udp.ports={min(MYST_PROXY_UDP_PORTS)}:{max(MYST_PROXY_UDP_PORTS)} service ",
+                    1,
+                )
         if slug == "proxyrack" and mode in {"direct", "proxy"}:
             instance_env = instance_spec.setdefault("env", {})
             instance_env["UUID"] = secrets.token_hex(32).upper()
