@@ -308,6 +308,7 @@ async def test_earnfm_direct_uses_host_network_and_eapp_hostname(monkeypatch):
 @pytest.mark.asyncio
 async def test_mysterium_parallel_modes_keep_direct_host_and_proxy_sidecar(monkeypatch):
     specs: dict[str, dict] = {}
+    leases: list[tuple[str, str]] = []
 
     async def fake_deploy(_worker_id: int, instance_slug: str, spec: dict) -> dict[str, str]:
         specs[instance_slug] = spec
@@ -322,12 +323,13 @@ async def test_mysterium_parallel_modes_keep_direct_host_and_proxy_sidecar(monke
     async def worker(_worker_id: int):
         return {"id": _worker_id, "client_id": "worker-a", "system_info": '{"egress_ip":"8.8.8.8"}'}
 
-    async def wallet(*_args, **_kwargs):
+    async def wallet(client_id: str, **kwargs):
+        leases.append((client_id, kwargs.get("public_ip") or ""))
         return {
-            "id": 5,
+            "id": len(leases),
             "wallet_assignment_version": 2,
-            "raw_wallet": "{\"address\":\"0x57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1\"}",
-            "address": "0x57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1",
+            "raw_wallet": f"{{\"address\":\"0x{len(leases)}7143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1\"}}",
+            "address": f"0x{len(leases)}7143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1",
         }
 
     async def proxy(_worker_id: int, **_kwargs):
@@ -359,6 +361,12 @@ async def test_mysterium_parallel_modes_keep_direct_host_and_proxy_sidecar(monke
     assert specs["mysterium-proxy"]["network_mode"] is None
     assert specs["mysterium-proxy"]["proxy"]["proxy_id"] == 9
     assert "4449/tcp" not in specs["mysterium-proxy"]["ports"]
+    assert leases == [
+        ("worker-a:mysterium-direct", "8.8.8.8"),
+        ("worker-a:mysterium-proxy", "1.2.3.4"),
+    ]
+    assert specs["mysterium-direct"]["deploy_credentials"]["myst_wallet_id"] == "1"
+    assert specs["mysterium-proxy"]["deploy_credentials"]["myst_wallet_id"] == "2"
 
 
 @pytest.mark.asyncio

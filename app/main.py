@@ -1947,8 +1947,15 @@ async def _attach_myst_wallet_for_deploy(slug: str, worker_id: int, spec: dict[s
             system_info = json.loads(system_info)
     if isinstance(system_info, dict):
         public_ip = str(system_info.get("egress_ip") or "").strip()
+    labels = spec.get("labels") or {}
+    mode = str(labels.get("cashpilot.instance_mode") or "").strip()
+    lease_client_id = str(worker["client_id"])
+    if mode in {"direct", "proxy"}:
+        lease_client_id = f"{lease_client_id}:mysterium-{mode}"
+        if mode == "proxy":
+            public_ip = str((spec.get("proxy") or {}).get("host") or "").strip() or public_ip
     try:
-        wallet = await database.lease_myst_wallet(str(worker["client_id"]), worker_id=worker_id, public_ip=public_ip)
+        wallet = await database.lease_myst_wallet(lease_client_id, worker_id=worker_id, public_ip=public_ip)
     except database.MystWalletPublicIpInUse as exc:
         raise HTTPException(status_code=409, detail="MYST wallet already assigned to this public IP") from exc
     if not wallet:
@@ -1957,7 +1964,7 @@ async def _attach_myst_wallet_for_deploy(slug: str, worker_id: int, spec: dict[s
     deploy_credentials["myst_wallet_raw"] = str(wallet.get("raw_wallet") or "")
     deploy_credentials["myst_wallet_assignment_version"] = int(wallet.get("wallet_assignment_version") or 0)
     deploy_credentials["myst_wallet_id"] = str(wallet.get("id") or "")
-    deploy_credentials["myst_wallet_client_id"] = str(worker["client_id"])
+    deploy_credentials["myst_wallet_client_id"] = lease_client_id
     deploy_credentials["myst_wallet_address"] = str(wallet.get("address") or "")
     return wallet
 
