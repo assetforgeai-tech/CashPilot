@@ -1401,7 +1401,7 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             sysctls=spec.sysctls,
             shm_size=spec.shm_size,
         )
-        if slug == "mysterium":
+        if (spec.provider_slug or slug) == "mysterium":
             try:
                 await _sync_myst_wallet_after_deploy(spec.deploy_credentials, container_id)
             except Exception as exc:

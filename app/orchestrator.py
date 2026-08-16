@@ -404,7 +404,7 @@ def deploy_raw(
     )
 
     logger.info("Container %s started: %s", name, container.short_id)
-    if slug == "mysterium" and deploy_credentials and deploy_credentials.get("myst_wallet_raw"):
+    if provider == "mysterium" and deploy_credentials and deploy_credentials.get("myst_wallet_raw"):
         address = myst_runtime.apply_direct_wallet(
             container,
             deploy_credentials,

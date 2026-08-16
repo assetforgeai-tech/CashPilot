@@ -5,7 +5,12 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
+from starlette.requests import Request
+
 from app import worker_api
+
+def _request(path: str = "/api/containers/mysterium-direct/deploy") -> Request:
+    return Request({"type": "http", "method": "POST", "path": path, "headers": []})
 
 
 def test_myst_state_file_round_trips_without_raw_wallet(tmp_path, monkeypatch):
@@ -79,6 +84,31 @@ def test_myst_sync_after_deploy_uses_worker_heartbeat_only(tmp_path, monkeypatch
             },
             "container-id",
         )
+
+    asyncio.run(run())
+    saved = json.loads(Path(tmp_path, "myst-wallet.json").read_text(encoding="utf-8"))
+    assert saved["myst_wallet_id"] == 7
+
+def test_myst_direct_instance_deploy_syncs_wallet_state(tmp_path, monkeypatch):
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+
+    async def run():
+        spec = worker_api.DeploySpec(
+            image="mysteriumnetwork/myst:latest",
+            provider_slug="mysterium",
+            deploy_credentials={
+                "myst_wallet_id": 7,
+                "myst_wallet_client_id": "worker-a",
+                "myst_wallet_assignment_version": 3,
+                "myst_wallet_raw": "{\"address\":\"0x57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1\"}",
+            },
+        )
+        with (
+            patch.object(worker_api, "_verify_api_key", return_value=None),
+            patch.object(worker_api, "_validate_deploy_spec", return_value=None),
+            patch.object(worker_api.orchestrator, "deploy_raw", return_value="container-id"),
+        ):
+            await worker_api.api_deploy_container(_request(), "mysterium-direct", spec)
 
     asyncio.run(run())
     saved = json.loads(Path(tmp_path, "myst-wallet.json").read_text(encoding="utf-8"))

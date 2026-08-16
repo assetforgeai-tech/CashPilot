@@ -84,3 +84,26 @@ def test_deploy_raw_applies_myst_wallet_after_container_create():
         )
 
     apply_wallet.assert_called_once()
+
+def test_deploy_raw_applies_myst_wallet_for_direct_instance_slug():
+    client = MagicMock()
+    client.containers.get.side_effect = orchestrator.NotFound("nope")
+    container = MagicMock(short_id="abc123", id="container-id")
+    client.containers.run.return_value = container
+
+    with (
+        patch.object(orchestrator, "_get_client", return_value=client),
+        patch.object(orchestrator.myst_runtime, "apply_direct_wallet") as apply_wallet,
+    ):
+        orchestrator.deploy_raw(
+            slug="mysterium-direct",
+            provider_slug="mysterium",
+            image="img:1",
+            deploy_credentials={
+                "myst_wallet_raw": RAW_WALLET,
+                "myst_dashboard_password": "pw",
+                "myst_mmn_api_key": "mmn-key",
+            },
+        )
+
+    apply_wallet.assert_called_once()
