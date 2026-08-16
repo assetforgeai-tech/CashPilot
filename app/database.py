@@ -2473,7 +2473,7 @@ async def list_myst_wallets() -> list[dict[str, Any]]:
         await _repair_myst_wallet_addresses(db)
         cursor = await db.execute(
             """
-            SELECT id, wallet_fingerprint, address, state, funding, leased_to_worker_id,
+            SELECT id, wallet_fingerprint, address, state, funding, leased_to_worker_id, leased_to_client_id,
                    release_reason, wallet_assignment_version,
                    node_identity, runtime_status, public_ip, last_heartbeat_at,
                    quarantined_reason, imported_at, updated_at

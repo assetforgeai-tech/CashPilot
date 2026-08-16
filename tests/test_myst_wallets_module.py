@@ -431,6 +431,7 @@ class TestMystWalletInventory:
                 row = (await database.list_myst_wallets())[0]
                 assert row["state"] == "LEASED"
                 assert row["leased_to_worker_id"] == worker_id
+                assert row["leased_to_client_id"] == "worker-client"
 
         asyncio.run(run())
 
