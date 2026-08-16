@@ -60,9 +60,9 @@ deploy:
       description: "Used by CashPilot after wallet import so the node can claim/register with MMN automatically."
 
 egress:
-  mode: direct
+  mode: auto
   udp: required
-  reason: "Needs inbound/UDP VPN traffic and /dev/net/tun; proxy egress can break earnings."
+  reason: "Direct is the primary MYST path; proxy mode is supported for controlled proxy-node tests with /dev/net/tun."
 
 requirements:
   residential_ip: false
@@ -82,7 +82,7 @@ earnings:
   monthly_high: 10
   currency: USD
   per: "device"
-  notes: "Earnings in MYST tokens. Residential IPs earn significantly more. Node WebUI at port 4449 for management. VPS accepted. Port forwarding UDP 56000-56100 strongly recommended -- without it, nodes get Strict NAT status and many VPN sessions fail, severely reducing income. CashPilot direct-wallet deploy leases a funded wallet from MYST Wallet inventory, imports it into the worker, sets the dashboard password, and applies the MMN API key."
+  notes: "Earnings in MYST tokens. Residential IPs earn significantly more. Node WebUI at port 4449 for management. VPS accepted. Port forwarding UDP 56000-56100 strongly recommended -- without it, nodes get Strict NAT status and many VPN sessions fail, severely reducing income. CashPilot wallet deploy leases a funded wallet from MYST Wallet inventory, imports it into the worker, sets the dashboard password, and applies the MMN API key for direct and proxy instances."
 
 cashout:
   method: auto
@@ -95,7 +95,7 @@ platforms: [docker, windows, macos, linux, android, browser-extension]
 
 collector:
   type: api
-  notes: "Cloud MystNodes API provides account and per-node earnings. Direct MYST runtime should reuse funded identities/wallets; creating a fresh identity per VPS can require a MYST deposit and should not be the default automation path."
+  notes: "Cloud MystNodes API provides account and per-node earnings. MYST runtime should reuse funded identities/wallets; creating a fresh identity per VPS can require a MYST deposit and should not be the default automation path. Per-node dashboard URL format: https://my.mystnodes.com/node?identity=0x{address}."
   credentials:
     - key: email
       label: "Email"

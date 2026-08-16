@@ -2284,6 +2284,9 @@ async def api_deploy(
             instance_spec.setdefault("env", {})["GODEBUG"] = "http2client=0"
             instance_spec["network_mode"] = "host"
             instance_spec["hostname"] = "eapp"
+        if slug == "mysterium" and mode == "proxy":
+            instance_spec["network_mode"] = None
+            instance_spec["ports"] = {}
         if slug == "proxyrack" and mode in {"direct", "proxy"}:
             instance_env = instance_spec.setdefault("env", {})
             instance_env["UUID"] = secrets.token_hex(32).upper()

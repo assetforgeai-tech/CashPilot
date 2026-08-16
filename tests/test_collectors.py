@@ -40,3 +40,11 @@ def test_earnings_result_fields():
     assert result.currency == "USD"
     assert result.error is None
 
+def test_mystnodes_dashboard_url_uses_node_identity():
+    from app.collectors.mystnodes import myst_dashboard_url
+
+    assert (
+        myst_dashboard_url("57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1")
+        == "https://my.mystnodes.com/node?identity=0x57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1"
+    )
+
