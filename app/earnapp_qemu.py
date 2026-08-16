@@ -53,7 +53,7 @@ def render_qemu_command(identity: EarnAppQemuIdentity) -> str:
               set -euxo pipefail
               systemctl stop earnapp earnapp_upgrader 2>/dev/null || true
               systemctl disable earnapp earnapp_upgrader 2>/dev/null || true
-              rm -f /etc/systemd/system/earnapp*.service /usr/bin/earnapp /usr/bin/earnapp_bak /tmp/earnapp_*
+              rm -f /etc/systemd/system/earnapp.service /etc/systemd/system/earnapp_upgrader.service /usr/bin/earnapp /usr/bin/earnapp_bak /tmp/earnapp_*
               rm -rf /etc/earnapp /var/lib/earnapp /opt/earnapp /root/.earnapp
               systemctl daemon-reload
               update-ca-certificates --fresh
