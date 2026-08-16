@@ -37,38 +37,21 @@ def test_myst_state_archive_refuses_wallet_without_address():
 def test_apply_direct_wallet_stops_patches_restarts_sets_password_and_mmn():
     container = MagicMock()
     wallet = {"raw_wallet": RAW_WALLET, "wallet_assignment_version": 3}
-    client = MagicMock()
-
-    with patch.object(myst_runtime.docker, "from_env", return_value=client):
-        myst_runtime.apply_direct_wallet(container, wallet, dashboard_password="pw", mmn_api_key="mmn-key")
+    myst_runtime.apply_direct_wallet(container, wallet, dashboard_password="pw", mmn_api_key="mmn-key")
 
     container.stop.assert_called_once()
-    container.put_archive.assert_called_once()
-    assert container.put_archive.call_args.args[0] == "/var/lib/mysterium-node"
+    assert container.put_archive.call_count == 2
+    assert container.put_archive.call_args_list[0].args[0] == "/var/lib/mysterium-node"
+    assert container.put_archive.call_args_list[1].args[0] == "/var/lib/mysterium-node"
     container.restart.assert_called_once()
     execs = [" ".join(call.args[0]) for call in container.exec_run.call_args_list]
     assert any("myst cli mmn" in cmd for cmd in execs)
-    client.containers.run.assert_called_once()
-    helper = client.containers.run.call_args.kwargs
-    assert helper["image"] == "curlimages/curl:8.10.1"
-    assert helper["network_mode"] == "host"
-    assert helper["environment"] == {"NEW_PASSWORD": "pw"}
-    assert "oldPassword" in helper["command"][2]
-    assert "newPassword" in helper["command"][2]
-    assert 'if [ "$old" = "$NEW_PASSWORD" ]; then exit 0; fi' in helper["command"][2]
+    archive = container.put_archive.call_args_list[1].args[1]
+    assert b"nodeui-pass" in archive
 
 def test_apply_direct_wallet_keeps_deploy_alive_when_password_reset_fails():
     container = MagicMock()
-    with patch.object(myst_runtime.docker, "from_env") as docker_from_env:
-        docker_from_env.return_value.containers.run.side_effect = myst_runtime.docker.errors.ContainerError(
-            container="curl",
-            exit_status=22,
-            command="curl",
-            image="curlimages/curl",
-            stderr=b"401",
-        )
-
-        address = myst_runtime.apply_direct_wallet(container, {"raw_wallet": RAW_WALLET}, dashboard_password="pw", mmn_api_key="mmn")
+    address = myst_runtime.apply_direct_wallet(container, {"raw_wallet": RAW_WALLET}, dashboard_password="pw", mmn_api_key="mmn")
 
     assert address == "0x57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1"
     container.exec_run.assert_any_call(["sh", "-lc", "myst cli mmn 'mmn' >/dev/null 2>&1 || true"])

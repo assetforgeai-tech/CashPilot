@@ -10,7 +10,7 @@ import tarfile
 from datetime import UTC, datetime
 from typing import Any
 
-import docker
+import bcrypt
 
 logger = logging.getLogger(__name__)
 _ADDR_RE = re.compile(r"0x[a-fA-F0-9]{40}")
@@ -69,44 +69,21 @@ def state_archive(
         _tar_add(tf, "config-mainnet.toml", config.encode())
     return buf.getvalue()
 
-
 def _sh_single(value: str) -> str:
     return "'" + str(value).replace("'", "'\"'\"'") + "'"
 
-
-def _set_dashboard_password(password: str, *, port: int = 4449) -> None:
+def nodeui_password_hash(password: str) -> str:
     if not password:
-        return
-    script = f"""set -eu
-tmp=$(mktemp)
-trap 'rm -f "$tmp"' EXIT
-for old in "$NEW_PASSWORD" mystberry; do
-  status=$(curl -sS -m 10 -c "$tmp" -b "$tmp" -o /dev/null -w '%{{http_code}}' \
-    -X POST "http://127.0.0.1:{int(port)}/tequilapi/auth/login" \
-    -H 'Content-Type: application/json' \
-    -d '{{"username":"myst","password":"'"$old"'"}}' || true)
-  case "$status" in
-    200|204)
-      if [ "$old" = "$NEW_PASSWORD" ]; then exit 0; fi
-      break
-      ;;
-  esac
-done
-curl -fsS -m 10 -c "$tmp" -b "$tmp" \
-  -X PUT "http://127.0.0.1:{int(port)}/tequilapi/auth/password" \
-  -H 'Content-Type: application/json' \
-  -d '{{"username":"myst","oldPassword":"mystberry","newPassword":"'"$NEW_PASSWORD"'"}}' >/dev/null
-"""
-    client = docker.from_env()
-    client.containers.run(
-        image="curlimages/curl:8.10.1",
-        command=["sh", "-ec", script],
-        environment={"NEW_PASSWORD": password},
-        network_mode="host",
-        remove=True,
-        detach=False,
-    )
+        return ""
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=10, prefix=b"2a")).decode()
 
+def _nodeui_password_archive(password: str) -> bytes:
+    if not password:
+        return b""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tf:
+        _tar_add(tf, "nodeui-pass", (nodeui_password_hash(password) + "\n").encode())
+    return buf.getvalue()
 
 def apply_direct_wallet(
     container: Any,
@@ -127,13 +104,10 @@ def apply_direct_wallet(
     )
     container.stop(timeout=30)
     container.put_archive("/var/lib/mysterium-node", archive)
+    if dashboard_password:
+        container.put_archive("/var/lib/mysterium-node", _nodeui_password_archive(dashboard_password))
     container.restart(timeout=30)
     container.exec_run(["sh", "-lc", f"myst cli identities unlock {address} {_sh_single(identity_passphrase)} >/dev/null 2>&1 || true"])
-    try:
-        _set_dashboard_password(dashboard_password)
-    except docker.errors.ContainerError as exc:
-        # ponytail: Tequilapi auth flow changes across MYST releases; keep node deploy alive, revisit when UI password automation is required.
-        logger.warning("Could not set MYST dashboard password: %s", exc)
     if mmn_api_key:
         container.exec_run(["sh", "-lc", f"myst cli mmn {_sh_single(mmn_api_key)} >/dev/null 2>&1 || true"])
     return address
