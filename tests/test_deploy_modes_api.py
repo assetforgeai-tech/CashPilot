@@ -264,6 +264,42 @@ async def test_standard_device_identity_uses_worker_egress_ip(monkeypatch, slug,
 
 
 @pytest.mark.asyncio
+async def test_earnfm_direct_uses_host_network_and_eapp_hostname(monkeypatch):
+    specs: dict[str, dict] = {}
+
+    async def fake_deploy(_worker_id: int, instance_slug: str, spec: dict) -> dict[str, str]:
+        specs[instance_slug] = spec
+        return {"container_id": f"{instance_slug}-cid"}
+
+    async def noop(*_args, **_kwargs):
+        return None
+
+    async def config(*_args, **_kwargs):
+        return {"earnfm_token": "token"}
+
+    def close_spawn(coro):
+        coro.close()
+
+    monkeypatch.setattr(main.database, "get_deployment_spec", noop)
+    monkeypatch.setattr(main.database, "get_config", config)
+    monkeypatch.setattr(main.database, "save_provider_instance", noop)
+    monkeypatch.setattr(main.database, "record_health_event", noop)
+    monkeypatch.setattr(main, "_proxy_worker_deploy", fake_deploy)
+    monkeypatch.setattr(main, "_spawn", close_spawn)
+
+    await main.api_deploy(
+        _request("/api/deploy/earnfm"),
+        "earnfm",
+        main.DeployRequest(env={}, hostname="worker-1", mode="direct"),
+        worker_id=7,
+        _auth={"r": "owner"},
+    )
+
+    assert specs["earnfm-direct"]["network_mode"] == "host"
+    assert specs["earnfm-direct"]["hostname"] == "eapp"
+
+
+@pytest.mark.asyncio
 async def test_iproyal_proxy_masks_ip_used_and_retries(monkeypatch):
     specs: list[dict] = []
     masked: list[tuple[int, str, str]] = []
