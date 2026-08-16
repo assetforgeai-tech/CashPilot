@@ -117,42 +117,42 @@ def render_qemu_command(identity: EarnAppQemuIdentity) -> str:
     }
     for old, new in replacements.items():
         user_data = user_data.replace(old, new)
-    return textwrap.dedent(
-        f"""
-        set -euo pipefail
-        export DEBIAN_FRONTEND=noninteractive
-        apt-get update -y
-        apt-get install -y ca-certificates curl wget qemu-system-x86 qemu-utils cloud-image-utils
-        mkdir -p /state
-        cd /state
-        if [ ! -f ubuntu-24.04-server-cloudimg-amd64.img ]; then
-          wget -qO ubuntu-24.04-server-cloudimg-amd64.img https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img
-        fi
-        if [ ! -f earnapp.qcow2 ]; then
-          qemu-img create -f qcow2 -F qcow2 -b ubuntu-24.04-server-cloudimg-amd64.img earnapp.qcow2 12G
-        fi
-        cat >user-data <<'CLOUD'
-        {user_data}
-        CLOUD
-        cat >meta-data <<'META'
-        instance-id: {identity.uuid}
-        local-hostname: {identity.hostname}
-        META
-        cloud-localds seed.iso user-data meta-data
-        exec qemu-system-x86_64 \
-          -machine q35,accel=kvm:tcg \
-          -cpu qemu64 \
-          -m 1024 \
-          -smp 2 \
-          -uuid {identity.uuid} \
-          -smbios type=1,manufacturer=CashPilot,product={identity.product},version=Ubuntu-24.04,serial={identity.serial},uuid={identity.uuid} \
-          -drive file=earnapp.qcow2,if=virtio,format=qcow2,serial={identity.serial} \
-          -drive file=seed.iso,if=virtio,format=raw,readonly=on \
-          -device virtio-net-pci,netdev=net0,mac={identity.mac} \
-          -netdev user,id=net0 \
-          -nographic
-        """
-    ).strip()
+    return "\n".join(
+        [
+            "set -euo pipefail",
+            "export DEBIAN_FRONTEND=noninteractive",
+            "apt-get update -y",
+            "apt-get install -y ca-certificates curl wget qemu-system-x86 qemu-utils cloud-image-utils",
+            "mkdir -p /state",
+            "cd /state",
+            "if [ ! -f ubuntu-24.04-server-cloudimg-amd64.img ]; then",
+            "  wget -qO ubuntu-24.04-server-cloudimg-amd64.img https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img",
+            "fi",
+            "if [ ! -f earnapp.qcow2 ]; then",
+            "  qemu-img create -f qcow2 -F qcow2 -b ubuntu-24.04-server-cloudimg-amd64.img earnapp.qcow2 12G",
+            "fi",
+            "cat >user-data <<'CLOUD'",
+            user_data,
+            "CLOUD",
+            "cat >meta-data <<'META'",
+            f"instance-id: {identity.uuid}",
+            f"local-hostname: {identity.hostname}",
+            "META",
+            "cloud-localds seed.iso user-data meta-data",
+            "exec qemu-system-x86_64 \\",
+            "  -machine q35,accel=kvm:tcg \\",
+            "  -cpu qemu64 \\",
+            "  -m 1024 \\",
+            "  -smp 2 \\",
+            f"  -uuid {identity.uuid} \\",
+            f"  -smbios type=1,manufacturer=CashPilot,product={identity.product},version=Ubuntu-24.04,serial={identity.serial},uuid={identity.uuid} \\",
+            f"  -drive file=earnapp.qcow2,if=virtio,format=qcow2,serial={identity.serial} \\",
+            "  -drive file=seed.iso,if=virtio,format=raw,readonly=on \\",
+            f"  -device virtio-net-pci,netdev=net0,mac={identity.mac} \\",
+            "  -netdev user,id=net0 \\",
+            "  -nographic",
+        ]
+    )
 
 
 def deploy_container(client, *, slug: str, network_mode: str | None, labels: dict[str, str], deploy_credentials: dict[str, str]):
