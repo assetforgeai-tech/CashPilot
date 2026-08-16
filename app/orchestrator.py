@@ -276,6 +276,8 @@ def deploy_raw(
         old_sidecar.remove(force=True)
     except NotFound:
         pass
+    if provider == "mysterium" and deploy_credentials and deploy_credentials.get("myst_wallet_raw"):
+        _remove_named_volumes(volumes or {})
 
     all_labels = {
         LABEL_SERVICE: slug,
@@ -421,6 +423,17 @@ def deploy_raw(
     if slug == "wipter" and deploy_credentials:
         provider_automation.schedule_wipter_post_login_restart(container)
     return container.id
+
+def _remove_named_volumes(volumes: dict[str, Any]) -> None:
+    client = _get_client()
+    for source in volumes:
+        if str(source).startswith(("/", ".", "~")):
+            continue
+        try:
+            client.volumes.get(str(source)).remove(force=True)
+            logger.info("Removed stale named volume %s before wallet import", source)
+        except NotFound:
+            pass
 
 
 def _parse_stop_timeout(value: Any) -> int:

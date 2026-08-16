@@ -123,3 +123,52 @@ def test_deploy_raw_applies_myst_wallet_for_direct_instance_slug():
         )
 
     apply_wallet.assert_called_once()
+
+def test_deploy_raw_clears_myst_named_volume_before_wallet_import():
+    events: list[str] = []
+
+    class _OldContainer:
+        def remove(self, force=False):
+            events.append("old_container_removed")
+
+    class _Volume:
+        def remove(self, force=False):
+            events.append("volume_removed")
+
+    class _Volumes:
+        def get(self, name):
+            assert name == "mysterium-data-direct"
+            return _Volume()
+
+    class _Images:
+        def pull(self, image):
+            events.append("image_pulled")
+
+    class _Containers:
+        def get(self, name):
+            if name == "cashpilot-mysterium-direct":
+                return _OldContainer()
+            raise orchestrator.NotFound("missing")
+
+        def run(self, *args, **kwargs):
+            events.append("container_created")
+            return MagicMock(short_id="abc123", id="container-id")
+
+    client = MagicMock()
+    client.containers = _Containers()
+    client.volumes = _Volumes()
+    client.images = _Images()
+
+    with (
+        patch.object(orchestrator, "_get_client", return_value=client),
+        patch.object(orchestrator.myst_runtime, "apply_direct_wallet", return_value="0x57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1"),
+    ):
+        orchestrator.deploy_raw(
+            slug="mysterium-direct",
+            provider_slug="mysterium",
+            image="mysteriumnetwork/myst:latest",
+            volumes={"mysterium-data-direct": {"bind": "/var/lib/mysterium-node", "mode": "rw"}},
+            deploy_credentials={"myst_wallet_raw": RAW_WALLET},
+        )
+
+    assert events.index("old_container_removed") < events.index("volume_removed") < events.index("container_created")
