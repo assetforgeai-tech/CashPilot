@@ -338,6 +338,7 @@ def deploy_raw(
             proxy,
             worker_name=slug,
             udp_direct=provider == "traffmonetizer",
+            interface_name="cpegress" if provider == "repocket" else "cp-egress",
         )
         encoded_config = base64.b64encode(json.dumps(config).encode()).decode()
         logger.info("Creating egress sidecar %s", sidecar_name)

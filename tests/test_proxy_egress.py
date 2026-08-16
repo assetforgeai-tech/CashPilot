@@ -92,6 +92,16 @@ def test_singbox_config_uses_tun_and_socks_outbound():
     assert {"port": 53, "outbound": "direct"} in config["route"]["rules"]
     assert {"domain": ["dc-t5.proxyvt.com"], "outbound": "direct"} in config["route"]["rules"]
 
+def test_singbox_config_can_use_repocket_safe_tun_name():
+    from app.singbox_config import render_tun_proxy_config
+
+    config = render_tun_proxy_config(
+        {"host": "proxy.example.com", "port": 1080, "protocol": "socks5"},
+        worker_name="repocket-proxy",
+        interface_name="cpegress",
+    )
+    assert config["inbounds"][0]["interface_name"] == "cpegress"
+
 def test_singbox_config_can_route_udp_direct_for_traffmonetizer_proxy():
     from app.singbox_config import render_tun_proxy_config
 
