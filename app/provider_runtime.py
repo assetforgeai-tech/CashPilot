@@ -46,7 +46,7 @@ PROVIDERS: dict[str, ProviderRuntime] = {
     "repocket": ProviderRuntime("repocket", "repocket.py", "repocket.py", ("direct", "proxy"), "earnings"),
     "spide": ProviderRuntime("spide", "spide.py", "spide.py", ("direct", "proxy"), "dashboard_only"),
     "traffmonetizer": ProviderRuntime("traffmonetizer", "traffmonetizer.py", "traffmonetizer.py", ("direct", "proxy"), "earnings"),
-    "uprock": ProviderRuntime("uprock", "Uprock.py", "Uprock.py", ("direct", "proxy"), "count_only"),
+    "uprock": ProviderRuntime("uprock", "Uprock.py", "Uprock.py", ("proxy",), "count_only"),
     "urnetwork": ProviderRuntime("urnetwork", "URNetwork.py", "URNetwork.py", ("direct", "proxy"), "dashboard_only"),
     "wipter": ProviderRuntime("wipter", "Wipter.py", "Wipter.py", ("proxy",), "count_only"),
 }

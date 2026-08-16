@@ -18,6 +18,10 @@ def test_expand_both_only_for_dual_mode_provider():
 def test_earnapp_is_proxy_only():
     assert provider_modes.supported_modes("earnapp") == {"proxy"}
 
+def test_uprock_is_proxy_only():
+    assert provider_modes.supported_modes("uprock") == {"proxy"}
+    assert provider_modes.default_deploy_mode("uprock") == "proxy"
+
 def test_sample_scripts_mode_matrix_is_locked():
     assert provider_modes.supported_modes("earnfm") == {"direct", "proxy"}
     assert provider_modes.supported_modes("iproyal") == {"proxy"}
