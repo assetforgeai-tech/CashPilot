@@ -306,9 +306,8 @@ async def test_earnfm_direct_uses_host_network_and_eapp_hostname(monkeypatch):
     assert specs["earnfm-direct"]["hostname"] == "eapp"
 
 @pytest.mark.asyncio
-async def test_mysterium_parallel_modes_keep_direct_host_and_proxy_sidecar(monkeypatch):
+async def test_mysterium_rejects_proxy_mode(monkeypatch):
     specs: dict[str, dict] = {}
-    leases: list[tuple[str, str]] = []
 
     async def fake_deploy(_worker_id: int, instance_slug: str, spec: dict) -> dict[str, str]:
         specs[instance_slug] = spec
@@ -320,56 +319,26 @@ async def test_mysterium_parallel_modes_keep_direct_host_and_proxy_sidecar(monke
     async def config(*_args, **_kwargs):
         return {"mysterium_dashboard_password": "pw", "mysterium_mmn_api_key": "mmn"}
 
-    async def worker(_worker_id: int):
-        return {"id": _worker_id, "client_id": "worker-a", "system_info": '{"egress_ip":"8.8.8.8"}'}
-
-    async def wallet(client_id: str, **kwargs):
-        leases.append((client_id, kwargs.get("public_ip") or ""))
-        return {
-            "id": len(leases),
-            "wallet_assignment_version": 2,
-            "raw_wallet": f"{{\"address\":\"0x{len(leases)}7143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1\"}}",
-            "address": f"0x{len(leases)}7143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1",
-        }
-
-    async def proxy(_worker_id: int, **_kwargs):
-        return {"proxy_id": 9, "host": "1.2.3.4", "port": 1080, "protocol": "socks5"}
-
     def close_spawn(coro):
         coro.close()
 
     monkeypatch.setattr(main.database, "get_deployment_spec", noop)
     monkeypatch.setattr(main.database, "get_config", config)
-    monkeypatch.setattr(main.database, "get_worker", worker)
-    monkeypatch.setattr(main.database, "lease_myst_wallet", wallet)
     monkeypatch.setattr(main.database, "save_provider_instance", noop)
     monkeypatch.setattr(main.database, "record_health_event", noop)
-    monkeypatch.setattr(main, "_proxy_for_worker_instance", proxy)
     monkeypatch.setattr(main, "_proxy_worker_deploy", fake_deploy)
     monkeypatch.setattr(main, "_spawn", close_spawn)
 
-    await main.api_deploy(
-        _request("/api/deploy/mysterium"),
-        "mysterium",
-        main.DeployRequest(env={}, mode="both"),
-        worker_id=7,
-        _auth={"r": "owner"},
-    )
+    with pytest.raises(HTTPException):
+        await main.api_deploy(
+            _request("/api/deploy/mysterium"),
+            "mysterium",
+            main.DeployRequest(env={}, mode="both"),
+            worker_id=7,
+            _auth={"r": "owner"},
+        )
 
-    assert set(specs) == {"mysterium-direct", "mysterium-proxy"}
-    assert specs["mysterium-direct"]["network_mode"] == "host"
-    assert specs["mysterium-proxy"]["network_mode"] is None
-    assert specs["mysterium-proxy"]["proxy"]["proxy_id"] == 9
-    assert "4449/tcp" not in specs["mysterium-proxy"]["ports"]
-    assert "56000/udp" in specs["mysterium-proxy"]["ports"]
-    assert "56020/udp" in specs["mysterium-proxy"]["ports"]
-    assert "--udp.ports=56000:56020" in specs["mysterium-proxy"]["command"]
-    assert leases == [
-        ("worker-a:mysterium-direct", "8.8.8.8"),
-        ("worker-a:mysterium-proxy", "1.2.3.4"),
-    ]
-    assert specs["mysterium-direct"]["deploy_credentials"]["myst_wallet_id"] == "1"
-    assert specs["mysterium-proxy"]["deploy_credentials"]["myst_wallet_id"] == "2"
+    assert specs == {}
 
 
 @pytest.mark.asyncio
