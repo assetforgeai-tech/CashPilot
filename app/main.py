@@ -2065,6 +2065,7 @@ async def _deploy_iproyal_proxy_with_retry(
 
 _DEVICE_IDENTITY_ENV_KEYS: dict[str, tuple[str, ...]] = {
     "iproyal": ("IPROYALPAWNS_DEVICE_NAME", "IPROYALPAWNS_DEVICE_ID"),
+    "proxies-sx": ("AGENT_NAME",),
     "proxybase": ("NAME",),
     "proxyrack": ("DEVICE_NAME",),
     "traffmonetizer": ("TRAFFMONETIZER_DEVICE_NAME",),
@@ -2075,6 +2076,10 @@ def _standard_device_identity(worker: dict[str, Any] | None, mode: str, fallback
     source = egress.egress_of(worker) or str((worker or {}).get("name") or "").strip() or fallback_hostname
     return f"{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}.{source}.{suffix}"
 
+def _proxies_sx_agent_name(identity: str) -> str:
+    # ponytail: Proxies.sx rejects dots; expand if their API documents more allowed chars.
+    return re.sub(r"[^A-Za-z0-9_-]+", "-", identity).strip("-") or "cashpilot-proxy"
+
 def _apply_standard_device_identity(
     slug: str,
     env: dict[str, str],
@@ -2084,6 +2089,8 @@ def _apply_standard_device_identity(
     fallback_hostname: str,
 ) -> None:
     identity = _standard_device_identity(worker, mode, fallback_hostname)
+    if slug == "proxies-sx":
+        identity = _proxies_sx_agent_name(identity)
     for key in _DEVICE_IDENTITY_ENV_KEYS.get(slug, ()):
         env[key] = identity
 

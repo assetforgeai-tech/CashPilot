@@ -189,6 +189,7 @@ async def test_traffmonetizer_parallel_modes_get_separate_device_names(monkeypat
     ("slug", "mode", "expected_fields", "expected_suffix"),
     [
         ("iproyal", "proxy", ("IPROYALPAWNS_DEVICE_NAME", "IPROYALPAWNS_DEVICE_ID"), "p"),
+        ("proxies-sx", "proxy", ("AGENT_NAME",), "p"),
         ("proxybase", "both", ("NAME",), None),
         ("proxyrack", "both", ("DEVICE_NAME",), None),
         ("traffmonetizer", "both", ("TRAFFMONETIZER_DEVICE_NAME",), None),
@@ -256,8 +257,13 @@ async def test_standard_device_identity_uses_worker_egress_ip(monkeypatch, slug,
         env = spec["env"]
         for field in expected_fields:
             value = env[field]
-            assert re.fullmatch(r"\d{14}\.8\.8\.8\.8\.[dp]", value)
-            if suffix is not None:
+            if slug == "proxies-sx":
+                assert re.fullmatch(r"\d{14}-8-8-8-8-[dp]", value)
+            else:
+                assert re.fullmatch(r"\d{14}\.8\.8\.8\.8\.[dp]", value)
+            if suffix is not None and slug == "proxies-sx":
+                assert value.endswith(f"-{suffix}")
+            elif suffix is not None:
                 assert value.endswith(f".{suffix}")
         if slug == "proxyrack":
             assert re.fullmatch(r"[A-F0-9]{64}", env["UUID"])
