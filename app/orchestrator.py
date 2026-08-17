@@ -651,6 +651,16 @@ def remove_service(slug: str, delete_volumes: bool = False, allow_delete_critica
     container.remove(force=True)
     logger.info("Removed container %s", name)
 
+    sidecar_name = _sidecar_name(slug)
+    try:
+        sidecar = _get_client().containers.get(sidecar_name)
+        sidecar.remove(force=True)
+        logger.info("Removed sidecar container %s", sidecar_name)
+    except NotFound:
+        pass
+    except APIError as exc:
+        logger.warning("Failed to remove sidecar container %s: %s", sidecar_name, exc)
+
     deleted_volumes: list[str] = []
     failed_volumes: list[str] = []
     if volume_names:

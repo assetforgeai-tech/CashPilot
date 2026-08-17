@@ -71,3 +71,20 @@ def test_mysterium_proxy_publishes_udp_ports_on_sidecar():
     sidecar_call, provider_call = client.containers.run.call_args_list
     assert sidecar_call.kwargs["ports"] == {"56000/udp": 56000, "56020/udp": 56020}
     assert provider_call.kwargs["ports"] is None
+
+def test_remove_proxy_instance_removes_egress_sidecar():
+    client = MagicMock()
+    provider = MagicMock(attrs={"Mounts": []})
+    provider.name = "cashpilot-earnapp-proxy"
+    provider.labels = {orchestrator.LABEL_MANAGED: "true"}
+    sidecar = MagicMock()
+    sidecar.name = "cashpilot-earnapp-proxy-egress"
+    client.containers.get.side_effect = [provider, sidecar]
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        result = orchestrator.remove_service("earnapp-proxy")
+
+    assert result["container"] == provider.name
+    provider.remove.assert_called_once_with(force=True)
+    sidecar.remove.assert_called_once_with(force=True)
+    client.containers.get.assert_any_call("cashpilot-earnapp-proxy-egress")
