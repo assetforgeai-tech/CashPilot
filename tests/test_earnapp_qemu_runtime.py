@@ -154,6 +154,8 @@ def test_earnapp_macos_runtime_uses_macos_launcher_not_linux_qemu():
     assert "docker-compose-v2" in kwargs["command"][2]
     assert "/var/run/docker.sock" in kwargs["volumes"]
     assert kwargs["volumes"]["/opt/cashpilot-secrets/earnapp-macos"]["bind"] == "/runtime/secrets"
+    assert kwargs["pid_mode"] == "host"
+    assert kwargs["cap_add"] == ["NET_ADMIN", "SYS_ADMIN"]
     container.put_archive.assert_called_once()
 
 def test_earnapp_macos_runtime_uses_worker_runtime_root(monkeypatch):

@@ -140,6 +140,8 @@ def deploy_container(
             "/opt/cashpilot-secrets/earnapp-macos": {"bind": "/runtime/secrets", "mode": "ro"},
         },
         devices=["/dev/kvm:/dev/kvm:rwm", "/dev/net/tun:/dev/net/tun:rwm"],
+        pid_mode="host",
+        cap_add=["NET_ADMIN", "SYS_ADMIN"],
         labels=labels,
         detach=True,
         restart_policy={"Name": "always"},
