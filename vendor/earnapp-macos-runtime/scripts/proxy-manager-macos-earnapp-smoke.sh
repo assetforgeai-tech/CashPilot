@@ -1362,12 +1362,12 @@ probe_and_ack() {
   client_code=$(probe_http_code https://client.earnapp.com/)
   dashboard_code=$(probe_http_code https://earnapp.com/dashboard)
   proxyjs_code=$(probe_http_code https://proxyjs.brdtnet.com/)
-  client_secret=$(jq -r '.client_secret // empty' "$STATE/client.json")
-  lease_id=$(jq -r '.lease_id // empty' "$STATE/lease.json")
-  assignment_version=$(jq -r '.assignment_version // empty' "$STATE/lease.json")
   dns_status=$(jq -r '.proxy.dns_status // "proxy_remote"' "$STATE/lease.json")
   if [ -n "$egress" ]; then
     if [ -z "$MANUAL_PROXY" ]; then
+      client_secret=$(jq -r '.client_secret // empty' "$STATE/client.json")
+      lease_id=$(jq -r '.lease_id // empty' "$STATE/lease.json")
+      assignment_version=$(jq -r '.assignment_version // empty' "$STATE/lease.json")
       api_post_json "/api/client/proxy-ack" "$client_secret" "$(jq -n \
         --arg lease_id "$lease_id" \
         --argjson assignment_version "$assignment_version" \
