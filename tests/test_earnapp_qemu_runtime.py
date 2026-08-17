@@ -25,6 +25,7 @@ def test_earnapp_qemu_command_boots_ubuntu_2404_with_random_hardware_and_guest_s
     assert "TimeoutStartSec=0" in command
     assert "StandardOutput=journal+console" in command
     assert "StandardError=journal+console" in command
+    assert "touch /etc/earnapp/earnapp_install.log" in command
     assert "tail -n +1 -F /etc/earnapp/*.log" in command
     assert "/etc/systemd/system/earnapp*.service" not in command
     assert "systemctl restart earnapp earnapp_upgrader" in command
