@@ -1,0 +1,135 @@
+"""EarnApp macOS runtime launcher."""
+
+from __future__ import annotations
+
+import io
+import json
+import tarfile
+import urllib.parse
+from pathlib import Path
+from typing import Any
+
+RUNTIME_ROOT = Path(__file__).resolve().parent.parent / "vendor" / "earnapp-macos-runtime"
+SCRIPT = "scripts/proxy-manager-macos-earnapp-smoke.sh"
+
+
+def _proxy_url(proxy: dict[str, Any]) -> str:
+    scheme = str(proxy.get("protocol") or proxy.get("scheme") or "socks5").lower()
+    if scheme == "socks":
+        scheme = "socks5"
+    host = str(proxy.get("host") or proxy.get("endpoint_ip") or "").strip()
+    port = int(proxy.get("port") or 0)
+    if not host or port <= 0:
+        raise RuntimeError("EarnApp macOS proxy host/port is required")
+    username = str(proxy.get("username") or "")
+    password = str(proxy.get("password") or "")
+    auth = ""
+    if username:
+        auth = urllib.parse.quote(username, safe="") + ":" + urllib.parse.quote(password, safe="") + "@"
+    return f"{scheme}://{auth}{host}:{port}"
+
+
+def _dns_ips(proxy: dict[str, Any]) -> str:
+    dns = proxy.get("dns") if isinstance(proxy.get("dns"), dict) else {}
+    values = dns.get("runtime_dns_ips") or dns.get("resolver_ips") or proxy.get("dns_ips") or []
+    ips: list[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if text and text not in ips:
+            ips.append(text)
+    return ",".join(ips or ["1.1.1.1", "8.8.8.8"])
+
+
+def _auth_state(deploy_credentials: dict[str, str]) -> bytes:
+    def cookie(name: str, value: str, domain: str = "earnapp.com") -> dict[str, Any]:
+        return {"name": name, "value": value, "domain": domain, "path": "/", "expires": -1, "httpOnly": False, "secure": True, "sameSite": "Lax"}
+
+    cookies = [
+        cookie("auth", "1"),
+        cookie("auth-method", "google"),
+        cookie("oauth-refresh-token", str(deploy_credentials.get("oauth_refresh_token") or ""), ".earnapp.com"),
+        cookie("oauth-token", str(deploy_credentials.get("oauth_token") or ""), ".earnapp.com"),
+        cookie("xsrf-token", str(deploy_credentials.get("xsrf_token") or ""), "earnapp.com"),
+        cookie("brd_sess_id", str(deploy_credentials.get("brd_sess_id") or ""), ".earnapp.com"),
+        cookie("cg_uuid", str(deploy_credentials.get("cg_uuid") or ""), ".earnapp.com"),
+    ]
+    return (json.dumps({"cookies": [c for c in cookies if c["value"]], "origins": []}, separators=(",", ":")) + "\n").encode()
+
+
+def _bundle_tar(deploy_credentials: dict[str, str]) -> bytes:
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        for path in RUNTIME_ROOT.rglob("*"):
+            if path.is_file():
+                arcname = str(path.relative_to(RUNTIME_ROOT))
+                info = tar.gettarinfo(str(path), arcname=arcname)
+                if path.suffix == ".sh":
+                    info.mode = 0o755
+                with path.open("rb") as fh:
+                    tar.addfile(info, fh)
+        data = _auth_state(deploy_credentials)
+        info = tarfile.TarInfo("earnapp-auth-state.json")
+        info.size = len(data)
+        info.mode = 0o600
+        tar.addfile(info, io.BytesIO(data))
+    buf.seek(0)
+    return buf.getvalue()
+
+
+def deploy_container(
+    client,
+    *,
+    slug: str,
+    proxy: dict[str, Any],
+    labels: dict[str, str],
+    deploy_credentials: dict[str, str],
+):
+    if not RUNTIME_ROOT.exists():
+        raise RuntimeError(f"EarnApp macOS runtime bundle missing: {RUNTIME_ROOT}")
+    name = f"cashpilot-{slug}"
+    runtime_volume = f"cashpilot-{slug}-macos-runtime"
+    env = {
+        "CASHPILOT_STANDALONE": "true",
+        "ROOT_DIR": "/runtime",
+        "MAC_TOOLS": "/runtime/tools/macos-on-vps",
+        "MAC_ROOT": "/opt/dockur-macos",
+        "INSTANCE": slug.replace("_", "-")[:40] or "earnapp-macos-001",
+        "GROUP_ID": slug.replace("_", "-")[:40] or "earnapp",
+        "PROVIDER_ID": "earnapp-macos",
+        "PM_PROVIDER_ID": "earnapp",
+        "MANUAL_PROXY": _proxy_url(proxy),
+        "MANUAL_PROXY_SCHEME": str(proxy.get("protocol") or proxy.get("scheme") or "socks5").lower(),
+        "MANUAL_PROXY_DNS_IPS": _dns_ips(proxy),
+        "TARGET_EGRESS_IP": str(proxy.get("egress_ip") or proxy.get("exit_ip") or ""),
+        "EARNAPP_AUTH_STATE_FILE": "/runtime/earnapp-auth-state.json",
+    }
+    labels = {**labels, "cashpilot.host-runtime": "qemu_macos"}
+    command = [
+        "/bin/sh",
+        "-lc",
+        (
+            f"while [ ! -x /runtime/{SCRIPT} ]; do sleep 2; done; "
+            "export DEBIAN_FRONTEND=noninteractive; "
+            "apt-get update -y && apt-get install -y bash ca-certificates curl jq docker.io docker-compose-plugin "
+            "openssh-client python3 coreutils iproute2 iptables; "
+            f"exec bash /runtime/{SCRIPT} start"
+        ),
+    ]
+    container = client.containers.run(
+        image="ubuntu:24.04",
+        name=name,
+        environment=env,
+        command=command,
+        volumes={
+            runtime_volume: {"bind": "/runtime", "mode": "rw"},
+            "/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"},
+            "/opt/dockur-macos": {"bind": "/opt/dockur-macos", "mode": "rw"},
+            "/opt/cashpilot-secrets/earnapp-macos": {"bind": "/runtime/secrets", "mode": "ro"},
+        },
+        devices=["/dev/kvm:/dev/kvm:rwm", "/dev/net/tun:/dev/net/tun:rwm"],
+        labels=labels,
+        detach=True,
+        restart_policy={"Name": "always"},
+    )
+    container.put_archive("/runtime", _bundle_tar(deploy_credentials))
+    return container

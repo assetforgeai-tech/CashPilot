@@ -19,7 +19,7 @@ from urllib.request import Request, urlopen
 import docker
 from docker.errors import APIError, DockerException, NotFound
 
-from app import earnapp_qemu, myst_runtime, provider_automation, provider_installers, singbox_config
+from app import earnapp_macos, earnapp_qemu, myst_runtime, provider_automation, provider_installers, singbox_config
 
 try:
     from app.catalog import critical_volume_targets, get_service, get_services
@@ -242,8 +242,6 @@ def deploy_raw(
     container's cgroup limits durable across recreates. Returns the container ID.
     """
     provider = provider_slug or slug
-    if provider == "earnapp" and host_runtime == "qemu_macos":
-        raise RuntimeError("EarnApp macOS runtime is not wired yet; do not deploy the Linux runtime for Vietnam proxies")
     client = _get_client()
     name = _container_name(slug)
     if provider == "earnapp" and host_runtime == "qemu_systemd":
@@ -293,6 +291,19 @@ def deploy_raw(
     }
     if labels:
         all_labels.update(labels)
+
+    if provider == "earnapp" and host_runtime == "qemu_macos":
+        if not proxy:
+            raise RuntimeError("EarnApp macOS runtime requires a proxy")
+        container = earnapp_macos.deploy_container(
+            client,
+            slug=slug,
+            proxy=proxy,
+            labels=all_labels,
+            deploy_credentials=deploy_credentials or {},
+        )
+        logger.info("EarnApp macOS runtime container %s started: %s", name, container.short_id)
+        return container.id
 
     logger.info("Pulling image %s", image)
     try:

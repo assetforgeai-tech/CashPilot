@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import io
+import tarfile
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app import earnapp_qemu, main, orchestrator
+from app import earnapp_macos, earnapp_qemu, main, orchestrator
 
 
 def test_earnapp_qemu_command_boots_ubuntu_2404_with_random_hardware_and_guest_systemd():
@@ -126,16 +128,48 @@ def test_deploy_raw_uses_earnapp_qemu_runtime_instead_of_provider_docker_image()
     assert kwargs["network_mode"] == "container:cashpilot-earnapp-proxy-egress"
     assert kwargs["devices"] == ["/dev/kvm:/dev/kvm:rwm"]
 
-def test_earnapp_macos_runtime_does_not_fall_back_to_linux_image():
-    with pytest.raises(RuntimeError, match="macOS runtime"):
-        orchestrator.deploy_raw(
+def test_earnapp_macos_runtime_uses_macos_launcher_not_linux_qemu():
+    client = MagicMock()
+    client.containers.get.side_effect = orchestrator.NotFound("nope")
+    container = MagicMock(short_id="abc123", id="container-id")
+    client.containers.run.return_value = container
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        result = orchestrator.deploy_raw(
             slug="earnapp-proxy",
             provider_slug="earnapp",
             image="legacy/ignored",
             host_runtime="qemu_macos",
             deploy_credentials={"oauth_token": "token"},
-            proxy={"host": "1.2.3.4", "port": 1080, "protocol": "socks5"},
+            proxy={"host": "1.2.3.4", "port": 1080, "protocol": "socks5", "location": "Vietnam"},
         )
+
+    assert result == "container-id"
+    kwargs = client.containers.run.call_args.kwargs
+    assert kwargs["image"] == "ubuntu:24.04"
+    assert kwargs["labels"]["cashpilot.host-runtime"] == "qemu_macos"
+    assert kwargs["environment"]["CASHPILOT_STANDALONE"] == "true"
+    assert kwargs["environment"]["MANUAL_PROXY"].startswith("socks5://1.2.3.4:1080")
+    assert "/var/run/docker.sock" in kwargs["volumes"]
+    assert kwargs["volumes"]["/opt/cashpilot-secrets/earnapp-macos"]["bind"] == "/runtime/secrets"
+    container.put_archive.assert_called_once()
+
+def test_earnapp_macos_bundle_marks_launcher_executable():
+    bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
+    with tarfile.open(fileobj=io.BytesIO(bundle), mode="r") as tar:
+        script = tar.getmember("scripts/proxy-manager-macos-earnapp-smoke.sh")
+        auth = tar.extractfile("earnapp-auth-state.json")
+        assert script.mode & 0o111
+        assert auth and b"oauth-token" in auth.read()
+
+def test_earnapp_macos_runtime_keeps_random_identity_controller():
+    bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
+    with tarfile.open(fileobj=io.BytesIO(bundle), mode="r") as tar:
+        identity = tar.extractfile("tools/macos-on-vps/controller/identity.py")
+        assert identity is not None
+        source = identity.read().decode()
+        for marker in ("secrets.token_bytes(6)", "uuid.uuid4()", "secrets.token_hex(4)", "_fallback_smbios"):
+            assert marker in source
 
 @pytest.mark.asyncio
 async def test_earnapp_proxy_rotation_keeps_vietnam_assignment_for_macos(monkeypatch):
