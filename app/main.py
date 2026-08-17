@@ -2107,6 +2107,8 @@ EARNAPP_BLOCKED_IP_REASON = "earnapp_blocked_ip"
 EARNAPP_MAX_EARNING_ATTEMPTS = 10
 EARNAPP_STATUS_POLLS = 18
 EARNAPP_MACOS_STATUS_POLLS = 72
+EARNAPP_SDK_ID_POLLS = 36
+EARNAPP_MACOS_SDK_ID_POLLS = 96
 
 def _earnapp_cookies(creds: dict[str, Any]) -> dict[str, str]:
     cookies = {
@@ -2184,9 +2186,9 @@ async def _earnapp_remove_dashboard_device(creds: dict[str, Any], uuid: str) -> 
             return
         await client.post("https://earnapp.com/dashboard/api/hide_device", json={"uuid": uuid})
 
-async def _wait_for_earnapp_sdk_id(worker_id: int, instance_slug: str) -> str:
-    for _ in range(36):
-        payload = await _proxy_worker_logs(worker_id, instance_slug, lines=300)
+async def _wait_for_earnapp_sdk_id(worker_id: int, instance_slug: str, *, polls: int = EARNAPP_SDK_ID_POLLS) -> str:
+    for _ in range(polls):
+        payload = await _proxy_worker_logs(worker_id, instance_slug, lines=1000)
         matches = re.findall(r"sdk-[A-Za-z0-9_-]+", payload.get("logs", ""))
         if matches:
             return matches[-1]
@@ -2194,12 +2196,17 @@ async def _wait_for_earnapp_sdk_id(worker_id: int, instance_slug: str) -> str:
     return ""
 
 async def _earnapp_status_after_link(worker_id: int, instance_slug: str, spec: dict[str, Any]) -> tuple[str, dict[str, Any] | None]:
-    sdk_id = await _wait_for_earnapp_sdk_id(worker_id, instance_slug)
+    is_macos = spec.get("host_runtime") == "qemu_macos"
+    sdk_id = await _wait_for_earnapp_sdk_id(
+        worker_id,
+        instance_slug,
+        polls=EARNAPP_MACOS_SDK_ID_POLLS if is_macos else EARNAPP_SDK_ID_POLLS,
+    )
     if not sdk_id:
         return "", None
     creds = spec.get("deploy_credentials") or {}
     last_device: dict[str, Any] | None = None
-    polls = EARNAPP_MACOS_STATUS_POLLS if spec.get("host_runtime") == "qemu_macos" else EARNAPP_STATUS_POLLS
+    polls = EARNAPP_MACOS_STATUS_POLLS if is_macos else EARNAPP_STATUS_POLLS
     for _ in range(polls):
         device = await _earnapp_fetch_device(creds, sdk_id)
         if _earnapp_device_has_earning_evidence(device) or (device and device.get("banned")):

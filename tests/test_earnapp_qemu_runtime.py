@@ -446,6 +446,28 @@ async def test_earnapp_macos_status_wait_covers_link_and_green_window(monkeypatc
     assert calls == main.EARNAPP_MACOS_STATUS_POLLS
 
 @pytest.mark.asyncio
+async def test_earnapp_macos_sdk_id_wait_covers_slow_guest_link(monkeypatch):
+    log_calls = 0
+
+    async def fake_logs(_worker_id: int, _instance_slug: str, lines: int = 300):
+        nonlocal log_calls
+        log_calls += 1
+        assert lines == 1000
+        if log_calls == main.EARNAPP_MACOS_SDK_ID_POLLS:
+            return {"logs": "EARNAPP_DEVICE_UUID=sdk-mac-slow"}
+        return {"logs": ""}
+
+    monkeypatch.setattr(main, "_proxy_worker_logs", fake_logs)
+    monkeypatch.setattr(main, "_earnapp_fetch_device", AsyncMock(return_value={"uuid": "sdk-mac-slow", "uptime": 12}))
+    monkeypatch.setattr(main.asyncio, "sleep", AsyncMock())
+
+    sdk_id, device = await main._earnapp_status_after_link(7, "earnapp-proxy", {"host_runtime": "qemu_macos"})
+
+    assert sdk_id == "sdk-mac-slow"
+    assert device == {"uuid": "sdk-mac-slow", "uptime": 12}
+    assert log_calls == main.EARNAPP_MACOS_SDK_ID_POLLS
+
+@pytest.mark.asyncio
 async def test_server_allows_earnapp_host_systemd_by_sending_qemu_runtime(monkeypatch):
     service = {
         "slug": "earnapp",
