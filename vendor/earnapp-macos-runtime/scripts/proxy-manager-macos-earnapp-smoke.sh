@@ -1076,6 +1076,7 @@ register_earnapp_macos_device() {
   body=$(mktemp)
   serial=${uuid#sdk-mac-}
   status=$(earnapp_guest_dashboard_curl "$ip" "$body" \
+    --insecure \
     -H "Content-Type: application/json" \
     "https://client.earnapp.com/install_device?uuid=$uuid&version=$EARNAPP_MACOS_VERSION&arch=x64&appid=node_earnapp.com&os=macOS" \
     --data "{\"serial\":\"$serial\"}")
