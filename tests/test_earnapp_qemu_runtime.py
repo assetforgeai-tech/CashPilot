@@ -44,6 +44,55 @@ def test_earnapp_qemu_command_boots_ubuntu_2404_with_random_hardware_and_guest_s
     assert "\nMETA\ncloud-localds" in command
 
 
+def test_earnapp_device_match_uses_sdk_prefix_not_sdk_node_only():
+    assert main._earnapp_device_matches({"title": "sdk-node-616e277a"}, "sdk-node-2abb0e0439a943b19a25f182616e277a")
+    assert main._earnapp_device_matches({"title": "sdk-mac-616e277a"}, "sdk-mac-2abb0e0439a943b19a25f182616e277a")
+    assert not main._earnapp_device_matches({"title": "node-616e277a"}, "sdk-node-2abb0e0439a943b19a25f182616e277a")
+
+@pytest.mark.asyncio
+async def test_earnapp_not_earning_masks_proxy_and_retries(monkeypatch):
+    proxies = [
+        {"proxy_id": 101, "host": "bad.proxy", "port": 1080, "protocol": "socks5"},
+        {"proxy_id": 202, "host": "good.proxy", "port": 1080, "protocol": "socks5"},
+    ]
+    devices = [
+        ("sdk-node-bad", {"uuid": "sdk-node-bad", "title": "sdk-node-bad", "banned": {"reason": "ip_quality", "ip": "bad.proxy"}}),
+        ("sdk-node-good", {"uuid": "sdk-node-good", "title": "sdk-node-good", "banned": None}),
+    ]
+    deployed_specs = []
+
+    async def fake_proxy(_worker_id: int, *, provider_slug: str | None = None):
+        assert provider_slug == "earnapp"
+        return proxies.pop(0)
+
+    async def fake_deploy(_worker_id: int, _instance_slug: str, spec: dict):
+        deployed_specs.append(spec)
+        return {"container_id": f"container-{len(deployed_specs)}"}
+
+    monkeypatch.setattr(main, "_proxy_for_worker_instance", fake_proxy)
+    monkeypatch.setattr(main, "_proxy_worker_deploy", fake_deploy)
+    monkeypatch.setattr(main, "_earnapp_status_after_link", AsyncMock(side_effect=devices))
+    monkeypatch.setattr(main, "_earnapp_remove_dashboard_device", AsyncMock())
+    monkeypatch.setattr(main, "_proxy_worker_command", AsyncMock())
+    monkeypatch.setattr(main.database, "mask_proxy_for_provider", AsyncMock(return_value=True))
+    monkeypatch.setattr(main.database, "set_worker_proxy_assignment", AsyncMock(return_value=True))
+    monkeypatch.setattr(main.database, "record_health_event", AsyncMock())
+
+    result, final_spec, device = await main._deploy_earnapp_proxy_with_retry(
+        7,
+        "earnapp-proxy",
+        {"deploy_credentials": {"oauth_token": "tok"}},
+        attempts=2,
+    )
+
+    assert result["container_id"] == "container-2"
+    assert final_spec["proxy"]["proxy_id"] == 202
+    assert device and device["uuid"] == "sdk-node-good"
+    main.database.mask_proxy_for_provider.assert_awaited_once_with(101, "earnapp", main.EARNAPP_BLOCKED_IP_REASON)
+    main.database.set_worker_proxy_assignment.assert_awaited_once_with(7, None)
+    main._earnapp_remove_dashboard_device.assert_awaited_once()
+    main._proxy_worker_command.assert_awaited_once_with(7, "remove", "earnapp-proxy")
+
 def test_deploy_raw_uses_earnapp_qemu_runtime_instead_of_provider_docker_image():
     client = MagicMock()
     client.containers.get.side_effect = orchestrator.NotFound("nope")
@@ -177,6 +226,7 @@ async def test_server_allows_earnapp_host_systemd_by_sending_qemu_runtime(monkey
     monkeypatch.setattr(main.database, "save_provider_instance", AsyncMock())
     monkeypatch.setattr(main.database, "record_health_event", AsyncMock())
     monkeypatch.setattr(main, "_proxy_worker_deploy", fake_deploy)
+    monkeypatch.setattr(main, "_earnapp_status_after_link", AsyncMock(return_value=("sdk-node-ok", {"uuid": "sdk-node-ok", "banned": None})))
     monkeypatch.setattr(main, "_run_collection", AsyncMock())
     monkeypatch.setattr(main, "_run_post_deploy_automation", AsyncMock())
     monkeypatch.setattr(main, "_spawn", lambda coro: coro.close())
@@ -249,6 +299,7 @@ async def test_earnapp_deploy_uses_account_pool_when_available(monkeypatch):
     monkeypatch.setattr(main.database, "save_provider_instance", AsyncMock())
     monkeypatch.setattr(main.database, "record_health_event", AsyncMock())
     monkeypatch.setattr(main, "_proxy_worker_deploy", fake_deploy)
+    monkeypatch.setattr(main, "_earnapp_status_after_link", AsyncMock(return_value=("sdk-node-ok", {"uuid": "sdk-node-ok", "banned": None})))
     monkeypatch.setattr(main, "_run_collection", AsyncMock())
     monkeypatch.setattr(main, "_run_post_deploy_automation", AsyncMock())
     monkeypatch.setattr(main, "_spawn", lambda coro: coro.close())
@@ -303,6 +354,7 @@ async def test_earnapp_account_pool_allows_empty_settings_credentials(monkeypatc
     monkeypatch.setattr(main.database, "save_provider_instance", AsyncMock())
     monkeypatch.setattr(main.database, "record_health_event", AsyncMock())
     monkeypatch.setattr(main, "_proxy_worker_deploy", fake_deploy)
+    monkeypatch.setattr(main, "_earnapp_status_after_link", AsyncMock(return_value=("sdk-node-ok", {"uuid": "sdk-node-ok", "banned": None})))
     monkeypatch.setattr(main, "_run_collection", AsyncMock())
     monkeypatch.setattr(main, "_run_post_deploy_automation", AsyncMock())
     monkeypatch.setattr(main, "_spawn", lambda coro: coro.close())

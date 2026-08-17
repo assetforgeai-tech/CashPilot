@@ -2105,6 +2105,126 @@ async def _deploy_iproyal_proxy_with_retry(
     raise HTTPException(status_code=409, detail=last_error or "IPRoyal Pawns failed after proxy rotation")
 
 
+EARNAPP_BLOCKED_IP_REASON = "earnapp_blocked_ip"
+EARNAPP_MAX_EARNING_ATTEMPTS = 10
+
+def _earnapp_cookies(creds: dict[str, Any]) -> dict[str, str]:
+    cookies = {
+        "auth": "1",
+        "auth-method": "google",
+        "oauth-refresh-token": str(creds.get("oauth_refresh_token") or ""),
+        "oauth-token": str(creds.get("oauth_token") or ""),
+        "xsrf-token": str(creds.get("xsrf_token") or ""),
+        "brd_sess_id": str(creds.get("brd_sess_id") or ""),
+        "cg_uuid": str(creds.get("cg_uuid") or ""),
+    }
+    return {k: v for k, v in cookies.items() if v}
+
+def _earnapp_headers(creds: dict[str, Any]) -> dict[str, str]:
+    xsrf = str(creds.get("xsrf_token") or "")
+    headers = {
+        "accept": "application/json, text/plain, */*",
+        "content-type": "application/json",
+        "origin": "https://earnapp.com",
+        "referer": "https://earnapp.com/dashboard/me/passive-income",
+        "user-agent": "Mozilla/5.0",
+        "x-requested-with": "XMLHttpRequest",
+    }
+    if xsrf:
+        headers.update({"csrf-token": xsrf, "xsrf-token": xsrf, "x-csrf-token": xsrf, "x-xsrf-token": xsrf})
+    return headers
+
+def _earnapp_devices(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if isinstance(payload, dict):
+        for key in ("devices", "items", "data", "list"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                return [item for item in value if isinstance(item, dict)]
+    return []
+
+def _earnapp_device_matches(device: dict[str, Any], sdk_id: str) -> bool:
+    title = str(device.get("title") or device.get("name") or device.get("uuid") or "").strip()
+    uuid = str(device.get("uuid") or "").strip()
+    if not title.startswith("sdk-") and not uuid.startswith("sdk-"):
+        return False
+    needle = str(sdk_id or "").strip()
+    if not needle:
+        return False
+    short = needle.rsplit("-", 1)[-1][-8:]
+    return needle in {title, uuid} or title.endswith(short) or uuid.endswith(short)
+
+async def _earnapp_fetch_device(creds: dict[str, Any], sdk_id: str) -> dict[str, Any] | None:
+    async with httpx.AsyncClient(timeout=30, cookies=_earnapp_cookies(creds), headers=_earnapp_headers(creds)) as client:
+        resp = await client.get("https://earnapp.com/dashboard/api/devices", params={"appid": "earnapp", "version": "1.627.783"})
+        resp.raise_for_status()
+        for device in _earnapp_devices(resp.json()):
+            if _earnapp_device_matches(device, sdk_id):
+                return device
+    return None
+
+async def _earnapp_remove_dashboard_device(creds: dict[str, Any], uuid: str) -> None:
+    if not uuid:
+        return
+    async with httpx.AsyncClient(timeout=30, cookies=_earnapp_cookies(creds), headers=_earnapp_headers(creds)) as client:
+        resp = await client.delete(f"https://earnapp.com/dashboard/api/device/{uuid}")
+        if resp.status_code < 400:
+            return
+        await client.post("https://earnapp.com/dashboard/api/hide_device", json={"uuid": uuid})
+
+async def _wait_for_earnapp_sdk_id(worker_id: int, instance_slug: str) -> str:
+    for _ in range(36):
+        payload = await _proxy_worker_logs(worker_id, instance_slug, lines=300)
+        matches = re.findall(r"sdk-[A-Za-z0-9_-]+", payload.get("logs", ""))
+        if matches:
+            return matches[-1]
+        await asyncio.sleep(5)
+    return ""
+
+async def _earnapp_status_after_link(worker_id: int, instance_slug: str, spec: dict[str, Any]) -> tuple[str, dict[str, Any] | None]:
+    sdk_id = await _wait_for_earnapp_sdk_id(worker_id, instance_slug)
+    if not sdk_id:
+        return "", None
+    creds = spec.get("deploy_credentials") or {}
+    for _ in range(18):
+        device = await _earnapp_fetch_device(creds, sdk_id)
+        if device is not None:
+            return sdk_id, device
+        await asyncio.sleep(10)
+    return sdk_id, None
+
+async def _deploy_earnapp_proxy_with_retry(
+    worker_id: int,
+    instance_slug: str,
+    spec: dict[str, Any],
+    *,
+    attempts: int = EARNAPP_MAX_EARNING_ATTEMPTS,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any] | None]:
+    last_error = "EarnApp did not become earning"
+    for attempt in range(1, max(1, attempts) + 1):
+        attempt_spec = json.loads(json.dumps(spec))
+        proxy = await _proxy_for_worker_instance(worker_id, provider_slug="earnapp")
+        attempt_spec["proxy"] = proxy
+        attempt_spec["egress_mode"] = "proxy"
+        result = await _proxy_worker_deploy(worker_id, instance_slug, attempt_spec)
+        sdk_id, device = await _earnapp_status_after_link(worker_id, instance_slug, attempt_spec)
+        if device and not device.get("banned"):
+            return result, attempt_spec, device
+        proxy_id = int((proxy or {}).get("proxy_id") or 0)
+        if proxy_id:
+            await database.mask_proxy_for_provider(proxy_id, "earnapp", EARNAPP_BLOCKED_IP_REASON)
+            await database.set_worker_proxy_assignment(worker_id, None)
+            await database.record_health_event("earnapp", "proxy_masked", f"masked proxy {proxy_id} after EarnApp not earning")
+        device_uuid = str((device or {}).get("uuid") or sdk_id)
+        with contextlib.suppress(Exception):
+            await _earnapp_remove_dashboard_device(attempt_spec.get("deploy_credentials") or {}, device_uuid)
+        with contextlib.suppress(Exception):
+            await _proxy_worker_command(worker_id, "remove", instance_slug)
+        last_error = f"EarnApp not earning on proxy {proxy_id or 'unknown'}"
+        logger.warning("EarnApp attempt %d/%d not earning; rotating proxy", attempt, attempts)
+    raise HTTPException(status_code=409, detail=last_error)
+
 _DEVICE_IDENTITY_ENV_KEYS: dict[str, tuple[str, ...]] = {
     "iproyal": ("IPROYALPAWNS_DEVICE_NAME", "IPROYALPAWNS_DEVICE_ID"),
     "proxies-sx": ("AGENT_NAME",),
@@ -2366,11 +2486,8 @@ async def api_deploy(
                 )
         if instance_spec.get("volumes"):
             instance_spec["volumes"] = _mode_scoped_named_volumes(instance_spec["volumes"], mode)
-        if mode == "proxy" and slug != "iproyal":
-            if slug == "earnapp":
-                instance_spec["proxy"] = await _proxy_for_worker_instance(worker_id, provider_slug=slug)
-            else:
-                instance_spec["proxy"] = await _proxy_for_worker_instance(worker_id)
+        if mode == "proxy" and slug not in {"iproyal", "earnapp"}:
+            instance_spec["proxy"] = await _proxy_for_worker_instance(worker_id)
             instance_spec["egress_mode"] = "proxy"
         elif mode == "direct":
             instance_spec["egress_mode"] = "direct"
@@ -2381,6 +2498,8 @@ async def api_deploy(
         try:
             if slug == "iproyal" and mode == "proxy":
                 result, instance_spec = await _deploy_iproyal_proxy_with_retry(worker_id, instance_slug, instance_spec)
+            elif slug == "earnapp" and mode == "proxy":
+                result, instance_spec, _device = await _deploy_earnapp_proxy_with_retry(worker_id, instance_slug, instance_spec)
             else:
                 result = await _proxy_worker_deploy(worker_id, instance_slug, instance_spec)
         except Exception:
