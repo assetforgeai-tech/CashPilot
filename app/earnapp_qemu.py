@@ -50,7 +50,7 @@ def render_qemu_command(identity: EarnAppQemuIdentity) -> str:
             permissions: '0700'
             content: |
               #!/usr/bin/env bash
-              set -euxo pipefail
+              set -euo pipefail
               systemctl stop earnapp earnapp_upgrader 2>/dev/null || true
               systemctl disable earnapp earnapp_upgrader 2>/dev/null || true
               rm -f /etc/systemd/system/earnapp.service /etc/systemd/system/earnapp_upgrader.service /usr/bin/earnapp /usr/bin/earnapp_bak /tmp/earnapp_*
