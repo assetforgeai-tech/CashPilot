@@ -263,6 +263,17 @@ def test_earnapp_macos_launcher_links_with_source_payload_shape():
     assert "earnapp_dashboard_curl" not in link_block
     assert "capture_earnapp_guest_diagnostics" in script
 
+def test_earnapp_macos_launcher_links_runtime_uuid_not_stale_registration_uuid():
+    bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
+    with tarfile.open(fileobj=io.BytesIO(bundle), mode="r") as tar:
+        script_file = tar.extractfile("scripts/proxy-manager-macos-earnapp-smoke.sh")
+        assert script_file is not None
+        script = script_file.read().decode()
+    identity_block = script[script.index("wait_earnapp_identity()") : script.index("wait_earnapp_local_runtime_ready()")]
+    ready_block = script[script.index("wait_earnapp_local_runtime_ready()") : script.index("earnapp_proxy_curl()")]
+    assert "defaults read com.earnapp.brdsdk.shared uuid 2>/dev/null || defaults read com.earnapp registration_uuid" in identity_block
+    assert 'printf \'%s\\n\' "$uuid" >"$STATE/earnapp-device-uuid.txt"' in ready_block
+
 def test_earnapp_macos_launcher_keeps_container_alive_after_link():
     bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
     with tarfile.open(fileobj=io.BytesIO(bundle), mode="r") as tar:

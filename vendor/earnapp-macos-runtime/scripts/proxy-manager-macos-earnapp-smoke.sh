@@ -956,7 +956,7 @@ guest_scp_to() {
 wait_earnapp_identity() {
   local ip=$1 uuid
   for _ in $(seq 1 60); do
-    uuid=$(guest_ssh "$ip" 'defaults read com.earnapp registration_uuid 2>/dev/null || defaults read com.earnapp.brdsdk.shared uuid 2>/dev/null || true' | tr -d '\r' | tail -1)
+    uuid=$(guest_ssh "$ip" 'defaults read com.earnapp.brdsdk.shared uuid 2>/dev/null || defaults read com.earnapp registration_uuid 2>/dev/null || true' | tr -d '\r' | tail -1)
     case "$uuid" in
       sdk-mac-????????????????????????????????)
         printf '%s\n' "$uuid" >"$STATE/earnapp-device-uuid.txt"
@@ -1020,6 +1020,9 @@ GUEST
       --arg svc_hb "$svc_hb" \
       '{ready:$ready,app_config_file:$app_config_file,device_uuid:$uuid,cid:$cid,support_cid_file:$support_cid_file,brdsdk_log:$brdsdk_log,app_hb:$app_hb,svc_hb:$svc_hb,checked_at:(now|todate)}' \
       >"$result"
+    if [[ "$uuid" == sdk-mac-???????????????????????????????? ]]; then
+      printf '%s\n' "$uuid" >"$STATE/earnapp-device-uuid.txt"
+    fi
     [ "$ready" = true ] && return 0
     [ "$SECONDS" -ge "$deadline" ] && return 1
     sleep "$EARNAPP_LOCAL_RUNTIME_READY_POLL_SECONDS"
