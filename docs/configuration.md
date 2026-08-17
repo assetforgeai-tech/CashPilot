@@ -78,6 +78,7 @@ MYST Wallet is a separate asset inventory. Wallet lease/reclaim follows the norm
 | `CASHPILOT_WORKER_NETWORK` | detected | `residential` or `hosting`. | — |
 | `CASHPILOT_EGRESS_DETECT` | on | Hourly public-IP lookup. `off` disables it. | — |
 | `CASHPILOT_EGRESS_IP` | unset | State the public IP directly. A LAN or tailnet address is rejected. | — |
+| `CASHPILOT_RUNTIME_ROOT` | `/opt/cashpilot-runtime` | Root directory for large worker runtimes such as QEMU/macOS provider state, disk images, swap, and Docker runtime data when the setup script provisions a data disk. | — |
 | `CASHPILOT_EGRESS_IP_URL` | unset | Custom IP-echo endpoint. | — |
 | `CASHPILOT_ALLOWED_VOLUME_ROOTS` | unset | Host paths a deploy may bind-mount. | — |
 | `CASHPILOT_PIDS_LIMIT` | unset | `pids` limit applied to managed containers. | — |
