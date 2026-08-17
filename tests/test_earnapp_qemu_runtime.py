@@ -251,8 +251,8 @@ def test_earnapp_macos_launcher_links_with_source_payload_shape():
         script_file = tar.extractfile("scripts/proxy-manager-macos-earnapp-smoke.sh")
         assert script_file is not None
         script = script_file.read().decode()
-    assert '-d "{\\"data\\":{\\"uuid\\":\\"$uuid\\",\\"platform\\":\\"macos\\"}}"' in script
-    assert '-d "{\\"uuid\\":\\"$uuid\\",\\"platform\\":\\"macos\\",\\"_csrf\\":\\"$xsrf\\"}"' not in script
+    assert '-d "{\\"uuid\\":\\"$uuid\\",\\"platform\\":\\"macos\\",\\"_csrf\\":\\"$xsrf\\"}"' in script
+    assert '-d "{\\"data\\":{\\"uuid\\":\\"$uuid\\"' not in script
     assert "earnapp-link-response.last" in script
     assert "client.earnapp.com/install_device" in script
     assert "earnapp-install-device-response.last" in script
