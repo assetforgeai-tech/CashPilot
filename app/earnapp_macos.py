@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import tarfile
 import urllib.parse
 from pathlib import Path
@@ -11,6 +12,10 @@ from typing import Any
 
 RUNTIME_ROOT = Path(__file__).resolve().parent.parent / "vendor" / "earnapp-macos-runtime"
 SCRIPT = "scripts/proxy-manager-macos-earnapp-smoke.sh"
+
+def _host_runtime_root() -> str:
+    root = os.getenv("CASHPILOT_RUNTIME_ROOT", "/opt/cashpilot-runtime").strip() or "/opt/cashpilot-runtime"
+    return root.rstrip("/")
 
 
 def _proxy_url(proxy: dict[str, Any]) -> str:
@@ -94,11 +99,12 @@ def deploy_container(
         raise RuntimeError(f"EarnApp macOS runtime bundle missing: {RUNTIME_ROOT}")
     name = f"cashpilot-{slug}"
     runtime_volume = f"cashpilot-{slug}-macos-runtime"
+    mac_root = f"{_host_runtime_root()}/dockur-macos"
     env = {
         "CASHPILOT_STANDALONE": "true",
         "ROOT_DIR": "/runtime",
         "MAC_TOOLS": "/runtime/tools/macos-on-vps",
-        "MAC_ROOT": "/opt/dockur-macos",
+        "MAC_ROOT": mac_root,
         "INSTANCE": _instance_name(slug),
         "GROUP_ID": slug.replace("_", "-")[:40] or "earnapp",
         "PROVIDER_ID": "earnapp-macos",
@@ -130,7 +136,7 @@ def deploy_container(
         volumes={
             runtime_volume: {"bind": "/runtime", "mode": "rw"},
             "/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"},
-            "/opt/dockur-macos": {"bind": "/opt/dockur-macos", "mode": "rw"},
+            mac_root: {"bind": mac_root, "mode": "rw"},
             "/opt/cashpilot-secrets/earnapp-macos": {"bind": "/runtime/secrets", "mode": "ro"},
         },
         devices=["/dev/kvm:/dev/kvm:rwm", "/dev/net/tun:/dev/net/tun:rwm"],

@@ -156,6 +156,27 @@ def test_earnapp_macos_runtime_uses_macos_launcher_not_linux_qemu():
     assert kwargs["volumes"]["/opt/cashpilot-secrets/earnapp-macos"]["bind"] == "/runtime/secrets"
     container.put_archive.assert_called_once()
 
+def test_earnapp_macos_runtime_uses_worker_runtime_root(monkeypatch):
+    client = MagicMock()
+    client.containers.get.side_effect = orchestrator.NotFound("nope")
+    container = MagicMock(short_id="abc123", id="container-id")
+    client.containers.run.return_value = container
+    monkeypatch.setenv("CASHPILOT_RUNTIME_ROOT", "/mnt/cashpilot-runtime")
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        orchestrator.deploy_raw(
+            slug="earnapp-proxy",
+            provider_slug="earnapp",
+            image="legacy/ignored",
+            host_runtime="qemu_macos",
+            deploy_credentials={"oauth_token": "token"},
+            proxy={"host": "1.2.3.4", "port": 1080, "protocol": "socks5", "location": "Vietnam"},
+        )
+
+    kwargs = client.containers.run.call_args.kwargs
+    assert kwargs["environment"]["MAC_ROOT"] == "/mnt/cashpilot-runtime/dockur-macos"
+    assert kwargs["volumes"]["/mnt/cashpilot-runtime/dockur-macos"]["bind"] == "/mnt/cashpilot-runtime/dockur-macos"
+
 def test_earnapp_macos_bundle_marks_launcher_executable():
     bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
     with tarfile.open(fileobj=io.BytesIO(bundle), mode="r") as tar:
