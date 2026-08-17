@@ -1046,6 +1046,19 @@ earnapp_dashboard_curl() {
   curl -sS --connect-timeout 30 --max-time 90 -o "$output" -w '%{http_code}' "$@" || true
 }
 
+register_earnapp_macos_device() {
+  local uuid=$1 body status serial
+  body=$(mktemp)
+  serial=${uuid#sdk-mac-}
+  status=$(earnapp_dashboard_curl "$body" \
+    -H "Content-Type: application/json" \
+    "https://client.earnapp.com/install_device?uuid=$uuid&version=$EARNAPP_MACOS_VERSION&arch=x64&appid=node_earnapp.com&os=macOS" \
+    --data "{\"serial\":\"$serial\"}")
+  cp "$body" "$STATE/earnapp-install-device-response.last" 2>/dev/null || true
+  rm -f "$body"
+  [ "$status" = 200 ]
+}
+
 link_earnapp_device() {
   local ip=$1 prep_script="$INST_ROOT/earnapp-link-device.py" result="$STATE/earnapp-link-result.json" uuid_file="$STATE/earnapp-device-uuid.txt" effective_url_file="$STATE/earnapp-register-url.effective.txt" cookie_header_file="$INST_ROOT/earnapp-cookie-header.txt" xsrf_file="$INST_ROOT/earnapp-xsrf.txt"
   [ -s "$EARNAPP_AUTH_STATE_FILE" ] || { jq -n '{status:"skipped_missing_auth_state"}' >"$result"; return 2; }
@@ -1095,6 +1108,7 @@ PY
   xsrf=$(cat "$xsrf_file")
   uuid=$(cat "$uuid_file")
   register_url=$(cat "$effective_url_file")
+  register_earnapp_macos_device "$uuid" || true
   link_attempts=$EARNAPP_LINK_ATTEMPTS
   status=failed
   for link_attempt in $(seq 1 "$link_attempts"); do
@@ -1106,6 +1120,7 @@ PY
     devices_status=$(earnapp_dashboard_curl "$devices_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" https://earnapp.com/dashboard/api/devices)
     grep -q "$uuid" "$devices_body" && device_present=true || device_present=false
     grep -q '"status":"ok"' "$link_body" && ok_marker=true || ok_marker=false
+    grep -qi "already linked" "$link_body" && ok_marker=true || true
     grep -qi "device.*not.*found" "$link_body" && not_found=true || not_found=false
     if [ "$user_status" = 200 ] && [ "$not_found" = false ] && { [ "$device_present" = true ] || [ "$ok_marker" = true ]; }; then
       status=linked

@@ -217,6 +217,9 @@ def test_earnapp_macos_launcher_links_with_source_payload_shape():
     assert '-d "{\\"uuid\\":\\"$uuid\\",\\"platform\\":\\"macos\\",\\"_csrf\\":\\"$xsrf\\"}"' in script
     assert '\\"data\\":{\\"uuid\\":\\"$uuid\\"' not in script
     assert "earnapp-link-response.last" in script
+    assert "client.earnapp.com/install_device" in script
+    assert "earnapp-install-device-response.last" in script
+    assert "already linked" in script
     link_block = script[script.index("link_earnapp_device()") : script.index("ensure_earnapp_running()")]
     assert "earnapp_dashboard_curl" in link_block
     assert "earnapp_proxy_curl" not in link_block
