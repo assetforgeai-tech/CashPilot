@@ -42,7 +42,7 @@ def _dns_ips(proxy: dict[str, Any]) -> str:
         text = str(value or "").strip()
         if text and text not in ips:
             ips.append(text)
-    return ",".join(ips or ["1.1.1.1", "8.8.8.8"])
+    return ",".join(ips or ["203.162.4.191", "203.162.4.190"])
 
 
 def _instance_name(slug: str) -> str:
@@ -112,6 +112,7 @@ def deploy_container(
         "MANUAL_PROXY": _proxy_url(proxy),
         "MANUAL_PROXY_SCHEME": str(proxy.get("protocol") or proxy.get("scheme") or "socks5").lower(),
         "MANUAL_PROXY_DNS_IPS": _dns_ips(proxy),
+        "EARNAPP_SINGBOX_DNS_MODE": "tcp",
         "TARGET_EGRESS_IP": str(proxy.get("egress_ip") or proxy.get("exit_ip") or ""),
         "EARNAPP_AUTH_STATE_FILE": "/runtime/earnapp-auth-state.json",
     }
