@@ -226,6 +226,17 @@ def test_earnapp_macos_launcher_links_with_source_payload_shape():
     assert "earnapp_proxy_curl" not in link_block
     assert "capture_earnapp_guest_diagnostics" in script
 
+def test_earnapp_macos_launcher_keeps_container_alive_after_link():
+    bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
+    with tarfile.open(fileobj=io.BytesIO(bundle), mode="r") as tar:
+        script_file = tar.extractfile("scripts/proxy-manager-macos-earnapp-smoke.sh")
+        assert script_file is not None
+        script = script_file.read().decode()
+    assert "hold_linked_runtime()" in script
+    assert "while sleep 300" in script
+    assert "heartbeat_earnapp_cookie linked || true" in script
+    assert "jq . \"$REPORT\"\n      hold_linked_runtime" in script
+
 def test_earnapp_macos_links_after_uuid_cid_and_heartbeats():
     bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
     with tarfile.open(fileobj=io.BytesIO(bundle), mode="r") as tar:

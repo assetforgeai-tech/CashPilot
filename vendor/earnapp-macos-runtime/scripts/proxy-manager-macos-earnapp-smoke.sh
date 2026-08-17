@@ -1574,7 +1574,7 @@ start() {
   for attempt in $(seq 1 "$attempts"); do
     if start_once; then
       jq . "$REPORT"
-      return 0
+      hold_linked_runtime
     else
       start_once_rc=$?
     fi
@@ -1588,6 +1588,12 @@ start() {
   heartbeat_earnapp_cookie STOPPED || true
   jq . "$REPORT" >&2 || true
   return 1
+}
+
+hold_linked_runtime() {
+  while sleep 300; do
+    heartbeat_earnapp_cookie linked || true
+  done
 }
 
 status() {
