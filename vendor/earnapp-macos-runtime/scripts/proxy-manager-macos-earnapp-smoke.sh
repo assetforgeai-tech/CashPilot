@@ -117,6 +117,7 @@ REPORT="$STATE/macos-smoke-report.json"
 export ROOT_DIR MAC_ROOT MAC_TOOLS INSTANCE GROUP_ID PROVIDER_ID PM_PROVIDER_ID SERVER_URL FLEET_ID FLEET_ENROLLMENT_TOKEN HOST_ID
 export STATE INST_ROOT COMPOSE REPORT TARGET_EGRESS_IP MACOS_IMAGE SING_BOX_IMAGE PAUSE_IMAGE BASE_IMAGE BASE_SHA256 RECOVERY_IMAGE NVRAM_TEMPLATE
 export WEB_PORT VNC_PORT NETNS_SUBNET NETNS_IP NETNS_GATEWAY SUBNET_OCTET MACOS_RAM_SIZE MACOS_CPU_CORES
+export MANUAL_PROXY_DNS_IPS EARNAPP_SINGBOX_DNS_MODE
 
 log() {
   printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >&2
@@ -613,7 +614,7 @@ for ip in proxy.get("dns", {}).get("runtime_dns_ips") or proxy.get("dns", {}).ge
         dns_ips.append(ip)
 if not dns_ips:
     raise SystemExit("missing_pm_dns")
-dns_mode = os.environ.get("EARNAPP_SINGBOX_DNS_MODE", "fakeip")
+dns_mode = os.environ.get("EARNAPP_SINGBOX_DNS_MODE", "tcp")
 if dns_mode == "fakeip":
     dns_server_tag = "strict-dns-blackhole"
     dns_servers = [

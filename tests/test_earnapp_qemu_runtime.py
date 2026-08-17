@@ -333,6 +333,16 @@ def test_earnapp_macos_launcher_resolves_proxy_hostname_before_singbox_outbound(
     assert "endpoint = socket.gethostbyname(endpoint)" in script
     assert 'proxy["endpoint_ip"] = endpoint' in script
 
+def test_earnapp_macos_launcher_exports_tcp_dns_mode_to_renderer():
+    bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
+    with tarfile.open(fileobj=io.BytesIO(bundle), mode="r") as tar:
+        script_file = tar.extractfile("scripts/proxy-manager-macos-earnapp-smoke.sh")
+        assert script_file is not None
+        script = script_file.read().decode()
+    assert "export MANUAL_PROXY_DNS_IPS EARNAPP_SINGBOX_DNS_MODE" in script
+    assert 'os.environ.get("EARNAPP_SINGBOX_DNS_MODE", "tcp")' in script
+    assert 'os.environ.get("EARNAPP_SINGBOX_DNS_MODE", "fakeip")' not in script
+
 def test_earnapp_macos_runtime_keeps_random_identity_controller():
     bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
     with tarfile.open(fileobj=io.BytesIO(bundle), mode="r") as tar:
