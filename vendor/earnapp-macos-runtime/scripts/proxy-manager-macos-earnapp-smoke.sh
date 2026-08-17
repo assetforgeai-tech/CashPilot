@@ -997,7 +997,6 @@ GUEST
     app_hb=$(sed -n 's/^app_hb=//p' "$raw" 2>/dev/null | tail -1)
     svc_hb=$(sed -n 's/^svc_hb=//p' "$raw" 2>/dev/null | tail -1)
     if [[ "$uuid" == sdk-mac-???????????????????????????????? ]] \
-      && [ -n "$app_config_file" ] \
       && [ -n "$cid" ] \
       && [ -n "$support_cid_file" ] \
       && [ -n "$brdsdk_log" ] \
