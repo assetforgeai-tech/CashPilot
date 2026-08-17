@@ -186,8 +186,8 @@ def test_earnapp_macos_runtime_uses_macos_launcher_not_linux_qemu():
     assert kwargs["environment"]["CASHPILOT_STANDALONE"] == "true"
     assert kwargs["environment"]["INSTANCE"] == "earnapp-macos-001"
     assert kwargs["environment"]["MANUAL_PROXY"].startswith("socks5://1.2.3.4:1080")
-    assert kwargs["environment"]["EARNAPP_SINGBOX_DNS_MODE"] == "tcp"
-    assert kwargs["environment"]["MANUAL_PROXY_DNS_IPS"] == "203.162.4.191,203.162.4.190"
+    assert kwargs["environment"]["EARNAPP_SINGBOX_DNS_MODE"] == "fakeip"
+    assert kwargs["environment"]["MANUAL_PROXY_DNS_IPS"] == "1.1.1.1,8.8.8.8"
     assert "docker-compose-v2" in kwargs["command"][2]
     assert "sshpass" in kwargs["command"][2]
     assert "/var/run/docker.sock" in kwargs["volumes"]
@@ -251,17 +251,16 @@ def test_earnapp_macos_launcher_links_with_source_payload_shape():
         script_file = tar.extractfile("scripts/proxy-manager-macos-earnapp-smoke.sh")
         assert script_file is not None
         script = script_file.read().decode()
-    assert '-d "{\\"uuid\\":\\"$uuid\\",\\"platform\\":\\"macos\\",\\"_csrf\\":\\"$xsrf\\"}"' in script
-    assert '\\"data\\":{\\"uuid\\":\\"$uuid\\"' not in script
+    assert '-d "{\\"data\\":{\\"uuid\\":\\"$uuid\\",\\"platform\\":\\"macos\\"}}"' in script
+    assert '-d "{\\"uuid\\":\\"$uuid\\",\\"platform\\":\\"macos\\",\\"_csrf\\":\\"$xsrf\\"}"' not in script
     assert "earnapp-link-response.last" in script
     assert "client.earnapp.com/install_device" in script
     assert "earnapp-install-device-response.last" in script
     assert "already linked" in script
     assert "dashboard pending after link" in script
     link_block = script[script.index("link_earnapp_device()") : script.index("ensure_earnapp_running()")]
-    assert "earnapp_guest_dashboard_curl" in link_block
+    assert "earnapp_proxy_curl" in link_block
     assert "earnapp_dashboard_curl" not in link_block
-    assert "earnapp_proxy_curl" not in link_block
     assert "capture_earnapp_guest_diagnostics" in script
 
 def test_earnapp_macos_launcher_keeps_container_alive_after_link():
@@ -282,7 +281,7 @@ def test_earnapp_macos_registers_and_links_from_guest_egress():
         assert script_file is not None
         script = script_file.read().decode()
     link_block = script[script.index("register_earnapp_macos_device()") : script.index("ensure_earnapp_running()")]
-    assert "earnapp_guest_dashboard_curl" in link_block
+    assert "earnapp_proxy_curl" in link_block
     assert "guest_pipe \"$ip\"" in script
     assert "earnapp_dashboard_curl" not in link_block
     assert "register_earnapp_macos_device \"$ip\" \"$uuid\"" in link_block
@@ -333,15 +332,14 @@ def test_earnapp_macos_launcher_resolves_proxy_hostname_before_singbox_outbound(
     assert "endpoint = socket.gethostbyname(endpoint)" in script
     assert 'proxy["endpoint_ip"] = endpoint' in script
 
-def test_earnapp_macos_launcher_exports_tcp_dns_mode_to_renderer():
+def test_earnapp_macos_launcher_exports_dns_mode_to_renderer():
     bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
     with tarfile.open(fileobj=io.BytesIO(bundle), mode="r") as tar:
         script_file = tar.extractfile("scripts/proxy-manager-macos-earnapp-smoke.sh")
         assert script_file is not None
         script = script_file.read().decode()
     assert "export MANUAL_PROXY_DNS_IPS EARNAPP_SINGBOX_DNS_MODE" in script
-    assert 'os.environ.get("EARNAPP_SINGBOX_DNS_MODE", "tcp")' in script
-    assert 'os.environ.get("EARNAPP_SINGBOX_DNS_MODE", "fakeip")' not in script
+    assert 'os.environ.get("EARNAPP_SINGBOX_DNS_MODE", "fakeip")' in script
 
 def test_earnapp_macos_runtime_keeps_random_identity_controller():
     bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})

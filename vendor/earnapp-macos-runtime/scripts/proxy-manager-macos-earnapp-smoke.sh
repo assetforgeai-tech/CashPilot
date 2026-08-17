@@ -12,8 +12,8 @@ PROVIDER_ID=${PROVIDER_ID:-earnapp-macos}
 TARGET_EGRESS_IP=${TARGET_EGRESS_IP:-}
 MANUAL_PROXY=${MANUAL_PROXY:-}
 MANUAL_PROXY_SCHEME=${MANUAL_PROXY_SCHEME:-socks5}
-MANUAL_PROXY_DNS_IPS=${MANUAL_PROXY_DNS_IPS:-203.162.4.191,203.162.4.190}
-EARNAPP_SINGBOX_DNS_MODE=${EARNAPP_SINGBOX_DNS_MODE:-tcp}
+MANUAL_PROXY_DNS_IPS=${MANUAL_PROXY_DNS_IPS:-1.1.1.1,8.8.8.8}
+EARNAPP_SINGBOX_DNS_MODE=${EARNAPP_SINGBOX_DNS_MODE:-fakeip}
 MAX_ATTEMPTS=${MAX_ATTEMPTS:-5}
 RUNTIME=${RUNTIME:-internetincome-private}
 RUNTIME_VERSION=${RUNTIME_VERSION:-macos-singbox-earnapp-smoke}
@@ -614,7 +614,7 @@ for ip in proxy.get("dns", {}).get("runtime_dns_ips") or proxy.get("dns", {}).ge
         dns_ips.append(ip)
 if not dns_ips:
     raise SystemExit("missing_pm_dns")
-dns_mode = os.environ.get("EARNAPP_SINGBOX_DNS_MODE", "tcp")
+dns_mode = os.environ.get("EARNAPP_SINGBOX_DNS_MODE", "fakeip")
 if dns_mode == "fakeip":
     dns_server_tag = "strict-dns-blackhole"
     dns_servers = [
@@ -1149,9 +1149,9 @@ PY
     user_body=$(mktemp)
     link_body=$(mktemp)
     devices_body=$(mktemp)
-    user_status=$(earnapp_guest_dashboard_curl "$ip" "$user_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" https://earnapp.com/dashboard/api/user_data)
-    link_status=$(earnapp_guest_dashboard_curl "$ip" "$link_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" -H "Accept: application/json, text/plain, */*" -H "Origin: https://earnapp.com" -H "Referer: $register_url" -H "csrf-token: $xsrf" -H "xsrf-token: $xsrf" -H "x-csrf-token: $xsrf" -H "x-xsrf-token: $xsrf" -H "X-XSRF-TOKEN: $xsrf" -H "Content-Type: application/json" -X POST https://earnapp.com/dashboard/api/link_device -d "{\"uuid\":\"$uuid\",\"platform\":\"macos\",\"_csrf\":\"$xsrf\"}")
-    devices_status=$(earnapp_guest_dashboard_curl "$ip" "$devices_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" https://earnapp.com/dashboard/api/devices)
+    user_status=$(earnapp_proxy_curl "$user_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" https://earnapp.com/dashboard/api/user_data)
+    link_status=$(earnapp_proxy_curl "$link_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" -H "Accept: application/json, text/plain, */*" -H "Origin: https://earnapp.com" -H "Referer: $register_url" -H "xsrf-token: $xsrf" -H "X-XSRF-TOKEN: $xsrf" -H "Content-Type: application/json" -X POST https://earnapp.com/dashboard/api/link_device -d "{\"data\":{\"uuid\":\"$uuid\",\"platform\":\"macos\"}}")
+    devices_status=$(earnapp_proxy_curl "$devices_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" https://earnapp.com/dashboard/api/devices)
     grep -q "$uuid" "$devices_body" && device_present=true || device_present=false
     grep -q '"status":"ok"' "$link_body" && ok_marker=true || ok_marker=false
     grep -qi "already linked" "$link_body" && ok_marker=true || true
