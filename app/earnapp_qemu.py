@@ -61,6 +61,7 @@ def render_qemu_command(identity: EarnAppQemuIdentity) -> str:
               touch /etc/earnapp/earnapp_install.log /etc/earnapp/install_bash.log /etc/earnapp/earnapp_fetch.log
               tail -n +1 -F /etc/earnapp/*.log 2>/dev/null &
               wget -qO /tmp/earnapp.sh https://brightdata.com/static/earnapp/install.sh
+              sed -i 's/curl -q4 ifconfig.co/curl -m 10 -q4 ifconfig.co/g' /tmp/earnapp.sh
               env SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt bash /tmp/earnapp.sh -y
               UUID="$(cat /etc/earnapp/uuid)"
               SERIAL="$(sha1sum /etc/machine-id | awk '{print $1}')"

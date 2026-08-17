@@ -27,6 +27,7 @@ def test_earnapp_qemu_command_boots_ubuntu_2404_with_random_hardware_and_guest_s
     assert "StandardError=journal+console" in command
     assert "touch /etc/earnapp/earnapp_install.log" in command
     assert "tail -n +1 -F /etc/earnapp/*.log" in command
+    assert "curl -m 10 -q4 ifconfig.co" in command
     assert "/etc/systemd/system/earnapp*.service" not in command
     assert "systemctl restart earnapp earnapp_upgrader" in command
     assert "https://brightdata.com/static/earnapp/install.sh" in command
