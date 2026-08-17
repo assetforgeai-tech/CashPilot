@@ -218,6 +218,17 @@ def test_earnapp_macos_runtime_uses_worker_runtime_root(monkeypatch):
     assert kwargs["environment"]["MAC_ROOT"] == "/mnt/cashpilot-runtime/dockur-macos"
     assert kwargs["volumes"]["/mnt/cashpilot-runtime/dockur-macos"]["bind"] == "/mnt/cashpilot-runtime/dockur-macos"
 
+def test_earnapp_macos_launcher_defaults_to_tahoe_not_monterey():
+    bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
+    with tarfile.open(fileobj=io.BytesIO(bundle), mode="r") as tar:
+        script_file = tar.extractfile("scripts/proxy-manager-macos-earnapp-smoke.sh")
+        assert script_file is not None
+        script = script_file.read().decode()
+    assert "MACOS_VERSION=${MACOS_VERSION:-26}" in script
+    assert "tahoe26-os-only-1792m-v1.qcow2" in script
+    assert "monterey12-os-only" not in script
+    assert "cee45546058701852b822662971fbe1e8fc420e33eadc40c407ba239181324e3" not in script
+
 def test_earnapp_macos_bundle_marks_launcher_executable():
     bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
     with tarfile.open(fileobj=io.BytesIO(bundle), mode="r") as tar:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+import os
 
 from apple_profile import OpenCoreIdentity, validate_opencore_identity
 
@@ -9,6 +10,7 @@ from apple_profile import OpenCoreIdentity, validate_opencore_identity
 PRODUCTION_RAM = "1792M"
 PRODUCTION_CPU = "2"
 PRODUCTION_PICKER = "N"
+PRODUCTION_MACOS_VERSION = os.getenv("MACOS_VERSION", "26")
 EXPERIMENTAL_CPU_MODEL = "Skylake-Server-v3"
 ROLLBACK_CPU_MODEL = "Skylake-Client-v4"
 SERVER_DISABLED_FEATURES = (
@@ -67,7 +69,7 @@ def build_instance_environment(
         raise ValueError(", ".join(result.warnings))
     environment = {
         "IMAGE": image,
-        "VERSION": "12",
+        "VERSION": PRODUCTION_MACOS_VERSION,
         "MODEL": identity.model,
         "SN": identity.serial,
         "MLB": identity.mlb,
@@ -94,7 +96,7 @@ def build_instance_environment(
 
 def validate_hardware_profile(environment: Mapping[str, str]) -> None:
     expected = {
-        "VERSION": "12",
+        "VERSION": PRODUCTION_MACOS_VERSION,
         "MODEL": "iMacPro1,1",
         "CPU_MODEL": EXPERIMENTAL_CPU_MODEL,
         "VGA": "vmware",

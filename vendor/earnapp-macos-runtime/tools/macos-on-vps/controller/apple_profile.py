@@ -31,7 +31,7 @@ class OpenCoreIdentity:
 
 def parse_macserial_output(text: str, model: str) -> tuple[str, str]:
     if model != "iMacPro1,1":
-        raise ValueError("unsupported Monterey SMBIOS model")
+        raise ValueError("unsupported macOS SMBIOS model")
     for raw_line in text.splitlines():
         line = raw_line.strip()
         if "|" not in line:
@@ -47,7 +47,7 @@ def parse_macserial_output(text: str, model: str) -> tuple[str, str]:
 
 def validate_opencore_identity(identity: OpenCoreIdentity) -> None:
     if identity.model != "iMacPro1,1":
-        raise ValueError("unsupported Monterey SMBIOS model")
+        raise ValueError("unsupported macOS SMBIOS model")
     if not SERIAL_RE.fullmatch(identity.serial) or identity.serial in PLACEHOLDER_SERIALS:
         raise ValueError("serial has invalid or placeholder format")
     if not MLB_RE.fullmatch(identity.mlb) or identity.mlb in PLACEHOLDER_MLBS:

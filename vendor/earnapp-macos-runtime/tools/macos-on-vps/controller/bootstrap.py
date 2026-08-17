@@ -42,7 +42,7 @@ SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 SSH_ED25519_PUBLIC_KEY_RE = re.compile(
     r"^ssh-ed25519 [A-Za-z0-9+/]+={0,3}(?: [A-Za-z0-9._@-]+)?$"
 )
-SOURCE_FILENAME = "monterey12-os-only-1792m-v1-20260716T153103Z.qcow2"
+SOURCE_FILENAME = os.getenv("MACOS_SOURCE_FILENAME", "tahoe26-os-only-1792m-v1.qcow2")
 
 
 def validate_instance_id(instance_id: str) -> None:
@@ -231,7 +231,7 @@ def build_instance_environment(
         raise ValueError("hostname must use lowercase letters, digits, and hyphens")
     environment = {
         "IMAGE": image,
-        "VERSION": "12",
+        "VERSION": os.getenv("MACOS_VERSION", "26"),
         "RAM_SIZE": ram,
         "CPU_CORES": cpu,
         "MAC": mac.lower(),
