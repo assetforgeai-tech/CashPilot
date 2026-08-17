@@ -27,6 +27,7 @@ import shutil
 import socket
 import subprocess
 import time
+import urllib.parse
 import uuid
 import zipfile
 from contextlib import asynccontextmanager
@@ -968,6 +969,25 @@ class EgressApplySpec(BaseModel):
     worker_name: str | None = None
     proxy: dict[str, Any] | None = None
 
+class ProxyTargetProbeSpec(BaseModel):
+    proxy: dict[str, Any]
+    targets: list[str] = Field(default_factory=list)
+
+def _probe_proxy_url(proxy: dict[str, Any]) -> str:
+    scheme = str(proxy.get("protocol") or proxy.get("scheme") or "socks5").strip().lower()
+    if scheme == "socks":
+        scheme = "socks5"
+    host = str(proxy.get("host") or proxy.get("endpoint_ip") or "").strip()
+    port = int(proxy.get("port") or 0)
+    username = str(proxy.get("username") or "")
+    password = str(proxy.get("password") or "")
+    if not host or port <= 0:
+        raise ValueError("proxy host/port required")
+    auth = ""
+    if username:
+        auth = urllib.parse.quote(username, safe="") + ":" + urllib.parse.quote(password, safe="") + "@"
+    return f"{scheme}://{auth}{host}:{port}"
+
 
 async def _fetch_runtime_asset(provider: str, asset_kind: str) -> str:
     if not UI_URL:
@@ -1412,6 +1432,28 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
     except Exception:
         logger.exception("Deploy failed for %s", slug)
         raise HTTPException(status_code=500, detail="Container deployment failed")
+
+@app.post("/api/proxy/probe-targets")
+async def api_probe_proxy_targets(request: Request, spec: ProxyTargetProbeSpec) -> dict[str, Any]:
+    _verify_api_key(request)
+    targets = spec.targets or ["https://client.earnapp.com/", "https://earnapp.com/dashboard", "https://proxyjs.brdtnet.com/"]
+    try:
+        proxy_url = _probe_proxy_url(spec.proxy)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    results: list[dict[str, Any]] = []
+    try:
+        async with httpx.AsyncClient(proxy=proxy_url, timeout=12, follow_redirects=False, trust_env=False) as client:
+            for target in targets:
+                try:
+                    resp = await client.get(target, headers={"user-agent": "Mozilla/5.0"})
+                    ok = 0 < resp.status_code < 500
+                    results.append({"target": target, "status_code": resp.status_code, "ok": ok})
+                except Exception as exc:
+                    results.append({"target": target, "status_code": 0, "ok": False, "error": type(exc).__name__})
+    except Exception as exc:
+        return {"ok": False, "results": results, "error": type(exc).__name__}
+    return {"ok": all(item["ok"] for item in results), "results": results}
 
 
 @app.post("/api/containers/{slug}/restart")
