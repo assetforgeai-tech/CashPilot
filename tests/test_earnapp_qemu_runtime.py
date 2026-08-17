@@ -64,6 +64,7 @@ def test_deploy_raw_uses_earnapp_qemu_runtime_instead_of_provider_docker_image()
     assert kwargs["command"][:2] == ["/bin/bash", "-lc"]
     assert "qemu-system-x86_64" in kwargs["command"][2]
     assert kwargs["network_mode"] == "container:cashpilot-earnapp-proxy-egress"
+    assert kwargs["devices"] == ["/dev/kvm:/dev/kvm:rwm"]
 
 @pytest.mark.asyncio
 async def test_earnapp_proxy_rotation_releases_vietnam_assignment(monkeypatch):

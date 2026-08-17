@@ -176,6 +176,7 @@ def deploy_container(client, *, slug: str, network_mode: str | None, labels: dic
         environment=env,
         command=["/bin/bash", "-lc", render_qemu_command(identity)],
         volumes={f"cashpilot-{slug}-qemu": {"bind": "/state", "mode": "rw"}},
+        devices=["/dev/kvm:/dev/kvm:rwm"],
         network_mode=network_mode,
         labels=labels,
         detach=True,
