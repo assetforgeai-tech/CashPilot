@@ -578,7 +578,8 @@ state = Path(os.environ["STATE"])
 inst = Path(os.environ["INST_ROOT"])
 lease = json.loads((state / "lease.json").read_text())
 identity = None
-for line in Path("/opt/dockur-macos/identity/registry.jsonl").read_text().splitlines():
+registry_path = Path(os.environ["MAC_ROOT"]) / "identity" / "registry.jsonl"
+for line in registry_path.read_text().splitlines():
     row = json.loads(line)
     if row.get("instance_id") == os.environ["INSTANCE"]:
         identity = row
