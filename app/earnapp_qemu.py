@@ -63,7 +63,7 @@ def render_qemu_command(identity: EarnAppQemuIdentity) -> str:
               wget -qO /tmp/earnapp.sh https://brightdata.com/static/earnapp/install.sh
               sed -i 's/curl -q4 ifconfig.co/curl -m 10 -q4 ifconfig.co/g' /tmp/earnapp.sh
               sed -i 's|^RID=.*|RID=$(openssl rand -hex 16)|' /tmp/earnapp.sh
-              env SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt bash -x /tmp/earnapp.sh -y
+              env SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt bash /tmp/earnapp.sh -y
               UUID="$(cat /etc/earnapp/uuid)"
               SERIAL="$(sha1sum /etc/machine-id | awk '{print $1}')"
               curl -fsS -H 'Content-Type: application/json' "https://client.earnapp.com/install_device?uuid=${UUID}&version=1.651.510&arch=x64&appid=node_earnapp.com&os=Ubuntu" --data "{\"serial\":\"${SERIAL}\"}"
@@ -118,11 +118,6 @@ def render_qemu_command(identity: EarnAppQemuIdentity) -> str:
     replacements = {
         "__HOSTNAME__": identity.hostname,
         "__MACHINE_ID__": identity.machine_id,
-        "__OAUTH_REFRESH_TOKEN__": "${OAUTH_REFRESH_TOKEN}",
-        "__OAUTH_TOKEN__": "${OAUTH_TOKEN}",
-        "__XSRF_TOKEN__": "${XSRF_TOKEN}",
-        "__BRD_SESS_ID__": "${BRD_SESS_ID}",
-        "__CG_UUID__": "${CG_UUID}",
     }
     for old, new in replacements.items():
         user_data = user_data.replace(old, new)
@@ -143,6 +138,12 @@ def render_qemu_command(identity: EarnAppQemuIdentity) -> str:
             "cat >user-data <<'CLOUD'",
             user_data,
             "CLOUD",
+            "esc_sed() { printf '%s' \"$1\" | sed -e 's/[\\\\&|]/\\\\&/g'; }",
+            'sed -i "s|__OAUTH_REFRESH_TOKEN__|$(esc_sed "$OAUTH_REFRESH_TOKEN")|g" user-data',
+            'sed -i "s|__OAUTH_TOKEN__|$(esc_sed "$OAUTH_TOKEN")|g" user-data',
+            'sed -i "s|__XSRF_TOKEN__|$(esc_sed "$XSRF_TOKEN")|g" user-data',
+            'sed -i "s|__BRD_SESS_ID__|$(esc_sed "$BRD_SESS_ID")|g" user-data',
+            'sed -i "s|__CG_UUID__|$(esc_sed "$CG_UUID")|g" user-data',
             "cat >meta-data <<'META'",
             f"instance-id: {identity.uuid}",
             f"local-hostname: {identity.hostname}",
