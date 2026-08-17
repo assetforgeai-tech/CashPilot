@@ -1096,7 +1096,7 @@ PY
     link_body=$(mktemp)
     devices_body=$(mktemp)
     user_status=$(earnapp_proxy_curl "$user_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" https://earnapp.com/dashboard/api/user_data)
-    link_status=$(earnapp_proxy_curl "$link_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" -H "Accept: application/json, text/plain, */*" -H "Origin: https://earnapp.com" -H "Referer: $register_url" -H "xsrf-token: $xsrf" -H "X-XSRF-TOKEN: $xsrf" -H "Content-Type: application/json" -X POST https://earnapp.com/dashboard/api/link_device -d "{\"data\":{\"uuid\":\"$uuid\",\"platform\":\"macos\"}}")
+    link_status=$(earnapp_proxy_curl "$link_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" -H "Accept: application/json, text/plain, */*" -H "Origin: https://earnapp.com" -H "Referer: $register_url" -H "csrf-token: $xsrf" -H "xsrf-token: $xsrf" -H "x-csrf-token: $xsrf" -H "x-xsrf-token: $xsrf" -H "X-XSRF-TOKEN: $xsrf" -H "Content-Type: application/json" -X POST https://earnapp.com/dashboard/api/link_device -d "{\"uuid\":\"$uuid\",\"platform\":\"macos\",\"_csrf\":\"$xsrf\"}")
     devices_status=$(earnapp_proxy_curl "$devices_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" https://earnapp.com/dashboard/api/devices)
     grep -q "$uuid" "$devices_body" && device_present=true || device_present=false
     grep -q '"status":"ok"' "$link_body" && ok_marker=true || ok_marker=false
@@ -1125,6 +1125,8 @@ PY
       --argjson not_found "$not_found" \
       '{status:$status,attempt:($attempt|tonumber),register_url_present:$register_url_present,device_uuid:$uuid,user_data_status:$user_status,link_device_status:$link_status,devices_status:$devices_status,device_present:$device_present,link_ok:$ok_marker,not_found:$not_found}' \
       >"$result"
+    cp "$link_body" "$STATE/earnapp-link-response.last" 2>/dev/null || true
+    cp "$devices_body" "$STATE/earnapp-devices-response.last" 2>/dev/null || true
     rm -f "$user_body" "$link_body" "$devices_body"
     [ "$status" = linked ] && break
     [ "$status" = rate_limited ] && break
