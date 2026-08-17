@@ -1543,6 +1543,14 @@ start_once() {
       return 0
     fi
     if ! wait_earnapp_dashboard_green "$guest_ip_value"; then
+      # ponytail: EarnApp can link before dashboard status flips green; keep the
+      # node alive so collector/manual checks can distinguish delayed earning
+      # from a real banned/not-earning state.
+      if jq -e '.device_present == true and (.device.banned == null)' "$STATE/earnapp-dashboard-status.json" >/dev/null 2>&1; then
+        log "dashboard pending after link"
+        release_macos_start_slot
+        return 0
+      fi
       release_macos_start_slot
       release_lease RUNTIME_UNHEALTHY
       return 4
