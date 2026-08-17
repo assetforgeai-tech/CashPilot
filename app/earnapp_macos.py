@@ -123,7 +123,7 @@ def deploy_container(
             f"while [ ! -x /runtime/{SCRIPT} ]; do sleep 2; done; "
             "export DEBIAN_FRONTEND=noninteractive; "
             "apt-get update -y && apt-get install -y bash ca-certificates curl jq docker.io "
-            "openssh-client python3 coreutils iproute2 iptables; "
+            "openssh-client sshpass python3 coreutils iproute2 iptables; "
             "apt-get install -y docker-compose-plugin || apt-get install -y docker-compose-v2; "
             f"exec bash /runtime/{SCRIPT} start"
         ),
