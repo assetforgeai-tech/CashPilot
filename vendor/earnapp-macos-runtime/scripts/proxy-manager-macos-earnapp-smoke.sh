@@ -120,6 +120,25 @@ log() {
   printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >&2
 }
 
+run_start_step() {
+  local label=$1
+  shift
+  local out="$STATE/start-failure-$label.log"
+  mkdir -p "$STATE"
+  if "$@" >"$out" 2>&1; then
+    rm -f "$out"
+    return 0
+  fi
+  {
+    echo "--- docker ps ---"
+    docker ps -a --format '{{.Names}} {{.Status}} {{.Image}}' || true
+    echo "--- compose ps ---"
+    [ -f "$COMPOSE" ] && docker compose -f "$COMPOSE" ps || true
+  } >>"$out" 2>&1 || true
+  cat "$out" >&2 || true
+  return 1
+}
+
 is_valid_ip() {
   python3 - "$1" <<'PY'
 import ipaddress
@@ -1394,13 +1413,13 @@ start_once() {
   request_lease || { log "REQUEST_LEASE_FAILED"; return 9; }
   log "render files"
   render_files || { release_lease RUNTIME_UNHEALTHY; return 7; }
-  docker compose -f "$COMPOSE" config >/dev/null || { release_lease RUNTIME_UNHEALTHY; return 7; }
-  docker run --rm --network none -v "$INST_ROOT/sing-box/config.json:/etc/sing-box/config.json:ro" "$SING_BOX_IMAGE" check -c /etc/sing-box/config.json >/dev/null || { release_lease RUNTIME_UNHEALTHY; return 7; }
+  run_start_step compose-config docker compose -f "$COMPOSE" config || { release_lease RUNTIME_UNHEALTHY; return 7; }
+  run_start_step sing-box-check docker run --rm --network none -v "$INST_ROOT/sing-box/config.json:/etc/sing-box/config.json:ro" "$SING_BOX_IMAGE" check -c /etc/sing-box/config.json || { release_lease RUNTIME_UNHEALTHY; return 7; }
   log "start netns"
-  docker compose -f "$COMPOSE" up -d netns || { release_lease RUNTIME_UNHEALTHY; return 7; }
+  run_start_step netns-up docker compose -f "$COMPOSE" up -d netns || { release_lease RUNTIME_UNHEALTHY; return 7; }
   apply_netns_firewall || { release_lease RUNTIME_UNHEALTHY; return 7; }
   log "start sing-box"
-  docker compose -f "$COMPOSE" up -d sing-box || { release_lease RUNTIME_UNHEALTHY; return 7; }
+  run_start_step sing-box-up docker compose -f "$COMPOSE" up -d sing-box || { release_lease RUNTIME_UNHEALTHY; return 7; }
   wait_healthy || { release_lease RUNTIME_UNHEALTHY; return 7; }
   log "probe and ack"
   # ponytail: network/runtime failure is not provider IP_USED; add provider-block reason only after app log proves it.
@@ -1415,7 +1434,7 @@ start_once() {
   fi
   acquire_macos_start_slot
   log "start macos"
-  if ! docker compose -f "$COMPOSE" up -d macos; then
+  if ! run_start_step macos-up docker compose -f "$COMPOSE" up -d macos; then
     release_macos_start_slot
     release_lease RUNTIME_UNHEALTHY
     return 7
