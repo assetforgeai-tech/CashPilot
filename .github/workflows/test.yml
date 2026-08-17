@@ -20,7 +20,9 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
       - name: Fetch release tags
-        run: git fetch --force --tags origin
+        run: |
+          git fetch --force origin 'refs/tags/*:refs/tags/*'
+          test -n "$(git tag --list 'v*' | head -n 1)"
       - name: Check approved deploy baseline
         run: python scripts/check_deploy_baseline.py
 
