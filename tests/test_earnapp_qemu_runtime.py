@@ -226,6 +226,16 @@ def test_earnapp_macos_launcher_skips_hostname_endpoint_firewall_rule():
     assert 'if is_valid_ip "$endpoint"; then' in script
     assert 'iptables -A OUTPUT -d "$endpoint"' in script
 
+def test_earnapp_macos_launcher_resolves_proxy_hostname_before_singbox_outbound():
+    bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
+    with tarfile.open(fileobj=io.BytesIO(bundle), mode="r") as tar:
+        script_file = tar.extractfile("scripts/proxy-manager-macos-earnapp-smoke.sh")
+        assert script_file is not None
+        script = script_file.read().decode()
+    assert "import socket" in script
+    assert "endpoint = socket.gethostbyname(endpoint)" in script
+    assert 'proxy["endpoint_ip"] = endpoint' in script
+
 def test_earnapp_macos_runtime_keeps_random_identity_controller():
     bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
     with tarfile.open(fileobj=io.BytesIO(bundle), mode="r") as tar:

@@ -573,6 +573,7 @@ render_files() {
 import json
 import ipaddress
 import os
+import socket
 from pathlib import Path
 
 state = Path(os.environ["STATE"])
@@ -594,6 +595,11 @@ endpoint = proxy.get("endpoint_ip") or proxy.get("host")
 port = int(proxy["port"])
 if scheme not in ("http", "socks5"):
     raise SystemExit("unsupported_scheme_" + scheme)
+try:
+    ipaddress.ip_address(endpoint)
+except ValueError:
+    endpoint = socket.gethostbyname(endpoint)
+    proxy["endpoint_ip"] = endpoint
 proxy_out = {"type": "socks", "tag": "proxy", "server": endpoint, "server_port": port, "version": "5"} if scheme == "socks5" else {"type": "http", "tag": "proxy", "server": endpoint, "server_port": port}
 if proxy.get("username"):
     proxy_out["username"] = proxy["username"]
