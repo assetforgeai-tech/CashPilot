@@ -241,9 +241,11 @@ def deploy_raw(
     ``resources`` (mem_limit / mem_reservation / oom_score_adj) makes the
     container's cgroup limits durable across recreates. Returns the container ID.
     """
+    provider = provider_slug or slug
+    if provider == "earnapp" and host_runtime == "qemu_macos":
+        raise RuntimeError("EarnApp macOS runtime is not wired yet; do not deploy the Linux runtime for Vietnam proxies")
     client = _get_client()
     name = _container_name(slug)
-    provider = provider_slug or slug
     if provider == "earnapp" and host_runtime == "qemu_systemd":
         image = "ubuntu:24.04"
     if installer_manifest_url:

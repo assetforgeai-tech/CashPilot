@@ -1947,6 +1947,9 @@ def _changed_credential_sections(data: dict[str, str]) -> dict[str, set[str]]:
         ):
             if any(field.get("key") in keys for field in fields):
                 changed[section].add(slug)
+        prefix = f"{slug}_"
+        if any(key.startswith(prefix) and "_dashboard_" not in key and "_collector_" not in key for key in keys):
+            changed["deploy"].add(slug)
     return changed
 
 async def _mark_redeploy_needed_for_config_change(changed: dict[str, set[str]]) -> None:
@@ -2010,23 +2013,18 @@ async def _proxy_for_worker_instance(worker_id: int, *, provider_slug: str | Non
         if proxy and provider_slug and proxy.get("proxy_id"):
             if await database.proxy_masked_for_provider(int(proxy["proxy_id"]), provider_slug):
                 proxy = None
-            elif provider_slug == "earnapp" and _proxy_location_is_vietnam(proxy):
-                await database.mask_proxy_for_provider(int(proxy["proxy_id"]), provider_slug, "earnapp_vietnam_proxy")
-                await database.set_worker_proxy_assignment(worker_id, None)
-                proxy = None
         if not proxy or not proxy.get("proxy_id"):
             proxy = await database.lease_proxy_for_worker(worker_id, provider_slug=provider_slug)
         if proxy and proxy.get("proxy_id"):
-            if provider_slug == "earnapp" and _proxy_location_is_vietnam(proxy):
-                await database.mask_proxy_for_provider(int(proxy["proxy_id"]), provider_slug, "earnapp_vietnam_proxy")
-                await database.set_worker_proxy_assignment(worker_id, None)
-                continue
             return proxy
     raise HTTPException(status_code=409, detail="No proxy available for this worker")
 
 def _proxy_location_is_vietnam(proxy: dict[str, Any]) -> bool:
     loc = str(proxy.get("location") or "").strip().lower()
     return loc in {"vn", "viet nam", "vietnam", "việt nam"} or "vietnam" in loc or "viet nam" in loc
+
+def _earnapp_host_runtime_for_proxy(proxy: dict[str, Any]) -> str:
+    return "qemu_macos" if _proxy_location_is_vietnam(proxy) else "qemu_systemd"
 
 async def _resolve_pawns_proxy_protocol(proxy: dict[str, Any]) -> dict[str, Any] | None:
     proxy_id = int(proxy.get("proxy_id") or 0)
@@ -2207,6 +2205,7 @@ async def _deploy_earnapp_proxy_with_retry(
         proxy = await _proxy_for_worker_instance(worker_id, provider_slug="earnapp")
         attempt_spec["proxy"] = proxy
         attempt_spec["egress_mode"] = "proxy"
+        attempt_spec["host_runtime"] = _earnapp_host_runtime_for_proxy(proxy)
         result = await _proxy_worker_deploy(worker_id, instance_slug, attempt_spec)
         sdk_id, device = await _earnapp_status_after_link(worker_id, instance_slug, attempt_spec)
         if device and not device.get("banned"):

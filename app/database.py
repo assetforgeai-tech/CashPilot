@@ -2318,6 +2318,13 @@ async def upsert_proxy_endpoints(provider_id: int, proxies: Sequence[Mapping[str
             protocol = str(proxy.get("protocol") or "socks5").lower()
             if protocol not in {"http", "socks5"}:
                 continue
+            host = str(proxy.get("host") or "")
+            port = int(proxy.get("port") or 0)
+            username = str(proxy.get("username") or "")
+            endpoint = str(proxy.get("endpoint") or f"{host}:{port}")
+            provider_proxy_id = str(proxy.get("provider_proxy_id") or "").strip()
+            if not provider_proxy_id:
+                provider_proxy_id = f"{protocol}:{host}:{port}:{username}"
             password = str(proxy.get("password") or "")
             await db.execute(
                 """
@@ -2346,12 +2353,12 @@ async def upsert_proxy_endpoints(provider_id: int, proxies: Sequence[Mapping[str
                 """,
                 (
                     provider_id,
-                    str(proxy.get("provider_proxy_id") or ""),
-                    str(proxy.get("endpoint") or ""),
-                    str(proxy.get("host") or ""),
-                    int(proxy.get("port") or 0),
+                    provider_proxy_id,
+                    endpoint,
+                    host,
+                    port,
                     protocol,
-                    str(proxy.get("username") or ""),
+                    username,
                     encrypt_value(password) if password else "",
                     str(proxy.get("location") or ""),
                     str(proxy.get("status") or "unknown"),
@@ -2382,10 +2389,14 @@ async def list_proxy_pool() -> list[dict[str, Any]]:
                    pe.hours_left, pe.exit_ip, pe.udp_ok, pe.latency_ms,
                    pe.last_synced_at, pe.last_checked_at,
                    CASE WHEN pe.password_enc IS NOT NULL AND pe.password_enc != '' THEN 1 ELSE 0 END AS password_set,
-                   pa.worker_id AS assigned_worker_id
+                   pa.worker_id AS assigned_worker_id,
+                   pawns.reason AS pawns_mask_reason,
+                   earnapp.reason AS earnapp_mask_reason
             FROM proxy_endpoints pe
             LEFT JOIN proxy_providers pp ON pp.id = pe.provider_id
             LEFT JOIN proxy_assignments pa ON pa.proxy_id = pe.id
+            LEFT JOIN proxy_provider_masks pawns ON pawns.proxy_id = pe.id AND pawns.provider_slug = 'iproyal'
+            LEFT JOIN proxy_provider_masks earnapp ON earnapp.proxy_id = pe.id AND earnapp.provider_slug = 'earnapp'
             ORDER BY pp.name, pe.endpoint
             """
         )
@@ -2435,6 +2446,23 @@ async def proxy_masked_for_provider(proxy_id: int, provider_slug: str) -> bool:
             (int(proxy_id), provider_slug),
         )
         return bool(await cur.fetchone())
+    finally:
+        await db.close()
+
+async def delete_proxy_endpoints(proxy_ids: Sequence[int] | None = None, *, status: str | None = None) -> int:
+    ids = [int(x) for x in (proxy_ids or []) if int(x) > 0]
+    status = str(status or "").strip().lower()
+    if not ids and not status:
+        return 0
+    db = await _get_db()
+    try:
+        if ids:
+            placeholders = ",".join("?" for _ in ids)
+            cursor = await db.execute(f"DELETE FROM proxy_endpoints WHERE id IN ({placeholders})", ids)
+        else:
+            cursor = await db.execute("DELETE FROM proxy_endpoints WHERE lower(status) = ?", (status,))
+        await db.commit()
+        return int(cursor.rowcount or 0)
     finally:
         await db.close()
 

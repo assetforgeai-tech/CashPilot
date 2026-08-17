@@ -49,6 +49,10 @@ class ProxyImportIn(BaseModel):
     recheck: bool = True
     concurrency: int | None = None
 
+class ProxyDeleteIn(BaseModel):
+    proxy_ids: list[int] | None = None
+    status: str | None = None
+
 def _normalize_proxy_record(parts: list[str], *, location: str = "", protocol: str = "") -> dict[str, Any] | None:
     if len(parts) == 1 and not protocol:
         value = parts[0].strip()
@@ -335,7 +339,10 @@ async def api_proxy_pool_export(
             "endpoint",
             "protocol",
             "location",
+            "exit_ip",
             "status",
+            "pawns_mask_reason",
+            "earnapp_mask_reason",
             "expiry_date",
             "assigned_worker_id",
             "last_checked_at",
@@ -364,6 +371,15 @@ async def api_proxy_pool_import(request: Request, body: ProxyImportIn) -> dict[s
         recent_ids = list(range(max(1, int(last_id or 0) - len(proxies) + 1), int(last_id or 0) + 1)) if last_id else []
         result["recheck"] = await run_proxy_pool_recheck(proxy_ids=recent_ids or None, concurrency=body.concurrency or settings["concurrency"])
     return result
+
+@router.delete("/api/proxy-pool")
+async def api_proxy_pool_delete(request: Request, body: ProxyDeleteIn) -> dict[str, Any]:
+    deps._require_owner(request)
+    status = str(body.status or "").strip().lower()
+    if status and status != "dead":
+        raise HTTPException(status_code=400, detail="Only status=dead bulk delete is allowed")
+    deleted = await database.delete_proxy_endpoints(body.proxy_ids, status=status or None)
+    return {"status": "ok", "deleted": deleted}
 
 @router.post("/api/proxy-pool/recheck")
 async def api_proxy_pool_recheck(request: Request, body: ProxyRecheckIn) -> dict[str, Any]:

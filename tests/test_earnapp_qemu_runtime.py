@@ -126,56 +126,59 @@ def test_deploy_raw_uses_earnapp_qemu_runtime_instead_of_provider_docker_image()
     assert kwargs["network_mode"] == "container:cashpilot-earnapp-proxy-egress"
     assert kwargs["devices"] == ["/dev/kvm:/dev/kvm:rwm"]
 
+def test_earnapp_macos_runtime_does_not_fall_back_to_linux_image():
+    with pytest.raises(RuntimeError, match="macOS runtime"):
+        orchestrator.deploy_raw(
+            slug="earnapp-proxy",
+            provider_slug="earnapp",
+            image="legacy/ignored",
+            host_runtime="qemu_macos",
+            deploy_credentials={"oauth_token": "token"},
+            proxy={"host": "1.2.3.4", "port": 1080, "protocol": "socks5"},
+        )
+
 @pytest.mark.asyncio
-async def test_earnapp_proxy_rotation_releases_vietnam_assignment(monkeypatch):
-    calls: list[tuple[str, int | None]] = []
+async def test_earnapp_proxy_rotation_keeps_vietnam_assignment_for_macos(monkeypatch):
     current = {"proxy_id": 2, "host": "vn.proxy", "port": 1080, "protocol": "socks5", "location": "Vietnam"}
 
     async def get_assignment(_worker_id: int):
         return current
 
-    async def set_assignment(_worker_id: int, proxy_id: int | None, **_kwargs):
-        nonlocal current
-        calls.append(("set", proxy_id))
-        current = None
-        return True
-
-    async def lease(_worker_id: int, **_kwargs):
-        nonlocal current
-        current = {"proxy_id": 845, "host": "sg.proxy", "port": 1080, "protocol": "socks5", "location": "Singapore"}
-        return current
-
-    monkeypatch.setattr(main.database, "get_worker_proxy_assignment", get_assignment)
-    monkeypatch.setattr(main.database, "set_worker_proxy_assignment", set_assignment)
-    monkeypatch.setattr(main.database, "lease_proxy_for_worker", lease)
-    monkeypatch.setattr(main.database, "proxy_masked_for_provider", AsyncMock(return_value=False))
-    monkeypatch.setattr(main.database, "mask_proxy_for_provider", AsyncMock())
-
-    proxy = await main._proxy_for_worker_instance(8532, provider_slug="earnapp")
-
-    assert proxy["proxy_id"] == 845
-    assert calls == [("set", None)]
-
-@pytest.mark.asyncio
-async def test_earnapp_proxy_rotation_can_skip_large_vietnam_prefix(monkeypatch):
-    leases = [{"proxy_id": i, "host": "vn.proxy", "port": 1080, "protocol": "socks5", "location": "Vietnam"} for i in range(1, 26)]
-    leases.append({"proxy_id": 845, "host": "sg.proxy", "port": 1080, "protocol": "socks5", "location": "Singapore"})
-
-    async def get_assignment(_worker_id: int):
-        return None
-
-    async def lease(_worker_id: int, **_kwargs):
-        return leases.pop(0)
-
     monkeypatch.setattr(main.database, "get_worker_proxy_assignment", get_assignment)
     monkeypatch.setattr(main.database, "set_worker_proxy_assignment", AsyncMock(return_value=True))
-    monkeypatch.setattr(main.database, "lease_proxy_for_worker", lease)
+    monkeypatch.setattr(main.database, "lease_proxy_for_worker", AsyncMock())
     monkeypatch.setattr(main.database, "proxy_masked_for_provider", AsyncMock(return_value=False))
     monkeypatch.setattr(main.database, "mask_proxy_for_provider", AsyncMock())
 
     proxy = await main._proxy_for_worker_instance(8532, provider_slug="earnapp")
 
-    assert proxy["proxy_id"] == 845
+    assert proxy["proxy_id"] == 2
+    assert main._earnapp_host_runtime_for_proxy(proxy) == "qemu_macos"
+    main.database.lease_proxy_for_worker.assert_not_awaited()
+
+@pytest.mark.asyncio
+async def test_earnapp_non_vietnam_and_unknown_use_ubuntu_qemu():
+    assert main._earnapp_host_runtime_for_proxy({"location": "Singapore"}) == "qemu_systemd"
+    assert main._earnapp_host_runtime_for_proxy({"location": ""}) == "qemu_systemd"
+
+@pytest.mark.asyncio
+async def test_earnapp_deploy_sets_macos_runtime_for_vietnam_proxy(monkeypatch):
+    deployed_specs = []
+
+    async def fake_proxy(_worker_id: int, *, provider_slug: str | None = None):
+        return {"proxy_id": 2, "host": "vn.proxy", "port": 1080, "protocol": "socks5", "location": "Vietnam"}
+
+    async def fake_deploy(_worker_id: int, _instance_slug: str, spec: dict):
+        deployed_specs.append(spec)
+        return {"container_id": "container-1"}
+
+    monkeypatch.setattr(main, "_proxy_for_worker_instance", fake_proxy)
+    monkeypatch.setattr(main, "_proxy_worker_deploy", fake_deploy)
+    monkeypatch.setattr(main, "_earnapp_status_after_link", AsyncMock(return_value=("sdk-mac-ok", {"uuid": "sdk-mac-ok", "banned": None})))
+
+    await main._deploy_earnapp_proxy_with_retry(7, "earnapp-proxy", {"deploy_credentials": {"oauth_token": "tok"}})
+
+    assert deployed_specs[0]["host_runtime"] == "qemu_macos"
 
 
 @pytest.mark.asyncio

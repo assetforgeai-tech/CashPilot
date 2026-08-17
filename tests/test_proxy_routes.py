@@ -181,6 +181,45 @@ def test_proxy_pool_import_reports_inserted_count_not_parse_count(client):
     assert resp.status_code == 200
     assert resp.json()["imported"] == 2
 
+def test_manual_proxy_import_persists_multiple_rows(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            await database.upsert_proxy_endpoints(
+                provider_id,
+                [
+                    {"host": "1.1.1.1", "port": 1000, "protocol": "http"},
+                    {"host": "2.2.2.2", "port": 2000, "protocol": "socks5"},
+                ],
+            )
+            rows = await database.list_proxy_pool()
+            assert len(rows) == 2
+            assert {row["endpoint"] for row in rows} == {"1.1.1.1:1000", "2.2.2.2:2000"}
+
+    import asyncio
+
+    asyncio.run(run())
+
+def test_proxy_pool_delete_selected_and_dead(client):
+    with (
+        patch("app.main.auth.get_current_user", return_value=_owner_user()),
+        patch("app.routers.proxies.database.delete_proxy_endpoints", new_callable=AsyncMock, return_value=2) as delete,
+    ):
+        resp = client.request("DELETE", "/api/proxy-pool", json={"proxy_ids": [1, 2]})
+    assert resp.status_code == 200
+    assert resp.json()["deleted"] == 2
+    delete.assert_awaited_once_with([1, 2], status=None)
+
+    with (
+        patch("app.main.auth.get_current_user", return_value=_owner_user()),
+        patch("app.routers.proxies.database.delete_proxy_endpoints", new_callable=AsyncMock, return_value=3) as delete_dead,
+    ):
+        resp = client.request("DELETE", "/api/proxy-pool", json={"status": "dead"})
+    assert resp.status_code == 200
+    assert resp.json()["deleted"] == 3
+    delete_dead.assert_awaited_once_with(None, status="dead")
+
 def test_active_services_counts_deployed_rows_not_running_only(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "summary.db"):

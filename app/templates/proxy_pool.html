@@ -36,6 +36,8 @@
     <button class="btn btn-ghost btn-sm" id="pool-export-location">Export location</button>
     <button class="btn btn-ghost btn-sm" id="pool-export-http">Export http</button>
     <button class="btn btn-ghost btn-sm" id="pool-export-socks5">Export socks5</button>
+    <button class="btn btn-danger btn-sm" id="pool-delete-selected">Delete selected</button>
+    <button class="btn btn-danger btn-sm" id="pool-delete-dead">Delete dead</button>
     <span id="pool-result" style="font-size:0.8rem;color:var(--text-muted);"></span>
   </div>
   <div style="display:grid;grid-template-columns:minmax(240px,1fr) minmax(160px,220px) auto auto;gap:8px;align-items:end;margin-bottom:12px;">
@@ -54,7 +56,7 @@
     <table class="data-table operator-table proxy-pool-table">
       <thead>
         <tr>
-          <th><input type="checkbox" id="pool-select-all"></th><th data-sort="provider_name">Provider</th><th data-sort="endpoint">Endpoint</th><th data-sort="protocol">Protocol</th><th data-sort="location">Location</th><th data-sort="status">Status</th><th data-sort="expiry_date">Expiry</th><th data-sort="assigned_worker_id">Assigned</th>
+          <th><input type="checkbox" id="pool-select-all"></th><th data-sort="provider_name">Provider</th><th data-sort="endpoint">Endpoint</th><th data-sort="protocol">Protocol</th><th data-sort="location">Location</th><th data-sort="exit_ip">Egress IP</th><th data-sort="status">Status</th><th data-sort="pawns_mask_reason">Pawns</th><th data-sort="earnapp_mask_reason">EarnApp</th><th data-sort="expiry_date">Expiry</th><th data-sort="assigned_worker_id">Assigned</th>
         </tr>
       </thead>
       <tbody id="pool-rows"></tbody>
@@ -85,7 +87,7 @@ function filteredPool() {
   const q = (document.getElementById('pool-search').value || '').toLowerCase();
   const provider = document.getElementById('pool-provider-filter').value;
   const location = document.getElementById('pool-location-filter').value;
-  return poolRows.filter(p => (!q || ['provider_name','endpoint','protocol','location','status','expiry_date','assigned_worker_id'].some(k => String(p[k] ?? '').toLowerCase().includes(q)))
+  return poolRows.filter(p => (!q || ['provider_name','endpoint','protocol','location','exit_ip','status','pawns_mask_reason','earnapp_mask_reason','expiry_date','assigned_worker_id'].some(k => String(p[k] ?? '').toLowerCase().includes(q)))
       && (!provider || String(p.provider_name || '') === provider)
       && (!location || String(p.location || '') === location))
     .sort((a, b) => String(a[poolSort.key] ?? '').localeCompare(String(b[poolSort.key] ?? '')) * poolSort.dir);
@@ -120,7 +122,10 @@ function renderPool() {
       <td class="mono-cell endpoint-cell" title="${esc(p.endpoint)}">${esc(p.endpoint)}</td>
       <td>${esc(p.protocol)}</td>
       <td>${esc(p.location || '-')}</td>
+      <td class="mono-cell">${esc(p.exit_ip || '-')}</td>
       <td><span class="${String(p.status || '').toLowerCase() === 'alive' ? 'pool-status-alive' : 'pool-status-dead'}">${esc(p.status || '-')}</span></td>
+      <td>${esc(p.pawns_mask_reason || '-')}</td>
+      <td>${esc(p.earnapp_mask_reason || '-')}</td>
       <td>${esc(p.expiry_date || (p.days_left != null ? `${p.days_left}d` : '-'))}</td>
       <td>${esc(p.assigned_worker_id || '-')}</td>
     </tr>`).join('');
@@ -190,7 +195,7 @@ function csvCell(value) {
   return `"${String(value ?? '').replaceAll('"', '""')}"`;
 }
 function exportFilteredPool() {
-  const headers = ['id','provider_name','endpoint','protocol','location','status','expiry_date','assigned_worker_id','last_checked_at'];
+  const headers = ['id','provider_name','endpoint','protocol','location','exit_ip','status','pawns_mask_reason','earnapp_mask_reason','expiry_date','assigned_worker_id','last_checked_at'];
   const csv = [headers.join(','), ...filteredPool().map(row => headers.map(key => csvCell(row[key])).join(','))].join('\n');
   const blob = new Blob([csv], {type: 'text/csv'});
   const url = URL.createObjectURL(blob);
@@ -213,6 +218,18 @@ document.getElementById('pool-export-provider').addEventListener('click', () => 
 document.getElementById('pool-export-location').addEventListener('click', () => exportPoolScope('location'));
 document.getElementById('pool-export-http').addEventListener('click', () => exportPool('http'));
 document.getElementById('pool-export-socks5').addEventListener('click', () => exportPool('socks5'));
+async function deletePool(body, label) {
+  if (!confirm(`Delete ${label}? This removes proxy rows from the pool.`)) return;
+  const res = await fetch('/api/proxy-pool', {method:'DELETE', headers:{'content-type':'application/json'}, body: JSON.stringify(body)}).then(r => r.json());
+  document.getElementById('pool-result').textContent = `Deleted ${res.deleted || 0}`;
+  loadPool();
+}
+document.getElementById('pool-delete-selected').addEventListener('click', () => {
+  const ids = selectedPoolIds();
+  if (!ids.length) { alert('Select proxies first'); return; }
+  deletePool({proxy_ids: ids}, `${ids.length} selected proxies`);
+});
+document.getElementById('pool-delete-dead').addEventListener('click', () => deletePool({status: 'dead'}, 'all dead proxies'));
 document.getElementById('pool-import-submit').addEventListener('click', async () => {
   const file = document.getElementById('pool-import-file').files[0];
   const text = (document.getElementById('pool-import-text').value || '') + (file ? `\n${await file.text()}` : '');
