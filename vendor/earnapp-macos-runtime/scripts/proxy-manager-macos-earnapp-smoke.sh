@@ -1040,6 +1040,12 @@ earnapp_proxy_curl() {
     "$@" || true
 }
 
+earnapp_dashboard_curl() {
+  local output=$1
+  shift
+  curl -sS --connect-timeout 30 --max-time 90 -o "$output" -w '%{http_code}' "$@" || true
+}
+
 link_earnapp_device() {
   local ip=$1 prep_script="$INST_ROOT/earnapp-link-device.py" result="$STATE/earnapp-link-result.json" uuid_file="$STATE/earnapp-device-uuid.txt" effective_url_file="$STATE/earnapp-register-url.effective.txt" cookie_header_file="$INST_ROOT/earnapp-cookie-header.txt" xsrf_file="$INST_ROOT/earnapp-xsrf.txt"
   [ -s "$EARNAPP_AUTH_STATE_FILE" ] || { jq -n '{status:"skipped_missing_auth_state"}' >"$result"; return 2; }
@@ -1095,9 +1101,9 @@ PY
     user_body=$(mktemp)
     link_body=$(mktemp)
     devices_body=$(mktemp)
-    user_status=$(earnapp_proxy_curl "$user_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" https://earnapp.com/dashboard/api/user_data)
-    link_status=$(earnapp_proxy_curl "$link_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" -H "Accept: application/json, text/plain, */*" -H "Origin: https://earnapp.com" -H "Referer: $register_url" -H "csrf-token: $xsrf" -H "xsrf-token: $xsrf" -H "x-csrf-token: $xsrf" -H "x-xsrf-token: $xsrf" -H "X-XSRF-TOKEN: $xsrf" -H "Content-Type: application/json" -X POST https://earnapp.com/dashboard/api/link_device -d "{\"uuid\":\"$uuid\",\"platform\":\"macos\",\"_csrf\":\"$xsrf\"}")
-    devices_status=$(earnapp_proxy_curl "$devices_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" https://earnapp.com/dashboard/api/devices)
+    user_status=$(earnapp_dashboard_curl "$user_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" https://earnapp.com/dashboard/api/user_data)
+    link_status=$(earnapp_dashboard_curl "$link_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" -H "Accept: application/json, text/plain, */*" -H "Origin: https://earnapp.com" -H "Referer: $register_url" -H "csrf-token: $xsrf" -H "xsrf-token: $xsrf" -H "x-csrf-token: $xsrf" -H "x-xsrf-token: $xsrf" -H "X-XSRF-TOKEN: $xsrf" -H "Content-Type: application/json" -X POST https://earnapp.com/dashboard/api/link_device -d "{\"uuid\":\"$uuid\",\"platform\":\"macos\",\"_csrf\":\"$xsrf\"}")
+    devices_status=$(earnapp_dashboard_curl "$devices_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" https://earnapp.com/dashboard/api/devices)
     grep -q "$uuid" "$devices_body" && device_present=true || device_present=false
     grep -q '"status":"ok"' "$link_body" && ok_marker=true || ok_marker=false
     grep -qi "device.*not.*found" "$link_body" && not_found=true || not_found=false
