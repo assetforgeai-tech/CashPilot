@@ -777,8 +777,7 @@ apply_netns_firewall() {
   local pid endpoint port
   endpoint=$(jq -r '.proxy.endpoint_ip // .proxy.host' "$STATE/lease.json")
   port=$(jq -r '.proxy.port' "$STATE/lease.json")
-  pid=$(docker inspect -f '{{.State.Pid}}' "macos-$INSTANCE-netns") || return 1
-  [ -n "$pid" ] || return 1
+  pid=$(wait_netns_pid) || return 1
   nsenter -t "$pid" -n iptables -F OUTPUT || true
   nsenter -t "$pid" -n iptables -P OUTPUT DROP || return 1
   nsenter -t "$pid" -n iptables -A OUTPUT -o lo -j ACCEPT || return 1
@@ -792,6 +791,21 @@ apply_netns_firewall() {
     nsenter -t "$pid" -n iptables -A OUTPUT -d "$dns_ip/32" -p udp --dport 53 -j ACCEPT || return 1
   done < <(jq -r '.proxy.dns.runtime_dns_ips[]?, .proxy.dns.resolver_ips[]?' "$STATE/lease.json" 2>/dev/null | awk 'NF && !seen[$0]++')
   nsenter -t "$pid" -n iptables -A OUTPUT -d "$endpoint" -p tcp --dport "$port" -j ACCEPT || return 1
+}
+
+wait_netns_pid() {
+  local pid
+  for _ in $(seq 1 20); do
+    pid=$(docker inspect -f '{{.State.Pid}}' "macos-$INSTANCE-netns" 2>/dev/null || true)
+    if [ -n "$pid" ] && [ "$pid" != "0" ] && [ -e "/proc/$pid/ns/net" ]; then
+      printf '%s\n' "$pid"
+      return 0
+    fi
+    sleep 1
+  done
+  docker inspect "macos-$INSTANCE-netns" >&2 || true
+  docker logs --tail 80 "macos-$INSTANCE-netns" >&2 || true
+  return 1
 }
 
 wait_healthy() {
