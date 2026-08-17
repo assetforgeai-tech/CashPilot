@@ -259,7 +259,7 @@ def test_earnapp_macos_launcher_links_with_source_payload_shape():
     assert "already linked" in script
     assert "dashboard pending after link" in script
     link_block = script[script.index("link_earnapp_device()") : script.index("ensure_earnapp_running()")]
-    assert "earnapp_proxy_curl" in link_block
+    assert "earnapp_guest_dashboard_curl" in link_block
     assert "earnapp_dashboard_curl" not in link_block
     assert "capture_earnapp_guest_diagnostics" in script
 
@@ -292,7 +292,7 @@ def test_earnapp_macos_registers_and_links_from_guest_egress():
         assert script_file is not None
         script = script_file.read().decode()
     link_block = script[script.index("register_earnapp_macos_device()") : script.index("ensure_earnapp_running()")]
-    assert "earnapp_proxy_curl" in link_block
+    assert "earnapp_guest_dashboard_curl" in link_block
     assert "guest_pipe \"$ip\"" in script
     assert "earnapp_dashboard_curl" not in link_block
     assert "register_earnapp_macos_device \"$ip\" \"$uuid\"" in link_block

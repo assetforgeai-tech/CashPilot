@@ -1152,9 +1152,9 @@ PY
     user_body=$(mktemp)
     link_body=$(mktemp)
     devices_body=$(mktemp)
-    user_status=$(earnapp_proxy_curl "$user_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" https://earnapp.com/dashboard/api/user_data)
-    link_status=$(earnapp_proxy_curl "$link_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" -H "Accept: application/json, text/plain, */*" -H "Origin: https://earnapp.com" -H "Referer: $register_url" -H "csrf-token: $xsrf" -H "xsrf-token: $xsrf" -H "x-csrf-token: $xsrf" -H "x-xsrf-token: $xsrf" -H "X-XSRF-TOKEN: $xsrf" -H "Content-Type: application/json" -X POST https://earnapp.com/dashboard/api/link_device -d "{\"uuid\":\"$uuid\",\"platform\":\"macos\",\"_csrf\":\"$xsrf\"}")
-    devices_status=$(earnapp_proxy_curl "$devices_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" https://earnapp.com/dashboard/api/devices)
+    user_status=$(earnapp_guest_dashboard_curl "$ip" "$user_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" https://earnapp.com/dashboard/api/user_data)
+    link_status=$(earnapp_guest_dashboard_curl "$ip" "$link_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" -H "Accept: application/json, text/plain, */*" -H "Origin: https://earnapp.com" -H "Referer: $register_url" -H "csrf-token: $xsrf" -H "xsrf-token: $xsrf" -H "x-csrf-token: $xsrf" -H "x-xsrf-token: $xsrf" -H "X-XSRF-TOKEN: $xsrf" -H "Content-Type: application/json" -X POST https://earnapp.com/dashboard/api/link_device -d "{\"uuid\":\"$uuid\",\"platform\":\"macos\",\"_csrf\":\"$xsrf\"}")
+    devices_status=$(earnapp_guest_dashboard_curl "$ip" "$devices_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" https://earnapp.com/dashboard/api/devices)
     grep -q "$uuid" "$devices_body" && device_present=true || device_present=false
     grep -q '"status":"ok"' "$link_body" && ok_marker=true || ok_marker=false
     grep -qi "already linked" "$link_body" && ok_marker=true || true
