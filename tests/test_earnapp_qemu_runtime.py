@@ -217,6 +217,15 @@ def test_earnapp_macos_launcher_waits_for_netns_pid_before_firewall():
     assert 'pid=$(wait_netns_pid)' in script
     assert '[ "$pid" != "0" ]' in script
 
+def test_earnapp_macos_launcher_skips_hostname_endpoint_firewall_rule():
+    bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
+    with tarfile.open(fileobj=io.BytesIO(bundle), mode="r") as tar:
+        script_file = tar.extractfile("scripts/proxy-manager-macos-earnapp-smoke.sh")
+        assert script_file is not None
+        script = script_file.read().decode()
+    assert 'if is_valid_ip "$endpoint"; then' in script
+    assert 'iptables -A OUTPUT -d "$endpoint"' in script
+
 def test_earnapp_macos_runtime_keeps_random_identity_controller():
     bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
     with tarfile.open(fileobj=io.BytesIO(bundle), mode="r") as tar:

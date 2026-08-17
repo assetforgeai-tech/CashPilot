@@ -790,7 +790,9 @@ apply_netns_firewall() {
     nsenter -t "$pid" -n iptables -A OUTPUT -d "$dns_ip/32" -p tcp --dport 53 -j ACCEPT || return 1
     nsenter -t "$pid" -n iptables -A OUTPUT -d "$dns_ip/32" -p udp --dport 53 -j ACCEPT || return 1
   done < <(jq -r '.proxy.dns.runtime_dns_ips[]?, .proxy.dns.resolver_ips[]?' "$STATE/lease.json" 2>/dev/null | awk 'NF && !seen[$0]++')
-  nsenter -t "$pid" -n iptables -A OUTPUT -d "$endpoint" -p tcp --dport "$port" -j ACCEPT || return 1
+  if is_valid_ip "$endpoint"; then
+    nsenter -t "$pid" -n iptables -A OUTPUT -d "$endpoint" -p tcp --dport "$port" -j ACCEPT || return 1
+  fi
 }
 
 wait_netns_pid() {
