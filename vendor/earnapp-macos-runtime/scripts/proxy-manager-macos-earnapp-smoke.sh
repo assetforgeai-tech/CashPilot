@@ -375,6 +375,7 @@ bootstrap_instance() {
       chmod 0600 "$INST_ROOT/bootstrap-result.json"
       return 0
     fi
+    [ ! -s "$tmp_result" ] || cat "$tmp_result" >&2
     [ "$attempt" -eq 1 ] || return 1
     # ponytail: dockur SMBIOS probing can create a stale registry claim; retry once after pruning this instance.
     prune_macos_identity_claim
