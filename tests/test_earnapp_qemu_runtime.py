@@ -222,7 +222,8 @@ def test_earnapp_macos_launcher_links_with_source_payload_shape():
     assert "already linked" in script
     assert "dashboard pending after link" in script
     link_block = script[script.index("link_earnapp_device()") : script.index("ensure_earnapp_running()")]
-    assert "earnapp_dashboard_curl" in link_block
+    assert "earnapp_guest_dashboard_curl" in link_block
+    assert "earnapp_dashboard_curl" not in link_block
     assert "earnapp_proxy_curl" not in link_block
     assert "capture_earnapp_guest_diagnostics" in script
 
@@ -236,6 +237,18 @@ def test_earnapp_macos_launcher_keeps_container_alive_after_link():
     assert "while sleep 300" in script
     assert "heartbeat_earnapp_cookie linked || true" in script
     assert "jq . \"$REPORT\"\n      hold_linked_runtime" in script
+
+def test_earnapp_macos_registers_and_links_from_guest_egress():
+    bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
+    with tarfile.open(fileobj=io.BytesIO(bundle), mode="r") as tar:
+        script_file = tar.extractfile("scripts/proxy-manager-macos-earnapp-smoke.sh")
+        assert script_file is not None
+        script = script_file.read().decode()
+    link_block = script[script.index("register_earnapp_macos_device()") : script.index("ensure_earnapp_running()")]
+    assert "earnapp_guest_dashboard_curl" in link_block
+    assert "guest_pipe \"$ip\"" in script
+    assert "earnapp_dashboard_curl" not in link_block
+    assert "register_earnapp_macos_device \"$ip\" \"$uuid\"" in link_block
 
 def test_earnapp_macos_links_after_uuid_cid_and_heartbeats():
     bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})

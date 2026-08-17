@@ -1046,11 +1046,36 @@ earnapp_dashboard_curl() {
   curl -sS --connect-timeout 30 --max-time 90 -o "$output" -w '%{http_code}' "$@" || true
 }
 
+earnapp_guest_dashboard_curl() {
+  local ip=$1 output=$2 raw script status
+  shift 2
+  raw=$(mktemp)
+  script=$(mktemp)
+  {
+    printf '%s\n' '#!/bin/bash'
+    printf '%s\n' 'set +e'
+    printf '%s\n' 'body=$(mktemp)'
+    printf 'code=$(curl -sS --connect-timeout 30 --max-time 90 -o "$body" -w '\''%%{http_code}'\'''
+    for arg in "$@"; do
+      printf ' %q' "$arg"
+    done
+    printf '%s\n' ' || true)'
+    printf '%s\n' 'cat "$body"'
+    printf '%s\n' 'printf "\n__HTTP_STATUS__:%s\n" "$code"'
+    printf '%s\n' 'rm -f "$body"'
+  } >"$script"
+  guest_pipe "$ip" 'bash -s' <"$script" >"$raw" || true
+  status=$(sed -n 's/^__HTTP_STATUS__://p' "$raw" | tail -1)
+  sed '/^__HTTP_STATUS__:/d' "$raw" >"$output"
+  rm -f "$raw" "$script"
+  printf '%s\n' "${status:-000}"
+}
+
 register_earnapp_macos_device() {
-  local uuid=$1 body status serial
+  local ip=$1 uuid=$2 body status serial
   body=$(mktemp)
   serial=${uuid#sdk-mac-}
-  status=$(earnapp_dashboard_curl "$body" \
+  status=$(earnapp_guest_dashboard_curl "$ip" "$body" \
     -H "Content-Type: application/json" \
     "https://client.earnapp.com/install_device?uuid=$uuid&version=$EARNAPP_MACOS_VERSION&arch=x64&appid=node_earnapp.com&os=macOS" \
     --data "{\"serial\":\"$serial\"}")
@@ -1108,16 +1133,16 @@ PY
   xsrf=$(cat "$xsrf_file")
   uuid=$(cat "$uuid_file")
   register_url=$(cat "$effective_url_file")
-  register_earnapp_macos_device "$uuid" || true
+  register_earnapp_macos_device "$ip" "$uuid" || true
   link_attempts=$EARNAPP_LINK_ATTEMPTS
   status=failed
   for link_attempt in $(seq 1 "$link_attempts"); do
     user_body=$(mktemp)
     link_body=$(mktemp)
     devices_body=$(mktemp)
-    user_status=$(earnapp_dashboard_curl "$user_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" https://earnapp.com/dashboard/api/user_data)
-    link_status=$(earnapp_dashboard_curl "$link_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" -H "Accept: application/json, text/plain, */*" -H "Origin: https://earnapp.com" -H "Referer: $register_url" -H "csrf-token: $xsrf" -H "xsrf-token: $xsrf" -H "x-csrf-token: $xsrf" -H "x-xsrf-token: $xsrf" -H "X-XSRF-TOKEN: $xsrf" -H "Content-Type: application/json" -X POST https://earnapp.com/dashboard/api/link_device -d "{\"uuid\":\"$uuid\",\"platform\":\"macos\",\"_csrf\":\"$xsrf\"}")
-    devices_status=$(earnapp_dashboard_curl "$devices_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" https://earnapp.com/dashboard/api/devices)
+    user_status=$(earnapp_guest_dashboard_curl "$ip" "$user_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" https://earnapp.com/dashboard/api/user_data)
+    link_status=$(earnapp_guest_dashboard_curl "$ip" "$link_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" -H "Accept: application/json, text/plain, */*" -H "Origin: https://earnapp.com" -H "Referer: $register_url" -H "csrf-token: $xsrf" -H "xsrf-token: $xsrf" -H "x-csrf-token: $xsrf" -H "x-xsrf-token: $xsrf" -H "X-XSRF-TOKEN: $xsrf" -H "Content-Type: application/json" -X POST https://earnapp.com/dashboard/api/link_device -d "{\"uuid\":\"$uuid\",\"platform\":\"macos\",\"_csrf\":\"$xsrf\"}")
+    devices_status=$(earnapp_guest_dashboard_curl "$ip" "$devices_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" https://earnapp.com/dashboard/api/devices)
     grep -q "$uuid" "$devices_body" && device_present=true || device_present=false
     grep -q '"status":"ok"' "$link_body" && ok_marker=true || ok_marker=false
     grep -qi "already linked" "$link_body" && ok_marker=true || true
