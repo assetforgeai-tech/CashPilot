@@ -142,6 +142,7 @@ def deploy_container(
         devices=["/dev/kvm:/dev/kvm:rwm", "/dev/net/tun:/dev/net/tun:rwm"],
         pid_mode="host",
         cap_add=["NET_ADMIN", "SYS_ADMIN"],
+        privileged=True,
         labels=labels,
         detach=True,
         restart_policy={"Name": "always"},
