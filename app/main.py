@@ -2105,6 +2105,8 @@ async def _deploy_iproyal_proxy_with_retry(
 
 EARNAPP_BLOCKED_IP_REASON = "earnapp_blocked_ip"
 EARNAPP_MAX_EARNING_ATTEMPTS = 10
+EARNAPP_STATUS_POLLS = 18
+EARNAPP_MACOS_STATUS_POLLS = 72
 
 def _earnapp_cookies(creds: dict[str, Any]) -> dict[str, str]:
     cookies = {
@@ -2197,7 +2199,8 @@ async def _earnapp_status_after_link(worker_id: int, instance_slug: str, spec: d
         return "", None
     creds = spec.get("deploy_credentials") or {}
     last_device: dict[str, Any] | None = None
-    for _ in range(18):
+    polls = EARNAPP_MACOS_STATUS_POLLS if spec.get("host_runtime") == "qemu_macos" else EARNAPP_STATUS_POLLS
+    for _ in range(polls):
         device = await _earnapp_fetch_device(creds, sdk_id)
         if _earnapp_device_has_earning_evidence(device) or (device and device.get("banned")):
             return sdk_id, device

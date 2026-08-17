@@ -426,6 +426,26 @@ async def test_earnapp_macos_pending_does_not_mask_proxy_or_remove_container(mon
     main._proxy_worker_command.assert_not_awaited()
 
 @pytest.mark.asyncio
+async def test_earnapp_macos_status_wait_covers_link_and_green_window(monkeypatch):
+    calls = 0
+
+    async def fake_logs(_worker_id: int, _instance_slug: str, lines: int = 300):
+        return {"logs": "sdk-mac-wait"}
+
+    async def fake_fetch(_creds: dict, _sdk_id: str):
+        nonlocal calls
+        calls += 1
+        return None
+
+    monkeypatch.setattr(main, "_proxy_worker_logs", fake_logs)
+    monkeypatch.setattr(main, "_earnapp_fetch_device", fake_fetch)
+    monkeypatch.setattr(main.asyncio, "sleep", AsyncMock())
+
+    await main._earnapp_status_after_link(7, "earnapp-proxy", {"host_runtime": "qemu_macos"})
+
+    assert calls == main.EARNAPP_MACOS_STATUS_POLLS
+
+@pytest.mark.asyncio
 async def test_server_allows_earnapp_host_systemd_by_sending_qemu_runtime(monkeypatch):
     service = {
         "slug": "earnapp",
