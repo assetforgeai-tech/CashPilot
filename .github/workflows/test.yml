@@ -22,6 +22,7 @@ jobs:
       - name: Fetch release tags
         run: |
           git fetch --force origin 'refs/tags/*:refs/tags/*'
+          git fetch --force https://github.com/GeiserX/CashPilot.git 'refs/tags/*:refs/tags/*'
           test -n "$(git tag --list 'v*' | head -n 1)"
       - name: Check approved deploy baseline
         run: python scripts/check_deploy_baseline.py
