@@ -208,6 +208,15 @@ def test_earnapp_macos_launcher_does_not_put_proxy_hostnames_in_route_excludes()
     assert 'route_exclude_address": route_exclude_address' in script
     assert 'route_exclude_address": [f"{endpoint}/32"' not in script
 
+def test_earnapp_macos_waits_for_install_device_success_before_link():
+    bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
+    with tarfile.open(fileobj=io.BytesIO(bundle), mode="r") as tar:
+        script_file = tar.extractfile("scripts/proxy-manager-macos-earnapp-smoke.sh")
+        assert script_file is not None
+        script = script_file.read().decode()
+    assert "*perr_install_device_success.log" in script
+    assert '[ -n "$app_config_file" ]' in script
+
 def test_earnapp_macos_launcher_waits_for_netns_pid_before_firewall():
     bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
     with tarfile.open(fileobj=io.BytesIO(bundle), mode="r") as tar:

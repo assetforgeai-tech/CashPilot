@@ -973,7 +973,7 @@ wait_earnapp_local_runtime_ready() {
     ensure_earnapp_running "$ip" || true
     guest_pipe "$ip" 'bash -s' >"$raw" <<'GUEST' || true
 support_dir="$HOME/Library/Application Support/com.earnapp"
-app_config_file=$(find "$support_dir" -maxdepth 1 -type f -name '*perr_app_config_json_success.log' -print 2>/dev/null | sort | tail -1)
+app_config_file=$(find "$support_dir" -maxdepth 1 -type f \( -name '*perr_install_device_success.log' -o -name '*perr_app_config_json_success.log' \) -print 2>/dev/null | sort | tail -1)
 uuid=$(defaults read com.earnapp.brdsdk.shared uuid 2>/dev/null || defaults read com.earnapp registration_uuid 2>/dev/null || true)
 cid=$(cat "$support_dir/com.earnapp.cid" 2>/dev/null || true)
 support_cid_file=$(find "$support_dir" -maxdepth 1 -type f -name 'com.earnapp*.cid' -print 2>/dev/null | sort | tail -1)
@@ -997,6 +997,7 @@ GUEST
     app_hb=$(sed -n 's/^app_hb=//p' "$raw" 2>/dev/null | tail -1)
     svc_hb=$(sed -n 's/^svc_hb=//p' "$raw" 2>/dev/null | tail -1)
     if [[ "$uuid" == sdk-mac-???????????????????????????????? ]] \
+      && [ -n "$app_config_file" ] \
       && [ -n "$cid" ] \
       && [ -n "$support_cid_file" ] \
       && [ -n "$brdsdk_log" ] \
