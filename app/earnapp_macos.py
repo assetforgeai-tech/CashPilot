@@ -40,6 +40,12 @@ def _dns_ips(proxy: dict[str, Any]) -> str:
     return ",".join(ips or ["1.1.1.1", "8.8.8.8"])
 
 
+def _instance_name(slug: str) -> str:
+    digits = "".join(ch for ch in slug if ch.isdigit())
+    ordinal = max(1, min(99, int(digits[-2:] or "1")))
+    return f"earnapp-macos-{ordinal:03d}"
+
+
 def _auth_state(deploy_credentials: dict[str, str]) -> bytes:
     def cookie(name: str, value: str, domain: str = "earnapp.com") -> dict[str, Any]:
         return {"name": name, "value": value, "domain": domain, "path": "/", "expires": -1, "httpOnly": False, "secure": True, "sameSite": "Lax"}
@@ -93,7 +99,7 @@ def deploy_container(
         "ROOT_DIR": "/runtime",
         "MAC_TOOLS": "/runtime/tools/macos-on-vps",
         "MAC_ROOT": "/opt/dockur-macos",
-        "INSTANCE": slug.replace("_", "-")[:40] or "earnapp-macos-001",
+        "INSTANCE": _instance_name(slug),
         "GROUP_ID": slug.replace("_", "-")[:40] or "earnapp",
         "PROVIDER_ID": "earnapp-macos",
         "PM_PROVIDER_ID": "earnapp",
@@ -110,8 +116,9 @@ def deploy_container(
         (
             f"while [ ! -x /runtime/{SCRIPT} ]; do sleep 2; done; "
             "export DEBIAN_FRONTEND=noninteractive; "
-            "apt-get update -y && apt-get install -y bash ca-certificates curl jq docker.io docker-compose-plugin "
+            "apt-get update -y && apt-get install -y bash ca-certificates curl jq docker.io "
             "openssh-client python3 coreutils iproute2 iptables; "
+            "apt-get install -y docker-compose-plugin || apt-get install -y docker-compose-v2; "
             f"exec bash /runtime/{SCRIPT} start"
         ),
     ]

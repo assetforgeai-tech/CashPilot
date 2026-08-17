@@ -149,7 +149,9 @@ def test_earnapp_macos_runtime_uses_macos_launcher_not_linux_qemu():
     assert kwargs["image"] == "ubuntu:24.04"
     assert kwargs["labels"]["cashpilot.host-runtime"] == "qemu_macos"
     assert kwargs["environment"]["CASHPILOT_STANDALONE"] == "true"
+    assert kwargs["environment"]["INSTANCE"] == "earnapp-macos-001"
     assert kwargs["environment"]["MANUAL_PROXY"].startswith("socks5://1.2.3.4:1080")
+    assert "docker-compose-v2" in kwargs["command"][2]
     assert "/var/run/docker.sock" in kwargs["volumes"]
     assert kwargs["volumes"]["/opt/cashpilot-secrets/earnapp-macos"]["bind"] == "/runtime/secrets"
     container.put_archive.assert_called_once()
