@@ -57,6 +57,8 @@ def render_qemu_command(identity: EarnAppQemuIdentity) -> str:
               rm -rf /etc/earnapp /var/lib/earnapp /opt/earnapp /root/.earnapp
               systemctl daemon-reload
               update-ca-certificates --fresh
+              mkdir -p /etc/earnapp
+              tail -n +1 -F /etc/earnapp/*.log 2>/dev/null &
               wget -qO /tmp/earnapp.sh https://brightdata.com/static/earnapp/install.sh
               env SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt bash /tmp/earnapp.sh -y
               UUID="$(cat /etc/earnapp/uuid)"
