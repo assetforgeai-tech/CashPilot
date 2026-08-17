@@ -42,7 +42,7 @@ COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
 # Map of slug -> list of config keys needed to instantiate the collector
 _COLLECTOR_ARGS: dict[str, list[str]] = {
     "earnapp": ["oauth_token"],
-    "iproyal": ["email", "password"],
+    "iproyal": ["collector_email", "collector_password"],
     "mysterium": ["email", "password"],
     "traffmonetizer": ["email", "password"],
     "repocket": ["email", "password"],

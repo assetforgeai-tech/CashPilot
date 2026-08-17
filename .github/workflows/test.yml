@@ -19,6 +19,8 @@ jobs:
           # skips — decorative in the one place it is meant to run.
           fetch-depth: 0
           fetch-tags: true
+      - name: Fetch release tags
+        run: git fetch --force --tags origin
       - name: Check approved deploy baseline
         run: python scripts/check_deploy_baseline.py
 

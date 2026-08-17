@@ -100,6 +100,51 @@ collector:
       description: "Copy a fresh accessToken from the logged-in Grass dashboard or desktop profile. Runtime seed bundles stay outside the repo."
   credential_hint: "Log in at <a href='https://app.getgrass.io' target='_blank'>app.getgrass.io</a>, press F12 -> Application -> Local Storage, copy the <b>accessToken</b> value."
 
+dashboard:
+  credentials:
+    - key: grass_store_wynd_status
+      label: "Wynd status"
+      kind: text
+      secret: false
+      required: false
+      source: "Grass local storage"
+    - key: grass_store_wynd_user_id
+      label: "Wynd user ID"
+      kind: text
+      secret: false
+      required: false
+      source: "Grass local storage"
+    - key: grass_store_token_expiry
+      label: "Token expiry"
+      kind: text
+      secret: false
+      required: false
+      source: "Grass local storage"
+    - key: grass_store_auto_update
+      label: "Auto update"
+      kind: text
+      secret: false
+      required: false
+      source: "Grass local storage"
+    - key: grass_store_wynd_authenticated
+      label: "Wynd authenticated"
+      kind: text
+      secret: false
+      required: false
+      source: "Grass local storage"
+    - key: grass_store_refresh_token
+      label: "Refresh token"
+      kind: token
+      secret: true
+      required: false
+      source: "Grass local storage"
+    - key: grass_store_access_token
+      label: "Access token"
+      kind: token
+      secret: true
+      required: false
+      source: "Grass local storage"
+
 payout:
   model: internal
   notes: "Accrues POINTS; GRASS is claimed from the Grass dashboard during periodic airdrops."
