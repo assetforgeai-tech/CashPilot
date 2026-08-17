@@ -547,7 +547,6 @@ remove_instance_root() {
   [ -f "$registry" ] || return 0
   REGISTRY_PATH="$registry" INSTANCE_TO_REMOVE="$INSTANCE" python3 - <<'PY'
 import json
-import ipaddress
 import os
 from pathlib import Path
 
@@ -572,6 +571,7 @@ PY
 render_files() {
   python3 - <<'PY'
 import json
+import ipaddress
 import os
 from pathlib import Path
 
