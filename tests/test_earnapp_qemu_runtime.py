@@ -214,7 +214,7 @@ def test_earnapp_macos_launcher_waits_for_netns_pid_before_firewall():
         script = script_file.read().decode()
     assert "wait_netns_pid()" in script
     assert 'pid=$(wait_netns_pid)' in script
-    assert '[ -e "/proc/$pid/ns/net" ]' in script
+    assert '[ "$pid" != "0" ]' in script
 
 def test_earnapp_macos_runtime_keeps_random_identity_controller():
     bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})

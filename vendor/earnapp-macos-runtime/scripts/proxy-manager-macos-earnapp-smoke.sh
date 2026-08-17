@@ -797,7 +797,7 @@ wait_netns_pid() {
   local pid
   for _ in $(seq 1 20); do
     pid=$(docker inspect -f '{{.State.Pid}}' "macos-$INSTANCE-netns" 2>/dev/null || true)
-    if [ -n "$pid" ] && [ "$pid" != "0" ] && [ -e "/proc/$pid/ns/net" ]; then
+    if [ -n "$pid" ] && [ "$pid" != "0" ]; then
       printf '%s\n' "$pid"
       return 0
     fi
