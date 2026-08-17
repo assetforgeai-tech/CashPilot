@@ -72,6 +72,7 @@ async def test_earnapp_not_earning_masks_proxy_and_retries(monkeypatch):
         return {"container_id": f"container-{len(deployed_specs)}"}
 
     monkeypatch.setattr(main, "_proxy_for_worker_instance", fake_proxy)
+    monkeypatch.setattr(main, "_earnapp_proxy_targets_ready", AsyncMock(return_value=True))
     monkeypatch.setattr(main, "_proxy_worker_deploy", fake_deploy)
     monkeypatch.setattr(main, "_earnapp_status_after_link", AsyncMock(side_effect=devices))
     monkeypatch.setattr(main, "_earnapp_remove_dashboard_device", AsyncMock())
@@ -291,6 +292,7 @@ async def test_earnapp_deploy_sets_macos_runtime_for_vietnam_proxy(monkeypatch):
         return {"container_id": "container-1"}
 
     monkeypatch.setattr(main, "_proxy_for_worker_instance", fake_proxy)
+    monkeypatch.setattr(main, "_earnapp_proxy_targets_ready", AsyncMock(return_value=True))
     monkeypatch.setattr(main, "_proxy_worker_deploy", fake_deploy)
     monkeypatch.setattr(main, "_earnapp_status_after_link", AsyncMock(return_value=("sdk-mac-ok", {"uuid": "sdk-mac-ok", "banned": None})))
 
@@ -305,6 +307,7 @@ async def test_earnapp_macos_pending_does_not_mask_proxy_or_remove_container(mon
         return {"proxy_id": 2, "host": "vn.proxy", "port": 1080, "protocol": "socks5", "location": "Vietnam"}
 
     monkeypatch.setattr(main, "_proxy_for_worker_instance", fake_proxy)
+    monkeypatch.setattr(main, "_earnapp_proxy_targets_ready", AsyncMock(return_value=True))
     monkeypatch.setattr(main, "_proxy_worker_deploy", AsyncMock(return_value={"container_id": "container-1"}))
     monkeypatch.setattr(main, "_earnapp_status_after_link", AsyncMock(return_value=("", None)))
     monkeypatch.setattr(main.database, "record_health_event", AsyncMock())
@@ -318,6 +321,28 @@ async def test_earnapp_macos_pending_does_not_mask_proxy_or_remove_container(mon
     assert device is None
     main.database.mask_proxy_for_provider.assert_not_awaited()
     main._proxy_worker_command.assert_not_awaited()
+
+@pytest.mark.asyncio
+async def test_earnapp_masks_proxy_when_target_probe_fails(monkeypatch):
+    masked = []
+    cleared = []
+    events = []
+
+    monkeypatch.setattr(main, "_earnapp_proxy_targets_ready", AsyncMock(return_value=False))
+    monkeypatch.setattr(main, "_proxy_for_worker_instance", AsyncMock(return_value={"proxy_id": 7, "host": "1.2.3.4", "port": 1080, "protocol": "socks5", "location": "VN"}))
+    monkeypatch.setattr(main.database, "mask_proxy_for_provider", AsyncMock(side_effect=lambda *args: masked.append(args) or True))
+    monkeypatch.setattr(main.database, "set_worker_proxy_assignment", AsyncMock(side_effect=lambda *args: cleared.append(args) or True))
+    monkeypatch.setattr(main.database, "record_health_event", AsyncMock(side_effect=lambda *args: events.append(args)))
+    deploy = AsyncMock()
+    monkeypatch.setattr(main, "_proxy_worker_deploy", deploy)
+
+    with pytest.raises(main.HTTPException):
+        await main._deploy_earnapp_proxy_with_retry(1, "earnapp-proxy", {"deploy_credentials": {}}, attempts=1)
+
+    assert masked == [(7, "earnapp", main.EARNAPP_PROXY_TARGET_FAILED_REASON)]
+    assert cleared == [(1, None)]
+    assert events
+    deploy.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -364,6 +389,7 @@ async def test_server_allows_earnapp_host_systemd_by_sending_qemu_runtime(monkey
     monkeypatch.setattr(main.database, "get_worker", AsyncMock(return_value={"id": 7, "name": "vps-test-sing", "system_info": "{}"}))
     monkeypatch.setattr(main.database, "get_worker_proxy_assignment", AsyncMock(return_value=None))
     monkeypatch.setattr(main.database, "lease_proxy_for_worker", AsyncMock(return_value={"proxy_id": 1, "host": "1.2.3.4", "port": 1080, "protocol": "socks5", "location": "Singapore"}))
+    monkeypatch.setattr(main, "_earnapp_proxy_targets_ready", AsyncMock(return_value=True))
     monkeypatch.setattr(main.database, "proxy_masked_for_provider", AsyncMock(return_value=False))
     monkeypatch.setattr(main.database, "save_provider_instance", AsyncMock())
     monkeypatch.setattr(main.database, "record_health_event", AsyncMock())
@@ -436,6 +462,7 @@ async def test_earnapp_deploy_uses_account_pool_when_available(monkeypatch):
     monkeypatch.setattr(main.database, "get_deployment_spec", no_record)
     monkeypatch.setattr(main.database, "get_worker_proxy_assignment", AsyncMock(return_value=None))
     monkeypatch.setattr(main.database, "lease_proxy_for_worker", AsyncMock(return_value={"proxy_id": 1, "host": "1.2.3.4", "port": 1080, "protocol": "socks5", "location": "Singapore"}))
+    monkeypatch.setattr(main, "_earnapp_proxy_targets_ready", AsyncMock(return_value=True))
     monkeypatch.setattr(main.database, "proxy_masked_for_provider", AsyncMock(return_value=False))
     monkeypatch.setattr(main.database, "lease_earnapp_account", AsyncMock(return_value=leased))
     monkeypatch.setattr(main.database, "save_provider_instance", AsyncMock())
@@ -491,6 +518,7 @@ async def test_earnapp_account_pool_allows_empty_settings_credentials(monkeypatc
     monkeypatch.setattr(main.database, "get_deployment_spec", no_record)
     monkeypatch.setattr(main.database, "get_worker_proxy_assignment", AsyncMock(return_value=None))
     monkeypatch.setattr(main.database, "lease_proxy_for_worker", AsyncMock(return_value={"proxy_id": 1, "host": "1.2.3.4", "port": 1080, "protocol": "socks5", "location": "Singapore"}))
+    monkeypatch.setattr(main, "_earnapp_proxy_targets_ready", AsyncMock(return_value=True))
     monkeypatch.setattr(main.database, "proxy_masked_for_provider", AsyncMock(return_value=False))
     monkeypatch.setattr(main.database, "lease_earnapp_account", AsyncMock(return_value={"account_name": "a@example.com", "cookies": {"oauth_token": "pool-token", "oauth_refresh_token": "r", "xsrf_token": "x", "brd_sess_id": "b", "cg_uuid": "c"}}))
     monkeypatch.setattr(main.database, "save_provider_instance", AsyncMock())

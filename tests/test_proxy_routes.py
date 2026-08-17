@@ -288,6 +288,29 @@ def test_proxy_lease_picks_one_unassigned_proxy_per_worker(tmp_path):
 
     asyncio.run(run())
 
+def test_proxy_lease_skips_dead_proxies(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("vtproxy", "vtproxy")
+            await database.upsert_proxy_endpoints(
+                provider_id,
+                [
+                    {"provider_proxy_id": "dead", "endpoint": "1.1.1.1:1000", "host": "1.1.1.1", "port": 1000, "status": "dead"},
+                    {"provider_proxy_id": "alive", "endpoint": "2.2.2.2:1000", "host": "2.2.2.2", "port": 1000, "status": "alive"},
+                ],
+            )
+            worker = await database.upsert_worker("worker-a", "a", "http://a")
+
+            lease = await database.lease_proxy_for_worker(worker)
+
+            assert lease
+            assert lease["endpoint"] == "2.2.2.2:1000"
+
+    import asyncio
+
+    asyncio.run(run())
+
 def test_proxy_mask_is_provider_specific_for_pawns(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):

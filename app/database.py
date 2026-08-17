@@ -3093,6 +3093,7 @@ async def lease_proxy_for_worker(worker_id: int, *, provider_slug: str | None = 
             FROM proxy_endpoints pe
             LEFT JOIN proxy_assignments pa ON pa.proxy_id = pe.id
             WHERE pa.proxy_id IS NULL
+              AND lower(coalesce(pe.status, 'alive')) != 'dead'
             {mask_clause}
             ORDER BY pe.id
             LIMIT 1

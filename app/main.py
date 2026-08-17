@@ -16,6 +16,7 @@ import os
 import re
 import secrets
 import time
+import urllib.parse
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -2104,7 +2105,41 @@ async def _deploy_iproyal_proxy_with_retry(
 
 
 EARNAPP_BLOCKED_IP_REASON = "earnapp_blocked_ip"
+EARNAPP_PROXY_TARGET_FAILED_REASON = "earnapp_target_unreachable"
 EARNAPP_MAX_EARNING_ATTEMPTS = 10
+
+def _proxy_url_for_runtime_probe(proxy: dict[str, Any]) -> str:
+    scheme = str(proxy.get("protocol") or proxy.get("scheme") or "socks5").strip().lower()
+    if scheme == "socks":
+        scheme = "socks5"
+    host = str(proxy.get("host") or proxy.get("endpoint_ip") or "").strip()
+    port = int(proxy.get("port") or 0)
+    username = str(proxy.get("username") or "")
+    password = str(proxy.get("password") or "")
+    auth = ""
+    if username:
+        auth = urllib.parse.quote(username, safe="") + ":" + urllib.parse.quote(password, safe="") + "@"
+    return f"{scheme}://{auth}{host}:{port}"
+
+async def _earnapp_proxy_targets_ready(proxy: dict[str, Any]) -> bool:
+    try:
+        proxy_url = _proxy_url_for_runtime_probe(proxy)
+    except Exception:
+        return False
+    targets = (
+        "https://client.earnapp.com/",
+        "https://earnapp.com/dashboard",
+        "https://proxyjs.brdtnet.com/",
+    )
+    try:
+        async with httpx.AsyncClient(proxy=proxy_url, timeout=12, follow_redirects=False, trust_env=False) as client:
+            for target in targets:
+                resp = await client.get(target, headers={"user-agent": "Mozilla/5.0"})
+                if resp.status_code <= 0 or resp.status_code >= 500:
+                    return False
+        return True
+    except Exception:
+        return False
 
 def _earnapp_cookies(creds: dict[str, Any]) -> dict[str, str]:
     cookies = {
@@ -2203,6 +2238,14 @@ async def _deploy_earnapp_proxy_with_retry(
     for attempt in range(1, max(1, attempts) + 1):
         attempt_spec = json.loads(json.dumps(spec))
         proxy = await _proxy_for_worker_instance(worker_id, provider_slug="earnapp")
+        if not await _earnapp_proxy_targets_ready(proxy):
+            proxy_id = int((proxy or {}).get("proxy_id") or 0)
+            if proxy_id:
+                await database.mask_proxy_for_provider(proxy_id, "earnapp", EARNAPP_PROXY_TARGET_FAILED_REASON)
+                await database.set_worker_proxy_assignment(worker_id, None)
+                await database.record_health_event("earnapp", "proxy_masked", f"masked proxy {proxy_id} after EarnApp target probe failed")
+            last_error = "EarnApp target probe failed"
+            continue
         attempt_spec["proxy"] = proxy
         attempt_spec["egress_mode"] = "proxy"
         attempt_spec["host_runtime"] = _earnapp_host_runtime_for_proxy(proxy)
