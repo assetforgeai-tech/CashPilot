@@ -783,6 +783,9 @@ apply_netns_firewall() {
   local pid endpoint port
   endpoint=$(jq -r '.proxy.endpoint_ip // .proxy.host' "$STATE/lease.json")
   port=$(jq -r '.proxy.port' "$STATE/lease.json")
+  if ! is_valid_ip "$endpoint"; then
+    endpoint=$(getent hosts "$endpoint" | awk 'NR == 1 {print $1}')
+  fi
   pid=$(wait_netns_pid) || return 1
   nsenter -t "$pid" -n iptables -F OUTPUT || true
   nsenter -t "$pid" -n iptables -P OUTPUT DROP || return 1
