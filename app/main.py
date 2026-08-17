@@ -2162,6 +2162,17 @@ async def _earnapp_fetch_device(creds: dict[str, Any], sdk_id: str) -> dict[str,
                 return device
     return None
 
+def _earnapp_device_has_earning_evidence(device: dict[str, Any] | None) -> bool:
+    if not device or device.get("banned"):
+        return False
+    for key in ("uptime", "total_uptime", "earned", "earned_total"):
+        try:
+            if float(device.get(key) or 0) > 0:
+                return True
+        except (TypeError, ValueError):
+            continue
+    return False
+
 async def _earnapp_remove_dashboard_device(creds: dict[str, Any], uuid: str) -> None:
     if not uuid:
         return
@@ -2185,12 +2196,15 @@ async def _earnapp_status_after_link(worker_id: int, instance_slug: str, spec: d
     if not sdk_id:
         return "", None
     creds = spec.get("deploy_credentials") or {}
+    last_device: dict[str, Any] | None = None
     for _ in range(18):
         device = await _earnapp_fetch_device(creds, sdk_id)
-        if device is not None:
+        if _earnapp_device_has_earning_evidence(device) or (device and device.get("banned")):
             return sdk_id, device
+        if device is not None:
+            last_device = device
         await asyncio.sleep(10)
-    return sdk_id, None
+    return sdk_id, last_device
 
 async def _deploy_earnapp_proxy_with_retry(
     worker_id: int,
@@ -2217,7 +2231,7 @@ async def _deploy_earnapp_proxy_with_retry(
             with contextlib.suppress(Exception):
                 await _proxy_worker_command(worker_id, "remove", instance_slug)
             continue
-        if device and not device.get("banned"):
+        if _earnapp_device_has_earning_evidence(device):
             return result, attempt_spec, device
         proxy_id = int((proxy or {}).get("proxy_id") or 0)
         if proxy_id:
