@@ -46,6 +46,8 @@ EARNAPP_AUTH_STATE_FILE=${EARNAPP_AUTH_STATE_FILE:-$ROOT_DIR/secrets/earnapp/ear
 EARNAPP_MACOS_PKG_URL=${EARNAPP_MACOS_PKG_URL:-https://cdn.earnapp.com/static/earnapp-macos-1.605.415.pkg}
 EARNAPP_MACOS_PKG_SHA256=${EARNAPP_MACOS_PKG_SHA256:-d1cdeec01a32a5ef3342ee67c42276af143b8b2a58e42211c476f515d0562f75}
 EARNAPP_MACOS_VERSION=${EARNAPP_MACOS_VERSION:-1.605.415}
+EARNAPP_INSTALL_DEVICE_ATTEMPTS=${EARNAPP_INSTALL_DEVICE_ATTEMPTS:-5}
+EARNAPP_INSTALL_DEVICE_RETRY_SECONDS=${EARNAPP_INSTALL_DEVICE_RETRY_SECONDS:-5}
 EARNAPP_LINK_ATTEMPTS=${EARNAPP_LINK_ATTEMPTS:-10}
 EARNAPP_LINK_RETRY_SECONDS=${EARNAPP_LINK_RETRY_SECONDS:-20}
 EARNAPP_LOCAL_RUNTIME_READY_MIN_HEARTBEATS=${EARNAPP_LOCAL_RUNTIME_READY_MIN_HEARTBEATS:-3}
@@ -1072,18 +1074,22 @@ earnapp_guest_dashboard_curl() {
 }
 
 register_earnapp_macos_device() {
-  local ip=$1 uuid=$2 body status serial
-  body=$(mktemp)
+  local ip=$1 uuid=$2 body status serial attempt
   serial=${uuid#sdk-mac-}
-  status=$(earnapp_guest_dashboard_curl "$ip" "$body" \
-    --insecure \
-    --http1.1 \
-    -H "Content-Type: application/json" \
-    "https://client.earnapp.com/install_device?uuid=$uuid&version=$EARNAPP_MACOS_VERSION&arch=x64&appid=node_earnapp.com&os=macOS" \
-    --data "{\"serial\":\"$serial\"}")
-  cp "$body" "$STATE/earnapp-install-device-response.last" 2>/dev/null || true
-  rm -f "$body"
-  [ "$status" = 200 ]
+  for attempt in $(seq 1 "$EARNAPP_INSTALL_DEVICE_ATTEMPTS"); do
+    body=$(mktemp)
+    status=$(earnapp_guest_dashboard_curl "$ip" "$body" \
+      --insecure \
+      --http1.1 \
+      -H "Content-Type: application/json" \
+      "https://client.earnapp.com/install_device?uuid=$uuid&version=$EARNAPP_MACOS_VERSION&arch=x64&appid=node_earnapp.com&os=macOS" \
+      --data "{\"serial\":\"$serial\"}")
+    cp "$body" "$STATE/earnapp-install-device-response.last" 2>/dev/null || true
+    rm -f "$body"
+    [ "$status" = 200 ] && return 0
+    [ "$attempt" -lt "$EARNAPP_INSTALL_DEVICE_ATTEMPTS" ] && sleep "$EARNAPP_INSTALL_DEVICE_RETRY_SECONDS"
+  done
+  return 1
 }
 
 link_earnapp_device() {

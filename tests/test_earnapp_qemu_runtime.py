@@ -252,6 +252,8 @@ def test_earnapp_macos_registers_and_links_from_guest_egress():
     register_block = script[script.index("register_earnapp_macos_device()") : script.index("link_earnapp_device()")]
     assert "--insecure" in register_block
     assert "--http1.1" in register_block
+    assert "EARNAPP_INSTALL_DEVICE_ATTEMPTS" in register_block
+    assert "EARNAPP_INSTALL_DEVICE_RETRY_SECONDS" in register_block
 
 def test_earnapp_macos_links_after_uuid_cid_and_heartbeats():
     bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
