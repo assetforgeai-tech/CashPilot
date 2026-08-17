@@ -216,6 +216,27 @@ async def test_earnapp_deploy_sets_macos_runtime_for_vietnam_proxy(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_earnapp_macos_pending_does_not_mask_proxy_or_remove_container(monkeypatch):
+    async def fake_proxy(_worker_id: int, *, provider_slug: str | None = None):
+        return {"proxy_id": 2, "host": "vn.proxy", "port": 1080, "protocol": "socks5", "location": "Vietnam"}
+
+    monkeypatch.setattr(main, "_proxy_for_worker_instance", fake_proxy)
+    monkeypatch.setattr(main, "_proxy_worker_deploy", AsyncMock(return_value={"container_id": "container-1"}))
+    monkeypatch.setattr(main, "_earnapp_status_after_link", AsyncMock(return_value=("", None)))
+    monkeypatch.setattr(main.database, "record_health_event", AsyncMock())
+    monkeypatch.setattr(main.database, "mask_proxy_for_provider", AsyncMock())
+    monkeypatch.setattr(main, "_proxy_worker_command", AsyncMock())
+
+    result, final_spec, device = await main._deploy_earnapp_proxy_with_retry(7, "earnapp-proxy", {"deploy_credentials": {"oauth_token": "tok"}})
+
+    assert result == {"container_id": "container-1"}
+    assert final_spec["host_runtime"] == "qemu_macos"
+    assert device is None
+    main.database.mask_proxy_for_provider.assert_not_awaited()
+    main._proxy_worker_command.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_server_allows_earnapp_host_systemd_by_sending_qemu_runtime(monkeypatch):
     service = {
         "slug": "earnapp",

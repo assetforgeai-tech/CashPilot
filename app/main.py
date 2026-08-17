@@ -2208,6 +2208,15 @@ async def _deploy_earnapp_proxy_with_retry(
         attempt_spec["host_runtime"] = _earnapp_host_runtime_for_proxy(proxy)
         result = await _proxy_worker_deploy(worker_id, instance_slug, attempt_spec)
         sdk_id, device = await _earnapp_status_after_link(worker_id, instance_slug, attempt_spec)
+        if not sdk_id or device is None:
+            if attempt_spec.get("host_runtime") == "qemu_macos":
+                await database.record_health_event("earnapp", "macos_pending", "EarnApp macOS runtime started; dashboard evidence pending")
+                return result, attempt_spec, None
+            last_error = "EarnApp runtime did not expose a dashboard device"
+            logger.warning("EarnApp attempt %d/%d has no dashboard device yet; rotating without provider mask", attempt, attempts)
+            with contextlib.suppress(Exception):
+                await _proxy_worker_command(worker_id, "remove", instance_slug)
+            continue
         if device and not device.get("banned"):
             return result, attempt_spec, device
         proxy_id = int((proxy or {}).get("proxy_id") or 0)
