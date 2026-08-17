@@ -1404,7 +1404,7 @@ start_once() {
     return 8
   fi
   log "bootstrap instance"
-  if ! bootstrap_instance; then
+  if ! run_start_step bootstrap bootstrap_instance; then
     remove_instance_root
     return 7
   fi
