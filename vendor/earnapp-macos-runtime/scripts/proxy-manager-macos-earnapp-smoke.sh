@@ -547,6 +547,7 @@ remove_instance_root() {
   [ -f "$registry" ] || return 0
   REGISTRY_PATH="$registry" INSTANCE_TO_REMOVE="$INSTANCE" python3 - <<'PY'
 import json
+import ipaddress
 import os
 from pathlib import Path
 
@@ -626,6 +627,12 @@ else:
         {"query_type": ["A", "AAAA"], "invert": True, "action": "reject", "method": "drop"},
     ]
 
+route_exclude_address = [os.environ["NETNS_SUBNET"], "172.30.0.0/16"]
+try:
+    route_exclude_address.insert(0, f"{ipaddress.ip_address(endpoint)}/32")
+except ValueError:
+    pass
+
 config = {
     "log": {"level": "info", "timestamp": True},
     "dns": {
@@ -651,7 +658,7 @@ config = {
     },
     "inbounds": [
         {"type": "mixed", "tag": "mixed-in", "listen": "127.0.0.1", "listen_port": 2080},
-        {"type": "tun", "tag": "tun-in", "interface_name": "sb-tun", "address": ["172.19.0.1/30"], "route_address": ["0.0.0.0/0"], "auto_route": True, "strict_route": True, "stack": "system", "route_exclude_address": [f"{endpoint}/32", os.environ["NETNS_SUBNET"], "172.30.0.0/16"]},
+        {"type": "tun", "tag": "tun-in", "interface_name": "sb-tun", "address": ["172.19.0.1/30"], "route_address": ["0.0.0.0/0"], "auto_route": True, "strict_route": True, "stack": "system", "route_exclude_address": route_exclude_address},
     ],
     "outbounds": [proxy_out, {"type": "direct", "tag": "direct"}],
 }

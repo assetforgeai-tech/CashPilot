@@ -194,6 +194,16 @@ def test_earnapp_macos_launcher_uses_mac_root_for_runtime_paths():
     assert 'Path(os.environ["MAC_ROOT"]) / "identity" / "registry.jsonl"' in script
     assert 'Path("/opt/dockur-macos/identity/registry.jsonl")' not in script
 
+def test_earnapp_macos_launcher_does_not_put_proxy_hostnames_in_route_excludes():
+    bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
+    with tarfile.open(fileobj=io.BytesIO(bundle), mode="r") as tar:
+        script_file = tar.extractfile("scripts/proxy-manager-macos-earnapp-smoke.sh")
+        assert script_file is not None
+        script = script_file.read().decode()
+    assert "ipaddress.ip_address(endpoint)" in script
+    assert 'route_exclude_address": route_exclude_address' in script
+    assert 'route_exclude_address": [f"{endpoint}/32"' not in script
+
 def test_earnapp_macos_runtime_keeps_random_identity_controller():
     bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
     with tarfile.open(fileobj=io.BytesIO(bundle), mode="r") as tar:
