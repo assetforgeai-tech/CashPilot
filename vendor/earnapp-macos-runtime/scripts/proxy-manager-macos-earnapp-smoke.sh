@@ -1170,6 +1170,23 @@ close_earnapp_browsers() {
   guest_ssh "$ip" "pkill -x Safari >/dev/null 2>&1 || true; pkill -x 'Google Chrome' >/dev/null 2>&1 || true; pkill -x Chromium >/dev/null 2>&1 || true" || true
 }
 
+capture_earnapp_guest_diagnostics() {
+  local ip=$1 out="$STATE/earnapp-guest-diagnostics.txt"
+  guest_ssh "$ip" 'bash -lc '"'"'
+set +e
+echo ====process====
+ps aux | grep -i earnapp | grep -v grep
+echo ====defaults-com-earnapp====
+defaults read com.earnapp 2>/dev/null
+echo ====defaults-brdsdk====
+defaults read com.earnapp.brdsdk.shared 2>/dev/null
+echo ====support-files====
+find "$HOME/Library/Application Support/com.earnapp" -maxdepth 5 -type f | sort | head -200
+echo ====log-markers====
+grep -R -i "error\|fail\|register\|device\|cert\|ssl\|tls\|backend\|api\|uuid" "$HOME/Library/Application Support/com.earnapp" 2>/dev/null | tail -220
+'"'"'' >"$out" 2>&1 || true
+}
+
 write_earnapp_dashboard_status() {
   local status_file="$STATE/earnapp-dashboard-status.json"
   [ -s "$EARNAPP_AUTH_STATE_FILE" ] || { jq -n '{status:"missing_auth_state",green_dot:false}' >"$status_file"; return 1; }
@@ -1497,6 +1514,7 @@ start_once() {
       elif jq -e '.status == "device_not_found"' "$STATE/earnapp-link-result.json" >/dev/null 2>&1; then
         install_reason=EARNAPP_DEVICE_NOT_FOUND
       fi
+      capture_earnapp_guest_diagnostics "$guest_ip_value"
       release_macos_start_slot
       release_lease "$install_reason"
       stop_existing

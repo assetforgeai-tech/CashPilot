@@ -220,6 +220,7 @@ def test_earnapp_macos_launcher_links_with_source_payload_shape():
     link_block = script[script.index("link_earnapp_device()") : script.index("ensure_earnapp_running()")]
     assert "earnapp_dashboard_curl" in link_block
     assert "earnapp_proxy_curl" not in link_block
+    assert "capture_earnapp_guest_diagnostics" in script
 
 def test_earnapp_macos_links_after_uuid_cid_and_heartbeats():
     bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
