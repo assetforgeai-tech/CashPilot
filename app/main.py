@@ -2104,26 +2104,7 @@ async def _deploy_iproyal_proxy_with_retry(
 
 
 EARNAPP_BLOCKED_IP_REASON = "earnapp_blocked_ip"
-EARNAPP_PROXY_TARGET_FAILED_REASON = "earnapp_target_unreachable"
 EARNAPP_MAX_EARNING_ATTEMPTS = 10
-
-async def _earnapp_proxy_targets_ready(worker_id: int, proxy: dict[str, Any]) -> bool:
-    targets = (
-        "https://client.earnapp.com/",
-        "https://earnapp.com/dashboard",
-        "https://proxyjs.brdtnet.com/",
-    )
-    try:
-        result = await _proxy_to_worker(
-            worker_id,
-            "POST",
-            "/api/proxy/probe-targets",
-            json={"proxy": proxy, "targets": list(targets)},
-            timeout=45,
-        )
-    except Exception:
-        return False
-    return bool(result.get("ok"))
 
 def _earnapp_cookies(creds: dict[str, Any]) -> dict[str, str]:
     cookies = {
@@ -2222,14 +2203,6 @@ async def _deploy_earnapp_proxy_with_retry(
     for attempt in range(1, max(1, attempts) + 1):
         attempt_spec = json.loads(json.dumps(spec))
         proxy = await _proxy_for_worker_instance(worker_id, provider_slug="earnapp")
-        if not await _earnapp_proxy_targets_ready(worker_id, proxy):
-            proxy_id = int((proxy or {}).get("proxy_id") or 0)
-            if proxy_id:
-                await database.mask_proxy_for_provider(proxy_id, "earnapp", EARNAPP_PROXY_TARGET_FAILED_REASON)
-                await database.set_worker_proxy_assignment(worker_id, None)
-                await database.record_health_event("earnapp", "proxy_masked", f"masked proxy {proxy_id} after EarnApp target probe failed")
-            last_error = "EarnApp target probe failed"
-            continue
         attempt_spec["proxy"] = proxy
         attempt_spec["egress_mode"] = "proxy"
         attempt_spec["host_runtime"] = _earnapp_host_runtime_for_proxy(proxy)
