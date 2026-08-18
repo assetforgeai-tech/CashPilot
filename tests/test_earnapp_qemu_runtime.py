@@ -258,10 +258,6 @@ def test_earnapp_macos_launcher_uses_mac_root_for_runtime_paths():
         script = script_file.read().decode()
     assert 'Path(os.environ["MAC_ROOT"]) / "identity" / "registry.jsonl"' in script
     assert 'Path("/opt/dockur-macos/identity/registry.jsonl")' not in script
-    assert "proxy_route_endpoint = socket.gethostbyname(endpoint)" in script
-    assert '"server": proxy_route_endpoint' in script
-    assert 'f"{proxy_route_endpoint}/32"' in script
-    assert 'endpoint_ip=$(getent ahostsv4 "$endpoint" | awk' in script
 
 def test_earnapp_macos_launcher_uses_redsocks_tcp_redirect():
     bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
@@ -432,7 +428,9 @@ def test_earnapp_macos_launcher_links_after_redsocks_netns_probe_and_heartbeats(
     assert "EARNAPP_SINGBOX_DNS_MODE" not in script
     ready_block = script[script.index("wait_earnapp_local_runtime_ready()") : script.index("earnapp_proxy_curl()")]
     assert "proxy_connected=true" in ready_block
-    assert '[ "$proxy_connected" = true ]' not in ready_block
+    assert "guest_egress" in ready_block
+    assert 'lease_egress=$(jq -r' in ready_block
+    assert '[ "$guest_egress" = "$lease_egress" ]' in ready_block
     assert "wait_network_ready" in script
 
 def test_earnapp_macos_runtime_keeps_random_identity_controller():

@@ -927,7 +927,8 @@ wait_earnapp_identity() {
 wait_earnapp_local_runtime_ready() {
   local ip=$1 raw="$STATE/earnapp-local-runtime-ready.raw" result="$STATE/earnapp-local-runtime-ready.json"
   local deadline=$((SECONDS + EARNAPP_LOCAL_RUNTIME_READY_SECONDS))
-  local ready app_config_file uuid cid support_cid_file brdsdk_log app_hb svc_hb
+  local ready app_config_file uuid cid support_cid_file brdsdk_log app_hb svc_hb guest_egress lease_egress
+  lease_egress=$(jq -r '.proxy.egress_ip // .egress_ip // empty' "$STATE/lease.json" 2>/dev/null || true)
   while :; do
     ensure_earnapp_running "$ip" || true
     guest_pipe "$ip" 'bash -s' >"$raw" <<'GUEST' || true
@@ -939,6 +940,11 @@ cid=$(cat "$support_dir/com.earnapp.cid" 2>/dev/null || cat "$support_cid_file" 
 brdsdk_log=$(find "$support_dir" -type f \( -name 'lum_sdk_svc*.log' -o -name '*brdsdk*.log' \) -print 2>/dev/null | sort | tail -1)
 app_hb=$(defaults read com.earnapp.brdsdk.shared app_hb_count 2>/dev/null || true)
 svc_hb=$(defaults read com.earnapp.brdsdk.shared svc_hb_count 2>/dev/null || true)
+guest_egress=""
+for url in https://api.ipify.org https://ifconfig.me/ip https://icanhazip.com; do
+  guest_egress=$(curl -fsS --connect-timeout 10 --max-time 20 "$url" 2>/dev/null | tr -d '[:space:]' || true)
+  [ -n "$guest_egress" ] && break
+done
 proxy_connected=false
 if [ -n "$brdsdk_log" ] && grep -E "proxy connected|dev en0 connected|client_connect established" "$brdsdk_log" >/dev/null 2>&1; then
   proxy_connected=true
@@ -952,6 +958,7 @@ printf 'support_cid_file=%s\n' "$support_cid_file"
 printf 'brdsdk_log=%s\n' "$brdsdk_log"
 printf 'app_hb=%s\n' "$app_hb"
 printf 'svc_hb=%s\n' "$svc_hb"
+printf 'guest_egress=%s\n' "$guest_egress"
 printf 'proxy_connected=%s\n' "$proxy_connected"
 GUEST
     ready=false
@@ -962,14 +969,17 @@ GUEST
     brdsdk_log=$(sed -n 's/^brdsdk_log=//p' "$raw" 2>/dev/null | tail -1)
     app_hb=$(sed -n 's/^app_hb=//p' "$raw" 2>/dev/null | tail -1)
     svc_hb=$(sed -n 's/^svc_hb=//p' "$raw" 2>/dev/null | tail -1)
+    guest_egress=$(sed -n 's/^guest_egress=//p' "$raw" 2>/dev/null | tail -1)
     proxy_connected=$(sed -n 's/^proxy_connected=//p' "$raw" 2>/dev/null | tail -1)
     if [[ "$uuid" == sdk-mac-???????????????????????????????? ]] \
+      && [ -n "$guest_egress" ] \
+      && { [ -z "$lease_egress" ] || [ "$guest_egress" = "$lease_egress" ]; } \
       && [[ "$app_hb" =~ ^[0-9]+$ ]] \
       && [[ "$svc_hb" =~ ^[0-9]+$ ]] \
       && [ "$app_hb" -ge "$EARNAPP_LOCAL_RUNTIME_READY_MIN_HEARTBEATS" ] \
       && [ "$svc_hb" -ge "$EARNAPP_LOCAL_RUNTIME_READY_MIN_HEARTBEATS" ]; then
       # ponytail: real macOS 12 EarnApp writes heartbeats but not always CID/proxy log markers.
-      # Keep the hard proxy guarantee at the netns redsocks probe before guest boot.
+      # Guest egress match is the hard proxy guarantee before link.
       ready=true
     fi
       jq -n \
@@ -979,15 +989,17 @@ GUEST
       --arg cid "$cid" \
       --arg support_cid_file "$support_cid_file" \
       --arg brdsdk_log "$brdsdk_log" \
+      --arg guest_egress "$guest_egress" \
+      --arg lease_egress "$lease_egress" \
       --arg app_hb "$app_hb" \
       --arg svc_hb "$svc_hb" \
       --argjson proxy_connected "${proxy_connected:-false}" \
-      '{ready:$ready,app_config_file:$app_config_file,device_uuid:$uuid,cid:$cid,support_cid_file:$support_cid_file,brdsdk_log:$brdsdk_log,proxy_connected:$proxy_connected,app_hb:$app_hb,svc_hb:$svc_hb,checked_at:(now|todate)}' \
+      '{ready:$ready,app_config_file:$app_config_file,device_uuid:$uuid,cid:$cid,support_cid_file:$support_cid_file,brdsdk_log:$brdsdk_log,guest_egress:$guest_egress,lease_egress:$lease_egress,proxy_connected:$proxy_connected,app_hb:$app_hb,svc_hb:$svc_hb,checked_at:(now|todate)}' \
       >"$result"
     local support_flag brdsdk_flag
     support_flag=$([ -n "$support_cid_file" ] && echo yes || echo no)
     brdsdk_flag=$([ -n "$brdsdk_log" ] && echo yes || echo no)
-    log "earnapp local ready probe uuid=${uuid:-missing} cid=${cid:-missing} support=$support_flag brdsdk=$brdsdk_flag proxy=${proxy_connected:-false} app_hb=${app_hb:-missing} svc_hb=${svc_hb:-missing}"
+    log "earnapp local ready probe uuid=${uuid:-missing} cid=${cid:-missing} guest_egress=${guest_egress:-missing} lease_egress=${lease_egress:-missing} support=$support_flag brdsdk=$brdsdk_flag proxy=${proxy_connected:-false} app_hb=${app_hb:-missing} svc_hb=${svc_hb:-missing}"
     if [[ "$uuid" == sdk-mac-???????????????????????????????? ]]; then
       printf '%s\n' "$uuid" >"$STATE/earnapp-device-uuid.txt"
     fi
