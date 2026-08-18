@@ -192,6 +192,33 @@ class TestMystWalletImportIsReachable:
         app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
         assert "window.CP = CP;" in app_js
 
+    def test_myst_wallet_table_shows_egress_ip(self):
+        page = (ROOT / "app" / "templates" / "myst_wallet.html").read_text(encoding="utf-8")
+        app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+        assert 'data-myst-sort="public_ip"' in page
+        assert "row.public_ip" in app_js
+
+
+class TestNknWalletPoolIsReachable:
+    def test_nkn_wallet_menu_page_api_and_handlers_exist(self):
+        base = (ROOT / "app" / "templates" / "base.html").read_text(encoding="utf-8")
+        page = (ROOT / "app" / "templates" / "nkn_wallet.html").read_text(encoding="utf-8")
+        app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+        routes = (ROOT / "app" / "routers" / "pages.py").read_text(encoding="utf-8")
+        exported = set(re.findall(r"^\s{4}([A-Za-z_][A-Za-z0-9_]*),\s*$", app_js, re.M))
+
+        assert "/nkn-wallet" in base
+        assert "@router.get(\"/nkn-wallet\"" in routes
+        assert 'id="nkn-wallet-file"' in page
+        assert 'id="nkn-wallet-list"' in page
+        assert 'data-nkn-sort="folder_name"' in page
+        assert 'data-nkn-sort="address"' in page
+        assert 'data-nkn-sort="public_ip"' in page
+        assert "/api/admin/nkn-wallets/import" in app_js
+        assert "/api/admin/nkn-wallets" in app_js
+        assert "importNknWalletZip" in exported
+        assert "loadNknWallets" in exported
+
 
 class TestTheAmountShownIsTheOneTheProviderPaid:
     """Caught in a real browser, not by a string test.

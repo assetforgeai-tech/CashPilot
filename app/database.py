@@ -322,6 +322,31 @@ CREATE TABLE IF NOT EXISTS myst_wallets (
 );
 """
 
+_NKN_WALLETS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS nkn_wallets (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    wallet_fingerprint TEXT    NOT NULL UNIQUE,
+    folder_name        TEXT    NOT NULL UNIQUE,
+    wallet_json_enc    TEXT    NOT NULL,
+    wallet_pswd_enc    TEXT    NOT NULL,
+    address            TEXT    NOT NULL DEFAULT '',
+    state              TEXT    NOT NULL DEFAULT 'AVAILABLE',
+    leased_to_worker_id INTEGER,
+    leased_to_client_id TEXT    NOT NULL DEFAULT '',
+    leased_at           TEXT,
+    release_reason      TEXT    NOT NULL DEFAULT '',
+    wallet_assignment_version INTEGER NOT NULL DEFAULT 0,
+    node_identity      TEXT    NOT NULL DEFAULT '',
+    runtime_status     TEXT    NOT NULL DEFAULT '',
+    public_ip          TEXT    NOT NULL DEFAULT '',
+    last_heartbeat_at  TEXT,
+    evidence_json      TEXT    NOT NULL DEFAULT '{}',
+    quarantined_reason TEXT    NOT NULL DEFAULT '',
+    imported_at        TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at         TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+"""
+
 
 def encrypt_value(value: str) -> str:
     """Encrypt a string value, returning an 'enc:' prefixed token."""
@@ -539,6 +564,29 @@ CREATE TABLE IF NOT EXISTS myst_wallets (
     address            TEXT    NOT NULL DEFAULT '',
     state              TEXT    NOT NULL DEFAULT 'AVAILABLE',
     funding            TEXT    NOT NULL DEFAULT 'FUNDED',
+    leased_to_worker_id INTEGER,
+    leased_to_client_id TEXT    NOT NULL DEFAULT '',
+    leased_at           TEXT,
+    release_reason      TEXT    NOT NULL DEFAULT '',
+    wallet_assignment_version INTEGER NOT NULL DEFAULT 0,
+    node_identity      TEXT    NOT NULL DEFAULT '',
+    runtime_status     TEXT    NOT NULL DEFAULT '',
+    public_ip          TEXT    NOT NULL DEFAULT '',
+    last_heartbeat_at  TEXT,
+    evidence_json      TEXT    NOT NULL DEFAULT '{}',
+    quarantined_reason TEXT    NOT NULL DEFAULT '',
+    imported_at        TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at         TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS nkn_wallets (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    wallet_fingerprint TEXT    NOT NULL UNIQUE,
+    folder_name        TEXT    NOT NULL UNIQUE,
+    wallet_json_enc    TEXT    NOT NULL,
+    wallet_pswd_enc    TEXT    NOT NULL,
+    address            TEXT    NOT NULL DEFAULT '',
+    state              TEXT    NOT NULL DEFAULT 'AVAILABLE',
     leased_to_worker_id INTEGER,
     leased_to_client_id TEXT    NOT NULL DEFAULT '',
     leased_at           TEXT,
@@ -884,7 +932,7 @@ async def _encrypt_legacy_plaintext_credentials(db: Any) -> int:
 #: missing a column -- an interrupted upgrade, a restored backup, a hand-edited
 #: file -- could never be repaired, because the gate would say there was nothing
 #: to do. The guards are idempotent and cheap; the version is for the operator.
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 
 
 async def init_db() -> None:
@@ -2513,6 +2561,29 @@ async def _ensure_myst_wallets_table(db: Any) -> None:
     if "evidence_json" not in cols:
         await db.execute("ALTER TABLE myst_wallets ADD COLUMN evidence_json TEXT NOT NULL DEFAULT '{}'")
 
+async def _ensure_nkn_wallets_table(db: Any) -> None:
+    await db.executescript(_NKN_WALLETS_SCHEMA)
+    cursor = await db.execute("PRAGMA table_info(nkn_wallets)")
+    cols = {row["name"] for row in await cursor.fetchall()}
+    if "leased_to_client_id" not in cols:
+        await db.execute("ALTER TABLE nkn_wallets ADD COLUMN leased_to_client_id TEXT NOT NULL DEFAULT ''")
+    if "leased_at" not in cols:
+        await db.execute("ALTER TABLE nkn_wallets ADD COLUMN leased_at TEXT")
+    if "release_reason" not in cols:
+        await db.execute("ALTER TABLE nkn_wallets ADD COLUMN release_reason TEXT NOT NULL DEFAULT ''")
+    if "wallet_assignment_version" not in cols:
+        await db.execute("ALTER TABLE nkn_wallets ADD COLUMN wallet_assignment_version INTEGER NOT NULL DEFAULT 0")
+    if "node_identity" not in cols:
+        await db.execute("ALTER TABLE nkn_wallets ADD COLUMN node_identity TEXT NOT NULL DEFAULT ''")
+    if "runtime_status" not in cols:
+        await db.execute("ALTER TABLE nkn_wallets ADD COLUMN runtime_status TEXT NOT NULL DEFAULT ''")
+    if "public_ip" not in cols:
+        await db.execute("ALTER TABLE nkn_wallets ADD COLUMN public_ip TEXT NOT NULL DEFAULT ''")
+    if "last_heartbeat_at" not in cols:
+        await db.execute("ALTER TABLE nkn_wallets ADD COLUMN last_heartbeat_at TEXT")
+    if "evidence_json" not in cols:
+        await db.execute("ALTER TABLE nkn_wallets ADD COLUMN evidence_json TEXT NOT NULL DEFAULT '{}'")
+
 
 async def import_myst_wallets(raw: str) -> int:
     from app.myst_wallets import iter_wallet_records
@@ -2546,6 +2617,42 @@ async def import_myst_wallets(raw: str) -> int:
     finally:
         await db.close()
 
+async def import_nkn_wallets_from_zip(raw_zip: bytes) -> int:
+    from app.nkn_wallets import iter_wallet_records_from_zip
+
+    rows = list(iter_wallet_records_from_zip(raw_zip))
+    if not rows:
+        return 0
+    db = await _get_db()
+    try:
+        await _ensure_nkn_wallets_table(db)
+        for row in rows:
+            await db.execute(
+                """
+                INSERT INTO nkn_wallets (
+                    wallet_fingerprint, folder_name, wallet_json_enc, wallet_pswd_enc, address, state, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, 'AVAILABLE', datetime('now'))
+                ON CONFLICT(wallet_fingerprint) DO UPDATE SET
+                    folder_name = excluded.folder_name,
+                    wallet_json_enc = excluded.wallet_json_enc,
+                    wallet_pswd_enc = excluded.wallet_pswd_enc,
+                    address = excluded.address,
+                    updated_at = datetime('now')
+                """,
+                (
+                    row["wallet_fingerprint"],
+                    row["folder_name"],
+                    encrypt_value(row["wallet_json"]),
+                    encrypt_value(row["wallet_pswd"]),
+                    row["address"],
+                ),
+            )
+        await db.commit()
+        return len(rows)
+    finally:
+        await db.close()
+
 
 async def list_myst_wallets() -> list[dict[str, Any]]:
     db = await _get_db()
@@ -2559,6 +2666,25 @@ async def list_myst_wallets() -> list[dict[str, Any]]:
                    node_identity, runtime_status, public_ip, last_heartbeat_at,
                    quarantined_reason, imported_at, updated_at
             FROM myst_wallets
+            ORDER BY id DESC
+            """
+        )
+        return [dict(row) for row in await cursor.fetchall()]
+    finally:
+        await db.close()
+
+async def list_nkn_wallets() -> list[dict[str, Any]]:
+    db = await _get_db()
+    try:
+        await _ensure_nkn_wallets_table(db)
+        cursor = await db.execute(
+            """
+            SELECT id, wallet_fingerprint, folder_name, address, state,
+                   leased_to_worker_id, leased_to_client_id, release_reason,
+                   wallet_assignment_version, node_identity, runtime_status,
+                   public_ip, last_heartbeat_at, quarantined_reason,
+                   imported_at, updated_at
+            FROM nkn_wallets
             ORDER BY id DESC
             """
         )

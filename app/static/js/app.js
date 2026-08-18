@@ -1637,6 +1637,46 @@ const CP = (() => {
     }
   }
 
+  function arrayBufferToBase64(buf) {
+    const bytes = new Uint8Array(buf);
+    let raw = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+      raw += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    }
+    return btoa(raw);
+  }
+
+  async function importNknWalletZip(inputId = 'nkn-wallet-file') {
+    const input = document.getElementById(inputId);
+    const status = document.getElementById('nkn-wallet-import-status');
+    if (!input || !input.files || !input.files.length) {
+      toast('Choose a wallet zip first', 'warning');
+      return;
+    }
+    let buf = null;
+    try {
+      buf = await input.files[0].arrayBuffer();
+    } catch (err) {
+      toast(`Could not read file: ${err.message}`, 'error');
+      return;
+    }
+    if (!buf || !buf.byteLength) {
+      toast('Wallet zip is empty', 'warning');
+      return;
+    }
+    if (status) status.textContent = 'Importing...';
+    try {
+      const res = await api('/api/admin/nkn-wallets/import', { method: 'POST', body: { archive_b64: arrayBufferToBase64(buf) } });
+      input.value = '';
+      if (status) status.textContent = '';
+      toast(`Imported ${res.imported || 0} wallet${res.imported === 1 ? '' : 's'}`, 'success');
+      await loadNknWallets();
+    } catch (err) {
+      if (status) status.textContent = '';
+      toast(`Import failed: ${err.message}`, 'error');
+    }
+  }
+
   let _mystWalletRows = [];
   let _mystWalletPage = 1;
   let _mystWalletSort = { key: 'id', dir: -1 };
@@ -1703,6 +1743,7 @@ const CP = (() => {
       <tr>
         <td>${escapeHtml(row.id)}</td>
         <td class="mono-cell address-cell" title="${escapeHtml(row.address || '')}">${escapeHtml(row.address || '-')}</td>
+        <td>${escapeHtml(row.public_ip || '-')}</td>
         <td><span class="badge badge-category">${escapeHtml(row.state || '')}</span></td>
         <td><span class="badge ${row.funding === 'FUNDED' ? 'badge-running' : 'badge-error'}">${escapeHtml(row.funding || '')}</span></td>
         <td>${escapeHtml(row.leased_to_client_id || '-')}</td>
@@ -1778,7 +1819,7 @@ const CP = (() => {
       }
       return;
     }
-    const headers = ['id','address','state','funding','leased_to_client_id','release_reason','wallet_assignment_version','last_heartbeat_at'];
+    const headers = ['id','address','public_ip','state','funding','leased_to_client_id','release_reason','wallet_assignment_version','last_heartbeat_at'];
     const csv = [headers.join(','), ...filteredMystWalletRows().map(row => headers.map(key => `"${String(row[key] ?? '').replaceAll('"', '""')}"`).join(','))].join('\n');
     downloadTextFile(csv, 'myst-wallet-filtered.csv', 'text/csv');
   }
@@ -1815,6 +1856,116 @@ const CP = (() => {
       status.style.display = 'block';
       status.innerHTML = `<div class="empty-state-title">Could not load wallets</div><div class="empty-state-text">${escapeHtml(err.message)}</div>`;
     }
+  }
+
+  let _nknWalletRows = [];
+  let _nknWalletPage = 1;
+  let _nknWalletSort = { key: 'id', dir: -1 };
+  const _nknWalletPageSize = 20;
+
+  function nknWalletFilters() {
+    return {
+      state: (document.getElementById('nkn-wallet-state-filter')?.value || '').trim(),
+      query: (document.getElementById('nkn-wallet-search')?.value || '').trim().toLowerCase(),
+    };
+  }
+
+  function renderNknWalletCounts(rows, filtered) {
+    const el = document.getElementById('nkn-wallet-counts');
+    if (!el) return;
+    const counts = {
+      total: rows.length,
+      available: rows.filter(r => r.state === 'AVAILABLE').length,
+      leased: rows.filter(r => r.state === 'LEASED').length,
+      quarantined: rows.filter(r => r.state === 'QUARANTINED').length,
+      filtered: filtered.length,
+    };
+    el.innerHTML = Object.entries(counts).map(([k, v]) =>
+      `<span class="badge badge-category">${escapeHtml(k)}: ${escapeHtml(v)}</span>`
+    ).join('');
+  }
+
+  function renderNknWalletRows(rows) {
+    const list = document.getElementById('nkn-wallet-list');
+    const status = document.getElementById('nkn-wallet-refresh-status');
+    if (!list || !status) return;
+    const filters = nknWalletFilters();
+    const filtered = rows.filter(row => {
+      if (filters.state && row.state !== filters.state) return false;
+      if (!filters.query) return true;
+      const haystack = [row.id, row.wallet_fingerprint, row.folder_name, row.address, row.leased_to_client_id, row.node_identity, row.runtime_status, row.public_ip].join(' ').toLowerCase();
+      return haystack.includes(filters.query);
+    });
+    filtered.sort((a, b) => String(a[_nknWalletSort.key] ?? '').localeCompare(String(b[_nknWalletSort.key] ?? ''), undefined, {numeric: true}) * _nknWalletSort.dir);
+    renderNknWalletCounts(rows, filtered);
+    if (!filtered.length) {
+      list.innerHTML = '';
+      const pager = document.getElementById('nkn-wallet-pager');
+      if (pager) pager.innerHTML = '';
+      status.className = 'empty-state';
+      status.style.display = 'block';
+      status.innerHTML = rows.length
+        ? '<div class="empty-state-title">No wallets match the filters</div>'
+        : '<div class="empty-state-title">No wallets imported yet</div><div class="empty-state-text">Choose a zip and import wallet folders.</div>';
+      return;
+    }
+    const pages = Math.max(1, Math.ceil(filtered.length / _nknWalletPageSize));
+    if (_nknWalletPage > pages) _nknWalletPage = pages;
+    const visible = filtered.slice((_nknWalletPage - 1) * _nknWalletPageSize, _nknWalletPage * _nknWalletPageSize);
+    status.style.display = 'none';
+    list.innerHTML = visible.map((row) => `
+      <tr>
+        <td>${escapeHtml(row.id)}</td>
+        <td>${escapeHtml(row.folder_name || '-')}</td>
+        <td class="mono-cell address-cell" title="${escapeHtml(row.address || '')}">${escapeHtml(row.address || '-')}</td>
+        <td>${escapeHtml(row.public_ip || '-')}</td>
+        <td><span class="badge badge-category">${escapeHtml(row.state || '')}</span></td>
+        <td>${escapeHtml(row.leased_to_client_id || '-')}</td>
+        <td>${escapeHtml(row.node_identity || '-')}</td>
+        <td>${escapeHtml(row.last_heartbeat_at || '-')}</td>
+      </tr>
+    `).join('');
+    const pager = document.getElementById('nkn-wallet-pager');
+    if (pager) {
+      pager.innerHTML = `
+        <button class="btn btn-ghost btn-sm" data-action="nknWalletPage" data-a1="prev" ${_nknWalletPage <= 1 ? 'disabled' : ''}>Prev</button>
+        <span style="font-size:0.8rem;color:var(--text-muted);">Page ${_nknWalletPage} / ${pages} (${filtered.length})</span>
+        <button class="btn btn-ghost btn-sm" data-action="nknWalletPage" data-a1="next" ${_nknWalletPage >= pages ? 'disabled' : ''}>Next</button>`;
+    }
+  }
+
+  async function loadNknWallets() {
+    const list = document.getElementById('nkn-wallet-list');
+    const status = document.getElementById('nkn-wallet-refresh-status');
+    if (!list || !status) return;
+    status.style.display = 'none';
+    status.innerHTML = '';
+    try {
+      const rows = await api('/api/admin/nkn-wallets');
+      _nknWalletRows = rows;
+      renderNknWalletRows(rows);
+    } catch (err) {
+      list.innerHTML = '';
+      status.className = 'empty-state';
+      status.style.display = 'block';
+      status.innerHTML = `<div class="empty-state-title">Could not load wallets</div><div class="empty-state-text">${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  function applyNknWalletFilters() {
+    _nknWalletPage = 1;
+    renderNknWalletRows(_nknWalletRows);
+  }
+
+  function nknWalletPage(dir) {
+    if (dir === 'prev') _nknWalletPage = Math.max(1, _nknWalletPage - 1);
+    if (dir === 'next') _nknWalletPage += 1;
+    renderNknWalletRows(_nknWalletRows);
+  }
+
+  function sortNknWallets(key) {
+    _nknWalletSort = { key, dir: _nknWalletSort.key === key ? -_nknWalletSort.dir : 1 };
+    renderNknWalletRows(_nknWalletRows);
   }
 
   // -----------------------------------------------------------
@@ -3920,6 +4071,18 @@ const CP = (() => {
         });
         loadMystWallets();
         break;
+      case 'nkn-wallet':
+        ['nkn-wallet-state-filter', 'nkn-wallet-search'].forEach(id => {
+          const el = document.getElementById(id);
+          if (!el) return;
+          el.addEventListener(id === 'nkn-wallet-search' ? 'input' : 'change', applyNknWalletFilters);
+        });
+        document.querySelectorAll('[data-nkn-sort]').forEach(el => {
+          el.style.cursor = 'pointer';
+          el.addEventListener('click', () => sortNknWallets(el.dataset.nknSort));
+        });
+        loadNknWallets();
+        break;
       case 'setup':
         initWizard();
         break;
@@ -3984,10 +4147,15 @@ const CP = (() => {
     saveEnvSettings,
     toggleEnvSecret,
     importMystWalletFile,
+    importNknWalletZip,
     loadMystWallets,
+    loadNknWallets,
     applyMystWalletFilters,
+    applyNknWalletFilters,
     mystWalletPage,
+    nknWalletPage,
     sortMystWallets,
+    sortNknWallets,
     exportMystWallets,
     updateMystWallet,
     filterCatalog,
