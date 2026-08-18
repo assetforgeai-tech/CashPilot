@@ -68,7 +68,7 @@ def code_attributes_url(code: str, url: str) -> bool:
     `"grass" in "https://app.grass.io/register"` is a hostname coincidence,
     not attribution. The code counts only where a provider would read it: a
     query-parameter value (?ref=CODE), a bare query key (?CODE -- spide's
-    shape), or a whole path segment (/i/CODE -- uprock, earnapp, honeygain).
+    shape), or a whole path segment (/i/CODE -- uprock, honeygain).
     """
     parts = urlsplit(url)
     for key, value in parse_qsl(parts.query, keep_blank_values=True):

@@ -157,17 +157,6 @@ class TestParsingRealShapes:
         with patch.object(collector, "_get_client", return_value=client):
             return asyncio.run(collector.collect())
 
-    def test_bitping_reads_balance(self):
-        from app.collectors.bitping import BitpingCollector
-
-        fx = _fixture("bitping")
-        c = BitpingCollector(email="a@b.c", password="x")
-        c._token = "already-authenticated"
-        out = self._run(c, [fx["sample"]])
-        assert out.error is None
-        assert out.balance == fx["parsed"]
-        assert out.currency == fx["currency"]
-
     def test_uprock_is_manual_only_and_has_no_runtime_collector_contract(self):
         from app import collectors
 
@@ -388,9 +377,6 @@ class TestBuildingASingleCollector:
 
     def test_a_partially_configured_service_names_only_what_is_absent(self):
         from app import collectors
-
-        _, missing = collectors.build_one("bitping", {"bitping_email": "a@b.c"})
-        assert missing == ["bitping_password"]
 
     def test_an_unknown_slug_yields_nothing_and_no_missing_keys(self):
         """Nothing is missing because nothing was ever required."""

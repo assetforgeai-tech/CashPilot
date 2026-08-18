@@ -1,4 +1,4 @@
-# CLAUDE.md — CashPilot
+# CLAUDE.md â€” CashPilot
 
 ## Overview
 Self-hosted passive income platform with a web UI that guides setup, deploys Docker containers for 16+ services, and tracks earnings from 40+ bandwidth sharing, DePIN, storage, and GPU compute services in a unified dashboard.
@@ -44,7 +44,7 @@ Two containers: `cashpilot-ui` (port 8080, web dashboard + earnings collection) 
 ### Adding a New Service
 
 1. Create `services/{category}/{slug}.yml` following `_schema.yml`
-2. **Include a `cashout` section** in the YAML — every service must define how users can cash out (API endpoint, redirect URL, or manual instructions). This is mandatory.
+2. **Include a `cashout` section** in the YAML â€” every service must define how users can cash out (API endpoint, redirect URL, or manual instructions). This is mandatory.
 3. Manually update README.md service tables and `docs/guides/{slug}.md`
 4. Add a collector in `app/collectors/{slug}.py` and register it in `__init__.py`
 5. Submit a PR (one service per PR)
@@ -76,7 +76,6 @@ cashpilot/
       js/app.js         # Vanilla JS, CP namespace, Chart.js, wizard state machine
   services/             # YAML service definitions (SINGLE SOURCE OF TRUTH)
     _schema.yml         # Schema documentation
-    bandwidth/          # 12 services (honeygain, iproyal, earnapp, etc.)
     depin/              # 10 services (grass, gradient, teneo, etc.)
     storage/            # 1 service (storj)
     compute/            # 4 services (vast-ai, salad, nosana, golem)
@@ -101,7 +100,7 @@ cashpilot/
 
 ## UI + Worker Architecture
 
-CashPilot is split into two **always-separate** components. The UI never touches Docker — all container operations go through workers.
+CashPilot is split into two **always-separate** components. The UI never touches Docker â€” all container operations go through workers.
 
 ### Components
 
@@ -111,8 +110,8 @@ CashPilot is split into two **always-separate** components. The UI never touches
 | **CashPilot Worker** | Agent running on each server that has Docker. **Must have Docker socket access**. Manages local containers, reports status to UI via heartbeats. Has a minimal config page. |
 
 Two separate Docker images:
-- **`drumsergio/cashpilot`** — UI image: FastAPI, Jinja2, templates, static assets, collectors, APScheduler. **No Docker SDK.**
-- **`drumsergio/cashpilot-worker`** — Worker image: FastAPI (minimal), Docker SDK, heartbeat timer, tiny config page. No collectors, no templates.
+- **`drumsergio/cashpilot`** â€” UI image: FastAPI, Jinja2, templates, static assets, collectors, APScheduler. **No Docker SDK.**
+- **`drumsergio/cashpilot-worker`** â€” Worker image: FastAPI (minimal), Docker SDK, heartbeat timer, tiny config page. No collectors, no templates.
 
 **There is no standalone mode.** Every server that runs Docker containers needs a worker. The UI is a pure dashboard/scheduler.
 
@@ -128,18 +127,18 @@ Two separate Docker images:
 ### Deployment Topology
 
 ```
-┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
-│  Server A        │     │  Server B        │     │  Server C        │
-│  CashPilot UI    │◄────│  CashPilot Worker│     │  CashPilot Worker│
-│  CashPilot Worker│◄────│  Reports health  │     │  Reports health  │
-│  Port 8080 (UI)  │     │  Port 8081       │     │  Port 8081       │
-│  Port 8081 (wkr) │     │                  │     │                  │
-└──────────────────┘     └──────────────────┘     └──────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”     â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”     â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚  Server A        â”‚     â”‚  Server B        â”‚     â”‚  Server C        â”‚
+â”‚  CashPilot UI    â”‚â—„â”€â”€â”€â”€â”‚  CashPilot Workerâ”‚     â”‚  CashPilot Workerâ”‚
+â”‚  CashPilot Workerâ”‚â—„â”€â”€â”€â”€â”‚  Reports health  â”‚     â”‚  Reports health  â”‚
+â”‚  Port 8080 (UI)  â”‚     â”‚  Port 8081       â”‚     â”‚  Port 8081       â”‚
+â”‚  Port 8081 (wkr) â”‚     â”‚                  â”‚     â”‚                  â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜     â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜     â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 ### Authentication & Credential Flow
 
-- **Per-worker fleet keys** (v1.0.0+): `CASHPILOT_API_KEY` is the shared **enrollment/bootstrap** key. On a worker's first heartbeat the UI issues it a unique key (stored encrypted on the UI, returned once, persisted on the worker under `/data/.worker_key`); thereafter each worker authenticates — in both directions — with its own key, and the shared key is rejected for an enrolled worker.
+- **Per-worker fleet keys** (v1.0.0+): `CASHPILOT_API_KEY` is the shared **enrollment/bootstrap** key. On a worker's first heartbeat the UI issues it a unique key (stored encrypted on the UI, returned once, persisted on the worker under `/data/.worker_key`); thereafter each worker authenticates â€” in both directions â€” with its own key, and the shared key is rejected for an enrolled worker.
 - Credentials are Docker-native: UI sends full container spec (image, env vars, volumes, ports) to worker on deploy. Worker passes to Docker API. Docker stores env vars in container config. Restarts preserve env vars natively.
 
 ### Worker Environment Variables
@@ -201,13 +200,13 @@ filtered on `service` silently matched nothing in production. Use
 
 ## CI/CD
 
-### `release.yml` — Auto Release
+### `release.yml` â€” Auto Release
 
-Triggers on push to `main` (paths: `app/`, `services/`, `Dockerfile*`, `requirements*.txt`). Chooses the version bump from conventional-commit markers since the last tag — **major** on a `BREAKING CHANGE` footer or `type!:` subject, **minor** on `feat:`, else **patch** — then creates an annotated git tag + GitHub Release. Skips if commit message contains `[skip ci]`.
+Triggers on push to `main` (paths: `app/`, `services/`, `Dockerfile*`, `requirements*.txt`). Chooses the version bump from conventional-commit markers since the last tag â€” **major** on a `BREAKING CHANGE` footer or `type!:` subject, **minor** on `feat:`, else **patch** â€” then creates an annotated git tag + GitHub Release. Skips if commit message contains `[skip ci]`.
 
 **CRITICAL: NEVER manually create tags or GitHub releases.** The workflow handles version bumping automatically. Manual tags cause `already_exists` conflicts and skip Docker builds.
 
-### `build.yml` — Docker Build & Push
+### `build.yml` â€” Docker Build & Push
 
 Triggers on version tags (`v*`). Lints with ruff, builds multi-arch (amd64 + arm64) via QEMU + Buildx, pushes to Docker Hub.
 
@@ -224,7 +223,7 @@ Triggers on version tags (`v*`). Lints with ruff, builds multi-arch (amd64 + arm
 - **Collection interval**: 1 hour. Earnings cached in SQLite, served instantly.
 - **Health check deduplication**: Multi-instance services record only one health event per slug per check cycle (best status wins).
 - **Google Fonts**: Use async preload pattern to avoid blocking page render.
-- **First earnings baseline**: a platform's FIRST reading has no predecessor, so it contributes nothing to any earned figure — the delta is only taken when a previous reading exists in the same currency. No synthetic row is written, and none should be: inventing a prior-day balance would make the first real reading look like a gain.
+- **First earnings baseline**: a platform's FIRST reading has no predecessor, so it contributes nothing to any earned figure â€” the delta is only taken when a previous reading exists in the same currency. No synthetic row is written, and none should be: inventing a prior-day balance would make the first real reading look like a gain.
 
 ### Service-Specific: MystNodes / Mysterium
 
@@ -232,34 +231,33 @@ Triggers on version tags (`v*`). Lints with ruff, builds multi-arch (amd64 + arm
 - Node identity lives in Docker volume (`mysterium-data:/var/lib/mysterium-node/keystore/`). Deleting volume = new identity.
 - Registration is blockchain-based (Polygon). Hermes "internal error" = temporary server issue.
 - Image: `mysteriumnetwork/myst` (NOT `mysteriumnet/myst`).
-- **Needs `/dev/net/tun`, not just `NET_ADMIN`.** Without the device the node starts, registers and advertises normally but cannot carry wireguard/dvpn traffic — so it looks healthy, earns nothing, and MystNodes emails "unable to track its status". Diagnose with `curl -s http://127.0.0.1:4050/node/monitoring-agent-statuses` (look for `tun_device_problem`) and `docker exec <container> ls -l /dev/net/tun`. **Fixed in v1.5.1+:** the catalog declares it (`docker.devices` in `services/bandwidth/mysterium.yml`), so a CashPilot-deployed container gets it automatically; only containers created before that need recreating. The device ceiling in `app/worker_api.py` (`_ALLOWED_DEVICES`) is `/dev/net/tun` alone, and a service may only request what its own catalog entry declares. See `docs/guides/mysterium.md` for the full runbook.
+- **Needs `/dev/net/tun`, not just `NET_ADMIN`.** Without the device the node starts, registers and advertises normally but cannot carry wireguard/dvpn traffic â€” so it looks healthy, earns nothing, and MystNodes emails "unable to track its status". Diagnose with `curl -s http://127.0.0.1:4050/node/monitoring-agent-statuses` (look for `tun_device_problem`) and `docker exec <container> ls -l /dev/net/tun`. **Fixed in v1.5.1+:** the catalog declares it (`docker.devices` in `services/bandwidth/mysterium.yml`), so a CashPilot-deployed container gets it automatically; only containers created before that need recreating. The device ceiling in `app/worker_api.py` (`_ALLOWED_DEVICES`) is `/dev/net/tun` alone, and a service may only request what its own catalog entry declares. See `docs/guides/mysterium.md` for the full runbook.
 - A container recreate is safe: the identity lives in the mounted data dir, not the container. Always confirm the address is unchanged afterwards via `curl -s http://127.0.0.1:4050/identities`.
 
 ## Collector Implementation Status
 
 Working collectors (15 total, in `app/collectors/__init__.py` `COLLECTOR_MAP`):
-- **Honeygain** — JWT auth, `/v1/users/tokens` + `/v1/users/balances`
-- **EarnApp** — XSRF rotation + cookie auth, `/money`. Auto-redeem: Amazon ($50), Wise ($10), PayPal ($10)
-- **MystNodes** — Cloud API (`my.mystnodes.com/api/v2`), email/password auth. Per-node earnings via `GET /api/v2/node`
-- **Traffmonetizer** — JWT token, `data.traffmonetizer.com/api/app_user/get_balance`
-- **IPRoyal** — Email/password auth
-- **Repocket** — Firebase auth (Google Identity Toolkit)
-- **Bitping** — JWT cookie auth, `/api/v2/payouts/earnings`
-- **Earn.fm** — Supabase auth, `/v2/harvester/view_balance`
-- **PacketStream** — Manual JWT cookie, HTML scraping `window.userData`
-- **ProxyRack** — API key auth, POST `/api/balance`
-- **Storj** — API URL-based
-- **Grass** — Bearer token from localStorage, `api.getgrass.io`. GRASS token converted via CoinGecko
-- **Bytelixir** — Laravel session cookie (~3.5h), `dash.bytelixir.com`. hCaptcha blocks automated login
-- **Anyone Protocol** — AO smart-contract dry-run (relay-rewards process) per relay fingerprint, ANYONE price via CoinGecko
-- **Salad** — `auth` cookie (ASP.NET Core double-submit XSRF), `app-api.salad.com/api/v1/profile/balance`
+- **Honeygain** â€” JWT auth, `/v1/users/tokens` + `/v1/users/balances`
+- **MystNodes** â€” Cloud API (`my.mystnodes.com/api/v2`), email/password auth. Per-node earnings via `GET /api/v2/node`
+- **Traffmonetizer** â€” JWT token, `data.traffmonetizer.com/api/app_user/get_balance`
+- **IPRoyal** â€” Email/password auth
+- **Repocket** â€” Firebase auth (Google Identity Toolkit)
+- **Bitping** â€” JWT cookie auth, `/api/v2/payouts/earnings`
+- **Earn.fm** â€” Supabase auth, `/v2/harvester/view_balance`
+- **PacketStream** â€” Manual JWT cookie, HTML scraping `window.userData`
+- **ProxyRack** â€” API key auth, POST `/api/balance`
+- **Storj** â€” API URL-based
+- **Grass** â€” Bearer token from localStorage, `api.getgrass.io`. GRASS token converted via CoinGecko
+- **Bytelixir** â€” Laravel session cookie (~3.5h), `dash.bytelixir.com`. hCaptcha blocks automated login
+- **Anyone Protocol** â€” AO smart-contract dry-run (relay-rewards process) per relay fingerprint, ANYONE price via CoinGecko
+- **Salad** â€” `auth` cookie (ASP.NET Core double-submit XSRF), `app-api.salad.com/api/v1/profile/balance`
 
 ### Per-Node/Per-Device Earnings
 
 | Service | Per-Device Earnings | Notes |
 |---------|:------------------:|-------|
 | MystNodes | **Yes** | `GET /api/v2/node` returns per-node 30d MYST earnings |
-| ProxyRack | Bandwidth only | `POST /api/bandwidth` with `device_id` — no per-device USD |
+| ProxyRack | Bandwidth only | `POST /api/bandwidth` with `device_id` â€” no per-device USD |
 | All others | No | Account-level balance only |
 
 ### API/Dashboard Access Gotchas
@@ -305,7 +303,7 @@ Base URL: `https://api.bringyour.com`
 
 | Method | Endpoint | Auth | Purpose |
 |--------|----------|------|---------|
-| `POST` | `/auth/login-with-password` | None | Login → `{network:{by_jwt:"..."}}` |
+| `POST` | `/auth/login-with-password` | None | Login â†’ `{network:{by_jwt:"..."}}` |
 | `GET` | `/auth/refresh` | Bearer JWT | Refresh token |
 | `GET` | `/account/referral-code` | Bearer JWT | Returns referral code + total referrals |
 
@@ -319,7 +317,7 @@ Base URL: `https://api.bringyour.com`
 
 - One PR per feature or fix
 - Service YAMLs must follow `services/_schema.yml`
-- Never hardcode service-specific logic in `app/` — belongs in YAML or collector
+- Never hardcode service-specific logic in `app/` â€” belongs in YAML or collector
 - Keep Docker image under 100 MB
 - All Python code must pass `ruff` linting
 
@@ -331,3 +329,4 @@ Base URL: `https://api.bringyour.com`
 - Android service worker
 
 *Generated by [LynxPrompt](https://lynxprompt.com) CLI*
+

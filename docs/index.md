@@ -35,7 +35,7 @@ It supports both **Docker-based services** (deployed and managed automatically) 
 
     ---
 
-Deploy 18 provider runtimes with a single click from the browser.
+Deploy 15 provider runtimes with a single click from the browser.
 
 -   :material-chart-line: **Real-Time Earnings Dashboard**
 
@@ -61,7 +61,7 @@ Deploy 18 provider runtimes with a single click from the browser.
 
     All credentials encrypted at rest with Fernet symmetric encryption.
 
--   :material-view-grid: **18 Providers, 2 Categories**
+-   :material-view-grid: **15 Providers, 2 Categories**
 
     ---
 
@@ -108,8 +108,8 @@ Then open [http://localhost:8080](http://localhost:8080) and follow the setup wi
 | Earnings dashboard | **Yes** | No | No | No | No |
 | Historical charts | **Yes** | No | No | No | No |
 | Multi-node fleet management | **Yes** | No | No | No | No |
-| Service catalog with guides | **18 providers** | 17 | 8 | 14 | 8 |
-| Automated earnings collection | **11 collectors** | 0 | 0 | 0 | 0 |
+| Service catalog with guides | **15 providers** | 17 | 8 | 14 | 8 |
+| Automated earnings collection | **9 collectors** | 0 | 0 | 0 | 0 |
 | Multi-arch (amd64 + arm64) | **Yes** | Yes | Yes | No | No |
 | Credential encryption | **Yes** | No | No | No | No |
 | Compose export | **Yes** | Yes | Yes | Yes | Yes |

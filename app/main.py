@@ -107,13 +107,6 @@ _AUTO_DEPLOY_LOCKS: dict[int, asyncio.Lock] = {}
 _AUTO_DEPLOY_ACTIVE: set[int] = set()
 _WORKER_HEARTBEAT_STREAKS: dict[int, int] = {}
 _proxy_pool_last_recheck: datetime | None = None
-EARNAPP_BLOCKED_IP_REASON = "earnapp_blocked_ip"
-EARNAPP_MAX_EARNING_ATTEMPTS = 10
-EARNAPP_STATUS_POLLS = 18
-EARNAPP_MACOS_STATUS_POLLS = 72
-EARNAPP_SDK_ID_POLLS = 36
-EARNAPP_MACOS_SDK_ID_POLLS = 96
-
 def _auto_deploy_settings(config: dict[str, str]) -> dict[str, Any]:
     enabled = str(config.get("cashpilot_auto_deploy_enabled", "")).strip().lower() in {"1", "true", "yes", "on"}
     delay = int(str(config.get("cashpilot_auto_deploy_delay_seconds", "10") or "10").strip() or 10)
@@ -2050,149 +2043,6 @@ async def _resolve_pawns_proxy_protocol(proxy: dict[str, Any]) -> dict[str, Any]
         proxy["protocol"] = detected
     return proxy
 
-def _earnapp_host_runtime_for_proxy(proxy: dict[str, Any]) -> str:
-    return "qemu_macos" if _proxy_location_is_vietnam(proxy) else "qemu_systemd"
-
-def _earnapp_cookies(creds: dict[str, Any]) -> dict[str, str]:
-    cookies = {
-        "auth": "1",
-        "auth-method": "google",
-        "oauth-refresh-token": str(creds.get("oauth_refresh_token") or ""),
-        "oauth-token": str(creds.get("oauth_token") or ""),
-        "xsrf-token": str(creds.get("xsrf_token") or ""),
-        "brd_sess_id": str(creds.get("brd_sess_id") or ""),
-        "cg_uuid": str(creds.get("cg_uuid") or ""),
-    }
-    return {k: v for k, v in cookies.items() if v}
-
-def _earnapp_headers(creds: dict[str, Any]) -> dict[str, str]:
-    xsrf = str(creds.get("xsrf_token") or "")
-    headers = {
-        "accept": "application/json, text/plain, */*",
-        "content-type": "application/json",
-        "origin": "https://earnapp.com",
-        "referer": "https://earnapp.com/dashboard/me/passive-income",
-        "user-agent": "Mozilla/5.0",
-        "x-requested-with": "XMLHttpRequest",
-    }
-    if xsrf:
-        headers.update({"csrf-token": xsrf, "xsrf-token": xsrf, "x-csrf-token": xsrf, "x-xsrf-token": xsrf})
-    return headers
-
-def _earnapp_devices(payload: Any) -> list[dict[str, Any]]:
-    if isinstance(payload, list):
-        return [item for item in payload if isinstance(item, dict)]
-    if isinstance(payload, dict):
-        for key in ("devices", "items", "data", "list"):
-            value = payload.get(key)
-            if isinstance(value, list):
-                return [item for item in value if isinstance(item, dict)]
-    return []
-
-def _earnapp_device_matches(device: dict[str, Any], sdk_id: str) -> bool:
-    title = str(device.get("title") or device.get("name") or device.get("uuid") or "").strip()
-    uuid = str(device.get("uuid") or "").strip()
-    if not title.startswith("sdk-") and not uuid.startswith("sdk-"):
-        return False
-    needle = str(sdk_id or "").strip()
-    if not needle:
-        return False
-    short = needle.rsplit("-", 1)[-1][-8:]
-    return needle in {title, uuid} or title.endswith(short) or uuid.endswith(short)
-
-def _earnapp_device_has_earning_evidence(device: dict[str, Any] | None) -> bool:
-    if not device or device.get("banned"):
-        return False
-    for key in ("uptime", "total_uptime", "earned", "earned_total"):
-        try:
-            if float(device.get(key) or 0) > 0:
-                return True
-        except (TypeError, ValueError):
-            continue
-    return False
-
-async def _earnapp_remove_dashboard_device(creds: dict[str, Any], uuid: str) -> None:
-    if not uuid:
-        return
-    async with httpx.AsyncClient(timeout=30, cookies=_earnapp_cookies(creds), headers=_earnapp_headers(creds)) as client:
-        resp = await client.delete(f"https://earnapp.com/dashboard/api/device/{uuid}")
-        if resp.status_code < 400:
-            return
-        await client.post("https://earnapp.com/dashboard/api/hide_device", json={"uuid": uuid})
-
-async def _earnapp_fetch_device(creds: dict[str, Any], sdk_id: str) -> dict[str, Any] | None:
-    async with httpx.AsyncClient(timeout=30, cookies=_earnapp_cookies(creds), headers=_earnapp_headers(creds)) as client:
-        resp = await client.get("https://earnapp.com/dashboard/api/devices", params={"appid": "earnapp", "version": "1.627.783"})
-        resp.raise_for_status()
-        for device in _earnapp_devices(resp.json()):
-            if _earnapp_device_matches(device, sdk_id):
-                return device
-    return None
-
-async def _wait_for_earnapp_sdk_id(worker_id: int, instance_slug: str, *, polls: int = EARNAPP_SDK_ID_POLLS) -> str:
-    for _ in range(polls):
-        payload = await _proxy_worker_logs(worker_id, instance_slug, lines=1000)
-        matches = re.findall(r"sdk-[A-Za-z0-9_-]+", payload.get("logs", ""))
-        if matches:
-            return matches[-1]
-        await asyncio.sleep(5)
-    return ""
-
-async def _earnapp_status_after_link(worker_id: int, instance_slug: str, spec: dict[str, Any]) -> tuple[str, dict[str, Any] | None]:
-    is_macos = spec.get("host_runtime") == "qemu_macos"
-    sdk_id = await _wait_for_earnapp_sdk_id(
-        worker_id,
-        instance_slug,
-        polls=EARNAPP_MACOS_SDK_ID_POLLS if is_macos else EARNAPP_SDK_ID_POLLS,
-    )
-    if not sdk_id:
-        return "", None
-    creds = spec.get("deploy_credentials") or {}
-    last_device: dict[str, Any] | None = None
-    polls = EARNAPP_MACOS_STATUS_POLLS if is_macos else EARNAPP_STATUS_POLLS
-    for _ in range(polls):
-        device = await _earnapp_fetch_device(creds, sdk_id)
-        if device and (_earnapp_device_has_earning_evidence(device) or device.get("banned")):
-            return sdk_id, device
-        if device:
-            last_device = device
-        await asyncio.sleep(10)
-    return sdk_id, last_device
-
-async def _deploy_earnapp_proxy_with_retry(
-    worker_id: int,
-    instance_slug: str,
-    spec: dict[str, Any],
-    *,
-    attempts: int = EARNAPP_MAX_EARNING_ATTEMPTS,
-) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any] | None]:
-    last_error = "EarnApp did not become earning"
-    for _ in range(max(1, attempts)):
-        attempt_spec = json.loads(json.dumps(spec))
-        proxy = await _proxy_for_worker_instance(worker_id, provider_slug="earnapp")
-        attempt_spec["proxy"] = proxy
-        attempt_spec["egress_mode"] = "proxy"
-        attempt_spec["host_runtime"] = _earnapp_host_runtime_for_proxy(proxy)
-        result = await _proxy_worker_deploy(worker_id, instance_slug, attempt_spec)
-        sdk_id, device = await _earnapp_status_after_link(worker_id, instance_slug, attempt_spec)
-        if not sdk_id or device is None:
-            if attempt_spec.get("host_runtime") == "qemu_macos":
-                return result, attempt_spec, None
-            continue
-        if _earnapp_device_has_earning_evidence(device):
-            return result, attempt_spec, device
-        proxy_id = int((proxy or {}).get("proxy_id") or 0)
-        if proxy_id:
-            await database.mask_proxy_for_provider(proxy_id, "earnapp", EARNAPP_BLOCKED_IP_REASON)
-            await database.set_worker_proxy_assignment(worker_id, None)
-        device_uuid = str((device or {}).get("uuid") or sdk_id)
-        with contextlib.suppress(Exception):
-            await _earnapp_remove_dashboard_device(attempt_spec.get("deploy_credentials") or {}, device_uuid)
-        with contextlib.suppress(Exception):
-            await _proxy_worker_command(worker_id, "remove", instance_slug)
-        last_error = f"EarnApp not earning on proxy {proxy_id or 'unknown'}"
-    raise HTTPException(status_code=409, detail=last_error)
-
 def _pawns_log_failure_reason(logs: str) -> str:
     text = str(logs or "").lower()
     if "ip_used" in text:
@@ -2305,7 +2155,7 @@ async def api_deploy(
     docker_conf = svc.get("docker", {})
     deploy_conf = svc.get("deploy", {}) or {}
     deploy_surface = _service_deploy_surface(svc)
-    if deploy_surface == "host_systemd" and slug != "earnapp":
+    if deploy_surface == "host_systemd":
         raise HTTPException(
             status_code=400,
             detail=(
@@ -2414,7 +2264,7 @@ async def api_deploy(
         spec["installer_manifest_url"] = manifest_url
         if deploy_conf.get("installer_platform"):
             spec["installer_platform"] = deploy_conf["installer_platform"]
-    deploy_credentials = _resolve_deploy_credentials(slug, svc, config, allow_missing=(slug == "earnapp"))
+    deploy_credentials = _resolve_deploy_credentials(slug, svc, config)
     if deploy_credentials:
         spec["deploy_credentials"] = deploy_credentials
     # Command: resolve ${VAR} placeholders
@@ -2466,8 +2316,6 @@ async def api_deploy(
         instance_spec.setdefault("labels", {})
         instance_spec["labels"]["cashpilot.provider"] = slug
         instance_spec["labels"]["cashpilot.instance_mode"] = mode
-        if slug == "earnapp":
-            instance_spec["image"] = "ubuntu:24.04"
         if slug == "earnfm" and mode == "direct":
             instance_spec.setdefault("env", {})["GODEBUG"] = "http2client=0"
             instance_spec["network_mode"] = "host"
@@ -2485,20 +2333,6 @@ async def api_deploy(
         if slug == "proxyrack" and mode in {"direct", "proxy"}:
             instance_env = instance_spec.setdefault("env", {})
             instance_env["UUID"] = secrets.token_hex(32).upper()
-        if slug == "earnapp" and mode == "proxy":
-            instance_spec["host_runtime"] = _earnapp_host_runtime_for_proxy(instance_spec.get("proxy") or {})
-            instance_spec["deploy_credentials"] = instance_spec.get("deploy_credentials") or {}
-        if slug == "earnapp":
-            leased_account: dict[str, Any] | None = None
-            with contextlib.suppress(Exception):
-                leased_account = await database.lease_earnapp_account(worker_id, instance_slug)
-            if leased_account:
-                merged_creds = dict(instance_spec.get("deploy_credentials") or {})
-                merged_creds.update({k: v for k, v in (leased_account.get("cookies") or {}).items() if v})
-                if leased_account.get("account_name"):
-                    merged_creds["earnapp_account_name"] = str(leased_account["account_name"])
-                instance_spec["deploy_credentials"] = merged_creds
-            _require_deploy_credentials(slug, svc, instance_spec.get("deploy_credentials") or {})
         if mode in {"direct", "proxy"}:
             instance_env = instance_spec.setdefault("env", {})
             if slug in _DEVICE_IDENTITY_ENV_KEYS and identity_worker is None:
@@ -2525,8 +2359,6 @@ async def api_deploy(
         try:
             if slug == "iproyal" and mode == "proxy":
                 result, instance_spec = await _deploy_iproyal_proxy_with_retry(worker_id, instance_slug, instance_spec)
-            elif slug == "earnapp" and mode == "proxy":
-                result, instance_spec, _device = await _deploy_earnapp_proxy_with_retry(worker_id, instance_slug, instance_spec)
             else:
                 result = await _proxy_worker_deploy(worker_id, instance_slug, instance_spec)
         except Exception:
@@ -4470,8 +4302,6 @@ async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
         slug = catalog_svc.get("slug", "")
         if not slug:
             continue
-        if slug == "earnapp":
-            continue
         svc = catalog.get_service(slug) or catalog_svc
         name = svc.get("name", slug) if svc else slug
         fields = collector_credential_fields(slug, svc)
@@ -5465,14 +5295,12 @@ async def api_fleet_api_key_reveal(request: Request) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 from app.routers import auth as auth_router  # noqa: E402
 from app.routers import pages as pages_router  # noqa: E402
-from app.routers import earnapp_accounts as earnapp_accounts_router  # noqa: E402
 from app.routers import myst_wallets as myst_wallets_router  # noqa: E402
 from app.routers import proxies as proxies_router  # noqa: E402
 from app.routers import users as users_router  # noqa: E402
 
 app.include_router(auth_router.router)
 app.include_router(pages_router.router)
-app.include_router(earnapp_accounts_router.router)
 app.include_router(myst_wallets_router.router)
 app.include_router(proxies_router.router)
 app.include_router(users_router.router)

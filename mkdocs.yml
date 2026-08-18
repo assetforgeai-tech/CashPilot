@@ -92,7 +92,7 @@ extra_css:
 
 # Files that live under docs/ but must NEVER be published.
 #
-# MkDocs builds EVERY file in docs_dir, whether or not it appears in nav — so
+# MkDocs builds EVERY file in docs_dir, whether or not it appears in nav â€” so
 # these three were live on the public site despite being in no menu:
 #   /GOAL/                -> HTTP 200
 #   /AUTOPILOT-WORKLOG/   -> HTTP 200
@@ -112,7 +112,7 @@ exclude_docs: |
   # They belong beside the code, where someone comparing the version they run
   # against the one they are about to pull will actually look, and their links
   # are written relative to the REPOSITORY root (../CHANGELOG.md,
-  # docs/guides/proxybase.md) rather than to the site tree — which is also why
+  # docs/guides/proxybase.md) rather than to the site tree â€” which is also why
   # --strict fails on them if they are published.
   changelog-0.x-handwritten.md
   # An internal working checklist, not a product page. It opens "Track status of
@@ -133,16 +133,13 @@ nav:
   - Service Guides:
     - Overview: guides/README.md
     - Bandwidth Sharing:
-      - Bitping: guides/bitping.md
       - Earn.fm: guides/earnfm.md
-      - EarnApp: guides/earnapp.md
       - IPRoyal Pawns: guides/iproyal.md
       - MystNodes: guides/mysterium.md
       - PacketStream: guides/packetstream.md
       - Proxies.sx: guides/proxies-sx.md
       - ProxyBase: guides/proxybase.md
       - ProxyBase Markets: guides/proxybase-xyz.md
-      - ProxyLite: guides/proxylite.md
       - ProxyRack: guides/proxyrack.md
       - Repocket: guides/repocket.md
       - Spide: guides/spide.md
@@ -171,3 +168,4 @@ nav:
     - Self-hosting operability review: research/self-hosting-operability.md
     - Fleet upgrades & onboarding (design): research/fleet-upgrades-and-onboarding.md
     - Earnings benchmarks (design): research/earnings-benchmarks.md
+

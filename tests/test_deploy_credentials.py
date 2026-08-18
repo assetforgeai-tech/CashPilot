@@ -57,16 +57,6 @@ def test_proxybase_deploy_and_dashboard_tokens_stay_separate():
     )
     assert deploy == {"deploy_access_token": "deploy-token"}
 
-def test_proxylite_user_id_maps_from_settings_to_worker_args():
-    svc = catalog.get_service("proxylite")
-
-    assert main._resolve_deploy_credentials(
-        "proxylite",
-        svc,
-        {"proxylite_user_id": "000000"},
-    ) == {"user_id": "000000"}
-
-
 def test_urnetwork_api_key_maps_from_settings_to_worker_args():
     svc = catalog.get_service("urnetwork")
 
@@ -90,7 +80,6 @@ def test_proxyrack_deploy_runtime_requires_only_api_key():
 
 def test_settings_deploy_credentials_cover_node_creation_inputs_from_runtime_scripts():
     expected = {
-        "bitping": {"email", "password"},
         "earnfm": {"token"},
         "grass": {"email", "password"},
         "packetstream": {"cid"},
@@ -112,7 +101,6 @@ def test_settings_deploy_credentials_cover_node_creation_inputs_from_runtime_scr
 
 def test_settings_collector_credentials_cover_provider_collector_notes():
     expected = {
-        "bitping": {"email", "password"},
         "earnfm": {"email", "password"},
         "iproyal": {"email", "password"},
         "packetstream": {"auth_token"},
@@ -141,7 +129,7 @@ def test_iproyal_runtime_and_collector_credentials_are_separate():
     }
 
 def test_node_count_only_providers_have_no_earnings_collector_inputs():
-    for slug in ("proxylite", "proxybase-xyz", "uprock", "wipter"):
+    for slug in ("proxybase-xyz", "uprock", "wipter"):
         svc = catalog.get_service(slug)
         assert (svc.get("collector") or {}).get("type") == "manual"
         assert collector_credential_fields(slug, svc) == []

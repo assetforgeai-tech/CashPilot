@@ -56,16 +56,6 @@ def test_deployed_services_hides_removed_catalog_container_statuses():
             "deployed_by": "worker",
             "category": "bandwidth",
         },
-        {
-            "slug": "bitping",
-            "name": "cashpilot-bitping",
-            "status": "running",
-            "image": "bitping/bitpingd:latest",
-            "cpu_percent": 1.0,
-            "memory_mb": 10.0,
-            "deployed_by": "worker",
-            "category": "bandwidth",
-        },
     ]
     with (
         TestClient(app, raise_server_exceptions=False) as client,
@@ -81,30 +71,29 @@ def test_deployed_services_hides_removed_catalog_container_statuses():
 
     assert resp.status_code == 200
     slugs = [row["slug"] for row in resp.json()]
-    assert "bitping" in slugs
     assert "adnade" not in slugs
 
 def test_provider_instances_group_under_canonical_provider_slug():
     containers = [
         {
-            "slug": "bitping-direct",
-            "provider": "bitping",
+            "slug": "earnfm-direct",
+            "provider": "earnfm",
             "instance_mode": "direct",
-            "name": "cashpilot-bitping-direct",
+            "name": "cashpilot-earnfm-direct",
             "status": "running",
-            "image": "bitping/bitpingd:latest",
+            "image": "fazalfarhan01/earnfm-client:latest",
             "cpu_percent": 1.0,
             "memory_mb": 10.0,
             "deployed_by": "worker",
             "category": "bandwidth",
         },
         {
-            "slug": "bitping-proxy",
-            "provider": "bitping",
+            "slug": "earnfm-proxy",
+            "provider": "earnfm",
             "instance_mode": "proxy",
-            "name": "cashpilot-bitping-proxy",
+            "name": "cashpilot-earnfm-proxy",
             "status": "running",
-            "image": "bitping/bitpingd:latest",
+            "image": "fazalfarhan01/earnfm-client:latest",
             "cpu_percent": 2.0,
             "memory_mb": 20.0,
             "deployed_by": "worker",
@@ -126,9 +115,9 @@ def test_provider_instances_group_under_canonical_provider_slug():
     assert resp.status_code == 200
     rows = resp.json()
     by_slug = {row["slug"]: row for row in rows}
-    assert len(rows) == 18
-    assert by_slug["bitping"]["instances"] == 2
-    assert {item["mode"] for item in by_slug["bitping"]["instance_details"]} == {"direct", "proxy"}
+    assert len(rows) == 15
+    assert by_slug["earnfm"]["instances"] == 2
+    assert {item["mode"] for item in by_slug["earnfm"]["instance_details"]} == {"direct", "proxy"}
 
 def test_dashboard_lists_active_catalog_providers_even_before_deploy():
     with (
@@ -145,10 +134,10 @@ def test_dashboard_lists_active_catalog_providers_even_before_deploy():
 
     assert resp.status_code == 200
     rows = resp.json()
-    assert len(rows) == 18
+    assert len(rows) == 15
     by_slug = {row["slug"]: row for row in rows}
-    assert by_slug["proxylite"]["container_status"] == "not_deployed"
-    assert by_slug["proxylite"]["collector_needs_setup"] is False
+    assert by_slug["proxybase-xyz"]["container_status"] == "not_deployed"
+    assert by_slug["proxybase-xyz"]["collector_needs_setup"] is False
 
 @pytest.mark.asyncio
 async def test_auto_deploy_uses_provider_default_mode():
@@ -161,6 +150,6 @@ async def test_auto_deploy_uses_provider_default_mode():
         return {"status": "deployed"}
 
     with patch("app.main.api_deploy", new=fake_deploy):
-        await main._auto_deploy_one(42, "bitping")
+        await main._auto_deploy_one(42, "earnfm")
 
-    assert seen == {"slug": "bitping", "mode": "both", "worker_id": 42}
+    assert seen == {"slug": "earnfm", "mode": "both", "worker_id": 42}

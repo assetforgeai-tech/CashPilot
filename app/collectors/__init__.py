@@ -10,7 +10,6 @@ import logging
 from typing import Any
 
 from app.collectors.base import BaseCollector, EarningsResult
-from app.collectors.bitping import BitpingCollector
 from app.collectors.earnfm import EarnFMCollector
 from app.collectors.grass import GrassCollector
 from app.collectors.iproyal import IPRoyalCollector
@@ -30,7 +29,6 @@ COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
     "traffmonetizer": TraffmonetizerCollector,
     "repocket": RepocketCollector,
     "proxyrack": ProxyRackCollector,
-    "bitping": BitpingCollector,
     "earnfm": EarnFMCollector,
     "packetstream": PacketStreamCollector,
     "proxies-sx": ProxiesSxCollector,
@@ -44,7 +42,6 @@ _COLLECTOR_ARGS: dict[str, list[str]] = {
     "traffmonetizer": ["email", "password"],
     "repocket": ["email", "password"],
     "proxyrack": ["api_key"],
-    "bitping": ["email", "password"],
     "earnfm": ["email", "password"],
     "packetstream": ["auth_token"],
     "proxies-sx": ["api_key"],
@@ -140,8 +137,6 @@ def service_credential_fields(
 
 def collector_credential_fields(slug: str, service: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """UI/config metadata for one collector, YAML-first with registry fallback."""
-    if slug == "earnapp":
-        return []
     return service_credential_fields(slug, "collector", service, fallback=True)
 
 # How long each credential actually lasts, and why it matters.

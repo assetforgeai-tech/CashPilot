@@ -3123,7 +3123,6 @@ const CP = (() => {
       renderEnvVars(envInfo, config);
       renderSettingsConfig(config);
       renderCollectors(collectorsMeta, config);
-      await loadEarnappAccounts();
       loadCredentialHealth();
     } catch (err) {
       // Say what happened. /api/env-info and /api/collectors/meta each carry
@@ -3154,8 +3153,6 @@ const CP = (() => {
       const el = document.getElementById(id);
       if (el) el.innerHTML = `<p style="color:var(--error);font-size:0.85rem;">${escapeHtml(message)}</p>`;
     });
-    const earnapp = document.getElementById('earnapp-account-result');
-    if (earnapp) earnapp.textContent = message;
   }
   function renderEnvVars(envInfo, config) {
     const container = document.getElementById('env-vars-container');
@@ -3375,155 +3372,6 @@ const CP = (() => {
     container.innerHTML = groupHtml + noCredentialHtml || '<p style="color:var(--text-muted);font-size:0.85rem;">No provider credential metadata available.</p>';
   }
 
-  function renderEarnappAccountCounts(counts) {
-    const el = document.getElementById('earnapp-account-counts');
-    if (!el) return;
-    const badges = {
-      total: counts.total || 0,
-      valid: counts.valid || 0,
-      disabled: counts.disabled || 0,
-      expired: counts.expired || 0,
-      auth_failed: counts.auth_failed || 0,
-      active_leases: counts.active_leases || 0,
-    };
-    el.innerHTML = Object.entries(badges)
-      .map(([key, value]) => `<span class="badge badge-category">${escapeHtml(key.replaceAll('_', ' '))}: ${escapeHtml(String(value))}</span>`)
-      .join('');
-  }
-
-  function renderEarnappAccounts(rows, counts) {
-    const section = document.getElementById('earnapp-account-pool');
-    const body = document.getElementById('earnapp-account-rows');
-    if (!section || !body) return;
-    section.style.display = '';
-    renderEarnappAccountCounts(counts || {});
-    const stateClass = state => {
-      const s = String(state || '').toUpperCase();
-      if (s === 'VALID') return 'badge-deployed';
-      if (s === 'DISABLED') return 'badge-category';
-      if (s === 'EXPIRED' || s === 'AUTH_FAILED') return 'badge-broken';
-      return 'badge-category';
-    };
-    body.innerHTML = (rows || []).map(row => `
-      <tr>
-        <td><input class="earnapp-account-select" type="checkbox" value="${escapeHtml(String(row.id))}"></td>
-        <td>
-          <div style="font-weight:600;">${escapeHtml(row.account_name || '')}</div>
-          <div style="font-size:0.75rem;color:var(--text-muted);">id ${escapeHtml(String(row.id))}</div>
-        </td>
-        <td><span class="badge ${stateClass(row.state)}">${escapeHtml(row.state || '')}</span></td>
-        <td>${escapeHtml(String(row.assigned_nodes ?? 0))}</td>
-        <td>${escapeHtml((fmtTimestamp(row.updated_at) || {}).text || row.updated_at || '')}</td>
-        <td>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;">
-            <button class="btn btn-ghost btn-sm" data-action="setEarnappAccountState" data-a1="${escapeHtml(String(row.id))}" data-a2="VALID" data-a3="${escapeHtml(row.account_name || '')}">Valid</button>
-            <button class="btn btn-ghost btn-sm" data-action="setEarnappAccountState" data-a1="${escapeHtml(String(row.id))}" data-a2="DISABLED" data-a3="${escapeHtml(row.account_name || '')}">Disable</button>
-            <button class="btn btn-ghost btn-sm" data-action="setEarnappAccountState" data-a1="${escapeHtml(String(row.id))}" data-a2="EXPIRED" data-a3="${escapeHtml(row.account_name || '')}">Expire</button>
-            <button class="btn btn-ghost btn-sm" data-action="setEarnappAccountState" data-a1="${escapeHtml(String(row.id))}" data-a2="AUTH_FAILED" data-a3="${escapeHtml(row.account_name || '')}">Auth failed</button>
-            <button class="btn btn-danger btn-sm" data-action="deleteEarnappAccount" data-a1="${escapeHtml(String(row.id))}" data-a2="${escapeHtml(row.account_name || '')}">Delete</button>
-          </div>
-        </td>
-      </tr>
-    `).join('') || '<tr><td colspan="6" style="color:var(--text-muted);padding:12px;">No EarnApp accounts imported yet.</td></tr>';
-  }
-
-  async function loadEarnappAccounts() {
-    const section = document.getElementById('earnapp-account-pool');
-    if (!section) return;
-    if (!_isOwner) {
-      section.style.display = 'none';
-      return;
-    }
-    try {
-      const data = await api('/api/admin/earnapp-accounts');
-      renderEarnappAccounts(data.accounts || [], data.counts || {});
-      const toggle = document.getElementById('earnapp-account-select-all');
-      if (toggle) toggle.checked = false;
-    } catch (err) {
-      const result = document.getElementById('earnapp-account-result');
-      if (result) result.textContent = `Load failed: ${err.message}`;
-    }
-  }
-
-  function _earnappImportName(raw) {
-    const firstLine = String(raw || '').trim().split(/\r?\n/, 1)[0] || '';
-    const first = firstLine.includes('|') ? firstLine.split('|', 1)[0].trim() : '';
-    return first || 'earnapp-account.txt';
-  }
-
-  async function importEarnappAccount() {
-    const result = document.getElementById('earnapp-account-result');
-    const fileInput = document.getElementById('earnapp-account-file');
-    const rawInput = document.getElementById('earnapp-account-raw');
-    const file = fileInput && fileInput.files && fileInput.files[0];
-    const raw = file ? await file.text() : String(rawInput && rawInput.value || '').trim();
-    if (!raw) {
-      toast('Import one account first', 'warning');
-      return;
-    }
-    const fileName = file ? file.name : _earnappImportName(raw);
-    if (!window.confirm(`Import EarnApp account ${fileName}?`)) return;
-    try {
-      await api('/api/admin/earnapp-accounts/import', { method: 'POST', body: { file_name: fileName, raw } });
-      if (result) result.textContent = 'Imported';
-      if (fileInput) fileInput.value = '';
-      if (rawInput) rawInput.value = '';
-      toast('EarnApp account imported', 'success');
-      await loadEarnappAccounts();
-    } catch (err) {
-      if (result) result.textContent = `Import failed: ${err.message}`;
-      toast(`Import failed: ${err.message}`, 'error');
-    }
-  }
-
-  function selectedEarnappAccountIds() {
-    return [...document.querySelectorAll('.earnapp-account-select:checked')].map(el => Number(el.value)).filter(Boolean);
-  }
-
-  function toggleEarnappAccountSelection() {
-    const checked = !!(document.getElementById('earnapp-account-select-all') || {}).checked;
-    document.querySelectorAll('.earnapp-account-select').forEach(el => { el.checked = checked; });
-  }
-
-  async function setEarnappAccountState(accountId, state, name) {
-    if (!window.confirm(`Set EarnApp account ${name || accountId} to ${state}?`)) return;
-    try {
-      await api(`/api/admin/earnapp-accounts/${encodeURIComponent(accountId)}`, { method: 'PATCH', body: { state } });
-      toast(`EarnApp account set to ${state}`, 'success');
-      await loadEarnappAccounts();
-    } catch (err) {
-      toast(`Update failed: ${err.message}`, 'error');
-    }
-  }
-
-  async function deleteEarnappAccount(accountId, name) {
-    if (!window.confirm(`Delete EarnApp account ${name || accountId}? This cannot be undone.`)) return;
-    try {
-      await api(`/api/admin/earnapp-accounts/${encodeURIComponent(accountId)}`, { method: 'DELETE' });
-      toast('EarnApp account deleted', 'success');
-      await loadEarnappAccounts();
-    } catch (err) {
-      toast(`Delete failed: ${err.message}`, 'error');
-    }
-  }
-
-  async function deleteSelectedEarnappAccounts() {
-    const ids = selectedEarnappAccountIds();
-    if (!ids.length) {
-      toast('Select EarnApp accounts first', 'warning');
-      return;
-    }
-    if (!window.confirm(`Delete ${ids.length} selected EarnApp account${ids.length === 1 ? '' : 's'}? This cannot be undone.`)) return;
-    try {
-      for (const id of ids) {
-        await api(`/api/admin/earnapp-accounts/${encodeURIComponent(id)}`, { method: 'DELETE' });
-      }
-      toast(`Deleted ${ids.length} EarnApp account${ids.length === 1 ? '' : 's'}`, 'success');
-      await loadEarnappAccounts();
-    } catch (err) {
-      toast(`Delete failed: ${err.message}`, 'error');
-    }
-  }
 
   async function saveCollectorCredentials() {
     const inputs = document.querySelectorAll('.collector-input');
@@ -4133,12 +3981,6 @@ const CP = (() => {
     loadDetailLogs,
     saveCollectorCredentials,
     testCollectors,
-    loadEarnappAccounts,
-    importEarnappAccount,
-    toggleEarnappAccountSelection,
-    setEarnappAccountState,
-    deleteEarnappAccount,
-    deleteSelectedEarnappAccounts,
     saveEnvSettings,
     toggleEnvSecret,
     importMystWalletFile,

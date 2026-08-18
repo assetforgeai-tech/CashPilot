@@ -188,7 +188,7 @@ def test_credential_health_dedupes_shared_keys_across_sections(tmp_path):
 
 def test_startup_backfills_deploy_only_and_dashboard_only_tracking_rows(tmp_path):
     deploy_only = {
-        "slug": "proxylite",
+        "slug": "deploy-only",
         "deploy": {"credentials": [{"key": "user_id", "required": True}]},
     }
     dashboard_only = {
@@ -201,12 +201,12 @@ def test_startup_backfills_deploy_only_and_dashboard_only_tracking_rows(tmp_path
             patch.object(database, "DB_DIR", tmp_path),
             patch.object(database, "DB_PATH", tmp_path / "settings.db"),
             patch.object(main.catalog, "get_services", return_value=[deploy_only, dashboard_only]),
-            patch.object(main.catalog, "get_service", side_effect=lambda slug: {"proxylite": deploy_only, "dashboard-only": dashboard_only}.get(slug)),
+            patch.object(main.catalog, "get_service", side_effect=lambda slug: {"deploy-only": deploy_only, "dashboard-only": dashboard_only}.get(slug)),
         ):
             await database.init_db()
             await database.set_config_bulk(
                 {
-                    "proxylite_user_id": "user-1",
+                    "deploy-only_user_id": "user-1",
                     "dashboard-only_dashboard_session": "session",
                 }
             )
@@ -214,7 +214,7 @@ def test_startup_backfills_deploy_only_and_dashboard_only_tracking_rows(tmp_path
             tracked = await main._track_fully_configured_services()
 
             assert tracked == 2
-            assert (await database.get_deployment("proxylite"))["status"] == "external"
+            assert (await database.get_deployment("deploy-only"))["status"] == "external"
             assert (await database.get_deployment("dashboard-only"))["status"] == "external"
 
     asyncio.run(run())
@@ -243,10 +243,8 @@ def test_collectors_meta_carries_runtime_contract_for_all_providers():
         with patch.object(main, "_require_owner", lambda request: {"uid": 1}):
             rows = await main.api_collectors_meta(object())
             by_slug = {row["slug"]: row for row in rows}
-            assert len(by_slug) == 17
-            assert by_slug["proxylite"]["count_only"] is True
+            assert len(by_slug) == 15
             assert by_slug["proxybase"]["manual_only"] is True
-            assert by_slug["bitping"]["manual_only"] is False
             assert by_slug["earnfm"]["supported_modes"] == ["direct", "proxy"]
 
     asyncio.run(run())

@@ -28,12 +28,9 @@ or official docs make the update certain.
 
 | Provider | Visible state | Verdict |
 |---|---|---|
-| bitping | logged-in choose page; app dashboard + nodes paths visible | current model confirmed; no code change needed |
-| earnapp | logged-in dashboard, current balance visible | current model confirmed; keep Docker warning |
 | earnfm | new dashboard base `https://app.earn.fm/` is visibly logged in; Home shows balance and total bandwidth shared, Payout shows residential/datacenter/referral/available/pending buckets, More shows the UUID API key | setup and payout URLs updated |
 | iproyal | new dashboard `https://dashboard.pawns.app/` logged in; app download, balance, $5 threshold, Internet Sharing/Cashout menu visible | dashboard URL updated |
 | spide | official install page exposes Linux CLI download; dashboard has Register Device form posting `title` + `device_key` to `/api/v1/device/create` with bearer token from `_token` cookie | automation is feasible: start CLI, parse Device key, register through dashboard API |
-| proxylite | `https://lk.proxylite.ru/` logged in; Account ID, balance, devices, payouts menu visible | current model confirmed |
 | proxyrack | logged-in dashboard with device rows and balance | current model confirmed |
 | repocket | logged-in dashboard with offers/bandwidth area | current model confirmed |
 | traffmonetizer | logged-in dashboard with token/balance page | current model confirmed |
@@ -64,12 +61,9 @@ or official docs make the update certain.
 | urnetwork | active | Docker/app | manual | keep; no public earnings API found. |
 | dawn | active | browser extension/hardware | scrape | current dashboard is live; logged-in account shows connection quality, points, streak, referrals, and epoch rewards. |
 | uprock | active | extension/mobile | manual | seed/profile bundle flow confirmed; keep collector manual until a public API shape is verified. |
-| bitping | active | Docker/app | api | keep; API collector already exists. |
-| earnapp | active | official app / Docker prohibited | api | updated; official earning model is now pay-per-time, with Docker/VM/hosting still prohibited. Deploy warning remains required. |
 | earnfm | active | Docker client / UUID API key | api | dashboard base URL updated to app.earn.fm; visible dashboard confirms balance, bandwidth totals, payout buckets, and API key location under More. |
 | iproyal | active | Docker/app | api | dashboard URL updated to dashboard.pawns.app; collector exists. |
 | mysterium | active | Docker/VPN node | api | keep; direct egress and TequilAPI collector already set. |
-| proxylite | active | Docker/app | api | keep; logged-in dashboard confirms Account ID based setup. |
 | proxyrack | active | Docker/app | api | keep; API-key collector exists. |
 | repocket | active | Docker/app | api | keep; Firebase collector exists. |
 | traffmonetizer | active | Docker/app | api | keep; token collector exists. |
@@ -88,7 +82,6 @@ Provider fields with conflicting or insufficient official public data: `proxybas
 
 - Restart ownership decision: systemd supervises only core services (`docker`, `cashpilot-ui`, `cashpilot-worker`); provider containers stay owned by CashPilot/Docker and should use Docker `restart: always`.
 - MYST is a separate direct-wallet lane: funded wallet leasing, password/MMN setup, and wallet rotation are its own module, not a generic bandwidth provider.
-- Grass/Uprock are seed/profile style runtimes. EarnApp is cookie-based. Spide is device-key registration after first CLI start. IPRoyal uses the official Pawns CLI Docker image. Wipter uses env-login with post-login restart.
 - CashPilot deploy path and compose export now set provider containers to `restart: always`. Core systemd remains for CashPilot worker/UI only, not one unit per provider.
 
 ## 2026-08-11 normalization planning notes
@@ -145,3 +138,4 @@ Open design point: Spide dashboard credential should probably be stored as a col
 Approved test: on `vps-test-sing`, create two trial Grass nodes with the same seed/profile material and blank `device_id` / `browser_id`, then compare dashboard after a few minutes. Do not normalize Grass multi-node install until this is verified by dashboard or runtime evidence.
 
 Live probe on 2026-08-11: two containers on `vps-test-sing` with the same seed and `GRASS_RESET_DEVICE_ID=true` / `GRASS_RESET_BROWSER_ID=true` both reached local `CONNECTED` state. `device_id` regenerated distinctly per node, but `browser_id` remained identical. The visible dashboard still showed no networks and the seed token returned `401` from `https://api.getgrass.io/activeDevices`, so dashboard-level multi-node proof remains inconclusive. Keep Grass multi-node defaults unresolved until a fresh seed/dashboard token for the same account verifies `activeDevices`.
+

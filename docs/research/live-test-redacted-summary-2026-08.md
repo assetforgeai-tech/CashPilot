@@ -28,17 +28,14 @@ First post-firewall rollout used worker `52-237-120-118-1786648057` and proxy le
 | Provider | Result | Cause |
 | --- | --- | --- |
 | adnade | failed | worker deploy failed after R2 profile download; no container created |
-| bitping | running | container `cashpilot-bitping` running after 5-minute check |
 | grass | running | container `cashpilot-grass` running after 5-minute check |
 | mysterium | partial | container running, but logs show TUN/sudo permission failure during WireGuard session |
 | proxybase | running | container `cashpilot-proxybase` running after 5-minute check |
 | proxybase-xyz | running | container now uses `HOME=/home/proxybase`; seller daemon running in foreground |
-| proxylite | running | container `cashpilot-proxylite` running after 5-minute check |
 | spide | failed | container restarts; CLI zip checksum mismatch |
 | uprock | failed | worker deploy failed; no container created |
 | urnetwork | running | container `cashpilot-urnetwork` running after 5-minute check |
 | wipter | running | container `cashpilot-wipter` running after 5-minute check |
-| earnapp | blocked | missing deploy field: Node UUID |
 | earnfm | blocked | missing deploy field: API Key |
 | iproyal | blocked | missing deploy fields: Email, Password |
 | packetstream | blocked | missing deploy field: Client ID |
@@ -57,8 +54,6 @@ First post-firewall rollout used worker `52-237-120-118-1786648057` and proxy le
 | grass | dashboard node online | container logs, worker provider state | pending | pending | Direct-IP provider. |
 | uprock | dashboard node online | container logs, worker provider state | pending | pending | Direct-IP provider. |
 | wipter | dashboard node online if exposed | container logs, login-ready marker, worker provider state | pending | pending | Provider tunnel namespace. |
-| bitping | dashboard node online | container logs, worker provider state | pending | pending | Direct-IP provider. |
-| earnapp | dashboard node online | container logs, worker provider state | pending | pending | Policy depends on catalog egress mode. |
 | earnfm | dashboard node online | container logs, worker provider state | pending | pending | Direct-IP provider. |
 | iproyal | dashboard node online | container logs, worker provider state | pending | pending | Pawns/IPRoyal. |
 | mysterium | MYST dashboard/provider state registered/online | container logs, 127.0.0.1:4449 tunnel, wallet lease state | pending | pending | MYST wallet-backed provider. |
@@ -66,7 +61,6 @@ First post-firewall rollout used worker `52-237-120-118-1786648057` and proxy le
 | proxies-sx | dashboard node online | container logs, worker provider state | pending | pending | Connected is not necessarily earning. |
 | proxybase | dashboard node online or provider node count | container logs, worker provider state | pending | pending | Docker `peer-cli` provider. |
 | proxybase-xyz | no dashboard node-online assumed | CLI state, container logs, worker provider state | pending | pending | Manual-only if no dashboard evidence exists. |
-| proxylite | provider node count if exposed | container logs, worker provider state | pending | pending | Manual-only if no dashboard evidence exists. |
 | proxyrack | dashboard node online | container logs, worker provider state | pending | pending | Direct-IP provider. |
 | repocket | dashboard node online | container logs, worker provider state | pending | pending | Direct-IP provider. |
 | spide | dashboard node online if exposed | CLI device status, container logs, worker provider state | pending | pending | Device flow. |
@@ -83,3 +77,4 @@ For every manual-only provider, provide:
 - Exact non-secret CLI command to inspect process/log state.
 - Last 30 log lines with secrets redacted.
 - CashPilot worker `provider_states` row if available.
+

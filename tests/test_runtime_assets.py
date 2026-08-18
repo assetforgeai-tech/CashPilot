@@ -227,13 +227,3 @@ class TestRuntimeAssets:
 
         asyncio.run(run())
 
-    def test_proxylite_user_id_is_masked_as_a_secret(self, tmp_path):
-        async def run():
-            with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "assets.db"):
-                await database.init_db()
-                await database.set_config_bulk({"proxylite_user_id": "521465"})
-                masked = await database.get_config_masked()
-                assert masked["_secrets"]["proxylite_user_id"] is True
-                assert "proxylite_user_id" not in masked
-
-        asyncio.run(run())

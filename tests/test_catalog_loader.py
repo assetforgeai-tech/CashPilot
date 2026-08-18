@@ -290,7 +290,7 @@ class TestValidate:
 
     def test_all_shipped_services_pass_validation(self):
         # Guard: no real catalog entry is dropped by the loader's validation.
-        assert len(catalog.load_services()) >= 18
+        assert len(catalog.load_services()) >= 15
 
 class TestProviderAutomationContracts:
     def _svc(self, slug):
@@ -359,21 +359,10 @@ class TestProviderAutomationContracts:
         assert {item["key"] for item in svc["docker"]["env"]} == {"NAME"}
         assert {item["default"] for item in svc["docker"]["env"] if item["key"] == "NAME"} == {"{hostname}"}
 
-    def test_proxylite_uses_deploy_user_id_only(self):
-        svc = self._svc("proxylite")
-        assert self._credential_keys(svc, "deploy") == {"user_id"}
-        assert self._credential_keys(svc, "dashboard") == set()
-        assert {item["key"] for item in svc["docker"]["env"]} == set()
-        assert svc["deploy"]["deploy_surface"] == "host_systemd"
-
     def test_proxybase_xyz_uses_host_systemd_surface(self):
         svc = self._svc("proxybase-xyz")
         assert svc["deploy"]["deploy_surface"] == "host_systemd"
         assert self._credential_keys(svc, "deploy") == {"phrase"}
-
-    def test_earnapp_uses_host_systemd_surface(self):
-        svc = self._svc("earnapp")
-        assert svc["deploy"]["deploy_surface"] == "host_systemd"
 
     def test_urnetwork_uses_api_key_for_deploy_and_email_password_for_collector(self):
         svc = self._svc("urnetwork")

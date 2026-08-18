@@ -24,8 +24,6 @@ def test_importer_saves_through_cashpilot_settings_api_only():
 def test_importer_has_explicit_provider_key_mapping():
     extractor = (EXT / "extractor.js").read_text(encoding="utf-8")
     for slug in (
-        "bitping",
-        "earnapp",
         "earnfm",
         "grass",
         "iproyal",
@@ -34,7 +32,6 @@ def test_importer_has_explicit_provider_key_mapping():
         "proxies_sx",
         "proxybase",
         "proxybase-xyz",
-        "proxylite",
         "proxyrack",
         "repocket",
         "spide",
@@ -45,8 +42,6 @@ def test_importer_has_explicit_provider_key_mapping():
     ):
         assert slug in extractor
     for key in (
-        "earnapp_oauth_refresh_token",
-        "earnapp_oauth_token",
         "earnfm_token",
         "iproyal_collector_email",
         "iproyal_collector_password",
@@ -62,7 +57,6 @@ def test_importer_has_explicit_provider_key_mapping():
         "urnetwork_email",
         "urnetwork_password",
         "proxybase_dashboard_access_token",
-        "proxylite_user_id",
         "proxyrack_api_key",
         "repocket_api_key",
         "uprock_credentials_json",

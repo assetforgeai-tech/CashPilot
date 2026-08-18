@@ -19,7 +19,7 @@ from urllib.request import Request, urlopen
 import docker
 from docker.errors import APIError, DockerException, NotFound
 
-from app import earnapp_macos, earnapp_qemu, myst_runtime, provider_automation, provider_installers, singbox_config
+from app import myst_runtime, provider_automation, provider_installers, singbox_config
 
 try:
     from app.catalog import critical_volume_targets, get_service, get_services
@@ -254,8 +254,6 @@ def deploy_raw(
     if provider == "proxybase" and deploy_credentials:
         env["NAME"] = str(env.get("NAME") or "")
         command = [str(deploy_credentials.get("deploy_access_token") or ""), env["NAME"]]
-    if provider == "proxylite" and deploy_credentials:
-        env["USER_ID"] = str(deploy_credentials.get("user_id") or "")
     if provider == "urnetwork" and deploy_credentials:
         env["UR_API_KEY"] = str(deploy_credentials.get("api_key") or "")
         command = command or "provide"
@@ -263,22 +261,6 @@ def deploy_raw(
         env["PROXYBASE_XYZ_PHRASE"] = str(deploy_credentials.get("phrase") or "")
         image = provider_installers.ensure_proxybase_xyz_image(client)
         command = command or provider_installers.proxybase_xyz_command()
-    if provider == "earnapp" and host_runtime == "qemu_systemd":
-        identity = earnapp_qemu.new_identity(slug)
-        image = "ubuntu:24.04"
-        env.update(
-            {
-                "OAUTH_REFRESH_TOKEN": str((deploy_credentials or {}).get("oauth_refresh_token") or ""),
-                "OAUTH_TOKEN": str((deploy_credentials or {}).get("oauth_token") or ""),
-                "XSRF_TOKEN": str((deploy_credentials or {}).get("xsrf_token") or ""),
-                "BRD_SESS_ID": str((deploy_credentials or {}).get("brd_sess_id") or ""),
-                "CG_UUID": str((deploy_credentials or {}).get("cg_uuid") or ""),
-            }
-        )
-        command = ["/bin/bash", "-lc", earnapp_qemu.render_qemu_command(identity)]
-        volumes = {f"cashpilot-{slug}-qemu": {"bind": "/state", "mode": "rw"}}
-        devices = ["/dev/kvm:/dev/kvm:rwm"]
-        labels = {**(labels or {}), "cashpilot.host-runtime": "qemu_systemd", "cashpilot.vm.uuid": identity.uuid}
     # Remove any existing container with the same name
     try:
         old = client.containers.get(name)
@@ -293,14 +275,6 @@ def deploy_raw(
         old_sidecar.remove(force=True)
     except NotFound:
         pass
-    if provider == "earnapp" and host_runtime == "qemu_macos":
-        return earnapp_macos.deploy_container(
-            client,
-            slug=slug,
-            proxy=proxy or {},
-            labels=labels or {},
-            deploy_credentials=deploy_credentials or {},
-        ).id
     if provider == "mysterium" and deploy_credentials and deploy_credentials.get("myst_wallet_raw"):
         _remove_named_volumes(volumes or {})
 
@@ -335,23 +309,6 @@ def deploy_raw(
             remove=True,
         )
         volumes = urn_volumes
-    if provider == "bitping" and deploy_credentials:
-        email = str(deploy_credentials.get("email") or "").strip()
-        password = str(deploy_credentials.get("password") or "").strip()
-        if not email or not password:
-            raise RuntimeError("Bitping email and password are required")
-        bitping_volumes = volumes or {"bitpingd-volume": {"bind": "/root/.bitpingd", "mode": "rw"}}
-        client.containers.run(
-            image=image,
-            volumes=bitping_volumes,
-            network_mode="bridge",
-            entrypoint="/app/bitpingd",
-            command=["login", "--email", email, "--password", password],
-            detach=False,
-            remove=True,
-        )
-        volumes = bitping_volumes
-
     # Durable resource limits (only passed when explicitly set, so Docker
     # defaults are preserved otherwise). memswap is deliberately left unset:
     # at create time mem_limit alone avoids the cgroup-v2 swap validation issue.

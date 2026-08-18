@@ -39,14 +39,6 @@
       add("packetstream_auth_token", pick([cookieValue("auth"), cookie, storeMatch(/auth|token/i), jsonStoreMatch(/auth|token/i)]), "PacketStream auth token");
       add("packetstream_cid", pick([queryValue("psr"), inputValue("referral-link").match(/[?&]psr=([^&\s]+)/i)?.[1], textMatch(/[?&]psr=([^&\s]+)/i, 1)]), "PacketStream CID");
     },
-    bitping: () => {},
-    earnapp: () => {
-      add("earnapp_oauth_refresh_token", pick([cookieValue("oauth-refresh-token"), cookieValue("refresh-token"), storeMatch(/oauth.*refresh|refresh.*token/i), jsonStoreMatch(/oauth.*refresh|refresh.*token/i)]), "EarnApp oauth refresh token");
-      add("earnapp_oauth_token", pick([cookieValue("oauth-token"), cookieValue("oauth-refresh-token"), cookieValue("refresh-token"), storeMatch(/oauth.*token|refresh.*token/i), jsonStoreMatch(/oauth.*token|refresh.*token/i)]), "EarnApp oauth token");
-      add("earnapp_xsrf_token", pick([cookieValue("XSRF-TOKEN"), cookieValue("xsrf-token"), storeMatch(/xsrf/i), jsonStoreMatch(/xsrf/i)]), "EarnApp XSRF token");
-      add("earnapp_brd_sess_id", pick([cookieValue("brd_sess_id"), storeMatch(/brd.*sess/i), jsonStoreMatch(/brd.*sess/i)]), "EarnApp BRD session id");
-      add("earnapp_cg_uuid", pick([cookieValue("cg_uuid"), storeMatch(/cg.*uuid/i), jsonStoreMatch(/cg.*uuid/i)]), "EarnApp CG UUID");
-    },
     earnfm: () => add("earnfm_token", pick([storeMatch(/api.*key|uuid|token/i), jsonStoreMatch(/api.*key|uuid|token/i)]), "Earn.fm API key"),
     iproyal: () => {
       add("iproyal_collector_email", pick([inputValue("email"), storeMatch(/email/i), textMatch(/email[:\s]+([^\s@]+@[^\s@]+)/i, 1)]), "IPRoyal collector email");
@@ -62,7 +54,6 @@
       add("proxybase_deploy_access_token", token, "ProxyBase deploy token");
       add("proxybase_dashboard_access_token", token, "ProxyBase dashboard token");
     },
-    proxylite: () => add("proxylite_user_id", pick([textMatch(/(?:User\s*ID|USER_ID)\D+(\d{3,})/i, 1), storeMatch(/user[_-]?id|userid/i), inputValue("user_id")]), "ProxyLite user id"),
     proxyrack: () => add("proxyrack_api_key", pick([headerLike("api-key"), storeMatch(/api.*key|token/i), jsonStoreMatch(/api.*key|token/i)]), "ProxyRack API key"),
     repocket: () => {
       add("repocket_email", pick([inputValue("email"), storeMatch(/email/i), textMatch(/email[:\s]+([^\s@]+@[^\s]+)/i, 1)]), "Repocket email");
@@ -95,8 +86,6 @@
     if (hostname.includes("wipter.com")) return "wipter";
     if (hostname.includes("traffmonetizer.com")) return "traffmonetizer";
     if (hostname.includes("app.packetstream.io") || hostname.includes("packetstream.io")) return "packetstream";
-    if (hostname.includes("app.bitping.com") || hostname.includes("nodes.bitping.com")) return "bitping";
-    if (hostname.includes("earnapp.com")) return "earnapp";
     if (hostname.includes("app.earn.fm")) return "earnfm";
     if (hostname.includes("pawns.app") || hostname.includes("dashboard.pawns.app")) return "iproyal";
     if (hostname.includes("peer.proxyrack.com")) return "proxyrack";
@@ -105,7 +94,6 @@
     if (hostname.includes("ur.network")) return "urnetwork";
     if (hostname.includes("peer.proxybase.org")) return "proxybase";
     if (hostname.includes("proxybase.xyz")) return "proxybase-xyz";
-    if (hostname.includes("lk.proxylite.ru")) return "proxylite";
     if (hostname.includes("proxies.sx") || hostname.includes("farmer.proxies.sx")) return "proxies_sx";
     if (/myst/i.test(pageText) || hostname.includes("my.mystnodes.com")) return "mysterium";
     return "";

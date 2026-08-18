@@ -117,8 +117,8 @@ class TestTheAllowlistComesFromTheDaemon:
 
     def test_instance_slug_uses_provider_slug_for_capability_allowlist(self):
         worker_api._validate_deploy_spec(
-            spec(provider_slug="bitping", cap_add=["NET_RAW"]),
-            slug="bitping-proxy",
+            spec(provider_slug="wipter", cap_add=["NET_RAW"]),
+            slug="wipter-proxy",
         )
 
     def test_instance_slug_uses_provider_slug_for_host_network_allowlist(self):

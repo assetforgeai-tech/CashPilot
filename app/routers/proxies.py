@@ -55,9 +55,6 @@ class ProxyDeleteIn(BaseModel):
     proxy_ids: list[int] | None = None
     status: str | None = None
 
-class ProxyUnmaskIn(BaseModel):
-    proxy_ids: list[int] | None = None
-
 def _normalize_proxy_record(parts: list[str], *, location: str = "", protocol: str = "") -> dict[str, Any] | None:
     if len(parts) == 1 and not protocol:
         value = parts[0].strip()
@@ -512,15 +509,6 @@ async def api_proxy_pool_delete(request: Request, body: ProxyDeleteIn) -> dict[s
         raise HTTPException(status_code=400, detail="Only status=dead bulk delete is allowed")
     deleted = await database.delete_proxy_endpoints(body.proxy_ids, status=status or None)
     return {"status": "ok", "deleted": deleted}
-
-@router.post("/api/proxy-pool/earnapp-unmask")
-async def api_proxy_pool_earnapp_unmask(request: Request, body: ProxyUnmaskIn) -> dict[str, Any]:
-    deps._require_owner(request)
-    ids = [int(x) for x in (body.proxy_ids or []) if int(x) > 0]
-    if not ids:
-        raise HTTPException(status_code=400, detail="Select proxies first")
-    unmasked = await database.unmask_proxy_for_provider(ids, "earnapp")
-    return {"status": "ok", "unmasked": unmasked}
 
 @router.post("/api/proxy-pool/recheck")
 async def api_proxy_pool_recheck(request: Request, body: ProxyRecheckIn) -> dict[str, Any]:

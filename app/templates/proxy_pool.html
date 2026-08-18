@@ -38,7 +38,6 @@
     <button class="btn btn-ghost btn-sm" id="pool-export-socks5">Export socks5</button>
     <button class="btn btn-danger btn-sm" id="pool-delete-selected">Delete selected</button>
     <button class="btn btn-danger btn-sm" id="pool-delete-dead">Delete dead</button>
-    <button class="btn btn-secondary btn-sm" id="pool-unmask-earnapp">Unblock EarnApp</button>
     <span id="pool-result" style="font-size:0.8rem;color:var(--text-muted);"></span>
   </div>
   <div style="display:grid;grid-template-columns:minmax(240px,1fr) minmax(160px,220px) auto auto;gap:8px;align-items:end;margin-bottom:12px;">
@@ -57,7 +56,7 @@
     <table class="data-table operator-table proxy-pool-table">
       <thead>
         <tr>
-          <th><input type="checkbox" id="pool-select-all"></th><th data-sort="provider_name">Provider</th><th data-sort="endpoint">Endpoint</th><th data-sort="protocol">Protocol</th><th data-sort="location">Location</th><th data-sort="exit_ip">Egress IP</th><th data-sort="status">Status</th><th data-sort="pawns_mask_reason">Pawns</th><th data-sort="earnapp_mask_reason">EarnApp</th><th data-sort="expiry_date">Expiry</th><th data-sort="assigned_worker_id">Assigned</th>
+          <th><input type="checkbox" id="pool-select-all"></th><th data-sort="provider_name">Provider</th><th data-sort="endpoint">Endpoint</th><th data-sort="protocol">Protocol</th><th data-sort="location">Location</th><th data-sort="exit_ip">Egress IP</th><th data-sort="status">Status</th><th data-sort="pawns_mask_reason">Pawns</th><th data-sort="expiry_date">Expiry</th><th data-sort="assigned_worker_id">Assigned</th>
         </tr>
       </thead>
       <tbody id="pool-rows"></tbody>
@@ -126,7 +125,6 @@ function renderPool() {
       <td class="mono-cell">${esc(p.exit_ip || '-')}</td>
       <td><span class="${String(p.status || '').toLowerCase() === 'alive' ? 'pool-status-alive' : 'pool-status-dead'}">${esc(p.status || '-')}</span></td>
       <td>${esc(p.pawns_mask_reason || '-')}</td>
-      <td>${esc(p.earnapp_mask_reason || '-')}</td>
       <td>${esc(p.expiry_date || (p.days_left != null ? `${p.days_left}d` : '-'))}</td>
       <td>${esc(p.assigned_worker_id || '-')}</td>
     </tr>`).join('');
@@ -219,14 +217,6 @@ document.getElementById('pool-export-provider').addEventListener('click', () => 
 document.getElementById('pool-export-location').addEventListener('click', () => exportPoolScope('location'));
 document.getElementById('pool-export-http').addEventListener('click', () => exportPool('http'));
 document.getElementById('pool-export-socks5').addEventListener('click', () => exportPool('socks5'));
-document.getElementById('pool-unmask-earnapp').addEventListener('click', async () => {
-  const ids = selectedPoolIds();
-  if (!ids.length) { alert('Select proxies first'); return; }
-  if (!confirm(`Unblock EarnApp for ${ids.length} selected proxies?`)) return;
-  const res = await fetch('/api/proxy-pool/earnapp-unmask', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({proxy_ids: ids})}).then(r => r.json());
-  document.getElementById('pool-result').textContent = `Unblocked ${res.unmasked || 0}`;
-  loadPool();
-});
 async function deletePool(body, label) {
   if (!confirm(`Delete ${label}? This removes proxy rows from the pool.`)) return;
   const res = await fetch('/api/proxy-pool', {method:'DELETE', headers:{'content-type':'application/json'}, body: JSON.stringify(body)}).then(r => r.json());

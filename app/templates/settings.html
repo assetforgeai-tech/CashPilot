@@ -69,43 +69,4 @@
   </div>
 </div>
 
-<div class="card settings-section">
-  <h3 class="settings-section-title">EarnApp Account Pool</h3>
-  <p class="settings-section-desc">
-    Multi-account EarnApp pool input. Each row uses <code>email|oauth-refresh-token|xsrf-token</code>.
-  </p>
-  <div id="earnapp-account-pool" style="display:grid;gap:12px;">
-    <div id="earnapp-account-counts" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
-    <div style="display:grid;grid-template-columns:minmax(260px,1fr) minmax(260px,1fr) auto;gap:12px;align-items:end;">
-      <div>
-        <label class="form-label" for="earnapp-account-file">Import file</label>
-        <input class="form-input" id="earnapp-account-file" type="file" accept=".txt,.json,.jsonl">
-      </div>
-      <div>
-        <label class="form-label" for="earnapp-account-raw">Or paste one account</label>
-        <textarea class="form-textarea" id="earnapp-account-raw" rows="3" placeholder="email|oauth-refresh-token|xsrf-token"></textarea>
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn btn-primary" id="earnapp-account-import" data-action="importEarnappAccount">Import account</button>
-        <button class="btn btn-danger" id="earnapp-account-delete-selected" data-action="deleteSelectedEarnappAccounts">Delete selected</button>
-      </div>
-    </div>
-    <div class="table-wrap">
-      <table class="data-table operator-table">
-        <thead>
-          <tr>
-            <th><input type="checkbox" id="earnapp-account-select-all" data-action="toggleEarnappAccountSelection"></th>
-            <th>Account</th>
-            <th>State</th>
-            <th>Assigned</th>
-            <th>Updated</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="earnapp-account-rows"></tbody>
-      </table>
-    </div>
-    <span id="earnapp-account-result" style="font-size:0.85rem;color:var(--text-muted);"></span>
-  </div>
-</div>
 {% endblock %}

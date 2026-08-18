@@ -31,9 +31,7 @@ class ProviderRuntime:
 
 
 PROVIDERS: dict[str, ProviderRuntime] = {
-    "bitping": ProviderRuntime("bitping", "bitping.py", "bitping.py", ("direct", "proxy"), "earnings"),
     "earnfm": ProviderRuntime("earnfm", "earn.fm.py", "earn.fm.py", ("direct", "proxy"), "earnings"),
-    "earnapp": ProviderRuntime("earnapp", "earnapp.py", "earnapp.py", ("direct", "proxy"), "earnings"),
     "grass": ProviderRuntime("grass", "Grass.py", "Grass.py", ("proxy",), "earnings"),
     "iproyal": ProviderRuntime("iproyal", "pawns.py", "pawns.py", ("proxy",), "earnings"),
     "mysterium": ProviderRuntime("mysterium", "MYST.py", "MYST.py", ("direct",), "earnings"),
@@ -41,7 +39,6 @@ PROVIDERS: dict[str, ProviderRuntime] = {
     "proxies-sx": ProviderRuntime("proxies-sx", "proxies.sx.py", "proxies.sx.py", ("proxy",), "earnings"),
     "proxybase": ProviderRuntime("proxybase", "proxybase.org.py", "proxybase.org.py", ("direct", "proxy"), "dashboard_only"),
     "proxybase-xyz": ProviderRuntime("proxybase-xyz", "proxybase.xyz.py", "proxybase.xyz.py", ("direct", "proxy"), "count_only"),
-    "proxylite": ProviderRuntime("proxylite", "lk.proxylite.ru.py", "lk.proxylite.ru.py", ("direct",), "count_only"),
     "proxyrack": ProviderRuntime("proxyrack", "proxyrack.org.py", "proxyrack.org.py", ("direct", "proxy"), "earnings"),
     "repocket": ProviderRuntime("repocket", "repocket.py", "repocket.py", ("direct", "proxy"), "earnings"),
     "spide": ProviderRuntime("spide", "spide.py", "spide.py", ("direct", "proxy"), "dashboard_only"),

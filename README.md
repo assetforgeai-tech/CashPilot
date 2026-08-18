@@ -67,9 +67,7 @@ Services CashPilot can deploy and manage automatically via Docker.
 <!-- BEGIN GENERATED: docker-services -->
 | Service | Guide | Residential IP required | VPS allowed | Devices / Acct | Devices / IP | Payout |
 |---------|-------|:-:|:-:|:-:|:-:|--------|
-| [Bitping](https://app.bitping.com) | [Guide](docs/guides/bitping.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto (SOL) |
 | [Earn.fm](https://earn.fm/ref/GEISYB91) | [Guide](docs/guides/earnfm.md) | ✅ | ✅ | ? \*\*\* | 1 | Crypto |
-| [EarnApp](https://earnapp.com/i/TSMD9wSm) \*\*\*\* | [Guide](docs/guides/earnapp.md) | ✅ | ❌ | 15 | ? \*\*\* | PayPal, Amazon Gift Card, Wise |
 | [Grass](https://app.grass.io/register?referralCode=kn8FNEPnUr2tMqE) | [Guide](docs/guides/grass.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto |
 | [IPRoyal Pawns](https://pawns.app?r=19266874) | [Guide](docs/guides/iproyal.md) | ✅ | ❌ | ? \*\*\* | 1 | PayPal, Crypto, Bank Transfer |
 | [MystNodes](https://mystnodes.co/?referral_code=do7v7YOoBBpbOstKQovX2pUvZYKia4ZhH3QIdNtE) | [Guide](docs/guides/mysterium.md) | ❌ | ✅ | ? \*\*\* | Unlimited | Crypto |
@@ -77,7 +75,6 @@ Services CashPilot can deploy and manage automatically via Docker.
 | [Proxies.sx](https://www.proxies.sx) | [Guide](docs/guides/proxies-sx.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto |
 | [ProxyBase](https://peer.proxybase.org?referral=nXzS3c6iTO) | [Guide](docs/guides/proxybase.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto |
 | [ProxyBase Markets](https://proxybase.xyz?referral=nXzS3c6iTO) | [Guide](docs/guides/proxybase-xyz.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto (USDC) |
-| [ProxyLite](https://proxylite.ru/?r=KMUPRZIZ) | [Guide](docs/guides/proxylite.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto, PayPal |
 | [ProxyRack](https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn) | [Guide](docs/guides/proxyrack.md) | ❌ | ✅ | 500 | ? \*\*\* | PayPal, Crypto |
 | [Repocket](https://repocket.com/) | [Guide](docs/guides/repocket.md) | ✅ | ❌ | 5 | ? \*\*\* | PayPal, Crypto |
 | [Spide](https://spide.network/register.html?f3bc51) | [Guide](docs/guides/spide.md) | ✅ | ❌ | ? \*\*\* | 1 | Crypto |
@@ -89,7 +86,6 @@ Services CashPilot can deploy and manage automatically via Docker.
 
 > \*\* Traffmonetizer ToS requires residential IP, but VPS nodes are accepted in practice.
 >
-> \*\*\*\* EarnApp's help centre **prohibits** Docker containers, VMs, hosting services and home servers, with account termination and cancellation of pending payments as the stated penalty — which is exactly how CashPilot deploys it. Read the [guide](docs/guides/earnapp.md) before deploying.
 >
 > \*\*\* `?` means the catalog does not record this, so nobody has verified it against the provider. It is **not** a synonym for "no limit" — see [per-IP device limits](docs/research/per-ip-device-limits.md) for the values that are sourced. A number widely repeated on review sites is not a source.
 >

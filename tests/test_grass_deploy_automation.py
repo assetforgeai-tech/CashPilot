@@ -94,23 +94,6 @@ def test_deploy_raw_maps_proxybase_deploy_token_to_peer_cli_args():
     assert env["NAME"] == "cashpilot-node"
     assert client.containers.run.call_args.kwargs["command"] == ["deploy-token", "cashpilot-node"]
 
-def test_deploy_raw_maps_proxylite_user_id_to_proxyservice_env():
-    client = MagicMock()
-    client.containers.get.side_effect = orchestrator.NotFound("nope")
-    container = MagicMock(short_id="abc123", id="container-id")
-    client.containers.run.return_value = container
-
-    with patch.object(orchestrator, "_get_client", return_value=client):
-        orchestrator.deploy_raw(
-            slug="proxylite",
-            image="proxylite/proxyservice",
-            deploy_credentials={"user_id": "000000"},
-        )
-
-    env = client.containers.run.call_args.kwargs["environment"]
-    assert env["USER_ID"] == "000000"
-
-
 def test_deploy_raw_authenticates_urnetwork_with_api_key_before_provider_start():
     client = MagicMock()
     client.containers.get.side_effect = orchestrator.NotFound("nope")
@@ -148,45 +131,3 @@ def test_deploy_raw_forwards_container_user_when_declared():
         orchestrator.deploy_raw(slug="wipter", image="img:1", user="root")
 
     assert client.containers.run.call_args.kwargs["user"] == "root"
-
-def test_deploy_raw_logs_bitping_in_before_provider_start():
-    client = MagicMock()
-    client.containers.get.side_effect = orchestrator.NotFound("nope")
-    container = MagicMock(short_id="abc123", id="container-id")
-    client.containers.run.return_value = container
-
-    with patch.object(orchestrator, "_get_client", return_value=client):
-        orchestrator.deploy_raw(
-            slug="bitping",
-            image="bitping/bitpingd:latest",
-            volumes={"bitpingd-volume": {"bind": "/root/.bitpingd", "mode": "rw"}},
-            deploy_credentials={"email": "user@example.com", "password": "secret"},
-        )
-
-    login_call, provider_call = client.containers.run.call_args_list[-2:]
-    assert login_call.kwargs["entrypoint"] == "/app/bitpingd"
-    assert login_call.kwargs["command"] == ["login", "--email", "user@example.com", "--password", "secret"]
-    assert login_call.kwargs["remove"] is True
-    assert login_call.kwargs["volumes"] == {"bitpingd-volume": {"bind": "/root/.bitpingd", "mode": "rw"}}
-    assert provider_call.kwargs["volumes"] == {"bitpingd-volume": {"bind": "/root/.bitpingd", "mode": "rw"}}
-
-def test_deploy_raw_logs_bitping_instance_in_before_provider_start():
-    client = MagicMock()
-    client.containers.get.side_effect = orchestrator.NotFound("nope")
-    container = MagicMock(short_id="abc123", id="container-id")
-    client.containers.run.return_value = container
-
-    with patch.object(orchestrator, "_get_client", return_value=client):
-        orchestrator.deploy_raw(
-            slug="bitping-proxy",
-            provider_slug="bitping",
-            image="bitping/bitpingd:latest",
-            volumes={"bitpingd-volume-proxy": {"bind": "/root/.bitpingd", "mode": "rw"}},
-            deploy_credentials={"email": "user@example.com", "password": "secret"},
-        )
-
-    login_call, provider_call = client.containers.run.call_args_list[-2:]
-    assert login_call.kwargs["entrypoint"] == "/app/bitpingd"
-    assert login_call.kwargs["command"] == ["login", "--email", "user@example.com", "--password", "secret"]
-    assert login_call.kwargs["volumes"] == {"bitpingd-volume-proxy": {"bind": "/root/.bitpingd", "mode": "rw"}}
-    assert provider_call.kwargs["name"] == "cashpilot-bitping-proxy"

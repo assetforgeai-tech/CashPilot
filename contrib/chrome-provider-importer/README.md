@@ -28,7 +28,6 @@ Values are never printed in the popup. The extension only saves keys explicitly 
 - Spide: `spide_dashboard_token`
 - URnetwork: `urnetwork_api_key`, `urnetwork_email`, `urnetwork_password`
 - ProxyBase dashboard: `proxybase_dashboard_access_token`
-- ProxyLite: `proxylite_user_id`
 - IPRoyal Pawns: `iproyal_collector_email`, `iproyal_collector_password`, `iproyal_device_name`, `iproyal_device_id`
 - Proxies.sx: `proxies-sx_api_key`
 - Repocket: `repocket_email`, `repocket_api_key`

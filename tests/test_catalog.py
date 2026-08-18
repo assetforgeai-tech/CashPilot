@@ -98,11 +98,6 @@ def test_catalog_is_enriched_from_provider_runtime_truth():
         assert services[slug]["runtime"]["modes"] == list(runtime.modes)
         assert services[slug]["runtime"]["collector_kind"] == runtime.collector_kind
 
-def test_bitping_has_no_stale_dashboard_session_field():
-    svc = catalog.get_service("bitping")
-    assert not (svc.get("dashboard") or {}).get("credentials")
-
-
 def test_repocket_container_env_keys():
     """Regression for #82: the repocket/repocket image reads RP_EMAIL + RP_API_KEY.
 
@@ -236,14 +231,6 @@ def test_proxies_sx_bandwidth_service_contract():
     assert credentials["api_key"]["kind"] == "api_key"
     assert credentials["api_key"]["secret"] is True
     assert credentials["api_key"]["required"] is True
-
-def test_bitping_uses_tested_login_volume_path():
-    with open(SERVICES_DIR / "bandwidth" / "bitping.yml") as f:
-        data = yaml.safe_load(f)
-
-    assert data["docker"]["image"] == "bitping/bitpingd:latest"
-    assert data["docker"]["volumes"] == ["bitpingd-volume:/root/.bitpingd"]
-    assert "bitpingd login" in data["docker"]["notes"]
 
 def test_iproyal_and_traffmonetizer_device_names_follow_worker_source():
     with open(SERVICES_DIR / "bandwidth" / "iproyal.yml") as f:

@@ -303,7 +303,7 @@ def test_active_services_counts_deployed_rows_not_running_only(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "summary.db"):
             await database.init_db()
-            await database.save_deployment("proxylite", "c2", status="external")
+            await database.save_deployment("proxybase-xyz", "c2", status="external")
             from app import main as app_main
             with (
                 patch(

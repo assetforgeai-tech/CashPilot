@@ -52,7 +52,7 @@
 | 2026-08-13 | [DONE] | Credential health now has regression coverage for age/status without leaking values. | The settings panel must show freshness and expiry truth without printing secrets. | Health UI can warn before provider collection dies. | pending |
 | 2026-08-13 | [DONE] | Worker bootstrap contract verified against existing fleet UI and worker key tests. | Current code already uses public IP/timestamp copy snippet, public worker URL, stable client_id, worker key re-enrollment, and MYST provider state on worker heartbeat. | No extra runtime logic added for Task 5. | pending |
 | 2026-08-13 | [DONE] | Auto-deploy policy now has server-side toggle/delay and sequential worker batch behavior. | Stable workers can be auto-sequenced from heartbeat after 3 healthy beats, with per-worker locking and deployable-only filtering. | Auto deploy is opt-in, per-worker, and continues after per-provider failure. | pending |
-| 2026-08-15 | [CHANGED] | Adnade, Dawn, and Titan are removed from the active plan scope. | User explicitly dropped the three Chrome-extension providers; active catalog now has 18 providers. | Remaining work targets active providers only and docs/tests must use 18-provider source-of-truth. | `42c02df` |
+| 2026-08-15 | [CHANGED] | Adnade, Dawn, and Titan are removed from the active plan scope. | User explicitly dropped the three Chrome-extension providers; active catalog now has 15 providers. | Remaining work targets active providers only and docs/tests must use 15-provider source-of-truth. | `42c02df` |
 | 2026-08-15 | [IN_PROGRESS] | Add provider instance mode UI/API wiring as the first core runtime checkpoint. | Providers need direct/proxy/both instances on the same worker without container collisions. | Setup Wizard and Service Detail now send deploy `mode`; VPS is deployed at `42c02df`. | `42c02df` |
 
 ### Open Drift
@@ -62,7 +62,7 @@
 | [DONE] | VPS deploy | `LAST_DEPLOYED_VPS` verified at `42c02df`. | Continue provider runtime normalization from current deployed commit. |
 | [TODO] | Chrome audit | Chrome profile 40 tab inventory not captured in this plan file yet. | Capture provider tab list during Task 1. |
 | [TODO] | Credentials | Some server Settings credentials may be missing/expired. | Audit and write gaps to local secret file. |
-| [IN_PROGRESS] | Provider runtime | Active catalog has 18 providers, but runtime contracts still need full normalization against manual setup scripts. | Execute Task 17. |
+| [IN_PROGRESS] | Provider runtime | Active catalog has 15 providers, but runtime contracts still need full normalization against manual setup scripts. | Execute Task 17. |
 
 ### Deploy Checkpoint
 
@@ -80,8 +80,6 @@
 | grass | [TODO] | 7 store.json keys | existing/verify | dashboard audit | needs_user_info | direct | prior manual success, needs codified test | partial | Keys: `wynd:status`, `wynd:user_id`, `tokenExpiry`, `autoUpdate`, `wynd:authenticated`, `refreshToken`, `accessToken`. |
 | uprock | [TODO] | `credentials.json` + `main.db` | limited/no API unless confirmed | dashboard audit | needs_user_info | direct | prior manual success | partial | Official runtime only. |
 | wipter | [TODO] | email/password | scrape/manual unless API confirmed | dashboard audit | needs_user_info | provider tunnel namespace | partial | partial | Needs login marker verification. |
-| bitping | [TODO] | catalog deploy credential audit | existing/verify | dashboard audit | payout audit | direct | pending | pending | Direct provider. |
-| earnapp | [TODO] | deploy credential separated | OAuth refresh/cookie | dashboard audit | payout audit | proxy or direct by policy | pending | pending | Keep official Docker/hosting warning. |
 | earnfm | [TODO] | deploy credential audit | existing/verify | dashboard audit | payout audit | direct | pending | pending | Direct provider. |
 | iproyal | [TODO] | deploy credential audit | existing/verify | dashboard audit | payout audit | proxy policy audit | pending | pending | Audit required. |
 | mysterium | [TODO] | MYST wallet lease + password | provider state only unless API confirmed | MYST dashboard password/MMN | MYST-specific | direct | partial | partial | Wallet handled by MYST Wallet module. |
@@ -89,7 +87,6 @@
 | proxies-sx | [TODO] | unique `AGENT_NAME` | per-node collector | dashboard audit | payout audit | proxy policy audit | pending | pending | Connected is not necessarily earning. |
 | proxybase | [TODO] | node access token | dashboard token | dashboard token | payout audit | direct | pending | partial | `ghcr.io/proxybaseorg/peer-cli:latest <access_token> <device_name>`. |
 | proxybase-xyz | [TODO] | wallet phrase/phase | node count/manual | none unless found | payout audit | proxy policy audit | pending | partial | Separate provider from `proxybase`; CLI flow uses `https://proxybase.xyz/install.sh`, install path may change. |
-| proxylite | [TODO] | `PROXYLITE_USER_ID` | node count/manual | none unless found | payout audit | direct | pending | partial | `proxylite/proxyservice`. |
 | proxyrack | [TODO] | deploy credential audit | existing/verify | dashboard audit | payout audit | direct | pending | pending | Direct provider. |
 | repocket | [TODO] | deploy credential audit | existing/verify | dashboard audit | payout audit | direct | pending | pending | Direct provider. |
 | spide | [TODO] | CLI device key | needs_user_info | dashboard token/cookie | payout audit | proxy policy audit | pending | pending | Device create API flow; collector requires proven API or scrape shape. |
@@ -455,8 +452,6 @@ pytest tests/test_myst_wallets_module.py tests/test_myst_runtime.py tests/test_w
 ## Task 9 [DONE]: Provider Catalog Contracts For 21 Providers
 
 **Files:**
-- Modify: `services/bandwidth/bitping.yml`
-- Modify: `services/bandwidth/earnapp.yml`
 - Modify: `services/bandwidth/earnfm.yml`
 - Modify: `services/bandwidth/iproyal.yml`
 - Modify: `services/bandwidth/mysterium.yml`
@@ -464,7 +459,6 @@ pytest tests/test_myst_wallets_module.py tests/test_myst_runtime.py tests/test_w
 - Modify: `services/bandwidth/proxies-sx.yml`
 - Modify: `services/bandwidth/proxybase.yml`
 - Modify: `services/bandwidth/proxybase-xyz.yml`
-- Modify: `services/bandwidth/proxylite.yml`
 - Modify: `services/bandwidth/proxyrack.yml`
 - Modify: `services/bandwidth/repocket.yml`
 - Modify: `services/bandwidth/spide.yml`
@@ -519,7 +513,6 @@ pytest tests/test_catalog.py tests/test_catalog_loader.py tests/test_provider_au
 - [x] Uprock: materialize `credentials.json` and `main.db`, run official image/package flow, verify earning state.
 - [x] Wipter: run email/password login flow, detect login-ready markers, restart once.
 - [x] Proxybase: run official Docker token/device flow.
-- [x] Proxylite: run `proxylite/proxyservice` with `USER_ID`.
 - [x] Spide: run Linux CLI, parse device key, register through dashboard/session credential.
 - [x] MYST: lease wallet, write local wallet with `0600`, set password/MMN, start node, report registration status.
 
@@ -738,7 +731,7 @@ git log --oneline -1
 
 **Checkpoint:** Status [DONE]; Owner Codex; Started 2026-08-15; Evidence `1242 passed, 7 skipped`; `python scripts/check_deploy_baseline.py` passed; Commit pending.
 
-- Produces: active 18 providers can be represented as direct, proxy, or both runtime instances without name/volume/container collisions.
+- Produces: active 15 providers can be represented as direct, proxy, or both runtime instances without name/volume/container collisions.
 
 - [x] Read every manual provider setup script under `provider-runtime/provider_code_setup_node`.
 - [x] Build the source-of-truth provider mode matrix from manual scripts and catalog YAML.
@@ -746,7 +739,6 @@ git log --oneline -1
 - [x] Add tests that every active catalog provider has supported modes and rejected unsupported modes.
 - [x] Add tests that `both` expands to two unique instance IDs.
 - [x] Add tests that proxy-mode deployment attaches a proxy and direct-mode deployment does not.
-- [x] Keep EarnApp proxy-only and non-Docker constraints explicit.
 - [x] Keep MYST direct-only with wallet lease separate from proxy pool.
 - [x] Run local full verification.
 - [ ] Commit, push, deploy VPS from GitHub, verify CI and container health.
@@ -765,3 +757,4 @@ pytest -q
 - Spec coverage: all 18 active providers, Dashboard, Setup Wizard, Service Catalog, Payouts, Proxy Provider, Proxy Pool, MYST Wallet, Settings, Fleet, auto-deploy, proxy lease, MYST lease, worker heartbeat, Chrome credential audit, docs, commit/push/deploy are covered.
 - Redundant logic removed: separate MYST heartbeat and generic unused asset abstractions are not part of the final design.
 - Type consistency: credential groups remain Deploy runtime, Earnings collector, Dashboard / session; runtime truth remains worker heartbeat plus provider_states; proxy lease remains worker-level; MYST wallet lease remains server asset inventory.
+

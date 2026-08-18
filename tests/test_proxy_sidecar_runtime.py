@@ -8,28 +8,28 @@ from app import orchestrator
 def test_proxy_instance_runs_provider_inside_singbox_sidecar_namespace():
     client = MagicMock()
     client.containers.get.side_effect = [orchestrator.NotFound("nope"), orchestrator.NotFound("nope")]
-    sidecar = MagicMock(short_id="side", id="sidecar-id", name="cashpilot-bitping-proxy-egress")
+    sidecar = MagicMock(short_id="side", id="sidecar-id", name="cashpilot-earnfm-proxy-egress")
     provider = MagicMock(short_id="provider", id="provider-id")
     client.containers.run.side_effect = [sidecar, provider]
 
     with patch.object(orchestrator, "_get_client", return_value=client):
         container_id = orchestrator.deploy_raw(
-            slug="bitping-proxy",
-            image="bitping/bitpingd:latest",
-            labels={"cashpilot.provider": "bitping", "cashpilot.instance_mode": "proxy"},
+            slug="earnfm-proxy",
+            image="fazalfarhan01/earnfm-client:latest",
+            labels={"cashpilot.provider": "earnfm", "cashpilot.instance_mode": "proxy"},
             proxy={"host": "1.2.3.4", "port": 1080, "protocol": "socks5"},
         )
 
     assert container_id == "provider-id"
     sidecar_call, provider_call = client.containers.run.call_args_list
-    assert sidecar_call.kwargs["name"] == "cashpilot-bitping-proxy-egress"
+    assert sidecar_call.kwargs["name"] == "cashpilot-earnfm-proxy-egress"
     assert sidecar_call.kwargs["image"] == "ghcr.io/sagernet/sing-box:latest"
     assert sidecar_call.kwargs["environment"]["ENABLE_DEPRECATED_LEGACY_DNS_SERVERS"] == "true"
     assert sidecar_call.kwargs["cap_add"] == ["NET_ADMIN"]
     assert "/dev/net/tun:/dev/net/tun" in sidecar_call.kwargs["devices"]
-    assert provider_call.kwargs["network_mode"] == "container:cashpilot-bitping-proxy-egress"
-    assert provider_call.kwargs["name"] == "cashpilot-bitping-proxy"
-    assert provider_call.kwargs["labels"]["cashpilot.provider"] == "bitping"
+    assert provider_call.kwargs["network_mode"] == "container:cashpilot-earnfm-proxy-egress"
+    assert provider_call.kwargs["name"] == "cashpilot-earnfm-proxy"
+    assert provider_call.kwargs["labels"]["cashpilot.provider"] == "earnfm"
     assert provider_call.kwargs["labels"]["cashpilot.instance_mode"] == "proxy"
 
 def test_mysterium_proxy_routes_udp_direct():
@@ -75,16 +75,16 @@ def test_mysterium_proxy_publishes_udp_ports_on_sidecar():
 def test_remove_proxy_instance_removes_egress_sidecar():
     client = MagicMock()
     provider = MagicMock(attrs={"Mounts": []})
-    provider.name = "cashpilot-bitping-proxy"
+    provider.name = "cashpilot-earnfm-proxy"
     provider.labels = {orchestrator.LABEL_MANAGED: "true"}
     sidecar = MagicMock()
-    sidecar.name = "cashpilot-bitping-proxy-egress"
+    sidecar.name = "cashpilot-earnfm-proxy-egress"
     client.containers.get.side_effect = [provider, sidecar]
 
     with patch.object(orchestrator, "_get_client", return_value=client):
-        result = orchestrator.remove_service("bitping-proxy")
+        result = orchestrator.remove_service("earnfm-proxy")
 
     assert result["container"] == provider.name
     provider.remove.assert_called_once_with(force=True)
     sidecar.remove.assert_called_once_with(force=True)
-    client.containers.get.assert_any_call("cashpilot-bitping-proxy-egress")
+    client.containers.get.assert_any_call("cashpilot-earnfm-proxy-egress")
