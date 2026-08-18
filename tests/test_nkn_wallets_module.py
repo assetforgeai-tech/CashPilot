@@ -98,7 +98,8 @@ class TestNknWalletApi:
                 "folder_name": "1000001",
                 "wallet_json": _wallet_json(),
                 "wallet_pswd": "pw",
-            }
+            },
+            {"folder_name": "1000002", "wallet_json": "", "wallet_pswd": ""},
         ]
         with (
             TestClient(app, raise_server_exceptions=False) as client,
@@ -107,7 +108,7 @@ class TestNknWalletApi:
         ):
             resp = client.post("/api/admin/nkn-wallets/import", json={"records": records})
         assert resp.status_code == 200
-        assert resp.json() == {"status": "ok", "imported": 1}
+        assert resp.json() == {"status": "ok", "imported": 1, "received": 2}
 
 
 class TestNknWalletInventory:

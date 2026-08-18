@@ -223,6 +223,7 @@ class TestNknWalletPoolIsReachable:
         assert "wallet.pswd" in app_js
         assert "files scanned" in app_js
         assert "wallet folders" in app_js
+        assert "skipped" in app_js
         assert "importNknWalletZip" in exported
         assert "loadNknWallets" in exported
 

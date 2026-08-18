@@ -28,8 +28,9 @@ async def api_nkn_wallets(request: Request) -> list[dict[str, Any]]:
 async def api_nkn_wallets_import(request: Request, body: NknWalletImportIn) -> dict[str, Any]:
     deps._require_owner(request)
     if body.records:
+        received = len(body.records)
         count = await database.import_nkn_wallet_records(body.records)
-        return {"status": "ok", "imported": count}
+        return {"status": "ok", "imported": count, "received": received}
     if not body.archive_b64.strip():
         raise HTTPException(status_code=400, detail="Wallet folder is required")
     try:

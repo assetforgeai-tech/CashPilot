@@ -1672,7 +1672,8 @@ const CP = (() => {
         const res = await api('/api/admin/nkn-wallets/import', { method: 'POST', body: { records } });
         input.value = '';
         if (status) status.textContent = '';
-        toast(`Imported ${res.imported || 0} wallet folder${res.imported === 1 ? '' : 's'} from ${files.length} files scanned`, 'success');
+        const skipped = Math.max(0, Object.keys(folderRecords).length - (res.imported || 0));
+        toast(`Imported ${res.imported || 0} wallet folder${res.imported === 1 ? '' : 's'} from ${files.length} files scanned; skipped ${skipped} incomplete folder${skipped === 1 ? '' : 's'}`, 'success');
         await loadNknWallets();
       } catch (err) {
         if (status) status.textContent = '';
