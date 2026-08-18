@@ -1665,13 +1665,14 @@ const CP = (() => {
       folderRecords[folder][filename === 'wallet.json' ? 'wallet_json' : 'wallet_pswd'] = await file.text();
     }
     const records = Object.values(folderRecords).filter(row => row.wallet_json && row.wallet_pswd);
+    if (status) status.textContent = `${files.length} files scanned, ${records.length} wallet folders detected`;
     if (records.length) {
       if (status) status.textContent = 'Importing...';
       try {
         const res = await api('/api/admin/nkn-wallets/import', { method: 'POST', body: { records } });
         input.value = '';
         if (status) status.textContent = '';
-        toast(`Imported ${res.imported || 0} wallet${res.imported === 1 ? '' : 's'}`, 'success');
+        toast(`Imported ${res.imported || 0} wallet folder${res.imported === 1 ? '' : 's'} from ${files.length} files scanned`, 'success');
         await loadNknWallets();
       } catch (err) {
         if (status) status.textContent = '';
