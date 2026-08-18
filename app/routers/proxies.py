@@ -10,9 +10,8 @@ import io
 import json
 import re
 from typing import Any
-from urllib.parse import quote, urlparse
+from urllib.parse import urlparse
 
-import httpx
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
@@ -168,6 +167,7 @@ def _parse_proxy_import(text: str) -> list[dict[str, Any]]:
 
 _PROXY_PROBE_HOST = "example.com"
 _PROXY_PROBE_PORT = 80
+_PROXY_IP_HOST = "api.ipify.org"
 
 
 async def _read_exactly_or_none(reader: asyncio.StreamReader, n: int, timeout: float) -> bytes:
@@ -285,6 +285,101 @@ async def _probe_http_proxy(
             await writer.wait_closed()
 
 
+async def _http_get_via_socks5_proxy(
+    host: str,
+    port: int,
+    *,
+    username: str = "",
+    password: str = "",
+    target_host: str = _PROXY_IP_HOST,
+    timeout: float = 8.0,
+) -> bytes:
+    reader, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
+    try:
+        methods = [b"\x00"]
+        if username or password:
+            methods.append(b"\x02")
+        writer.write(b"\x05" + bytes([len(methods)]) + b"".join(methods))
+        await writer.drain()
+        method = await _read_exactly_or_none(reader, 2, timeout)
+        if len(method) != 2 or method[0] != 5:
+            return b""
+        if method[1] == 0x02:
+            auth = username.encode("utf-8")
+            secret = password.encode("utf-8")
+            if len(auth) > 255 or len(secret) > 255:
+                return b""
+            writer.write(b"\x01" + bytes([len(auth)]) + auth + bytes([len(secret)]) + secret)
+            await writer.drain()
+            if await _read_exactly_or_none(reader, 2, timeout) != b"\x01\x00":
+                return b""
+        elif method[1] != 0x00:
+            return b""
+
+        encoded_host = target_host.encode("ascii")
+        writer.write(b"\x05\x01\x00\x03" + bytes([len(encoded_host)]) + encoded_host + (80).to_bytes(2, "big"))
+        await writer.drain()
+        reply = await _read_exactly_or_none(reader, 4, timeout)
+        if len(reply) != 4 or reply[0] != 5 or reply[1] != 0:
+            return b""
+        atyp = reply[3]
+        if atyp == 1:
+            if len(await _read_exactly_or_none(reader, 6, timeout)) != 6:
+                return b""
+        elif atyp == 3:
+            host_len = await _read_exactly_or_none(reader, 1, timeout)
+            if not host_len:
+                return b""
+            if len(await _read_exactly_or_none(reader, int(host_len[0]) + 2, timeout)) != int(host_len[0]) + 2:
+                return b""
+        elif atyp == 4:
+            if len(await _read_exactly_or_none(reader, 18, timeout)) != 18:
+                return b""
+        else:
+            return b""
+
+        writer.write(f"GET / HTTP/1.1\r\nHost: {target_host}\r\nConnection: close\r\n\r\n".encode("ascii"))
+        await writer.drain()
+        return await _read_some_or_none(reader, 2048, timeout)
+    finally:
+        writer.close()
+        with contextlib.suppress(Exception):
+            await writer.wait_closed()
+
+
+async def _http_get_via_http_proxy(
+    host: str,
+    port: int,
+    *,
+    username: str = "",
+    password: str = "",
+    target_host: str = _PROXY_IP_HOST,
+    timeout: float = 8.0,
+) -> bytes:
+    reader, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
+    try:
+        headers = [
+            f"CONNECT {target_host}:80 HTTP/1.1",
+            f"Host: {target_host}:80",
+            "Proxy-Connection: keep-alive",
+        ]
+        if username or password:
+            token = base64.b64encode(f"{username}:{password}".encode()).decode("ascii")
+            headers.append(f"Proxy-Authorization: Basic {token}")
+        writer.write("\r\n".join(headers).encode("ascii") + b"\r\n\r\n")
+        await writer.drain()
+        response = await _read_some_or_none(reader, 1024, timeout)
+        if not response.startswith(b"HTTP/1.1 200") and not response.startswith(b"HTTP/1.0 200"):
+            return b""
+        writer.write(f"GET / HTTP/1.1\r\nHost: {target_host}\r\nConnection: close\r\n\r\n".encode("ascii"))
+        await writer.drain()
+        return await _read_some_or_none(reader, 2048, timeout)
+    finally:
+        writer.close()
+        with contextlib.suppress(Exception):
+            await writer.wait_closed()
+
+
 async def _probe_proxy(
     host: str,
     port: int,
@@ -310,12 +405,6 @@ async def _probe_proxy(
         pass
     return {"status": "dead", "protocol": ""}
 
-def _proxy_url(host: str, port: int, *, protocol: str, username: str = "", password: str = "") -> str:
-    auth = ""
-    if username or password:
-        auth = f"{quote(username, safe='')}:{quote(password, safe='')}@"
-    return f"{protocol}://{auth}{host}:{port}"
-
 async def _probe_proxy_exit_ip(
     host: str,
     port: int,
@@ -324,11 +413,13 @@ async def _probe_proxy_exit_ip(
     username: str = "",
     password: str = "",
 ) -> str | None:
-    proxy_url = _proxy_url(host, port, protocol=protocol, username=username, password=password)
     try:
-        async with httpx.AsyncClient(proxy=proxy_url, timeout=8, trust_env=False) as client:
-            resp = await client.get("https://api.ipify.org")
-            return egress.public_ip(resp.text)
+        if protocol == "socks5":
+            response = await _http_get_via_socks5_proxy(host, port, username=username, password=password)
+        else:
+            response = await _http_get_via_http_proxy(host, port, username=username, password=password)
+        body = response.split(b"\r\n\r\n", 1)[-1].decode("utf-8", "replace").strip()
+        return egress.public_ip(body)
     except Exception:
         return None
 
@@ -357,7 +448,7 @@ def _proxy_scheduler_settings(config: dict[str, Any]) -> dict[str, Any]:
     concurrency = int(str(config.get("proxy_pool_recheck_concurrency", "8") or "8").strip() or 8)
     return {
         "enabled": enabled,
-        "interval_minutes": min(1440, max(1, interval)),
+        "interval_minutes": min(1440, max(15, interval)),
         "concurrency": min(64, max(1, concurrency)),
     }
 

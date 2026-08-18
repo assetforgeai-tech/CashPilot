@@ -298,6 +298,7 @@ async def test_proxy_pool_recheck_uses_decrypted_proxy_credentials():
     lookup.assert_awaited_once_with(7)
     probe.assert_awaited_once_with("proxy.example.com", 1080, username="user", password="pass")
 
+
 @pytest.mark.asyncio
 async def test_proxy_pool_recheck_persists_proxy_egress_ip():
     rows = [{"id": 7, "host": "proxy.example.com", "port": 1080, "assigned_worker_id": None}]
@@ -306,7 +307,9 @@ async def test_proxy_pool_recheck_persists_proxy_egress_ip():
     with (
         patch("app.routers.proxies.database.list_proxy_pool", new_callable=AsyncMock, return_value=rows),
         patch("app.routers.proxies.database.get_proxy_endpoint", new_callable=AsyncMock, return_value=proxy),
-        patch("app.routers.proxies.database.update_proxy_pool_check_results", new_callable=AsyncMock, return_value=1) as save,
+        patch(
+            "app.routers.proxies.database.update_proxy_pool_check_results", new_callable=AsyncMock, return_value=1
+        ) as save,
         patch(
             "app.routers.proxies._probe_proxy_confirmed",
             new_callable=AsyncMock,
@@ -320,6 +323,19 @@ async def test_proxy_pool_recheck_persists_proxy_egress_ip():
         protocols={7: "socks5"},
         exit_ips={7: "8.8.8.8"},
     )
+
+
+@pytest.mark.asyncio
+async def test_proxy_exit_ip_uses_raw_proxy_tunnel():
+    with patch(
+        "app.routers.proxies._http_get_via_socks5_proxy",
+        new_callable=AsyncMock,
+        return_value=b"HTTP/1.1 200 OK\r\nContent-Length: 7\r\n\r\n8.8.8.8",
+    ) as fetch:
+        exit_ip = await proxy_routes._probe_proxy_exit_ip("proxy.example.com", 1080, protocol="socks5")
+
+    assert exit_ip == "8.8.8.8"
+    fetch.assert_awaited_once()
 
 
 def test_manual_proxy_import_persists_multiple_rows(tmp_path):
@@ -410,6 +426,19 @@ def test_proxy_pool_scheduler_settings_are_persisted(client):
         )
     assert resp.status_code == 200
     save.assert_awaited_once()
+
+
+def test_proxy_pool_scheduler_interval_is_not_a_one_minute_loop():
+    settings = proxy_routes._proxy_scheduler_settings(
+        {
+            "proxy_pool_recheck_enabled": "true",
+            "proxy_pool_recheck_interval_minutes": "1",
+            "proxy_pool_recheck_concurrency": "8",
+        }
+    )
+
+    assert settings["enabled"] is True
+    assert settings["interval_minutes"] == 15
 
 
 def test_proxy_lease_picks_one_unassigned_proxy_per_worker(tmp_path):
