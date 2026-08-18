@@ -7,11 +7,11 @@ inspection for cashpilot-managed containers via the Docker SDK.
 
 from __future__ import annotations
 
+import base64
+import json
 import logging
 import os
 import time
-import base64
-import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 from urllib.request import Request, urlopen
@@ -746,14 +746,8 @@ def _provider_evidence(slug: str, container: Any) -> dict[str, Any]:
     try:
         status_out = getattr(status, "output", b"") or b""
         logs_out = getattr(logs, "output", b"") or b""
-        if isinstance(status_out, bytes):
-            status_text = status_out.decode("utf-8", errors="replace")
-        else:
-            status_text = str(status_out)
-        if isinstance(logs_out, bytes):
-            logs_text = logs_out.decode("utf-8", errors="replace")
-        else:
-            logs_text = str(logs_out)
+        status_text = status_out.decode("utf-8", errors="replace") if isinstance(status_out, bytes) else str(status_out)
+        logs_text = logs_out.decode("utf-8", errors="replace") if isinstance(logs_out, bytes) else str(logs_out)
         return provider_automation.uprock_status_snapshot(status_text, logs_text)
     except Exception as exc:
         logger.debug("Uprock evidence parse failed for %s: %s", getattr(container, "short_id", "?"), exc)

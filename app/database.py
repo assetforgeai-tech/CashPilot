@@ -13,7 +13,6 @@ import json
 import logging
 import math
 import os
-import re
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -2689,7 +2688,7 @@ async def release_myst_wallet(
         await _ensure_myst_wallets_table(db)
         params: list[Any] = [release_reason, wallet_id, client_id, wallet_assignment_version]
         cursor = await db.execute(
-            f"""
+            """
             UPDATE myst_wallets
             SET state = 'AVAILABLE',
                 leased_to_worker_id = NULL,
@@ -2734,7 +2733,7 @@ async def sync_myst_wallet_runtime(
         if unfunded:
             params: list[Any] = [node_identity, runtime_status, json.dumps(evidence, sort_keys=True), wallet_id, client_id, wallet_assignment_version]
             cursor = await db.execute(
-                f"""
+                """
                 UPDATE myst_wallets
                 SET state = 'AVAILABLE',
                     funding = 'UNFUNDED',
@@ -2755,7 +2754,7 @@ async def sync_myst_wallet_runtime(
         else:
             params = [node_identity, runtime_status, public_ip, json.dumps(evidence, sort_keys=True), wallet_id, client_id, wallet_assignment_version]
             cursor = await db.execute(
-                f"""
+                """
                 UPDATE myst_wallets
                 SET node_identity = ?,
                     runtime_status = ?,
@@ -2935,9 +2934,8 @@ async def lease_proxy_for_worker(worker_id: int, *, provider_slug: str | None = 
     finally:
         await db.close()
     assignment = await get_worker_proxy_assignment(worker_id)
-    if assignment and provider_slug and assignment.get("proxy_id"):
-        if await proxy_masked_for_provider(int(assignment["proxy_id"]), provider_slug):
-            return None
+    if assignment and provider_slug and assignment.get("proxy_id") and await proxy_masked_for_provider(int(assignment["proxy_id"]), provider_slug):
+        return None
     return assignment
 
 async def get_proxy_endpoint(proxy_id: int) -> dict[str, Any] | None:

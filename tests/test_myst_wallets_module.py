@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import os
 import asyncio
+import os
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, patch
 
@@ -11,8 +11,8 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.requests import Request
 
-from app.main import app
 from app import database, main, myst_wallets
+from app.main import app
 
 
 @asynccontextmanager

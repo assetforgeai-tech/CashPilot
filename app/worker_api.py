@@ -1010,16 +1010,15 @@ async def _fetch_runtime_asset(provider: str, asset_kind: str) -> str:
 
 async def _download_runtime_asset(url: str, dest: Path) -> bytes:
     dest.parent.mkdir(parents=True, exist_ok=True)
-    async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
-        async with client.stream("GET", url) as resp:
-            resp.raise_for_status()
-            buf = bytearray()
-            with dest.open("wb") as fh:
-                async for chunk in resp.aiter_bytes():
-                    if not chunk:
-                        continue
-                    fh.write(chunk)
-                    buf.extend(chunk)
+    async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client, client.stream("GET", url) as resp:
+        resp.raise_for_status()
+        buf = bytearray()
+        with dest.open("wb") as fh:
+            async for chunk in resp.aiter_bytes():
+                if not chunk:
+                    continue
+                fh.write(chunk)
+                buf.extend(chunk)
     return bytes(buf)
 
 def _decrypt_runtime_asset(data: bytes, mode: str | None, key: str | None) -> bytes:

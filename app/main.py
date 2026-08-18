@@ -117,9 +117,7 @@ def _auto_deploy_slugs(services: list[dict[str, Any]]) -> list[str]:
     return [svc.get("slug", "") for svc in services if svc.get("slug") and svc.get("status") not in _UNDEPLOYABLE_STATUSES and (svc.get("docker") or {}).get("image")]
 
 def _worker_allowed_for_auto_deploy(worker: dict[str, Any], config: dict[str, str]) -> bool:
-    if str(worker.get("name") or "").strip().lower() == "cashpilot" and not _auto_deploy_settings(config)["include_server"]:
-        return False
-    return True
+    return not (str(worker.get("name") or "").strip().lower() == "cashpilot" and not _auto_deploy_settings(config)["include_server"])
 
 async def _auto_deploy_one(worker_id: int, slug: str) -> None:
     await api_deploy(
@@ -2009,9 +2007,8 @@ async def _proxy_for_worker_instance(worker_id: int, *, provider_slug: str | Non
     attempts = 20
     for _ in range(attempts):
         proxy = await database.get_worker_proxy_assignment(worker_id)
-        if proxy and provider_slug and proxy.get("proxy_id"):
-            if await database.proxy_masked_for_provider(int(proxy["proxy_id"]), provider_slug):
-                proxy = None
+        if proxy and provider_slug and proxy.get("proxy_id") and await database.proxy_masked_for_provider(int(proxy["proxy_id"]), provider_slug):
+            proxy = None
         if not proxy or not proxy.get("proxy_id"):
             proxy = await database.lease_proxy_for_worker(worker_id, provider_slug=provider_slug)
         if proxy and proxy.get("proxy_id"):
@@ -3116,7 +3113,12 @@ async def api_credential_health(request: Request) -> list[dict[str, Any]]:
     """
     _require_auth_api(request)
 
-    from app.collectors import collector_credential_fields, credential_lifetime, durable_alternative, service_credential_fields
+    from app.collectors import (
+        collector_credential_fields,
+        credential_lifetime,
+        durable_alternative,
+        service_credential_fields,
+    )
 
     updated = await database.get_config_updated_at()
     now = datetime.now(UTC)
@@ -5294,8 +5296,8 @@ async def api_fleet_api_key_reveal(request: Request) -> dict[str, str]:
 # splitting the low-regression route groups into app.routers.
 # ---------------------------------------------------------------------------
 from app.routers import auth as auth_router  # noqa: E402
-from app.routers import pages as pages_router  # noqa: E402
 from app.routers import myst_wallets as myst_wallets_router  # noqa: E402
+from app.routers import pages as pages_router  # noqa: E402
 from app.routers import proxies as proxies_router  # noqa: E402
 from app.routers import users as users_router  # noqa: E402
 

@@ -9,8 +9,7 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
-from app import database, main, runtime_assets
-from app import worker_api
+from app import database, main, runtime_assets, worker_api
 
 
 def test_runtime_asset_path_uses_worker_data_mountpoint(monkeypatch):

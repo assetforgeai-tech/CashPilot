@@ -39,8 +39,8 @@ what the project can conclude from a green run.
 
 from __future__ import annotations
 
-import re
 import os
+import re
 from pathlib import Path
 
 import pytest

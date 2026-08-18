@@ -9,6 +9,7 @@ from starlette.requests import Request
 
 from app import worker_api
 
+
 def _request(path: str = "/api/containers/mysterium-direct/deploy") -> Request:
     return Request({"type": "http", "method": "POST", "path": path, "headers": []})
 

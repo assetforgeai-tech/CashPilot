@@ -5,8 +5,8 @@ from __future__ import annotations
 import io
 import json
 import re
-import threading
 import tarfile
+import threading
 import time
 from typing import Any
 

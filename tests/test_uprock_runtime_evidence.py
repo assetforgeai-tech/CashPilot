@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 
 from app import orchestrator
 
+
 def test_uprock_provider_evidence_reads_daemon_status_and_device_id():
     container = MagicMock()
     container.exec_run.side_effect = [

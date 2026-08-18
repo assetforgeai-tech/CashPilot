@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any
-
-import base64
 import asyncio
+import base64
 import contextlib
 import csv
 import io
 import json
 import re
+from typing import Any
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Request
@@ -244,7 +243,7 @@ async def _probe_http_proxy(
             "Proxy-Connection: keep-alive",
         ]
         if username or password:
-            token = base64.b64encode(f"{username}:{password}".encode("utf-8")).decode("ascii")
+            token = base64.b64encode(f"{username}:{password}".encode()).decode("ascii")
             headers.append(f"Proxy-Authorization: Basic {token}")
         request = "\r\n".join(headers).encode("ascii") + b"\r\n\r\n"
         writer.write(request)

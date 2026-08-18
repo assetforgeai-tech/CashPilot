@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 from app import provider_installers
 
+
 def test_proxybase_xyz_runtime_command_imports_phrase_and_resolves_cli_path():
     command = provider_installers.proxybase_xyz_command()
     assert "apt-get" not in command

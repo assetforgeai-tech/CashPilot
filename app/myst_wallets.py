@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from typing import Iterable
+from collections.abc import Iterable
 
 
 def normalize_wallet_lines(raw: str) -> list[str]:

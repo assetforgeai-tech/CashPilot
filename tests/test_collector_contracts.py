@@ -376,7 +376,7 @@ class TestBuildingASingleCollector:
         assert missing == ["proxyrack_api_key"]
 
     def test_a_partially_configured_service_names_only_what_is_absent(self):
-        from app import collectors
+        pass
 
     def test_an_unknown_slug_yields_nothing_and_no_missing_keys(self):
         """Nothing is missing because nothing was ever required."""
