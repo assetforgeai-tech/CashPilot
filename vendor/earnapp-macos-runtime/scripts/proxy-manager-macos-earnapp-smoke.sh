@@ -47,9 +47,9 @@ EARNAPP_AUTH_STATE_FILE=${EARNAPP_AUTH_STATE_FILE:-$ROOT_DIR/secrets/earnapp/ear
 EARNAPP_MACOS_PKG_URL=${EARNAPP_MACOS_PKG_URL:-https://cdn.earnapp.com/static/earnapp-macos-1.605.415.pkg}
 EARNAPP_MACOS_PKG_SHA256=${EARNAPP_MACOS_PKG_SHA256:-d1cdeec01a32a5ef3342ee67c42276af143b8b2a58e42211c476f515d0562f75}
 EARNAPP_MACOS_VERSION=${EARNAPP_MACOS_VERSION:-1.605.415}
-EARNAPP_INSTALL_DEVICE_ATTEMPTS=${EARNAPP_INSTALL_DEVICE_ATTEMPTS:-5}
+EARNAPP_INSTALL_DEVICE_ATTEMPTS=${EARNAPP_INSTALL_DEVICE_ATTEMPTS:-1}
 EARNAPP_INSTALL_DEVICE_RETRY_SECONDS=${EARNAPP_INSTALL_DEVICE_RETRY_SECONDS:-5}
-EARNAPP_LINK_ATTEMPTS=${EARNAPP_LINK_ATTEMPTS:-10}
+EARNAPP_LINK_ATTEMPTS=${EARNAPP_LINK_ATTEMPTS:-3}
 EARNAPP_LINK_RETRY_SECONDS=${EARNAPP_LINK_RETRY_SECONDS:-20}
 EARNAPP_LOCAL_RUNTIME_READY_MIN_HEARTBEATS=${EARNAPP_LOCAL_RUNTIME_READY_MIN_HEARTBEATS:-3}
 EARNAPP_LOCAL_RUNTIME_READY_SECONDS=${EARNAPP_LOCAL_RUNTIME_READY_SECONDS:-300}
@@ -1039,22 +1039,21 @@ earnapp_guest_dashboard_curl() {
 }
 
 register_earnapp_macos_device() {
-  local ip=$1 uuid=$2 body status serial attempt
+  local ip=$1 uuid=$2 body=${3:-} status serial created_body=false
   serial=${uuid#sdk-mac-}
-  for attempt in $(seq 1 "$EARNAPP_INSTALL_DEVICE_ATTEMPTS"); do
+  if [ -z "$body" ]; then
     body=$(mktemp)
-    status=$(earnapp_guest_dashboard_curl "$ip" "$body" \
-      --insecure \
-      --http1.1 \
-      -H "Content-Type: application/json" \
-      "https://client.earnapp.com/install_device?uuid=$uuid&version=$EARNAPP_MACOS_VERSION&arch=x64&appid=node_earnapp.com&os=macOS" \
-      --data "{\"serial\":\"$serial\"}")
-    cp "$body" "$STATE/earnapp-install-device-response.last" 2>/dev/null || true
-    rm -f "$body"
-    [ "$status" = 200 ] && return 0
-    [ "$attempt" -lt "$EARNAPP_INSTALL_DEVICE_ATTEMPTS" ] && sleep "$EARNAPP_INSTALL_DEVICE_RETRY_SECONDS"
-  done
-  return 1
+    created_body=true
+  fi
+  status=$(earnapp_guest_dashboard_curl "$ip" "$body" \
+    --insecure \
+    --http1.1 \
+    -H "Content-Type: application/json" \
+    "https://client.earnapp.com/install_device?uuid=$uuid&version=$EARNAPP_MACOS_VERSION&arch=x64&appid=node_earnapp.com&os=macOS" \
+    --data "{\"serial\":\"$serial\"}")
+  cp "$body" "$STATE/earnapp-install-device-response.last" 2>/dev/null || true
+  [ "$created_body" = true ] && rm -f "$body"
+  printf '%s\n' "${status:-000}"
 }
 
 check_earnapp_macos_linked() {
@@ -1110,7 +1109,7 @@ PY
     return 1
   fi
   chmod 0600 "$prep_script" "$effective_url_file" "$cookie_header_file" "$xsrf_file"
-  local cookie xsrf uuid register_url is_linked_body user_body link_body devices_body is_linked_status user_status link_status devices_status device_present ok_marker already_linked not_found status link_attempt link_attempts
+  local cookie xsrf uuid register_url is_linked_body user_body install_body link_body devices_body is_linked_status user_status install_status link_status devices_status device_present ok_marker already_linked not_found status link_attempt link_attempts
   cookie=$(cat "$cookie_header_file")
   xsrf=$(cat "$xsrf_file")
   uuid=$(cat "$uuid_file")
@@ -1120,11 +1119,13 @@ PY
   for link_attempt in $(seq 1 "$link_attempts"); do
     is_linked_body=$(mktemp)
     user_body=$(mktemp)
+    install_body=$(mktemp)
     link_body=$(mktemp)
     devices_body=$(mktemp)
     is_linked_status=$(check_earnapp_macos_linked "$ip" "$uuid" "$is_linked_body")
     cp "$is_linked_body" "$STATE/earnapp-is-linked-response.last" 2>/dev/null || true
-    register_earnapp_macos_device "$ip" "$uuid" || true
+    install_status=$(register_earnapp_macos_device "$ip" "$uuid" "$install_body")
+    cp "$install_body" "$STATE/earnapp-install-device-response.last" 2>/dev/null || true
     user_status=$(earnapp_guest_dashboard_curl "$ip" "$user_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" https://earnapp.com/dashboard/api/user_data)
     link_status=$(earnapp_guest_dashboard_curl "$ip" "$link_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" -H "Accept: application/json, text/plain, */*" -H "Origin: https://earnapp.com" -H "Referer: $register_url" -H "csrf-token: $xsrf" -H "xsrf-token: $xsrf" -H "x-csrf-token: $xsrf" -H "x-xsrf-token: $xsrf" -H "X-XSRF-TOKEN: $xsrf" -H "Content-Type: application/json" -X POST https://earnapp.com/dashboard/api/link_device -d "{\"uuid\":\"$uuid\",\"platform\":\"macos\",\"_csrf\":\"$xsrf\"}")
     devices_status=$(earnapp_guest_dashboard_curl "$ip" "$devices_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" https://earnapp.com/dashboard/api/devices)
@@ -1150,17 +1151,18 @@ PY
       --argjson register_url_present "$([ -n "$register_url" ] && echo true || echo false)" \
       --arg is_linked_status "${is_linked_status:-000}" \
       --arg user_status "${user_status:-000}" \
+      --arg install_status "${install_status:-000}" \
       --arg link_status "${link_status:-000}" \
       --arg devices_status "${devices_status:-000}" \
       --argjson device_present "$device_present" \
       --argjson ok_marker "$ok_marker" \
       --argjson already_linked "$already_linked" \
       --argjson not_found "$not_found" \
-      '{status:$status,attempt:($attempt|tonumber),register_url_present:$register_url_present,device_uuid:$uuid,is_linked_status:$is_linked_status,user_data_status:$user_status,link_device_status:$link_status,devices_status:$devices_status,device_present:$device_present,link_ok:$ok_marker,already_linked:$already_linked,not_found:$not_found}' \
+      '{status:$status,attempt:($attempt|tonumber),register_url_present:$register_url_present,device_uuid:$uuid,is_linked_status:$is_linked_status,user_data_status:$user_status,install_device_status:$install_status,link_device_status:$link_status,devices_status:$devices_status,device_present:$device_present,link_ok:$ok_marker,already_linked:$already_linked,not_found:$not_found}' \
       >"$result"
     cp "$link_body" "$STATE/earnapp-link-response.last" 2>/dev/null || true
     cp "$devices_body" "$STATE/earnapp-devices-response.last" 2>/dev/null || true
-    rm -f "$is_linked_body" "$user_body" "$link_body" "$devices_body"
+    rm -f "$is_linked_body" "$user_body" "$install_body" "$link_body" "$devices_body"
     [ "$status" = linked ] && break
     [ "$status" = rate_limited ] && break
     [ "$status" = auth_failed ] && break

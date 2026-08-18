@@ -326,8 +326,28 @@ def test_earnapp_macos_registers_and_links_from_guest_egress():
     register_block = script[script.index("register_earnapp_macos_device()") : script.index("link_earnapp_device()")]
     assert "--insecure" in register_block
     assert "--http1.1" in register_block
-    assert "EARNAPP_INSTALL_DEVICE_ATTEMPTS" in register_block
-    assert "EARNAPP_INSTALL_DEVICE_RETRY_SECONDS" in register_block
+    assert 'printf \'%s\\n\' "${status:-000}"' in register_block
+
+def test_earnapp_macos_link_flow_matches_2movn_soft_retry():
+    bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
+    with tarfile.open(fileobj=io.BytesIO(bundle), mode="r") as tar:
+        script_file = tar.extractfile("scripts/proxy-manager-macos-earnapp-smoke.sh")
+        assert script_file is not None
+        script = script_file.read().decode()
+
+    register_block = script[script.index("register_earnapp_macos_device()") : script.index("check_earnapp_macos_linked()")]
+    link_block = script[script.index("link_earnapp_device()") : script.index("ensure_earnapp_running()")]
+
+    assert "EARNAPP_INSTALL_DEVICE_ATTEMPTS=${EARNAPP_INSTALL_DEVICE_ATTEMPTS:-1}" in script
+    assert "EARNAPP_LINK_ATTEMPTS=${EARNAPP_LINK_ATTEMPTS:-3}" in script
+    assert "for attempt in" not in register_block
+    assert "body=${3:-}" in register_block
+    assert 'printf \'%s\\n\' "${status:-000}"' in register_block
+    assert 'install_status=$(register_earnapp_macos_device "$ip" "$uuid" "$install_body")' in link_block
+    assert 'register_earnapp_macos_device "$ip" "$uuid" || true' not in link_block
+    assert "--arg install_status" in link_block
+    assert '[ "$link_attempt" -lt "$link_attempts" ] && sleep "$EARNAPP_LINK_RETRY_SECONDS"' in link_block
+    assert '[ "$status" = linked ] && break' in link_block
 
 def test_earnapp_macos_links_after_uuid_and_heartbeats():
     bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
