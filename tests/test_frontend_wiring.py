@@ -224,6 +224,9 @@ class TestNknWalletPoolIsReachable:
         assert "files scanned" in app_js
         assert "wallet folders" in app_js
         assert "skipped" in app_js
+        assert "Scanning wallet files" in app_js
+        assert "_nknWalletImportBatchSize" in app_js
+        assert "el.addEventListener('change', () => importNknWalletZip(id))" in app_js
         assert "importNknWalletZip" in exported
         assert "loadNknWallets" in exported
 

@@ -1650,12 +1650,13 @@ const CP = (() => {
     const input = document.getElementById(inputId);
     const status = document.getElementById('nkn-wallet-import-status');
     if (!input || !input.files || !input.files.length) {
-      toast('Choose a wallet zip first', 'warning');
+      toast('Choose a wallet folder first', 'warning');
       return;
     }
     const files = Array.from(input.files || []);
     const folderRecords = {};
-    for (const file of files) {
+    if (status) status.textContent = `Scanning wallet files: 0 / ${files.length}`;
+    for (const [index, file] of files.entries()) {
       const rel = (file.webkitRelativePath || file.name || '').replaceAll('\\', '/');
       const parts = rel.split('/').filter(Boolean);
       const filename = parts.pop();
@@ -1663,17 +1664,27 @@ const CP = (() => {
       if (!folder || (filename !== 'wallet.json' && filename !== 'wallet.pswd')) continue;
       folderRecords[folder] = folderRecords[folder] || { folder_name: folder };
       folderRecords[folder][filename === 'wallet.json' ? 'wallet_json' : 'wallet_pswd'] = await file.text();
+      if ((index + 1) % 500 === 0 && status) {
+        status.textContent = `Scanning wallet files: ${index + 1} / ${files.length}`;
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
     }
     const records = Object.values(folderRecords).filter(row => row.wallet_json && row.wallet_pswd);
     if (status) status.textContent = `${files.length} files scanned, ${records.length} wallet folders detected`;
     if (records.length) {
       if (status) status.textContent = 'Importing...';
       try {
-        const res = await api('/api/admin/nkn-wallets/import', { method: 'POST', body: { records } });
+        let imported = 0;
+        for (let i = 0; i < records.length; i += _nknWalletImportBatchSize) {
+          const batch = records.slice(i, i + _nknWalletImportBatchSize);
+          if (status) status.textContent = `Importing wallet folders: ${i + 1}-${i + batch.length} / ${records.length}`;
+          const res = await api('/api/admin/nkn-wallets/import', { method: 'POST', body: { records: batch } });
+          imported += Number(res.imported || 0);
+        }
         input.value = '';
         if (status) status.textContent = '';
-        const skipped = Math.max(0, Object.keys(folderRecords).length - (res.imported || 0));
-        toast(`Imported ${res.imported || 0} wallet folder${res.imported === 1 ? '' : 's'} from ${files.length} files scanned; skipped ${skipped} incomplete folder${skipped === 1 ? '' : 's'}`, 'success');
+        const skipped = Math.max(0, Object.keys(folderRecords).length - imported);
+        toast(`Imported ${imported} wallet folder${imported === 1 ? '' : 's'} from ${files.length} files scanned; skipped ${skipped} incomplete folder${skipped === 1 ? '' : 's'}`, 'success');
         await loadNknWallets();
       } catch (err) {
         if (status) status.textContent = '';
@@ -1891,6 +1902,7 @@ const CP = (() => {
   let _nknWalletPage = 1;
   let _nknWalletSort = { key: 'id', dir: -1 };
   const _nknWalletPageSize = 20;
+  const _nknWalletImportBatchSize = 500;
 
   function nknWalletFilters() {
     return {
@@ -4101,6 +4113,11 @@ const CP = (() => {
         loadMystWallets();
         break;
       case 'nkn-wallet':
+        ['nkn-wallet-file'].forEach(id => {
+          const el = document.getElementById(id);
+          if (!el) return;
+          el.addEventListener('change', () => importNknWalletZip(id));
+        });
         ['nkn-wallet-state-filter', 'nkn-wallet-search'].forEach(id => {
           const el = document.getElementById(id);
           if (!el) return;
