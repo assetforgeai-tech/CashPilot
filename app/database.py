@@ -2943,7 +2943,7 @@ async def export_proxy_pool(
 
 
 async def update_proxy_pool_check_results(
-    results: Mapping[int, str], *, protocols: Mapping[int, str] | None = None
+    results: Mapping[int, str], *, protocols: Mapping[int, str] | None = None, exit_ips: Mapping[int, str] | None = None
 ) -> int:
     db = await _get_db()
     try:
@@ -2952,15 +2952,17 @@ async def update_proxy_pool_check_results(
             if str(status).lower() not in {"alive", "dead"}:
                 continue
             protocol = str((protocols or {}).get(proxy_id) or "").lower()
+            exit_ip = str((exit_ips or {}).get(proxy_id) or "").strip()
             cur = await db.execute(
                 """
                 UPDATE proxy_endpoints
                 SET status = ?,
                     protocol = CASE WHEN ? IN ('http', 'socks5') THEN ? ELSE protocol END,
+                    exit_ip = CASE WHEN ? != '' THEN ? ELSE exit_ip END,
                     last_checked_at = datetime('now')
                 WHERE id = ?
                 """,
-                (str(status).lower(), protocol, protocol, int(proxy_id)),
+                (str(status).lower(), protocol, protocol, exit_ip, exit_ip, int(proxy_id)),
             )
             checked += int(cur.rowcount or 0)
         await db.commit()

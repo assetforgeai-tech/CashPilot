@@ -791,8 +791,8 @@ class TestInventoryTablesHaveOperatorControls:
 
 
 class TestFleetWorkerCopyUsesAStablePublicIdentity:
-    def test_the_copy_snippet_uses_public_ip_without_timestamp(self):
+    def test_the_copy_snippet_uses_public_ip_with_timestamp(self):
         page = (ROOT / "app" / "templates" / "fleet.html").read_text(encoding="utf-8")
-        assert "CASHPILOT_WORKER_NAME=$(curl -fsS https://api.ipify.org | tr '.' '-')" in page
-        assert "CASHPILOT_WORKER_NAME=$(curl -fsS https://api.ipify.org | tr '.' '-')-$(date +%s)" not in page
-        assert "CASHPILOT_WORKER_URL=http://$(curl -fsS https://api.ipify.org):8081" in page
+        assert "PUBLIC_IP=$(curl -fsS https://api.ipify.org)" in page
+        assert 'CASHPILOT_WORKER_NAME=$(echo "$PUBLIC_IP" | tr \'.\' \'-\')-$(date +%s)' in page
+        assert "CASHPILOT_WORKER_URL=http://$PUBLIC_IP:8081" in page

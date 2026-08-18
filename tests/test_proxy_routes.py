@@ -298,6 +298,29 @@ async def test_proxy_pool_recheck_uses_decrypted_proxy_credentials():
     lookup.assert_awaited_once_with(7)
     probe.assert_awaited_once_with("proxy.example.com", 1080, username="user", password="pass")
 
+@pytest.mark.asyncio
+async def test_proxy_pool_recheck_persists_proxy_egress_ip():
+    rows = [{"id": 7, "host": "proxy.example.com", "port": 1080, "assigned_worker_id": None}]
+    proxy = {"id": 7, "host": "proxy.example.com", "port": 1080}
+
+    with (
+        patch("app.routers.proxies.database.list_proxy_pool", new_callable=AsyncMock, return_value=rows),
+        patch("app.routers.proxies.database.get_proxy_endpoint", new_callable=AsyncMock, return_value=proxy),
+        patch("app.routers.proxies.database.update_proxy_pool_check_results", new_callable=AsyncMock, return_value=1) as save,
+        patch(
+            "app.routers.proxies._probe_proxy_confirmed",
+            new_callable=AsyncMock,
+            return_value={"status": "alive", "protocol": "socks5", "exit_ip": "8.8.8.8"},
+        ),
+    ):
+        await proxy_routes.run_proxy_pool_recheck(proxy_ids=[7], concurrency=1)
+
+    save.assert_awaited_once_with(
+        {7: "alive"},
+        protocols={7: "socks5"},
+        exit_ips={7: "8.8.8.8"},
+    )
+
 
 def test_manual_proxy_import_persists_multiple_rows(tmp_path):
     async def run():

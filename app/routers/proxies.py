@@ -10,13 +10,14 @@ import io
 import json
 import re
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
+import httpx
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
-from app import database, deps, proxy_egress
+from app import database, deps, egress, proxy_egress
 from app.proxy_providers.vtproxy import sync_vtproxy_provider
 
 router = APIRouter()
@@ -297,15 +298,39 @@ async def _probe_proxy(
         return {"status": "dead", "protocol": ""}
     try:
         if await _probe_socks5_proxy(host, port, username=username, password=password, timeout=timeout):
-            return {"status": "alive", "protocol": "socks5"}
+            exit_ip = await _probe_proxy_exit_ip(host, port, protocol="socks5", username=username, password=password)
+            return {"status": "alive", "protocol": "socks5", "exit_ip": exit_ip or ""}
     except Exception:
         pass
     try:
         if await _probe_http_proxy(host, port, username=username, password=password, timeout=timeout):
-            return {"status": "alive", "protocol": "http"}
+            exit_ip = await _probe_proxy_exit_ip(host, port, protocol="http", username=username, password=password)
+            return {"status": "alive", "protocol": "http", "exit_ip": exit_ip or ""}
     except Exception:
         pass
     return {"status": "dead", "protocol": ""}
+
+def _proxy_url(host: str, port: int, *, protocol: str, username: str = "", password: str = "") -> str:
+    auth = ""
+    if username or password:
+        auth = f"{quote(username, safe='')}:{quote(password, safe='')}@"
+    return f"{protocol}://{auth}{host}:{port}"
+
+async def _probe_proxy_exit_ip(
+    host: str,
+    port: int,
+    *,
+    protocol: str,
+    username: str = "",
+    password: str = "",
+) -> str | None:
+    proxy_url = _proxy_url(host, port, protocol=protocol, username=username, password=password)
+    try:
+        async with httpx.AsyncClient(proxy=proxy_url, timeout=8, trust_env=False) as client:
+            resp = await client.get("https://api.ipify.org")
+            return egress.public_ip(resp.text)
+    except Exception:
+        return None
 
 
 async def _probe_proxy_confirmed(
@@ -369,7 +394,8 @@ async def run_proxy_pool_recheck(*, proxy_ids: list[int] | None = None, concurre
     checks = await asyncio.gather(*(check(row) for row in targets))
     results = {int(row["id"]): str(result.get("status") or "dead") for row, result in checks}
     protocols = {int(row["id"]): str(result.get("protocol") or "") for row, result in checks}
-    checked = await database.update_proxy_pool_check_results(results, protocols=protocols)
+    exit_ips = {int(row["id"]): str(result.get("exit_ip") or "") for row, result in checks}
+    checked = await database.update_proxy_pool_check_results(results, protocols=protocols, exit_ips=exit_ips)
 
     alive_rows = [row for row, result in checks if result.get("status") == "alive"]
     rotated = 0
