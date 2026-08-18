@@ -34,12 +34,15 @@ def test_earnapp_runtime_script_uses_redsocks_iptables_tls_and_cluster_retry():
 
     assert "redsocks" in script
     assert "iptables -t nat -A OUTPUT -p tcp -j REDSOCKS" in script
-    assert "NODE_TLS_REJECT_UNAUTHORIZED=0" in script
+    assert 'NODE_TLS_REJECT_UNAUTHORIZED: "0"' in script
+    assert "launchctl setenv NODE_TLS_REJECT_UNAUTHORIZED 0" in script
+    assert '[ "$proxy_connected" = true ]' in script
     assert "is_linked" in script
     assert "install_device" in script
     assert "link_device" in script
-    assert "HTTP=000" in script
-    assert "do not stop" in script.lower()
+    assert "${status:-000}" in script
+    assert "install_device_status" in script
+    assert "link_device_status" in script
     assert "sing-box" not in script
 
 

@@ -974,12 +974,13 @@ GUEST
     if [[ "$uuid" == sdk-mac-???????????????????????????????? ]] \
       && [ -n "$guest_egress" ] \
       && { [ -z "$lease_egress" ] || [ "$guest_egress" = "$lease_egress" ]; } \
+      && [ "$proxy_connected" = true ] \
       && [[ "$app_hb" =~ ^[0-9]+$ ]] \
       && [[ "$svc_hb" =~ ^[0-9]+$ ]] \
       && [ "$app_hb" -ge "$EARNAPP_LOCAL_RUNTIME_READY_MIN_HEARTBEATS" ] \
       && [ "$svc_hb" -ge "$EARNAPP_LOCAL_RUNTIME_READY_MIN_HEARTBEATS" ]; then
-      # ponytail: real macOS 12 EarnApp writes heartbeats but not always CID/proxy log markers.
-      # Guest egress match is the hard proxy guarantee before link.
+      # ponytail: proxy_connected comes from Bright SDK logs; upgrade path is an API-grade
+      # service state probe if EarnApp exposes one.
       ready=true
     fi
       jq -n \
