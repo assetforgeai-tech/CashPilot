@@ -192,6 +192,10 @@ class TestEarnAppAccountPoolIsReachable:
         exported = set(re.findall(r"^\s{4}([A-Za-z_][A-Za-z0-9_]*),\s*$", app_js, re.M))
         assert {"loadEarnappAccounts", "importEarnappAccount", "toggleEarnappAccountSelection", "setEarnappAccountState", "deleteEarnappAccount", "deleteSelectedEarnappAccounts"} <= exported
 
+    def test_cp_is_exposed_globally_for_delegate_js(self):
+        app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+        assert "window.CP = CP;" in app_js
+
 
 class TestTheAmountShownIsTheOneTheProviderPaid:
     """Caught in a real browser, not by a string test.

@@ -4177,3 +4177,4 @@ const CP = (() => {
     fmtTimestamp,
   };
 })();
+window.CP = CP;
