@@ -186,7 +186,7 @@ def test_earnapp_macos_runtime_uses_macos_launcher_not_linux_qemu():
     assert kwargs["environment"]["CASHPILOT_STANDALONE"] == "true"
     assert kwargs["environment"]["INSTANCE"] == "earnapp-macos-001"
     assert kwargs["environment"]["MANUAL_PROXY"].startswith("socks5://1.2.3.4:1080")
-    assert kwargs["environment"]["EARNAPP_SINGBOX_DNS_MODE"] == "fakeip"
+    assert "EARNAPP_SINGBOX_DNS_MODE" not in kwargs["environment"]
     assert kwargs["environment"]["MANUAL_PROXY_DNS_IPS"] == "1.1.1.1,8.8.8.8"
     assert "docker-compose-v2" in kwargs["command"][2]
     assert "sshpass" in kwargs["command"][2]
@@ -218,15 +218,15 @@ def test_earnapp_macos_runtime_uses_worker_runtime_root(monkeypatch):
     assert kwargs["environment"]["MAC_ROOT"] == "/mnt/cashpilot-runtime/dockur-macos"
     assert kwargs["volumes"]["/mnt/cashpilot-runtime/dockur-macos"]["bind"] == "/mnt/cashpilot-runtime/dockur-macos"
 
-def test_earnapp_macos_launcher_defaults_to_tahoe_not_monterey():
+def test_earnapp_macos_launcher_defaults_to_monterey12_image():
     bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
     with tarfile.open(fileobj=io.BytesIO(bundle), mode="r") as tar:
         script_file = tar.extractfile("scripts/proxy-manager-macos-earnapp-smoke.sh")
         assert script_file is not None
         script = script_file.read().decode()
-    assert "MACOS_VERSION=${MACOS_VERSION:-26}" in script
-    assert "tahoe26-os-only-1792m-v1.qcow2" in script
-    assert "monterey12-os-only" not in script
+    assert "MACOS_VERSION=${MACOS_VERSION:-12}" in script
+    assert "monterey12-os-only-1792m-v1-20260716T153103Z.qcow2" in script
+    assert "os-only-1792m-v1.qcow2" not in script
     assert "cee45546058701852b822662971fbe1e8fc420e33eadc40c407ba239181324e3" not in script
 
 def test_earnapp_macos_bundle_marks_launcher_executable():
@@ -246,15 +246,17 @@ def test_earnapp_macos_launcher_uses_mac_root_for_runtime_paths():
     assert 'Path(os.environ["MAC_ROOT"]) / "identity" / "registry.jsonl"' in script
     assert 'Path("/opt/dockur-macos/identity/registry.jsonl")' not in script
 
-def test_earnapp_macos_launcher_does_not_put_proxy_hostnames_in_route_excludes():
+def test_earnapp_macos_launcher_uses_redsocks_tcp_redirect():
     bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
     with tarfile.open(fileobj=io.BytesIO(bundle), mode="r") as tar:
         script_file = tar.extractfile("scripts/proxy-manager-macos-earnapp-smoke.sh")
         assert script_file is not None
         script = script_file.read().decode()
-    assert "ipaddress.ip_address(endpoint)" in script
-    assert 'route_exclude_address": route_exclude_address' in script
-    assert 'route_exclude_address": [f"{endpoint}/32"' not in script
+    assert "redsocks -c /etc/redsocks.conf" in script
+    assert "iptables -t nat -A OUTPUT -p tcp -j REDSOCKS" in script
+    assert "REDIRECT --to-ports 12345" in script
+    assert "NODE_TLS_REJECT_UNAUTHORIZED: \"0\"" in script
+    assert "SING_BOX_IMAGE" not in script
 
 def test_earnapp_macos_launcher_links_with_source_payload_shape():
     bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
@@ -273,6 +275,18 @@ def test_earnapp_macos_launcher_links_with_source_payload_shape():
     assert "earnapp_guest_dashboard_curl" in link_block
     assert "earnapp_dashboard_curl" not in link_block
     assert "capture_earnapp_guest_diagnostics" in script
+
+def test_earnapp_macos_already_linked_continues_to_dashboard_check():
+    bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
+    with tarfile.open(fileobj=io.BytesIO(bundle), mode="r") as tar:
+        script_file = tar.extractfile("scripts/proxy-manager-macos-earnapp-smoke.sh")
+        assert script_file is not None
+        script = script_file.read().decode()
+    link_block = script[script.index("link_earnapp_device()") : script.index("ensure_earnapp_running()")]
+    assert 'already_linked = true' not in link_block
+    assert '[ "$already_linked" = true ]' in link_block
+    assert 'status=already_linked_unverified' not in link_block
+    assert '{ [ "$ok_marker" = true ] || [ "$already_linked" = true ]; }' in link_block
 
 def test_earnapp_macos_launcher_links_runtime_uuid_not_stale_registration_uuid():
     bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
@@ -304,6 +318,8 @@ def test_earnapp_macos_registers_and_links_from_guest_egress():
         script = script_file.read().decode()
     link_block = script[script.index("register_earnapp_macos_device()") : script.index("ensure_earnapp_running()")]
     assert "earnapp_guest_dashboard_curl" in link_block
+    assert "check_earnapp_macos_linked" in link_block
+    assert "client.earnapp.com/is_linked" in script
     assert "guest_pipe \"$ip\"" in script
     assert "earnapp_dashboard_curl" not in link_block
     assert "register_earnapp_macos_device \"$ip\" \"$uuid\"" in link_block
@@ -313,7 +329,7 @@ def test_earnapp_macos_registers_and_links_from_guest_egress():
     assert "EARNAPP_INSTALL_DEVICE_ATTEMPTS" in register_block
     assert "EARNAPP_INSTALL_DEVICE_RETRY_SECONDS" in register_block
 
-def test_earnapp_macos_links_after_uuid_cid_and_heartbeats():
+def test_earnapp_macos_links_after_uuid_and_heartbeats():
     bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
     with tarfile.open(fileobj=io.BytesIO(bundle), mode="r") as tar:
         script_file = tar.extractfile("scripts/proxy-manager-macos-earnapp-smoke.sh")
@@ -322,27 +338,29 @@ def test_earnapp_macos_links_after_uuid_cid_and_heartbeats():
     ready_block = script[script.index("wait_earnapp_local_runtime_ready()") : script.index("earnapp_proxy_curl()")]
     assert "*perr_install_device_success.log" in script
     assert '[ -n "$app_config_file" ]' not in ready_block
-    assert '[ -n "$cid" ]' in ready_block
+    assert '[ -n "$cid" ]' not in ready_block
+    assert "real macOS 12 EarnApp writes heartbeats" in ready_block
     assert "EARNAPP_LOCAL_RUNTIME_READY_MIN_HEARTBEATS" in ready_block
 
-def test_earnapp_macos_launcher_waits_for_netns_pid_before_firewall():
+def test_earnapp_macos_launcher_waits_for_netns_before_redsocks():
     bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
     with tarfile.open(fileobj=io.BytesIO(bundle), mode="r") as tar:
         script_file = tar.extractfile("scripts/proxy-manager-macos-earnapp-smoke.sh")
         assert script_file is not None
         script = script_file.read().decode()
     assert "wait_netns_pid()" in script
-    assert 'pid=$(wait_netns_pid)' in script
-    assert '[ "$pid" != "0" ]' in script
+    assert "apply_netns_firewall()" in script
+    assert "wait_netns_pid >/dev/null" in script
+    assert "run_start_step redsocks-up" in script
 
-def test_earnapp_macos_launcher_skips_hostname_endpoint_firewall_rule():
+def test_earnapp_macos_launcher_excludes_proxy_endpoint_from_redsocks():
     bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
     with tarfile.open(fileobj=io.BytesIO(bundle), mode="r") as tar:
         script_file = tar.extractfile("scripts/proxy-manager-macos-earnapp-smoke.sh")
         assert script_file is not None
         script = script_file.read().decode()
-    assert 'if is_valid_ip "$endpoint"; then' in script
-    assert 'iptables -A OUTPUT -d "$endpoint"' in script
+    assert "endpoint = socket.gethostbyname(endpoint)" in script
+    assert "iptables -t nat -A REDSOCKS -d {endpoint}/32 -j RETURN" in script
 
 def test_earnapp_macos_launcher_resolves_proxy_hostname_before_singbox_outbound():
     bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
@@ -354,14 +372,18 @@ def test_earnapp_macos_launcher_resolves_proxy_hostname_before_singbox_outbound(
     assert "endpoint = socket.gethostbyname(endpoint)" in script
     assert 'proxy["endpoint_ip"] = endpoint' in script
 
-def test_earnapp_macos_launcher_exports_dns_mode_to_renderer():
+def test_earnapp_macos_launcher_links_after_redsocks_netns_probe_and_heartbeats():
     bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
     with tarfile.open(fileobj=io.BytesIO(bundle), mode="r") as tar:
         script_file = tar.extractfile("scripts/proxy-manager-macos-earnapp-smoke.sh")
         assert script_file is not None
         script = script_file.read().decode()
-    assert "export MANUAL_PROXY_DNS_IPS EARNAPP_SINGBOX_DNS_MODE" in script
-    assert 'os.environ.get("EARNAPP_SINGBOX_DNS_MODE", "fakeip")' in script
+    assert "export MANUAL_PROXY_DNS_IPS" in script
+    assert "EARNAPP_SINGBOX_DNS_MODE" not in script
+    ready_block = script[script.index("wait_earnapp_local_runtime_ready()") : script.index("earnapp_proxy_curl()")]
+    assert "proxy_connected=true" in ready_block
+    assert '[ "$proxy_connected" = true ]' not in ready_block
+    assert "wait_network_ready" in script
 
 def test_earnapp_macos_runtime_keeps_random_identity_controller():
     bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})

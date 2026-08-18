@@ -112,7 +112,6 @@ def deploy_container(
         "MANUAL_PROXY": _proxy_url(proxy),
         "MANUAL_PROXY_SCHEME": str(proxy.get("protocol") or proxy.get("scheme") or "socks5").lower(),
         "MANUAL_PROXY_DNS_IPS": _dns_ips(proxy),
-        "EARNAPP_SINGBOX_DNS_MODE": "fakeip",
         "TARGET_EGRESS_IP": str(proxy.get("egress_ip") or proxy.get("exit_ip") or ""),
         "EARNAPP_AUTH_STATE_FILE": "/runtime/earnapp-auth-state.json",
     }

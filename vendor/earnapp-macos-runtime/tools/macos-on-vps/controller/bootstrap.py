@@ -42,7 +42,7 @@ SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 SSH_ED25519_PUBLIC_KEY_RE = re.compile(
     r"^ssh-ed25519 [A-Za-z0-9+/]+={0,3}(?: [A-Za-z0-9._@-]+)?$"
 )
-SOURCE_FILENAME = os.getenv("MACOS_SOURCE_FILENAME", "tahoe26-os-only-1792m-v1.qcow2")
+SOURCE_FILENAME = os.getenv("MACOS_SOURCE_FILENAME", "monterey12-os-only-1792m-v1-20260716T153103Z.qcow2")
 
 
 def validate_instance_id(instance_id: str) -> None:
@@ -231,7 +231,7 @@ def build_instance_environment(
         raise ValueError("hostname must use lowercase letters, digits, and hyphens")
     environment = {
         "IMAGE": image,
-        "VERSION": os.getenv("MACOS_VERSION", "26"),
+        "VERSION": os.getenv("MACOS_VERSION", "12"),
         "RAM_SIZE": ram,
         "CPU_CORES": cpu,
         "MAC": mac.lower(),
@@ -341,6 +341,8 @@ def _validate_source(source_url: str, source_sha256: str) -> None:
     parsed = urlparse(source_url)
     if parsed.scheme not in {"https", "file"}:
         raise ValueError("source URL must use https or file")
+    if parsed.scheme == "file" and not source_sha256:
+        return
     if not SHA256_RE.fullmatch(source_sha256):
         raise ValueError("source SHA-256 must contain 64 lowercase hexadecimal characters")
 
@@ -363,6 +365,8 @@ def download_verified_image(
     _validate_source(source_url, source_sha256)
     destination = Path(destination)
     if destination.exists():
+        if not source_sha256 and urlparse(source_url).scheme == "file":
+            return
         if _file_sha256(destination) == source_sha256:
             return
         raise FileExistsError(f"existing image has unexpected SHA-256: {destination}")

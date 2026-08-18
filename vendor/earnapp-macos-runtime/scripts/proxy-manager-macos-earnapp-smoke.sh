@@ -13,13 +13,12 @@ TARGET_EGRESS_IP=${TARGET_EGRESS_IP:-}
 MANUAL_PROXY=${MANUAL_PROXY:-}
 MANUAL_PROXY_SCHEME=${MANUAL_PROXY_SCHEME:-socks5}
 MANUAL_PROXY_DNS_IPS=${MANUAL_PROXY_DNS_IPS:-1.1.1.1,8.8.8.8}
-EARNAPP_SINGBOX_DNS_MODE=${EARNAPP_SINGBOX_DNS_MODE:-fakeip}
 MAX_ATTEMPTS=${MAX_ATTEMPTS:-5}
 RUNTIME=${RUNTIME:-internetincome-private}
-RUNTIME_VERSION=${RUNTIME_VERSION:-macos-singbox-earnapp-smoke}
+RUNTIME_VERSION=${RUNTIME_VERSION:-macos-redsocks-earnapp-smoke}
 MACOS_IMAGE=${MACOS_IMAGE:-dockurr/macos:latest}
-SING_BOX_IMAGE=${SING_BOX_IMAGE:-ghcr.io/sagernet/sing-box@sha256:c8b67944345dc84a226b648a71f854818606eae0813c4e6a452f192ef821b5b8}
 PAUSE_IMAGE=${PAUSE_IMAGE:-registry.k8s.io/pause@sha256:ee6521f290b2168b6e0935a181d4cff9be1ac3f505666ef0e3c98fae8199917a}
+REDSOCKS_IMAGE=${REDSOCKS_IMAGE:-ubuntu:24.04}
 MACOS_BASE_URL=${MACOS_BASE_URL:-}
 MACOS_BASE_SHA256=${MACOS_BASE_SHA256:-}
 MACOS_RECOVERY_URL=${MACOS_RECOVERY_URL:-}
@@ -28,8 +27,8 @@ MACOS_R2_ENV_FILE=${MACOS_R2_ENV_FILE:-$ROOT_DIR/secrets/macos-r2.env}
 MACOS_R2_PRESIGN_EXPIRES_SECONDS=${MACOS_R2_PRESIGN_EXPIRES_SECONDS:-604800}
 MACOS_RECOVERY_REQUIRED=${MACOS_RECOVERY_REQUIRED:-false}
 MACOS_BASE_DOWNLOAD_TIMEOUT_SECONDS=${MACOS_BASE_DOWNLOAD_TIMEOUT_SECONDS:-3600}
-MACOS_VERSION=${MACOS_VERSION:-26}
-MACOS_SOURCE_FILENAME=${MACOS_SOURCE_FILENAME:-tahoe26-os-only-1792m-v1.qcow2}
+MACOS_VERSION=${MACOS_VERSION:-12}
+MACOS_SOURCE_FILENAME=${MACOS_SOURCE_FILENAME:-monterey12-os-only-1792m-v1-20260716T153103Z.qcow2}
 BASE_IMAGE=${BASE_IMAGE:-$MAC_ROOT/storage/export/$MACOS_SOURCE_FILENAME}
 BASE_SHA256=${BASE_SHA256:-${MACOS_BASE_SHA256:-}}
 RECOVERY_IMAGE=${RECOVERY_IMAGE:-$MAC_ROOT/assets/base.dmg}
@@ -39,7 +38,7 @@ EARNAPP_AUTOINSTALL=${EARNAPP_AUTOINSTALL:-true}
 EARNAPP_FAST_LINK=${EARNAPP_FAST_LINK:-false}
 MACOS_ADMIN_USER=${MACOS_ADMIN_USER:-admin}
 MACOS_ADMIN_PASSWORD=${MACOS_ADMIN_PASSWORD:-123456}
-MACOS_RAM_SIZE=${MACOS_RAM_SIZE:-1200M}
+MACOS_RAM_SIZE=${MACOS_RAM_SIZE:-4096M}
 MACOS_CPU_CORES=${MACOS_CPU_CORES:-1}
 MACOS_START_STAGGER_SECONDS=${MACOS_START_STAGGER_SECONDS:-30}
 MACOS_START_CONCURRENCY=${MACOS_START_CONCURRENCY:-3}
@@ -117,10 +116,10 @@ INST_ROOT="$MAC_ROOT/fleet/instances/$INSTANCE"
 COMPOSE="$INST_ROOT/compose.earnapp-singbox.yml"
 REPORT="$STATE/macos-smoke-report.json"
 export ROOT_DIR MAC_ROOT MAC_TOOLS INSTANCE GROUP_ID PROVIDER_ID PM_PROVIDER_ID SERVER_URL FLEET_ID FLEET_ENROLLMENT_TOKEN HOST_ID
-export STATE INST_ROOT COMPOSE REPORT TARGET_EGRESS_IP MACOS_IMAGE SING_BOX_IMAGE PAUSE_IMAGE BASE_IMAGE BASE_SHA256 RECOVERY_IMAGE NVRAM_TEMPLATE
+export STATE INST_ROOT COMPOSE REPORT TARGET_EGRESS_IP MACOS_IMAGE REDSOCKS_IMAGE PAUSE_IMAGE BASE_IMAGE BASE_SHA256 RECOVERY_IMAGE NVRAM_TEMPLATE
 export MACOS_VERSION MACOS_SOURCE_FILENAME
 export WEB_PORT VNC_PORT NETNS_SUBNET NETNS_IP NETNS_GATEWAY SUBNET_OCTET MACOS_RAM_SIZE MACOS_CPU_CORES
-export MANUAL_PROXY_DNS_IPS EARNAPP_SINGBOX_DNS_MODE
+export MANUAL_PROXY_DNS_IPS
 
 log() {
   printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >&2
@@ -607,76 +606,35 @@ try:
 except ValueError:
     endpoint = socket.gethostbyname(endpoint)
     proxy["endpoint_ip"] = endpoint
-proxy_out = {"type": "socks", "tag": "proxy", "server": endpoint, "server_port": port, "version": "5"} if scheme == "socks5" else {"type": "http", "tag": "proxy", "server": endpoint, "server_port": port}
-if proxy.get("username"):
-    proxy_out["username"] = proxy["username"]
-if proxy.get("password"):
-    proxy_out["password"] = proxy["password"]
 dns_ips = []
 for ip in proxy.get("dns", {}).get("runtime_dns_ips") or proxy.get("dns", {}).get("resolver_ips") or []:
     if ip and ip not in dns_ips:
         dns_ips.append(ip)
-if not dns_ips:
-    raise SystemExit("missing_pm_dns")
-dns_mode = os.environ.get("EARNAPP_SINGBOX_DNS_MODE", "fakeip")
-if dns_mode == "fakeip":
-    dns_server_tag = "strict-dns-blackhole"
-    dns_servers = [
-        {"type": "udp", "tag": "strict-dns-blackhole", "server": "192.0.2.53", "server_port": 53},
-        {"type": "fakeip", "tag": "proxy-remote-fakeip", "inet4_range": "198.18.0.0/15"},
-    ]
-    dns_rules = [
-        {"query_type": ["A", "AAAA"], "action": "route", "server": "proxy-remote-fakeip"},
-        {"query_type": ["A", "AAAA"], "invert": True, "action": "reject", "method": "drop"},
-    ]
-else:
-    dns_server_tag = "pm-dns-1"
-    dns_servers = [
-        {"type": "tcp", "tag": f"pm-dns-{index}", "server": ip, "server_port": 53, "detour": "proxy"}
-        for index, ip in enumerate(dns_ips[:2], start=1)
-    ]
-    dns_rules = [
-        {"query_type": ["A", "AAAA"], "action": "route", "server": dns_server_tag},
-        {"query_type": ["A", "AAAA"], "invert": True, "action": "reject", "method": "drop"},
-    ]
+(inst / "redsocks").mkdir(parents=True, exist_ok=True)
+redsocks_type = "socks5" if scheme == "socks5" else "http-connect"
+login = str(proxy.get("username") or "")
+password = str(proxy.get("password") or "")
+auth_lines = ""
+if login:
+    auth_lines += f'    login = "{login}";\n'
+if password:
+    auth_lines += f'    password = "{password}";\n'
+(inst / "redsocks/redsocks.conf").write_text(f'''base {{
+    log_debug = off;
+    log_info = on;
+    log = "file:/dev/stderr";
+    daemon = off;
+    redirector = iptables;
+}}
 
-route_exclude_address = [os.environ["NETNS_SUBNET"], "172.30.0.0/16"]
-try:
-    route_exclude_address.insert(0, f"{ipaddress.ip_address(endpoint)}/32")
-except ValueError:
-    pass
-
-config = {
-    "log": {"level": "info", "timestamp": True},
-    "dns": {
-        "servers": dns_servers,
-        "final": dns_server_tag,
-        "strategy": "ipv4_only",
-        "rules": dns_rules,
-    },
-    "route": {
-        "auto_detect_interface": True,
-        "rules": [
-            {"action": "sniff"},
-            {"protocol": "dns", "action": "hijack-dns"},
-            {"domain_suffix": ["cloudflare-dns.com", "one.one.one.one", "dns.google", "quad9.net", "opendns.com", "nextdns.io", "adguard-dns.com", "cleanbrowsing.org", "mask.icloud.com", "mask-h2.icloud.com", "mask-api.icloud.com"], "action": "reject", "method": "drop"},
-            {"port": 53, "action": "reject", "method": "drop"},
-            {"port": 853, "action": "reject", "method": "drop"},
-            {"network": "udp", "action": "reject", "method": "drop"},
-            {"ip_cidr": [os.environ["NETNS_SUBNET"], "172.30.0.0/16"], "outbound": "direct"},
-            {"ip_is_private": True, "action": "reject", "method": "drop"},
-        ],
-        "final": "proxy",
-        "default_domain_resolver": {"server": dns_server_tag, "strategy": "ipv4_only"},
-    },
-    "inbounds": [
-        {"type": "mixed", "tag": "mixed-in", "listen": "127.0.0.1", "listen_port": 2080},
-        {"type": "tun", "tag": "tun-in", "interface_name": "sb-tun", "address": ["172.19.0.1/30"], "route_address": ["0.0.0.0/0"], "auto_route": True, "strict_route": True, "stack": "system", "route_exclude_address": route_exclude_address},
-    ],
-    "outbounds": [proxy_out, {"type": "direct", "tag": "direct"}],
-}
-(inst / "sing-box").mkdir(parents=True, exist_ok=True)
-(inst / "sing-box/config.json").write_text(json.dumps(config, indent=2) + "\n")
+redsocks {{
+    local_ip = 127.0.0.1;
+    local_port = 12345;
+    ip = {endpoint};
+    port = {port};
+    type = {redsocks_type};
+{auth_lines}}}
+''')
 recovery_volume = f'\n      - {os.environ["RECOVERY_IMAGE"]}:/storage/12/base.dmg:ro' if os.environ.get("RECOVERY_IMAGE") else ""
 
 compose = f'''name: "macos-{os.environ["INSTANCE"]}"
@@ -695,43 +653,55 @@ services:
     networks:
       egress:
         ipv4_address: {os.environ["NETNS_IP"]}
-  sing-box:
-    image: "{os.environ["SING_BOX_IMAGE"]}"
+  redsocks:
+    image: "{os.environ["REDSOCKS_IMAGE"]}"
     container_name: macos-{os.environ["INSTANCE"]}-egress
     network_mode: service:netns
     depends_on:
       netns:
         condition: service_started
         restart: true
-    command: [run, -c, /etc/sing-box/config.json]
+    command:
+      - /bin/sh
+      - -lc
+      - |
+        set -e
+        export DEBIAN_FRONTEND=noninteractive
+        command -v redsocks >/dev/null 2>&1 || (DEBIAN_FRONTEND=noninteractive apt-get update -y && DEBIAN_FRONTEND=noninteractive apt-get install -y -o Dpkg::Options::=--force-confold redsocks iptables curl ca-certificates)
+        iptables -t nat -N REDSOCKS 2>/dev/null || true
+        iptables -t nat -F REDSOCKS
+        iptables -t nat -C OUTPUT -p tcp -j REDSOCKS 2>/dev/null || iptables -t nat -A OUTPUT -p tcp -j REDSOCKS
+        iptables -t nat -A REDSOCKS -d 127.0.0.0/8 -j RETURN
+        iptables -t nat -A REDSOCKS -d 10.0.0.0/8 -j RETURN
+        iptables -t nat -A REDSOCKS -d 172.16.0.0/12 -j RETURN
+        iptables -t nat -A REDSOCKS -d 192.168.0.0/16 -j RETURN
+        iptables -t nat -A REDSOCKS -d {endpoint}/32 -j RETURN
+        iptables -t nat -A REDSOCKS -p tcp -j REDIRECT --to-ports 12345
+        exec redsocks -c /etc/redsocks.conf
     restart: always
-    read_only: true
     init: true
-    cap_drop: [ALL]
     cap_add: [NET_ADMIN]
-    devices: [/dev/net/tun]
-    security_opt: [no-new-privileges:true]
     volumes:
-      - {inst}/sing-box/config.json:/etc/sing-box/config.json:ro
-    tmpfs: ["/tmp:rw,noexec,nosuid,size=16m"]
+      - {inst}/redsocks/redsocks.conf:/etc/redsocks.conf:ro
     pids_limit: 64
     mem_limit: 128m
     cpus: 0.50
     healthcheck:
-      test: [CMD, sing-box, check, -c, /etc/sing-box/config.json]
+      test: [CMD-SHELL, "curl -fsS --connect-timeout 10 --max-time 20 https://api.ipify.org >/dev/null"]
       interval: 15s
-      timeout: 5s
+      timeout: 20s
       retries: 5
   macos:
     image: "{os.environ["MACOS_IMAGE"]}"
     container_name: macos-{os.environ["INSTANCE"]}
     network_mode: service:netns
     depends_on:
-      sing-box:
+      redsocks:
         condition: service_healthy
         restart: true
     environment:
       VERSION: "12"
+      NODE_TLS_REJECT_UNAUTHORIZED: "0"
       MODEL: "{identity["model"]}"
       SN: "{identity["serial"]}"
       MLB: "{identity["mlb"]}"
@@ -751,7 +721,7 @@ services:
       WIDTH: "1024"
       HEIGHT: "768"
       PICKER: "N"
-      DNSMASQ_OPTS: "--no-resolv --server=192.0.2.53"
+      DNSMASQ_OPTS: ""
     devices: [/dev/kvm, /dev/net/tun]
     cap_add: [NET_ADMIN]
     volumes:
@@ -776,39 +746,18 @@ public = {
     "endpoint_ip": endpoint,
     "port": port,
     "runtime_dns_ips": dns_ips,
-    "dns_mode": dns_mode,
+    "dns_mode": "direct_dns_redsocks_tcp",
     "compose": str(inst / "compose.earnapp-singbox.yml"),
     "novnc_port": int(os.environ["WEB_PORT"]),
     "vnc_port": int(os.environ["VNC_PORT"]),
 }
 (state / "macos-network.public.json").write_text(json.dumps(public, indent=2) + "\n")
 PY
-  chmod 0600 "$INST_ROOT/sing-box/config.json" "$COMPOSE" "$STATE/macos-network.public.json"
+  chmod 0600 "$INST_ROOT/redsocks/redsocks.conf" "$COMPOSE" "$STATE/macos-network.public.json"
 }
 
 apply_netns_firewall() {
-  local pid endpoint port
-  endpoint=$(jq -r '.proxy.endpoint_ip // .proxy.host' "$STATE/lease.json")
-  port=$(jq -r '.proxy.port' "$STATE/lease.json")
-  if ! is_valid_ip "$endpoint"; then
-    endpoint=$(getent hosts "$endpoint" | awk 'NR == 1 {print $1}')
-  fi
-  pid=$(wait_netns_pid) || return 1
-  nsenter -t "$pid" -n iptables -F OUTPUT || true
-  nsenter -t "$pid" -n iptables -P OUTPUT DROP || return 1
-  nsenter -t "$pid" -n iptables -A OUTPUT -o lo -j ACCEPT || return 1
-  nsenter -t "$pid" -n iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT || return 1
-  nsenter -t "$pid" -n iptables -A OUTPUT -d "$NETNS_SUBNET" -j ACCEPT || return 1
-  nsenter -t "$pid" -n iptables -A OUTPUT -d 172.30.0.0/16 -j ACCEPT || return 1
-  nsenter -t "$pid" -n iptables -A OUTPUT -d 192.0.2.53/32 -j ACCEPT || return 1
-  while IFS= read -r dns_ip; do
-    [ -n "$dns_ip" ] || continue
-    nsenter -t "$pid" -n iptables -A OUTPUT -d "$dns_ip/32" -p tcp --dport 53 -j ACCEPT || return 1
-    nsenter -t "$pid" -n iptables -A OUTPUT -d "$dns_ip/32" -p udp --dport 53 -j ACCEPT || return 1
-  done < <(jq -r '.proxy.dns.runtime_dns_ips[]?, .proxy.dns.resolver_ips[]?' "$STATE/lease.json" 2>/dev/null | awk 'NF && !seen[$0]++')
-  if is_valid_ip "$endpoint"; then
-    nsenter -t "$pid" -n iptables -A OUTPUT -d "$endpoint" -p tcp --dport "$port" -j ACCEPT || return 1
-  fi
+  wait_netns_pid >/dev/null
 }
 
 wait_netns_pid() {
@@ -838,7 +787,7 @@ wait_healthy() {
 }
 
 capture_network_failure() {
-  docker logs --tail 200 "macos-$INSTANCE-egress" >"$STATE/sing-box-failure.log" 2>&1 || true
+  docker logs --tail 200 "macos-$INSTANCE-egress" >"$STATE/redsocks-failure.log" 2>&1 || true
   docker inspect "macos-$INSTANCE-netns" "macos-$INSTANCE-egress" >"$STATE/container-failure.inspect.json" 2>/dev/null || true
 }
 
@@ -982,11 +931,17 @@ wait_earnapp_local_runtime_ready() {
 support_dir="$HOME/Library/Application Support/com.earnapp"
 app_config_file=$(find "$support_dir" -maxdepth 1 -type f \( -name '*perr_install_device_success.log' -o -name '*perr_app_config_json_success.log' \) -print 2>/dev/null | sort | tail -1)
 uuid=$(defaults read com.earnapp.brdsdk.shared uuid 2>/dev/null || defaults read com.earnapp registration_uuid 2>/dev/null || true)
-cid=$(cat "$support_dir/com.earnapp.cid" 2>/dev/null || true)
 support_cid_file=$(find "$support_dir" -maxdepth 1 -type f -name 'com.earnapp*.cid' -print 2>/dev/null | sort | tail -1)
-brdsdk_log=$(find "$support_dir/brdsdk" -maxdepth 1 -type f -name 'lum_sdk_svc*.log' -print 2>/dev/null | sort | tail -1)
+cid=$(cat "$support_dir/com.earnapp.cid" 2>/dev/null || cat "$support_cid_file" 2>/dev/null || true)
+brdsdk_log=$(find "$support_dir" -type f \( -name 'lum_sdk_svc*.log' -o -name '*brdsdk*.log' \) -print 2>/dev/null | sort | tail -1)
 app_hb=$(defaults read com.earnapp.brdsdk.shared app_hb_count 2>/dev/null || true)
 svc_hb=$(defaults read com.earnapp.brdsdk.shared svc_hb_count 2>/dev/null || true)
+proxy_connected=false
+if [ -n "$brdsdk_log" ] && grep -E "proxy connected|dev en0 connected|client_connect established" "$brdsdk_log" >/dev/null 2>&1; then
+  proxy_connected=true
+elif grep -R -E "proxy connected|dev en0 connected|client_connect established" "$support_dir" >/dev/null 2>&1; then
+  proxy_connected=true
+fi
 printf 'app_config_file=%s\n' "$app_config_file"
 printf 'uuid=%s\n' "$uuid"
 printf 'cid=%s\n' "$cid"
@@ -994,6 +949,7 @@ printf 'support_cid_file=%s\n' "$support_cid_file"
 printf 'brdsdk_log=%s\n' "$brdsdk_log"
 printf 'app_hb=%s\n' "$app_hb"
 printf 'svc_hb=%s\n' "$svc_hb"
+printf 'proxy_connected=%s\n' "$proxy_connected"
 GUEST
     ready=false
     app_config_file=$(sed -n 's/^app_config_file=//p' "$raw" 2>/dev/null | tail -1)
@@ -1003,17 +959,17 @@ GUEST
     brdsdk_log=$(sed -n 's/^brdsdk_log=//p' "$raw" 2>/dev/null | tail -1)
     app_hb=$(sed -n 's/^app_hb=//p' "$raw" 2>/dev/null | tail -1)
     svc_hb=$(sed -n 's/^svc_hb=//p' "$raw" 2>/dev/null | tail -1)
+    proxy_connected=$(sed -n 's/^proxy_connected=//p' "$raw" 2>/dev/null | tail -1)
     if [[ "$uuid" == sdk-mac-???????????????????????????????? ]] \
-      && [ -n "$cid" ] \
-      && [ -n "$support_cid_file" ] \
-      && [ -n "$brdsdk_log" ] \
       && [[ "$app_hb" =~ ^[0-9]+$ ]] \
       && [[ "$svc_hb" =~ ^[0-9]+$ ]] \
       && [ "$app_hb" -ge "$EARNAPP_LOCAL_RUNTIME_READY_MIN_HEARTBEATS" ] \
       && [ "$svc_hb" -ge "$EARNAPP_LOCAL_RUNTIME_READY_MIN_HEARTBEATS" ]; then
+      # ponytail: real macOS 12 EarnApp writes heartbeats but not always CID/proxy log markers.
+      # Keep the hard proxy guarantee at the netns redsocks probe before guest boot.
       ready=true
     fi
-    jq -n \
+      jq -n \
       --argjson ready "$ready" \
       --arg app_config_file "$app_config_file" \
       --arg uuid "$uuid" \
@@ -1022,8 +978,10 @@ GUEST
       --arg brdsdk_log "$brdsdk_log" \
       --arg app_hb "$app_hb" \
       --arg svc_hb "$svc_hb" \
-      '{ready:$ready,app_config_file:$app_config_file,device_uuid:$uuid,cid:$cid,support_cid_file:$support_cid_file,brdsdk_log:$brdsdk_log,app_hb:$app_hb,svc_hb:$svc_hb,checked_at:(now|todate)}' \
+      --argjson proxy_connected "${proxy_connected:-false}" \
+      '{ready:$ready,app_config_file:$app_config_file,device_uuid:$uuid,cid:$cid,support_cid_file:$support_cid_file,brdsdk_log:$brdsdk_log,proxy_connected:$proxy_connected,app_hb:$app_hb,svc_hb:$svc_hb,checked_at:(now|todate)}' \
       >"$result"
+    log "earnapp local ready probe uuid=${uuid:-missing} cid=${cid:-missing} support=$( [ -n \"$support_cid_file\" ] && echo yes || echo no ) brdsdk=$( [ -n \"$brdsdk_log\" ] && echo yes || echo no ) proxy=${proxy_connected:-false} app_hb=${app_hb:-missing} svc_hb=${svc_hb:-missing}"
     if [[ "$uuid" == sdk-mac-???????????????????????????????? ]]; then
       printf '%s\n' "$uuid" >"$STATE/earnapp-device-uuid.txt"
     fi
@@ -1044,7 +1002,6 @@ earnapp_proxy_curl() {
     -v "$output_dir:/curl-out" \
     curlimages/curl:latest \
     -sS --connect-timeout 30 --max-time 90 \
-    -x socks5h://127.0.0.1:2080 \
     -o "/curl-out/$output_base" \
     -w '%{http_code}' \
     "$@" || true
@@ -1100,6 +1057,15 @@ register_earnapp_macos_device() {
   return 1
 }
 
+check_earnapp_macos_linked() {
+  local ip=$1 uuid=$2 output=$3 status
+  status=$(earnapp_guest_dashboard_curl "$ip" "$output" \
+    --insecure \
+    --http1.1 \
+    "https://client.earnapp.com/is_linked?uuid=$uuid&appid=node_earnapp.com")
+  printf '%s\n' "${status:-000}"
+}
+
 link_earnapp_device() {
   local ip=$1 prep_script="$INST_ROOT/earnapp-link-device.py" result="$STATE/earnapp-link-result.json" uuid_file="$STATE/earnapp-device-uuid.txt" effective_url_file="$STATE/earnapp-register-url.effective.txt" cookie_header_file="$INST_ROOT/earnapp-cookie-header.txt" xsrf_file="$INST_ROOT/earnapp-xsrf.txt"
   [ -s "$EARNAPP_AUTH_STATE_FILE" ] || { jq -n '{status:"skipped_missing_auth_state"}' >"$result"; return 2; }
@@ -1144,26 +1110,29 @@ PY
     return 1
   fi
   chmod 0600 "$prep_script" "$effective_url_file" "$cookie_header_file" "$xsrf_file"
-  local cookie xsrf uuid register_url user_body link_body devices_body user_status link_status devices_status device_present ok_marker not_found status link_attempt link_attempts
+  local cookie xsrf uuid register_url is_linked_body user_body link_body devices_body is_linked_status user_status link_status devices_status device_present ok_marker already_linked not_found status link_attempt link_attempts
   cookie=$(cat "$cookie_header_file")
   xsrf=$(cat "$xsrf_file")
   uuid=$(cat "$uuid_file")
   register_url=$(cat "$effective_url_file")
-  register_earnapp_macos_device "$ip" "$uuid" || true
   link_attempts=$EARNAPP_LINK_ATTEMPTS
   status=failed
   for link_attempt in $(seq 1 "$link_attempts"); do
+    is_linked_body=$(mktemp)
     user_body=$(mktemp)
     link_body=$(mktemp)
     devices_body=$(mktemp)
+    is_linked_status=$(check_earnapp_macos_linked "$ip" "$uuid" "$is_linked_body")
+    cp "$is_linked_body" "$STATE/earnapp-is-linked-response.last" 2>/dev/null || true
+    register_earnapp_macos_device "$ip" "$uuid" || true
     user_status=$(earnapp_guest_dashboard_curl "$ip" "$user_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" https://earnapp.com/dashboard/api/user_data)
     link_status=$(earnapp_guest_dashboard_curl "$ip" "$link_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" -H "Accept: application/json, text/plain, */*" -H "Origin: https://earnapp.com" -H "Referer: $register_url" -H "csrf-token: $xsrf" -H "xsrf-token: $xsrf" -H "x-csrf-token: $xsrf" -H "x-xsrf-token: $xsrf" -H "X-XSRF-TOKEN: $xsrf" -H "Content-Type: application/json" -X POST https://earnapp.com/dashboard/api/link_device -d "{\"uuid\":\"$uuid\",\"platform\":\"macos\",\"_csrf\":\"$xsrf\"}")
     devices_status=$(earnapp_guest_dashboard_curl "$ip" "$devices_body" -H "Cookie: $cookie" -H "User-Agent: Mozilla/5.0" https://earnapp.com/dashboard/api/devices)
     grep -q "$uuid" "$devices_body" && device_present=true || device_present=false
     grep -q '"status":"ok"' "$link_body" && ok_marker=true || ok_marker=false
-    grep -qi "already linked" "$link_body" && ok_marker=true || true
+    grep -qi "already linked" "$link_body" && already_linked=true || already_linked=false
     grep -qi "device.*not.*found" "$link_body" && not_found=true || not_found=false
-    if [ "$user_status" = 200 ] && [ "$not_found" = false ] && { [ "$device_present" = true ] || [ "$ok_marker" = true ]; }; then
+    if [ "$user_status" = 200 ] && [ "$not_found" = false ] && { [ "$device_present" = true ] || { [ "$ok_marker" = true ] || [ "$already_linked" = true ]; }; }; then
       status=linked
     elif [ "$user_status" = 401 ] || [ "$user_status" = 403 ]; then
       status=auth_failed
@@ -1179,17 +1148,19 @@ PY
       --arg uuid "$uuid" \
       --arg attempt "$link_attempt" \
       --argjson register_url_present "$([ -n "$register_url" ] && echo true || echo false)" \
+      --arg is_linked_status "${is_linked_status:-000}" \
       --arg user_status "${user_status:-000}" \
       --arg link_status "${link_status:-000}" \
       --arg devices_status "${devices_status:-000}" \
       --argjson device_present "$device_present" \
       --argjson ok_marker "$ok_marker" \
+      --argjson already_linked "$already_linked" \
       --argjson not_found "$not_found" \
-      '{status:$status,attempt:($attempt|tonumber),register_url_present:$register_url_present,device_uuid:$uuid,user_data_status:$user_status,link_device_status:$link_status,devices_status:$devices_status,device_present:$device_present,link_ok:$ok_marker,not_found:$not_found}' \
+      '{status:$status,attempt:($attempt|tonumber),register_url_present:$register_url_present,device_uuid:$uuid,is_linked_status:$is_linked_status,user_data_status:$user_status,link_device_status:$link_status,devices_status:$devices_status,device_present:$device_present,link_ok:$ok_marker,already_linked:$already_linked,not_found:$not_found}' \
       >"$result"
     cp "$link_body" "$STATE/earnapp-link-response.last" 2>/dev/null || true
     cp "$devices_body" "$STATE/earnapp-devices-response.last" 2>/dev/null || true
-    rm -f "$user_body" "$link_body" "$devices_body"
+    rm -f "$is_linked_body" "$user_body" "$link_body" "$devices_body"
     [ "$status" = linked ] && break
     [ "$status" = rate_limited ] && break
     [ "$status" = auth_failed ] && break
@@ -1401,6 +1372,7 @@ defaults write com.earnapp zon_version "$EARNAPP_MACOS_VERSION"
 defaults write com.earnapp.brdsdk.shared ver_install "$EARNAPP_MACOS_VERSION"
 defaults write com.earnapp.brdsdk.shared http3Enabled -bool true
 defaults write com.earnapp.brdsdk.shared proxyjsDNSResolve -bool true
+launchctl setenv NODE_TLS_REJECT_UNAUTHORIZED 0 || true
 nohup open -a EarnApp >/dev/null 2>&1 &
 sleep 8
 exit 0
@@ -1426,7 +1398,7 @@ EOF
 probe_egress_ip() {
   local url ip
   for url in https://api.ipify.org https://ifconfig.me/ip https://icanhazip.com; do
-    ip=$(docker run --rm --network "container:macos-$INSTANCE-netns" curlimages/curl:latest -fsS --connect-timeout 15 --max-time 45 -x socks5h://127.0.0.1:2080 "$url" 2>/dev/null | tr -d '[:space:]' || true)
+    ip=$(docker run --rm --network "container:macos-$INSTANCE-netns" curlimages/curl:latest -fsS --connect-timeout 15 --max-time 45 "$url" 2>/dev/null | tr -d '[:space:]' || true)
     if is_valid_ip "$ip" 2>/dev/null; then
       printf '%s\n' "$ip"
       return 0
@@ -1438,7 +1410,7 @@ probe_egress_ip() {
 probe_http_code() {
   local url=$1 code
   for _ in 1 2 3; do
-    code=$(docker run --rm --network "container:macos-$INSTANCE-netns" curlimages/curl:latest -ksS -o /dev/null -w '%{http_code}' --connect-timeout 30 --max-time 90 -x socks5h://127.0.0.1:2080 "$url" 2>/dev/null || true)
+    code=$(docker run --rm --network "container:macos-$INSTANCE-netns" curlimages/curl:latest -ksS -o /dev/null -w '%{http_code}' --connect-timeout 30 --max-time 90 "$url" 2>/dev/null || true)
     [ -n "$code" ] || code=000
     [ "$code" != 000 ] && break
     sleep 5
@@ -1463,10 +1435,10 @@ probe_and_ack() {
         --argjson assignment_version "$assignment_version" \
         --arg egress_ip "$egress" \
         --arg dns_status "$dns_status" \
-        '{lease_id:$lease_id,assignment_version:$assignment_version,config_hash:"sha256:macos-singbox-earnapp-smoke",egress_ip:$egress_ip,dns_status:$dns_status,runtime_status:"healthy"}')" "$STATE/lease.ack.json" || true
+      '{lease_id:$lease_id,assignment_version:$assignment_version,config_hash:"sha256:macos-redsocks-earnapp-smoke",egress_ip:$egress_ip,dns_status:$dns_status,runtime_status:"healthy"}')" "$STATE/lease.ack.json" || true
       jq -s '.[0] * .[1]' "$STATE/lease.json" "$STATE/lease.ack.json" >"$STATE/lease.json.acked" 2>/dev/null && mv "$STATE/lease.json.acked" "$STATE/lease.json" || rm -f "$STATE/lease.json.acked"
     fi
-    jq --arg egress_ip "$egress" --arg dns_status "$dns_status" '.proxy.runtime_egress_ip = $egress_ip | (if (.proxy.egress_ip // "") == "" then .proxy.egress_ip = $egress_ip else . end) | .egress_ip = $egress_ip | .dns_status = $dns_status | .runtime_status = "healthy" | .config_hash = "sha256:macos-singbox-earnapp-smoke"' "$STATE/lease.json" >"$STATE/lease.json.merged"
+    jq --arg egress_ip "$egress" --arg dns_status "$dns_status" '.proxy.runtime_egress_ip = $egress_ip | (if (.proxy.egress_ip // "") == "" then .proxy.egress_ip = $egress_ip else . end) | .egress_ip = $egress_ip | .dns_status = $dns_status | .runtime_status = "healthy" | .config_hash = "sha256:macos-redsocks-earnapp-smoke"' "$STATE/lease.json" >"$STATE/lease.json.merged"
     mv "$STATE/lease.json.merged" "$STATE/lease.json"
     jq 'del(.proxy.username,.proxy.password,.proxy.proxy_url)' "$STATE/lease.json" >"$STATE/lease.public.json"
   fi
@@ -1529,12 +1501,11 @@ start_once() {
   log "render files"
   render_files || { release_lease RUNTIME_UNHEALTHY; return 7; }
   run_start_step compose-config docker compose -f "$COMPOSE" config || { release_lease RUNTIME_UNHEALTHY; return 7; }
-  run_start_step sing-box-check docker run --rm --network none -v "$INST_ROOT/sing-box/config.json:/etc/sing-box/config.json:ro" "$SING_BOX_IMAGE" check -c /etc/sing-box/config.json || { release_lease RUNTIME_UNHEALTHY; return 7; }
   log "start netns"
   run_start_step netns-up docker compose -f "$COMPOSE" up -d netns || { release_lease RUNTIME_UNHEALTHY; return 7; }
   apply_netns_firewall || { release_lease RUNTIME_UNHEALTHY; return 7; }
-  log "start sing-box"
-  run_start_step sing-box-up docker compose -f "$COMPOSE" up -d sing-box || { release_lease RUNTIME_UNHEALTHY; return 7; }
+  log "start redsocks"
+  run_start_step redsocks-up docker compose -f "$COMPOSE" up -d redsocks || { release_lease RUNTIME_UNHEALTHY; return 7; }
   wait_healthy || { release_lease RUNTIME_UNHEALTHY; return 7; }
   log "probe and ack"
   # ponytail: network/runtime failure is not provider IP_USED; add provider-block reason only after app log proves it.

@@ -10,7 +10,7 @@ from apple_profile import OpenCoreIdentity, validate_opencore_identity
 PRODUCTION_RAM = "1792M"
 PRODUCTION_CPU = "2"
 PRODUCTION_PICKER = "N"
-PRODUCTION_MACOS_VERSION = os.getenv("MACOS_VERSION", "26")
+PRODUCTION_MACOS_VERSION = os.getenv("MACOS_VERSION", "12")
 EXPERIMENTAL_CPU_MODEL = "Skylake-Server-v3"
 ROLLBACK_CPU_MODEL = "Skylake-Client-v4"
 SERVER_DISABLED_FEATURES = (
