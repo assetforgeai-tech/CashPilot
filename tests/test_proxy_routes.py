@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app import database
+from app.routers import proxies as proxy_routes
 
 
 @asynccontextmanager
@@ -137,6 +138,67 @@ def test_proxy_pool_export_and_recheck_are_owner_only_and_wired(client):
     assert recheck.json()["checked"] == 3
     mark.assert_awaited_once_with(proxy_ids=[1, 2, 3], concurrency=4)
 
+@pytest.mark.asyncio
+async def test_proxy_probe_requires_a_real_tunnel_not_just_handshake():
+    calls = []
+
+    class Reader:
+        def __init__(self, stage: int):
+            self.stage = stage
+            self.socks_step = 0
+            self.http_step = 0
+
+        async def readexactly(self, n: int):
+            if self.stage == 1:
+                self.socks_step += 1
+                if self.socks_step == 1:
+                    return b"\x05\x00"
+                if self.socks_step == 2:
+                    return b"\x05\x00\x00\x01"
+                if self.socks_step == 3:
+                    return b"\x00\x00\x00\x00\x00\x00"
+            return b""
+
+        async def read(self, n: int):
+            if self.stage == 2:
+                self.http_step += 1
+                if self.http_step == 1:
+                    return b"HTTP/1.1 200 Connection established\r\n\r\n"
+            return b""
+
+    class Writer:
+        def __init__(self, stage: int):
+            self.stage = stage
+
+        def write(self, data: bytes):
+            calls.append((self.stage, data))
+
+        async def drain(self):
+            return None
+
+        def close(self):
+            return None
+
+        async def wait_closed(self):
+            return None
+
+    async def fake_open_connection(host: str, port: int):
+        calls.append((host, port))
+        stage = len([item for item in calls if isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], str)])
+        return Reader(stage), Writer(stage)
+
+    async def passthrough(value, timeout=None):
+        return await value
+
+    with (
+        patch("app.routers.proxies.asyncio.open_connection", side_effect=fake_open_connection),
+        patch("app.routers.proxies.asyncio.wait_for", side_effect=passthrough),
+    ):
+        result = await proxy_routes._probe_proxy_confirmed("1.2.3.4", 1080, retries=1, retry_delay=0)
+
+    assert result["status"] == "dead"
+    assert len([item for item in calls if isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], str)]) >= 2
+
 def test_proxy_pool_import_rechecks_only_imported_proxies(client):
     payload = "1.1.1.1:1000\n2.2.2.2:2000:user:pass\n"
     with (
@@ -180,6 +242,23 @@ def test_proxy_pool_import_reports_inserted_count_not_parse_count(client):
         resp = client.post("/api/proxy-pool/import", json={"text": "1.1.1.1:1000\n2.2.2.2:2000\n", "provider_name": "manual", "recheck": False})
     assert resp.status_code == 200
     assert resp.json()["imported"] == 2
+
+@pytest.mark.asyncio
+async def test_proxy_pool_recheck_uses_decrypted_proxy_credentials():
+    rows = [{"id": 7, "host": "proxy.example.com", "port": 1080, "assigned_worker_id": None}]
+    proxy = {"id": 7, "host": "proxy.example.com", "port": 1080, "username": "user", "password": "pass"}
+
+    with (
+        patch("app.routers.proxies.database.list_proxy_pool", new_callable=AsyncMock, return_value=rows),
+        patch("app.routers.proxies.database.get_proxy_endpoint", new_callable=AsyncMock, return_value=proxy) as lookup,
+        patch("app.routers.proxies.database.update_proxy_pool_check_results", new_callable=AsyncMock, return_value=1),
+        patch("app.routers.proxies._probe_proxy_confirmed", new_callable=AsyncMock, return_value={"status": "alive", "protocol": "socks5"}) as probe,
+    ):
+        result = await proxy_routes.run_proxy_pool_recheck(proxy_ids=[7], concurrency=1)
+
+    assert result["status"] == "ok"
+    lookup.assert_awaited_once_with(7)
+    probe.assert_awaited_once_with("proxy.example.com", 1080, username="user", password="pass")
 
 def test_manual_proxy_import_persists_multiple_rows(tmp_path):
     async def run():

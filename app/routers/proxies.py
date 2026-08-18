@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
+import base64
 import asyncio
+import contextlib
 import csv
 import io
 import json
@@ -139,29 +141,149 @@ def _parse_proxy_import(text: str) -> list[dict[str, Any]]:
                 rows.append(parsed)
     return rows
 
-async def _probe_proxy(host: str, port: int, timeout: float = 5.0) -> dict[str, str]:
+_PROXY_PROBE_HOST = "example.com"
+_PROXY_PROBE_PORT = 80
+
+
+async def _read_exactly_or_none(reader: asyncio.StreamReader, n: int, timeout: float) -> bytes:
+    try:
+        return await asyncio.wait_for(reader.readexactly(n), timeout=timeout)
+    except Exception:
+        return b""
+
+
+async def _read_some_or_none(reader: asyncio.StreamReader, n: int, timeout: float) -> bytes:
+    try:
+        return await asyncio.wait_for(reader.read(n), timeout=timeout)
+    except Exception:
+        return b""
+
+
+async def _probe_socks5_proxy(
+    host: str,
+    port: int,
+    *,
+    username: str = "",
+    password: str = "",
+    timeout: float = 5.0,
+) -> bool:
+    reader, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
+    try:
+        methods = [b"\x00"]
+        if username or password:
+            methods.append(b"\x02")
+        writer.write(b"\x05" + bytes([len(methods)]) + b"".join(methods))
+        await writer.drain()
+        method = await _read_exactly_or_none(reader, 2, timeout)
+        if len(method) != 2 or method[0] != 5:
+            return False
+        if method[1] == 0x02:
+            auth = username.encode("utf-8")
+            secret = password.encode("utf-8")
+            if len(auth) > 255 or len(secret) > 255:
+                return False
+            writer.write(b"\x01" + bytes([len(auth)]) + auth + bytes([len(secret)]) + secret)
+            await writer.drain()
+            auth_reply = await _read_exactly_or_none(reader, 2, timeout)
+            if auth_reply != b"\x01\x00":
+                return False
+        elif method[1] != 0x00:
+            return False
+
+        target_host = _PROXY_PROBE_HOST.encode("ascii")
+        if len(target_host) > 255:
+            return False
+        writer.write(b"\x05\x01\x00\x03" + bytes([len(target_host)]) + target_host + _PROXY_PROBE_PORT.to_bytes(2, "big"))
+        await writer.drain()
+        reply = await _read_exactly_or_none(reader, 4, timeout)
+        if len(reply) != 4 or reply[0] != 5 or reply[1] != 0:
+            return False
+        atyp = reply[3]
+        if atyp == 1:
+            if len(await _read_exactly_or_none(reader, 6, timeout)) != 6:
+                return False
+        elif atyp == 3:
+            host_len = await _read_exactly_or_none(reader, 1, timeout)
+            if not host_len:
+                return False
+            if len(await _read_exactly_or_none(reader, int(host_len[0]) + 2, timeout)) != int(host_len[0]) + 2:
+                return False
+        elif atyp == 4:
+            if len(await _read_exactly_or_none(reader, 18, timeout)) != 18:
+                return False
+        else:
+            return False
+
+        writer.write(
+            b"GET / HTTP/1.1\r\n"
+            b"Host: example.com\r\n"
+            b"Connection: close\r\n\r\n"
+        )
+        await writer.drain()
+        data = await _read_some_or_none(reader, 12, timeout)
+        return data.startswith(b"HTTP/")
+    finally:
+        writer.close()
+        with contextlib.suppress(Exception):
+            await writer.wait_closed()
+
+
+async def _probe_http_proxy(
+    host: str,
+    port: int,
+    *,
+    username: str = "",
+    password: str = "",
+    timeout: float = 5.0,
+) -> bool:
+    reader, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
+    try:
+        headers = [
+            f"CONNECT {_PROXY_PROBE_HOST}:{_PROXY_PROBE_PORT} HTTP/1.1",
+            f"Host: {_PROXY_PROBE_HOST}:{_PROXY_PROBE_PORT}",
+            "Proxy-Connection: keep-alive",
+        ]
+        if username or password:
+            token = base64.b64encode(f"{username}:{password}".encode("utf-8")).decode("ascii")
+            headers.append(f"Proxy-Authorization: Basic {token}")
+        request = "\r\n".join(headers).encode("ascii") + b"\r\n\r\n"
+        writer.write(request)
+        await writer.drain()
+        response = await _read_some_or_none(reader, 1024, timeout)
+        if not response.startswith(b"HTTP/1.1 200") and not response.startswith(b"HTTP/1.0 200"):
+            return False
+        writer.write(
+            b"GET / HTTP/1.1\r\n"
+            b"Host: example.com\r\n"
+            b"Connection: close\r\n\r\n"
+        )
+        await writer.drain()
+        data = await _read_some_or_none(reader, 12, timeout)
+        return data.startswith(b"HTTP/")
+    finally:
+        writer.close()
+        with contextlib.suppress(Exception):
+            await writer.wait_closed()
+
+
+async def _probe_proxy(
+    host: str,
+    port: int,
+    *,
+    username: str = "",
+    password: str = "",
+    timeout: float = 5.0,
+) -> dict[str, str]:
     host = host.strip()
     if not host or port <= 0:
         return {"status": "dead", "protocol": ""}
     try:
-        reader, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
-        writer.write(b"\x05\x01\x00")
-        await writer.drain()
-        data = await asyncio.wait_for(reader.readexactly(2), timeout=timeout)
-        writer.close()
-        await writer.wait_closed()
-        if data[0] == 5:
+        if await _probe_socks5_proxy(host, port, username=username, password=password, timeout=timeout):
             return {"status": "alive", "protocol": "socks5"}
     except Exception:
         pass
     try:
-        reader, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
-        writer.write(b"CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\n\r\n")
-        await writer.drain()
-        data = await asyncio.wait_for(reader.read(64), timeout=timeout)
-        writer.close()
-        await writer.wait_closed()
-        if data.startswith(b"HTTP/"):
+        if await _probe_http_proxy(host, port, username=username, password=password, timeout=timeout):
             return {"status": "alive", "protocol": "http"}
     except Exception:
         pass
@@ -171,11 +293,13 @@ async def _probe_proxy_confirmed(
     host: str,
     port: int,
     *,
+    username: str = "",
+    password: str = "",
     retries: int = 3,
     retry_delay: float = 5.0,
 ) -> dict[str, str]:
     for attempt in range(max(1, retries)):
-        result = await _probe_proxy(host, port)
+        result = await _probe_proxy(host, port, username=username, password=password)
         if result.get("status") == "alive":
             return result
         if attempt < retries - 1:
@@ -211,7 +335,13 @@ async def run_proxy_pool_recheck(*, proxy_ids: list[int] | None = None, concurre
 
     async def check(row: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str]]:
         async with semaphore:
-            result = await _probe_proxy_confirmed(str(row.get("host") or "").strip(), int(row.get("port") or 0))
+            proxy = await database.get_proxy_endpoint(int(row.get("id") or 0)) or row
+            result = await _probe_proxy_confirmed(
+                str(proxy.get("host") or "").strip(),
+                int(proxy.get("port") or 0),
+                username=str(proxy.get("username") or "").strip(),
+                password=str(proxy.get("password") or "").strip(),
+            )
             return row, result
 
     checks = await asyncio.gather(*(check(row) for row in targets))
