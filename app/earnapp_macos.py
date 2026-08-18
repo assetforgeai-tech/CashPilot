@@ -13,6 +13,18 @@ from typing import Any
 RUNTIME_ROOT = Path(__file__).resolve().parent.parent / "vendor" / "earnapp-macos-runtime"
 SCRIPT = "scripts/proxy-manager-macos-earnapp-smoke.sh"
 
+def _r2_env_source() -> Path | None:
+    candidates = [
+        Path(__file__).resolve().parent.parent / "secrets" / "macos-r2.env",
+        Path("/opt/cashpilot-src/secrets/macos-r2.env"),
+        Path(r"D:\1. WORK_true\Internetincome\archive\earnapp-runtime-20260807\secrets\macos-r2.env"),
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 def dashboard_device_title(uuid: str) -> str:
     raw = str(uuid or "").strip()
     tail = raw[-8:]
@@ -24,112 +36,13 @@ def dashboard_device_title(uuid: str) -> str:
         return f"sdk-{tail}"
     return raw
 
+
 def runtime_script() -> str:
-    return """#!/bin/bash
-set -euo pipefail
-export NODE_TLS_REJECT_UNAUTHORIZED=0
-# NODE_TLS_REJECT_UNAUTHORIZED: "0"
-MACOS_VERSION=${MACOS_VERSION:-12}
-IMAGE_NAME=monterey12-os-only-1792m-v1-20260716T153103Z.qcow2
-EARNAPP_INSTALL_DEVICE_ATTEMPTS=${EARNAPP_INSTALL_DEVICE_ATTEMPTS:-1}
-EARNAPP_LINK_ATTEMPTS=${EARNAPP_LINK_ATTEMPTS:-3}
-EARNAPP_LINK_RETRY_SECONDS=${EARNAPP_LINK_RETRY_SECONDS:-10}
-export MANUAL_PROXY_DNS_IPS="${MANUAL_PROXY_DNS_IPS:-}"
-wait_netns_pid() { :; }
-apply_netns_firewall() { :; }
-run_start_step() { :; }
-wait_network_ready() {
-  wait_netns_pid >/dev/null
-  run_start_step redsocks-up
-  apply_netns_firewall
-}
-guest_pipe() { :; }
-earnapp_guest_dashboard_curl() { :; }
-capture_earnapp_guest_diagnostics() { :; }
-hold_linked_runtime() { while sleep 300; do heartbeat_earnapp_cookie linked || true; done; }
-heartbeat_earnapp_cookie() { :; }
-wait_earnapp_identity() {
-  uuid="$(defaults read com.earnapp.brdsdk.shared uuid 2>/dev/null || defaults read com.earnapp registration_uuid 2>/dev/null || true)"
-  printf '%s\\n' "$uuid" >"$STATE/earnapp-device-uuid.txt"
-}
-wait_earnapp_local_runtime_ready() {
-  # real macOS 12 EarnApp writes heartbeats
-  EARNAPP_LOCAL_RUNTIME_READY_MIN_HEARTBEATS=${EARNAPP_LOCAL_RUNTIME_READY_MIN_HEARTBEATS:-2}
-  proxy_connected=true
-  printf '%s\\n' "$uuid" >"$STATE/earnapp-device-uuid.txt"
-  printf '%s\\n' "*perr_install_device_success.log"
-  jq . "$REPORT"
-      hold_linked_runtime
-}
-earnapp_proxy_curl() { :; }
-register_earnapp_macos_device() {
-  ip="$1"
-  uuid="$2"
-  body=${3:-}
-  status="000"
-  # do not stop on install_device HTTP=000
-  # printf '%s\\n' "${status:-000}"
-  printf '%s\\n' "${status:-000}"
-  printf '%s\\n' "${status:-000}"
-  curl --insecure --http1.1 -fsS https://client.earnapp.com/install_device
-  printf '%s\\n' "$body"
-  --arg install_status "$status"
-}
-link_earnapp_device() {
-  ip="$1"
-  uuid="$2"
-  install_body='{"uuid":"'"$uuid"'","platform":"macos","_csrf":"'"$xsrf"'"}'
-  install_status=$(register_earnapp_macos_device "$ip" "$uuid" "$install_body")
-  check_earnapp_macos_linked "$ip" "$uuid" "$install_status"
-  # -d "{\\\"uuid\\\":\\\"$uuid\\\",\\\"platform\\\":\\\"macos\\\",\\\"_csrf\\\":\\\"$xsrf\\\"}"
-  curl -fsS -d "{\\\"uuid\\\":\\\"$uuid\\\",\\\"platform\\\":\\\"macos\\\",\\\"_csrf\\\":\\\"$xsrf\\\"}" https://earnapp.com/dashboard/api/link_device
-  touch earnapp-link-response.last earnapp-install-device-response.last earnapp-install-device-success.log
-  link_attempts="${EARNAPP_LINK_ATTEMPTS:-3}"
-  for link_attempt in $(seq 1 "$link_attempts"); do
-    already_linked=true
-    status=linked
-    earnapp_guest_dashboard_curl
-    if [ "$status" = linked ] && break; then
-      :
-    fi
-    [ "$link_attempt" -lt "$link_attempts" ] && sleep "$EARNAPP_LINK_RETRY_SECONDS"
-  done
-  # already linked
-  # dashboard pending after link
-  { [ "$ok_marker" = true ] || [ "$already_linked" = true ]; }
-  install_status=$(register_earnapp_macos_device "$ip" "$uuid" "$install_body")
-  --arg install_status "$install_status"
-}
-check_earnapp_macos_linked() {
-  ip="$1"
-  uuid="$2"
-  guest_pipe "$ip"
-  curl -fsS https://client.earnapp.com/is_linked || true
-}
-ensure_earnapp_running() { :; }
-earnapp_dashboard_curl() { :; }
-resolve_proxy_endpoint() {
-python3 - <<'PY'
-import os
-from pathlib import Path
-import socket
-endpoint = "proxy.example"
-endpoint = socket.gethostbyname(endpoint)
-proxy["endpoint_ip"] = endpoint
-Path(os.environ["MAC_ROOT"]) / "identity" / "registry.jsonl"
-PY
-}
-proxy_tcp_redirect() {
-  redsocks -c /etc/redsocks.conf
-  iptables -t nat -A OUTPUT -p tcp -j REDSOCKS
-  iptables -t nat -A REDSOCKS -d {endpoint}/32 -j RETURN
-  REDIRECT --to-ports 12345
-}
-"""
+    return (RUNTIME_ROOT / SCRIPT).read_text(encoding="utf-8")
+
 
 def _host_runtime_root() -> str:
-    root = os.getenv("CASHPILOT_RUNTIME_ROOT", "/opt/cashpilot-runtime").strip() or "/opt/cashpilot-runtime"
-    return root.rstrip("/")
+    return (os.getenv("CASHPILOT_RUNTIME_ROOT", "/opt/cashpilot-runtime").strip() or "/opt/cashpilot-runtime").rstrip("/")
 
 
 def _proxy_url(proxy: dict[str, Any]) -> str:
@@ -142,16 +55,14 @@ def _proxy_url(proxy: dict[str, Any]) -> str:
         raise RuntimeError("EarnApp macOS proxy host/port is required")
     username = str(proxy.get("username") or "")
     password = str(proxy.get("password") or "")
-    auth = ""
-    if username:
-        auth = urllib.parse.quote(username, safe="") + ":" + urllib.parse.quote(password, safe="") + "@"
+    auth = f"{urllib.parse.quote(username, safe='')}:{urllib.parse.quote(password, safe='')}@" if username else ""
     return f"{scheme}://{auth}{host}:{port}"
 
 
 def _dns_ips(proxy: dict[str, Any]) -> str:
     dns = proxy.get("dns") if isinstance(proxy.get("dns"), dict) else {}
     values = dns.get("runtime_dns_ips") or dns.get("resolver_ips") or proxy.get("dns_ips") or []
-    ips: list[str] = []
+    ips = []
     for value in values:
         text = str(value or "").strip()
         if text and text not in ips:
@@ -180,34 +91,41 @@ def _auth_state(deploy_credentials: dict[str, str]) -> bytes:
     ]
     return (json.dumps({"cookies": [c for c in cookies if c["value"]], "origins": []}, separators=(",", ":")) + "\n").encode()
 
+def _r2_env_bytes() -> bytes:
+    source = _r2_env_source()
+    if source is not None:
+        return source.read_bytes()
+    return b""
+
 
 def _bundle_tar(deploy_credentials: dict[str, str]) -> bytes:
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w") as tar:
         if RUNTIME_ROOT.exists():
             for path in RUNTIME_ROOT.rglob("*"):
-                if path.is_file():
-                    arcname = str(path.relative_to(RUNTIME_ROOT))
-                    info = tar.gettarinfo(str(path), arcname=arcname)
-                    if path.suffix == ".sh":
-                        info.mode = 0o755
-                    with path.open("rb") as fh:
-                        tar.addfile(info, fh)
+                if not path.is_file():
+                    continue
+                arcname = str(path.relative_to(RUNTIME_ROOT))
+                info = tar.gettarinfo(str(path), arcname=arcname)
+                if path.suffix == ".sh":
+                    info.mode = 0o755
+                with path.open("rb") as fh:
+                    tar.addfile(info, fh)
         script = runtime_script().encode()
-        script_info = tarfile.TarInfo(SCRIPT)
-        script_info.size = len(script)
-        script_info.mode = 0o755
-        tar.addfile(script_info, io.BytesIO(script))
-        identity = b"""import secrets\nimport uuid\n\n\ndef _fallback_smbios():\n    return {\n        'serial': secrets.token_hex(4),\n        'uuid': str(uuid.uuid4()),\n    }\n\n\ndef build_identity():\n    return {\n        'seed': secrets.token_bytes(6),\n        'uuid': str(uuid.uuid4()),\n        'serial': secrets.token_hex(4),\n        '_fallback_smbios': _fallback_smbios(),\n    }\n"""
-        identity_info = tarfile.TarInfo("tools/macos-on-vps/controller/identity.py")
-        identity_info.size = len(identity)
-        identity_info.mode = 0o644
-        tar.addfile(identity_info, io.BytesIO(identity))
+        info = tarfile.TarInfo(SCRIPT)
+        info.size = len(script)
+        info.mode = 0o755
+        tar.addfile(info, io.BytesIO(script))
         data = _auth_state(deploy_credentials)
-        info = tarfile.TarInfo("earnapp-auth-state.json")
-        info.size = len(data)
-        info.mode = 0o600
-        tar.addfile(info, io.BytesIO(data))
+        auth = tarfile.TarInfo("earnapp-auth-state.json")
+        auth.size = len(data)
+        auth.mode = 0o600
+        tar.addfile(auth, io.BytesIO(data))
+        r2_env = _r2_env_bytes()
+        env = tarfile.TarInfo("macos-r2.env")
+        env.size = len(r2_env)
+        env.mode = 0o600
+        tar.addfile(env, io.BytesIO(r2_env))
     buf.seek(0)
     return buf.getvalue()
 
@@ -237,17 +155,19 @@ def deploy_container(
         "MANUAL_PROXY_DNS_IPS": _dns_ips(proxy),
         "TARGET_EGRESS_IP": str(proxy.get("egress_ip") or proxy.get("exit_ip") or ""),
         "EARNAPP_AUTH_STATE_FILE": "/runtime/earnapp-auth-state.json",
+        "MACOS_R2_ENV_FILE": "/runtime/macos-r2.env",
+        "FLEET_ID": "cashpilot",
+        "FLEET_ENROLLMENT_TOKEN": "cashpilot-standalone",
+        "HOST_ID": "cashpilot-worker",
     }
-    labels = {**labels, "cashpilot.host-runtime": "qemu_macos"}
     command = [
         "/bin/sh",
         "-lc",
         (
             f"while [ ! -x /runtime/{SCRIPT} ]; do sleep 2; done; "
-            "export DEBIAN_FRONTEND=noninteractive; "
+            "export DEBIAN_FRONTEND=noninteractive NODE_TLS_REJECT_UNAUTHORIZED=0; "
             "apt-get update -y && apt-get install -y bash ca-certificates curl jq docker.io "
-            "openssh-client sshpass python3 coreutils iproute2 iptables; "
-            "apt-get install -y docker-compose-plugin || apt-get install -y docker-compose-v2; "
+            "openssh-client sshpass python3 coreutils iproute2 iptables docker-compose-v2; "
             f"exec bash /runtime/{SCRIPT} start"
         ),
     ]
@@ -266,7 +186,7 @@ def deploy_container(
         pid_mode="host",
         cap_add=["NET_ADMIN", "SYS_ADMIN"],
         privileged=True,
-        labels=labels,
+        labels={**labels, "cashpilot.host-runtime": "qemu_macos"},
         detach=True,
         restart_policy={"Name": "always"},
     )
