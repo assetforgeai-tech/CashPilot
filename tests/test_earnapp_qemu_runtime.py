@@ -216,6 +216,7 @@ def test_earnapp_macos_runtime_uses_worker_runtime_root(monkeypatch):
 
     kwargs = client.containers.run.call_args.kwargs
     assert kwargs["environment"]["MAC_ROOT"] == "/mnt/cashpilot-runtime/dockur-macos"
+    assert kwargs["environment"]["MACOS_R2_ENV_FILE"] == "/runtime/macos-r2.env"
     assert kwargs["volumes"]["/mnt/cashpilot-runtime/dockur-macos"]["bind"] == "/mnt/cashpilot-runtime/dockur-macos"
 
 def test_earnapp_macos_launcher_defaults_to_monterey12_image():
@@ -229,13 +230,25 @@ def test_earnapp_macos_launcher_defaults_to_monterey12_image():
     assert "os-only-1792m-v1.qcow2" not in script
     assert "cee45546058701852b822662971fbe1e8fc420e33eadc40c407ba239181324e3" not in script
 
+def test_earnapp_macos_launcher_strips_sha256_prefix_before_bootstrap():
+    bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
+    with tarfile.open(fileobj=io.BytesIO(bundle), mode="r") as tar:
+        script_file = tar.extractfile("scripts/proxy-manager-macos-earnapp-smoke.sh")
+        assert script_file is not None
+        script = script_file.read().decode()
+    assert 'local bootstrap_base_sha256="${BASE_SHA256:-${MACOS_BASE_SHA256:-}}"' in script
+    assert 'local BOOTSTRAP_BASE_SHA256="${bootstrap_base_sha256#sha256:}"' in script
+    assert '--source-sha256 "$BOOTSTRAP_BASE_SHA256"' in script
+
 def test_earnapp_macos_bundle_marks_launcher_executable():
     bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
     with tarfile.open(fileobj=io.BytesIO(bundle), mode="r") as tar:
         script = tar.getmember("scripts/proxy-manager-macos-earnapp-smoke.sh")
         auth = tar.extractfile("earnapp-auth-state.json")
+        r2_env = tar.extractfile("macos-r2.env")
         assert script.mode & 0o111
         assert auth and b"oauth-token" in auth.read()
+        assert r2_env and b"R2_ENDPOINT_URL=" in r2_env.read()
 
 def test_earnapp_macos_launcher_uses_mac_root_for_runtime_paths():
     bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
@@ -245,6 +258,10 @@ def test_earnapp_macos_launcher_uses_mac_root_for_runtime_paths():
         script = script_file.read().decode()
     assert 'Path(os.environ["MAC_ROOT"]) / "identity" / "registry.jsonl"' in script
     assert 'Path("/opt/dockur-macos/identity/registry.jsonl")' not in script
+    assert "proxy_route_endpoint = socket.gethostbyname(endpoint)" in script
+    assert '"server": proxy_route_endpoint' in script
+    assert 'f"{proxy_route_endpoint}/32"' in script
+    assert 'endpoint_ip=$(getent ahostsv4 "$endpoint" | awk' in script
 
 def test_earnapp_macos_launcher_uses_redsocks_tcp_redirect():
     bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
@@ -253,7 +270,9 @@ def test_earnapp_macos_launcher_uses_redsocks_tcp_redirect():
         assert script_file is not None
         script = script_file.read().decode()
     assert "redsocks -c /etc/redsocks.conf" in script
+    assert "local_ip = 0.0.0.0;" in script
     assert "iptables -t nat -A OUTPUT -p tcp -j REDSOCKS" in script
+    assert "iptables -t nat -A PREROUTING -p tcp -j REDSOCKS" in script
     assert "REDIRECT --to-ports 12345" in script
     assert "NODE_TLS_REJECT_UNAUTHORIZED: \"0\"" in script
     assert "SING_BOX_IMAGE" not in script
@@ -361,6 +380,17 @@ def test_earnapp_macos_links_after_uuid_and_heartbeats():
     assert '[ -n "$cid" ]' not in ready_block
     assert "real macOS 12 EarnApp writes heartbeats" in ready_block
     assert "EARNAPP_LOCAL_RUNTIME_READY_MIN_HEARTBEATS" in ready_block
+
+def test_earnapp_macos_local_ready_probe_does_not_inline_quoted_path_tests():
+    bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})
+    with tarfile.open(fileobj=io.BytesIO(bundle), mode="r") as tar:
+        script_file = tar.extractfile("scripts/proxy-manager-macos-earnapp-smoke.sh")
+        assert script_file is not None
+        script = script_file.read().decode()
+    ready_block = script[script.index("wait_earnapp_local_runtime_ready()") : script.index("earnapp_proxy_curl()")]
+    assert 'support_flag=$([ -n "$support_cid_file" ] && echo yes || echo no)' in ready_block
+    assert 'brdsdk_flag=$([ -n "$brdsdk_log" ] && echo yes || echo no)' in ready_block
+    assert 'support=$( [ -n \\"$support_cid_file\\" ]' not in ready_block
 
 def test_earnapp_macos_launcher_waits_for_netns_before_redsocks():
     bundle = earnapp_macos._bundle_tar({"oauth_token": "token"})

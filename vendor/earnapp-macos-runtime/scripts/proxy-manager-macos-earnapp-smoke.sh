@@ -360,12 +360,14 @@ bootstrap_instance() {
   fi
   mkdir -p "$INST_ROOT"
   local tmp_result="$INST_ROOT/bootstrap-result.json.tmp"
+  local bootstrap_base_sha256="${BASE_SHA256:-${MACOS_BASE_SHA256:-}}"
+  local BOOTSTRAP_BASE_SHA256="${bootstrap_base_sha256#sha256:}"
   local -a args=(
     --root "$MAC_ROOT/fleet/instances" \
     --instance-id "$INSTANCE" \
     --registry "$MAC_ROOT/identity/registry.jsonl" \
     --source-url "file://$BASE_IMAGE" \
-    --source-sha256 "$BASE_SHA256" \
+    --source-sha256 "$BOOTSTRAP_BASE_SHA256" \
     --runtime-image "$MACOS_IMAGE" \
     --backing-directory "$(dirname "$BASE_IMAGE")" \
     --nvram-template "$NVRAM_TEMPLATE" \
@@ -628,7 +630,7 @@ if password:
 }}
 
 redsocks {{
-    local_ip = 127.0.0.1;
+    local_ip = 0.0.0.0;
     local_port = 12345;
     ip = {endpoint};
     port = {port};
@@ -671,6 +673,7 @@ services:
         iptables -t nat -N REDSOCKS 2>/dev/null || true
         iptables -t nat -F REDSOCKS
         iptables -t nat -C OUTPUT -p tcp -j REDSOCKS 2>/dev/null || iptables -t nat -A OUTPUT -p tcp -j REDSOCKS
+        iptables -t nat -C PREROUTING -p tcp -j REDSOCKS 2>/dev/null || iptables -t nat -A PREROUTING -p tcp -j REDSOCKS
         iptables -t nat -A REDSOCKS -d 127.0.0.0/8 -j RETURN
         iptables -t nat -A REDSOCKS -d 10.0.0.0/8 -j RETURN
         iptables -t nat -A REDSOCKS -d 172.16.0.0/12 -j RETURN
@@ -981,7 +984,10 @@ GUEST
       --argjson proxy_connected "${proxy_connected:-false}" \
       '{ready:$ready,app_config_file:$app_config_file,device_uuid:$uuid,cid:$cid,support_cid_file:$support_cid_file,brdsdk_log:$brdsdk_log,proxy_connected:$proxy_connected,app_hb:$app_hb,svc_hb:$svc_hb,checked_at:(now|todate)}' \
       >"$result"
-    log "earnapp local ready probe uuid=${uuid:-missing} cid=${cid:-missing} support=$( [ -n \"$support_cid_file\" ] && echo yes || echo no ) brdsdk=$( [ -n \"$brdsdk_log\" ] && echo yes || echo no ) proxy=${proxy_connected:-false} app_hb=${app_hb:-missing} svc_hb=${svc_hb:-missing}"
+    local support_flag brdsdk_flag
+    support_flag=$([ -n "$support_cid_file" ] && echo yes || echo no)
+    brdsdk_flag=$([ -n "$brdsdk_log" ] && echo yes || echo no)
+    log "earnapp local ready probe uuid=${uuid:-missing} cid=${cid:-missing} support=$support_flag brdsdk=$brdsdk_flag proxy=${proxy_connected:-false} app_hb=${app_hb:-missing} svc_hb=${svc_hb:-missing}"
     if [[ "$uuid" == sdk-mac-???????????????????????????????? ]]; then
       printf '%s\n' "$uuid" >"$STATE/earnapp-device-uuid.txt"
     fi
