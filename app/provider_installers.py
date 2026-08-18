@@ -19,10 +19,12 @@ _GRASS_ALLOWED_HOST = "files.grass.io"
 _UPROCK_ALLOWED_HOST = "edge.uprock.com"
 _PROXYBASE_XYZ_INSTALLER = "https://proxybase.xyz/install.sh"
 
+
 def _fetch_json(url: str) -> dict:
     req = Request(url, headers={"Accept": "application/json", "User-Agent": "CashPilot/1.0"})
     with urlopen(req, timeout=30) as resp:  # noqa: S310 - URL is operator/provider config, validated by caller.
         return json.loads(resp.read().decode("utf-8"))
+
 
 def _platform_key() -> str:
     os_name = platform.system().lower()
@@ -36,10 +38,12 @@ def _platform_key() -> str:
         return f"windows-{arch}"
     return f"{os_name}-{arch}"
 
+
 def _safe_grass_url(url: str) -> None:
     parsed = urlparse(url)
     if parsed.scheme != "https" or parsed.hostname != _GRASS_ALLOWED_HOST:
         raise ValueError("Grass installer URL must be https://files.grass.io/...")
+
 
 def _safe_uprock_url(url: str) -> None:
     parsed = urlparse(url)
@@ -50,6 +54,7 @@ def _safe_uprock_url(url: str) -> None:
         or not parsed.path.endswith(".deb")
     ):
         raise ValueError("Uprock installer URL must point to an official https://edge.uprock.com/... .deb")
+
 
 def resolve_installer_manifest(provider: str, manifest_url: str, platform_key: str | None = None) -> dict[str, str]:
     if provider == "uprock":
@@ -70,12 +75,14 @@ def resolve_installer_manifest(provider: str, manifest_url: str, platform_key: s
     _safe_grass_url(url)
     return {"platform": key, "version": str(manifest.get("version") or "unknown"), "url": url}
 
+
 def ensure_installer_image(client, provider: str, resolved: dict[str, str]) -> str:
     if provider == "uprock":
         return _ensure_image(client, _UPROCK_IMAGE, resolved, _uprock_dockerfile)
     if provider == "grass":
         return _ensure_image(client, _GRASS_IMAGE, resolved, _grass_dockerfile)
     raise ValueError(f"Installer image builds are not supported for {provider!r}")
+
 
 def ensure_proxybase_xyz_image(client) -> str:
     return _ensure_image(
@@ -84,6 +91,7 @@ def ensure_proxybase_xyz_image(client) -> str:
         {"version": "latest", "url": _PROXYBASE_XYZ_INSTALLER},
         _proxybase_xyz_dockerfile,
     )
+
 
 def _ensure_image(client, image_base: str, resolved: dict[str, str], dockerfile_builder) -> str:
     version = "".join(c if c.isalnum() or c in ".-_" else "-" for c in resolved["version"])
@@ -96,6 +104,7 @@ def _ensure_image(client, image_base: str, resolved: dict[str, str], dockerfile_
     dockerfile = dockerfile_builder(resolved["url"])
     client.images.build(fileobj=BytesIO(dockerfile.encode("utf-8")), tag=image, rm=True, forcerm=True, pull=True)
     return image
+
 
 def _grass_dockerfile(deb_url: str) -> str:
     _safe_grass_url(deb_url)
@@ -159,6 +168,7 @@ EXPOSE 6080
 CMD ["cashpilot-grass"]
 """
 
+
 def _uprock_dockerfile(deb_url: str) -> str:
     _safe_uprock_url(deb_url)
     return f"""FROM ubuntu:24.04
@@ -176,6 +186,7 @@ EXPOSE 6080
 CMD ["bash", "-lc", "set -e; mkdir -p /root/.local/share/UpRock; if [ -s /cashpilot/runtime-assets/uprock/credentials.json ]; then cp /cashpilot/runtime-assets/uprock/credentials.json /root/.local/share/UpRock/credentials.json; chmod 600 /root/.local/share/UpRock/credentials.json; fi; if [ -s /cashpilot/runtime-assets/uprock/main.db ]; then cp /cashpilot/runtime-assets/uprock/main.db /root/.local/share/UpRock/main.db; chmod 600 /root/.local/share/UpRock/main.db; fi; rm -f /tmp/.X99-lock; Xvfb :99 -screen 0 1200x800x24 -nolisten tcp >/tmp/xvfb.log 2>&1 & fluxbox >/tmp/fluxbox.log 2>&1 & x11vnc -display :99 -forever -shared -nopw -listen 0.0.0.0 -xkb >/tmp/x11vnc.log 2>&1 & websockify --web=/usr/share/novnc/ 6080 localhost:5900 >/tmp/novnc.log 2>&1 & dbus-run-session sh -lc 'uprock-mining'"]
 """
 
+
 def _proxybase_xyz_dockerfile(installer_url: str) -> str:
     if installer_url != _PROXYBASE_XYZ_INSTALLER:
         raise ValueError("ProxyBase Markets installer URL is fixed to the official install.sh")
@@ -191,10 +202,11 @@ RUN curl -fsSL {installer_url} | sh \\
  && cp "$CLI" /usr/local/bin/proxybase-cli
 """
 
+
 def proxybase_xyz_command() -> str:
     return (
         "sh -lc 'set -e; "
-        "export HOME=/home/proxybase; mkdir -p \"$HOME/.proxybase\"; "
+        'export HOME=/home/proxybase; mkdir -p "$HOME/.proxybase"; '
         'CLI="$(command -v proxybase-cli || true)"; '
         'if [ -z "$CLI" ]; then '
         'for p in "$HOME/.local/bin/proxybase-cli" "/root/.local/bin/proxybase-cli" "/usr/local/bin/proxybase-cli"; do '

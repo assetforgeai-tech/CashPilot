@@ -32,6 +32,7 @@ def test_proxy_instance_runs_provider_inside_singbox_sidecar_namespace():
     assert provider_call.kwargs["labels"]["cashpilot.provider"] == "earnfm"
     assert provider_call.kwargs["labels"]["cashpilot.instance_mode"] == "proxy"
 
+
 def test_mysterium_proxy_routes_udp_direct():
     client = MagicMock()
     client.containers.get.side_effect = [orchestrator.NotFound("nope"), orchestrator.NotFound("nope")]
@@ -50,6 +51,7 @@ def test_mysterium_proxy_routes_udp_direct():
         )
 
     assert render.call_args.kwargs["udp_direct"] is True
+
 
 def test_mysterium_proxy_publishes_udp_ports_on_sidecar():
     client = MagicMock()
@@ -71,6 +73,7 @@ def test_mysterium_proxy_publishes_udp_ports_on_sidecar():
     sidecar_call, provider_call = client.containers.run.call_args_list
     assert sidecar_call.kwargs["ports"] == {"56000/udp": 56000, "56020/udp": 56020}
     assert provider_call.kwargs["ports"] is None
+
 
 def test_remove_proxy_instance_removes_egress_sidecar():
     client = MagicMock()

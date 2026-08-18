@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 API_BASE = "https://app.traffmonetizer.com/monetizer_api/api"
 
+
 class TraffmonetizerCollector(BaseCollector):
     """Collect earnings from Traffmonetizer's API using email/password."""
 

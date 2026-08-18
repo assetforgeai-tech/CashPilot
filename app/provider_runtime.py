@@ -37,12 +37,18 @@ PROVIDERS: dict[str, ProviderRuntime] = {
     "mysterium": ProviderRuntime("mysterium", "MYST.py", "MYST.py", ("direct",), "earnings"),
     "packetstream": ProviderRuntime("packetstream", "packetstream.py", "packetstream.py", ("proxy",), "earnings"),
     "proxies-sx": ProviderRuntime("proxies-sx", "proxies.sx.py", "proxies.sx.py", ("proxy",), "earnings"),
-    "proxybase": ProviderRuntime("proxybase", "proxybase.org.py", "proxybase.org.py", ("direct", "proxy"), "dashboard_only"),
-    "proxybase-xyz": ProviderRuntime("proxybase-xyz", "proxybase.xyz.py", "proxybase.xyz.py", ("direct", "proxy"), "count_only"),
+    "proxybase": ProviderRuntime(
+        "proxybase", "proxybase.org.py", "proxybase.org.py", ("direct", "proxy"), "dashboard_only"
+    ),
+    "proxybase-xyz": ProviderRuntime(
+        "proxybase-xyz", "proxybase.xyz.py", "proxybase.xyz.py", ("direct", "proxy"), "count_only"
+    ),
     "proxyrack": ProviderRuntime("proxyrack", "proxyrack.org.py", "proxyrack.org.py", ("direct", "proxy"), "earnings"),
     "repocket": ProviderRuntime("repocket", "repocket.py", "repocket.py", ("direct", "proxy"), "earnings"),
     "spide": ProviderRuntime("spide", "spide.py", "spide.py", ("direct", "proxy"), "dashboard_only"),
-    "traffmonetizer": ProviderRuntime("traffmonetizer", "traffmonetizer.py", "traffmonetizer.py", ("direct", "proxy"), "earnings"),
+    "traffmonetizer": ProviderRuntime(
+        "traffmonetizer", "traffmonetizer.py", "traffmonetizer.py", ("direct", "proxy"), "earnings"
+    ),
     "uprock": ProviderRuntime("uprock", "Uprock.py", "Uprock.py", ("proxy",), "count_only"),
     "urnetwork": ProviderRuntime("urnetwork", "URNetwork.py", "URNetwork.py", ("direct", "proxy"), "dashboard_only"),
     "wipter": ProviderRuntime("wipter", "Wipter.py", "Wipter.py", ("proxy",), "count_only"),

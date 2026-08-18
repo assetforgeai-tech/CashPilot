@@ -15,8 +15,9 @@ def test_proxybase_xyz_runtime_command_imports_phrase_and_resolves_cli_path():
     assert 'PHASE="${PROXYBASE_XYZ_PHRASE:?missing wallet phrase}"' in command
     assert '"$CLI" wallet import "$PHASE"' in command
     assert '"$CLI" login' in command
-    assert 'seller_config.json' in command
+    assert "seller_config.json" in command
     assert 'exec "$CLI" seller start --foreground' in command
+
 
 def test_proxybase_xyz_installer_image_installs_cli_at_build_time():
     client = MagicMock()
@@ -77,11 +78,12 @@ def test_grass_manifest_build_tags_image_by_resolved_version():
     assert "xdotool" in dockerfile
     assert "base64.b64decode" in dockerfile
     script = base64.b64decode(re.search(r"b64decode\('([^']+)'\)", dockerfile).group(1)).decode()
-    assert "tar -xzf /cashpilot/runtime-assets/grass/profile.tar.gz -C \"$HOME\"" in script
+    assert 'tar -xzf /cashpilot/runtime-assets/grass/profile.tar.gz -C "$HOME"' in script
     assert "mousemove 270 607 click 1" in script
     assert ".grass-configured" not in script
     assert "USER_EMAIL" in script
     assert "USER_PASSWORD" in script
+
 
 def test_uprock_deb_url_resolves_as_linux_amd64_installer():
     resolved = provider_installers.resolve_installer_manifest(
@@ -93,6 +95,7 @@ def test_uprock_deb_url_resolves_as_linux_amd64_installer():
         "version": "v0.0.38",
         "url": "https://edge.uprock.com/v1/app-download/UpRock-Mining-v0.0.38.deb",
     }
+
 
 def test_uprock_installer_image_copies_seed_state_before_launch():
     client = MagicMock()

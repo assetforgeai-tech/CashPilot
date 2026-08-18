@@ -40,6 +40,7 @@ def test_proxy_provider_pages_require_owner(client):
         assert client.get("/proxy-pool").status_code == 403
         assert client.get("/dashboard").status_code == 200
 
+
 def test_dashboard_alias_routes_to_dashboard_page(client):
     with patch("app.main.auth.get_current_user", return_value=_owner_user()):
         resp = client.get("/dashboard")
@@ -94,8 +95,16 @@ def test_worker_proxy_assignment_sticks(client):
     assert setter.await_count == 1
     apply.assert_awaited_once()
 
+
 def test_worker_proxy_lease_applies_to_worker(client):
-    lease = {"worker_id": 7, "proxy_id": 3, "mode": "proxy", "host": "proxy.example.com", "port": 8080, "protocol": "http"}
+    lease = {
+        "worker_id": 7,
+        "proxy_id": 3,
+        "mode": "proxy",
+        "host": "proxy.example.com",
+        "port": 8080,
+        "protocol": "http",
+    }
     with (
         patch("app.main.auth.get_current_user", return_value=_owner_user()),
         patch("app.main.database.lease_proxy_for_worker", new_callable=AsyncMock, return_value=lease) as lease_fn,
@@ -106,6 +115,7 @@ def test_worker_proxy_lease_applies_to_worker(client):
     assert resp.status_code == 200
     lease_fn.assert_awaited_once_with(7)
     apply.assert_awaited_once()
+
 
 def test_proxy_pool_export_and_recheck_are_owner_only_and_wired(client):
     rows = [
@@ -131,12 +141,17 @@ def test_proxy_pool_export_and_recheck_are_owner_only_and_wired(client):
     with (
         patch("app.main.auth.get_current_user", return_value=_owner_user()),
         patch("app.routers.proxies.database.get_config", new_callable=AsyncMock, return_value={}),
-        patch("app.routers.proxies.run_proxy_pool_recheck", new_callable=AsyncMock, return_value={"checked": 3, "alive": 2, "dead": 1, "rotated": 1}) as mark,
+        patch(
+            "app.routers.proxies.run_proxy_pool_recheck",
+            new_callable=AsyncMock,
+            return_value={"checked": 3, "alive": 2, "dead": 1, "rotated": 1},
+        ) as mark,
     ):
         recheck = client.post("/api/proxy-pool/recheck", json={"proxy_ids": [1, 2, 3], "concurrency": 4})
     assert recheck.status_code == 200
     assert recheck.json()["checked"] == 3
     mark.assert_awaited_once_with(proxy_ids=[1, 2, 3], concurrency=4)
+
 
 @pytest.mark.asyncio
 async def test_proxy_probe_requires_a_real_tunnel_not_just_handshake():
@@ -199,6 +214,7 @@ async def test_proxy_probe_requires_a_real_tunnel_not_just_handshake():
     assert result["status"] == "dead"
     assert len([item for item in calls if isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], str)]) >= 2
 
+
 def test_proxy_pool_import_rechecks_only_imported_proxies(client):
     payload = "1.1.1.1:1000\n2.2.2.2:2000:user:pass\n"
     with (
@@ -206,11 +222,16 @@ def test_proxy_pool_import_rechecks_only_imported_proxies(client):
         patch("app.routers.proxies.database.upsert_proxy_provider", new_callable=AsyncMock, return_value=9),
         patch("app.routers.proxies.database.upsert_proxy_endpoints", new_callable=AsyncMock, return_value=4),
         patch("app.routers.proxies.database.get_config", new_callable=AsyncMock, return_value={}),
-        patch("app.routers.proxies.run_proxy_pool_recheck", new_callable=AsyncMock, return_value={"checked": 2, "alive": 2, "dead": 0, "rotated": 0}) as recheck,
+        patch(
+            "app.routers.proxies.run_proxy_pool_recheck",
+            new_callable=AsyncMock,
+            return_value={"checked": 2, "alive": 2, "dead": 0, "rotated": 0},
+        ) as recheck,
     ):
         resp = client.post("/api/proxy-pool/import", json={"text": payload, "provider_name": "manual", "recheck": True})
     assert resp.status_code == 200
     recheck.assert_awaited_once_with(proxy_ids=[3, 4], concurrency=8)
+
 
 def test_proxy_pool_import_supports_paste_payloads(client):
     payload = """1.1.1.1:1000
@@ -223,7 +244,11 @@ socks5://user:pass@4.4.4.4:4000
         patch("app.routers.proxies.database.upsert_proxy_provider", new_callable=AsyncMock, return_value=9),
         patch("app.routers.proxies.database.upsert_proxy_endpoints", new_callable=AsyncMock, return_value=4) as upsert,
         patch("app.routers.proxies.database.get_config", new_callable=AsyncMock, return_value={}),
-        patch("app.routers.proxies.run_proxy_pool_recheck", new_callable=AsyncMock, return_value={"checked": 4, "alive": 4, "dead": 0, "rotated": 0}) as recheck,
+        patch(
+            "app.routers.proxies.run_proxy_pool_recheck",
+            new_callable=AsyncMock,
+            return_value={"checked": 4, "alive": 4, "dead": 0, "rotated": 0},
+        ) as recheck,
     ):
         resp = client.post("/api/proxy-pool/import", json={"text": payload, "provider_name": "manual", "recheck": True})
     assert resp.status_code == 200
@@ -231,17 +256,26 @@ socks5://user:pass@4.4.4.4:4000
     upsert.assert_awaited_once()
     recheck.assert_awaited_once()
 
+
 def test_proxy_pool_import_reports_inserted_count_not_parse_count(client):
     with (
         patch("app.main.auth.get_current_user", return_value=_owner_user()),
         patch("app.routers.proxies.database.upsert_proxy_provider", new_callable=AsyncMock, return_value=9),
         patch("app.routers.proxies.database.upsert_proxy_endpoints", new_callable=AsyncMock, return_value=2),
         patch("app.routers.proxies.database.get_config", new_callable=AsyncMock, return_value={}),
-        patch("app.routers.proxies.run_proxy_pool_recheck", new_callable=AsyncMock, return_value={"checked": 2, "alive": 2, "dead": 0, "rotated": 0}),
+        patch(
+            "app.routers.proxies.run_proxy_pool_recheck",
+            new_callable=AsyncMock,
+            return_value={"checked": 2, "alive": 2, "dead": 0, "rotated": 0},
+        ),
     ):
-        resp = client.post("/api/proxy-pool/import", json={"text": "1.1.1.1:1000\n2.2.2.2:2000\n", "provider_name": "manual", "recheck": False})
+        resp = client.post(
+            "/api/proxy-pool/import",
+            json={"text": "1.1.1.1:1000\n2.2.2.2:2000\n", "provider_name": "manual", "recheck": False},
+        )
     assert resp.status_code == 200
     assert resp.json()["imported"] == 2
+
 
 @pytest.mark.asyncio
 async def test_proxy_pool_recheck_uses_decrypted_proxy_credentials():
@@ -252,13 +286,18 @@ async def test_proxy_pool_recheck_uses_decrypted_proxy_credentials():
         patch("app.routers.proxies.database.list_proxy_pool", new_callable=AsyncMock, return_value=rows),
         patch("app.routers.proxies.database.get_proxy_endpoint", new_callable=AsyncMock, return_value=proxy) as lookup,
         patch("app.routers.proxies.database.update_proxy_pool_check_results", new_callable=AsyncMock, return_value=1),
-        patch("app.routers.proxies._probe_proxy_confirmed", new_callable=AsyncMock, return_value={"status": "alive", "protocol": "socks5"}) as probe,
+        patch(
+            "app.routers.proxies._probe_proxy_confirmed",
+            new_callable=AsyncMock,
+            return_value={"status": "alive", "protocol": "socks5"},
+        ) as probe,
     ):
         result = await proxy_routes.run_proxy_pool_recheck(proxy_ids=[7], concurrency=1)
 
     assert result["status"] == "ok"
     lookup.assert_awaited_once_with(7)
     probe.assert_awaited_once_with("proxy.example.com", 1080, username="user", password="pass")
+
 
 def test_manual_proxy_import_persists_multiple_rows(tmp_path):
     async def run():
@@ -280,6 +319,7 @@ def test_manual_proxy_import_persists_multiple_rows(tmp_path):
 
     asyncio.run(run())
 
+
 def test_proxy_pool_delete_selected_and_dead(client):
     with (
         patch("app.main.auth.get_current_user", return_value=_owner_user()),
@@ -292,12 +332,15 @@ def test_proxy_pool_delete_selected_and_dead(client):
 
     with (
         patch("app.main.auth.get_current_user", return_value=_owner_user()),
-        patch("app.routers.proxies.database.delete_proxy_endpoints", new_callable=AsyncMock, return_value=3) as delete_dead,
+        patch(
+            "app.routers.proxies.database.delete_proxy_endpoints", new_callable=AsyncMock, return_value=3
+        ) as delete_dead,
     ):
         resp = client.request("DELETE", "/api/proxy-pool", json={"status": "dead"})
     assert resp.status_code == 200
     assert resp.json()["deleted"] == 3
     delete_dead.assert_awaited_once_with(None, status="dead")
+
 
 def test_active_services_counts_deployed_rows_not_running_only(tmp_path):
     async def run():
@@ -305,6 +348,7 @@ def test_active_services_counts_deployed_rows_not_running_only(tmp_path):
             await database.init_db()
             await database.save_deployment("proxybase-xyz", "c2", status="external")
             from app import main as app_main
+
             with (
                 patch(
                     "app.main._get_all_worker_containers",
@@ -328,7 +372,9 @@ def test_active_services_counts_deployed_rows_not_running_only(tmp_path):
             assert summary["active_services"] == 2
 
     import asyncio
+
     asyncio.run(run())
+
 
 def test_proxy_pool_scheduler_settings_are_persisted(client):
     with (
@@ -336,9 +382,12 @@ def test_proxy_pool_scheduler_settings_are_persisted(client):
         patch("app.routers.proxies.database.get_config", new_callable=AsyncMock, return_value={}),
         patch("app.routers.proxies.database.set_config_bulk", new_callable=AsyncMock) as save,
     ):
-        resp = client.post("/api/proxy-pool/scheduler", json={"enabled": True, "interval_minutes": 30, "concurrency": 6})
+        resp = client.post(
+            "/api/proxy-pool/scheduler", json={"enabled": True, "interval_minutes": 30, "concurrency": 6}
+        )
     assert resp.status_code == 200
     save.assert_awaited_once()
+
 
 def test_proxy_lease_picks_one_unassigned_proxy_per_worker(tmp_path):
     async def run():
@@ -367,6 +416,7 @@ def test_proxy_lease_picks_one_unassigned_proxy_per_worker(tmp_path):
 
     asyncio.run(run())
 
+
 def test_proxy_lease_skips_dead_proxies(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
@@ -375,8 +425,20 @@ def test_proxy_lease_skips_dead_proxies(tmp_path):
             await database.upsert_proxy_endpoints(
                 provider_id,
                 [
-                    {"provider_proxy_id": "dead", "endpoint": "1.1.1.1:1000", "host": "1.1.1.1", "port": 1000, "status": "dead"},
-                    {"provider_proxy_id": "alive", "endpoint": "2.2.2.2:1000", "host": "2.2.2.2", "port": 1000, "status": "alive"},
+                    {
+                        "provider_proxy_id": "dead",
+                        "endpoint": "1.1.1.1:1000",
+                        "host": "1.1.1.1",
+                        "port": 1000,
+                        "status": "dead",
+                    },
+                    {
+                        "provider_proxy_id": "alive",
+                        "endpoint": "2.2.2.2:1000",
+                        "host": "2.2.2.2",
+                        "port": 1000,
+                        "status": "alive",
+                    },
                 ],
             )
             worker = await database.upsert_worker("worker-a", "a", "http://a")
@@ -389,6 +451,7 @@ def test_proxy_lease_skips_dead_proxies(tmp_path):
     import asyncio
 
     asyncio.run(run())
+
 
 def test_proxy_mask_is_provider_specific_for_pawns(tmp_path):
     async def run():
@@ -418,6 +481,7 @@ def test_proxy_mask_is_provider_specific_for_pawns(tmp_path):
 
     asyncio.run(run())
 
+
 def test_proxy_pool_export_can_filter_by_protocol(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
@@ -426,8 +490,20 @@ def test_proxy_pool_export_can_filter_by_protocol(tmp_path):
             await database.upsert_proxy_endpoints(
                 provider_id,
                 [
-                    {"provider_proxy_id": "a", "endpoint": "1.1.1.1:1000", "host": "1.1.1.1", "port": 1000, "protocol": "http"},
-                    {"provider_proxy_id": "b", "endpoint": "2.2.2.2:1000", "host": "2.2.2.2", "port": 1000, "protocol": "socks5"},
+                    {
+                        "provider_proxy_id": "a",
+                        "endpoint": "1.1.1.1:1000",
+                        "host": "1.1.1.1",
+                        "port": 1000,
+                        "protocol": "http",
+                    },
+                    {
+                        "provider_proxy_id": "b",
+                        "endpoint": "2.2.2.2:1000",
+                        "host": "2.2.2.2",
+                        "port": 1000,
+                        "protocol": "socks5",
+                    },
                 ],
             )
             rows = await database.export_proxy_pool(protocol="http")
@@ -437,12 +513,14 @@ def test_proxy_pool_export_can_filter_by_protocol(tmp_path):
 
     asyncio.run(run())
 
+
 def test_service_collect_route_calls_single_collector(client):
     class Result:
         error = None
         platform = "grass"
         balance = 1.25
         currency = "USD"
+
     class Collector:
         async def close(self):
             return None

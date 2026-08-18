@@ -24,6 +24,7 @@ def test_deploy_raw_maps_grass_account_credentials_to_env():
     assert env["USER_PASSWORD"] == "secret"
     container.restart.assert_not_called()
 
+
 def test_deploy_raw_maps_wipter_credentials_to_env_and_restarts_after_login_state():
     client = MagicMock()
     client.containers.get.side_effect = orchestrator.NotFound("nope")
@@ -47,6 +48,7 @@ def test_deploy_raw_maps_wipter_credentials_to_env_and_restarts_after_login_stat
     assert env["WIPTER_PASSWORD"] == "secret"
     restart_once.assert_called_once_with(container)
 
+
 def test_deploy_raw_builds_proxybase_xyz_command_from_deploy_phrase():
     client = MagicMock()
     client.containers.get.side_effect = orchestrator.NotFound("nope")
@@ -55,7 +57,11 @@ def test_deploy_raw_builds_proxybase_xyz_command_from_deploy_phrase():
 
     with (
         patch.object(orchestrator, "_get_client", return_value=client),
-        patch.object(orchestrator.provider_installers, "ensure_proxybase_xyz_image", return_value="cashpilot/proxybase-xyz-cli:latest-ubuntu24.04"),
+        patch.object(
+            orchestrator.provider_installers,
+            "ensure_proxybase_xyz_image",
+            return_value="cashpilot/proxybase-xyz-cli:latest-ubuntu24.04",
+        ),
     ):
         orchestrator.deploy_raw(
             slug="proxybase-xyz",
@@ -76,6 +82,7 @@ def test_deploy_raw_builds_proxybase_xyz_command_from_deploy_phrase():
     assert "seller_config.json" in command
     assert 'exec "$CLI" seller start --foreground' in command
 
+
 def test_deploy_raw_maps_proxybase_deploy_token_to_peer_cli_args():
     client = MagicMock()
     client.containers.get.side_effect = orchestrator.NotFound("nope")
@@ -93,6 +100,7 @@ def test_deploy_raw_maps_proxybase_deploy_token_to_peer_cli_args():
     env = client.containers.run.call_args.kwargs["environment"]
     assert env["NAME"] == "cashpilot-node"
     assert client.containers.run.call_args.kwargs["command"] == ["deploy-token", "cashpilot-node"]
+
 
 def test_deploy_raw_authenticates_urnetwork_with_api_key_before_provider_start():
     client = MagicMock()

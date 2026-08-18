@@ -88,8 +88,10 @@ def _get_client() -> docker.DockerClient:
 def _container_name(slug: str) -> str:
     return f"{CONTAINER_PREFIX}{slug}"
 
+
 def _sidecar_name(slug: str) -> str:
     return f"{_container_name(slug)}-egress"
+
 
 def _urnetwork_auth_code(api_key: str) -> str:
     req = Request(
@@ -396,9 +398,7 @@ def deploy_raw(
             container,
             deploy_credentials,
             dashboard_password=str(
-                deploy_credentials.get("dashboard_password")
-                or deploy_credentials.get("myst_dashboard_password")
-                or ""
+                deploy_credentials.get("dashboard_password") or deploy_credentials.get("myst_dashboard_password") or ""
             ),
             mmn_api_key=str(deploy_credentials.get("mmn_api_key") or deploy_credentials.get("myst_mmn_api_key") or ""),
         )
@@ -406,6 +406,7 @@ def deploy_raw(
     if slug == "wipter" and deploy_credentials:
         provider_automation.schedule_wipter_post_login_restart(container)
     return container.id
+
 
 def _remove_named_volumes(volumes: dict[str, Any]) -> None:
     client = _get_client()
@@ -701,6 +702,7 @@ def _network_totals(stats: dict[str, Any]) -> tuple[int | None, int | None]:
         tx += int(iface.get("tx_bytes") or 0)
     return rx, tx
 
+
 def _provider_evidence(slug: str, container: Any) -> dict[str, Any]:
     """Provider-specific runtime evidence for status snapshots."""
     if slug == "wipter":
@@ -731,13 +733,15 @@ def _provider_evidence(slug: str, container: Any) -> dict[str, Any]:
                 "s=socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)\n"
                 "s.settimeout(2)\n"
                 "s.connect('/root/.local/share/UpRock/daemon.sock')\n"
-                "s.sendall(b'{\"cmd\":\"status\"}\\n')\n"
+                's.sendall(b\'{"cmd":"status"}\\n\')\n'
                 "print(s.recv(4096).decode())\n"
                 "s.close()\n"
                 "PY",
             ]
         )
-        logs = container.exec_run(["sh", "-lc", "tail -40 /root/.local/share/UpRock/logs/mining.log 2>/dev/null || true"])
+        logs = container.exec_run(
+            ["sh", "-lc", "tail -40 /root/.local/share/UpRock/logs/mining.log 2>/dev/null || true"]
+        )
     except Exception as exc:
         logger.debug("Uprock evidence unavailable for %s: %s", getattr(container, "short_id", "?"), exc)
         return {}

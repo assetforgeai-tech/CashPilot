@@ -22,8 +22,18 @@ def test_auto_deploy_targets_deployable_catalog_services_only():
 
 
 def test_auto_deploy_skips_server_worker_by_default():
-    assert main._worker_allowed_for_auto_deploy({"id": 1, "name": "cashpilot"}, {"cashpilot_autodeploy_include_server": ""}) is False
-    assert main._worker_allowed_for_auto_deploy({"id": 1, "name": "cashpilot"}, {"cashpilot_autodeploy_include_server": "true"}) is True
+    assert (
+        main._worker_allowed_for_auto_deploy(
+            {"id": 1, "name": "cashpilot"}, {"cashpilot_autodeploy_include_server": ""}
+        )
+        is False
+    )
+    assert (
+        main._worker_allowed_for_auto_deploy(
+            {"id": 1, "name": "cashpilot"}, {"cashpilot_autodeploy_include_server": "true"}
+        )
+        is True
+    )
 
 
 def test_auto_deploy_uses_one_lock_per_worker_and_continues_after_failure():

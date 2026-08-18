@@ -64,6 +64,7 @@ def test_importer_has_explicit_provider_key_mapping():
     ):
         assert key in extractor
 
+
 def test_importer_keys_are_backend_settings_keys():
     from app import catalog
     from app.collectors import collector_credential_fields, service_credential_fields
@@ -93,5 +94,5 @@ def test_popup_requires_scan_before_save_and_hides_values():
 def test_popup_saves_in_one_script_injection():
     popup = (EXT / "popup.js").read_text(encoding="utf-8")
     assert popup.count("chrome.scripting.executeScript") == 2
-    assert "files: [\"save_to_cashpilot.js\"]" not in popup
+    assert 'files: ["save_to_cashpilot.js"]' not in popup
     assert "window.__cashpilotSaveImportedProviderConfig" not in popup

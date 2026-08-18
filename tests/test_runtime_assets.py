@@ -30,7 +30,9 @@ def test_runtime_asset_path_uses_worker_data_mountpoint(monkeypatch):
 
     out = worker_api._docker_host_path(Path("/data/runtime-assets/uprock/credentials_json/credentials.json"))
 
-    assert out == Path("/var/lib/docker/volumes/cashpilot_worker_data/_data/runtime-assets/uprock/credentials_json/credentials.json")
+    assert out == Path(
+        "/var/lib/docker/volumes/cashpilot_worker_data/_data/runtime-assets/uprock/credentials_json/credentials.json"
+    )
 
 
 class TestRuntimeAssets:
@@ -52,7 +54,19 @@ class TestRuntimeAssets:
 
     def test_config_sync_mirrors_runtime_assets(self):
         async def run():
-            with patch.object(main.catalog, "get_services", return_value=[{"slug": "uprock", "deploy": {"runtime_assets": [{"provider": "uprock", "asset_kind": "credentials_json"}]}}]), patch.object(database, "save_runtime_asset") as save:
+            with (
+                patch.object(
+                    main.catalog,
+                    "get_services",
+                    return_value=[
+                        {
+                            "slug": "uprock",
+                            "deploy": {"runtime_assets": [{"provider": "uprock", "asset_kind": "credentials_json"}]},
+                        }
+                    ],
+                ),
+                patch.object(database, "save_runtime_asset") as save,
+            ):
                 await main._sync_runtime_assets_from_config({"uprock_credentials_json": "seed"})
                 save.assert_awaited_once_with("uprock", "credentials_json", "seed")
 
@@ -107,7 +121,9 @@ class TestRuntimeAssets:
             )
             with (
                 patch.object(worker_api, "_RUNTIME_ASSET_DIR", tmp_path),
-                patch.object(worker_api, "_fetch_runtime_asset", return_value=base64.b64encode(buf.getvalue()).decode()),
+                patch.object(
+                    worker_api, "_fetch_runtime_asset", return_value=base64.b64encode(buf.getvalue()).decode()
+                ),
             ):
                 await worker_api._materialize_runtime_assets("demo", spec)
 
@@ -152,7 +168,9 @@ class TestRuntimeAssets:
             ):
                 await worker_api._materialize_runtime_assets("demo", spec)
 
-            download.assert_awaited_once_with("https://assets.example/profile.zip.fernet", tmp_path / "demo" / "chrome_profile_zip.download")
+            download.assert_awaited_once_with(
+                "https://assets.example/profile.zip.fernet", tmp_path / "demo" / "chrome_profile_zip.download"
+            )
             decrypt.assert_called_once_with(encrypted, "fernet", key)
             source = next(iter(spec.volumes))
             assert "/chrome_profile_zip-" in source.replace("\\", "/")
@@ -225,4 +243,3 @@ class TestRuntimeAssets:
             assert source.stat().st_mode & stat.S_IROTH
 
         asyncio.run(run())
-

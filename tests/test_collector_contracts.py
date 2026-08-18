@@ -423,9 +423,7 @@ class TestBuildingASingleCollector:
         with patch.dict(
             collectors.COLLECTOR_MAP, {"proxyrack": lambda **kw: (_ for _ in ()).throw(ValueError("nope"))}
         ):
-            collector, missing = collectors.build_one(
-                "proxyrack", {"proxyrack_api_key": "tok"}
-            )
+            collector, missing = collectors.build_one("proxyrack", {"proxyrack_api_key": "tok"})
         assert collector is None
         assert missing == []
 

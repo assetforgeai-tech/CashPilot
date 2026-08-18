@@ -14,6 +14,7 @@ def supported_modes(slug: str) -> set[str]:
 def default_deploy_mode(slug: str) -> str:
     return provider_runtime.default_mode(slug)
 
+
 def expand_requested(slug: str, mode: str | None) -> list[str]:
     if not mode:
         mode = default_deploy_mode(slug)

@@ -27,6 +27,7 @@ async def page_dashboard(request: Request):
         return RedirectResponse("/login", status_code=303)
     return deps.templates.TemplateResponse(request, "dashboard.html", {"user": user})
 
+
 @router.get("/dashboard", response_class=HTMLResponse)
 async def page_dashboard_alias(request: Request):
     return await page_dashboard(request)
@@ -82,6 +83,7 @@ async def page_fleet(request: Request):
         return deps._login_redirect()
     return deps.templates.TemplateResponse(request, "fleet.html", {"user": user})
 
+
 @router.get("/proxy-providers", response_class=HTMLResponse)
 async def page_proxy_providers(request: Request):
     user = auth_module.get_current_user(request)
@@ -91,6 +93,7 @@ async def page_proxy_providers(request: Request):
         raise HTTPException(status_code=403, detail="Owner access required")
     return deps.templates.TemplateResponse(request, "proxy_providers.html", {"user": user})
 
+
 @router.get("/proxy-pool", response_class=HTMLResponse)
 async def page_proxy_pool(request: Request):
     user = auth_module.get_current_user(request)
@@ -99,6 +102,7 @@ async def page_proxy_pool(request: Request):
     if not auth_module.require_role(user, "owner"):
         raise HTTPException(status_code=403, detail="Owner access required")
     return deps.templates.TemplateResponse(request, "proxy_pool.html", {"user": user})
+
 
 @router.get("/myst-wallet", response_class=HTMLResponse)
 async def page_myst_wallet(request: Request):

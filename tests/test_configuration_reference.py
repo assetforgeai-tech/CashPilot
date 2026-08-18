@@ -118,7 +118,9 @@ class TestTheAdvertiseOnlyPortIsCalledOut:
     def test_worker_image_copies_catalog_imports(self):
         dockerfile = (ROOT / "Dockerfile.worker").read_text(encoding="utf-8")
         assert "app/catalog.py" in dockerfile
-        assert "app/provider_runtime.py" in dockerfile, "catalog.py imports provider_runtime; missing copy crashes worker"
+        assert "app/provider_runtime.py" in dockerfile, (
+            "catalog.py imports provider_runtime; missing copy crashes worker"
+        )
 
     def test_the_variable_really_is_only_advertised(self):
         source = (ROOT / "app" / "worker_api.py").read_text(encoding="utf-8")

@@ -36,6 +36,7 @@ _EGRESS_MODES = {"proxy", "direct", "auto"}
 _EGRESS_UDP = {"required", "optional", "none"}
 _CREDENTIAL_KINDS = {"email", "password", "api_key", "token", "cookie", "cid", "device_id", "text", "file"}
 
+
 def _validate_credentials(data: dict[str, Any], path: Path, owner: str) -> list[str]:
     errors: list[str] = []
     section = data.get(owner)
@@ -134,6 +135,7 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
                 errors.append(f"{path.name}: egress.reason must be a string")
 
     return errors
+
 
 def _runtime_validation_errors(data: dict[str, Any], path: Path) -> list[str]:
     if SERVICES_DIR.resolve() != _DEFAULT_SERVICES_DIR.resolve():
@@ -284,6 +286,7 @@ def vps_allowed(requirements: dict[str, Any] | None) -> bool | None:
     residential = reqs.get("residential_ip")
     return None if residential is None else not residential
 
+
 def service_egress_mode(service: dict[str, Any] | None, default: str = "proxy") -> str:
     """proxy/direct/auto for a service, defaulting to the worker policy."""
     if default not in _EGRESS_MODES:
@@ -293,6 +296,7 @@ def service_egress_mode(service: dict[str, Any] | None, default: str = "proxy") 
         return default
     mode = egress.get("mode")
     return mode if mode in _EGRESS_MODES else default
+
 
 def service_egress_udp(service: dict[str, Any] | None) -> str:
     """required/optional/none UDP requirement for egress policy."""

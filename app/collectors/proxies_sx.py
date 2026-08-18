@@ -57,6 +57,7 @@ def _device_money(device: dict[str, Any], keys: tuple[str, ...]) -> float | None
             return parsed
     return None
 
+
 def _as_bool(value: Any) -> bool:
     if isinstance(value, bool):
         return value
@@ -66,6 +67,7 @@ def _as_bool(value: Any) -> bool:
         return value != 0
     text = str(value).strip().lower()
     return text in {"1", "true", "yes", "y", "on", "listed", "online", "connected", "verified", "active"}
+
 
 def _device_status(device: dict[str, Any]) -> str:
     raw = device.get("status") or device.get("state") or device.get("connectionStatus") or ""
@@ -140,7 +142,8 @@ class ProxiesSxCollector(BaseCollector):
                     "country": device.get("country") or device.get("countryCode") or "",
                     "ip": device.get("ip") or device.get("publicIp") or "",
                     "pending_payout_usd": _device_money(device, ("pendingPayout", "pending_payout")) or 0.0,
-                    "total_earned_usd": _device_money(device, ("totalEarned", "total_earned", "earnings", "earned")) or 0.0,
+                    "total_earned_usd": _device_money(device, ("totalEarned", "total_earned", "earnings", "earned"))
+                    or 0.0,
                 }
             )
         return result

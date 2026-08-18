@@ -305,6 +305,7 @@ _EGRESS_CONFIG_DIR = Path(os.getenv("CASHPILOT_DATA_DIR", "/data")) / "egress"
 _EGRESS_CONFIG_FILE = _EGRESS_CONFIG_DIR / "sing-box.json"
 _RUNTIME_ASSET_DIR = Path(os.getenv("CASHPILOT_DATA_DIR", "/data")) / "runtime-assets"
 
+
 def _docker_host_path(path: Path) -> Path:
     """Translate this worker's /data path to the host path Docker will mount.
 
@@ -334,8 +335,10 @@ def _docker_host_path(path: Path) -> Path:
         logger.warning("Could not resolve host path for runtime asset %s: %s", path, exc)
     return path
 
+
 def _myst_state_path() -> Path:
     return Path(os.getenv("CASHPILOT_DATA_DIR", "/data")) / "myst-wallet.json"
+
 
 def _save_myst_wallet_state(state: dict[str, Any]) -> None:
     payload = dict(state)
@@ -343,6 +346,7 @@ def _save_myst_wallet_state(state: dict[str, Any]) -> None:
     path = _myst_state_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+
 
 def _load_myst_wallet_state() -> dict[str, Any] | None:
     path = _myst_state_path()
@@ -353,6 +357,7 @@ def _load_myst_wallet_state() -> dict[str, Any] | None:
         return data if isinstance(data, dict) else None
     except OSError:
         return None
+
 
 async def _sync_myst_wallet_after_deploy(deploy_credentials: dict[str, Any], container_id: str) -> None:
     wallet_id = int(deploy_credentials.get("myst_wallet_id") or 0)
@@ -383,6 +388,7 @@ async def _sync_myst_wallet_after_deploy(deploy_credentials: dict[str, Any], con
         if status:
             state["myst_registration_status"] = status
     _save_myst_wallet_state(state)
+
 
 async def _myst_provider_state() -> dict[str, Any] | None:
     state = _load_myst_wallet_state()
@@ -416,10 +422,15 @@ async def _myst_provider_state() -> dict[str, Any] | None:
         "evidence": {
             "container_id": state.get("container_id", ""),
             "source": "heartbeat",
-            **({"public_ip": str(state.get("myst_public_ip") or state.get("myst_wallet_public_ip") or "")} if str(state.get("myst_public_ip") or state.get("myst_wallet_public_ip") or "") else {}),
+            **(
+                {"public_ip": str(state.get("myst_public_ip") or state.get("myst_wallet_public_ip") or "")}
+                if str(state.get("myst_public_ip") or state.get("myst_wallet_public_ip") or "")
+                else {}
+            ),
             **({"registration_status": registration_status} if registration_status else {}),
         },
     }
+
 
 async def _release_myst_wallet_state(reason: str) -> None:
     state = _load_myst_wallet_state()
@@ -934,6 +945,7 @@ class RuntimeAssetSpec(BaseModel):
     decrypt: str | None = None
     decrypt_key_arg: str | None = None
 
+
 class DeploySpec(BaseModel):
     image: str
     env: dict[str, str] = {}
@@ -963,15 +975,18 @@ class DeploySpec(BaseModel):
     runtime: str | None = None
     user: str | None = None
 
+
 class EgressApplySpec(BaseModel):
     mode: str = proxy_egress.PROXY
     service_udp: str = "none"
     worker_name: str | None = None
     proxy: dict[str, Any] | None = None
 
+
 class ProxyTargetProbeSpec(BaseModel):
     proxy: dict[str, Any]
     targets: list[str] = Field(default_factory=list)
+
 
 def _probe_proxy_url(proxy: dict[str, Any]) -> str:
     scheme = str(proxy.get("protocol") or proxy.get("scheme") or "socks5").strip().lower()
@@ -1008,6 +1023,7 @@ async def _fetch_runtime_asset(provider: str, asset_kind: str) -> str:
         raise ValueError(f"runtime asset {provider}:{asset_kind} missing value")
     return value
 
+
 async def _download_runtime_asset(url: str, dest: Path) -> bytes:
     dest.parent.mkdir(parents=True, exist_ok=True)
     async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client, client.stream("GET", url) as resp:
@@ -1021,6 +1037,7 @@ async def _download_runtime_asset(url: str, dest: Path) -> bytes:
                 buf.extend(chunk)
     return bytes(buf)
 
+
 def _decrypt_runtime_asset(data: bytes, mode: str | None, key: str | None) -> bytes:
     if not mode:
         return data
@@ -1030,6 +1047,7 @@ def _decrypt_runtime_asset(data: bytes, mode: str | None, key: str | None) -> by
         raise ValueError("Missing runtime asset decrypt key")
     return Fernet(key.encode()).decrypt(data)
 
+
 def _runtime_asset_url(asset: RuntimeAssetSpec, spec: DeploySpec, slug: str) -> str:
     url = str(asset.url or "").strip()
     if url:
@@ -1038,10 +1056,12 @@ def _runtime_asset_url(asset: RuntimeAssetSpec, spec: DeploySpec, slug: str) -> 
         return str((spec.deploy_credentials or {}).get(asset.url_arg) or "").strip()
     return ""
 
+
 def _runtime_asset_decrypt_key(asset: RuntimeAssetSpec, spec: DeploySpec, slug: str) -> str:
     if asset.decrypt_key_arg:
         return str((spec.deploy_credentials or {}).get(asset.decrypt_key_arg) or "").strip()
     return ""
+
 
 async def _materialize_runtime_assets(slug: str, spec: DeploySpec) -> None:
     if not spec.runtime_assets:
@@ -1084,6 +1104,7 @@ async def _materialize_runtime_assets(slug: str, spec: DeploySpec) -> None:
         with contextlib.suppress(OSError):
             host_path.chmod(0o644)
         spec.volumes[str(_docker_host_path(host_path))] = {"bind": target, "mode": "ro"}
+
 
 _BLOCKED_VOLUME_ROOTS = {
     "/",
@@ -1329,7 +1350,9 @@ def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
             )
     if spec.network_mode not in _ALLOWED_NETWORK_MODES:
         raise HTTPException(status_code=403, detail=f"Network mode '{spec.network_mode}' is not allowed")
-    if spec.network_mode == "host" and provider_slug not in (_catalog_host_network_slugs() | _HOST_NETWORK_DIRECT_EXCEPTIONS):
+    if spec.network_mode == "host" and provider_slug not in (
+        _catalog_host_network_slugs() | _HOST_NETWORK_DIRECT_EXCEPTIONS
+    ):
         raise HTTPException(status_code=403, detail=f"Network mode 'host' is not allowed for '{slug}'")
     for source in spec.volumes:
         if not source.startswith("/"):
@@ -1432,10 +1455,15 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
         logger.exception("Deploy failed for %s", slug)
         raise HTTPException(status_code=500, detail="Container deployment failed")
 
+
 @app.post("/api/proxy/probe-targets")
 async def api_probe_proxy_targets(request: Request, spec: ProxyTargetProbeSpec) -> dict[str, Any]:
     _verify_api_key(request)
-    targets = spec.targets or ["https://example.com/", "https://proxyjs.brdtnet.com/", "https://api.ipify.org?format=json"]
+    targets = spec.targets or [
+        "https://example.com/",
+        "https://proxyjs.brdtnet.com/",
+        "https://api.ipify.org?format=json",
+    ]
     try:
         proxy_url = _probe_proxy_url(spec.proxy)
     except ValueError as exc:
@@ -1672,10 +1700,12 @@ async def api_health() -> dict[str, str]:
     """Health check endpoint (no auth required)."""
     return {"status": "ok", "worker": WORKER_NAME}
 
+
 @app.get("/api/egress/status")
 async def api_egress_status(request: Request) -> dict[str, Any]:
     _verify_api_key(request)
     return {"configured": _EGRESS_CONFIG_FILE.is_file(), "path": str(_EGRESS_CONFIG_FILE)}
+
 
 @app.post("/api/egress/apply")
 async def api_egress_apply(request: Request, body: EgressApplySpec) -> dict[str, Any]:

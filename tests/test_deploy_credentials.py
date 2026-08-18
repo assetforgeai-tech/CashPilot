@@ -27,6 +27,7 @@ def test_grass_deploy_credentials_are_required_before_worker_deploy():
     assert "Email" in exc.value.detail
     assert "Password" in exc.value.detail
 
+
 def test_wipter_deploy_credentials_map_from_stored_config_to_worker_args():
     svc = catalog.get_service("wipter")
 
@@ -36,6 +37,7 @@ def test_wipter_deploy_credentials_map_from_stored_config_to_worker_args():
         {"wipter_email": "user@example.com", "wipter_password": "secret"},
     ) == {"email": "user@example.com", "password": "secret"}
 
+
 def test_proxybase_xyz_deploy_phrase_maps_from_settings_to_worker_args():
     svc = catalog.get_service("proxybase-xyz")
 
@@ -44,6 +46,7 @@ def test_proxybase_xyz_deploy_phrase_maps_from_settings_to_worker_args():
         svc,
         {"proxybase-xyz_phrase": "seed phrase words"},
     ) == {"phrase": "seed phrase words"}
+
 
 def test_proxybase_deploy_and_dashboard_tokens_stay_separate():
     svc = catalog.get_service("proxybase")
@@ -57,6 +60,7 @@ def test_proxybase_deploy_and_dashboard_tokens_stay_separate():
     )
     assert deploy == {"deploy_access_token": "deploy-token"}
 
+
 def test_urnetwork_api_key_maps_from_settings_to_worker_args():
     svc = catalog.get_service("urnetwork")
 
@@ -65,6 +69,7 @@ def test_urnetwork_api_key_maps_from_settings_to_worker_args():
         svc,
         {"urnetwork_api_key": "api-key"},
     ) == {"api_key": "api-key"}
+
 
 def test_proxyrack_deploy_runtime_requires_only_api_key():
     svc = catalog.get_service("proxyrack")
@@ -77,6 +82,7 @@ def test_proxyrack_deploy_runtime_requires_only_api_key():
         svc,
         {"proxyrack_api_key": "api-key"},
     ) == {"api_key": "api-key"}
+
 
 def test_settings_deploy_credentials_cover_node_creation_inputs_from_runtime_scripts():
     expected = {
@@ -93,11 +99,20 @@ def test_settings_deploy_credentials_cover_node_creation_inputs_from_runtime_scr
     }
 
     for slug, args in expected.items():
-        fields = {field["arg"] for field in service_credential_fields(slug, "deploy", catalog.get_service(slug), fallback=False)}
+        fields = {
+            field["arg"]
+            for field in service_credential_fields(slug, "deploy", catalog.get_service(slug), fallback=False)
+        }
         assert args <= fields, slug
 
-    tm_fields = {field["arg"] for field in service_credential_fields("traffmonetizer", "deploy", catalog.get_service("traffmonetizer"), fallback=False)}
+    tm_fields = {
+        field["arg"]
+        for field in service_credential_fields(
+            "traffmonetizer", "deploy", catalog.get_service("traffmonetizer"), fallback=False
+        )
+    }
     assert "device_name" not in tm_fields
+
 
 def test_settings_collector_credentials_cover_provider_collector_notes():
     expected = {
@@ -115,10 +130,13 @@ def test_settings_collector_credentials_cover_provider_collector_notes():
         fields = {field["arg"] for field in collector_credential_fields(slug, catalog.get_service(slug))}
         assert args <= fields, slug
 
+
 def test_iproyal_runtime_and_collector_credentials_are_separate():
     svc = catalog.get_service("iproyal")
 
-    deploy_fields = {field["key"]: field["arg"] for field in service_credential_fields("iproyal", "deploy", svc, fallback=False)}
+    deploy_fields = {
+        field["key"]: field["arg"] for field in service_credential_fields("iproyal", "deploy", svc, fallback=False)
+    }
     collector_fields = {field["key"]: field["arg"] for field in collector_credential_fields("iproyal", svc)}
 
     assert deploy_fields["iproyal_email"] == "email"
@@ -128,11 +146,13 @@ def test_iproyal_runtime_and_collector_credentials_are_separate():
         "iproyal_collector_password": "password",
     }
 
+
 def test_node_count_only_providers_have_no_earnings_collector_inputs():
     for slug in ("proxybase-xyz", "uprock", "wipter"):
         svc = catalog.get_service(slug)
         assert (svc.get("collector") or {}).get("type") == "manual"
         assert collector_credential_fields(slug, svc) == []
+
 
 def test_deploy_config_fields_can_feed_docker_env():
     svc = catalog.get_service("repocket")

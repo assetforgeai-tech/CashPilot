@@ -12,6 +12,7 @@ from app import main
 def _request(path: str = "/api/deploy/earnfm") -> Request:
     return Request({"type": "http", "method": "POST", "path": path, "headers": []})
 
+
 def _patch_alive_proxy_probe(monkeypatch):
     async def fake_probe(_host: str, _port: int, timeout: float = 5.0):
         return {"status": "alive", "protocol": "socks5"}
@@ -47,7 +48,9 @@ async def test_proxy_mode_attaches_proxy_and_direct_mode_does_not(monkeypatch):
     monkeypatch.setattr(main, "_proxy_worker_deploy", fake_deploy)
     monkeypatch.setattr(main, "_spawn", close_spawn)
 
-    await main.api_deploy(_request(), "earnfm", main.DeployRequest(env={}, mode="both"), worker_id=7, _auth={"r": "owner"})
+    await main.api_deploy(
+        _request(), "earnfm", main.DeployRequest(env={}, mode="both"), worker_id=7, _auth={"r": "owner"}
+    )
 
     assert set(specs) == {"earnfm-direct", "earnfm-proxy"}
     assert "proxy" not in specs["earnfm-direct"]
@@ -55,6 +58,7 @@ async def test_proxy_mode_attaches_proxy_and_direct_mode_does_not(monkeypatch):
     assert specs["earnfm-proxy"]["proxy"]["proxy_id"] == 9
     assert specs["earnfm-proxy"]["egress_mode"] == "proxy"
     assert specs["earnfm-proxy"]["labels"]["cashpilot.provider"] == "earnfm"
+
 
 @pytest.mark.asyncio
 async def test_proxyrack_parallel_modes_get_separate_uuid_and_device_names(monkeypatch):
@@ -97,6 +101,7 @@ async def test_proxyrack_parallel_modes_get_separate_uuid_and_device_names(monke
     assert direct_env["UUID"] != proxy_env["UUID"]
     assert re.fullmatch(r"\d{14}\.worker-1\.d", direct_env["DEVICE_NAME"])
     assert re.fullmatch(r"\d{14}\.worker-1\.p", proxy_env["DEVICE_NAME"])
+
 
 @pytest.mark.asyncio
 async def test_traffmonetizer_parallel_modes_get_separate_device_names(monkeypatch):
@@ -162,7 +167,9 @@ async def test_traffmonetizer_parallel_modes_get_separate_device_names(monkeypat
         ("traffmonetizer", "both", ("TRAFFMONETIZER_DEVICE_NAME",), None),
     ],
 )
-async def test_standard_device_identity_uses_worker_egress_ip(monkeypatch, slug, mode, expected_fields, expected_suffix):
+async def test_standard_device_identity_uses_worker_egress_ip(
+    monkeypatch, slug, mode, expected_fields, expected_suffix
+):
     specs: dict[str, dict] = {}
 
     async def fake_deploy(_worker_id: int, instance_slug: str, spec: dict) -> dict[str, str]:
@@ -271,6 +278,7 @@ async def test_earnfm_direct_uses_host_network_and_eapp_hostname(monkeypatch):
     assert specs["earnfm-direct"]["env"]["GODEBUG"] == "http2client=0"
     assert specs["earnfm-direct"]["network_mode"] == "host"
     assert specs["earnfm-direct"]["hostname"] == "eapp"
+
 
 @pytest.mark.asyncio
 async def test_mysterium_rejects_proxy_mode(monkeypatch):
@@ -381,6 +389,7 @@ async def test_iproyal_proxy_masks_ip_used_and_retries(monkeypatch):
     assert masked == [(1, "iproyal", "ip_used")]
     assert removed == ["iproyal-proxy"]
 
+
 @pytest.mark.asyncio
 async def test_iproyal_proxy_masks_tls_failure_and_retries(monkeypatch):
     specs: list[dict] = []
@@ -403,7 +412,9 @@ async def test_iproyal_proxy_masks_tls_failure_and_retries(monkeypatch):
     async def fake_logs(_worker_id: int, _slug: str, lines: int = 50):
         nonlocal log_calls
         log_calls += 1
-        return {"logs": "tls: failed to verify certificate: x509: certificate has expired" if log_calls == 1 else "running"}
+        return {
+            "logs": "tls: failed to verify certificate: x509: certificate has expired" if log_calls == 1 else "running"
+        }
 
     async def fake_mask(proxy_id: int, provider_slug: str, reason: str):
         masked.append((proxy_id, provider_slug, reason))
@@ -441,6 +452,7 @@ async def test_iproyal_proxy_masks_tls_failure_and_retries(monkeypatch):
 
     assert [spec["proxy"]["proxy_id"] for spec in specs] == [4, 5]
     assert masked == [(4, "iproyal", "tls_failed")]
+
 
 @pytest.mark.asyncio
 async def test_iproyal_proxy_reprobes_and_updates_protocol_before_deploy(monkeypatch):
@@ -502,6 +514,7 @@ async def test_iproyal_proxy_reprobes_and_updates_protocol_before_deploy(monkeyp
     assert specs[0]["proxy"]["protocol"] == "socks5"
     assert updates == [({7: "alive"}, {7: "socks5"})]
 
+
 @pytest.mark.asyncio
 async def test_iproyal_proxy_probe_failure_masks_and_rotates(monkeypatch):
     specs: list[dict] = []
@@ -550,6 +563,7 @@ async def test_iproyal_proxy_probe_failure_masks_and_rotates(monkeypatch):
     monkeypatch.setattr(main.database, "mask_proxy_for_provider", fake_mask)
     monkeypatch.setattr(main, "_proxy_for_worker_instance", fake_proxy)
     monkeypatch.setattr(main, "_proxy_worker_deploy", fake_deploy)
+
     async def fake_logs(*_args, **_kwargs):
         return {"logs": "running"}
 
@@ -569,6 +583,7 @@ async def test_iproyal_proxy_probe_failure_masks_and_rotates(monkeypatch):
 
     assert [spec["proxy"]["proxy_id"] for spec in specs] == [12]
     assert masked == [(11, "iproyal", "proxy_probe_failed")]
+
 
 @pytest.mark.asyncio
 async def test_redeploy_uses_current_runtime_settings_over_recorded_env(monkeypatch):
@@ -628,6 +643,7 @@ async def test_redeploy_uses_current_runtime_settings_over_recorded_env(monkeypa
     assert "new@example.com" in specs[0]["command"]
     assert "old@example.com" not in specs[0]["command"]
 
+
 @pytest.mark.asyncio
 async def test_spide_device_registration_uses_standard_device_identity(monkeypatch):
     captured: list[dict[str, str]] = []
@@ -661,6 +677,7 @@ async def test_spide_device_registration_uses_standard_device_identity(monkeypat
     assert re.fullmatch(r"\d{14}\.8\.8\.8\.8\.d", captured[0]["title"])
     assert re.fullmatch(r"\d{14}\.8\.8\.8\.8\.p", captured[1]["title"])
 
+
 @pytest.mark.asyncio
 async def test_host_systemd_deploy_is_blocked(monkeypatch):
     async def noop(*_args, **_kwargs):
@@ -673,10 +690,13 @@ async def test_host_systemd_deploy_is_blocked(monkeypatch):
     monkeypatch.setattr(main.database, "get_config", config)
 
     with pytest.raises(HTTPException) as exc:
-        await main.api_deploy(_request(), "proxybase-xyz", main.DeployRequest(env={}, mode="direct"), worker_id=7, _auth={"r": "owner"})
+        await main.api_deploy(
+            _request(), "proxybase-xyz", main.DeployRequest(env={}, mode="direct"), worker_id=7, _auth={"r": "owner"}
+        )
 
     assert exc.value.status_code == 400
     assert "host_systemd" in str(exc.value.detail)
+
 
 def test_recorded_empty_cap_add_does_not_block_new_catalog_caps():
     merged, divergence = main._merge_recorded_spec(
@@ -687,6 +707,7 @@ def test_recorded_empty_cap_add_does_not_block_new_catalog_caps():
 
     assert merged["cap_add"] == ["NET_ADMIN"]
     assert divergence == []
+
 
 def test_recorded_cap_add_can_expand_to_catalog_superset():
     merged, divergence = main._merge_recorded_spec(

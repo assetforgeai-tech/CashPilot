@@ -50,6 +50,7 @@ _COLLECTOR_ARGS: dict[str, list[str]] = {
 
 _SECRET_KINDS = {"password", "api_key", "token", "cookie", "bearer", "jwt", "oauth_token", "access_token"}
 
+
 def _kind_for_arg(arg: str) -> str:
     lowered = arg.lower()
     if "email" in lowered:
@@ -64,11 +65,13 @@ def _kind_for_arg(arg: str) -> str:
         return "token"
     return "text"
 
+
 def _is_secret_field(arg: str, kind: str) -> bool:
     from app import database
 
     lowered = arg.lower()
     return kind in _SECRET_KINDS or any(lowered.endswith(suffix) for suffix in database.SECRET_CONFIG_KEYS)
+
 
 def service_credential_fields(
     slug: str,
@@ -135,9 +138,11 @@ def service_credential_fields(
         )
     return fields
 
+
 def collector_credential_fields(slug: str, service: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """UI/config metadata for one collector, YAML-first with registry fallback."""
     return service_credential_fields(slug, "collector", service, fallback=True)
+
 
 # How long each credential actually lasts, and why it matters.
 #

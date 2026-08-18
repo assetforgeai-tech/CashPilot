@@ -10,9 +10,11 @@ from app import database
 
 DEFAULT_BASE_URL = "https://vtproxy.net"
 
+
 def _split_endpoint(endpoint: str) -> tuple[str, int]:
     host, port_text = str(endpoint).rsplit(":", 1)
     return host, int(port_text)
+
 
 def parse_balance(payload: dict[str, Any]) -> dict[str, Any]:
     data = payload.get("data") or {}
@@ -21,8 +23,9 @@ def parse_balance(payload: dict[str, Any]) -> dict[str, Any]:
         "email": data.get("email", ""),
     }
 
+
 def parse_packages(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    packages = ((payload.get("data") or {}).get("packages") or [])
+    packages = (payload.get("data") or {}).get("packages") or []
     out: list[dict[str, Any]] = []
     for pkg in packages:
         if not isinstance(pkg, dict):
@@ -37,8 +40,9 @@ def parse_packages(payload: dict[str, Any]) -> list[dict[str, Any]]:
         )
     return out
 
+
 def parse_proxies(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    proxies = ((payload.get("data") or {}).get("proxies") or [])
+    proxies = (payload.get("data") or {}).get("proxies") or []
     out: list[dict[str, Any]] = []
     for proxy in proxies:
         if not isinstance(proxy, dict):
@@ -65,6 +69,7 @@ def parse_proxies(payload: dict[str, Any]) -> list[dict[str, Any]]:
         )
     return out
 
+
 class VtproxyClient:
     """Read-only client for the provider API."""
 
@@ -89,6 +94,7 @@ class VtproxyClient:
 
     async def proxies(self) -> list[dict[str, Any]]:
         return parse_proxies(await self._get("/api/v1/public/proxies"))
+
 
 async def sync_vtproxy_provider(provider: dict[str, Any]) -> dict[str, Any]:
     api_key = str(provider.get("api_key") or "").strip()

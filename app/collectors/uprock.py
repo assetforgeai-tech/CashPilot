@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 API_BASE = "https://backend.uprock.com"
 
+
 def _load_seed(value: str) -> str:
     text = (value or "").strip()
     if not text:
@@ -28,10 +29,12 @@ def _load_seed(value: str) -> str:
         raise ValueError("Uprock credentials_json.main is missing")
     return token
 
+
 def _money(payload: dict[str, Any]) -> float:
     if "total_in_usd" not in payload:
         raise KeyError("total_in_usd")
     return float(payload.get("total_in_usd") or 0)
+
 
 class UprockCollector(BaseCollector):
     """Collect Uprock account wallet total from the desktop seed token."""

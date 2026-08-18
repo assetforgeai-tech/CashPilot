@@ -30,6 +30,7 @@ def _owner():
 def _auth_owner():
     return patch("app.main.auth.get_current_user", return_value=_owner())
 
+
 def _request(path: str = "/api/workers/1/command") -> Request:
     return Request({"type": "http", "method": "POST", "path": path, "headers": []})
 
@@ -81,7 +82,11 @@ class TestMystWalletApi:
     def test_wallet_export_returns_text_only_when_owner(self, client):
         with (
             _auth_owner(),
-            patch("app.routers.myst_wallets.database.export_myst_wallets", new_callable=AsyncMock, return_value=["wallet-a", "wallet-b"]),
+            patch(
+                "app.routers.myst_wallets.database.export_myst_wallets",
+                new_callable=AsyncMock,
+                return_value=["wallet-a", "wallet-b"],
+            ),
         ):
             resp = client.get("/api/admin/myst-wallets/export")
         assert resp.status_code == 200
@@ -99,6 +104,7 @@ class TestMystWalletHelpers:
     def test_wallet_address_hint_finds_nested_address_before_fallback(self):
         raw = '{"crypto":{"version":3},"identity":{"address":"2f43a6c09c53106c8863c6605ed46fccfad2ae2e"}}'
         assert myst_wallets.wallet_address_hint(raw) == "2f43a6c09c53106c8863c6605ed46fccfad2ae2e"
+
 
 class TestMystWalletInventory:
     def test_admin_list_never_returns_raw_wallet(self, tmp_path):
@@ -375,7 +381,9 @@ class TestMystWalletInventory:
                 leased = await database.lease_myst_wallet("worker-a", worker_id=worker_id)
                 db = await database._get_db()
                 try:
-                    await db.execute("UPDATE workers SET last_heartbeat = datetime('now', '-2 hours') WHERE id = ?", (worker_id,))
+                    await db.execute(
+                        "UPDATE workers SET last_heartbeat = datetime('now', '-2 hours') WHERE id = ?", (worker_id,)
+                    )
                     await db.commit()
                 finally:
                     await db.close()

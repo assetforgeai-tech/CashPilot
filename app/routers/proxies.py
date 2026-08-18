@@ -35,14 +35,17 @@ class ProxyAssignmentIn(BaseModel):
     mode: str = "proxy"
     fallback: str = "hold"
 
+
 class ProxyRecheckIn(BaseModel):
     proxy_ids: list[int] | None = None
     concurrency: int | None = None
+
 
 class ProxySchedulerIn(BaseModel):
     enabled: bool = False
     interval_minutes: int = 15
     concurrency: int = 8
+
 
 class ProxyImportIn(BaseModel):
     text: str
@@ -50,9 +53,11 @@ class ProxyImportIn(BaseModel):
     recheck: bool = True
     concurrency: int | None = None
 
+
 class ProxyDeleteIn(BaseModel):
     proxy_ids: list[int] | None = None
     status: str | None = None
+
 
 def _normalize_proxy_record(parts: list[str], *, location: str = "", protocol: str = "") -> dict[str, Any] | None:
     if len(parts) == 1 and not protocol:
@@ -94,19 +99,38 @@ def _normalize_proxy_record(parts: list[str], *, location: str = "", protocol: s
         host, port = parts[0].strip(), int(parts[1].strip())
         username = parts[2].strip()
         password = parts[3].strip()
-        proto = protocol or (parts[4].strip().lower() if len(parts) > 4 and parts[4].strip().lower() in {"http", "socks5"} else "socks5")
+        proto = protocol or (
+            parts[4].strip().lower() if len(parts) > 4 and parts[4].strip().lower() in {"http", "socks5"} else "socks5"
+        )
         if len(parts) > 5 and parts[5].strip():
             location = parts[5].strip()
-        return {"host": host, "port": port, "username": username, "password": password, "protocol": proto, "location": location}
+        return {
+            "host": host,
+            "port": port,
+            "username": username,
+            "password": password,
+            "protocol": proto,
+            "location": location,
+        }
     if len(parts) >= 2 and parts[0].strip() and parts[1].strip().isdigit():
         host, port = parts[0].strip(), int(parts[1].strip())
         username = parts[2].strip() if len(parts) > 2 else ""
         password = parts[3].strip() if len(parts) > 3 else ""
-        proto = protocol or (parts[4].strip().lower() if len(parts) > 4 and parts[4].strip().lower() in {"http", "socks5"} else "socks5")
+        proto = protocol or (
+            parts[4].strip().lower() if len(parts) > 4 and parts[4].strip().lower() in {"http", "socks5"} else "socks5"
+        )
         if len(parts) > 5 and parts[5].strip():
             location = parts[5].strip()
-        return {"host": host, "port": port, "username": username, "password": password, "protocol": proto, "location": location}
+        return {
+            "host": host,
+            "port": port,
+            "username": username,
+            "password": password,
+            "protocol": proto,
+            "location": location,
+        }
     return None
+
 
 def _parse_proxy_import(text: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
@@ -139,6 +163,7 @@ def _parse_proxy_import(text: str) -> list[dict[str, Any]]:
             if parsed:
                 rows.append(parsed)
     return rows
+
 
 _PROXY_PROBE_HOST = "example.com"
 _PROXY_PROBE_PORT = 80
@@ -192,7 +217,9 @@ async def _probe_socks5_proxy(
         target_host = _PROXY_PROBE_HOST.encode("ascii")
         if len(target_host) > 255:
             return False
-        writer.write(b"\x05\x01\x00\x03" + bytes([len(target_host)]) + target_host + _PROXY_PROBE_PORT.to_bytes(2, "big"))
+        writer.write(
+            b"\x05\x01\x00\x03" + bytes([len(target_host)]) + target_host + _PROXY_PROBE_PORT.to_bytes(2, "big")
+        )
         await writer.drain()
         reply = await _read_exactly_or_none(reader, 4, timeout)
         if len(reply) != 4 or reply[0] != 5 or reply[1] != 0:
@@ -213,11 +240,7 @@ async def _probe_socks5_proxy(
         else:
             return False
 
-        writer.write(
-            b"GET / HTTP/1.1\r\n"
-            b"Host: example.com\r\n"
-            b"Connection: close\r\n\r\n"
-        )
+        writer.write(b"GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n")
         await writer.drain()
         data = await _read_some_or_none(reader, 12, timeout)
         return data.startswith(b"HTTP/")
@@ -251,11 +274,7 @@ async def _probe_http_proxy(
         response = await _read_some_or_none(reader, 1024, timeout)
         if not response.startswith(b"HTTP/1.1 200") and not response.startswith(b"HTTP/1.0 200"):
             return False
-        writer.write(
-            b"GET / HTTP/1.1\r\n"
-            b"Host: example.com\r\n"
-            b"Connection: close\r\n\r\n"
-        )
+        writer.write(b"GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n")
         await writer.drain()
         data = await _read_some_or_none(reader, 12, timeout)
         return data.startswith(b"HTTP/")
@@ -288,6 +307,7 @@ async def _probe_proxy(
         pass
     return {"status": "dead", "protocol": ""}
 
+
 async def _probe_proxy_confirmed(
     host: str,
     port: int,
@@ -305,6 +325,7 @@ async def _probe_proxy_confirmed(
             await asyncio.sleep(retry_delay)
     return {"status": "dead", "protocol": ""}
 
+
 def _proxy_scheduler_settings(config: dict[str, Any]) -> dict[str, Any]:
     enabled = str(config.get("proxy_pool_recheck_enabled", "")).strip().lower() in {"1", "true", "yes", "on"}
     interval = int(str(config.get("proxy_pool_recheck_interval_minutes", "15") or "15").strip() or 15)
@@ -314,6 +335,7 @@ def _proxy_scheduler_settings(config: dict[str, Any]) -> dict[str, Any]:
         "interval_minutes": min(1440, max(1, interval)),
         "concurrency": min(64, max(1, concurrency)),
     }
+
 
 async def _apply_proxy_to_worker(worker_id: int, proxy: dict[str, Any]) -> dict[str, Any]:
     worker = await database.get_worker(worker_id)
@@ -325,6 +347,7 @@ async def _apply_proxy_to_worker(worker_id: int, proxy: dict[str, Any]) -> dict[
     from app.main import _proxy_to_worker  # local import avoids main -> router cycle at startup
 
     return await _proxy_to_worker(worker_id, "POST", "/api/egress/apply", json=payload, timeout=30)
+
 
 async def run_proxy_pool_recheck(*, proxy_ids: list[int] | None = None, concurrency: int = 8) -> dict[str, Any]:
     wanted = {int(x) for x in (proxy_ids or []) if int(x) > 0}
@@ -354,7 +377,14 @@ async def run_proxy_pool_recheck(*, proxy_ids: list[int] | None = None, concurre
     for row, result in checks:
         if result.get("status") != "dead" or not row.get("assigned_worker_id"):
             continue
-        replacement = next((candidate for candidate in alive_rows if not candidate.get("assigned_worker_id") and int(candidate["id"]) != int(row["id"])), None)
+        replacement = next(
+            (
+                candidate
+                for candidate in alive_rows
+                if not candidate.get("assigned_worker_id") and int(candidate["id"]) != int(row["id"])
+            ),
+            None,
+        )
         if not replacement:
             continue
         proxy = await database.get_proxy_endpoint(int(replacement["id"]))
@@ -362,7 +392,9 @@ async def run_proxy_pool_recheck(*, proxy_ids: list[int] | None = None, concurre
             continue
         worker_id = int(row["assigned_worker_id"])
         try:
-            ok = await database.set_worker_proxy_assignment(worker_id, int(replacement["id"]), proxy_egress.PROXY, "rotate")
+            ok = await database.set_worker_proxy_assignment(
+                worker_id, int(replacement["id"]), proxy_egress.PROXY, "rotate"
+            )
             if not ok:
                 rotate_errors += 1
                 continue
@@ -424,11 +456,13 @@ async def api_proxy_pool(request: Request) -> list[dict[str, Any]]:
     deps._require_owner(request)
     return await database.list_proxy_pool()
 
+
 @router.get("/api/proxy-pool/scheduler")
 async def api_proxy_pool_scheduler(request: Request) -> dict[str, Any]:
     deps._require_owner(request)
     config = await database.get_config() or {}
     return _proxy_scheduler_settings(config if isinstance(config, dict) else {})
+
 
 @router.post("/api/proxy-pool/scheduler")
 async def api_proxy_pool_scheduler_save(request: Request, body: ProxySchedulerIn) -> dict[str, Any]:
@@ -448,6 +482,7 @@ async def api_proxy_pool_scheduler_save(request: Request, body: ProxySchedulerIn
         }
     )
     return {"status": "ok", **settings}
+
 
 @router.get("/api/proxy-pool/export")
 async def api_proxy_pool_export(
@@ -481,6 +516,7 @@ async def api_proxy_pool_export(
     writer.writerows(rows)
     return PlainTextResponse(buf.getvalue(), media_type="text/csv")
 
+
 @router.post("/api/proxy-pool/import")
 async def api_proxy_pool_import(request: Request, body: ProxyImportIn) -> dict[str, Any]:
     deps._require_owner(request)
@@ -497,8 +533,11 @@ async def api_proxy_pool_import(request: Request, body: ProxyImportIn) -> dict[s
         config = await database.get_config() or {}
         settings = _proxy_scheduler_settings(config if isinstance(config, dict) else {})
         recent_ids = list(range(max(1, int(last_id or 0) - len(proxies) + 1), int(last_id or 0) + 1)) if last_id else []
-        result["recheck"] = await run_proxy_pool_recheck(proxy_ids=recent_ids or None, concurrency=body.concurrency or settings["concurrency"])
+        result["recheck"] = await run_proxy_pool_recheck(
+            proxy_ids=recent_ids or None, concurrency=body.concurrency or settings["concurrency"]
+        )
     return result
+
 
 @router.delete("/api/proxy-pool")
 async def api_proxy_pool_delete(request: Request, body: ProxyDeleteIn) -> dict[str, Any]:
@@ -509,12 +548,15 @@ async def api_proxy_pool_delete(request: Request, body: ProxyDeleteIn) -> dict[s
     deleted = await database.delete_proxy_endpoints(body.proxy_ids, status=status or None)
     return {"status": "ok", "deleted": deleted}
 
+
 @router.post("/api/proxy-pool/recheck")
 async def api_proxy_pool_recheck(request: Request, body: ProxyRecheckIn) -> dict[str, Any]:
     deps._require_owner(request)
     config = await database.get_config() or {}
     settings = _proxy_scheduler_settings(config if isinstance(config, dict) else {})
-    return await run_proxy_pool_recheck(proxy_ids=body.proxy_ids, concurrency=body.concurrency or settings["concurrency"])
+    return await run_proxy_pool_recheck(
+        proxy_ids=body.proxy_ids, concurrency=body.concurrency or settings["concurrency"]
+    )
 
 
 @router.post("/api/workers/{worker_id}/proxy-assignment")
@@ -528,7 +570,9 @@ async def api_worker_proxy_assignment(request: Request, worker_id: int, body: Pr
     if not ok:
         raise HTTPException(status_code=404, detail="Worker or proxy not found")
     worker = await database.get_worker(worker_id)
-    proxy = await database.get_proxy_endpoint(body.proxy_id) if body.proxy_id and body.mode != proxy_egress.DIRECT else None
+    proxy = (
+        await database.get_proxy_endpoint(body.proxy_id) if body.proxy_id and body.mode != proxy_egress.DIRECT else None
+    )
     payload = {
         "mode": body.mode,
         "worker_name": (worker or {}).get("name") or str(worker_id),
@@ -538,6 +582,7 @@ async def api_worker_proxy_assignment(request: Request, worker_id: int, body: Pr
 
     applied = await _proxy_to_worker(worker_id, "POST", "/api/egress/apply", json=payload, timeout=30)
     return {"status": "ok", "applied": applied}
+
 
 @router.post("/api/workers/{worker_id}/proxy-lease")
 async def api_worker_proxy_lease(request: Request, worker_id: int) -> dict[str, Any]:

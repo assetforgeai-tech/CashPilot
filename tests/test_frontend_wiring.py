@@ -119,11 +119,12 @@ class TestThePayoutQueueIsReachable:
         assert 'data-action="rejectPayout"' in queue
         assert "onclick=" not in queue, "CSP has no unsafe-inline; an inline handler would never fire"
 
+
 class TestProviderCollectNowIsReachable:
     def test_each_deployed_row_can_collect_just_that_provider(self):
         row = js_function("renderServiceRow")
         assert 'data-action="collectServiceNow"' in row
-        assert 'Collect this provider now' in row
+        assert "Collect this provider now" in row
 
     def test_collect_now_calls_the_provider_endpoint(self):
         source = js_function("collectServiceNow")
@@ -135,6 +136,7 @@ class TestProviderCollectNowIsReachable:
         assert "Not deployed" in source
         assert "badge-not_deployed" in (ROOT / "app" / "static" / "css" / "style.css").read_text(encoding="utf-8")
 
+
 class TestDeployModeSelect:
     def test_dual_mode_services_can_select_both_by_default(self):
         source = js_function("deployModeSelect")
@@ -145,6 +147,7 @@ class TestDeployModeSelect:
         source = js_function("_deployToWorkers")
         assert "data-deploy-mode-for" in source
         assert "body: { env, mode }" in source
+
 
 class TestMystWalletImportIsReachable:
     def test_the_handler_is_exported_from_cp(self):
@@ -166,7 +169,14 @@ class TestMystWalletImportIsReachable:
         app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
         exported = set(re.findall(r"^\s{4}([A-Za-z_][A-Za-z0-9_]*),\s*$", app_js, re.M))
         assert "loadMystWallets" in exported
-        assert "loadMystWallets();" in app_js[app_js.index("switch (page) {"): app_js.index("// -----------------------------------------------------------\n  // Public API")]
+        assert (
+            "loadMystWallets();"
+            in app_js[
+                app_js.index("switch (page) {") : app_js.index(
+                    "// -----------------------------------------------------------\n  // Public API"
+                )
+            ]
+        )
 
     def test_the_page_has_wallet_filters_and_row_actions(self):
         page = (ROOT / "app" / "templates" / "myst_wallet.html").read_text(encoding="utf-8")
@@ -300,6 +310,7 @@ class TestPayoutProgressIsShownWhereTheUserLooks:
         exported = set(re.findall(r"^\s{4}([A-Za-z_][A-Za-z0-9_]*),\s*$", app_js, re.M))
         assert "loadPayoutProgress" in exported
 
+
 class TestSettingsFileInputs:
     def test_file_credentials_render_as_file_inputs(self):
         source = js_function("renderCollectors")
@@ -315,6 +326,7 @@ class TestSettingsFileInputs:
         assert "const sectionRenderedKeys = new Set();" in source
         assert "sectionRenderedKeys.has(f.key)" in source
 
+
 class TestSettingsCredentialGroupsMatchBackend:
     def test_the_settings_heading_matches_the_three_group_layout(self):
         text = frontend_text()
@@ -324,6 +336,7 @@ class TestSettingsCredentialGroupsMatchBackend:
         assert "No credentials needed" in text
         assert "No credentials" in text
         assert "if (!fields.length) return ''" not in js_function("renderCollectors")
+
 
 class TestAutoDeploySettingsAreRenderedAndSaved:
     def test_the_settings_page_has_the_toggle_and_delay_inputs(self):
@@ -338,9 +351,9 @@ class TestAutoDeploySettingsAreRenderedAndSaved:
 
     def test_base_cache_busts_first_party_static_assets(self):
         base = (ROOT / "app" / "templates" / "base.html").read_text(encoding="utf-8")
-        assert '/static/css/style.css?v={{ csp_nonce(request) }}' in base
-        assert '/static/js/app.js?v={{ csp_nonce(request) }}' in base
-        assert '/static/js/delegate.js?v={{ csp_nonce(request) }}' in base
+        assert "/static/css/style.css?v={{ csp_nonce(request) }}" in base
+        assert "/static/js/app.js?v={{ csp_nonce(request) }}" in base
+        assert "/static/js/delegate.js?v={{ csp_nonce(request) }}" in base
 
 
 class TestTheProgressCardKeepsItsUnitsStraight:
@@ -572,7 +585,6 @@ class TestRunningCostsAreShownWithoutBeingInvented:
         assert "Leave hidden" in block or "return;   // Leave hidden" in block
 
 
-
 class TestTheDeployStepWarnsBeforeItActs:
     """deploy-risk and preflight, the last two orphaned endpoints.
 
@@ -691,6 +703,7 @@ class TestTheWizardSelectionIsVisible:
             text = without_comments(path.read_text(encoding="utf-8"))
             assert not re.search(r'data-a[123]="this"', text), f"{path.name} passes the string 'this' as an argument"
 
+
 class TestCatalogShowsReadiness:
     def test_catalog_card_renders_readiness_badges(self):
         source = js_function("renderCatalogCard")
@@ -710,6 +723,7 @@ class TestFleetShowsProviderStates:
         page = (ROOT / "app" / "templates" / "fleet.html").read_text(encoding="utf-8")
         assert "provider_states" in page
         assert "provider states" in page
+
 
 class TestInventoryTablesHaveOperatorControls:
     def test_proxy_pool_has_counts_search_sort_export_recheck_and_pagination(self):

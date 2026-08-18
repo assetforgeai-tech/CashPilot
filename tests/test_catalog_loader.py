@@ -206,26 +206,29 @@ class TestValidate:
         )
 
     def test_validate_accepts_collector_credentials(self, tmp_path):
-        assert catalog._validate(
-            {
-                **self._base(),
-                "collector": {
-                    "credentials": [
-                        {
-                            "key": "api_key",
-                            "label": "API key",
-                            "kind": "api_key",
-                            "secret": True,
-                            "required": True,
-                            "source": "dashboard",
-                            "expires_hours": 24,
-                            "durable": True,
-                        }
-                    ]
+        assert (
+            catalog._validate(
+                {
+                    **self._base(),
+                    "collector": {
+                        "credentials": [
+                            {
+                                "key": "api_key",
+                                "label": "API key",
+                                "kind": "api_key",
+                                "secret": True,
+                                "required": True,
+                                "source": "dashboard",
+                                "expires_hours": 24,
+                                "durable": True,
+                            }
+                        ]
+                    },
                 },
-            },
-            tmp_path / "t.yml",
-        ) == []
+                tmp_path / "t.yml",
+            )
+            == []
+        )
 
     def test_validate_accepts_deploy_and_dashboard_credentials(self, tmp_path):
         payload = {
@@ -292,6 +295,7 @@ class TestValidate:
         # Guard: no real catalog entry is dropped by the loader's validation.
         assert len(catalog.load_services()) >= 15
 
+
 class TestProviderAutomationContracts:
     def _svc(self, slug):
         return catalog.get_service(slug)
@@ -338,7 +342,7 @@ class TestProviderAutomationContracts:
                 "asset_kind": "main_db",
                 "target": "/cashpilot/runtime-assets/uprock/main.db",
                 "encoding": "base64",
-            }
+            },
         ]
 
     def test_spide_runtime_uses_device_key_registration(self):

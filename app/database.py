@@ -27,6 +27,7 @@ _logger = logging.getLogger(__name__)
 class MystWalletPublicIpInUse(RuntimeError):
     pass
 
+
 DB_DIR = Path(os.getenv("CASHPILOT_DATA_DIR", "/data"))
 DB_PATH = DB_DIR / "cashpilot.db"
 
@@ -320,7 +321,6 @@ CREATE TABLE IF NOT EXISTS myst_wallets (
     updated_at         TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 """
-
 
 
 def encrypt_value(value: str) -> str:
@@ -1629,11 +1629,13 @@ async def save_runtime_asset(provider: str, asset_kind: str, value: str) -> None
 
     await set_config(runtime_assets.config_key(provider, asset_kind), value)
 
+
 async def get_runtime_asset(provider: str, asset_kind: str) -> str | None:
     from app import runtime_assets
 
     value = await get_config(runtime_assets.config_key(provider, asset_kind))
     return str(value) if value is not None else None
+
 
 async def list_runtime_assets() -> list[dict[str, Any]]:
     from app import runtime_assets
@@ -1653,6 +1655,7 @@ async def list_runtime_assets() -> list[dict[str, Any]]:
         return rows
     finally:
         await db.close()
+
 
 async def save_deployment(
     slug: str,
@@ -1759,6 +1762,7 @@ async def set_deployment_status(slug: str, status: str) -> None:
     finally:
         await db.close()
 
+
 async def remove_deployment(slug: str) -> None:
     db = await _get_db()
     try:
@@ -1810,11 +1814,23 @@ async def save_provider_instance(
                 deployed_at = COALESCE(excluded.deployed_at, provider_instances.deployed_at),
                 updated_at = datetime('now')
             """,
-            (instance_id, slug, worker_id, mode, container_id, sidecar_id, proxy_id, status, spec_encrypted, container_id),
+            (
+                instance_id,
+                slug,
+                worker_id,
+                mode,
+                container_id,
+                sidecar_id,
+                proxy_id,
+                status,
+                spec_encrypted,
+                container_id,
+            ),
         )
         await db.commit()
     finally:
         await db.close()
+
 
 async def get_provider_instance(instance_id: str) -> dict[str, Any] | None:
     db = await _get_db()
@@ -1824,6 +1840,7 @@ async def get_provider_instance(instance_id: str) -> dict[str, Any] | None:
         return dict(row) if row else None
     finally:
         await db.close()
+
 
 async def get_provider_instance_spec(instance_id: str) -> dict[str, Any] | None:
     row = await get_provider_instance(instance_id)
@@ -1839,9 +1856,8 @@ async def get_provider_instance_spec(instance_id: str) -> dict[str, Any] | None:
         return None
     return spec if isinstance(spec, dict) else None
 
-async def list_provider_instances(
-    *, slug: str | None = None, worker_id: int | None = None
-) -> list[dict[str, Any]]:
+
+async def list_provider_instances(*, slug: str | None = None, worker_id: int | None = None) -> list[dict[str, Any]]:
     clauses = []
     params: list[Any] = []
     if slug is not None:
@@ -1865,6 +1881,7 @@ async def list_provider_instances(
     finally:
         await db.close()
 
+
 async def remove_provider_instance(instance_id: str) -> None:
     db = await _get_db()
     try:
@@ -1872,6 +1889,7 @@ async def remove_provider_instance(instance_id: str) -> None:
         await db.commit()
     finally:
         await db.close()
+
 
 # --- Users ---
 
@@ -2184,6 +2202,7 @@ async def set_worker_status(worker_id: int, status: str) -> None:
     finally:
         await db.close()
 
+
 async def count_worker_heartbeats(worker_id: int, *, healthy_only: bool = True) -> int:
     db = await _get_db()
     try:
@@ -2213,6 +2232,7 @@ async def delete_worker(worker_id: int) -> None:
 
 
 # --- Proxy egress ---
+
 
 async def upsert_proxy_provider(
     name: str,
@@ -2246,6 +2266,7 @@ async def upsert_proxy_provider(
     finally:
         await db.close()
 
+
 async def list_proxy_providers() -> list[dict[str, Any]]:
     db = await _get_db()
     try:
@@ -2268,6 +2289,7 @@ async def list_proxy_providers() -> list[dict[str, Any]]:
     finally:
         await db.close()
 
+
 async def get_proxy_provider(provider_id: int, *, include_secret: bool = False) -> dict[str, Any] | None:
     db = await _get_db()
     try:
@@ -2284,6 +2306,7 @@ async def get_proxy_provider(provider_id: int, *, include_secret: bool = False) 
         return data
     finally:
         await db.close()
+
 
 async def upsert_proxy_endpoints(provider_id: int, proxies: Sequence[Mapping[str, Any]]) -> int:
     db = await _get_db()
@@ -2346,11 +2369,14 @@ async def upsert_proxy_endpoints(provider_id: int, proxies: Sequence[Mapping[str
             )
         await db.execute("UPDATE proxy_providers SET last_synced_at = datetime('now') WHERE id = ?", (provider_id,))
         await db.commit()
-        cur = await db.execute("SELECT id FROM proxy_endpoints WHERE provider_id = ? ORDER BY id DESC LIMIT 1", (provider_id,))
+        cur = await db.execute(
+            "SELECT id FROM proxy_endpoints WHERE provider_id = ? ORDER BY id DESC LIMIT 1", (provider_id,)
+        )
         row = await cur.fetchone()
         return int(row["id"]) if row else 0
     finally:
         await db.close()
+
 
 async def list_proxy_pool() -> list[dict[str, Any]]:
     db = await _get_db()
@@ -2383,6 +2409,7 @@ async def list_proxy_pool() -> list[dict[str, Any]]:
     finally:
         await db.close()
 
+
 async def mask_proxy_for_provider(proxy_id: int, provider_slug: str, reason: str = "") -> bool:
     provider_slug = str(provider_slug or "").strip()
     if int(proxy_id or 0) <= 0 or not provider_slug:
@@ -2407,9 +2434,14 @@ async def mask_proxy_for_provider(proxy_id: int, provider_slug: str, reason: str
     finally:
         await db.close()
 
+
 async def unmask_proxy_for_provider(proxy_id: int | Sequence[int], provider_slug: str) -> int:
     provider_slug = str(provider_slug or "").strip()
-    ids = [int(x) for x in (proxy_id if isinstance(proxy_id, Sequence) and not isinstance(proxy_id, (str, bytes)) else [proxy_id]) if int(x) > 0]
+    ids = [
+        int(x)
+        for x in (proxy_id if isinstance(proxy_id, Sequence) and not isinstance(proxy_id, (str, bytes)) else [proxy_id])
+        if int(x) > 0
+    ]
     if not ids or not provider_slug:
         return 0
     db = await _get_db()
@@ -2424,6 +2456,7 @@ async def unmask_proxy_for_provider(proxy_id: int | Sequence[int], provider_slug
     finally:
         await db.close()
 
+
 async def proxy_masked_for_provider(proxy_id: int, provider_slug: str) -> bool:
     provider_slug = str(provider_slug or "").strip()
     if int(proxy_id or 0) <= 0 or not provider_slug:
@@ -2437,6 +2470,7 @@ async def proxy_masked_for_provider(proxy_id: int, provider_slug: str) -> bool:
         return bool(await cur.fetchone())
     finally:
         await db.close()
+
 
 async def delete_proxy_endpoints(proxy_ids: Sequence[int] | None = None, *, status: str | None = None) -> int:
     ids = [int(x) for x in (proxy_ids or []) if int(x) > 0]
@@ -2454,6 +2488,8 @@ async def delete_proxy_endpoints(proxy_ids: Sequence[int] | None = None, *, stat
         return int(cursor.rowcount or 0)
     finally:
         await db.close()
+
+
 async def _ensure_myst_wallets_table(db: Any) -> None:
     await db.executescript(_MYST_WALLETS_SCHEMA)
     cursor = await db.execute("PRAGMA table_info(myst_wallets)")
@@ -2476,6 +2512,7 @@ async def _ensure_myst_wallets_table(db: Any) -> None:
         await db.execute("ALTER TABLE myst_wallets ADD COLUMN last_heartbeat_at TEXT")
     if "evidence_json" not in cols:
         await db.execute("ALTER TABLE myst_wallets ADD COLUMN evidence_json TEXT NOT NULL DEFAULT '{}'")
+
 
 async def import_myst_wallets(raw: str) -> int:
     from app.myst_wallets import iter_wallet_records
@@ -2509,6 +2546,7 @@ async def import_myst_wallets(raw: str) -> int:
     finally:
         await db.close()
 
+
 async def list_myst_wallets() -> list[dict[str, Any]]:
     db = await _get_db()
     try:
@@ -2528,6 +2566,7 @@ async def list_myst_wallets() -> list[dict[str, Any]]:
     finally:
         await db.close()
 
+
 async def export_myst_wallets(*, funding: str | None = None) -> list[str]:
     db = await _get_db()
     try:
@@ -2542,6 +2581,7 @@ async def export_myst_wallets(*, funding: str | None = None) -> list[str]:
         return [decrypt_value(row["raw_wallet_enc"] or "") for row in await cursor.fetchall()]
     finally:
         await db.close()
+
 
 async def update_myst_wallet(
     wallet_id: int,
@@ -2588,6 +2628,7 @@ async def update_myst_wallet(
         return bool(cursor.rowcount)
     finally:
         await db.close()
+
 
 async def lease_myst_wallet(
     client_id: str,
@@ -2674,6 +2715,7 @@ async def lease_myst_wallet(
     finally:
         await db.close()
 
+
 async def release_myst_wallet(
     wallet_id: int,
     client_id: str,
@@ -2706,12 +2748,15 @@ async def release_myst_wallet(
     finally:
         await db.close()
 
+
 def _myst_wallet_unfunded(runtime_status: str, evidence: Mapping[str, Any]) -> bool:
     _ = runtime_status
     return str(evidence.get("registration_status") or "").strip().lower() == "unregistered"
 
+
 def _myst_public_ip(evidence: Mapping[str, Any]) -> str:
     return str(evidence.get("public_ip") or evidence.get("egress_ip") or "").strip()
+
 
 async def sync_myst_wallet_runtime(
     wallet_id: int,
@@ -2731,7 +2776,14 @@ async def sync_myst_wallet_runtime(
     try:
         await _ensure_myst_wallets_table(db)
         if unfunded:
-            params: list[Any] = [node_identity, runtime_status, json.dumps(evidence, sort_keys=True), wallet_id, client_id, wallet_assignment_version]
+            params: list[Any] = [
+                node_identity,
+                runtime_status,
+                json.dumps(evidence, sort_keys=True),
+                wallet_id,
+                client_id,
+                wallet_assignment_version,
+            ]
             cursor = await db.execute(
                 """
                 UPDATE myst_wallets
@@ -2752,7 +2804,15 @@ async def sync_myst_wallet_runtime(
                 params,
             )
         else:
-            params = [node_identity, runtime_status, public_ip, json.dumps(evidence, sort_keys=True), wallet_id, client_id, wallet_assignment_version]
+            params = [
+                node_identity,
+                runtime_status,
+                public_ip,
+                json.dumps(evidence, sort_keys=True),
+                wallet_id,
+                client_id,
+                wallet_assignment_version,
+            ]
             cursor = await db.execute(
                 """
                 UPDATE myst_wallets
@@ -2771,7 +2831,10 @@ async def sync_myst_wallet_runtime(
     finally:
         await db.close()
 
-async def set_worker_proxy_assignment(worker_id: int, proxy_id: int | None, mode: str = "proxy", fallback: str = "hold") -> bool:
+
+async def set_worker_proxy_assignment(
+    worker_id: int, proxy_id: int | None, mode: str = "proxy", fallback: str = "hold"
+) -> bool:
     mode = mode if mode in {"proxy", "direct", "auto"} else "proxy"
     fallback = fallback if fallback in {"hold", "rotate"} else "hold"
     db = await _get_db()
@@ -2800,6 +2863,7 @@ async def set_worker_proxy_assignment(worker_id: int, proxy_id: int | None, mode
     finally:
         await db.close()
 
+
 async def get_worker_proxy_assignment(worker_id: int) -> dict[str, Any] | None:
     db = await _get_db()
     try:
@@ -2826,6 +2890,7 @@ async def get_worker_proxy_assignment(worker_id: int) -> dict[str, Any] | None:
     finally:
         await db.close()
 
+
 async def _repair_myst_wallet_addresses(db: aiosqlite.Connection, *, limit: int = 300) -> None:
     from app import myst_wallets
 
@@ -2845,10 +2910,14 @@ async def _repair_myst_wallet_addresses(db: aiosqlite.Connection, *, limit: int 
         raw = decrypt_value(row["raw_wallet_enc"] or "")
         address = myst_wallets.wallet_address_hint(raw)
         if address and address != current and len(address) == 40:
-            await db.execute("UPDATE myst_wallets SET address = ?, updated_at = datetime('now') WHERE id = ?", (address, int(row["id"])))
+            await db.execute(
+                "UPDATE myst_wallets SET address = ?, updated_at = datetime('now') WHERE id = ?",
+                (address, int(row["id"])),
+            )
             changed += 1
     if changed:
         await db.commit()
+
 
 async def export_proxy_pool(
     *,
@@ -2872,7 +2941,10 @@ async def export_proxy_pool(
         rows = [row for row in rows if str(row.get("protocol") or "").strip().lower() == wanted_protocol]
     return rows
 
-async def update_proxy_pool_check_results(results: Mapping[int, str], *, protocols: Mapping[int, str] | None = None) -> int:
+
+async def update_proxy_pool_check_results(
+    results: Mapping[int, str], *, protocols: Mapping[int, str] | None = None
+) -> int:
     db = await _get_db()
     try:
         checked = 0
@@ -2895,6 +2967,7 @@ async def update_proxy_pool_check_results(results: Mapping[int, str], *, protoco
         return checked
     finally:
         await db.close()
+
 
 async def lease_proxy_for_worker(worker_id: int, *, provider_slug: str | None = None) -> dict[str, Any] | None:
     provider_slug = str(provider_slug or "").strip()
@@ -2934,9 +3007,15 @@ async def lease_proxy_for_worker(worker_id: int, *, provider_slug: str | None = 
     finally:
         await db.close()
     assignment = await get_worker_proxy_assignment(worker_id)
-    if assignment and provider_slug and assignment.get("proxy_id") and await proxy_masked_for_provider(int(assignment["proxy_id"]), provider_slug):
+    if (
+        assignment
+        and provider_slug
+        and assignment.get("proxy_id")
+        and await proxy_masked_for_provider(int(assignment["proxy_id"]), provider_slug)
+    ):
         return None
     return assignment
+
 
 async def get_proxy_endpoint(proxy_id: int) -> dict[str, Any] | None:
     db = await _get_db()
@@ -2962,6 +3041,7 @@ async def get_proxy_endpoint(proxy_id: int) -> dict[str, Any] | None:
         return data
     finally:
         await db.close()
+
 
 # --- Per-worker fleet keys ---
 #

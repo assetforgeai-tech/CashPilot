@@ -10,9 +10,11 @@ from app import myst_runtime, orchestrator
 RAW_WALLET = json.dumps({"address": "0x57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1", "crypto": {}})
 RAW_WALLET_BARE_ADDRESS = json.dumps({"address": "57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1", "crypto": {}})
 
+
 def _tar_names(blob: bytes) -> set[str]:
     with tarfile.open(fileobj=io.BytesIO(blob), mode="r") as tf:
         return set(tf.getnames())
+
 
 def test_myst_state_archive_contains_wallet_remember_and_mmn_config():
     blob = myst_runtime.state_archive(RAW_WALLET, mmn_api_key="mmn-key")
@@ -29,6 +31,7 @@ def test_myst_state_archive_contains_wallet_remember_and_mmn_config():
 def test_wallet_address_accepts_myst_keystore_bare_hex_address():
     assert myst_runtime.wallet_address(RAW_WALLET_BARE_ADDRESS) == "0x57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1"
 
+
 def test_myst_state_archive_refuses_wallet_without_address():
     try:
         myst_runtime.state_archive("not-json", mmn_api_key="mmn-key")
@@ -36,6 +39,7 @@ def test_myst_state_archive_refuses_wallet_without_address():
         assert "address" in str(exc)
     else:
         raise AssertionError("expected invalid wallet to fail")
+
 
 def test_apply_direct_wallet_stops_patches_restarts_sets_password_and_mmn():
     container = MagicMock()
@@ -53,18 +57,23 @@ def test_apply_direct_wallet_stops_patches_restarts_sets_password_and_mmn():
     archive = container.put_archive.call_args_list[1].args[1]
     assert b"nodeui-pass" in archive
 
+
 def test_apply_direct_wallet_keeps_deploy_alive_when_password_reset_fails():
     container = MagicMock()
-    address = myst_runtime.apply_direct_wallet(container, {"raw_wallet": RAW_WALLET}, dashboard_password="pw", mmn_api_key="mmn")
+    address = myst_runtime.apply_direct_wallet(
+        container, {"raw_wallet": RAW_WALLET}, dashboard_password="pw", mmn_api_key="mmn"
+    )
 
     assert address == "0x57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1"
     container.exec_run.assert_any_call(["sh", "-lc", "myst cli mmn 'mmn' >/dev/null 2>&1 || true"])
+
 
 def test_registration_status_parses_myst_cli_output():
     container = MagicMock()
     container.exec_run.return_value = MagicMock(output=b"Registration Status: Registered\nBalance: 0.1 MYST\n")
 
     assert myst_runtime.registration_status(container, "0xabc") == "Registered"
+
 
 def test_deploy_raw_applies_myst_wallet_after_container_create():
     client = MagicMock()
@@ -88,6 +97,7 @@ def test_deploy_raw_applies_myst_wallet_after_container_create():
 
     apply_wallet.assert_called_once()
 
+
 def test_deploy_raw_applies_myst_wallet_for_direct_instance_slug():
     client = MagicMock()
     client.containers.get.side_effect = orchestrator.NotFound("nope")
@@ -110,6 +120,7 @@ def test_deploy_raw_applies_myst_wallet_for_direct_instance_slug():
         )
 
     apply_wallet.assert_called_once()
+
 
 def test_deploy_raw_clears_myst_named_volume_before_wallet_import():
     events: list[str] = []
@@ -148,7 +159,9 @@ def test_deploy_raw_clears_myst_named_volume_before_wallet_import():
 
     with (
         patch.object(orchestrator, "_get_client", return_value=client),
-        patch.object(orchestrator.myst_runtime, "apply_direct_wallet", return_value="0x57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1"),
+        patch.object(
+            orchestrator.myst_runtime, "apply_direct_wallet", return_value="0x57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1"
+        ),
     ):
         orchestrator.deploy_raw(
             slug="mysterium-direct",

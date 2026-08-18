@@ -103,21 +103,41 @@ def _spawn(coro) -> asyncio.Task:
     task.add_done_callback(_on_done)
     return task
 
+
 _AUTO_DEPLOY_LOCKS: dict[int, asyncio.Lock] = {}
 _AUTO_DEPLOY_ACTIVE: set[int] = set()
 _WORKER_HEARTBEAT_STREAKS: dict[int, int] = {}
 _proxy_pool_last_recheck: datetime | None = None
+
+
 def _auto_deploy_settings(config: dict[str, str]) -> dict[str, Any]:
     enabled = str(config.get("cashpilot_auto_deploy_enabled", "")).strip().lower() in {"1", "true", "yes", "on"}
     delay = int(str(config.get("cashpilot_auto_deploy_delay_seconds", "10") or "10").strip() or 10)
-    include_server = str(config.get("cashpilot_autodeploy_include_server", "")).strip().lower() in {"1", "true", "yes", "on"}
+    include_server = str(config.get("cashpilot_autodeploy_include_server", "")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
     return {"enabled": enabled, "delay_seconds": max(0, delay), "include_server": include_server}
 
+
 def _auto_deploy_slugs(services: list[dict[str, Any]]) -> list[str]:
-    return [svc.get("slug", "") for svc in services if svc.get("slug") and svc.get("status") not in _UNDEPLOYABLE_STATUSES and (svc.get("docker") or {}).get("image")]
+    return [
+        svc.get("slug", "")
+        for svc in services
+        if svc.get("slug")
+        and svc.get("status") not in _UNDEPLOYABLE_STATUSES
+        and (svc.get("docker") or {}).get("image")
+    ]
+
 
 def _worker_allowed_for_auto_deploy(worker: dict[str, Any], config: dict[str, str]) -> bool:
-    return not (str(worker.get("name") or "").strip().lower() == "cashpilot" and not _auto_deploy_settings(config)["include_server"])
+    return not (
+        str(worker.get("name") or "").strip().lower() == "cashpilot"
+        and not _auto_deploy_settings(config)["include_server"]
+    )
+
 
 async def _auto_deploy_one(worker_id: int, slug: str) -> None:
     await api_deploy(
@@ -127,6 +147,7 @@ async def _auto_deploy_one(worker_id: int, slug: str) -> None:
         worker_id=worker_id,
         _auth={"r": "owner"},
     )
+
 
 async def _run_auto_deploy_batch(worker_id: int, slugs: list[str], *, delay_seconds: int = 10) -> None:
     if worker_id in _AUTO_DEPLOY_ACTIVE:
@@ -145,6 +166,7 @@ async def _run_auto_deploy_batch(worker_id: int, slugs: list[str], *, delay_seco
     finally:
         _AUTO_DEPLOY_ACTIVE.discard(worker_id)
 
+
 async def _maybe_auto_deploy_after_heartbeat(worker_id: int) -> None:
     config = await database.get_config() or {}
     settings = _auto_deploy_settings(config)
@@ -162,6 +184,7 @@ async def _maybe_auto_deploy_after_heartbeat(worker_id: int) -> None:
     slugs = _auto_deploy_slugs(services)
     if slugs:
         _spawn(_run_auto_deploy_batch(worker_id, slugs, delay_seconds=settings["delay_seconds"]))
+
 
 async def _run_proxy_pool_recheck_scheduler() -> None:
     global _proxy_pool_last_recheck
@@ -184,6 +207,7 @@ async def _run_proxy_pool_recheck_scheduler() -> None:
         result.get("rotated", 0),
         result.get("rotate_errors", 0),
     )
+
 
 # Login rate limiting moved to app.login_rate_limit (bead sux) — it was the last
 # thing the routers genuinely needed from this module, and extracting it is what
@@ -546,8 +570,10 @@ async def _collect_bounded(collector) -> Any:
                 error_kind=collectors_base.classify_exception(exc),
             )
 
+
 async def _collect_with_collector(collector) -> tuple[Any, Any]:
     return collector, await _collect_bounded(collector)
+
 
 def _node_earnings_rows(platform: str, default_currency: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Normalize per-node earnings into rows for the shared earnings table.
@@ -563,7 +589,11 @@ def _node_earnings_rows(platform: str, default_currency: str, rows: list[dict[st
         if not isinstance(row, dict):
             continue
         node_id = next(
-            (str(row.get(key) or "").strip() for key in ("node_id", "device_id", "identity", "id", "name") if str(row.get(key) or "").strip()),
+            (
+                str(row.get(key) or "").strip()
+                for key in ("node_id", "device_id", "identity", "id", "name")
+                if str(row.get(key) or "").strip()
+            ),
             "",
         )
         if not node_id:
@@ -725,7 +755,7 @@ def _service_tracking_ready(slug: str, config: dict[str, str]) -> bool:
         return True
     svc = catalog.get_service(slug) or {}
     for section in ("deploy", "dashboard", "collector"):
-        fields = ((svc.get(section) or {}).get("credentials") or [])
+        fields = (svc.get(section) or {}).get("credentials") or []
         if not fields:
             continue
         required = [f for f in fields if f.get("required", True)]
@@ -737,6 +767,7 @@ def _service_tracking_ready(slug: str, config: dict[str, str]) -> bool:
         elif any(config.get(key) for key in keys):
             return True
     return False
+
 
 async def _track_fully_configured_services() -> int:
     """Give every configured service a deployment row, so Dashboard tracks it.
@@ -881,7 +912,9 @@ async def _run_collection() -> None:
                     logger.info("Collected %s: %.4f %s", result.platform, result.balance, result.currency)
                     platforms_ok += 1
                     service = catalog.get_service(result.platform)
-                    declares_per_node = bool((service.get("collector") or {}).get("per_node_earnings")) if service else False
+                    declares_per_node = (
+                        bool((service.get("collector") or {}).get("per_node_earnings")) if service else False
+                    )
                     getter = getattr(collector, "get_per_node_earnings", None) if declares_per_node else None
                     if declares_per_node and getter is not None:
                         try:
@@ -938,6 +971,7 @@ async def _run_collection() -> None:
             global _collection_has_run
             _collection_has_run = True
 
+
 async def _run_single_collection(slug: str) -> dict[str, Any]:
     from app import collectors
 
@@ -957,7 +991,9 @@ async def _run_single_collection(slug: str) -> dict[str, Any]:
             await collector.close()
     if result.error:
         safe_error = notify.redact(result.error)
-        await database.record_alert("collector", result.platform, safe_error, category=getattr(result, "error_kind", None))
+        await database.record_alert(
+            "collector", result.platform, safe_error, category=getattr(result, "error_kind", None)
+        )
         raise HTTPException(status_code=502, detail=safe_error)
     payout_alert = await _detect_payout(result)
     await database.upsert_earnings(
@@ -1455,11 +1491,13 @@ def _apply_service_meta(entry: dict[str, Any], svc: dict[str, Any] | None) -> No
         entry["referral_url"] = referral.get("signup_url", "")
     entry["website"] = svc.get("website", "")
 
+
 def _service_supported_modes(svc: dict[str, Any] | None) -> list[str]:
     slug = str((svc or {}).get("slug") or "")
     if not slug:
         return []
     return sorted(provider_modes.supported_modes(slug))
+
 
 def _service_deploy_surface(svc: dict[str, Any] | None) -> str:
     deploy = (svc or {}).get("deploy") or {}
@@ -1476,6 +1514,7 @@ def _mode_scoped_named_volumes(volumes: dict[str, Any], mode: str) -> dict[str, 
         else:
             scoped[f"{source}-{mode}"] = mount
     return scoped
+
 
 @app.get("/api/services/deployed")
 async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
@@ -1669,7 +1708,9 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             {
                 "slug": slug,
                 "name": svc["name"],
-                "container_status": "running" if any(r.get("status") == "running" for r in inst_rows) else (inst_rows[0].get("status") or "unknown"),
+                "container_status": "running"
+                if any(r.get("status") == "running" for r in inst_rows)
+                else (inst_rows[0].get("status") or "unknown"),
                 "unmanaged": False,
                 "balance": balance_map.get(slug),
                 "balance_known": slug in balance_map,
@@ -1868,6 +1909,7 @@ class DeployRequest(BaseModel):
     hostname: str | None = None
     mode: str | None = None
 
+
 def _resolve_deploy_credentials(
     slug: str,
     svc: dict[str, Any] | None,
@@ -1893,6 +1935,7 @@ def _resolve_deploy_credentials(
         )
     return deploy_credentials
 
+
 def _require_deploy_credentials(slug: str, svc: dict[str, Any] | None, deploy_credentials: dict[str, Any]) -> None:
     from app.collectors import service_credential_fields
 
@@ -1907,7 +1950,10 @@ def _require_deploy_credentials(slug: str, svc: dict[str, Any] | None, deploy_cr
             detail=f"Missing required deployment credentials: {', '.join(missing)}",
         )
 
-def _apply_deploy_config_to_env(slug: str, svc: dict[str, Any] | None, config: dict[str, str], env: dict[str, str]) -> None:
+
+def _apply_deploy_config_to_env(
+    slug: str, svc: dict[str, Any] | None, config: dict[str, str], env: dict[str, str]
+) -> None:
     from app.collectors import service_credential_fields
 
     for field in service_credential_fields(slug, "deploy", svc, fallback=False):
@@ -1918,6 +1964,7 @@ def _apply_deploy_config_to_env(slug: str, svc: dict[str, Any] | None, config: d
         if value:
             env[env_key] = value
 
+
 def _deploy_config_env_overrides(slug: str, svc: dict[str, Any] | None, config: dict[str, str]) -> dict[str, str]:
     from app.collectors import service_credential_fields
 
@@ -1927,6 +1974,7 @@ def _deploy_config_env_overrides(slug: str, svc: dict[str, Any] | None, config: 
         if env_key and str(config.get(field["key"], "")).strip():
             overrides[env_key] = str(config[field["key"]]).strip()
     return overrides
+
 
 def _changed_credential_sections(data: dict[str, str]) -> dict[str, set[str]]:
     from app.collectors import collector_credential_fields, service_credential_fields
@@ -1949,11 +1997,13 @@ def _changed_credential_sections(data: dict[str, str]) -> dict[str, set[str]]:
             changed["deploy"].add(slug)
     return changed
 
+
 async def _mark_redeploy_needed_for_config_change(changed: dict[str, set[str]]) -> None:
     for slug in sorted(changed.get("deploy") or []):
         row = await database.get_deployment(slug)
         if row and row.get("status") != "needs_redeploy":
             await database.set_deployment_status(slug, "needs_redeploy")
+
 
 async def _attach_myst_wallet_for_deploy(slug: str, worker_id: int, spec: dict[str, Any]) -> dict[str, Any] | None:
     if slug != "mysterium":
@@ -1989,6 +2039,7 @@ async def _attach_myst_wallet_for_deploy(slug: str, worker_id: int, spec: dict[s
     deploy_credentials["myst_wallet_address"] = str(wallet.get("address") or "")
     return wallet
 
+
 async def _release_myst_wallet_from_spec(spec: dict[str, Any], *, reason: str) -> None:
     deploy_credentials = spec.get("deploy_credentials") or {}
     wallet_id = int(deploy_credentials.get("myst_wallet_id") or 0)
@@ -2003,11 +2054,17 @@ async def _release_myst_wallet_from_spec(spec: dict[str, Any], *, reason: str) -
         wallet_assignment_version=version,
     )
 
+
 async def _proxy_for_worker_instance(worker_id: int, *, provider_slug: str | None = None) -> dict[str, Any]:
     attempts = 20
     for _ in range(attempts):
         proxy = await database.get_worker_proxy_assignment(worker_id)
-        if proxy and provider_slug and proxy.get("proxy_id") and await database.proxy_masked_for_provider(int(proxy["proxy_id"]), provider_slug):
+        if (
+            proxy
+            and provider_slug
+            and proxy.get("proxy_id")
+            and await database.proxy_masked_for_provider(int(proxy["proxy_id"]), provider_slug)
+        ):
             proxy = None
         if not proxy or not proxy.get("proxy_id"):
             proxy = await database.lease_proxy_for_worker(worker_id, provider_slug=provider_slug)
@@ -2015,9 +2072,11 @@ async def _proxy_for_worker_instance(worker_id: int, *, provider_slug: str | Non
             return proxy
     raise HTTPException(status_code=409, detail="No proxy available for this worker")
 
+
 def _proxy_location_is_vietnam(proxy: dict[str, Any]) -> bool:
     loc = str(proxy.get("location") or "").strip().lower()
     return loc in {"vn", "viet nam", "vietnam", "việt nam"} or "vietnam" in loc or "viet nam" in loc
+
 
 async def _resolve_pawns_proxy_protocol(proxy: dict[str, Any]) -> dict[str, Any] | None:
     proxy_id = int(proxy.get("proxy_id") or 0)
@@ -2040,6 +2099,7 @@ async def _resolve_pawns_proxy_protocol(proxy: dict[str, Any]) -> dict[str, Any]
         proxy["protocol"] = detected
     return proxy
 
+
 def _pawns_log_failure_reason(logs: str) -> str:
     text = str(logs or "").lower()
     if "ip_used" in text:
@@ -2047,6 +2107,7 @@ def _pawns_log_failure_reason(logs: str) -> str:
     if "tls:" in text or "x509:" in text or "certificate" in text:
         return "tls_failed"
     return ""
+
 
 async def _wait_for_pawns_proxy_failure(worker_id: int, instance_slug: str) -> str:
     for _ in range(12):
@@ -2056,6 +2117,7 @@ async def _wait_for_pawns_proxy_failure(worker_id: int, instance_slug: str) -> s
             return reason
         await asyncio.sleep(5)
     return ""
+
 
 async def _deploy_iproyal_proxy_with_retry(
     worker_id: int,
@@ -2073,7 +2135,9 @@ async def _deploy_iproyal_proxy_with_retry(
             proxy_id = int((raw_proxy or {}).get("proxy_id") or 0)
             if proxy_id:
                 await database.mask_proxy_for_provider(proxy_id, "iproyal", "proxy_probe_failed")
-                await database.record_health_event("iproyal", "proxy_masked", f"masked proxy {proxy_id} after proxy_probe_failed")
+                await database.record_health_event(
+                    "iproyal", "proxy_masked", f"masked proxy {proxy_id} after proxy_probe_failed"
+                )
             with contextlib.suppress(Exception):
                 await _proxy_worker_command(worker_id, "remove", instance_slug)
             last_error = "proxy_probe_failed"
@@ -2086,7 +2150,9 @@ async def _deploy_iproyal_proxy_with_retry(
             proxy_id = int((proxy or {}).get("proxy_id") or 0)
             if proxy_id:
                 await database.mask_proxy_for_provider(proxy_id, "iproyal", failure_reason)
-                await database.record_health_event("iproyal", "proxy_masked", f"masked proxy {proxy_id} after {failure_reason}")
+                await database.record_health_event(
+                    "iproyal", "proxy_masked", f"masked proxy {proxy_id} after {failure_reason}"
+                )
             with contextlib.suppress(Exception):
                 await _proxy_worker_command(worker_id, "remove", instance_slug)
             last_error = f"{failure_reason} on proxy {proxy_id or 'unknown'}"
@@ -2104,14 +2170,17 @@ _DEVICE_IDENTITY_ENV_KEYS: dict[str, tuple[str, ...]] = {
     "traffmonetizer": ("TRAFFMONETIZER_DEVICE_NAME",),
 }
 
+
 def _standard_device_identity(worker: dict[str, Any] | None, mode: str, fallback_hostname: str) -> str:
     suffix = "p" if mode == "proxy" else "d"
     source = egress.egress_of(worker) or str((worker or {}).get("name") or "").strip() or fallback_hostname
     return f"{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}.{source}.{suffix}"
 
+
 def _proxies_sx_agent_name(identity: str) -> str:
     # ponytail: Proxies.sx rejects dots; expand if their API documents more allowed chars.
     return re.sub(r"[^A-Za-z0-9_-]+", "-", identity).strip("-") or "cashpilot-proxy"
+
 
 def _apply_standard_device_identity(
     slug: str,
@@ -2126,6 +2195,7 @@ def _apply_standard_device_identity(
         identity = _proxies_sx_agent_name(identity)
     for key in _DEVICE_IDENTITY_ENV_KEYS.get(slug, ()):
         env[key] = identity
+
 
 @app.post("/api/deploy/{slug}")
 async def api_deploy(
@@ -2399,6 +2469,7 @@ async def api_deploy(
         response["kept_from_previous_deployment"] = divergence
     return response
 
+
 async def _run_post_deploy_automation(slug: str, worker_id: int, hostname: str, modes: list[str] | None = None) -> None:
     svc = catalog.get_service(slug)
     deploy = (svc or {}).get("deploy") or {}
@@ -2408,6 +2479,7 @@ async def _run_post_deploy_automation(slug: str, worker_id: int, hostname: str, 
         instance_slug = slug if mode == "legacy" else f"{slug}-{mode}"
         identity_mode = "direct" if mode == "legacy" else mode
         await _register_spide_device_from_worker_logs(worker_id, instance_slug, identity_mode, hostname)
+
 
 async def _register_spide_device_from_worker_logs(worker_id: int, instance_slug: str, mode: str, hostname: str) -> None:
     token = await database.get_config("spide_dashboard_token")
@@ -3091,6 +3163,7 @@ async def api_collect(request: Request) -> dict[str, str]:
 async def api_collect_service(request: Request, slug: str) -> dict[str, Any]:
     _require_writer(request)
     return await _run_single_collection(slug)
+
 
 _MAX_ALERT_ERROR_LEN = 200
 
@@ -4370,6 +4443,7 @@ def _sanitize_credential(value: str) -> str:
         v = unquote(v)
     return v
 
+
 _CONFIG_KEY_ALIASES = {
     "iproyalpawns_email": "iproyal_collector_email",
     "iproyalpawns_password": "iproyal_collector_password",
@@ -4382,12 +4456,9 @@ _CONFIG_KEY_ALIASES = {
     "myst_mmn_api_key": "mysterium_mmn_api_key",
 }
 
+
 def _normalize_config_update(data: dict[str, str]) -> dict[str, str]:
-    canonical = {
-        key: _sanitize_credential(value)
-        for key, value in data.items()
-        if key not in _CONFIG_KEY_ALIASES
-    }
+    canonical = {key: _sanitize_credential(value) for key, value in data.items() if key not in _CONFIG_KEY_ALIASES}
     for key, value in data.items():
         if key in _CONFIG_KEY_ALIASES:
             canonical.setdefault(_CONFIG_KEY_ALIASES[key], _sanitize_credential(value))
@@ -4844,15 +4915,18 @@ class RuntimeAssetSaveRequest(BaseModel):
     asset_kind: str
     value: str
 
+
 class RuntimeAssetRequest(BaseModel):
     client_id: str
     provider: str
     asset_kind: str
 
+
 @app.get("/api/admin/runtime-assets")
 async def api_runtime_assets_list(request: Request) -> list[dict[str, Any]]:
     _require_owner(request)
     return await database.list_runtime_assets()
+
 
 @app.post("/api/admin/runtime-assets")
 async def api_runtime_asset_save(request: Request, body: RuntimeAssetSaveRequest) -> dict[str, str]:
@@ -4865,12 +4939,14 @@ async def api_runtime_asset_save(request: Request, body: RuntimeAssetSaveRequest
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"status": "saved"}
 
+
 async def _require_confirmed_worker(request: Request, client_id: str) -> None:
     if not client_id.strip():
         raise HTTPException(status_code=400, detail="client_id required")
     state = await _authenticate_worker_heartbeat(request, client_id.strip())
     if state != "ok":
         raise HTTPException(status_code=403, detail="Worker must authenticate with its own key")
+
 
 @app.post("/api/workers/runtime-asset")
 async def api_worker_runtime_asset(request: Request, body: RuntimeAssetRequest) -> dict[str, str]:
@@ -4882,6 +4958,7 @@ async def api_worker_runtime_asset(request: Request, body: RuntimeAssetRequest) 
     if value is None:
         raise HTTPException(status_code=404, detail="Runtime asset not found")
     return {"provider": body.provider, "asset_kind": body.asset_kind, "value": value}
+
 
 @app.post("/api/workers/earnings-import")
 async def api_worker_earnings_import(request: Request, body: EarningsImport) -> dict[str, Any]:
@@ -5099,6 +5176,7 @@ def _parse_worker_json(w: dict[str, Any]) -> None:
     else:
         w["container_count"] = len(w["containers"])
         w["running_count"] = sum(1 for c in w["containers"] if c.get("status") == "running")
+
 
 async def _worker_provider_states(worker: dict[str, Any]) -> dict[str, Any]:
     states: dict[str, Any] = {}

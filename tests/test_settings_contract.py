@@ -54,6 +54,7 @@ def test_iproyal_collector_credentials_do_not_mark_runtime_redeploy():
     assert changed["deploy"] == {"iproyal"}
     assert changed["collector"] == {"iproyal"}
 
+
 def test_config_save_normalizes_legacy_importer_keys():
     normalized = main._normalize_config_update(
         {
@@ -72,6 +73,7 @@ def test_config_save_normalizes_legacy_importer_keys():
         "repocket_api_key": "rp-key",
         "mysterium_mmn_api_key": "mmn-key",
     }
+
 
 def test_credential_health_reports_age_without_values(tmp_path):
     async def run():
@@ -143,6 +145,7 @@ def test_credential_health_marks_expiring_credentials(tmp_path):
 
     asyncio.run(run())
 
+
 def test_credential_health_dedupes_shared_keys_across_sections(tmp_path):
     fake_service = {
         "slug": "traffmonetizer",
@@ -158,18 +161,18 @@ def test_credential_health_dedupes_shared_keys_across_sections(tmp_path):
                 }
             ]
         },
-            "deploy": {
-                "credentials": [
-                    {
-                        "key": "token",
-                        "label": "Token",
-                        "kind": "token",
-                        "required": True,
-                        "description": "deploy token",
-                    },
-                ]
-            },
-        }
+        "deploy": {
+            "credentials": [
+                {
+                    "key": "token",
+                    "label": "Token",
+                    "kind": "token",
+                    "required": True,
+                    "description": "deploy token",
+                },
+            ]
+        },
+    }
 
     async def run():
         with (
@@ -186,6 +189,7 @@ def test_credential_health_dedupes_shared_keys_across_sections(tmp_path):
 
     asyncio.run(run())
 
+
 def test_startup_backfills_deploy_only_and_dashboard_only_tracking_rows(tmp_path):
     deploy_only = {
         "slug": "deploy-only",
@@ -201,7 +205,11 @@ def test_startup_backfills_deploy_only_and_dashboard_only_tracking_rows(tmp_path
             patch.object(database, "DB_DIR", tmp_path),
             patch.object(database, "DB_PATH", tmp_path / "settings.db"),
             patch.object(main.catalog, "get_services", return_value=[deploy_only, dashboard_only]),
-            patch.object(main.catalog, "get_service", side_effect=lambda slug: {"deploy-only": deploy_only, "dashboard-only": dashboard_only}.get(slug)),
+            patch.object(
+                main.catalog,
+                "get_service",
+                side_effect=lambda slug: {"deploy-only": deploy_only, "dashboard-only": dashboard_only}.get(slug),
+            ),
         ):
             await database.init_db()
             await database.set_config_bulk(
@@ -218,6 +226,7 @@ def test_startup_backfills_deploy_only_and_dashboard_only_tracking_rows(tmp_path
             assert (await database.get_deployment("dashboard-only"))["status"] == "external"
 
     asyncio.run(run())
+
 
 def test_saving_deploy_only_credentials_tracks_that_service(tmp_path):
     svc = {
@@ -237,6 +246,7 @@ def test_saving_deploy_only_credentials_tracks_that_service(tmp_path):
             assert main._service_tracking_ready("proxybase-xyz", await database.get_config())
 
     asyncio.run(run())
+
 
 def test_collectors_meta_carries_runtime_contract_for_all_providers():
     async def run():

@@ -91,12 +91,14 @@ def test_no_duplicate_slugs():
     duplicates = [s for s in slugs if slugs.count(s) > 1]
     assert not duplicates, f"Duplicate slugs found: {set(duplicates)}"
 
+
 def test_catalog_is_enriched_from_provider_runtime_truth():
     services = {svc["slug"]: svc for svc in catalog.get_services()}
     assert set(services) == set(provider_runtime.ACTIVE_SLUGS)
     for slug, runtime in provider_runtime.PROVIDERS.items():
         assert services[slug]["runtime"]["modes"] == list(runtime.modes)
         assert services[slug]["runtime"]["collector_kind"] == runtime.collector_kind
+
 
 def test_repocket_container_env_keys():
     """Regression for #82: the repocket/repocket image reads RP_EMAIL + RP_API_KEY.
@@ -142,9 +144,7 @@ def test_proxybase_container_contract():
     )
 
     env_keys = {e["key"] for e in data["docker"]["env"]}
-    assert env_keys == {"NAME"}, (
-        f"ProxyBase container env must be exactly NAME, got {env_keys}"
-    )
+    assert env_keys == {"NAME"}, f"ProxyBase container env must be exactly NAME, got {env_keys}"
     by_key = {e["key"]: e for e in data["docker"]["env"]}
     assert by_key["NAME"]["required"] is True, "NAME (Device Name) must be required"
     deploy = {e["key"]: e for e in data["deploy"]["credentials"]}
@@ -204,6 +204,7 @@ def test_proxybase_markets_referral_and_image_contract():
     # Every service must tell the user how to get paid (contribution rule).
     assert data["cashout"]["method"], "ProxyBase Markets must declare a cashout method"
 
+
 def test_proxies_sx_bandwidth_service_contract():
     """Proxies.sx is an earning peer, not proxy inventory for Proxy Egress."""
     with open(SERVICES_DIR / "bandwidth" / "proxies-sx.yml") as f:
@@ -232,6 +233,7 @@ def test_proxies_sx_bandwidth_service_contract():
     assert credentials["api_key"]["secret"] is True
     assert credentials["api_key"]["required"] is True
 
+
 def test_iproyal_and_traffmonetizer_device_names_follow_worker_source():
     with open(SERVICES_DIR / "bandwidth" / "iproyal.yml") as f:
         iproyal = yaml.safe_load(f)
@@ -248,12 +250,14 @@ def test_iproyal_and_traffmonetizer_device_names_follow_worker_source():
     assert "email and password" in tm["collector"]["credential_hint"]
     assert "Local Storage" not in tm["collector"]["credential_hint"]
 
+
 def test_proxyrack_device_name_uses_worker_name_not_uuid_literal():
     with open(SERVICES_DIR / "bandwidth" / "proxyrack.yml") as f:
         data = yaml.safe_load(f)
 
     env = {item["key"]: item for item in data["docker"]["env"]}
     assert env["DEVICE_NAME"]["default"] == "{hostname}"
+
 
 def test_wipter_matches_tested_container_runtime_knobs():
     with open(SERVICES_DIR / "depin" / "wipter.yml") as f:

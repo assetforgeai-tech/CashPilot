@@ -13,21 +13,26 @@ AUTO = "auto"
 MODES = {PROXY, DIRECT, AUTO}
 UDP = {"required", "optional", "none"}
 
+
 def normalize_mode(value: Any, default: str = PROXY) -> str:
     mode = str(value or "").strip().lower()
     return mode if mode in MODES else default
 
+
 def service_mode(service: dict[str, Any] | None, default: str = PROXY) -> str:
     return normalize_mode(catalog.service_egress_mode(service, default), default)
 
+
 def service_udp(service: dict[str, Any] | None) -> str:
     return catalog.service_egress_udp(service)
+
 
 def proxy_supports_udp(proxy: dict[str, Any] | None) -> bool:
     if not proxy:
         return False
     protocol = str(proxy.get("protocol") or "").strip().lower()
     return protocol == "socks5" and bool(proxy.get("udp_ok"))
+
 
 def choose_mode(requested_mode: Any, service_udp: Any = "none", proxy: dict[str, Any] | None = None) -> str:
     mode = normalize_mode(requested_mode, AUTO)

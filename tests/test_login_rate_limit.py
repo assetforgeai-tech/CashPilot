@@ -54,6 +54,7 @@ def imports_main(node) -> bool:
         return any(alias.name == "main" for alias in node.names)
     return False
 
+
 def module_level_imports(tree):
     return [node for node in tree.body if isinstance(node, (ast.Import, ast.ImportFrom))]
 

@@ -47,6 +47,7 @@ def test_myst_provider_state_includes_registration_status(tmp_path, monkeypatch)
     assert state["wallet_assignment_version"] == 3
     assert state["evidence"]["registration_status"] == "Registered"
 
+
 def test_myst_wallet_sync_after_deploy_persists_state_for_worker_heartbeat(tmp_path, monkeypatch):
     monkeypatch.setenv("CASHPILOT_UI_URL", "https://ui.example")
     monkeypatch.setenv("CASHPILOT_API_KEY", "fleet-key")
@@ -61,7 +62,7 @@ def test_myst_wallet_sync_after_deploy_persists_state_for_worker_heartbeat(tmp_p
             "myst_wallet_id": 7,
             "myst_wallet_client_id": "worker-a",
             "myst_wallet_assignment_version": 3,
-            "myst_wallet_raw": "{\"address\":\"0x57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1\"}",
+            "myst_wallet_raw": '{"address":"0x57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1"}',
         }
         with patch.object(worker_api.orchestrator, "_find_container", return_value=_Container()):
             await worker_api._sync_myst_wallet_after_deploy(deploy_credentials, "container-id")
@@ -72,6 +73,7 @@ def test_myst_wallet_sync_after_deploy_persists_state_for_worker_heartbeat(tmp_p
     assert saved["myst_registration_status"] == "Registered"
     assert "myst_wallet_raw" not in saved
 
+
 def test_myst_sync_after_deploy_uses_worker_heartbeat_only(tmp_path, monkeypatch):
     monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
 
@@ -81,7 +83,7 @@ def test_myst_sync_after_deploy_uses_worker_heartbeat_only(tmp_path, monkeypatch
                 "myst_wallet_id": 7,
                 "myst_wallet_client_id": "worker-a",
                 "myst_wallet_assignment_version": 3,
-                "myst_wallet_raw": "{\"address\":\"0x57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1\"}",
+                "myst_wallet_raw": '{"address":"0x57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1"}',
             },
             "container-id",
         )
@@ -89,6 +91,7 @@ def test_myst_sync_after_deploy_uses_worker_heartbeat_only(tmp_path, monkeypatch
     asyncio.run(run())
     saved = json.loads(Path(tmp_path, "myst-wallet.json").read_text(encoding="utf-8"))
     assert saved["myst_wallet_id"] == 7
+
 
 def test_myst_direct_instance_deploy_syncs_wallet_state(tmp_path, monkeypatch):
     monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
@@ -101,7 +104,7 @@ def test_myst_direct_instance_deploy_syncs_wallet_state(tmp_path, monkeypatch):
                 "myst_wallet_id": 7,
                 "myst_wallet_client_id": "worker-a",
                 "myst_wallet_assignment_version": 3,
-                "myst_wallet_raw": "{\"address\":\"0x57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1\"}",
+                "myst_wallet_raw": '{"address":"0x57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1"}',
             },
         )
         with (
@@ -114,6 +117,7 @@ def test_myst_direct_instance_deploy_syncs_wallet_state(tmp_path, monkeypatch):
     asyncio.run(run())
     saved = json.loads(Path(tmp_path, "myst-wallet.json").read_text(encoding="utf-8"))
     assert saved["myst_wallet_id"] == 7
+
 
 def test_myst_provider_state_returns_public_ip_guard_payload(tmp_path, monkeypatch):
     monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))

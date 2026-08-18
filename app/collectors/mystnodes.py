@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 CLOUD_BASE = "https://my.mystnodes.com/api/v2"
 
+
 def myst_dashboard_url(identity: str) -> str:
     address = str(identity or "").strip()
     if not address:

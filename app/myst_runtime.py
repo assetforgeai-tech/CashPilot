@@ -17,6 +17,7 @@ _ADDR_RE = re.compile(r"0x[a-fA-F0-9]{40}")
 _BARE_ADDR_RE = re.compile(r"[a-fA-F0-9]{40}")
 _ACTIVE_SERVICES = "wireguard,dvpn,data_transfer,monitoring,scraping"
 
+
 def wallet_address(raw_wallet: str) -> str:
     text = (raw_wallet or "").strip()
     if not text:
@@ -37,11 +38,13 @@ def wallet_address(raw_wallet: str) -> str:
         return match.group(0).lower()
     raise ValueError("MYST wallet material does not contain an address")
 
+
 def _tar_add(tf: tarfile.TarFile, name: str, data: bytes, mode: int = 0o600) -> None:
     info = tarfile.TarInfo(name)
     info.size = len(data)
     info.mode = mode
     tf.addfile(info, io.BytesIO(data))
+
 
 def state_archive(
     raw_wallet: str,
@@ -66,17 +69,22 @@ def state_archive(
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w") as tf:
         _tar_add(tf, wallet_name, raw_wallet.strip().encode())
-        _tar_add(tf, "keystore/remember.json", json.dumps({"identity": {"address": address}}, separators=(",", ":")).encode())
+        _tar_add(
+            tf, "keystore/remember.json", json.dumps({"identity": {"address": address}}, separators=(",", ":")).encode()
+        )
         _tar_add(tf, "config-mainnet.toml", config.encode())
     return buf.getvalue()
 
+
 def _sh_single(value: str) -> str:
     return "'" + str(value).replace("'", "'\"'\"'") + "'"
+
 
 def nodeui_password_hash(password: str) -> str:
     if not password:
         return ""
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=10, prefix=b"2a")).decode()
+
 
 def _nodeui_password_archive(password: str) -> bytes:
     if not password:
@@ -85,6 +93,7 @@ def _nodeui_password_archive(password: str) -> bytes:
     with tarfile.open(fileobj=buf, mode="w") as tf:
         _tar_add(tf, "nodeui-pass", (nodeui_password_hash(password) + "\n").encode())
     return buf.getvalue()
+
 
 def apply_direct_wallet(
     container: Any,
@@ -108,7 +117,9 @@ def apply_direct_wallet(
     if dashboard_password:
         container.put_archive("/var/lib/mysterium-node", _nodeui_password_archive(dashboard_password))
     container.restart(timeout=30)
-    container.exec_run(["sh", "-lc", f"myst cli identities unlock {address} {_sh_single(identity_passphrase)} >/dev/null 2>&1 || true"])
+    container.exec_run(
+        ["sh", "-lc", f"myst cli identities unlock {address} {_sh_single(identity_passphrase)} >/dev/null 2>&1 || true"]
+    )
     if mmn_api_key:
         container.exec_run(["sh", "-lc", f"myst cli mmn {_sh_single(mmn_api_key)} >/dev/null 2>&1 || true"])
     container.exec_run(
@@ -120,6 +131,7 @@ def apply_direct_wallet(
         ]
     )
     return address
+
 
 def registration_status(container: Any, address: str) -> str:
     if not address:
