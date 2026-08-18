@@ -695,7 +695,7 @@ async def test_spide_device_registration_uses_standard_device_identity(monkeypat
     assert re.fullmatch(r"\d{14}\.8\.8\.8\.8\.p", captured[1]["title"])
 
 @pytest.mark.asyncio
-async def test_non_earnapp_host_systemd_deploy_is_blocked(monkeypatch):
+async def test_host_systemd_deploy_is_blocked(monkeypatch):
     async def noop(*_args, **_kwargs):
         return None
 
@@ -710,35 +710,6 @@ async def test_non_earnapp_host_systemd_deploy_is_blocked(monkeypatch):
 
     assert exc.value.status_code == 400
     assert "host_systemd" in str(exc.value.detail)
-
-@pytest.mark.asyncio
-async def test_earnapp_host_systemd_service_is_deployable_via_qemu(monkeypatch):
-    async def noop(*_args, **_kwargs):
-        return []
-
-    monkeypatch.setattr(main, "_require_auth_api", lambda _request: None)
-    monkeypatch.setattr(main.database, "get_deployments", noop)
-    monkeypatch.setattr(main.database, "list_provider_instances", noop)
-
-    svc = await main.api_get_service(_request("/api/services/earnapp"), "earnapp")
-
-    assert svc["deploy_surface"] == "host_systemd"
-    assert svc["manual_only"] is False
-
-@pytest.mark.asyncio
-async def test_earnapp_host_systemd_service_list_is_deployable_via_qemu(monkeypatch):
-    async def noop(*_args, **_kwargs):
-        return []
-
-    monkeypatch.setattr(main, "_require_auth_api", lambda _request: None)
-    monkeypatch.setattr(main.database, "get_deployments", noop)
-    monkeypatch.setattr(main.database, "list_provider_instances", noop)
-
-    services = await main.api_services_available(_request("/api/services/available"))
-    earnapp = next(s for s in services if s["slug"] == "earnapp")
-
-    assert earnapp["deploy_surface"] == "host_systemd"
-    assert earnapp["manual_only"] is False
 
 def test_recorded_empty_cap_add_does_not_block_new_catalog_caps():
     merged, divergence = main._merge_recorded_spec(

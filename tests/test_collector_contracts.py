@@ -237,26 +237,26 @@ class TestCredentialSelfTest:
     def _result(self, balance=0.0, currency="USD", error=None):
         from app.collectors.base import EarningsResult
 
-        return EarningsResult(platform="earnapp", balance=balance, currency=currency, error=error)
+        return EarningsResult(platform="proxyrack", balance=balance, currency=currency, error=error)
 
     def test_valid_credentials_report_the_balance(self):
-        out = self._call("earnapp", collect=self._result(balance=12.5))
+        out = self._call("proxyrack", collect=self._result(balance=12.5))
         assert out["ok"] is True
         assert "12.5" in out["message"]
 
     def test_a_rejected_login_says_so_without_echoing_anything(self):
-        out = self._call("earnapp", collect=self._result(error="401 Unauthorized for token abc123secret"))
+        out = self._call("proxyrack", collect=self._result(error="401 Unauthorized for token abc123secret"))
         assert out["ok"] is False
         assert out["outcome"] == "bad_credentials"
         assert "abc123secret" not in json.dumps(out), "the response leaked the provider's raw error"
 
     def test_a_raised_exception_never_leaks_its_text(self):
-        out = self._call("earnapp", raises=RuntimeError("connect failed to https://user:hunter2@api"))
+        out = self._call("proxyrack", raises=RuntimeError("connect failed to https://user:hunter2@api"))
         assert "hunter2" not in json.dumps(out)
         assert out["outcome"] == "unreachable"
 
     def test_no_response_field_can_carry_a_secret(self):
-        out = self._call("earnapp", collect=self._result(balance=1.0))
+        out = self._call("proxyrack", collect=self._result(balance=1.0))
         assert set(out) <= {"ok", "outcome", "message", "balance", "currency"}
 
     def test_an_unknown_service_is_a_404(self):
@@ -267,7 +267,7 @@ class TestCredentialSelfTest:
         assert exc.value.status_code == 404
 
     def test_unconfigured_credentials_are_reported_as_such(self):
-        out = self._call("earnapp")
+        out = self._call("proxyrack")
         assert out["outcome"] == "not_configured"
 
     def test_a_second_attempt_is_rate_limited(self):
@@ -288,8 +288,8 @@ class TestCredentialSelfTest:
                 patch.object(main.database, "get_config", AsyncMock(return_value={})),
                 patch("app.collectors.build_one", return_value=(collector, [])),
             ):
-                first = await main.api_test_credentials(MagicMock(), "earnapp")
-                second = await main.api_test_credentials(MagicMock(), "earnapp")
+                first = await main.api_test_credentials(MagicMock(), "proxyrack")
+                second = await main.api_test_credentials(MagicMock(), "proxyrack")
                 return first, second
 
         first, second = asyncio.run(run())
@@ -314,7 +314,7 @@ class TestCredentialSelfTest:
                 patch.object(main.database, "get_config", AsyncMock(return_value={})),
                 patch("app.collectors.build_one", return_value=(collector, [])),
             ):
-                return await main.api_test_credentials(MagicMock(), "earnapp")
+                return await main.api_test_credentials(MagicMock(), "proxyrack")
 
         asyncio.run(run())
         collector.close.assert_awaited()
@@ -367,10 +367,10 @@ class TestBuildingASingleCollector:
     def test_it_builds_a_collector_when_every_required_key_is_present(self):
         from app import collectors
 
-        collector, missing = collectors.build_one("earnapp", {"earnapp_oauth_token": "tok"})
+        collector, missing = collectors.build_one("proxyrack", {"proxyrack_api_key": "tok"})
         assert collector is not None
         assert missing == []
-        assert collector.platform == "earnapp"
+        assert collector.platform == "proxyrack"
 
     def test_manual_uprock_has_no_collector(self):
         from app import collectors
@@ -382,9 +382,9 @@ class TestBuildingASingleCollector:
     def test_it_names_the_missing_keys_rather_than_failing_vaguely(self):
         from app import collectors
 
-        collector, missing = collectors.build_one("earnapp", {})
+        collector, missing = collectors.build_one("proxyrack", {})
         assert collector is None
-        assert missing == ["earnapp_oauth_token"]
+        assert missing == ["proxyrack_api_key"]
 
     def test_a_partially_configured_service_names_only_what_is_absent(self):
         from app import collectors
@@ -402,17 +402,17 @@ class TestBuildingASingleCollector:
         """A cached one would validate the credentials the user just replaced."""
         from app import collectors
 
-        config = {"earnapp_oauth_token": "tok"}
-        first, _ = collectors.build_one("earnapp", config)
-        second, _ = collectors.build_one("earnapp", config)
+        config = {"proxyrack_api_key": "tok"}
+        first, _ = collectors.build_one("proxyrack", config)
+        second, _ = collectors.build_one("proxyrack", config)
         assert first is not second
 
     def test_it_never_populates_the_shared_collector_cache(self):
         from app import collectors
 
-        collectors._cached_collectors.pop("earnapp", None)
-        collectors.build_one("earnapp", {"earnapp_oauth_token": "tok"})
-        assert "earnapp" not in collectors._cached_collectors
+        collectors._cached_collectors.pop("proxyrack", None)
+        collectors.build_one("proxyrack", {"proxyrack_api_key": "tok"})
+        assert "proxyrack" not in collectors._cached_collectors
 
     def test_optional_arguments_are_not_required(self):
         """A '?'-prefixed argument must not block construction when absent."""
@@ -435,10 +435,10 @@ class TestBuildingASingleCollector:
         from app import collectors
 
         with patch.dict(
-            collectors.COLLECTOR_MAP, {"earnapp": lambda **kw: (_ for _ in ()).throw(ValueError("nope"))}
+            collectors.COLLECTOR_MAP, {"proxyrack": lambda **kw: (_ for _ in ()).throw(ValueError("nope"))}
         ):
             collector, missing = collectors.build_one(
-                "earnapp", {"earnapp_oauth_token": "tok"}
+                "proxyrack", {"proxyrack_api_key": "tok"}
             )
         assert collector is None
         assert missing == []

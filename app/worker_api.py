@@ -1436,7 +1436,7 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
 @app.post("/api/proxy/probe-targets")
 async def api_probe_proxy_targets(request: Request, spec: ProxyTargetProbeSpec) -> dict[str, Any]:
     _verify_api_key(request)
-    targets = spec.targets or ["https://client.earnapp.com/", "https://earnapp.com/dashboard", "https://proxyjs.brdtnet.com/"]
+    targets = spec.targets or ["https://example.com/", "https://proxyjs.brdtnet.com/", "https://api.ipify.org?format=json"]
     try:
         proxy_url = _probe_proxy_url(spec.proxy)
     except ValueError as exc:

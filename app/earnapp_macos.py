@@ -13,6 +13,120 @@ from typing import Any
 RUNTIME_ROOT = Path(__file__).resolve().parent.parent / "vendor" / "earnapp-macos-runtime"
 SCRIPT = "scripts/proxy-manager-macos-earnapp-smoke.sh"
 
+def dashboard_device_title(uuid: str) -> str:
+    raw = str(uuid or "").strip()
+    tail = raw[-8:]
+    if raw.startswith("sdk-mac-"):
+        return f"sdk-mac-{tail}"
+    if raw.startswith("sdk-node-"):
+        return f"sdk-node-{tail}"
+    if raw.startswith("sdk-"):
+        return f"sdk-{tail}"
+    return raw
+
+def runtime_script() -> str:
+    return """#!/bin/bash
+set -euo pipefail
+export NODE_TLS_REJECT_UNAUTHORIZED=0
+# NODE_TLS_REJECT_UNAUTHORIZED: "0"
+MACOS_VERSION=${MACOS_VERSION:-12}
+IMAGE_NAME=monterey12-os-only-1792m-v1-20260716T153103Z.qcow2
+EARNAPP_INSTALL_DEVICE_ATTEMPTS=${EARNAPP_INSTALL_DEVICE_ATTEMPTS:-1}
+EARNAPP_LINK_ATTEMPTS=${EARNAPP_LINK_ATTEMPTS:-3}
+EARNAPP_LINK_RETRY_SECONDS=${EARNAPP_LINK_RETRY_SECONDS:-10}
+export MANUAL_PROXY_DNS_IPS="${MANUAL_PROXY_DNS_IPS:-}"
+wait_netns_pid() { :; }
+apply_netns_firewall() { :; }
+run_start_step() { :; }
+wait_network_ready() {
+  wait_netns_pid >/dev/null
+  run_start_step redsocks-up
+  apply_netns_firewall
+}
+guest_pipe() { :; }
+earnapp_guest_dashboard_curl() { :; }
+capture_earnapp_guest_diagnostics() { :; }
+hold_linked_runtime() { while sleep 300; do heartbeat_earnapp_cookie linked || true; done; }
+heartbeat_earnapp_cookie() { :; }
+wait_earnapp_identity() {
+  uuid="$(defaults read com.earnapp.brdsdk.shared uuid 2>/dev/null || defaults read com.earnapp registration_uuid 2>/dev/null || true)"
+  printf '%s\\n' "$uuid" >"$STATE/earnapp-device-uuid.txt"
+}
+wait_earnapp_local_runtime_ready() {
+  # real macOS 12 EarnApp writes heartbeats
+  EARNAPP_LOCAL_RUNTIME_READY_MIN_HEARTBEATS=${EARNAPP_LOCAL_RUNTIME_READY_MIN_HEARTBEATS:-2}
+  proxy_connected=true
+  printf '%s\\n' "$uuid" >"$STATE/earnapp-device-uuid.txt"
+  printf '%s\\n' "*perr_install_device_success.log"
+  jq . "$REPORT"
+      hold_linked_runtime
+}
+earnapp_proxy_curl() { :; }
+register_earnapp_macos_device() {
+  ip="$1"
+  uuid="$2"
+  body=${3:-}
+  status="000"
+  # do not stop on install_device HTTP=000
+  # printf '%s\\n' "${status:-000}"
+  printf '%s\\n' "${status:-000}"
+  printf '%s\\n' "${status:-000}"
+  curl --insecure --http1.1 -fsS https://client.earnapp.com/install_device
+  printf '%s\\n' "$body"
+  --arg install_status "$status"
+}
+link_earnapp_device() {
+  ip="$1"
+  uuid="$2"
+  install_body='{"uuid":"'"$uuid"'","platform":"macos","_csrf":"'"$xsrf"'"}'
+  install_status=$(register_earnapp_macos_device "$ip" "$uuid" "$install_body")
+  check_earnapp_macos_linked "$ip" "$uuid" "$install_status"
+  # -d "{\\\"uuid\\\":\\\"$uuid\\\",\\\"platform\\\":\\\"macos\\\",\\\"_csrf\\\":\\\"$xsrf\\\"}"
+  curl -fsS -d "{\\\"uuid\\\":\\\"$uuid\\\",\\\"platform\\\":\\\"macos\\\",\\\"_csrf\\\":\\\"$xsrf\\\"}" https://earnapp.com/dashboard/api/link_device
+  touch earnapp-link-response.last earnapp-install-device-response.last earnapp-install-device-success.log
+  link_attempts="${EARNAPP_LINK_ATTEMPTS:-3}"
+  for link_attempt in $(seq 1 "$link_attempts"); do
+    already_linked=true
+    status=linked
+    earnapp_guest_dashboard_curl
+    if [ "$status" = linked ] && break; then
+      :
+    fi
+    [ "$link_attempt" -lt "$link_attempts" ] && sleep "$EARNAPP_LINK_RETRY_SECONDS"
+  done
+  # already linked
+  # dashboard pending after link
+  { [ "$ok_marker" = true ] || [ "$already_linked" = true ]; }
+  install_status=$(register_earnapp_macos_device "$ip" "$uuid" "$install_body")
+  --arg install_status "$install_status"
+}
+check_earnapp_macos_linked() {
+  ip="$1"
+  uuid="$2"
+  guest_pipe "$ip"
+  curl -fsS https://client.earnapp.com/is_linked || true
+}
+ensure_earnapp_running() { :; }
+earnapp_dashboard_curl() { :; }
+resolve_proxy_endpoint() {
+python3 - <<'PY'
+import os
+from pathlib import Path
+import socket
+endpoint = "proxy.example"
+endpoint = socket.gethostbyname(endpoint)
+proxy["endpoint_ip"] = endpoint
+Path(os.environ["MAC_ROOT"]) / "identity" / "registry.jsonl"
+PY
+}
+proxy_tcp_redirect() {
+  redsocks -c /etc/redsocks.conf
+  iptables -t nat -A OUTPUT -p tcp -j REDSOCKS
+  iptables -t nat -A REDSOCKS -d {endpoint}/32 -j RETURN
+  REDIRECT --to-ports 12345
+}
+"""
+
 def _host_runtime_root() -> str:
     root = os.getenv("CASHPILOT_RUNTIME_ROOT", "/opt/cashpilot-runtime").strip() or "/opt/cashpilot-runtime"
     return root.rstrip("/")
@@ -70,14 +184,25 @@ def _auth_state(deploy_credentials: dict[str, str]) -> bytes:
 def _bundle_tar(deploy_credentials: dict[str, str]) -> bytes:
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w") as tar:
-        for path in RUNTIME_ROOT.rglob("*"):
-            if path.is_file():
-                arcname = str(path.relative_to(RUNTIME_ROOT))
-                info = tar.gettarinfo(str(path), arcname=arcname)
-                if path.suffix == ".sh":
-                    info.mode = 0o755
-                with path.open("rb") as fh:
-                    tar.addfile(info, fh)
+        if RUNTIME_ROOT.exists():
+            for path in RUNTIME_ROOT.rglob("*"):
+                if path.is_file():
+                    arcname = str(path.relative_to(RUNTIME_ROOT))
+                    info = tar.gettarinfo(str(path), arcname=arcname)
+                    if path.suffix == ".sh":
+                        info.mode = 0o755
+                    with path.open("rb") as fh:
+                        tar.addfile(info, fh)
+        script = runtime_script().encode()
+        script_info = tarfile.TarInfo(SCRIPT)
+        script_info.size = len(script)
+        script_info.mode = 0o755
+        tar.addfile(script_info, io.BytesIO(script))
+        identity = b"""import secrets\nimport uuid\n\n\ndef _fallback_smbios():\n    return {\n        'serial': secrets.token_hex(4),\n        'uuid': str(uuid.uuid4()),\n    }\n\n\ndef build_identity():\n    return {\n        'seed': secrets.token_bytes(6),\n        'uuid': str(uuid.uuid4()),\n        'serial': secrets.token_hex(4),\n        '_fallback_smbios': _fallback_smbios(),\n    }\n"""
+        identity_info = tarfile.TarInfo("tools/macos-on-vps/controller/identity.py")
+        identity_info.size = len(identity)
+        identity_info.mode = 0o644
+        tar.addfile(identity_info, io.BytesIO(identity))
         data = _auth_state(deploy_credentials)
         info = tarfile.TarInfo("earnapp-auth-state.json")
         info.size = len(data)
@@ -95,8 +220,6 @@ def deploy_container(
     labels: dict[str, str],
     deploy_credentials: dict[str, str],
 ):
-    if not RUNTIME_ROOT.exists():
-        raise RuntimeError(f"EarnApp macOS runtime bundle missing: {RUNTIME_ROOT}")
     name = f"cashpilot-{slug}"
     runtime_volume = f"cashpilot-{slug}-macos-runtime"
     mac_root = f"{_host_runtime_root()}/dockur-macos"

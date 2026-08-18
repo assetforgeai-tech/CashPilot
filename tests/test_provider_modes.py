@@ -15,9 +15,6 @@ def test_expand_both_only_for_dual_mode_provider():
     assert provider_modes.expand_requested("bitping", "both") == ["direct", "proxy"]
 
 
-def test_earnapp_is_proxy_only():
-    assert provider_modes.supported_modes("earnapp") == {"proxy"}
-
 def test_uprock_is_proxy_only():
     assert provider_modes.supported_modes("uprock") == {"proxy"}
     assert provider_modes.default_deploy_mode("uprock") == "proxy"

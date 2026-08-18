@@ -244,8 +244,6 @@ def deploy_raw(
     provider = provider_slug or slug
     client = _get_client()
     name = _container_name(slug)
-    if provider == "earnapp" and host_runtime == "qemu_systemd":
-        image = "ubuntu:24.04"
     if installer_manifest_url:
         resolved = provider_installers.resolve_installer_manifest(provider, installer_manifest_url, installer_platform)
         image = provider_installers.ensure_installer_image(client, provider, resolved)
@@ -265,6 +263,22 @@ def deploy_raw(
         env["PROXYBASE_XYZ_PHRASE"] = str(deploy_credentials.get("phrase") or "")
         image = provider_installers.ensure_proxybase_xyz_image(client)
         command = command or provider_installers.proxybase_xyz_command()
+    if provider == "earnapp" and host_runtime == "qemu_systemd":
+        identity = earnapp_qemu.new_identity(slug)
+        image = "ubuntu:24.04"
+        env.update(
+            {
+                "OAUTH_REFRESH_TOKEN": str((deploy_credentials or {}).get("oauth_refresh_token") or ""),
+                "OAUTH_TOKEN": str((deploy_credentials or {}).get("oauth_token") or ""),
+                "XSRF_TOKEN": str((deploy_credentials or {}).get("xsrf_token") or ""),
+                "BRD_SESS_ID": str((deploy_credentials or {}).get("brd_sess_id") or ""),
+                "CG_UUID": str((deploy_credentials or {}).get("cg_uuid") or ""),
+            }
+        )
+        command = ["/bin/bash", "-lc", earnapp_qemu.render_qemu_command(identity)]
+        volumes = {f"cashpilot-{slug}-qemu": {"bind": "/state", "mode": "rw"}}
+        devices = ["/dev/kvm:/dev/kvm:rwm"]
+        labels = {**(labels or {}), "cashpilot.host-runtime": "qemu_systemd", "cashpilot.vm.uuid": identity.uuid}
     # Remove any existing container with the same name
     try:
         old = client.containers.get(name)
@@ -279,6 +293,14 @@ def deploy_raw(
         old_sidecar.remove(force=True)
     except NotFound:
         pass
+    if provider == "earnapp" and host_runtime == "qemu_macos":
+        return earnapp_macos.deploy_container(
+            client,
+            slug=slug,
+            proxy=proxy or {},
+            labels=labels or {},
+            deploy_credentials=deploy_credentials or {},
+        ).id
     if provider == "mysterium" and deploy_credentials and deploy_credentials.get("myst_wallet_raw"):
         _remove_named_volumes(volumes or {})
 
@@ -291,19 +313,6 @@ def deploy_raw(
     }
     if labels:
         all_labels.update(labels)
-
-    if provider == "earnapp" and host_runtime == "qemu_macos":
-        if not proxy:
-            raise RuntimeError("EarnApp macOS runtime requires a proxy")
-        container = earnapp_macos.deploy_container(
-            client,
-            slug=slug,
-            proxy=proxy,
-            labels=all_labels,
-            deploy_credentials=deploy_credentials or {},
-        )
-        logger.info("EarnApp macOS runtime container %s started: %s", name, container.short_id)
-        return container.id
 
     logger.info("Pulling image %s", image)
     try:
@@ -384,17 +393,6 @@ def deploy_raw(
             restart_policy={"Name": "always"},
         )
         network_mode = f"container:{sidecar_name}"
-
-    if provider == "earnapp" and host_runtime == "qemu_systemd":
-        container = earnapp_qemu.deploy_container(
-            client,
-            slug=slug,
-            network_mode=network_mode,
-            labels=all_labels,
-            deploy_credentials=deploy_credentials or {},
-        )
-        logger.info("EarnApp QEMU container %s started: %s", name, container.short_id)
-        return container.id
 
     logger.info("Creating container %s from %s", name, image)
     container = client.containers.run(

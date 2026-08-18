@@ -88,3 +88,7 @@ def test_earnapp_pool_visible_in_settings(client):
     assert resp.status_code == 200
     assert "EarnApp Account Pool" in resp.text
     assert 'id="earnapp-account-file"' in resp.text
+    assert 'id="earnapp-account-raw"' in resp.text
+    assert 'id="earnapp-account-rows"' in resp.text
+    assert 'data-action="importEarnappAccount"' in resp.text
+    assert 'data-action="deleteSelectedEarnappAccounts"' in resp.text

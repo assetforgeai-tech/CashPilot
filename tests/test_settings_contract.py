@@ -83,23 +83,20 @@ def test_credential_health_reports_age_without_values(tmp_path):
             await database.init_db()
             await database.set_config_bulk(
                 {
-                    "earnapp_oauth_token": "secret-token",
                     "grass_access_token": "grass-token",
                 }
             )
             old = (datetime.now(UTC) - timedelta(hours=25)).replace(tzinfo=None).isoformat(sep=" ")
             db = await database._get_db()
             try:
-                await db.execute("UPDATE config SET updated_at = ? WHERE key = ?", (old, "earnapp_oauth_token"))
+                await db.execute("UPDATE config SET updated_at = ? WHERE key = ?", (old, "grass_access_token"))
                 await db.commit()
             finally:
                 await db.close()
 
             rows = await main.api_credential_health(object())
             by_key = {(row["service"], row["field"]): row for row in rows}
-            assert by_key[("earnapp", "oauth_token")]["status"] == "no_known_expiry"
             assert by_key[("grass", "access_token")]["status"] == "no_known_expiry"
-            assert "secret-token" not in str(rows)
             assert "grass-token" not in str(rows)
 
     asyncio.run(run())
@@ -246,7 +243,7 @@ def test_collectors_meta_carries_runtime_contract_for_all_providers():
         with patch.object(main, "_require_owner", lambda request: {"uid": 1}):
             rows = await main.api_collectors_meta(object())
             by_slug = {row["slug"]: row for row in rows}
-            assert len(by_slug) == 18
+            assert len(by_slug) == 17
             assert by_slug["proxylite"]["count_only"] is True
             assert by_slug["proxybase"]["manual_only"] is True
             assert by_slug["bitping"]["manual_only"] is False

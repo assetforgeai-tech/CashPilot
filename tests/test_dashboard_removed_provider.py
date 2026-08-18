@@ -129,7 +129,6 @@ def test_provider_instances_group_under_canonical_provider_slug():
     assert len(rows) == 18
     assert by_slug["bitping"]["instances"] == 2
     assert {item["mode"] for item in by_slug["bitping"]["instance_details"]} == {"direct", "proxy"}
-    assert by_slug["earnapp"]["container_status"] == "not_deployed"
 
 def test_dashboard_lists_active_catalog_providers_even_before_deploy():
     with (

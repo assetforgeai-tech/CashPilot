@@ -11,7 +11,6 @@ from typing import Any
 
 from app.collectors.base import BaseCollector, EarningsResult
 from app.collectors.bitping import BitpingCollector
-from app.collectors.earnapp import EarnAppCollector
 from app.collectors.earnfm import EarnFMCollector
 from app.collectors.grass import GrassCollector
 from app.collectors.iproyal import IPRoyalCollector
@@ -26,7 +25,6 @@ logger = logging.getLogger(__name__)
 
 # slug -> collector class
 COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
-    "earnapp": EarnAppCollector,
     "iproyal": IPRoyalCollector,
     "mysterium": MystNodesCollector,
     "traffmonetizer": TraffmonetizerCollector,
@@ -41,7 +39,6 @@ COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
 
 # Map of slug -> list of config keys needed to instantiate the collector
 _COLLECTOR_ARGS: dict[str, list[str]] = {
-    "earnapp": ["oauth_token"],
     "iproyal": ["collector_email", "collector_password"],
     "mysterium": ["email", "password"],
     "traffmonetizer": ["email", "password"],
@@ -143,6 +140,8 @@ def service_credential_fields(
 
 def collector_credential_fields(slug: str, service: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """UI/config metadata for one collector, YAML-first with registry fallback."""
+    if slug == "earnapp":
+        return []
     return service_credential_fields(slug, "collector", service, fallback=True)
 
 # How long each credential actually lasts, and why it matters.
@@ -156,13 +155,6 @@ def collector_credential_fields(slug: str, service: dict[str, Any] | None = None
 # account password or an API key that lasts until revoked). `durable` marks the
 # long-lived alternative where a service offers both. `why` is shown to the user.
 CREDENTIAL_LIFETIMES: dict[str, dict[str, dict[str, object]]] = {
-    "earnapp": {
-        "oauth_token": {
-            "hours": None,
-            "durable": True,
-            "why": "Lasts until you sign out of EarnApp or revoke the session.",
-        },
-    },
     "packetstream": {
         "auth_token": {
             "hours": None,

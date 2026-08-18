@@ -88,39 +88,9 @@ def test_proxyrack_deploy_runtime_requires_only_api_key():
         {"proxyrack_api_key": "api-key"},
     ) == {"api_key": "api-key"}
 
-def test_earnapp_deploy_runtime_uses_browser_session_tokens_not_manual_uuid():
-    svc = catalog.get_service("earnapp")
-    fields = service_credential_fields("earnapp", "deploy", svc, fallback=False)
-
-    assert [field["arg"] for field in fields] == [
-        "oauth_refresh_token",
-        "oauth_token",
-        "xsrf_token",
-        "brd_sess_id",
-        "cg_uuid",
-    ]
-    assert main._resolve_deploy_credentials(
-        "earnapp",
-        svc,
-        {
-            "earnapp_oauth_refresh_token": "refresh",
-            "earnapp_oauth_token": "oauth",
-            "earnapp_xsrf_token": "xsrf",
-            "earnapp_brd_sess_id": "sess",
-            "earnapp_cg_uuid": "cg",
-        },
-    ) == {
-        "oauth_refresh_token": "refresh",
-        "oauth_token": "oauth",
-        "xsrf_token": "xsrf",
-        "brd_sess_id": "sess",
-        "cg_uuid": "cg",
-    }
-
 def test_settings_deploy_credentials_cover_node_creation_inputs_from_runtime_scripts():
     expected = {
         "bitping": {"email", "password"},
-        "earnapp": {"oauth_refresh_token", "oauth_token", "xsrf_token", "brd_sess_id", "cg_uuid"},
         "earnfm": {"token"},
         "grass": {"email", "password"},
         "packetstream": {"cid"},

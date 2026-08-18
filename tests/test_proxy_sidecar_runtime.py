@@ -75,16 +75,16 @@ def test_mysterium_proxy_publishes_udp_ports_on_sidecar():
 def test_remove_proxy_instance_removes_egress_sidecar():
     client = MagicMock()
     provider = MagicMock(attrs={"Mounts": []})
-    provider.name = "cashpilot-earnapp-proxy"
+    provider.name = "cashpilot-bitping-proxy"
     provider.labels = {orchestrator.LABEL_MANAGED: "true"}
     sidecar = MagicMock()
-    sidecar.name = "cashpilot-earnapp-proxy-egress"
+    sidecar.name = "cashpilot-bitping-proxy-egress"
     client.containers.get.side_effect = [provider, sidecar]
 
     with patch.object(orchestrator, "_get_client", return_value=client):
-        result = orchestrator.remove_service("earnapp-proxy")
+        result = orchestrator.remove_service("bitping-proxy")
 
     assert result["container"] == provider.name
     provider.remove.assert_called_once_with(force=True)
     sidecar.remove.assert_called_once_with(force=True)
-    client.containers.get.assert_any_call("cashpilot-earnapp-proxy-egress")
+    client.containers.get.assert_any_call("cashpilot-bitping-proxy-egress")
