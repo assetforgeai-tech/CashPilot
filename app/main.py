@@ -1176,7 +1176,7 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(
         _run_proxy_pool_recheck_scheduler,
         "interval",
-        minutes=1,
+        minutes=15,
         id="proxy_pool_recheck",
         max_instances=1,
         coalesce=True,
