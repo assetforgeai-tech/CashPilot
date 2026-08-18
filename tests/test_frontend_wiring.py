@@ -210,12 +210,17 @@ class TestNknWalletPoolIsReachable:
         assert "/nkn-wallet" in base
         assert "@router.get(\"/nkn-wallet\"" in routes
         assert 'id="nkn-wallet-file"' in page
+        assert "webkitdirectory" in page
+        assert "multiple" in page
         assert 'id="nkn-wallet-list"' in page
         assert 'data-nkn-sort="folder_name"' in page
         assert 'data-nkn-sort="address"' in page
         assert 'data-nkn-sort="public_ip"' in page
         assert "/api/admin/nkn-wallets/import" in app_js
         assert "/api/admin/nkn-wallets" in app_js
+        assert "webkitRelativePath" in app_js
+        assert "wallet.json" in app_js
+        assert "wallet.pswd" in app_js
         assert "importNknWalletZip" in exported
         assert "loadNknWallets" in exported
 

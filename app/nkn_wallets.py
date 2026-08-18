@@ -37,3 +37,19 @@ def iter_wallet_records_from_zip(raw_zip: bytes) -> Iterable[dict[str, str]]:
                 "wallet_fingerprint": folder,
                 "address": address,
             }
+
+
+def normalize_wallet_record(record: dict[str, str]) -> dict[str, str] | None:
+    folder = str(record.get("folder_name") or "").strip().strip("/\\")
+    wallet_json = str(record.get("wallet_json") or "").strip()
+    wallet_pswd = str(record.get("wallet_pswd") or "").strip()
+    address = wallet_address(wallet_json)
+    if not folder or not wallet_json or not wallet_pswd or not address:
+        return None
+    return {
+        "folder_name": folder,
+        "wallet_json": wallet_json,
+        "wallet_pswd": wallet_pswd,
+        "wallet_fingerprint": folder,
+        "address": address,
+    }

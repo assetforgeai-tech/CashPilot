@@ -15,6 +15,7 @@ router = APIRouter()
 
 class NknWalletImportIn(BaseModel):
     archive_b64: str = Field(default="")
+    records: list[dict[str, str]] = Field(default_factory=list)
 
 
 @router.get("/api/admin/nkn-wallets")
@@ -26,8 +27,11 @@ async def api_nkn_wallets(request: Request) -> list[dict[str, Any]]:
 @router.post("/api/admin/nkn-wallets/import")
 async def api_nkn_wallets_import(request: Request, body: NknWalletImportIn) -> dict[str, Any]:
     deps._require_owner(request)
+    if body.records:
+        count = await database.import_nkn_wallet_records(body.records)
+        return {"status": "ok", "imported": count}
     if not body.archive_b64.strip():
-        raise HTTPException(status_code=400, detail="Wallet archive is required")
+        raise HTTPException(status_code=400, detail="Wallet folder is required")
     try:
         archive = base64.b64decode(body.archive_b64)
     except ValueError as exc:

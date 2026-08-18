@@ -2621,6 +2621,13 @@ async def import_nkn_wallets_from_zip(raw_zip: bytes) -> int:
     from app.nkn_wallets import iter_wallet_records_from_zip
 
     rows = list(iter_wallet_records_from_zip(raw_zip))
+    return await import_nkn_wallet_records(rows)
+
+
+async def import_nkn_wallet_records(records: Sequence[Mapping[str, Any]]) -> int:
+    from app.nkn_wallets import normalize_wallet_record
+
+    rows = [row for record in records if (row := normalize_wallet_record(dict(record)))]
     if not rows:
         return 0
     db = await _get_db()

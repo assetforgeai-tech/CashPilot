@@ -1653,6 +1653,33 @@ const CP = (() => {
       toast('Choose a wallet zip first', 'warning');
       return;
     }
+    const files = Array.from(input.files || []);
+    const folderRecords = {};
+    for (const file of files) {
+      const rel = (file.webkitRelativePath || file.name || '').replaceAll('\\', '/');
+      const parts = rel.split('/').filter(Boolean);
+      const filename = parts.pop();
+      const folder = parts.pop();
+      if (!folder || (filename !== 'wallet.json' && filename !== 'wallet.pswd')) continue;
+      folderRecords[folder] = folderRecords[folder] || { folder_name: folder };
+      folderRecords[folder][filename === 'wallet.json' ? 'wallet_json' : 'wallet_pswd'] = await file.text();
+    }
+    const records = Object.values(folderRecords).filter(row => row.wallet_json && row.wallet_pswd);
+    if (records.length) {
+      if (status) status.textContent = 'Importing...';
+      try {
+        const res = await api('/api/admin/nkn-wallets/import', { method: 'POST', body: { records } });
+        input.value = '';
+        if (status) status.textContent = '';
+        toast(`Imported ${res.imported || 0} wallet${res.imported === 1 ? '' : 's'}`, 'success');
+        await loadNknWallets();
+      } catch (err) {
+        if (status) status.textContent = '';
+        toast(`Import failed: ${err.message}`, 'error');
+      }
+      return;
+    }
+
     let buf = null;
     try {
       buf = await input.files[0].arrayBuffer();

@@ -92,6 +92,23 @@ class TestNknWalletApi:
         assert resp.status_code == 200
         assert resp.json() == {"status": "ok", "imported": 1}
 
+    def test_import_endpoint_accepts_folder_records(self):
+        records = [
+            {
+                "folder_name": "1000001",
+                "wallet_json": _wallet_json(),
+                "wallet_pswd": "pw",
+            }
+        ]
+        with (
+            TestClient(app, raise_server_exceptions=False) as client,
+            _auth_owner(),
+            patch("app.routers.nkn_wallets.database.import_nkn_wallet_records", new_callable=AsyncMock, return_value=1),
+        ):
+            resp = client.post("/api/admin/nkn-wallets/import", json={"records": records})
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok", "imported": 1}
+
 
 class TestNknWalletInventory:
     def test_import_and_list_redacts_wallet_files(self, tmp_path):
@@ -103,6 +120,21 @@ class TestNknWalletInventory:
                 assert rows[0]["folder_name"] == "1000001"
                 assert rows[0]["address"] == "NKNa31NDoKZop91uJ8V6F863HaD1H3Jebikq"
                 assert rows[0]["public_ip"] == ""
+                assert "wallet_json" not in rows[0]
+                assert "wallet_pswd" not in rows[0]
+
+        asyncio.run(run())
+
+    def test_import_records_and_list_redacts_wallet_files(self, tmp_path):
+        async def run():
+            with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "nkn.db"):
+                await database.init_db()
+                assert await database.import_nkn_wallet_records(
+                    [{"folder_name": "1000002", "wallet_json": _wallet_json("NKNfolderRecord"), "wallet_pswd": "pw2"}]
+                ) == 1
+                rows = await database.list_nkn_wallets()
+                assert rows[0]["folder_name"] == "1000002"
+                assert rows[0]["address"] == "NKNfolderRecord"
                 assert "wallet_json" not in rows[0]
                 assert "wallet_pswd" not in rows[0]
 
