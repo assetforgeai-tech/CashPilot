@@ -70,6 +70,22 @@ def test_grass_store_patch_includes_browser_id():
     assert patch["wynd:browser_id"] == '"browser"'
 
 
+def test_grass_store_patch_unwraps_status_literal():
+    patch = orchestrator.provider_automation.grass_store_patch(
+        {
+            "store_access_token": '"access"',
+            "store_refresh_token": '"refresh"',
+            "store_token_expiry": "1818650340",
+            "store_wynd_status": '"CONNECTED"',
+            "store_wynd_authenticated": "true",
+            "store_wynd_user_id": '"user"',
+            "store_auto_update": "true",
+        }
+    )
+
+    assert patch["wynd:status"] == "CONNECTED"
+
+
 def test_grass_store_patch_allows_bootstrap_without_status():
     patch = orchestrator.provider_automation.grass_store_patch(
         {
@@ -119,10 +135,10 @@ def test_grass_patch_waits_only_for_store_file_before_overwriting_auth_seed():
     container.start.assert_not_called()
     check = container.exec_run.call_args_list[0].args[0]
     assert "test -s" in check[-1]
-    assert "wynd:device_id" not in check[-1]
+    assert "wynd:device_id" in check[-1]
 
 
-def test_deploy_raw_preseeds_grass_named_volume_before_start(tmp_path):
+def test_deploy_raw_patches_grass_after_device_identity_bootstrap(tmp_path):
     client = MagicMock()
     client.containers.get.side_effect = orchestrator.NotFound("nope")
     container = MagicMock(short_id="abc123", id="container-id")
@@ -165,13 +181,20 @@ def test_deploy_raw_preseeds_grass_named_volume_before_start(tmp_path):
             },
         )
 
-    assert events == ["cashpilot-grass-profile-proxy-2-seed", "cashpilot-grass-proxy-2"]
-    seed_call = client.containers.run.call_args_list[0].kwargs
-    assert seed_call["remove"] is True
-    assert seed_call["volumes"] == {"grass-profile-proxy-2": {"bind": "/seed", "mode": "rw"}}
-    assert '"tokenExpiry":"1818650340"' in seed_call["environment"]["GRASS_STORE_JSON"]
-    assert '"wynd:browser_id":"\\"browser\\""' in seed_call["environment"]["GRASS_STORE_JSON"]
-    post_start_patch.assert_not_called()
+    assert events == ["cashpilot-grass-proxy-2"]
+    post_start_patch.assert_called_once_with(
+        container,
+        {
+            "store_access_token": '"access"',
+            "store_refresh_token": '"refresh"',
+            "store_token_expiry": "1818650340",
+            "store_wynd_status": '"CONNECTED"',
+            "store_wynd_authenticated": "true",
+            "store_wynd_user_id": '"user"',
+            "store_wynd_browser_id": '"browser"',
+            "store_auto_update": "true",
+        },
+    )
 
 
 def test_deploy_raw_maps_wipter_credentials_to_env_and_restarts_after_login_state():

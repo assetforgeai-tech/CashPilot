@@ -8,7 +8,6 @@ inspection for cashpilot-managed containers via the Docker SDK.
 from __future__ import annotations
 
 import base64
-import contextlib
 import json
 import logging
 import os
@@ -290,10 +289,6 @@ def deploy_raw(
         pass
     if provider == "mysterium" and deploy_credentials and deploy_credentials.get("myst_wallet_raw"):
         _remove_named_volumes(volumes or {})
-    grass_preseeded = False
-    if provider == "grass" and deploy_credentials and volumes:
-        grass_preseeded = _preseed_grass_named_volume(volumes, deploy_credentials)
-
     all_labels = {
         LABEL_SERVICE: slug,
         LABEL_MANAGED: "true",
@@ -420,7 +415,7 @@ def deploy_raw(
             mmn_api_key=str(deploy_credentials.get("mmn_api_key") or deploy_credentials.get("myst_mmn_api_key") or ""),
         )
         deploy_credentials["myst_wallet_address"] = address
-    if provider == "grass" and deploy_credentials and not grass_preseeded:
+    if provider == "grass" and deploy_credentials:
         provider_automation.apply_grass_store_patch(container, deploy_credentials)
     if slug == "wipter" and deploy_credentials:
         provider_automation.schedule_wipter_post_login_restart(container)
@@ -437,49 +432,6 @@ def _remove_named_volumes(volumes: dict[str, Any]) -> None:
             logger.info("Removed stale named volume %s before wallet import", source)
         except NotFound:
             pass
-
-
-def _grass_seed_from_credentials(deploy_credentials: dict[str, Any]) -> dict[str, str]:
-    return provider_automation.grass_store_patch(deploy_credentials)
-
-
-def _preseed_grass_named_volume(volumes: dict[str, dict[str, str]], deploy_credentials: dict[str, Any]) -> bool:
-    client = _get_client()
-    payload = _grass_seed_from_credentials(deploy_credentials)
-    raw = json.dumps(payload, separators=(",", ":"))
-    seeded = False
-    for source, mapping in volumes.items():
-        target = str(mapping.get("bind") or "")
-        if target != "/var/lib/grass-xdg":
-            continue
-        try:
-            client.volumes.get(source)
-        except NotFound:
-            client.volumes.create(source)
-        seed_name = f"{_container_name(str(source))}-seed"
-        with contextlib.suppress(NotFound):
-            client.containers.get(seed_name).remove(force=True)
-        client.containers.run(
-            image="python:3.14-alpine",
-            name=seed_name,
-            environment={"GRASS_STORE_JSON": raw},
-            volumes={source: {"bind": "/seed", "mode": "rw"}},
-            command=[
-                "python3",
-                "-c",
-                (
-                    "import os,pathlib;"
-                    "p=pathlib.Path('/seed/data/io.getgrass.desktop/store.json');"
-                    "p.parent.mkdir(parents=True,exist_ok=True);"
-                    "p.write_text(os.environ['GRASS_STORE_JSON'])"
-                ),
-            ],
-            detach=False,
-            remove=True,
-        )
-        seeded = True
-        logger.info("Preseeded Grass store.json into named volume %s", source)
-    return seeded
 
 
 def _parse_stop_timeout(value: Any) -> int:

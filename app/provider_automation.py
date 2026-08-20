@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import io
 import json
 import re
@@ -24,6 +25,12 @@ _WIPTER_TRAFFIC_RE = re.compile(
 )
 _GRASS_STORE_PATH = "/var/lib/grass-xdg/data/io.getgrass.desktop/store.json"
 _GRASS_PATCH_PATH = "/tmp/cashpilot-grass-store-patch.json"
+_GRASS_IDENTITY_KEYS = (
+    "wynd:device_id",
+    "wynd:device_privkey",
+    "wynd:device_pubkey",
+    "wynd:device_registered_pubkey",
+)
 _GRASS_STORE_KEYS = {
     "store_access_token": "accessToken",
     "store_refresh_token": "refreshToken",
@@ -52,6 +59,11 @@ def grass_store_patch(credentials: dict[str, str]) -> dict[str, str]:
             if str(credentials.get(key, "")).strip()
         }
     )
+    if status := patch.get("wynd:status"):
+        with contextlib.suppress(json.JSONDecodeError):
+            decoded = json.loads(status)
+            if isinstance(decoded, str):
+                patch["wynd:status"] = decoded
     return patch
 
 
@@ -73,7 +85,7 @@ def apply_grass_store_patch(
     timeout_seconds: int = 90,
     poll_seconds: float = 1.0,
 ) -> None:
-    """Patch auth as soon as Grass creates store.json."""
+    """Patch auth after Grass creates a fresh device identity."""
     patch = grass_store_patch(credentials)
     deadline = time.monotonic() + timeout_seconds
     while True:
@@ -81,7 +93,16 @@ def apply_grass_store_patch(
             [
                 "sh",
                 "-lc",
-                f"test -s {_GRASS_STORE_PATH!r}",
+                (
+                    f"test -s {_GRASS_STORE_PATH!r} && "
+                    "python3 -c "
+                    + repr(
+                        "import json;"
+                        f"d=json.load(open({_GRASS_STORE_PATH!r}));"
+                        f"keys={_GRASS_IDENTITY_KEYS!r};"
+                        "raise SystemExit(0 if all(d.get(k) for k in keys) else 1)"
+                    )
+                ),
             ]
         )
         if getattr(result, "exit_code", 1) == 0:
