@@ -34,6 +34,7 @@ _GRASS_STORE_KEYS = {
     "store_auto_update": "autoUpdate",
 }
 _GRASS_OPTIONAL_STORE_KEYS = {
+    "store_wynd_browser_id": "wynd:browser_id",
     "store_wynd_device_registered_user_id": "wynd:device_registered_user_id",
 }
 
