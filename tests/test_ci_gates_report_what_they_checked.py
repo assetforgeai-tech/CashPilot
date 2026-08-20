@@ -276,6 +276,17 @@ class TestTheReleaseGateRunsWhatShips:
         """If `release` stopped needing `ci`, none of the above would matter."""
         assert "ci" in _wf("release.yml")["jobs"]["release"]["needs"]
 
+    def test_the_release_gate_pytest_has_a_timeout_and_useful_logs(self):
+        """The release gate is the one that publishes images, so it cannot hang silently."""
+        test_steps = [
+            step for step in _steps(_wf("release.yml")["jobs"]["ci"]) if str(step.get("name") or "") == "Test"
+        ]
+        assert test_steps
+        step = test_steps[0]
+        assert step.get("timeout-minutes") == 10
+        run = str(step.get("run") or "")
+        assert "uv run pytest tests/ -v --tb=short --durations=25" in run
+
 
 class TestEveryLintGateReachesTheSameVerdict:
     """Three gates, one commit — they must not be able to disagree."""
