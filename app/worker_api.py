@@ -414,9 +414,10 @@ async def _myst_provider_state() -> dict[str, Any] | None:
             registration_status = status
     return {
         "wallet_id": wallet_id,
+        "lease_client_id": client_id,
         "wallet_assignment_version": int(state.get("myst_wallet_assignment_version") or 0),
         "wallet_address": wallet_address,
-        "node_identity": str(state.get("myst_node_identity") or ""),
+        "node_identity": str(state.get("myst_node_identity") or wallet_address),
         "public_ip": str(state.get("myst_public_ip") or state.get("myst_wallet_public_ip") or ""),
         "runtime_status": "running",
         "evidence": {

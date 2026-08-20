@@ -137,3 +137,22 @@ def test_myst_provider_state_returns_public_ip_guard_payload(tmp_path, monkeypat
 
     state = asyncio.run(run())
     assert state["evidence"]["public_ip"] == "8.8.8.8"
+
+
+def test_myst_provider_state_reports_lease_client_and_wallet_identity(tmp_path, monkeypatch):
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+
+    async def run():
+        worker_api._save_myst_wallet_state(
+            {
+                "myst_wallet_id": 7,
+                "myst_wallet_client_id": "worker-a:mysterium-direct",
+                "myst_wallet_assignment_version": 3,
+                "myst_wallet_address": "0x57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1",
+            }
+        )
+        return await worker_api._myst_provider_state()
+
+    state = asyncio.run(run())
+    assert state["lease_client_id"] == "worker-a:mysterium-direct"
+    assert state["node_identity"] == "0x57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1"

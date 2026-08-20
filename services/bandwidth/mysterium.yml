@@ -60,9 +60,9 @@ deploy:
       description: "Used by CashPilot after wallet import so the node can claim/register with MMN automatically."
 
 egress:
-  mode: auto
+  mode: direct
   udp: required
-  reason: "Direct is the primary MYST path; proxy mode is supported for controlled proxy-node tests with /dev/net/tun."
+  reason: "MYST is direct-only. It uses the worker public IP, host networking, UDP, and /dev/net/tun; it does not use Proxy Pool or a proxy sidecar."
 
 requirements:
   residential_ip: false
@@ -82,7 +82,7 @@ earnings:
   monthly_high: 10
   currency: USD
   per: "device"
-  notes: "Earnings in MYST tokens. Residential IPs earn significantly more. Node WebUI at port 4449 for management. VPS accepted. Port forwarding UDP 56000-56100 strongly recommended -- without it, nodes get Strict NAT status and many VPN sessions fail, severely reducing income. CashPilot wallet deploy leases a funded wallet from MYST Wallet inventory, imports it into the worker, sets the dashboard password, and applies the MMN API key for direct and proxy instances."
+  notes: "Earnings in MYST tokens. Residential IPs earn significantly more. Node WebUI at port 4449 for management. VPS accepted. Port forwarding UDP 56000-56100 strongly recommended -- without it, nodes get Strict NAT status and many VPN sessions fail, severely reducing income. CashPilot deploys one direct MYST node per worker public IP, leases a funded wallet from MYST Wallet inventory, imports it into the worker, sets the dashboard password, and applies the MMN API key."
 
 cashout:
   method: auto

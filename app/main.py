@@ -5078,7 +5078,7 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
             evidence["public_ip"] = myst.get("public_ip")
         await database.sync_myst_wallet_runtime(
             int(myst.get("wallet_id") or 0),
-            cid,
+            str(myst.get("lease_client_id") or cid),
             wallet_assignment_version=int(myst.get("wallet_assignment_version") or 0),
             node_identity=str(myst.get("node_identity") or ""),
             runtime_status=str(myst.get("runtime_status") or ""),
