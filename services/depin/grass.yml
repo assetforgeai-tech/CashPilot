@@ -49,13 +49,6 @@ deploy:
       required: true
       source: "Logged-in Grass Desktop store.json"
       description: "Copy the exact refreshToken value from a confirmed logged-in and connected seed."
-    - key: store_token_expiry
-      label: "store.json tokenExpiry"
-      kind: text
-      secret: true
-      required: true
-      source: "Logged-in Grass Desktop store.json"
-      description: "Copy the exact tokenExpiry value from a confirmed logged-in and connected seed."
     - key: store_wynd_status
       label: "store.json wynd:status"
       kind: text
@@ -84,6 +77,13 @@ deploy:
       required: true
       source: "Logged-in Grass Desktop store.json"
       description: "Copy the exact autoUpdate value from a confirmed connected seed."
+    - key: store_wynd_device_registered_user_id
+      label: "store.json wynd:device_registered_user_id"
+      kind: text
+      secret: true
+      required: true
+      source: "Logged-in Grass Desktop store.json"
+      description: "Copy the exact wynd:device_registered_user_id value from a confirmed connected seed."
 
 requirements:
   residential_ip: true

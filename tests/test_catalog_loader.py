@@ -313,11 +313,11 @@ class TestProviderAutomationContracts:
         assert self._credential_keys(svc, "deploy") == {
             "store_access_token",
             "store_refresh_token",
-            "store_token_expiry",
             "store_wynd_status",
             "store_wynd_authenticated",
             "store_wynd_user_id",
             "store_auto_update",
+            "store_wynd_device_registered_user_id",
         }
         assert "runtime_assets" not in svc["deploy"]
 

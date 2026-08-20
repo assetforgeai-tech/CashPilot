@@ -118,6 +118,13 @@ def _grass_dockerfile(deb_url: str) -> str:
 set -eu
 mkdir -p "$XDG_RUNTIME_DIR" "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME" "$XDG_DATA_HOME"
 chmod 700 "$XDG_RUNTIME_DIR"
+python3 - <<'PY'
+import pathlib, uuid
+mid = uuid.uuid4().hex
+pathlib.Path('/etc/machine-id').write_text(mid)
+pathlib.Path('/var/lib/dbus').mkdir(parents=True, exist_ok=True)
+pathlib.Path('/var/lib/dbus/machine-id').write_text(mid)
+PY
 rm -f /tmp/.X99-lock
 Xvfb :99 -screen 0 1280x720x24 -nolisten tcp >/tmp/xvfb.log 2>&1 &
 fluxbox >/tmp/fluxbox.log 2>&1 &

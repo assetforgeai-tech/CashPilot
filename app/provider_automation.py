@@ -27,11 +27,11 @@ _GRASS_PATCH_PATH = "/tmp/cashpilot-grass-store-patch.json"
 _GRASS_STORE_KEYS = {
     "store_access_token": "accessToken",
     "store_refresh_token": "refreshToken",
-    "store_token_expiry": "tokenExpiry",
     "store_wynd_status": "wynd:status",
     "store_wynd_authenticated": "wynd:authenticated",
     "store_wynd_user_id": "wynd:user_id",
     "store_auto_update": "autoUpdate",
+    "store_wynd_device_registered_user_id": "wynd:device_registered_user_id",
 }
 
 

@@ -83,6 +83,8 @@ def test_grass_manifest_build_tags_image_by_resolved_version():
     assert "GRASS_RESET_BROWSER_ID" not in script
     assert "wynd:device_privkey" not in script
     assert "wynd:browser_id" not in script
+    assert "/etc/machine-id" in script
+    assert "/var/lib/dbus/machine-id" in script
     assert "--no-sandbox" in script
     assert ".grass-configured" not in script
     assert "USER_EMAIL" not in script

@@ -12,21 +12,21 @@ def test_grass_deploy_credentials_map_auth_seed_to_worker_args():
     config = {
         "grass_store_access_token": '"access"',
         "grass_store_refresh_token": '"refresh"',
-        "grass_store_token_expiry": "1818650340",
         "grass_store_wynd_status": '"CONNECTED"',
         "grass_store_wynd_authenticated": "true",
         "grass_store_wynd_user_id": '"user"',
         "grass_store_auto_update": "true",
+        "grass_store_wynd_device_registered_user_id": '"user"',
     }
 
     assert main._resolve_deploy_credentials("grass", svc, config) == {
         "store_access_token": '"access"',
         "store_refresh_token": '"refresh"',
-        "store_token_expiry": "1818650340",
         "store_wynd_status": '"CONNECTED"',
         "store_wynd_authenticated": "true",
         "store_wynd_user_id": '"user"',
         "store_auto_update": "true",
+        "store_wynd_device_registered_user_id": '"user"',
     }
 
 
@@ -103,11 +103,11 @@ def test_settings_deploy_credentials_cover_node_creation_inputs_from_runtime_scr
         "grass": {
             "store_access_token",
             "store_refresh_token",
-            "store_token_expiry",
             "store_wynd_status",
             "store_wynd_authenticated",
             "store_wynd_user_id",
             "store_auto_update",
+            "store_wynd_device_registered_user_id",
         },
         "packetstream": {"cid"},
         "iproyal": {"email", "password", "device_name", "device_id"},
