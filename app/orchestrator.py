@@ -102,6 +102,7 @@ def _tun2proxy_url(proxy: dict[str, Any]) -> str:
         auth = quote(str(proxy["username"]), safe="") + ":" + quote(str(proxy.get("password") or ""), safe="") + "@"
     return f"{scheme}://{auth}{proxy['host']}:{int(proxy['port'])}"
 
+
 def _urnetwork_auth_code(api_key: str) -> str:
     req = Request(
         "https://api.bringyour.com/auth/code-create",

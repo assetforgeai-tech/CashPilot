@@ -405,6 +405,7 @@ async def _probe_proxy(
         pass
     return {"status": "dead", "protocol": ""}
 
+
 async def _probe_proxy_exit_ip(
     host: str,
     port: int,

@@ -208,7 +208,7 @@ class TestNknWalletPoolIsReachable:
         exported = set(re.findall(r"^\s{4}([A-Za-z_][A-Za-z0-9_]*),\s*$", app_js, re.M))
 
         assert "/nkn-wallet" in base
-        assert "@router.get(\"/nkn-wallet\"" in routes
+        assert '@router.get("/nkn-wallet"' in routes
         assert 'id="nkn-wallet-file"' in page
         assert "webkitdirectory" in page
         assert "multiple" in page
@@ -832,5 +832,5 @@ class TestFleetWorkerCopyUsesAStablePublicIdentity:
     def test_the_copy_snippet_uses_public_ip_with_timestamp(self):
         page = (ROOT / "app" / "templates" / "fleet.html").read_text(encoding="utf-8")
         assert "PUBLIC_IP=$(curl -fsS https://api.ipify.org)" in page
-        assert 'CASHPILOT_WORKER_NAME=$(echo "$PUBLIC_IP" | tr \'.\' \'-\')-$(date +%s)' in page
+        assert "CASHPILOT_WORKER_NAME=$(echo \"$PUBLIC_IP\" | tr '.' '-')-$(date +%s)" in page
         assert "CASHPILOT_WORKER_URL=http://$PUBLIC_IP:8081" in page

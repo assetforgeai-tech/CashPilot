@@ -2567,6 +2567,7 @@ async def _ensure_myst_wallets_table(db: Any) -> None:
     if "evidence_json" not in cols:
         await db.execute("ALTER TABLE myst_wallets ADD COLUMN evidence_json TEXT NOT NULL DEFAULT '{}'")
 
+
 async def _ensure_nkn_wallets_table(db: Any) -> None:
     await db.executescript(_NKN_WALLETS_SCHEMA)
     cursor = await db.execute("PRAGMA table_info(nkn_wallets)")
@@ -2622,6 +2623,7 @@ async def import_myst_wallets(raw: str) -> int:
         return len(rows)
     finally:
         await db.close()
+
 
 async def import_nkn_wallets_from_zip(raw_zip: bytes) -> int:
     from app.nkn_wallets import iter_wallet_records_from_zip
@@ -2685,6 +2687,7 @@ async def list_myst_wallets() -> list[dict[str, Any]]:
         return [dict(row) for row in await cursor.fetchall()]
     finally:
         await db.close()
+
 
 async def list_nkn_wallets() -> list[dict[str, Any]]:
     db = await _get_db()

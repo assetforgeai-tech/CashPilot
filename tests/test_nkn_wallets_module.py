@@ -86,7 +86,9 @@ class TestNknWalletApi:
         with (
             TestClient(app, raise_server_exceptions=False) as client,
             _auth_owner(),
-            patch("app.routers.nkn_wallets.database.import_nkn_wallets_from_zip", new_callable=AsyncMock, return_value=1),
+            patch(
+                "app.routers.nkn_wallets.database.import_nkn_wallets_from_zip", new_callable=AsyncMock, return_value=1
+            ),
         ):
             resp = client.post("/api/admin/nkn-wallets/import", json={"archive_b64": _zip_b64()})
         assert resp.status_code == 200
@@ -130,9 +132,18 @@ class TestNknWalletInventory:
         async def run():
             with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "nkn.db"):
                 await database.init_db()
-                assert await database.import_nkn_wallet_records(
-                    [{"folder_name": "1000002", "wallet_json": _wallet_json("NKNfolderRecord"), "wallet_pswd": "pw2"}]
-                ) == 1
+                assert (
+                    await database.import_nkn_wallet_records(
+                        [
+                            {
+                                "folder_name": "1000002",
+                                "wallet_json": _wallet_json("NKNfolderRecord"),
+                                "wallet_pswd": "pw2",
+                            }
+                        ]
+                    )
+                    == 1
+                )
                 rows = await database.list_nkn_wallets()
                 assert rows[0]["folder_name"] == "1000002"
                 assert rows[0]["address"] == "NKNfolderRecord"
