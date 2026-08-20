@@ -1387,6 +1387,10 @@ img { max-width: 100%; }
   opacity: 0.8;
 }
 
+.modal-body .btn {
+  text-decoration: none;
+}
+
 .modal-footer {
   display: flex;
   justify-content: flex-end;
