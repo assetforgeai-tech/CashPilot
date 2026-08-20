@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from app import orchestrator
@@ -87,6 +88,57 @@ def test_grass_patch_waits_only_for_store_file_before_overwriting_auth_seed():
     check = container.exec_run.call_args_list[0].args[0]
     assert "test -s" in check[-1]
     assert "wynd:device_id" not in check[-1]
+
+
+def test_deploy_raw_preseeds_grass_named_volume_before_start(tmp_path):
+    client = MagicMock()
+    client.containers.get.side_effect = orchestrator.NotFound("nope")
+    container = MagicMock(short_id="abc123", id="container-id")
+    mountpoint = tmp_path / "grass-volume"
+    events = []
+
+    class _Volumes:
+        def get(self, name):
+            assert name == "grass-profile-proxy-2"
+            return MagicMock(attrs={"Mountpoint": str(mountpoint)})
+
+        def create(self, name):
+            assert name == "grass-profile-proxy-2"
+            mountpoint.mkdir(parents=True, exist_ok=True)
+            return MagicMock(attrs={"Mountpoint": str(mountpoint)})
+
+    def run(**_kwargs):
+        store = mountpoint / "data" / "io.getgrass.desktop" / "store.json"
+        events.append(("run", store.exists()))
+        return container
+
+    client.volumes = _Volumes()
+    client.containers.run.side_effect = run
+
+    with (
+        patch.object(orchestrator, "_get_client", return_value=client),
+        patch.object(orchestrator.provider_automation, "apply_grass_store_patch") as post_start_patch,
+    ):
+        orchestrator.deploy_raw(
+            slug="grass-proxy-2",
+            provider_slug="grass",
+            image="cashpilot/grass-desktop:auto",
+            volumes={"grass-profile-proxy-2": {"bind": "/var/lib/grass-xdg", "mode": "rw"}},
+            deploy_credentials={
+                "store_access_token": '"access"',
+                "store_refresh_token": '"refresh"',
+                "store_token_expiry": "1818650340",
+                "store_wynd_status": '"CONNECTED"',
+                "store_wynd_authenticated": "true",
+                "store_wynd_user_id": '"user"',
+                "store_auto_update": "true",
+            },
+        )
+
+    assert events == [("run", True)]
+    store = Path(mountpoint / "data" / "io.getgrass.desktop" / "store.json")
+    assert '"tokenExpiry":"1818650340"' in store.read_text()
+    post_start_patch.assert_not_called()
 
 
 def test_deploy_raw_maps_wipter_credentials_to_env_and_restarts_after_login_state():

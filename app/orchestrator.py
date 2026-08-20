@@ -13,6 +13,7 @@ import logging
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 from typing import Any
 from urllib.request import Request, urlopen
 
@@ -289,6 +290,9 @@ def deploy_raw(
         pass
     if provider == "mysterium" and deploy_credentials and deploy_credentials.get("myst_wallet_raw"):
         _remove_named_volumes(volumes or {})
+    grass_preseeded = False
+    if provider == "grass" and deploy_credentials and volumes:
+        grass_preseeded = _preseed_grass_named_volume(volumes, deploy_credentials)
 
     all_labels = {
         LABEL_SERVICE: slug,
@@ -416,7 +420,7 @@ def deploy_raw(
             mmn_api_key=str(deploy_credentials.get("mmn_api_key") or deploy_credentials.get("myst_mmn_api_key") or ""),
         )
         deploy_credentials["myst_wallet_address"] = address
-    if provider == "grass" and deploy_credentials:
+    if provider == "grass" and deploy_credentials and not grass_preseeded:
         provider_automation.apply_grass_store_patch(container, deploy_credentials)
     if slug == "wipter" and deploy_credentials:
         provider_automation.schedule_wipter_post_login_restart(container)
@@ -433,6 +437,44 @@ def _remove_named_volumes(volumes: dict[str, Any]) -> None:
             logger.info("Removed stale named volume %s before wallet import", source)
         except NotFound:
             pass
+
+def _grass_seed_from_credentials(deploy_credentials: dict[str, Any]) -> dict[str, str]:
+    seed = {
+        "accessToken": str(deploy_credentials.get("store_access_token") or ""),
+        "refreshToken": str(deploy_credentials.get("store_refresh_token") or ""),
+        "tokenExpiry": str(deploy_credentials.get("store_token_expiry") or ""),
+        "wynd:status": str(deploy_credentials.get("store_wynd_status") or ""),
+        "wynd:authenticated": str(deploy_credentials.get("store_wynd_authenticated") or ""),
+        "wynd:user_id": str(deploy_credentials.get("store_wynd_user_id") or ""),
+        "autoUpdate": str(deploy_credentials.get("store_auto_update") or ""),
+    }
+    optional = str(deploy_credentials.get("store_wynd_device_registered_user_id") or "").strip()
+    if optional:
+        seed["wynd:device_registered_user_id"] = optional
+    return seed
+
+def _preseed_grass_named_volume(volumes: dict[str, dict[str, str]], deploy_credentials: dict[str, Any]) -> bool:
+    client = _get_client()
+    payload = _grass_seed_from_credentials(deploy_credentials)
+    raw = json.dumps(payload, separators=(",", ":"))
+    seeded = False
+    for source, mapping in volumes.items():
+        target = str(mapping.get("bind") or "")
+        if target != "/var/lib/grass-xdg":
+            continue
+        try:
+            volume = client.volumes.get(source)
+        except NotFound:
+            volume = client.volumes.create(source)
+        mountpoint = Path(str((volume.attrs or {}).get("Mountpoint") or ""))
+        if not mountpoint:
+            continue
+        store = mountpoint / "data" / "io.getgrass.desktop" / "store.json"
+        store.parent.mkdir(parents=True, exist_ok=True)
+        store.write_text(raw, encoding="utf-8")
+        seeded = True
+        logger.info("Preseeded Grass store.json into named volume %s", source)
+    return seeded
 
 
 def _parse_stop_timeout(value: Any) -> int:
