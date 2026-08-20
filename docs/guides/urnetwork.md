@@ -35,15 +35,15 @@ URnetwork is a decentralized VPN and bandwidth-sharing network. You earn by prov
 
 Sign up at [URnetwork](https://ur.io/?referral_code=1Q3G19).
 
-### 2. Get deploy auth token
+### 2. Get deploy API key
 
-Get `UR_AUTH_TOKEN` from the logged-in dashboard at [app.ur.network](https://app.ur.network). This token is used by the `bringyour/community-provider` container.
+Get an API key from Account Settings > API Key Management at [app.ur.network](https://app.ur.network). CashPilot uses it to create a one-time provider auth code before starting the node.
 
-Optional: Account Settings also has API Key Management. Save an API key only when you want CashPilot to research/build a collector; it is not required for deploy.
+For dashboard/collector checks, save your URNetwork account email and password in the Earnings collector section.
 
 ### 3. Deploy with CashPilot
 
-In the CashPilot web UI, find **URnetwork** in the service catalog and click **Deploy**. Enter `UR_AUTH_TOKEN`; CashPilot forwards it to the worker container as `UR_AUTH_TOKEN`.
+In the CashPilot web UI, find **URnetwork** in the service catalog and click **Deploy**. Enter the API key in Settings -> Deploy runtime.
 
 ## Docker Configuration
 
@@ -54,7 +54,7 @@ In the CashPilot web UI, find **URnetwork** in the service catalog and click **D
 
 | Variable | Label | Required | Secret | Description |
 |----------|-------|:--------:|:------:|-------------|
-| `UR_AUTH_TOKEN` | Deploy auth token | Yes | Yes | Stored CashPilot deploy credential forwarded to the container as `UR_AUTH_TOKEN` |
+| `UR_API_KEY` | API key | Yes | Yes | Stored CashPilot deploy credential used to create the provider auth code |
 
 ## Collector Status
 

@@ -5,8 +5,8 @@ from __future__ import annotations
 import io
 import json
 import re
-import threading
 import tarfile
+import threading
 import time
 from typing import Any
 
@@ -22,17 +22,18 @@ _WIPTER_TRAFFIC_RE = re.compile(
     r"<<< PONG|Request ID|Upload:|Download:|<<< MESSAGE|Received data|>>> PING|SOCKS.*Connection established|HTTPS.*Request ID",
     re.I,
 )
-_GRASS_STORE_PATH = "/data/profile/.local/share/io.getgrass.desktop/store.json"
+_GRASS_STORE_PATH = "/var/lib/grass-xdg/data/io.getgrass.desktop/store.json"
 _GRASS_PATCH_PATH = "/tmp/cashpilot-grass-store-patch.json"
 _GRASS_STORE_KEYS = {
-    "store_wynd_status": "wynd:status",
-    "store_wynd_user_id": "wynd:user_id",
-    "store_token_expiry": "tokenExpiry",
-    "store_auto_update": "autoUpdate",
-    "store_wynd_authenticated": "wynd:authenticated",
-    "store_refresh_token": "refreshToken",
     "store_access_token": "accessToken",
+    "store_refresh_token": "refreshToken",
+    "store_token_expiry": "tokenExpiry",
+    "store_wynd_status": "wynd:status",
+    "store_wynd_authenticated": "wynd:authenticated",
+    "store_wynd_user_id": "wynd:user_id",
+    "store_auto_update": "autoUpdate",
 }
+
 
 def grass_store_patch(credentials: dict[str, str]) -> dict[str, str]:
     """Map deploy credentials to Grass Desktop's store.json keys."""
@@ -40,6 +41,7 @@ def grass_store_patch(credentials: dict[str, str]) -> dict[str, str]:
     if missing:
         raise ValueError(f"Missing Grass deploy credential(s): {', '.join(missing)}")
     return {store_key: str(credentials[key]) for key, store_key in _GRASS_STORE_KEYS.items()}
+
 
 def _tar_patch_file(payload: dict[str, Any]) -> bytes:
     data = json.dumps(payload, separators=(",", ":")).encode()
@@ -50,6 +52,7 @@ def _tar_patch_file(payload: dict[str, Any]) -> bytes:
     with tarfile.open(fileobj=buf, mode="w") as tf:
         tf.addfile(info, io.BytesIO(data))
     return buf.getvalue()
+
 
 def apply_grass_store_patch(
     container: Any,
@@ -84,17 +87,24 @@ def apply_grass_store_patch(
     result = container.exec_run(["python3", "-c", script])
     if getattr(result, "exit_code", 1) != 0:
         raise RuntimeError("Grass store.json patch failed")
-    container.restart()
+    # Grass flushes its unauthenticated in-memory state during graceful shutdown,
+    # which can overwrite the patched identity. Kill avoids the flush; explicit
+    # start relaunches against the patched store.json.
+    container.kill()
+    container.start()
+
 
 def extract_spide_device_key(logs: str) -> str | None:
     """Return the first Spide CLI Device key from container logs."""
     match = _SPIDE_DEVICE_KEY_RE.search(logs or "")
     return match.group(1) if match else None
 
+
 def extract_uprock_device_id(logs: str) -> str | None:
     """Return the Uprock desktop device_id from olostep websocket logs."""
     match = _UPROCK_DEVICE_ID_RE.search(logs or "")
     return match.group(1) if match else None
+
 
 def uprock_status_snapshot(status_payload: str | bytes, logs: str = "") -> dict[str, Any]:
     """Normalize Uprock daemon.sock status plus logs into worker evidence."""
@@ -109,6 +119,7 @@ def uprock_status_snapshot(status_payload: str | bytes, logs: str = "") -> dict[
         "device_id": extract_uprock_device_id(logs),
     }
 
+
 def wipter_status_snapshot(logs: str | bytes, *, login_state_persisted: bool = False) -> dict[str, Any]:
     """Normalize Wipter logs into worker runtime evidence."""
     text = logs.decode(errors="replace") if isinstance(logs, bytes) else str(logs or "")
@@ -120,6 +131,7 @@ def wipter_status_snapshot(logs: str | bytes, *, login_state_persisted: bool = F
         "earning": traffic_seen,
         "traffic_seen": traffic_seen,
     }
+
 
 def _wipter_login_ready(container: Any) -> bool:
     try:
@@ -140,6 +152,7 @@ def _wipter_login_ready(container: Any) -> bool:
     except Exception:
         return False
 
+
 def apply_wipter_post_login_restart(
     container: Any,
     *,
@@ -154,6 +167,7 @@ def apply_wipter_post_login_restart(
             return True
         time.sleep(poll_seconds)
     return False
+
 
 def schedule_wipter_post_login_restart(
     container: Any,
@@ -174,6 +188,7 @@ def schedule_wipter_post_login_restart(
     thread.start()
     return thread
 
+
 def spide_auth_headers(credential: str) -> dict[str, str]:
     """Build Spide dashboard auth headers from a pasted bearer token or cookie."""
     value = (credential or "").strip()
@@ -191,6 +206,7 @@ def spide_auth_headers(credential: str) -> dict[str, str]:
         return headers
     headers["Authorization"] = f"Bearer {value}"
     return headers
+
 
 async def register_spide_device(
     credential: str,

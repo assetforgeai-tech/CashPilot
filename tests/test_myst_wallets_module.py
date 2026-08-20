@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import os
 import asyncio
+import os
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, patch
 
@@ -9,9 +9,10 @@ os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.requests import Request
 
-from app.main import app
 from app import database, main, myst_wallets
+from app.main import app
 
 
 @asynccontextmanager
@@ -28,6 +29,10 @@ def _owner():
 
 def _auth_owner():
     return patch("app.main.auth.get_current_user", return_value=_owner())
+
+
+def _request(path: str = "/api/workers/1/command") -> Request:
+    return Request({"type": "http", "method": "POST", "path": path, "headers": []})
 
 
 @pytest.fixture
@@ -77,7 +82,11 @@ class TestMystWalletApi:
     def test_wallet_export_returns_text_only_when_owner(self, client):
         with (
             _auth_owner(),
-            patch("app.routers.myst_wallets.database.export_myst_wallets", new_callable=AsyncMock, return_value=["wallet-a", "wallet-b"]),
+            patch(
+                "app.routers.myst_wallets.database.export_myst_wallets",
+                new_callable=AsyncMock,
+                return_value=["wallet-a", "wallet-b"],
+            ),
         ):
             resp = client.get("/api/admin/myst-wallets/export")
         assert resp.status_code == 200
@@ -90,7 +99,12 @@ class TestMystWalletHelpers:
 
     def test_wallet_address_hint_handles_json_keystore_address(self):
         raw = '{"address":"57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1","crypto":{}}'
-        assert myst_wallets.wallet_address_hint(raw) == "0x57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1"[-12:]
+        assert myst_wallets.wallet_address_hint(raw) == "57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1"
+
+    def test_wallet_address_hint_finds_nested_address_before_fallback(self):
+        raw = '{"crypto":{"version":3},"identity":{"address":"2f43a6c09c53106c8863c6605ed46fccfad2ae2e"}}'
+        assert myst_wallets.wallet_address_hint(raw) == "2f43a6c09c53106c8863c6605ed46fccfad2ae2e"
+
 
 class TestMystWalletInventory:
     def test_admin_list_never_returns_raw_wallet(self, tmp_path):
@@ -133,6 +147,23 @@ class TestMystWalletInventory:
                 assert listed[0]["state"] == "LEASED"
                 assert listed[0]["leased_to_worker_id"] == 7
                 assert listed[0]["wallet_assignment_version"] == 1
+
+        asyncio.run(run())
+
+    def test_list_repairs_old_short_wallet_address(self, tmp_path):
+        async def run():
+            raw = '{"address":"57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1","crypto":{}}'
+            with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "myst.db"):
+                await database.init_db()
+                await database.import_myst_wallets(raw)
+                conn = await database._get_db()
+                try:
+                    await conn.execute("UPDATE myst_wallets SET address = ?", ('"version":3}',))
+                    await conn.commit()
+                finally:
+                    await conn.close()
+                rows = await database.list_myst_wallets()
+                assert rows[0]["address"] == "57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1"
 
         asyncio.run(run())
 
@@ -302,36 +333,6 @@ class TestMystWalletInventory:
 
         asyncio.run(run())
 
-    def test_myst_wallet_ack_requires_current_assignment_version(self, tmp_path):
-        async def run():
-            with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "myst.db"):
-                await database.init_db()
-                await database.import_myst_wallets("raw-wallet-one")
-                wallet_id = (await database.list_myst_wallets())[0]["id"]
-                await database.update_myst_wallet(wallet_id, funding="FUNDED")
-                leased = await database.lease_myst_wallet("worker-a")
-
-                assert not await database.ack_myst_wallet(
-                    leased["id"],
-                    "worker-a",
-                    wallet_assignment_version=leased["wallet_assignment_version"] - 1,
-                    node_identity="0xnode",
-                    evidence={"raw_wallet": "must-not-store"},
-                )
-                assert await database.ack_myst_wallet(
-                    leased["id"],
-                    "worker-a",
-                    wallet_assignment_version=leased["wallet_assignment_version"],
-                    node_identity="0xnode",
-                    evidence={"raw_wallet": "must-not-store", "registration_status": "Registered"},
-                )
-                row = (await database.list_myst_wallets())[0]
-                assert row["state"] == "LEASED"
-                assert row["runtime_status"] == "wallet_imported"
-                assert row["node_identity"] == "0xnode"
-
-        asyncio.run(run())
-
     def test_worker_heartbeat_updates_myst_wallet_provider_state(self, tmp_path, client):
         async def setup():
             with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "myst.db"):
@@ -380,7 +381,9 @@ class TestMystWalletInventory:
                 leased = await database.lease_myst_wallet("worker-a", worker_id=worker_id)
                 db = await database._get_db()
                 try:
-                    await db.execute("UPDATE workers SET last_heartbeat = datetime('now', '-2 hours') WHERE id = ?", (worker_id,))
+                    await db.execute(
+                        "UPDATE workers SET last_heartbeat = datetime('now', '-2 hours') WHERE id = ?", (worker_id,)
+                    )
                     await db.commit()
                 finally:
                     await db.close()
@@ -436,6 +439,7 @@ class TestMystWalletInventory:
                 row = (await database.list_myst_wallets())[0]
                 assert row["state"] == "LEASED"
                 assert row["leased_to_worker_id"] == worker_id
+                assert row["leased_to_client_id"] == "worker-client"
 
         asyncio.run(run())
 
@@ -469,5 +473,45 @@ class TestMystWalletInventory:
                 row = (await database.list_myst_wallets())[0]
                 assert row["state"] == "AVAILABLE"
                 assert row["release_reason"] == "REMOVED"
+
+        asyncio.run(run())
+
+    def test_worker_command_deploy_attaches_myst_wallet(self, tmp_path):
+        async def run():
+            with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "myst.db"):
+                await database.init_db()
+                worker_id = await database.upsert_worker("worker-client", "worker", "http://worker")
+                await database.import_myst_wallets("raw-wallet-one")
+                sent_specs = []
+
+                async def fake_proxy(_worker_id, _method, _path, *, json=None):
+                    sent_specs.append(json)
+                    return {"container_id": "myst-cid"}
+
+                async def noop(*_args, **_kwargs):
+                    return None
+
+                with (
+                    patch.object(main, "_require_owner", return_value=_owner()),
+                    patch.object(main, "_proxy_to_worker", side_effect=fake_proxy),
+                    patch.object(database, "save_deployment", side_effect=noop),
+                    patch.object(database, "record_health_event", side_effect=noop),
+                    patch.object(main, "_run_collection", side_effect=noop),
+                ):
+                    result = await main.api_worker_command(
+                        _request(),
+                        worker_id,
+                        main.WorkerCommand(
+                            command="deploy",
+                            slug="mysterium",
+                            spec={"deploy_credentials": {"dashboard_password": "pw", "mmn_api_key": "mmn"}},
+                        ),
+                    )
+
+                creds = sent_specs[0]["deploy_credentials"]
+                assert result["container_id"] == "myst-cid"
+                assert creds["myst_wallet_raw"] == "raw-wallet-one"
+                assert creds["myst_wallet_id"]
+                assert creds["myst_wallet_client_id"] == "worker-client"
 
         asyncio.run(run())

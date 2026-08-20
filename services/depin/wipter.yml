@@ -31,11 +31,17 @@ docker:
       required: false
       secret: true
       description: "Wipter account password. Prefer a dedicated account; no payout/security settings are touched by CashPilot."
-  ports: []
+  ports:
+    - "5900:5900"
+    - "6080:6080"
   volumes:
     - "wipter-data:/root/.config/wipter-app"
   command: ""
   network_mode: ""
+  cap_add: [NET_ADMIN, NET_RAW, DAC_OVERRIDE]
+  sysctls:
+    net.ipv4.ip_forward: "1"
+  shm_size: "2gb"
   health_signals:
     - pattern: "LOGIN_SUCCESS|Saving new token|Credential stored for service: com\\.wipter\\.auth\\.production|Wipter setup complete"
       means: "Wipter accepted the account and saved login state."
@@ -92,8 +98,8 @@ cashout:
 platforms: [docker, windows, macos, linux, android]
 
 collector:
-  type: scrape
-  notes: "No public earnings API documented. Runtime login and traffic markers are known from the tested Docker automation."
+  type: manual
+  notes: "Node-count/status only. No public earnings API documented; runtime login and traffic markers come from worker heartbeat/provider state."
 
 payout:
   model: unknown

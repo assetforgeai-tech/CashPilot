@@ -31,6 +31,7 @@ Workers use **REST HTTP** to communicate with the UI:
 
 - **Heartbeats** (worker → UI): Every 60 seconds, each worker POSTs to `/api/workers/heartbeat` with its container list, system info, and status.
 - **Commands** (UI → worker): The UI sends deploy/stop/restart/remove requests to the worker's HTTP API (port 8081).
+- **Provider state**: the worker heartbeat also carries per-provider evidence in `provider_states`, which the UI uses for proxy leases, MYST wallet lease state, and other runtime reconciliation.
 
 Workers must be reachable from the UI for commands. The UI must be reachable from workers for heartbeats.
 
@@ -191,8 +192,13 @@ The UI's fleet dashboard shows:
 
 - All connected workers with online/offline status and "last seen" timestamps
 - Per-worker container list with health, CPU, memory, and uptime
+- Per-worker provider state chips when a worker reports proxy or MYST runtime evidence
 - Remote action buttons (deploy, stop, restart, remove) targeting any worker
 - Aggregated earnings across all workers
+
+### Auto deploy
+
+Auto deploy is a global Settings toggle. When enabled, stable workers receive deployable providers sequentially after they have reported three healthy heartbeats. The server applies the configured delay between providers, skips providers that are not deployable, and continues even if one provider fails.
 
 Services running on multiple workers show expandable rows with per-instance details. The main row displays averaged CPU/memory (prefixed with `~`), and sub-rows show individual worker values.
 

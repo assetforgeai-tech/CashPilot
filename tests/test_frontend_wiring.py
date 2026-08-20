@@ -119,6 +119,36 @@ class TestThePayoutQueueIsReachable:
         assert 'data-action="rejectPayout"' in queue
         assert "onclick=" not in queue, "CSP has no unsafe-inline; an inline handler would never fire"
 
+
+class TestProviderCollectNowIsReachable:
+    def test_each_deployed_row_can_collect_just_that_provider(self):
+        row = js_function("renderServiceRow")
+        assert 'data-action="collectServiceNow"' in row
+        assert "Collect this provider now" in row
+
+    def test_collect_now_calls_the_provider_endpoint(self):
+        source = js_function("collectServiceNow")
+        assert "/api/services/${encodeURIComponent(slug)}/collect" in source
+        assert "loadServicesTable()" in source
+
+    def test_dashboard_renders_not_deployed_catalog_rows_legibly(self):
+        source = js_function("renderServiceRow")
+        assert "Not deployed" in source
+        assert "badge-not_deployed" in (ROOT / "app" / "static" / "css" / "style.css").read_text(encoding="utf-8")
+
+
+class TestDeployModeSelect:
+    def test_dual_mode_services_can_select_both_by_default(self):
+        source = js_function("deployModeSelect")
+        assert "modes.includes('direct') && modes.includes('proxy')" in source
+        assert "const selected = canBoth ? 'both'" in source
+
+    def test_deploy_posts_selected_mode(self):
+        source = js_function("_deployToWorkers")
+        assert "data-deploy-mode-for" in source
+        assert "body: { env, mode }" in source
+
+
 class TestMystWalletImportIsReachable:
     def test_the_handler_is_exported_from_cp(self):
         app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
@@ -139,7 +169,14 @@ class TestMystWalletImportIsReachable:
         app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
         exported = set(re.findall(r"^\s{4}([A-Za-z_][A-Za-z0-9_]*),\s*$", app_js, re.M))
         assert "loadMystWallets" in exported
-        assert "loadMystWallets();" in app_js[app_js.index("switch (page) {"): app_js.index("// -----------------------------------------------------------\n  // Public API")]
+        assert (
+            "loadMystWallets();"
+            in app_js[
+                app_js.index("switch (page) {") : app_js.index(
+                    "// -----------------------------------------------------------\n  // Public API"
+                )
+            ]
+        )
 
     def test_the_page_has_wallet_filters_and_row_actions(self):
         page = (ROOT / "app" / "templates" / "myst_wallet.html").read_text(encoding="utf-8")
@@ -150,6 +187,48 @@ class TestMystWalletImportIsReachable:
         assert 'id="myst-wallet-search"' in page
         assert "updateMystWallet" in exported
         assert "applyMystWalletFilters" in exported
+
+    def test_cp_is_exposed_globally_for_delegate_js(self):
+        app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+        assert "window.CP = CP;" in app_js
+
+    def test_myst_wallet_table_shows_egress_ip(self):
+        page = (ROOT / "app" / "templates" / "myst_wallet.html").read_text(encoding="utf-8")
+        app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+        assert 'data-myst-sort="public_ip"' in page
+        assert "row.public_ip" in app_js
+
+
+class TestNknWalletPoolIsReachable:
+    def test_nkn_wallet_menu_page_api_and_handlers_exist(self):
+        base = (ROOT / "app" / "templates" / "base.html").read_text(encoding="utf-8")
+        page = (ROOT / "app" / "templates" / "nkn_wallet.html").read_text(encoding="utf-8")
+        app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+        routes = (ROOT / "app" / "routers" / "pages.py").read_text(encoding="utf-8")
+        exported = set(re.findall(r"^\s{4}([A-Za-z_][A-Za-z0-9_]*),\s*$", app_js, re.M))
+
+        assert "/nkn-wallet" in base
+        assert "@router.get(\"/nkn-wallet\"" in routes
+        assert 'id="nkn-wallet-file"' in page
+        assert "webkitdirectory" in page
+        assert "multiple" in page
+        assert 'id="nkn-wallet-list"' in page
+        assert 'data-nkn-sort="folder_name"' in page
+        assert 'data-nkn-sort="address"' in page
+        assert 'data-nkn-sort="public_ip"' in page
+        assert "/api/admin/nkn-wallets/import" in app_js
+        assert "/api/admin/nkn-wallets" in app_js
+        assert "webkitRelativePath" in app_js
+        assert "wallet.json" in app_js
+        assert "wallet.pswd" in app_js
+        assert "files scanned" in app_js
+        assert "wallet folders" in app_js
+        assert "skipped" in app_js
+        assert "Scanning wallet files" in app_js
+        assert "_nknWalletImportBatchSize" in app_js
+        assert "el.addEventListener('change', () => importNknWalletZip(id))" in app_js
+        assert "importNknWalletZip" in exported
+        assert "loadNknWallets" in exported
 
 
 class TestTheAmountShownIsTheOneTheProviderPaid:
@@ -269,18 +348,22 @@ class TestPayoutProgressIsShownWhereTheUserLooks:
         exported = set(re.findall(r"^\s{4}([A-Za-z_][A-Za-z0-9_]*),\s*$", app_js, re.M))
         assert "loadPayoutProgress" in exported
 
+
 class TestSettingsFileInputs:
     def test_file_credentials_render_as_file_inputs(self):
         source = js_function("renderCollectors")
         assert 'type="${inputType}"' in source
         assert "f.kind === 'file'" in source
         assert "data-encoding" in source
+        assert "Count-only provider." in source
+        assert "Manual/dashboard-only provider." in source
 
     def test_duplicate_credential_keys_render_once_per_section(self):
         source = js_function("renderCollectors")
         assert "const renderedKeys = new Set();" not in source
         assert "const sectionRenderedKeys = new Set();" in source
         assert "sectionRenderedKeys.has(f.key)" in source
+
 
 class TestSettingsCredentialGroupsMatchBackend:
     def test_the_settings_heading_matches_the_three_group_layout(self):
@@ -289,7 +372,26 @@ class TestSettingsCredentialGroupsMatchBackend:
         assert "Deploy runtime" in text
         assert "Dashboard / session" in text
         assert "No credentials needed" in text
+        assert "No credentials" in text
         assert "if (!fields.length) return ''" not in js_function("renderCollectors")
+
+
+class TestAutoDeploySettingsAreRenderedAndSaved:
+    def test_the_settings_page_has_the_toggle_and_delay_inputs(self):
+        settings = (ROOT / "app" / "templates" / "settings.html").read_text(encoding="utf-8")
+        assert 'data-config="cashpilot_auto_deploy_enabled"' in settings
+        assert 'data-config="cashpilot_auto_deploy_delay_seconds"' in settings
+
+    def test_the_frontend_loads_settings_config(self):
+        text = frontend_text()
+        assert "renderSettingsConfig(config);" in text
+        assert ".settings-config-input" in text
+
+    def test_base_cache_busts_first_party_static_assets(self):
+        base = (ROOT / "app" / "templates" / "base.html").read_text(encoding="utf-8")
+        assert "/static/css/style.css?v={{ csp_nonce(request) }}" in base
+        assert "/static/js/app.js?v={{ csp_nonce(request) }}" in base
+        assert "/static/js/delegate.js?v={{ csp_nonce(request) }}" in base
 
 
 class TestTheProgressCardKeepsItsUnitsStraight:
@@ -521,7 +623,6 @@ class TestRunningCostsAreShownWithoutBeingInvented:
         assert "Leave hidden" in block or "return;   // Leave hidden" in block
 
 
-
 class TestTheDeployStepWarnsBeforeItActs:
     """deploy-risk and preflight, the last two orphaned endpoints.
 
@@ -641,8 +742,95 @@ class TestTheWizardSelectionIsVisible:
             assert not re.search(r'data-a[123]="this"', text), f"{path.name} passes the string 'this' as an argument"
 
 
-class TestFleetWorkerCopyUsesAStablePublicIdentity:
-    def test_the_copy_snippet_uses_public_ip_and_timestamp(self):
+class TestCatalogShowsReadiness:
+    def test_catalog_card_renders_readiness_badges(self):
+        source = js_function("renderCatalogCard")
+        badges = js_function("readinessBadges")
+        text = frontend_text()
+        assert "readinessBadges(svc)" in source
+        assert "Deploy runtime" in text
+        assert "Earnings collector" in text
+        assert "Dashboard / session" in text
+        assert "Count only" in text
+        assert "Dashboard only" in text
+        assert "mode:" in badges
+
+
+class TestFleetShowsProviderStates:
+    def test_fleet_worker_rows_render_provider_states(self):
         page = (ROOT / "app" / "templates" / "fleet.html").read_text(encoding="utf-8")
-        assert "CASHPILOT_WORKER_NAME=$(curl -fsS https://api.ipify.org | tr '.' '-')-$(date +%s)" in page
-        assert "CASHPILOT_WORKER_URL=http://$(curl -fsS https://api.ipify.org):8081" in page
+        assert "provider_states" in page
+        assert "provider states" in page
+
+
+class TestInventoryTablesHaveOperatorControls:
+    def test_proxy_pool_has_counts_search_sort_export_recheck_and_pagination(self):
+        page = (ROOT / "app" / "templates" / "proxy_pool.html").read_text(encoding="utf-8")
+        for needle in (
+            'id="pool-counts"',
+            'id="pool-type-counts"',
+            'id="pool-search"',
+            'id="pool-recheck-selected"',
+            'id="pool-recheck-all"',
+            'id="pool-scheduler-enabled"',
+            'id="pool-scheduler-interval"',
+            'id="pool-scheduler-concurrency"',
+            'id="pool-scheduler-save"',
+            'id="pool-export-filtered"',
+            'id="pool-export-provider"',
+            'id="pool-export-location"',
+            'id="pool-export-http"',
+            'id="pool-export-socks5"',
+            'id="pool-import-text"',
+            'id="pool-import-provider"',
+            'id="pool-import-file"',
+            'id="pool-import-submit"',
+            'data-sort="provider_name"',
+            'id="pool-pager"',
+            "const poolPageSize = 20",
+            "confirm(`Recheck ${label}?`)",
+            "exportFilteredPool",
+            "exportPoolScope",
+            "/api/proxy-pool/scheduler",
+            "pool-status-alive",
+        ):
+            assert needle in page
+
+    def test_myst_wallet_has_counts_search_sort_export_confirm_and_pagination(self):
+        page = (ROOT / "app" / "templates" / "myst_wallet.html").read_text(encoding="utf-8")
+        app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+        for needle in (
+            'id="myst-wallet-counts"',
+            'id="myst-wallet-search"',
+            'data-myst-sort="address"',
+            'id="myst-wallet-pager"',
+            'data-action="exportMystWallets"',
+        ):
+            assert needle in page
+        for needle in (
+            "const _mystWalletPageSize = 20",
+            "filteredMystWalletRows",
+            "window.confirm(`Set wallet ${walletId} to ${value}?",
+            "myst-wallet-filtered.csv",
+            "funding.toLowerCase()",
+        ):
+            assert needle in app_js
+
+    def test_fleet_has_counts_search_and_pagination(self):
+        page = (ROOT / "app" / "templates" / "fleet.html").read_text(encoding="utf-8")
+        for needle in (
+            'id="fleet-counts"',
+            'id="fleet-search"',
+            'id="fleet-pager"',
+            "const _fleetPageSize = 20",
+            "renderFleetCounts",
+        ):
+            assert needle in page
+
+
+class TestFleetWorkerCopyUsesAStablePublicIdentity:
+    def test_the_copy_snippet_uses_public_ip_with_timestamp(self):
+        page = (ROOT / "app" / "templates" / "fleet.html").read_text(encoding="utf-8")
+        assert "PUBLIC_IP=$(curl -fsS https://api.ipify.org)" in page
+        assert 'CASHPILOT_WORKER_NAME=$(echo "$PUBLIC_IP" | tr \'.\' \'-\')-$(date +%s)' in page
+        assert "CASHPILOT_WORKER_URL=http://$PUBLIC_IP:8081" in page

@@ -16,6 +16,7 @@ router = APIRouter()
 class MystWalletImportIn(BaseModel):
     raw: str = Field(default="")
 
+
 class MystWalletUpdateIn(BaseModel):
     state: str | None = None
     funding: str | None = None
@@ -37,11 +38,13 @@ async def api_myst_wallets_import(request: Request, body: MystWalletImportIn) ->
     count = await database.import_myst_wallets(body.raw)
     return {"status": "ok", "imported": count}
 
+
 @router.get("/api/admin/myst-wallets/export")
 async def api_myst_wallets_export(request: Request, funding: str | None = None) -> PlainTextResponse:
     deps._require_owner(request)
     rows = await database.export_myst_wallets(funding=funding)
     return PlainTextResponse("\n".join(rows), media_type="text/plain")
+
 
 @router.patch("/api/admin/myst-wallets/{wallet_id}")
 async def api_myst_wallets_update(request: Request, wallet_id: int, body: MystWalletUpdateIn) -> dict[str, str]:

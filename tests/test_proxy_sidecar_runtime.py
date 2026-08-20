@@ -1,0 +1,93 @@
+from __future__ import annotations
+
+from unittest.mock import MagicMock, patch
+
+from app import orchestrator
+
+
+def test_proxy_instance_runs_provider_inside_singbox_sidecar_namespace():
+    client = MagicMock()
+    client.containers.get.side_effect = [orchestrator.NotFound("nope"), orchestrator.NotFound("nope")]
+    sidecar = MagicMock(short_id="side", id="sidecar-id", name="cashpilot-earnfm-proxy-egress")
+    provider = MagicMock(short_id="provider", id="provider-id")
+    client.containers.run.side_effect = [sidecar, provider]
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        container_id = orchestrator.deploy_raw(
+            slug="earnfm-proxy",
+            image="fazalfarhan01/earnfm-client:latest",
+            labels={"cashpilot.provider": "earnfm", "cashpilot.instance_mode": "proxy"},
+            proxy={"host": "1.2.3.4", "port": 1080, "protocol": "socks5"},
+        )
+
+    assert container_id == "provider-id"
+    sidecar_call, provider_call = client.containers.run.call_args_list
+    assert sidecar_call.kwargs["name"] == "cashpilot-earnfm-proxy-egress"
+    assert sidecar_call.kwargs["image"] == "ghcr.io/sagernet/sing-box:latest"
+    assert sidecar_call.kwargs["environment"]["ENABLE_DEPRECATED_LEGACY_DNS_SERVERS"] == "true"
+    assert sidecar_call.kwargs["cap_add"] == ["NET_ADMIN"]
+    assert "/dev/net/tun:/dev/net/tun" in sidecar_call.kwargs["devices"]
+    assert provider_call.kwargs["network_mode"] == "container:cashpilot-earnfm-proxy-egress"
+    assert provider_call.kwargs["name"] == "cashpilot-earnfm-proxy"
+    assert provider_call.kwargs["labels"]["cashpilot.provider"] == "earnfm"
+    assert provider_call.kwargs["labels"]["cashpilot.instance_mode"] == "proxy"
+
+
+def test_mysterium_proxy_routes_udp_direct():
+    client = MagicMock()
+    client.containers.get.side_effect = [orchestrator.NotFound("nope"), orchestrator.NotFound("nope")]
+    client.containers.run.side_effect = [MagicMock(id="sidecar-id"), MagicMock(id="provider-id")]
+
+    with (
+        patch.object(orchestrator, "_get_client", return_value=client),
+        patch.object(orchestrator.singbox_config, "render_tun_proxy_config", return_value={}) as render,
+    ):
+        orchestrator.deploy_raw(
+            slug="mysterium-proxy",
+            provider_slug="mysterium",
+            image="mysteriumnetwork/myst:latest",
+            labels={"cashpilot.provider": "mysterium", "cashpilot.instance_mode": "proxy"},
+            proxy={"host": "1.2.3.4", "port": 1080, "protocol": "socks5"},
+        )
+
+    assert render.call_args.kwargs["udp_direct"] is True
+
+
+def test_mysterium_proxy_publishes_udp_ports_on_sidecar():
+    client = MagicMock()
+    client.containers.get.side_effect = [orchestrator.NotFound("nope"), orchestrator.NotFound("nope")]
+    sidecar = MagicMock(short_id="side", id="sidecar-id")
+    provider = MagicMock(short_id="provider", id="provider-id")
+    client.containers.run.side_effect = [sidecar, provider]
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        orchestrator.deploy_raw(
+            slug="mysterium-proxy",
+            provider_slug="mysterium",
+            image="mysteriumnetwork/myst:latest",
+            ports={"56000/udp": 56000, "56020/udp": 56020},
+            labels={"cashpilot.provider": "mysterium", "cashpilot.instance_mode": "proxy"},
+            proxy={"host": "1.2.3.4", "port": 1080, "protocol": "socks5"},
+        )
+
+    sidecar_call, provider_call = client.containers.run.call_args_list
+    assert sidecar_call.kwargs["ports"] == {"56000/udp": 56000, "56020/udp": 56020}
+    assert provider_call.kwargs["ports"] is None
+
+
+def test_remove_proxy_instance_removes_egress_sidecar():
+    client = MagicMock()
+    provider = MagicMock(attrs={"Mounts": []})
+    provider.name = "cashpilot-earnfm-proxy"
+    provider.labels = {orchestrator.LABEL_MANAGED: "true"}
+    sidecar = MagicMock()
+    sidecar.name = "cashpilot-earnfm-proxy-egress"
+    client.containers.get.side_effect = [provider, sidecar]
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        result = orchestrator.remove_service("earnfm-proxy")
+
+    assert result["container"] == provider.name
+    provider.remove.assert_called_once_with(force=True)
+    sidecar.remove.assert_called_once_with(force=True)
+    client.containers.get.assert_any_call("cashpilot-earnfm-proxy-egress")

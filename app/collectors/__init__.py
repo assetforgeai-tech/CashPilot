@@ -10,9 +10,6 @@ import logging
 from typing import Any
 
 from app.collectors.base import BaseCollector, EarningsResult
-from app.collectors.adnade import AdnadeCollector
-from app.collectors.bitping import BitpingCollector
-from app.collectors.earnapp import EarnAppCollector
 from app.collectors.earnfm import EarnFMCollector
 from app.collectors.grass import GrassCollector
 from app.collectors.iproyal import IPRoyalCollector
@@ -22,44 +19,37 @@ from app.collectors.proxies_sx import ProxiesSxCollector
 from app.collectors.proxyrack import ProxyRackCollector
 from app.collectors.repocket import RepocketCollector
 from app.collectors.traffmonetizer import TraffmonetizerCollector
-from app.collectors.uprock import UprockCollector
 
 logger = logging.getLogger(__name__)
 
 # slug -> collector class
 COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
-    "adnade": AdnadeCollector,
-    "earnapp": EarnAppCollector,
     "iproyal": IPRoyalCollector,
     "mysterium": MystNodesCollector,
     "traffmonetizer": TraffmonetizerCollector,
     "repocket": RepocketCollector,
     "proxyrack": ProxyRackCollector,
-    "bitping": BitpingCollector,
     "earnfm": EarnFMCollector,
     "packetstream": PacketStreamCollector,
     "proxies-sx": ProxiesSxCollector,
     "grass": GrassCollector,
-    "uprock": UprockCollector,
 }
 
 # Map of slug -> list of config keys needed to instantiate the collector
 _COLLECTOR_ARGS: dict[str, list[str]] = {
-    "earnapp": ["oauth_token"],
-    "iproyal": ["email", "password"],
+    "iproyal": ["collector_email", "collector_password"],
     "mysterium": ["email", "password"],
-    "traffmonetizer": ["token"],
+    "traffmonetizer": ["email", "password"],
     "repocket": ["email", "password"],
     "proxyrack": ["api_key"],
-    "bitping": ["email", "password"],
     "earnfm": ["email", "password"],
     "packetstream": ["auth_token"],
     "proxies-sx": ["api_key"],
     "grass": ["access_token"],
-    "uprock": ["credentials_json"],
 }
 
 _SECRET_KINDS = {"password", "api_key", "token", "cookie", "bearer", "jwt", "oauth_token", "access_token"}
+
 
 def _kind_for_arg(arg: str) -> str:
     lowered = arg.lower()
@@ -75,11 +65,13 @@ def _kind_for_arg(arg: str) -> str:
         return "token"
     return "text"
 
+
 def _is_secret_field(arg: str, kind: str) -> bool:
     from app import database
 
     lowered = arg.lower()
     return kind in _SECRET_KINDS or any(lowered.endswith(suffix) for suffix in database.SECRET_CONFIG_KEYS)
+
 
 def service_credential_fields(
     slug: str,
@@ -104,7 +96,7 @@ def service_credential_fields(
             if not raw_key:
                 continue
             config_key = raw_key if raw_key.startswith(f"{slug}_") else f"{slug}_{raw_key}"
-            arg = config_key.removeprefix(f"{slug}_")
+            arg = str(item.get("arg") or config_key.removeprefix(f"{slug}_")).strip()
             kind = str(item.get("kind") or _kind_for_arg(arg))
             field: dict[str, Any] = {
                 "key": config_key,
@@ -115,12 +107,15 @@ def service_credential_fields(
                 "required": item.get("required", True) is not False,
                 "source": item.get("source") or "dashboard",
             }
-            for optional in ("description", "expires_hours", "durable", "encoding"):
+            for optional in ("description", "expires_hours", "durable", "encoding", "env"):
                 if optional in item:
                     field[optional] = item[optional]
             fields.append(field)
         if fields:
             return fields
+
+    if section == "collector" and owner.get("type") == "manual":
+        return []
 
     if not fallback:
         return []
@@ -143,9 +138,11 @@ def service_credential_fields(
         )
     return fields
 
+
 def collector_credential_fields(slug: str, service: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """UI/config metadata for one collector, YAML-first with registry fallback."""
     return service_credential_fields(slug, "collector", service, fallback=True)
+
 
 # How long each credential actually lasts, and why it matters.
 #
@@ -158,13 +155,6 @@ def collector_credential_fields(slug: str, service: dict[str, Any] | None = None
 # account password or an API key that lasts until revoked). `durable` marks the
 # long-lived alternative where a service offers both. `why` is shown to the user.
 CREDENTIAL_LIFETIMES: dict[str, dict[str, dict[str, object]]] = {
-    "earnapp": {
-        "oauth_token": {
-            "hours": None,
-            "durable": True,
-            "why": "Lasts until you sign out of EarnApp or revoke the session.",
-        },
-    },
     "packetstream": {
         "auth_token": {
             "hours": None,
@@ -177,13 +167,6 @@ CREDENTIAL_LIFETIMES: dict[str, dict[str, dict[str, object]]] = {
             "hours": None,
             "durable": True,
             "why": "Bearer token from browser localStorage. Re-copy it if Grass signs you out.",
-        },
-    },
-    "uprock": {
-        "credentials_json": {
-            "hours": None,
-            "durable": True,
-            "why": "Seed file from the logged-in official desktop app. Re-export it if Uprock signs the node out.",
         },
     },
 }
@@ -231,6 +214,8 @@ def make_collectors(
 
         cls = COLLECTOR_MAP[slug]
         fields = collector_credential_fields(slug)
+        if not fields:
+            continue
 
         # Resolve constructor kwargs from config
         kwargs: dict[str, str] = {}

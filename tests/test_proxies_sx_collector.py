@@ -72,3 +72,60 @@ class TestProxiesSxCollector:
 
         assert result.error is not None
         assert "API key" in result.error
+
+    def test_per_node_treats_online_status_as_online(self):
+        from app.collectors.proxies_sx import ProxiesSxCollector
+
+        client = _client()
+        client.get.return_value = _response(
+            200,
+            {"devices": [{"deviceId": "agent-1", "name": "n1", "status": "online"}]},
+        )
+
+        with patch("app.collectors.proxies_sx.httpx.AsyncClient", return_value=client):
+            devices = asyncio.run(ProxiesSxCollector(api_key="k").get_per_node_earnings())
+
+        assert devices[0]["online"] is True
+
+    def test_per_node_normalizes_dashboard_fields(self):
+        from app.collectors.proxies_sx import ProxiesSxCollector
+
+        client = _client()
+        client.get.return_value = _response(
+            200,
+            {
+                "devices": [
+                    {
+                        "deviceId": "agent-1",
+                        "name": "peer-a",
+                        "status": "listed",
+                        "listed": True,
+                        "verification": "verified",
+                        "speed": "5.6 Mbps",
+                        "customerRoutable": "yes",
+                        "quality": 55,
+                        "traffic": "0.0 MB",
+                        "lastSeen": "less than a minute",
+                        "pendingPayout": 1.25,
+                        "totalEarned": 7.5,
+                    }
+                ]
+            },
+        )
+
+        with patch("app.collectors.proxies_sx.httpx.AsyncClient", return_value=client):
+            row = asyncio.run(ProxiesSxCollector(api_key="k").get_per_node_earnings())[0]
+
+        assert row["device_id"] == "agent-1"
+        assert row["name"] == "peer-a"
+        assert row["status"] == "listed"
+        assert row["online"] is True
+        assert row["listed"] is True
+        assert row["verification"] == "verified"
+        assert row["speed"] == "5.6 Mbps"
+        assert row["customer_routable"] is True
+        assert row["quality"] == 55
+        assert row["traffic"] == "0.0 MB"
+        assert row["last_seen"] == "less than a minute"
+        assert row["pending_payout_usd"] == 1.25
+        assert row["total_earned_usd"] == 7.5

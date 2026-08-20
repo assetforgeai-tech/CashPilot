@@ -54,4 +54,4 @@ In the CashPilot web UI, find **ProxyRack** in the service catalog and click **D
 |----------|-------|:--------:|:------:|-------------|
 | `UUID` | Device UUID | Yes | No | Unique 64-character hex ID per device. Generate with: cat /dev/urandom | tr -dc 'a-f0-9' | fold -w 64 | head -n 1 |
 | `API_KEY` | API Key | No | Yes | Your ProxyRack API key (auto-registers device in dashboard if provided) |
-| `DEVICE_NAME` | Device name | No | No | Friendly name for the device in dashboard (default: `Device-${UUID}`) |
+| `DEVICE_NAME` | Device name | No | No | Friendly name for the device in dashboard (default: `{hostname}`; deploy flow may suffix `-direct` / `-proxy`) |

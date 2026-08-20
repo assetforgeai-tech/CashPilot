@@ -58,7 +58,10 @@ class TestNothingIsEverDefaulted:
         with (
             patch.object(orchestrator, "_get_client", return_value=client),
             patch("app.orchestrator.provider_installers.resolve_installer_manifest") as resolve,
-            patch("app.orchestrator.provider_installers.ensure_installer_image", return_value="cashpilot/grass-desktop:v7.6.0") as build,
+            patch(
+                "app.orchestrator.provider_installers.ensure_installer_image",
+                return_value="cashpilot/grass-desktop:v7.6.0",
+            ) as build,
         ):
             resolve.return_value = {
                 "platform": "linux-x86_64",
@@ -113,6 +116,62 @@ class TestTheAllowlistComesFromTheDaemon:
         )
         literals = {n.value for n in ast.walk(fn) if isinstance(n, ast.Constant) and isinstance(n.value, str)}
         assert "runsc" not in literals, "the validator must not carry a hardcoded runtime name"
+
+    def test_instance_slug_uses_provider_slug_for_capability_allowlist(self):
+        worker_api._validate_deploy_spec(
+            spec(provider_slug="wipter", cap_add=["NET_RAW"]),
+            slug="wipter-proxy",
+        )
+
+    def test_instance_slug_uses_provider_slug_for_host_network_allowlist(self):
+        worker_api._validate_deploy_spec(
+            spec(
+                provider_slug="mysterium",
+                network_mode="host",
+                cap_add=["NET_ADMIN", "SETUID", "SETGID"],
+                devices=["/dev/net/tun"],
+            ),
+            slug="mysterium-direct",
+        )
+
+    def test_mysterium_disables_no_new_privileges_for_iptables_sudo(self):
+        captured = {}
+        client = MagicMock()
+        client.containers.get.side_effect = orchestrator.NotFound("nope")
+        client.containers.run.side_effect = lambda **kwargs: captured.update(kwargs) or MagicMock(short_id="abc123")
+
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            orchestrator.deploy_raw(slug="mysterium-direct", provider_slug="mysterium", image="img:1")
+
+        assert captured["security_opt"] == []
+
+    def test_earnfm_direct_host_network_exception_is_allowed(self):
+        worker_api._validate_deploy_spec(
+            spec(provider_slug="earnfm", network_mode="host", hostname="eapp"),
+            slug="earnfm-direct",
+        )
+
+    def test_earnfm_host_network_keeps_hostname_when_deploying(self):
+        captured = {}
+        client = MagicMock()
+        client.containers.get.side_effect = orchestrator.NotFound("nope")
+
+        def fake_run(**kwargs):
+            captured.update(kwargs)
+            return MagicMock(short_id="abc123")
+
+        client.containers.run.side_effect = fake_run
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            orchestrator.deploy_raw(
+                slug="earnfm",
+                image="earnfm/earnfm-client:latest",
+                env={"EARNFM_TOKEN": "token"},
+                network_mode="host",
+                hostname="eapp",
+            )
+
+        assert captured["network_mode"] == "host"
+        assert captured["hostname"] == "eapp"
 
 
 class TestReadingTheDaemon:

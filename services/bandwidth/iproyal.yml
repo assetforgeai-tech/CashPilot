@@ -37,18 +37,53 @@ docker:
       required: false
       secret: false
       description: "Name shown in your Pawns dashboard (passed as -device-name flag)"
-      default: "cashpilot-{hostname}"
+      default: "{hostname}"
     - key: IPROYALPAWNS_DEVICE_ID
       label: "Device ID"
       required: false
       secret: false
       description: "Unique device identifier (passed as -device-id flag)"
-      default: "cashpilot-{hostname}"
+      default: "{hostname}"
   ports: []
   volumes: []
   command: "-email ${IPROYALPAWNS_EMAIL} -password ${IPROYALPAWNS_PASSWORD} -device-name ${IPROYALPAWNS_DEVICE_NAME} -device-id ${IPROYALPAWNS_DEVICE_ID} -accept-tos"
   network_mode: ""
   privileged: false
+
+deploy:
+  credentials:
+    - key: email
+      label: "Email"
+      kind: email
+      secret: false
+      required: true
+      env: IPROYALPAWNS_EMAIL
+      source: "Pawns account"
+      description: "Account email passed to the node as -email."
+    - key: password
+      label: "Password"
+      kind: password
+      secret: true
+      required: true
+      env: IPROYALPAWNS_PASSWORD
+      source: "Pawns account"
+      description: "Account password passed to the node as -password."
+    - key: device_name
+      label: "Device name"
+      kind: text
+      secret: false
+      required: false
+      env: IPROYALPAWNS_DEVICE_NAME
+      source: "CashPilot worker name"
+      description: "Optional override; blank uses {hostname}."
+    - key: device_id
+      label: "Device ID"
+      kind: text
+      secret: false
+      required: false
+      env: IPROYALPAWNS_DEVICE_ID
+      source: "CashPilot worker name"
+      description: "Optional override; blank uses {hostname}."
 
 requirements:
   residential_ip: true
@@ -81,6 +116,23 @@ platforms: [docker, windows, macos, linux, android, ios]
 
 collector:
   type: api
+  credentials:
+    - key: collector_email
+      arg: email
+      label: "Email"
+      kind: email
+      secret: false
+      required: true
+      source: "Pawns account"
+      description: "Account email used by the earnings collector."
+    - key: collector_password
+      arg: password
+      label: "Password"
+      kind: password
+      secret: true
+      required: true
+      source: "Pawns account"
+      description: "Account password used by the earnings collector."
   notes: "JWT auth via POST /api/v1/users/tokens (email+password), then GET /api/v1/users/me/balance-dashboard"
   credential_hint: "Use your Pawns account email and password (same as <a href='https://dashboard.pawns.app' target='_blank'>dashboard.pawns.app</a>)."
 

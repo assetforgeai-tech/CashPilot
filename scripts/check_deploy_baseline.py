@@ -8,7 +8,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE_FILE = ROOT / "DEPLOY_BASELINE.json"
 
@@ -21,11 +20,14 @@ def main() -> int:
     baseline = json.loads(BASELINE_FILE.read_text(encoding="utf-8"))["baseline_sha"]
     head = git("rev-parse", "--short", "HEAD")
     full_head = git("rev-parse", "HEAD")
-    based_on_baseline = subprocess.run(
-        ["git", "merge-base", "--is-ancestor", baseline, "HEAD"],
-        cwd=ROOT,
-        check=False,
-    ).returncode == 0
+    based_on_baseline = (
+        subprocess.run(
+            ["git", "merge-base", "--is-ancestor", baseline, "HEAD"],
+            cwd=ROOT,
+            check=False,
+        ).returncode
+        == 0
+    )
     if based_on_baseline:
         print(f"deploy baseline ok: {baseline} <= {head}")
         print(f"deploy head: {full_head}")

@@ -9,7 +9,7 @@ description: >
   and earning only starts once the peer is verified and listed. Residential or
   mobile IPs are the intended fit; VPS and datacenter IPs may connect but are
   generally not routed for earnings.
-short_description: Peer bandwidth earning network - SDK-based node, direct egress
+short_description: Peer bandwidth earning network - SDK-based node, proxy egress
 
 docker:
   image: node:20-alpine
@@ -28,7 +28,7 @@ docker:
       required: false
       secret: false
       description: "Device name shown in the Proxies.sx peer dashboard."
-      default: "cashpilot-{hostname}"
+      default: "{hostname}"
   ports: []
   volumes:
     - "proxies-sx-data:/app"
@@ -40,6 +40,25 @@ docker:
     exec node reference-sdk.js'
   network_mode: ""
   privileged: false
+
+deploy:
+  credentials:
+    - key: api_key
+      label: "Peer API key"
+      kind: api_key
+      secret: true
+      required: true
+      env: API_KEY
+      source: "Proxies.sx dashboard - peer API key"
+      description: "API key used by the peer runtime."
+    - key: agent_name
+      label: "Agent name"
+      kind: text
+      secret: false
+      required: false
+      env: AGENT_NAME
+      source: "CashPilot worker hostname"
+      description: "Optional override; blank uses the worker hostname."
 
 requirements:
   residential_ip: true
@@ -84,9 +103,9 @@ collector:
   credential_hint: "Copy your peer API key from the Proxies.sx dashboard."
 
 egress:
-  mode: direct
+  mode: proxy
   udp: none
-  reason: "The peer must use the worker's real network path so the provider can grade and route the device; proxy egress would mask the connection."
+  reason: "The tested provider-runtime source runs Proxies.sx as a proxy-node only."
 
 disclosure:
   sells: >-

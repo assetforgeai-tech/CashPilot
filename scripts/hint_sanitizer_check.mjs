@@ -25,7 +25,7 @@ await new Promise(r => setTimeout(r, 800));
 const ev = async e => JSON.parse((await send('Runtime.evaluate', {expression: e, returnByValue: true})).result.value);
 
 // Run the REAL sanitizer source in a real DOM, on the real hint text.
-const real = readFileSync('services/bandwidth/earnapp.yml', 'utf8')
+const real = readFileSync('services/bandwidth/bitping.yml', 'utf8')
   .match(/credential_hint: "(.*)"/)[1].replace(/\\"/g, '"');
 
 const out = await ev(`(() => {
@@ -57,7 +57,7 @@ const out = await ev(`(() => {
 console.log(JSON.stringify(out, null, 2));
 const ok = out.shipped.rel === 'noopener noreferrer'
   && out.shipped.target === '_blank'
-  && out.shipped.href === 'https://earnapp.com'
+  && out.shipped.href === 'https://bitping.com'
   && out.yamlRel === 'noopener noreferrer'     // overwritten, not the YAML value
   && out.noTarget === null                      // untouched
   && out.dangerous.href === null && !out.dangerous.onclick && out.dangerous.scripts === 0;

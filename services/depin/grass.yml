@@ -25,73 +25,65 @@ docker:
   ports:
     - "6080:6080"
   volumes:
-    - "grass-profile:/data/profile"
+    - "grass-profile:/var/lib/grass-xdg"
   command: ""
   network_mode: ""
 
 deploy:
   automation: store_json_patch
-  installer_manifest_url: "https://files.grass.io/file/grass-extension-upgrades/desktop-installer-latest.json"
-  installer_platform: linux-x86_64
-  notes: "Runtime resolves Grass' official desktop installer manifest at new-node install time, builds a local noVNC Docker wrapper from the Linux .deb, waits for Grass to create store.json, patches the seven confirmed auth/session fields, then restarts Grass."
+  installer_manifest_url: "https://files.grass.io/file/grass-extension-upgrades/v7.6.0/grass-desktop_7.6.0_amd64.deb"
+  installer_platform: "linux-x86_64"
+  notes: "Runtime builds the official Grass Desktop Linux .deb wrapper, waits for store.json, patches only the logged-in auth seed, then restarts Grass."
   credentials:
-    - key: installer_manifest_url
-      label: "Installer manifest URL"
-      kind: text
-      secret: false
-      required: false
-      source: "Grass dashboard Download button manifest"
-      default: "https://files.grass.io/file/grass-extension-upgrades/desktop-installer-latest.json"
-      description: "Override only if Grass moves its official desktop installer manifest."
-    - key: store_wynd_status
-      label: "store.json wynd:status"
-      kind: text
-      secret: true
-      required: true
-      source: "Logged-in Grass Desktop store.json"
-      description: "Copy the wynd:status value from a confirmed logged-in seed."
-    - key: store_wynd_user_id
-      label: "store.json wynd:user_id"
-      kind: text
-      secret: true
-      required: true
-      source: "Logged-in Grass Desktop store.json"
-      description: "Copy the wynd:user_id value from a confirmed logged-in seed."
-    - key: store_token_expiry
-      label: "store.json tokenExpiry"
-      kind: text
-      secret: true
-      required: true
-      source: "Logged-in Grass Desktop store.json"
-      description: "Copy the tokenExpiry value from a confirmed logged-in seed."
-    - key: store_auto_update
-      label: "store.json autoUpdate"
-      kind: text
-      secret: true
-      required: true
-      source: "Logged-in Grass Desktop store.json"
-      description: "Copy the autoUpdate value from a confirmed logged-in seed."
-    - key: store_wynd_authenticated
-      label: "store.json wynd:authenticated"
-      kind: text
-      secret: true
-      required: true
-      source: "Logged-in Grass Desktop store.json"
-      description: "Copy the wynd:authenticated value from a confirmed logged-in seed."
-    - key: store_refresh_token
-      label: "store.json refreshToken"
-      kind: token
-      secret: true
-      required: true
-      source: "Logged-in Grass Desktop store.json"
-      description: "Copy the refreshToken value from a confirmed logged-in seed."
     - key: store_access_token
       label: "store.json accessToken"
       kind: token
       secret: true
       required: true
       source: "Logged-in Grass Desktop store.json"
-      description: "Copy the accessToken value from a confirmed logged-in seed."
+      description: "Copy the exact accessToken value from a confirmed logged-in and connected seed."
+    - key: store_refresh_token
+      label: "store.json refreshToken"
+      kind: token
+      secret: true
+      required: true
+      source: "Logged-in Grass Desktop store.json"
+      description: "Copy the exact refreshToken value from a confirmed logged-in and connected seed."
+    - key: store_token_expiry
+      label: "store.json tokenExpiry"
+      kind: text
+      secret: true
+      required: true
+      source: "Logged-in Grass Desktop store.json"
+      description: "Copy the exact tokenExpiry value from a confirmed logged-in and connected seed."
+    - key: store_wynd_status
+      label: "store.json wynd:status"
+      kind: text
+      secret: true
+      required: true
+      source: "Logged-in Grass Desktop store.json"
+      description: "Copy the exact wynd:status value from a confirmed connected seed."
+    - key: store_wynd_authenticated
+      label: "store.json wynd:authenticated"
+      kind: text
+      secret: true
+      required: true
+      source: "Logged-in Grass Desktop store.json"
+      description: "Copy the exact wynd:authenticated value from a confirmed logged-in and connected seed."
+    - key: store_wynd_user_id
+      label: "store.json wynd:user_id"
+      kind: text
+      secret: true
+      required: true
+      source: "Logged-in Grass Desktop store.json"
+      description: "Copy the exact wynd:user_id value from a confirmed logged-in and connected seed."
+    - key: store_auto_update
+      label: "store.json autoUpdate"
+      kind: text
+      secret: true
+      required: true
+      source: "Logged-in Grass Desktop store.json"
+      description: "Copy the exact autoUpdate value from a confirmed connected seed."
 
 requirements:
   residential_ip: true
@@ -126,7 +118,7 @@ platforms: [browser-extension, windows, macos, linux, android, ios]
 
 collector:
   type: api
-  notes: "Dashboard API at app.grass.io. Auth via accessToken. Tested runtime login is seed/profile based; CashPilot does not yet model seed bundle mounts."
+  notes: "Dashboard API at app.grass.io. Auth via accessToken. Runtime login uses the seeded Grass Desktop store identity separately."
   credentials:
     - key: access_token
       label: "Access Token"
@@ -136,6 +128,87 @@ collector:
       source: "Grass dashboard local storage accessToken"
       description: "Copy a fresh accessToken from the logged-in Grass dashboard or desktop profile. Runtime seed bundles stay outside the repo."
   credential_hint: "Log in at <a href='https://app.getgrass.io' target='_blank'>app.getgrass.io</a>, press F12 -> Application -> Local Storage, copy the <b>accessToken</b> value."
+
+dashboard:
+  credentials:
+    - key: grass_store_access_token
+      label: "Access token"
+      kind: token
+      secret: true
+      required: false
+      source: "Grass local storage"
+    - key: grass_store_refresh_token
+      label: "Refresh token"
+      kind: token
+      secret: true
+      required: false
+      source: "Grass local storage"
+    - key: grass_store_token_expiry
+      label: "Token expiry"
+      kind: text
+      secret: true
+      required: false
+      source: "Grass local storage"
+    - key: grass_store_wynd_status
+      label: "Wynd status"
+      kind: text
+      secret: true
+      required: false
+      source: "Grass local storage"
+    - key: grass_store_wynd_authenticated
+      label: "Wynd authenticated"
+      kind: text
+      secret: true
+      required: false
+      source: "Grass local storage"
+    - key: grass_store_wynd_user_id
+      label: "Wynd user ID"
+      kind: text
+      secret: true
+      required: false
+      source: "Grass local storage"
+    - key: grass_store_auto_update
+      label: "Auto update"
+      kind: text
+      secret: true
+      required: false
+      source: "Grass local storage"
+    - key: grass_store_wynd_browser_id
+      label: "Browser ID"
+      kind: text
+      secret: true
+      required: false
+      source: "Grass local storage"
+    - key: grass_store_wynd_device_privkey
+      label: "Device private key"
+      kind: text
+      secret: true
+      required: false
+      source: "Grass local storage"
+    - key: grass_store_wynd_device_pubkey
+      label: "Device public key"
+      kind: text
+      secret: true
+      required: false
+      source: "Grass local storage"
+    - key: grass_store_wynd_device_id
+      label: "Device ID"
+      kind: text
+      secret: true
+      required: false
+      source: "Grass local storage"
+    - key: grass_store_wynd_device_registered_pubkey
+      label: "Registered public key"
+      kind: text
+      secret: true
+      required: false
+      source: "Grass local storage"
+    - key: grass_store_wynd_device_registered_user_id
+      label: "Registered user ID"
+      kind: text
+      secret: true
+      required: false
+      source: "Grass local storage"
 
 payout:
   model: internal

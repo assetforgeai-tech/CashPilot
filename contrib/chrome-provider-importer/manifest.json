@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "CashPilot Provider Importer",
+  "version": "0.1.0",
+  "description": "Import provider session/config values from the logged-in current tab into CashPilot Settings.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Import to CashPilot"
+  },
+  "permissions": ["activeTab", "scripting", "storage", "tabs"],
+  "host_permissions": ["<all_urls>"]
+}

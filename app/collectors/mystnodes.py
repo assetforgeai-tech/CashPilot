@@ -19,6 +19,15 @@ logger = logging.getLogger(__name__)
 CLOUD_BASE = "https://my.mystnodes.com/api/v2"
 
 
+def myst_dashboard_url(identity: str) -> str:
+    address = str(identity or "").strip()
+    if not address:
+        return "https://my.mystnodes.com/node?identity="
+    if not address.startswith("0x"):
+        address = f"0x{address}"
+    return f"https://my.mystnodes.com/node?identity={address}"
+
+
 class MystNodesCollector(BaseCollector):
     """Collect earnings from MystNodes cloud API."""
 
@@ -158,6 +167,7 @@ class MystNodesCollector(BaseCollector):
                 result.append(
                     {
                         "identity": node.get("identity", ""),
+                        "dashboard_url": myst_dashboard_url(str(node.get("identity", ""))),
                         "name": node.get("name") or "",
                         "local_ip": node.get("localIp", ""),
                         "online": (node.get("nodeStatus", {}).get("online", False)),

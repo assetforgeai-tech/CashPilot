@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}NKN Wallet - CashPilot{% endblock %}
+{% block page %}nkn-wallet{% endblock %}
+{% block topbar_title %}NKN Wallet{% endblock %}
+{% block content %}
+<section class="content-section">
+  <h2 class="section-title">NKN Wallet</h2>
+  <p class="form-hint">Choose the wallet folder. Each child folder must contain wallet.json and wallet.pswd.</p>
+
+  <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; margin-top:16px;">
+    <div style="min-width:min(520px, 100%); flex:1;">
+      <label class="form-label" for="nkn-wallet-file">Wallet folder</label>
+      <input class="form-input" id="nkn-wallet-file" type="file" webkitdirectory directory multiple />
+    </div>
+    <button class="btn btn-primary" data-action="importNknWalletZip" data-a1="nkn-wallet-file">Import wallets</button>
+    <span id="nkn-wallet-import-status" style="font-size:0.85rem; color:var(--text-muted);"></span>
+  </div>
+
+  <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; margin-top:16px;">
+    <div>
+      <label class="form-label" for="nkn-wallet-state-filter">State</label>
+      <select class="form-input" id="nkn-wallet-state-filter" data-action="applyNknWalletFilters">
+        <option value="">All</option>
+        <option value="AVAILABLE">Available</option>
+        <option value="LEASED">Leased</option>
+        <option value="QUARANTINED">Quarantined</option>
+      </select>
+    </div>
+    <div style="min-width:min(320px, 100%); flex:1;">
+      <label class="form-label" for="nkn-wallet-search">Search</label>
+      <input class="form-input" id="nkn-wallet-search" type="search" placeholder="Folder, address, lease, node, IP" data-action="applyNknWalletFilters" />
+    </div>
+  </div>
+  <div id="nkn-wallet-counts" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:14px;"></div>
+
+  <div class="table-wrap" style="margin-top:20px;">
+    <table class="data-table operator-table myst-wallet-table">
+      <thead>
+        <tr>
+          <th data-nkn-sort="id">ID</th>
+          <th data-nkn-sort="folder_name">Folder</th>
+          <th data-nkn-sort="address">Address</th>
+          <th data-nkn-sort="public_ip">Egress IP</th>
+          <th data-nkn-sort="state">State</th>
+          <th data-nkn-sort="leased_to_client_id">Lease</th>
+          <th data-nkn-sort="node_identity">Node</th>
+          <th data-nkn-sort="last_heartbeat_at">Heartbeat</th>
+        </tr>
+      </thead>
+      <tbody id="nkn-wallet-list"></tbody>
+    </table>
+  </div>
+  <div id="nkn-wallet-pager" style="display:flex; gap:8px; align-items:center; justify-content:flex-end; margin-top:12px;"></div>
+  <div id="nkn-wallet-refresh-status" class="empty-state" style="display:none; margin-top:16px;"></div>
+</section>
+{% endblock %}

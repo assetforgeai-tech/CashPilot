@@ -27,6 +27,7 @@ import shutil
 import socket
 import subprocess
 import time
+import urllib.parse
 import uuid
 import zipfile
 from contextlib import asynccontextmanager
@@ -304,6 +305,7 @@ _EGRESS_CONFIG_DIR = Path(os.getenv("CASHPILOT_DATA_DIR", "/data")) / "egress"
 _EGRESS_CONFIG_FILE = _EGRESS_CONFIG_DIR / "sing-box.json"
 _RUNTIME_ASSET_DIR = Path(os.getenv("CASHPILOT_DATA_DIR", "/data")) / "runtime-assets"
 
+
 def _docker_host_path(path: Path) -> Path:
     """Translate this worker's /data path to the host path Docker will mount.
 
@@ -333,8 +335,10 @@ def _docker_host_path(path: Path) -> Path:
         logger.warning("Could not resolve host path for runtime asset %s: %s", path, exc)
     return path
 
+
 def _myst_state_path() -> Path:
     return Path(os.getenv("CASHPILOT_DATA_DIR", "/data")) / "myst-wallet.json"
+
 
 def _save_myst_wallet_state(state: dict[str, Any]) -> None:
     payload = dict(state)
@@ -342,6 +346,7 @@ def _save_myst_wallet_state(state: dict[str, Any]) -> None:
     path = _myst_state_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+
 
 def _load_myst_wallet_state() -> dict[str, Any] | None:
     path = _myst_state_path()
@@ -352,6 +357,7 @@ def _load_myst_wallet_state() -> dict[str, Any] | None:
         return data if isinstance(data, dict) else None
     except OSError:
         return None
+
 
 async def _sync_myst_wallet_after_deploy(deploy_credentials: dict[str, Any], container_id: str) -> None:
     wallet_id = int(deploy_credentials.get("myst_wallet_id") or 0)
@@ -382,6 +388,7 @@ async def _sync_myst_wallet_after_deploy(deploy_credentials: dict[str, Any], con
         if status:
             state["myst_registration_status"] = status
     _save_myst_wallet_state(state)
+
 
 async def _myst_provider_state() -> dict[str, Any] | None:
     state = _load_myst_wallet_state()
@@ -415,10 +422,15 @@ async def _myst_provider_state() -> dict[str, Any] | None:
         "evidence": {
             "container_id": state.get("container_id", ""),
             "source": "heartbeat",
-            **({"public_ip": str(state.get("myst_public_ip") or state.get("myst_wallet_public_ip") or "")} if str(state.get("myst_public_ip") or state.get("myst_wallet_public_ip") or "") else {}),
+            **(
+                {"public_ip": str(state.get("myst_public_ip") or state.get("myst_wallet_public_ip") or "")}
+                if str(state.get("myst_public_ip") or state.get("myst_wallet_public_ip") or "")
+                else {}
+            ),
             **({"registration_status": registration_status} if registration_status else {}),
         },
     }
+
 
 async def _release_myst_wallet_state(reason: str) -> None:
     state = _load_myst_wallet_state()
@@ -933,6 +945,7 @@ class RuntimeAssetSpec(BaseModel):
     decrypt: str | None = None
     decrypt_key_arg: str | None = None
 
+
 class DeploySpec(BaseModel):
     image: str
     env: dict[str, str] = {}
@@ -948,14 +961,20 @@ class DeploySpec(BaseModel):
     resources: ResourceSpec | None = None
     egress_mode: str | None = None
     egress_udp: str | None = None
+    proxy: dict[str, Any] | None = None
     runtime_assets: list[RuntimeAssetSpec] = Field(default_factory=list)
     installer_manifest_url: str | None = None
     installer_platform: str | None = None
     deploy_credentials: dict[str, Any] = Field(default_factory=dict)
+    provider_slug: str | None = None
+    host_runtime: str | None = None
+    sysctls: dict[str, str] | None = None
+    shm_size: str | None = None
     # Advanced and unsupported. Absent means Docker's default runtime, which is
     # what everything uses and what everything is tested against.
     runtime: str | None = None
     user: str | None = None
+
 
 class EgressApplySpec(BaseModel):
     mode: str = proxy_egress.PROXY
@@ -964,13 +983,34 @@ class EgressApplySpec(BaseModel):
     proxy: dict[str, Any] | None = None
 
 
+class ProxyTargetProbeSpec(BaseModel):
+    proxy: dict[str, Any]
+    targets: list[str] = Field(default_factory=list)
+
+
+def _probe_proxy_url(proxy: dict[str, Any]) -> str:
+    scheme = str(proxy.get("protocol") or proxy.get("scheme") or "socks5").strip().lower()
+    if scheme == "socks":
+        scheme = "socks5"
+    host = str(proxy.get("host") or proxy.get("endpoint_ip") or "").strip()
+    port = int(proxy.get("port") or 0)
+    username = str(proxy.get("username") or "")
+    password = str(proxy.get("password") or "")
+    if not host or port <= 0:
+        raise ValueError("proxy host/port required")
+    auth = ""
+    if username:
+        auth = urllib.parse.quote(username, safe="") + ":" + urllib.parse.quote(password, safe="") + "@"
+    return f"{scheme}://{auth}{host}:{port}"
+
+
 async def _fetch_runtime_asset(provider: str, asset_kind: str) -> str:
     if not UI_URL:
         raise RuntimeError("CashPilot UI URL not configured")
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
             f"{UI_URL.rstrip('/')}/api/workers/runtime-asset",
-            headers={"Authorization": f"Bearer {API_KEY}"},
+            headers={"Authorization": f"Bearer {_active_key()}"},
             json={"client_id": CLIENT_ID, "provider": provider, "asset_kind": asset_kind},
         )
     if resp.status_code == 404:
@@ -983,19 +1023,20 @@ async def _fetch_runtime_asset(provider: str, asset_kind: str) -> str:
         raise ValueError(f"runtime asset {provider}:{asset_kind} missing value")
     return value
 
+
 async def _download_runtime_asset(url: str, dest: Path) -> bytes:
     dest.parent.mkdir(parents=True, exist_ok=True)
-    async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
-        async with client.stream("GET", url) as resp:
-            resp.raise_for_status()
-            buf = bytearray()
-            with dest.open("wb") as fh:
-                async for chunk in resp.aiter_bytes():
-                    if not chunk:
-                        continue
-                    fh.write(chunk)
-                    buf.extend(chunk)
+    async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client, client.stream("GET", url) as resp:
+        resp.raise_for_status()
+        buf = bytearray()
+        with dest.open("wb") as fh:
+            async for chunk in resp.aiter_bytes():
+                if not chunk:
+                    continue
+                fh.write(chunk)
+                buf.extend(chunk)
     return bytes(buf)
+
 
 def _decrypt_runtime_asset(data: bytes, mode: str | None, key: str | None) -> bytes:
     if not mode:
@@ -1006,47 +1047,21 @@ def _decrypt_runtime_asset(data: bytes, mode: str | None, key: str | None) -> by
         raise ValueError("Missing runtime asset decrypt key")
     return Fernet(key.encode()).decrypt(data)
 
+
 def _runtime_asset_url(asset: RuntimeAssetSpec, spec: DeploySpec, slug: str) -> str:
     url = str(asset.url or "").strip()
     if url:
         return url
     if asset.url_arg:
         return str((spec.deploy_credentials or {}).get(asset.url_arg) or "").strip()
-    if slug == "adnade" and asset.asset_kind == "chrome_profile_zip":
-        return str(
-            (spec.deploy_credentials or {}).get("chrome_profile_url")
-            or os.getenv("ADNADE_CHROME_PROFILE_URL")
-            or ""
-        ).strip()
     return ""
+
 
 def _runtime_asset_decrypt_key(asset: RuntimeAssetSpec, spec: DeploySpec, slug: str) -> str:
     if asset.decrypt_key_arg:
         return str((spec.deploy_credentials or {}).get(asset.decrypt_key_arg) or "").strip()
-    if slug == "adnade" and asset.asset_kind == "chrome_profile_zip":
-        return str(
-            (spec.deploy_credentials or {}).get("chrome_profile_key")
-            or os.getenv("ADNADE_CHROME_PROFILE_KEY")
-            or ""
-        ).strip()
     return ""
 
-_ADNADE_EXTENSION_IDS = ("flemjfpeajijmofcpgfgckfbmomdflck", "fpdkjdnhkakefebpekbdhillbhonfjjp")
-
-def _stage_adnade_unpacked_extensions(profile_root: Path) -> None:
-    source_root = profile_root / ".config" / "chromium" / "Default" / "Extensions"
-    target_root = profile_root / "cashpilot-extensions"
-    for ext_id in _ADNADE_EXTENSION_IDS:
-        ext_root = source_root / ext_id
-        if not ext_root.is_dir():
-            continue
-        versions = sorted((p for p in ext_root.iterdir() if (p / "manifest.json").is_file()), reverse=True)
-        if not versions:
-            continue
-        target = target_root / ext_id
-        if target.exists():
-            shutil.rmtree(target)
-        shutil.copytree(versions[0], target)
 
 async def _materialize_runtime_assets(slug: str, spec: DeploySpec) -> None:
     if not spec.runtime_assets:
@@ -1083,15 +1098,13 @@ async def _materialize_runtime_assets(slug: str, spec: DeploySpec) -> None:
             host_path.mkdir(parents=True, exist_ok=True)
             with zipfile.ZipFile(io.BytesIO(data)) as archive:
                 archive.extractall(host_path)
-            if slug == "adnade":
-                _stage_adnade_unpacked_extensions(host_path / "chromeprofiledata")
-            mode = "rw" if slug == "adnade" and target == "/config" else "ro"
-            spec.volumes[str(_docker_host_path(host_path / "chromeprofiledata"))] = {"bind": target, "mode": mode}
+            spec.volumes[str(_docker_host_path(host_path / "chromeprofiledata"))] = {"bind": target, "mode": "ro"}
             continue
         host_path.write_bytes(data)
         with contextlib.suppress(OSError):
-            host_path.chmod(0o600)
+            host_path.chmod(0o644)
         spec.volumes[str(_docker_host_path(host_path))] = {"bind": target, "mode": "ro"}
+
 
 _BLOCKED_VOLUME_ROOTS = {
     "/",
@@ -1287,6 +1300,7 @@ def _catalog_host_network_slugs() -> set[str]:
 # catalog services that declare it (checked separately below, by slug). `container:<id>`
 # (namespace join) and any other value are rejected outright.
 _ALLOWED_NETWORK_MODES = {None, "", "bridge", "none", "host"}
+_HOST_NETWORK_DIRECT_EXCEPTIONS = {"earnfm"}
 
 
 def _validate_runtime(runtime: str | None) -> None:
@@ -1318,16 +1332,17 @@ def _validate_runtime(runtime: str | None) -> None:
 
 def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
     _validate_runtime(spec.runtime)
+    provider_slug = spec.provider_slug or slug
     if spec.privileged:
         raise HTTPException(status_code=403, detail="Privileged containers are not allowed")
     if spec.cap_add:
         requested = {c.upper() for c in spec.cap_add}
-        blocked = requested - _catalog_allowed_capabilities(slug)
+        blocked = requested - _catalog_allowed_capabilities(provider_slug)
         if blocked:
             raise HTTPException(status_code=403, detail=f"Blocked capabilities: {', '.join(sorted(blocked))}")
     if spec.devices:
         requested_devices = {str(d).split(":")[0].rstrip("/") for d in spec.devices}
-        blocked_devices = requested_devices - _catalog_allowed_devices(slug)
+        blocked_devices = requested_devices - _catalog_allowed_devices(provider_slug)
         if blocked_devices:
             raise HTTPException(
                 status_code=403,
@@ -1335,7 +1350,9 @@ def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
             )
     if spec.network_mode not in _ALLOWED_NETWORK_MODES:
         raise HTTPException(status_code=403, detail=f"Network mode '{spec.network_mode}' is not allowed")
-    if spec.network_mode == "host" and slug not in _catalog_host_network_slugs():
+    if spec.network_mode == "host" and provider_slug not in (
+        _catalog_host_network_slugs() | _HOST_NETWORK_DIRECT_EXCEPTIONS
+    ):
         raise HTTPException(status_code=403, detail=f"Network mode 'host' is not allowed for '{slug}'")
     for source in spec.volumes:
         if not source.startswith("/"):
@@ -1404,6 +1421,7 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
         container_id = await asyncio.to_thread(
             orchestrator.deploy_raw,
             slug=slug,
+            provider_slug=spec.provider_slug,
             image=spec.image,
             env=spec.env,
             ports=spec.ports,
@@ -1422,8 +1440,12 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             installer_platform=spec.installer_platform,
             deploy_credentials=spec.deploy_credentials,
             user=spec.user,
+            host_runtime=spec.host_runtime,
+            proxy=spec.proxy,
+            sysctls=spec.sysctls,
+            shm_size=spec.shm_size,
         )
-        if slug == "mysterium":
+        if (spec.provider_slug or slug) == "mysterium":
             try:
                 await _sync_myst_wallet_after_deploy(spec.deploy_credentials, container_id)
             except Exception as exc:
@@ -1432,6 +1454,33 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
     except Exception:
         logger.exception("Deploy failed for %s", slug)
         raise HTTPException(status_code=500, detail="Container deployment failed")
+
+
+@app.post("/api/proxy/probe-targets")
+async def api_probe_proxy_targets(request: Request, spec: ProxyTargetProbeSpec) -> dict[str, Any]:
+    _verify_api_key(request)
+    targets = spec.targets or [
+        "https://example.com/",
+        "https://proxyjs.brdtnet.com/",
+        "https://api.ipify.org?format=json",
+    ]
+    try:
+        proxy_url = _probe_proxy_url(spec.proxy)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    results: list[dict[str, Any]] = []
+    try:
+        async with httpx.AsyncClient(proxy=proxy_url, timeout=12, follow_redirects=False, trust_env=False) as client:
+            for target in targets:
+                try:
+                    resp = await client.get(target, headers={"user-agent": "Mozilla/5.0"})
+                    ok = 0 < resp.status_code < 500
+                    results.append({"target": target, "status_code": resp.status_code, "ok": ok})
+                except Exception as exc:
+                    results.append({"target": target, "status_code": 0, "ok": False, "error": type(exc).__name__})
+    except Exception as exc:
+        return {"ok": False, "results": results, "error": type(exc).__name__}
+    return {"ok": all(item["ok"] for item in results), "results": results}
 
 
 @app.post("/api/containers/{slug}/restart")
@@ -1651,10 +1700,12 @@ async def api_health() -> dict[str, str]:
     """Health check endpoint (no auth required)."""
     return {"status": "ok", "worker": WORKER_NAME}
 
+
 @app.get("/api/egress/status")
 async def api_egress_status(request: Request) -> dict[str, Any]:
     _verify_api_key(request)
     return {"configured": _EGRESS_CONFIG_FILE.is_file(), "path": str(_EGRESS_CONFIG_FILE)}
+
 
 @app.post("/api/egress/apply")
 async def api_egress_apply(request: Request, body: EgressApplySpec) -> dict[str, Any]:

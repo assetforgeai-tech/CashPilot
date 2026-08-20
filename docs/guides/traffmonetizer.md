@@ -39,7 +39,7 @@ Sign up at [Traffmonetizer](https://traffmonetizer.com/?aff=2111758).
 
 ### 2. Get your credentials
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+After signing up, copy the dashboard's **Your application token** for deployment. Earnings collection uses the account email and password.
 
 ### 3. Deploy with CashPilot
 
@@ -54,5 +54,5 @@ In the CashPilot web UI, find **Traffmonetizer** in the service catalog and clic
 
 | Variable | Label | Required | Secret | Description |
 |----------|-------|:--------:|:------:|-------------|
-| `TRAFFMONETIZER_TOKEN` | Token | Yes | Yes | Your Traffmonetizer account token (found in Dashboard > Docker run command) |
+| `TRAFFMONETIZER_TOKEN` | Token | Yes | Yes | Your Traffmonetizer application token (found in the dashboard card) |
 | `TRAFFMONETIZER_DEVICE_NAME` | Device name | No | No | Name displayed in dashboard for device management (default: `cashpilot-{hostname}`) |

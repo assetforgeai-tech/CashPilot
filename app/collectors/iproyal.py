@@ -71,7 +71,17 @@ class IPRoyalCollector(BaseCollector):
     async def collect(self) -> EarningsResult:
         """Fetch current IPRoyal Pawns balance."""
         try:
-            client = self._get_client(timeout=30)
+            client = self._get_client(
+                timeout=15,
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/74.0.3729.169 Safari/537.36"
+                    ),
+                    "X-Locale": "EN",
+                },
+            )
 
             if not self._token:
                 self._token = await self._login(client)

@@ -7,16 +7,19 @@ inspection for cashpilot-managed containers via the Docker SDK.
 
 from __future__ import annotations
 
+import base64
+import json
 import logging
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
+from urllib.request import Request, urlopen
 
 import docker
 from docker.errors import APIError, DockerException, NotFound
 
-from app import myst_runtime, provider_automation, provider_installers
+from app import myst_runtime, provider_automation, provider_installers, singbox_config
 
 try:
     from app.catalog import critical_volume_targets, get_service, get_services
@@ -84,6 +87,39 @@ def _get_client() -> docker.DockerClient:
 
 def _container_name(slug: str) -> str:
     return f"{CONTAINER_PREFIX}{slug}"
+
+
+def _sidecar_name(slug: str) -> str:
+    return f"{_container_name(slug)}-egress"
+
+
+def _tun2proxy_url(proxy: dict[str, Any]) -> str:
+    scheme = "http" if str(proxy.get("protocol") or "").lower() == "http" else "socks5"
+    auth = ""
+    if proxy.get("username"):
+        from urllib.parse import quote
+
+        auth = quote(str(proxy["username"]), safe="") + ":" + quote(str(proxy.get("password") or ""), safe="") + "@"
+    return f"{scheme}://{auth}{proxy['host']}:{int(proxy['port'])}"
+
+def _urnetwork_auth_code(api_key: str) -> str:
+    req = Request(
+        "https://api.bringyour.com/auth/code-create",
+        data=b'{"uses":1,"duration_minutes":1440}',
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    with urlopen(req, timeout=60) as resp:  # noqa: S310 - fixed provider API endpoint.
+        payload = json.loads(resp.read().decode("utf-8"))
+    code = payload.get("auth_code") or payload.get("code")
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    code = code or data.get("auth_code") or data.get("code")
+    if not code:
+        raise RuntimeError("URNetwork auth_code empty")
+    return str(code)
 
 
 def _find_container(slug: str):
@@ -203,7 +239,12 @@ def deploy_raw(
     installer_manifest_url: str | None = None,
     installer_platform: str | None = None,
     deploy_credentials: dict[str, Any] | None = None,
+    provider_slug: str | None = None,
+    host_runtime: str | None = None,
     user: str | None = None,
+    proxy: dict[str, Any] | None = None,
+    sysctls: dict[str, str] | None = None,
+    shm_size: str | None = None,
 ) -> str:
     """Deploy a container from a raw spec (no catalog lookup).
 
@@ -211,43 +252,26 @@ def deploy_raw(
     ``resources`` (mem_limit / mem_reservation / oom_score_adj) makes the
     container's cgroup limits durable across recreates. Returns the container ID.
     """
+    provider = provider_slug or slug
     client = _get_client()
     name = _container_name(slug)
     if installer_manifest_url:
-        resolved = provider_installers.resolve_installer_manifest(slug, installer_manifest_url, installer_platform)
-        image = provider_installers.ensure_installer_image(client, slug, resolved)
+        resolved = provider_installers.resolve_installer_manifest(provider, installer_manifest_url, installer_platform)
+        image = provider_installers.ensure_installer_image(client, provider, resolved)
     env = dict(env or {})
-    if slug == "wipter" and deploy_credentials:
+    if provider == "wipter" and deploy_credentials:
         env["WIPTER_EMAIL"] = str(deploy_credentials.get("email") or "")
         env["WIPTER_PASSWORD"] = str(deploy_credentials.get("password") or "")
-    if slug == "proxybase" and deploy_credentials:
-        env["ID"] = str(deploy_credentials.get("deploy_access_token") or "")
+    if provider == "proxybase" and deploy_credentials:
         env["NAME"] = str(env.get("NAME") or "")
-    if slug == "proxylite" and deploy_credentials:
-        env["USER_ID"] = str(deploy_credentials.get("user_id") or "")
-    if slug == "urnetwork" and deploy_credentials:
-        env["UR_AUTH_TOKEN"] = str(deploy_credentials.get("auth_token") or "")
-    if slug == "proxybase-xyz" and deploy_credentials:
+        command = [str(deploy_credentials.get("deploy_access_token") or ""), env["NAME"]]
+    if provider == "urnetwork" and deploy_credentials:
+        env["UR_API_KEY"] = str(deploy_credentials.get("api_key") or "")
+        command = command or "provide"
+    if provider == "proxybase-xyz" and deploy_credentials:
         env["PROXYBASE_XYZ_PHRASE"] = str(deploy_credentials.get("phrase") or "")
         image = provider_installers.ensure_proxybase_xyz_image(client)
         command = command or provider_installers.proxybase_xyz_command()
-    if slug == "adnade" and deploy_credentials:
-        username = str(deploy_credentials.get("username") or "").strip()
-        env["ADNADE_USERNAME"] = username
-        env["ADNADE_USE_CHROME"] = "true"
-        env["CUSTOM_PORT"] = str(env.get("CUSTOM_PORT") or "3500")
-        env["CUSTOM_HTTPS_PORT"] = str(env.get("CUSTOM_HTTPS_PORT") or "3501")
-        env["CUSTOM_USER"] = str(env.get("CUSTOM_USER") or "internetincome")
-        env["PASSWORD"] = str(env.get("PASSWORD") or "internetincome")
-        env["PUID"] = str(env.get("PUID") or "1000")
-        env["PGID"] = str(env.get("PGID") or "1000")
-        env["TZ"] = str(env.get("TZ") or "Etc/UTC")
-        extensions = (
-            "/config/.config/chromium/Default/Extensions/flemjfpeajijmofcpgfgckfbmomdflck/0.1.6_0,"
-            "/config/.config/chromium/Default/Extensions/fpdkjdnhkakefebpekbdhillbhonfjjp/3.0.10_0"
-        )
-        env["CHROME_CLI"] = f"--load-extension={extensions} https://adnade.net/view.php?user={username}&multi=4"
-
     # Remove any existing container with the same name
     try:
         old = client.containers.get(name)
@@ -255,6 +279,15 @@ def deploy_raw(
         old.remove(force=True)
     except NotFound:
         pass
+    sidecar_name = _sidecar_name(slug)
+    try:
+        old_sidecar = client.containers.get(sidecar_name)
+        logger.info("Removing existing egress sidecar %s", sidecar_name)
+        old_sidecar.remove(force=True)
+    except NotFound:
+        pass
+    if provider == "mysterium" and deploy_credentials and deploy_credentials.get("myst_wallet_raw"):
+        _remove_named_volumes(volumes or {})
 
     all_labels = {
         LABEL_SERVICE: slug,
@@ -272,6 +305,21 @@ def deploy_raw(
     except APIError as exc:
         logger.warning("Failed to pull image %s: %s (trying local)", image, exc)
 
+    if provider == "urnetwork" and deploy_credentials:
+        api_key = str(deploy_credentials.get("api_key") or "")
+        if not api_key:
+            raise RuntimeError("URNetwork API key is required")
+        urn_volumes = volumes or {"urnetwork-data": {"bind": "/root/.urnetwork", "mode": "rw"}}
+        client.containers.run(
+            image=image,
+            volumes=urn_volumes,
+            network_mode="bridge",
+            entrypoint="/usr/local/sbin/bringyour-provider",
+            command=["auth", _urnetwork_auth_code(api_key)],
+            detach=False,
+            remove=True,
+        )
+        volumes = urn_volumes
     # Durable resource limits (only passed when explicitly set, so Docker
     # defaults are preserved otherwise). memswap is deliberately left unset:
     # at create time mem_limit alone avoids the cgroup-v2 swap validation issue.
@@ -280,17 +328,49 @@ def deploy_raw(
         key: res[key] for key in ("mem_limit", "mem_reservation", "oom_score_adj") if res.get(key) is not None
     }
 
-    logger.info("Creating container %s from %s", name, image)
-    # linuxserver/chromium initializes nginx/dbus inside the container and needs
-    # Docker's default CHOWN/SETUID-style caps during boot. Dropping every cap
-    # leaves the browser UI port open but nginx dead-looping on chown.
-    cap_drop = None if slug == "adnade" else ["ALL"]
+    if proxy and not network_mode:
+        logger.info("Creating egress sidecar %s", sidecar_name)
+        config = singbox_config.render_tun_proxy_config(
+            proxy,
+            worker_name=slug,
+            udp_direct=provider in {"traffmonetizer", "mysterium"},
+            interface_name="cpegress" if provider == "repocket" else "cp-egress",
+        )
+        encoded_config = base64.b64encode(json.dumps(config).encode()).decode()
+        client.containers.run(
+            image="ghcr.io/sagernet/sing-box:latest",
+            name=sidecar_name,
+            environment={
+                "SINGBOX_CONFIG_B64": encoded_config,
+                "ENABLE_DEPRECATED_LEGACY_DNS_SERVERS": "true",
+            },
+            entrypoint=[
+                "/bin/sh",
+                "-c",
+                'printf "%s" "$SINGBOX_CONFIG_B64" | base64 -d > /tmp/sing-box.json && exec sing-box run -c /tmp/sing-box.json',
+            ],
+            cap_add=["NET_ADMIN"],
+            devices=["/dev/net/tun:/dev/net/tun"],
+            ports=ports if provider == "mysterium" and ports else None,
+            labels={
+                LABEL_SERVICE: slug,
+                LABEL_MANAGED: "true",
+                LABEL_VERSION: "1",
+                LABEL_CATEGORY: category,
+                LABEL_DEPLOYED_BY: "worker",
+                "cashpilot.role": "egress-sidecar",
+            },
+            detach=True,
+            restart_policy={"Name": "always"},
+        )
+        network_mode = f"container:{sidecar_name}"
 
+    logger.info("Creating container %s from %s", name, image)
     container = client.containers.run(
         image=image,
         name=name,
         environment=env,
-        ports=ports if ports and network_mode != "host" else None,
+        ports=ports if ports and not network_mode else None,
         volumes=volumes if volumes else None,
         network_mode=network_mode,
         # These images are third-party and closed-source, so they get the minimum
@@ -300,18 +380,22 @@ def deploy_raw(
         # in-container root with Docker's full default set, which includes NET_RAW
         # (ARP/DNS spoofing on the bridge), MKNOD, SETUID and SYS_CHROOT.
         devices=devices or None,
-        cap_drop=cap_drop,
+        cap_drop=["ALL"],
         cap_add=cap_add or None,
         # no-new-privileges blocks privilege escalation via setuid binaries; privileged
         # is hardcoded off so the dangerous state is unrepresentable here rather than
         # merely refused upstream by the worker's spec validation.
-        security_opt=["no-new-privileges:true"],
+        # Mysterium's node binary shells out through sudo while configuring iptables.
+        # Keep the exception scoped; it still runs non-privileged with explicit caps/devices.
+        security_opt=[] if provider == "mysterium" else ["no-new-privileges:true"],
         privileged=False,
         pids_limit=_PIDS_LIMIT,
         command=command if command else None,
         user=user or None,
+        sysctls=sysctls or None,
+        shm_size=shm_size or None,
         labels=all_labels,
-        hostname=hostname or f"cashpilot-{slug}",
+        hostname=(hostname or f"cashpilot-{slug}") if (not network_mode or provider == "earnfm") else None,
         detach=True,
         restart_policy={"Name": "always"},
         # None means Docker's default runtime, which is what every service uses
@@ -321,23 +405,33 @@ def deploy_raw(
     )
 
     logger.info("Container %s started: %s", name, container.short_id)
-    if slug == "grass" and deploy_credentials:
-        provider_automation.apply_grass_store_patch(container, deploy_credentials)
-    if slug == "mysterium" and deploy_credentials and deploy_credentials.get("myst_wallet_raw"):
+    if provider == "mysterium" and deploy_credentials and deploy_credentials.get("myst_wallet_raw"):
         address = myst_runtime.apply_direct_wallet(
             container,
             deploy_credentials,
             dashboard_password=str(
-                deploy_credentials.get("dashboard_password")
-                or deploy_credentials.get("myst_dashboard_password")
-                or ""
+                deploy_credentials.get("dashboard_password") or deploy_credentials.get("myst_dashboard_password") or ""
             ),
             mmn_api_key=str(deploy_credentials.get("mmn_api_key") or deploy_credentials.get("myst_mmn_api_key") or ""),
         )
         deploy_credentials["myst_wallet_address"] = address
+    if provider == "grass" and deploy_credentials:
+        provider_automation.apply_grass_store_patch(container, deploy_credentials)
     if slug == "wipter" and deploy_credentials:
         provider_automation.schedule_wipter_post_login_restart(container)
     return container.id
+
+
+def _remove_named_volumes(volumes: dict[str, Any]) -> None:
+    client = _get_client()
+    for source in volumes:
+        if str(source).startswith(("/", ".", "~")):
+            continue
+        try:
+            client.volumes.get(str(source)).remove(force=True)
+            logger.info("Removed stale named volume %s before wallet import", source)
+        except NotFound:
+            pass
 
 
 def _parse_stop_timeout(value: Any) -> int:
@@ -540,6 +634,16 @@ def remove_service(slug: str, delete_volumes: bool = False, allow_delete_critica
     container.remove(force=True)
     logger.info("Removed container %s", name)
 
+    sidecar_name = _sidecar_name(slug)
+    try:
+        sidecar = _get_client().containers.get(sidecar_name)
+        sidecar.remove(force=True)
+        logger.info("Removed sidecar container %s", sidecar_name)
+    except NotFound:
+        pass
+    except APIError as exc:
+        logger.warning("Failed to remove sidecar container %s: %s", sidecar_name, exc)
+
     deleted_volumes: list[str] = []
     failed_volumes: list[str] = []
     if volume_names:
@@ -612,6 +716,7 @@ def _network_totals(stats: dict[str, Any]) -> tuple[int | None, int | None]:
         tx += int(iface.get("tx_bytes") or 0)
     return rx, tx
 
+
 def _provider_evidence(slug: str, container: Any) -> dict[str, Any]:
     """Provider-specific runtime evidence for status snapshots."""
     if slug == "wipter":
@@ -642,13 +747,15 @@ def _provider_evidence(slug: str, container: Any) -> dict[str, Any]:
                 "s=socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)\n"
                 "s.settimeout(2)\n"
                 "s.connect('/root/.local/share/UpRock/daemon.sock')\n"
-                "s.sendall(b'{\"cmd\":\"status\"}\\n')\n"
+                's.sendall(b\'{"cmd":"status"}\\n\')\n'
                 "print(s.recv(4096).decode())\n"
                 "s.close()\n"
                 "PY",
             ]
         )
-        logs = container.exec_run(["sh", "-lc", "tail -40 /root/.local/share/UpRock/logs/mining.log 2>/dev/null || true"])
+        logs = container.exec_run(
+            ["sh", "-lc", "tail -40 /root/.local/share/UpRock/logs/mining.log 2>/dev/null || true"]
+        )
     except Exception as exc:
         logger.debug("Uprock evidence unavailable for %s: %s", getattr(container, "short_id", "?"), exc)
         return {}
@@ -657,14 +764,8 @@ def _provider_evidence(slug: str, container: Any) -> dict[str, Any]:
     try:
         status_out = getattr(status, "output", b"") or b""
         logs_out = getattr(logs, "output", b"") or b""
-        if isinstance(status_out, bytes):
-            status_text = status_out.decode("utf-8", errors="replace")
-        else:
-            status_text = str(status_out)
-        if isinstance(logs_out, bytes):
-            logs_text = logs_out.decode("utf-8", errors="replace")
-        else:
-            logs_text = str(logs_out)
+        status_text = status_out.decode("utf-8", errors="replace") if isinstance(status_out, bytes) else str(status_out)
+        logs_text = logs_out.decode("utf-8", errors="replace") if isinstance(logs_out, bytes) else str(logs_out)
         return provider_automation.uprock_status_snapshot(status_text, logs_text)
     except Exception as exc:
         logger.debug("Uprock evidence parse failed for %s: %s", getattr(container, "short_id", "?"), exc)
@@ -737,12 +838,18 @@ def get_status() -> list[dict[str, Any]]:
     labeled_stats = _collect_stats_bulk(list(labeled))
     for c in labeled:
         try:
+            if (c.labels or {}).get("cashpilot.role") == "egress-sidecar":
+                continue
             seen_ids.add(c.id)
-            slug = c.labels.get(LABEL_SERVICE, "unknown")
+            slug = c.labels.get("cashpilot.provider") or c.labels.get(LABEL_SERVICE, "unknown")
+            instance_slug = c.labels.get(LABEL_SERVICE, slug)
+            instance_mode = c.labels.get("cashpilot.instance_mode", "")
             cpu_pct, mem_mb, net_rx, net_tx = labeled_stats.get(c.id, (0.0, 0.0, None, None))
             results.append(
                 {
                     "slug": slug,
+                    "instance_slug": instance_slug,
+                    "instance_mode": instance_mode,
                     "name": c.name,
                     "status": c.status,
                     "image": c.image.tags[0] if c.image.tags else str(c.image.short_id),
@@ -877,11 +984,17 @@ def get_status_light() -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     for c in labeled:
         try:
+            if (c.labels or {}).get("cashpilot.role") == "egress-sidecar":
+                continue
             seen_ids.add(c.id)
-            slug = c.labels.get(LABEL_SERVICE, "unknown")
+            slug = c.labels.get("cashpilot.provider") or c.labels.get(LABEL_SERVICE, "unknown")
+            instance_slug = c.labels.get(LABEL_SERVICE, slug)
+            instance_mode = c.labels.get("cashpilot.instance_mode", "")
             results.append(
                 {
                     "slug": slug,
+                    "instance_slug": instance_slug,
+                    "instance_mode": instance_mode,
                     "name": c.name,
                     "status": c.status,
                     "image": c.image.tags[0] if c.image.tags else str(c.image.short_id),

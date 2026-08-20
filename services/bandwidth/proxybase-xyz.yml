@@ -17,31 +17,24 @@ referral:
   code: "nXzS3c6iTO"
 
 docker:
-  image: "ubuntu:24.04"
+  image: ""
   platforms: [linux/amd64, linux/arm64]
   resources:
     mem_limit: "128m"
     oom_score_adj: 300
-  env:
-    - key: BACKEND_URL
-      label: "Backend API URL"
-      required: false
-      secret: false
-      description: "Override the backend API URL (defaults to https://api.proxybase.xyz)"
-      default: "https://api.proxybase.xyz"
+  env: []
   ports: []
-  volumes:
-    - "proxybase-xyz-data:/root/.proxybase"
-  command: >-
-    sh -lc 'set -e; CLI="$(command -v proxybase-cli || true)"; if [ -z "$CLI" ]; then for p in "$HOME/.local/bin/proxybase-cli" "/root/.local/bin/proxybase-cli" "/usr/local/bin/proxybase-cli"; do if [ -x "$p" ]; then CLI="$p"; break; fi; done; fi; if [ -z "$CLI" ]; then echo "proxybase-cli not found" >&2; exit 1; fi; PHASE="${PROXYBASE_XYZ_PHRASE:?missing wallet phrase}"; "$CLI" wallet import "$PHASE"; "$CLI" login; "$CLI" seller start --foreground'
+  volumes: []
+  command: ""
   network_mode: ""
   setup: >
-    CashPilot builds a local image with the official Linux CLI, imports the configured
-    wallet phrase at runtime with <code>proxybase-cli wallet import</code>, runs
-    <code>proxybase-cli login</code>, then starts selling bandwidth with
-    <code>seller start --foreground</code>. No dashboard token is required.
+    Source runtime is host-systemd, not Docker. The worker should run
+    proxybase.xyz by installing the official CLI on the host, importing the
+    wallet phrase, logging in, and starting the seller service under systemd.
+    No docker deploy path is authoritative.
 
 deploy:
+  deploy_surface: host_systemd
   credentials:
     - key: phrase
       label: "Wallet phrase"

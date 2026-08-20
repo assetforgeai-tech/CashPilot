@@ -58,6 +58,23 @@ def _device_money(device: dict[str, Any], keys: tuple[str, ...]) -> float | None
     return None
 
 
+def _as_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    if isinstance(value, (int, float)):
+        return value != 0
+    text = str(value).strip().lower()
+    return text in {"1", "true", "yes", "y", "on", "listed", "online", "connected", "verified", "active"}
+
+
+def _device_status(device: dict[str, Any]) -> str:
+    raw = device.get("status") or device.get("state") or device.get("connectionStatus") or ""
+    text = str(raw).strip().lower()
+    return text or "unknown"
+
+
 class ProxiesSxCollector(BaseCollector):
     """Collect Proxies.sx peer earnings from the peer API."""
 
@@ -107,17 +124,26 @@ class ProxiesSxCollector(BaseCollector):
             return []
         result = []
         for device in await self._fetch_devices():
+            status = _device_status(device)
             result.append(
                 {
                     "device_id": device.get("deviceId") or device.get("device_id") or device.get("id") or "",
                     "name": device.get("name") or device.get("agentName") or "",
-                    "status": device.get("status") or device.get("state") or "",
-                    "online": bool(device.get("online") or str(device.get("status", "")).lower() in {"connected", "listed", "earning"}),
-                    "earning": str(device.get("status", "")).lower() == "earning" or bool(device.get("earning")),
+                    "status": status,
+                    "online": _as_bool(device.get("online")) or status in {"online", "connected", "listed", "earning"},
+                    "earning": status == "earning" or _as_bool(device.get("earning")),
+                    "listed": _as_bool(device.get("listed")) or status in {"listed", "earning"},
+                    "verification": str(device.get("verification") or device.get("verified") or "").strip().lower(),
+                    "speed": str(device.get("speed") or device.get("speedMbps") or "").strip(),
+                    "customer_routable": _as_bool(device.get("customerRoutable") or device.get("customer_routable")),
+                    "quality": device.get("quality") or device.get("qualityScore") or "",
+                    "traffic": str(device.get("traffic") or device.get("trafficBytes") or "").strip(),
+                    "last_seen": str(device.get("lastSeen") or device.get("last_seen") or "").strip(),
                     "country": device.get("country") or device.get("countryCode") or "",
                     "ip": device.get("ip") or device.get("publicIp") or "",
                     "pending_payout_usd": _device_money(device, ("pendingPayout", "pending_payout")) or 0.0,
-                    "total_earned_usd": _device_money(device, ("totalEarned", "total_earned", "earnings", "earned")) or 0.0,
+                    "total_earned_usd": _device_money(device, ("totalEarned", "total_earned", "earnings", "earned"))
+                    or 0.0,
                 }
             )
         return result

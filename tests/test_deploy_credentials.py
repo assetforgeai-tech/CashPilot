@@ -4,28 +4,29 @@ import pytest
 from fastapi import HTTPException
 
 from app import catalog, main
+from app.collectors import collector_credential_fields, service_credential_fields
 
 
-def test_grass_deploy_credentials_map_from_stored_config_to_worker_args():
+def test_grass_deploy_credentials_map_auth_seed_to_worker_args():
     svc = catalog.get_service("grass")
     config = {
+        "grass_store_access_token": '"access"',
+        "grass_store_refresh_token": '"refresh"',
+        "grass_store_token_expiry": "1818650340",
         "grass_store_wynd_status": '"CONNECTED"',
-        "grass_store_wynd_user_id": "user",
-        "grass_store_token_expiry": "1817965755",
-        "grass_store_auto_update": "true",
         "grass_store_wynd_authenticated": "true",
-        "grass_store_refresh_token": "refresh",
-        "grass_store_access_token": "access",
+        "grass_store_wynd_user_id": '"user"',
+        "grass_store_auto_update": "true",
     }
 
     assert main._resolve_deploy_credentials("grass", svc, config) == {
+        "store_access_token": '"access"',
+        "store_refresh_token": '"refresh"',
+        "store_token_expiry": "1818650340",
         "store_wynd_status": '"CONNECTED"',
-        "store_wynd_user_id": "user",
-        "store_token_expiry": "1817965755",
-        "store_auto_update": "true",
         "store_wynd_authenticated": "true",
-        "store_refresh_token": "refresh",
-        "store_access_token": "access",
+        "store_wynd_user_id": '"user"',
+        "store_auto_update": "true",
     }
 
 
@@ -36,8 +37,9 @@ def test_grass_deploy_credentials_are_required_before_worker_deploy():
         main._resolve_deploy_credentials("grass", svc, {})
 
     assert exc.value.status_code == 400
-    assert "wynd:user_id" in exc.value.detail
-    assert "accessToken" in exc.value.detail
+    assert "store.json accessToken" in exc.value.detail
+    assert "store.json wynd:user_id" in exc.value.detail
+
 
 def test_wipter_deploy_credentials_map_from_stored_config_to_worker_args():
     svc = catalog.get_service("wipter")
@@ -48,6 +50,7 @@ def test_wipter_deploy_credentials_map_from_stored_config_to_worker_args():
         {"wipter_email": "user@example.com", "wipter_password": "secret"},
     ) == {"email": "user@example.com", "password": "secret"}
 
+
 def test_proxybase_xyz_deploy_phrase_maps_from_settings_to_worker_args():
     svc = catalog.get_service("proxybase-xyz")
 
@@ -56,6 +59,7 @@ def test_proxybase_xyz_deploy_phrase_maps_from_settings_to_worker_args():
         svc,
         {"proxybase-xyz_phrase": "seed phrase words"},
     ) == {"phrase": "seed phrase words"}
+
 
 def test_proxybase_deploy_and_dashboard_tokens_stay_separate():
     svc = catalog.get_service("proxybase")
@@ -69,36 +73,117 @@ def test_proxybase_deploy_and_dashboard_tokens_stay_separate():
     )
     assert deploy == {"deploy_access_token": "deploy-token"}
 
-def test_proxylite_user_id_maps_from_settings_to_worker_args():
-    svc = catalog.get_service("proxylite")
 
-    assert main._resolve_deploy_credentials(
-        "proxylite",
-        svc,
-        {"proxylite_user_id": "000000"},
-    ) == {"user_id": "000000"}
-
-
-def test_urnetwork_auth_token_maps_from_settings_to_worker_args():
+def test_urnetwork_api_key_maps_from_settings_to_worker_args():
     svc = catalog.get_service("urnetwork")
 
     assert main._resolve_deploy_credentials(
         "urnetwork",
         svc,
-        {"urnetwork_auth_token": "jwt-token"},
-    ) == {"auth_token": "jwt-token"}
+        {"urnetwork_api_key": "api-key"},
+    ) == {"api_key": "api-key"}
 
-def test_adnade_username_maps_from_settings_to_worker_args():
-    svc = catalog.get_service("adnade")
 
+def test_proxyrack_deploy_runtime_requires_only_api_key():
+    svc = catalog.get_service("proxyrack")
+    fields = service_credential_fields("proxyrack", "deploy", svc, fallback=False)
+
+    assert [field["arg"] for field in fields] == ["api_key"]
+    assert fields[0]["required"] is True
     assert main._resolve_deploy_credentials(
-        "adnade",
+        "proxyrack",
         svc,
-        {
-            "adnade_username": "assetforge",
-            "adnade_chrome_profile_key": "key",
+        {"proxyrack_api_key": "api-key"},
+    ) == {"api_key": "api-key"}
+
+
+def test_settings_deploy_credentials_cover_node_creation_inputs_from_runtime_scripts():
+    expected = {
+        "earnfm": {"token"},
+        "grass": {
+            "store_access_token",
+            "store_refresh_token",
+            "store_token_expiry",
+            "store_wynd_status",
+            "store_wynd_authenticated",
+            "store_wynd_user_id",
+            "store_auto_update",
         },
-    ) == {
-        "username": "assetforge",
-        "chrome_profile_key": "key",
+        "packetstream": {"cid"},
+        "iproyal": {"email", "password", "device_name", "device_id"},
+        "proxies-sx": {"api_key", "agent_name"},
+        "proxyrack": {"api_key"},
+        "repocket": {"email", "api_key"},
+        "traffmonetizer": {"token"},
+        "urnetwork": {"api_key"},
+        "spide": {"email", "password"},
     }
+
+    for slug, args in expected.items():
+        fields = {
+            field["arg"]
+            for field in service_credential_fields(slug, "deploy", catalog.get_service(slug), fallback=False)
+        }
+        assert args <= fields, slug
+
+    tm_fields = {
+        field["arg"]
+        for field in service_credential_fields(
+            "traffmonetizer", "deploy", catalog.get_service("traffmonetizer"), fallback=False
+        )
+    }
+    assert "device_name" not in tm_fields
+
+
+def test_settings_collector_credentials_cover_provider_collector_notes():
+    expected = {
+        "earnfm": {"email", "password"},
+        "iproyal": {"email", "password"},
+        "packetstream": {"auth_token"},
+        "proxies-sx": {"api_key"},
+        "proxyrack": {"api_key"},
+        "repocket": {"email", "password"},
+        "traffmonetizer": {"email", "password"},
+        "urnetwork": {"email", "password"},
+    }
+
+    for slug, args in expected.items():
+        fields = {field["arg"] for field in collector_credential_fields(slug, catalog.get_service(slug))}
+        assert args <= fields, slug
+
+
+def test_iproyal_runtime_and_collector_credentials_are_separate():
+    svc = catalog.get_service("iproyal")
+
+    deploy_fields = {
+        field["key"]: field["arg"] for field in service_credential_fields("iproyal", "deploy", svc, fallback=False)
+    }
+    collector_fields = {field["key"]: field["arg"] for field in collector_credential_fields("iproyal", svc)}
+
+    assert deploy_fields["iproyal_email"] == "email"
+    assert deploy_fields["iproyal_password"] == "password"
+    assert collector_fields == {
+        "iproyal_collector_email": "email",
+        "iproyal_collector_password": "password",
+    }
+
+
+def test_node_count_only_providers_have_no_earnings_collector_inputs():
+    for slug in ("proxybase-xyz", "uprock", "wipter"):
+        svc = catalog.get_service(slug)
+        assert (svc.get("collector") or {}).get("type") == "manual"
+        assert collector_credential_fields(slug, svc) == []
+
+
+def test_deploy_config_fields_can_feed_docker_env():
+    svc = catalog.get_service("repocket")
+    env = {}
+
+    main._apply_deploy_config_to_env(
+        "repocket",
+        svc,
+        {"repocket_email": "user@example.com", "repocket_api_key": "api-key"},
+        env,
+    )
+
+    assert env == {"RP_EMAIL": "user@example.com", "RP_API_KEY": "api-key"}

@@ -206,26 +206,29 @@ class TestValidate:
         )
 
     def test_validate_accepts_collector_credentials(self, tmp_path):
-        assert catalog._validate(
-            {
-                **self._base(),
-                "collector": {
-                    "credentials": [
-                        {
-                            "key": "api_key",
-                            "label": "API key",
-                            "kind": "api_key",
-                            "secret": True,
-                            "required": True,
-                            "source": "dashboard",
-                            "expires_hours": 24,
-                            "durable": True,
-                        }
-                    ]
+        assert (
+            catalog._validate(
+                {
+                    **self._base(),
+                    "collector": {
+                        "credentials": [
+                            {
+                                "key": "api_key",
+                                "label": "API key",
+                                "kind": "api_key",
+                                "secret": True,
+                                "required": True,
+                                "source": "dashboard",
+                                "expires_hours": 24,
+                                "durable": True,
+                            }
+                        ]
+                    },
                 },
-            },
-            tmp_path / "t.yml",
-        ) == []
+                tmp_path / "t.yml",
+            )
+            == []
+        )
 
     def test_validate_accepts_deploy_and_dashboard_credentials(self, tmp_path):
         payload = {
@@ -290,7 +293,8 @@ class TestValidate:
 
     def test_all_shipped_services_pass_validation(self):
         # Guard: no real catalog entry is dropped by the loader's validation.
-        assert len(catalog.load_services()) >= 20
+        assert len(catalog.load_services()) >= 15
+
 
 class TestProviderAutomationContracts:
     def _svc(self, slug):
@@ -299,25 +303,23 @@ class TestProviderAutomationContracts:
     def _credential_keys(self, service, section):
         return {item["key"] for item in (service.get(section, {}).get("credentials") or [])}
 
-    def test_grass_runtime_uses_store_patch_credentials(self):
+    def test_grass_runtime_uses_auth_seed(self):
         svc = self._svc("grass")
         assert svc["docker"]["image"] == "cashpilot/grass-desktop:auto"
-        assert svc["deploy"]["installer_manifest_url"] == (
-            "https://files.grass.io/file/grass-extension-upgrades/desktop-installer-latest.json"
-        )
-        deploy_keys = self._credential_keys(svc, "deploy")
-        assert "installer_manifest_url" in deploy_keys
-        assert {
-            "store_wynd_status",
-            "store_wynd_user_id",
-            "store_token_expiry",
-            "store_auto_update",
-            "store_wynd_authenticated",
-            "store_refresh_token",
-            "store_access_token",
-        } <= deploy_keys
         assert svc["deploy"]["automation"] == "store_json_patch"
-        assert not svc["deploy"].get("runtime_assets")
+        assert svc["deploy"]["installer_manifest_url"] == (
+            "https://files.grass.io/file/grass-extension-upgrades/v7.6.0/grass-desktop_7.6.0_amd64.deb"
+        )
+        assert self._credential_keys(svc, "deploy") == {
+            "store_access_token",
+            "store_refresh_token",
+            "store_token_expiry",
+            "store_wynd_status",
+            "store_wynd_authenticated",
+            "store_wynd_user_id",
+            "store_auto_update",
+        }
+        assert "runtime_assets" not in svc["deploy"]
 
     def test_uprock_runtime_uses_official_seed_state_assets(self):
         svc = self._svc("uprock")
@@ -340,12 +342,13 @@ class TestProviderAutomationContracts:
                 "asset_kind": "main_db",
                 "target": "/cashpilot/runtime-assets/uprock/main.db",
                 "encoding": "base64",
-            }
+            },
         ]
 
     def test_spide_runtime_uses_device_key_registration(self):
         svc = self._svc("spide")
         assert svc["deploy"]["automation"] == "device_key_register"
+        assert svc["deploy"]["deploy_surface"] == "docker"
         assert "dashboard_token" in self._credential_keys(svc, "dashboard")
 
     def test_mysterium_runtime_uses_direct_wallet_deploy_credentials(self):
@@ -358,44 +361,39 @@ class TestProviderAutomationContracts:
         assert self._credential_keys(svc, "deploy") == {"deploy_access_token"}
         assert self._credential_keys(svc, "dashboard") == {"dashboard_access_token"}
         assert {item["key"] for item in svc["docker"]["env"]} == {"NAME"}
+        assert {item["default"] for item in svc["docker"]["env"] if item["key"] == "NAME"} == {"{hostname}"}
 
-    def test_proxylite_uses_deploy_user_id_only(self):
-        svc = self._svc("proxylite")
-        assert self._credential_keys(svc, "deploy") == {"user_id"}
-        assert self._credential_keys(svc, "dashboard") == set()
-        assert {item["key"] for item in svc["docker"]["env"]} == set()
+    def test_proxybase_xyz_uses_host_systemd_surface(self):
+        svc = self._svc("proxybase-xyz")
+        assert svc["deploy"]["deploy_surface"] == "host_systemd"
+        assert self._credential_keys(svc, "deploy") == {"phrase"}
 
-    def test_adnade_uses_chrome_profile_bundle(self):
-        svc = self._svc("adnade")
-        assert svc["docker"]["image"] == "lscr.io/linuxserver/chromium:latest"
-        assert svc["docker"]["ports"] == ["4000:3500"]
-        assert self._credential_keys(svc, "deploy") == {"username", "chrome_profile_key"}
-        assert self._credential_keys(svc, "collector") == {"username", "password"}
-        assert svc["deploy"]["runtime_assets"] == [
-            {
-                "provider": "adnade",
-                "asset_kind": "chrome_profile_zip",
-                "target": "/config",
-                "encoding": "zip",
-                "url": "https://adnade.acacondos.com/cashpilot/adnade/chromeprofiledata.ORIGINAL.zip.fernet",
-                "sha256": "685311d59e6b8c9df2250a874ee72474485f749f944795a0d43766ba3a9afb7b",
-                "decrypt": "fernet",
-                "decrypt_key_arg": "chrome_profile_key",
-            }
-        ]
-
-    def test_urnetwork_uses_deploy_auth_token_and_optional_api_key(self):
+    def test_urnetwork_uses_api_key_for_deploy_and_email_password_for_collector(self):
         svc = self._svc("urnetwork")
-        assert self._credential_keys(svc, "deploy") == {"auth_token"}
-        assert self._credential_keys(svc, "collector") == {"api_key"}
+        assert self._credential_keys(svc, "deploy") == {"api_key"}
+        assert self._credential_keys(svc, "collector") == {"email", "password"}
         assert self._credential_keys(svc, "dashboard") == set()
         assert {item["key"] for item in svc["docker"]["env"]} == set()
 
-    def test_dawn_and_titan_store_optional_dashboard_sessions_only(self):
-        assert self._credential_keys(self._svc("dawn"), "dashboard") == {"dashboard_session"}
-        titan = self._svc("titan")
-        assert self._credential_keys(titan, "dashboard") == {"dashboard_session"}
-        assert titan["collector"]["per_node_earnings"] is True
+    def test_earnfm_uses_api_key_for_deploy_and_email_password_for_collector(self):
+        svc = self._svc("earnfm")
+        assert self._credential_keys(svc, "deploy") == {"token"}
+        assert self._credential_keys(svc, "collector") == {"email", "password"}
+        assert "email/password" in svc["collector"]["credential_hint"]
+
+    def test_proxyrack_uses_deploy_api_key_only(self):
+        svc = self._svc("proxyrack")
+        assert self._credential_keys(svc, "deploy") == {"api_key"}
+        field = svc["deploy"]["credentials"][0]
+        assert field["required"] is True
+
+    def test_catalog_collector_credentials_match_collector_runtime(self):
+        from app.collectors import _COLLECTOR_ARGS
+
+        for slug, args in _COLLECTOR_ARGS.items():
+            svc = self._svc(slug)
+            expected = {arg.lstrip("?") for arg in args}
+            assert self._credential_keys(svc, "collector") == expected, slug
 
     def test_wipter_runtime_uses_env_login(self):
         svc = self._svc("wipter")

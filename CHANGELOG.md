@@ -616,7 +616,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 ### Fixes
 
-- Raise bitping mem_limit 128m->192m to prevent OOM (#96)
 
 ## [0.6.18] - 2026-07-05
 

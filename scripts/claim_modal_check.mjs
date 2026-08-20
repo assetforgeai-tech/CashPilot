@@ -8,7 +8,7 @@
 //
 // which is false. The service is in the catalog, on the dashboard, deployed and
 // running. On the reference fleet that wording appeared for 5 of 18 tracked
-// services: anyone-protocol, proxybase, proxylite, titan, uprock.
+// services: anyone-protocol, proxybase, proxylite, uprock.
 //
 // Three different facts hide behind one empty result and they need three
 // different answers. Only running the function can prove which one it gives, so
@@ -40,7 +40,7 @@ function grab(name) {
 // The catalog the stub server will answer with.
 const CATALOG = [
   {slug: 'anyone-protocol', name: 'Anyone Protocol', has_collector: true},
-  {slug: 'titan', name: 'Titan Network', has_collector: false},
+  {slug: 'proxylite', name: 'ProxyLite', has_collector: false},
 ];
 
 let apiBehaviour = 'ok';
@@ -89,7 +89,7 @@ check(
 
 // 2. A tracked service with NO collector. Different cause, different answer:
 //    no credential will ever help, so telling them to add one would be wrong.
-const noCollector = await run('titan');
+const noCollector = await run('proxylite');
 check('a collector-less service says so', /no earnings collector/i.test(noCollector.body), noCollector.body);
 check(
   'and does NOT send the user to add credentials',

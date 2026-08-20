@@ -37,7 +37,6 @@ cashpilot/
     exchange_rates.py       # Crypto/fiat conversion via CoinGecko + Frankfurter
     collectors/             # Earnings collectors (one module per service, UI only)
       base.py               # BaseCollector ABC + EarningsResult dataclass
-      earnapp.py            # Example: auth + balance endpoint
       __init__.py           # COLLECTOR_MAP registry + make_collectors() factory
     templates/              # Jinja2: dashboard, setup wizard, catalog, settings
     static/
@@ -120,7 +119,7 @@ The worker **never handles or stores credentials**:
 
 The UI runs scheduled collectors for each configured service:
 
-- **15 automated collectors** fetch balances via service APIs (JWT auth, cookie auth, API keys)
+- **11 automated collectors** fetch balances via service APIs (JWT auth, cookie auth, API keys)
 - Results stored in SQLite with native currency (USD, MYST, GRASS, STORJ, etc.)
 - Exchange rates fetched from CoinGecko (crypto) and Frankfurter (fiat), cached 15 minutes
 - Dashboard converts and displays in the user's preferred currency
@@ -160,3 +159,4 @@ SQLite with 400-day data retention. Key tables:
 - Container naming convention: `cashpilot-{slug}` with labels `cashpilot.managed=true`
 - UI container has **no** Docker socket access
 - Session-based authentication with role system (owner/writer/viewer)
+

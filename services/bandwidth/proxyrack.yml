@@ -6,7 +6,7 @@ website: https://peer.proxyrack.com
 description: >
   ProxyRack's Peer program lets you earn by sharing your bandwidth as part of
   their proxy network. Each device requires a unique 64-character hex UUID and
-  optionally an API key to auto-register the device. Works on both residential
+  and an API key to auto-register the device. Works on both residential
   and VPS/datacenter connections. Dashboard is behind Cloudflare, which may
   require manual browser-based API key retrieval.
 short_description: Bandwidth sharing - UUID per device, works on VPS
@@ -29,7 +29,7 @@ docker:
       description: "Unique 64-character hex ID per device. Generate with: cat /dev/urandom | tr -dc 'a-f0-9' | fold -w 64 | head -n 1"
     - key: API_KEY
       label: "API Key"
-      required: false
+      required: true
       secret: true
       description: "Log in at <a href=\"https://peer.proxyrack.com\">peer.proxyrack.com</a> → API Key is shown on the main dashboard page (auto-registers device if provided)"
     - key: DEVICE_NAME
@@ -37,12 +37,23 @@ docker:
       required: false
       secret: false
       description: "Friendly name for the device in dashboard"
-      default: "Device-${UUID}"
+      default: "{hostname}"
   ports: []
   volumes: []
   command: ""
   network_mode: ""
   privileged: false
+
+deploy:
+  credentials:
+    - key: api_key
+      label: "API Key"
+      kind: api_key
+      secret: true
+      required: true
+      env: API_KEY
+      source: "ProxyRack dashboard"
+      description: "API key used to auto-register the device."
 
 requirements:
   residential_ip: false
@@ -76,6 +87,14 @@ platforms: [docker, windows, macos, linux]
 
 collector:
   type: api
+  credentials:
+    - key: api_key
+      label: "API Key"
+      kind: api_key
+      secret: true
+      required: true
+      source: "ProxyRack dashboard"
+      description: "Api-Key header used by the earnings collector."
   notes: "Dashboard behind Cloudflare. May need API key from browser session. Per-device earnings visible."
   credential_hint: "Log in at <a href='https://peer.proxyrack.com' target='_blank'>peer.proxyrack.com</a>, press F12 → Network, find any API request and copy the <b>Api-Key</b> header value."
 

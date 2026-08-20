@@ -16,6 +16,7 @@ def test_spide_auth_headers_accept_cookie_or_bearer():
     bearer = provider_automation.spide_auth_headers("tok456")
     assert bearer["Authorization"] == "Bearer tok456"
 
+
 def test_uprock_status_snapshot_extracts_runtime_evidence():
     payload = '{"status":"ok","authenticated":true,"earning":true,"earn_rate":0.25,"version":"v0.0.38"}'
     logs = "connected url=wss://ws.olostep.com?device_id=uprock_00636ab7dd82d6a5&platform=desktop-linux"
@@ -30,6 +31,7 @@ def test_uprock_status_snapshot_extracts_runtime_evidence():
         "version": "v0.0.38",
         "device_id": "uprock_00636ab7dd82d6a5",
     }
+
 
 def test_wipter_status_snapshot_distinguishes_login_from_setup_and_traffic():
     logs = "\n".join(
@@ -47,6 +49,7 @@ def test_wipter_status_snapshot_distinguishes_login_from_setup_and_traffic():
         "traffic_seen": True,
     }
 
+
 def test_wipter_setup_complete_alone_is_not_authenticated():
     assert provider_automation.wipter_status_snapshot("Wipter setup complete.") == {
         "ok": False,
@@ -54,6 +57,7 @@ def test_wipter_setup_complete_alone_is_not_authenticated():
         "earning": False,
         "traffic_seen": False,
     }
+
 
 def test_wipter_status_accepts_persisted_login_state_without_log_marker():
     assert provider_automation.wipter_status_snapshot("HTTPS Request ID abc", login_state_persisted=True) == {
@@ -63,6 +67,7 @@ def test_wipter_status_accepts_persisted_login_state_without_log_marker():
         "traffic_seen": True,
     }
 
+
 def test_wipter_post_login_restart_waits_for_real_login_state():
     from unittest.mock import MagicMock
 
@@ -71,6 +76,7 @@ def test_wipter_post_login_restart_waits_for_real_login_state():
 
     assert provider_automation.apply_wipter_post_login_restart(container, timeout_seconds=1, poll_seconds=0) is True
     container.restart.assert_called_once()
+
 
 def test_wipter_restart_scheduler_returns_without_waiting():
     from unittest.mock import MagicMock, patch

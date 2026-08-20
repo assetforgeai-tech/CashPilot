@@ -38,6 +38,25 @@ docker:
   network_mode: ""
   privileged: false
 
+deploy:
+  credentials:
+    - key: email
+      label: "Email"
+      kind: email
+      secret: false
+      required: true
+      env: RP_EMAIL
+      source: "Repocket account"
+      description: "Account email used by the node runtime."
+    - key: api_key
+      label: "API Key"
+      kind: api_key
+      secret: true
+      required: true
+      env: RP_API_KEY
+      source: "Repocket dashboard bandwidth-earnings page"
+      description: "API key used by the node runtime; this is not your account password."
+
 requirements:
   residential_ip: true
   devices_per_account: 5
@@ -70,6 +89,21 @@ platforms: [docker, windows, macos, linux, android]
 
 collector:
   type: api
+  credentials:
+    - key: email
+      label: "Email"
+      kind: email
+      secret: false
+      required: true
+      source: "Repocket account"
+      description: "Account email used by the earnings collector."
+    - key: password
+      label: "Password"
+      kind: password
+      secret: true
+      required: true
+      source: "Repocket account"
+      description: "Account password used by the earnings collector."
   notes: "Earnings collector authenticates separately via Firebase (account email/password) to read the balance — distinct from the container's RP_API_KEY. Per-device earnings visible."
   credential_hint: "Use your Repocket account email and password (same as <a href='https://app.repocket.com' target='_blank'>app.repocket.com</a>)."
 

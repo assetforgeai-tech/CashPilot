@@ -27,6 +27,7 @@ _logger = logging.getLogger(__name__)
 class MystWalletPublicIpInUse(RuntimeError):
     pass
 
+
 DB_DIR = Path(os.getenv("CASHPILOT_DATA_DIR", "/data"))
 DB_PATH = DB_DIR / "cashpilot.db"
 
@@ -71,6 +72,12 @@ SECRET_CONFIG_KEYS = {
     "refresh_token",
     "store_wynd_status",
     "store_wynd_user_id",
+    "store_wynd_browser_id",
+    "store_wynd_device_privkey",
+    "store_wynd_device_pubkey",
+    "store_wynd_device_id",
+    "store_wynd_device_registered_pubkey",
+    "store_wynd_device_registered_user_id",
     "store_token_expiry",
     "store_auto_update",
     "store_wynd_authenticated",
@@ -321,6 +328,31 @@ CREATE TABLE IF NOT EXISTS myst_wallets (
 );
 """
 
+_NKN_WALLETS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS nkn_wallets (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    wallet_fingerprint TEXT    NOT NULL UNIQUE,
+    folder_name        TEXT    NOT NULL UNIQUE,
+    wallet_json_enc    TEXT    NOT NULL,
+    wallet_pswd_enc    TEXT    NOT NULL,
+    address            TEXT    NOT NULL DEFAULT '',
+    state              TEXT    NOT NULL DEFAULT 'AVAILABLE',
+    leased_to_worker_id INTEGER,
+    leased_to_client_id TEXT    NOT NULL DEFAULT '',
+    leased_at           TEXT,
+    release_reason      TEXT    NOT NULL DEFAULT '',
+    wallet_assignment_version INTEGER NOT NULL DEFAULT 0,
+    node_identity      TEXT    NOT NULL DEFAULT '',
+    runtime_status     TEXT    NOT NULL DEFAULT '',
+    public_ip          TEXT    NOT NULL DEFAULT '',
+    last_heartbeat_at  TEXT,
+    evidence_json      TEXT    NOT NULL DEFAULT '{}',
+    quarantined_reason TEXT    NOT NULL DEFAULT '',
+    imported_at        TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at         TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+"""
+
 
 def encrypt_value(value: str) -> str:
     """Encrypt a string value, returning an 'enc:' prefixed token."""
@@ -422,6 +454,22 @@ CREATE TABLE IF NOT EXISTS deployments (
     status             TEXT NOT NULL DEFAULT 'running'
 );
 
+CREATE TABLE IF NOT EXISTS provider_instances (
+    instance_id    TEXT PRIMARY KEY,
+    slug           TEXT NOT NULL,
+    worker_id      INTEGER,
+    mode           TEXT NOT NULL DEFAULT 'direct' CHECK(mode IN ('direct', 'proxy')),
+    container_id   TEXT NOT NULL DEFAULT '',
+    sidecar_id     TEXT NOT NULL DEFAULT '',
+    proxy_id       INTEGER,
+    status         TEXT NOT NULL DEFAULT 'planned',
+    spec_encrypted TEXT NOT NULL DEFAULT '',
+    deployed_at    TEXT,
+    updated_at     TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY(worker_id) REFERENCES workers(id) ON DELETE SET NULL,
+    FOREIGN KEY(proxy_id) REFERENCES proxy_endpoints(id) ON DELETE SET NULL
+);
+
 CREATE TABLE IF NOT EXISTS users (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     username   TEXT    NOT NULL UNIQUE,
@@ -505,6 +553,16 @@ CREATE TABLE IF NOT EXISTS proxy_assignments (
     FOREIGN KEY(proxy_id) REFERENCES proxy_endpoints(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS proxy_provider_masks (
+    proxy_id      INTEGER NOT NULL,
+    provider_slug TEXT    NOT NULL,
+    reason        TEXT    NOT NULL DEFAULT '',
+    masked_at     TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY(proxy_id, provider_slug),
+    FOREIGN KEY(proxy_id) REFERENCES proxy_endpoints(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS myst_wallets (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
     wallet_fingerprint TEXT    NOT NULL UNIQUE,
@@ -512,6 +570,29 @@ CREATE TABLE IF NOT EXISTS myst_wallets (
     address            TEXT    NOT NULL DEFAULT '',
     state              TEXT    NOT NULL DEFAULT 'AVAILABLE',
     funding            TEXT    NOT NULL DEFAULT 'FUNDED',
+    leased_to_worker_id INTEGER,
+    leased_to_client_id TEXT    NOT NULL DEFAULT '',
+    leased_at           TEXT,
+    release_reason      TEXT    NOT NULL DEFAULT '',
+    wallet_assignment_version INTEGER NOT NULL DEFAULT 0,
+    node_identity      TEXT    NOT NULL DEFAULT '',
+    runtime_status     TEXT    NOT NULL DEFAULT '',
+    public_ip          TEXT    NOT NULL DEFAULT '',
+    last_heartbeat_at  TEXT,
+    evidence_json      TEXT    NOT NULL DEFAULT '{}',
+    quarantined_reason TEXT    NOT NULL DEFAULT '',
+    imported_at        TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at         TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS nkn_wallets (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    wallet_fingerprint TEXT    NOT NULL UNIQUE,
+    folder_name        TEXT    NOT NULL UNIQUE,
+    wallet_json_enc    TEXT    NOT NULL,
+    wallet_pswd_enc    TEXT    NOT NULL,
+    address            TEXT    NOT NULL DEFAULT '',
+    state              TEXT    NOT NULL DEFAULT 'AVAILABLE',
     leased_to_worker_id INTEGER,
     leased_to_client_id TEXT    NOT NULL DEFAULT '',
     leased_at           TEXT,
@@ -615,6 +696,12 @@ CREATE INDEX IF NOT EXISTS idx_earnings_date
 
 CREATE INDEX IF NOT EXISTS idx_workers_status
     ON workers (status);
+
+CREATE INDEX IF NOT EXISTS idx_provider_instances_slug
+    ON provider_instances (slug, worker_id, mode);
+
+CREATE INDEX IF NOT EXISTS idx_proxy_provider_masks_provider
+    ON proxy_provider_masks(provider_slug, proxy_id);
 
 CREATE INDEX IF NOT EXISTS idx_health_events_slug
     ON health_events (slug, created_at);
@@ -851,7 +938,7 @@ async def _encrypt_legacy_plaintext_credentials(db: Any) -> int:
 #: missing a column -- an interrupted upgrade, a restored backup, a hand-edited
 #: file -- could never be repaired, because the gate would say there was nothing
 #: to do. The guards are idempotent and cheap; the version is for the operator.
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 16
 
 
 async def init_db() -> None:
@@ -988,6 +1075,23 @@ async def init_db() -> None:
         if "spec_encrypted" not in deployment_cols:
             applied.append("deployments.spec_encrypted")
             await db.execute("ALTER TABLE deployments ADD COLUMN spec_encrypted TEXT NOT NULL DEFAULT ''")
+
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS proxy_provider_masks (
+                proxy_id      INTEGER NOT NULL,
+                provider_slug TEXT    NOT NULL,
+                reason        TEXT    NOT NULL DEFAULT '',
+                masked_at     TEXT    NOT NULL DEFAULT (datetime('now')),
+                updated_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY(proxy_id, provider_slug),
+                FOREIGN KEY(proxy_id) REFERENCES proxy_endpoints(id) ON DELETE CASCADE
+            )
+            """
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_proxy_provider_masks_provider ON proxy_provider_masks(provider_slug, proxy_id)"
+        )
         # Migrate config table: add updated_at so credential age is knowable.
         # Existing rows are left NULL — see the note on the back-fill below.
         # (This comment used to say they receive the migration time, which is
@@ -1579,11 +1683,13 @@ async def save_runtime_asset(provider: str, asset_kind: str, value: str) -> None
 
     await set_config(runtime_assets.config_key(provider, asset_kind), value)
 
+
 async def get_runtime_asset(provider: str, asset_kind: str) -> str | None:
     from app import runtime_assets
 
     value = await get_config(runtime_assets.config_key(provider, asset_kind))
     return str(value) if value is not None else None
+
 
 async def list_runtime_assets() -> list[dict[str, Any]]:
     from app import runtime_assets
@@ -1603,6 +1709,7 @@ async def list_runtime_assets() -> list[dict[str, Any]]:
         return rows
     finally:
         await db.close()
+
 
 async def save_deployment(
     slug: str,
@@ -1701,10 +1808,138 @@ async def get_deployment(slug: str) -> dict[str, Any] | None:
         await db.close()
 
 
+async def set_deployment_status(slug: str, status: str) -> None:
+    db = await _get_db()
+    try:
+        await db.execute("UPDATE deployments SET status = ? WHERE slug = ?", (status, slug))
+        await db.commit()
+    finally:
+        await db.close()
+
+
 async def remove_deployment(slug: str) -> None:
     db = await _get_db()
     try:
         await db.execute("DELETE FROM deployments WHERE slug = ?", (slug,))
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def save_provider_instance(
+    slug: str,
+    instance_id: str,
+    *,
+    worker_id: int | None = None,
+    mode: str = "direct",
+    container_id: str = "",
+    sidecar_id: str = "",
+    proxy_id: int | None = None,
+    status: str = "planned",
+    spec: dict[str, Any] | None = None,
+) -> None:
+    spec_encrypted = ""
+    if spec is not None:
+        try:
+            spec_encrypted = encrypt_value(json.dumps(spec, sort_keys=True))
+        except (TypeError, ValueError):
+            _logger.error("Could not serialise provider instance spec for %s", instance_id, exc_info=True)
+    else:
+        existing = await get_provider_instance(instance_id)
+        if existing:
+            spec_encrypted = existing.get("spec_encrypted") or ""
+
+    db = await _get_db()
+    try:
+        await db.execute(
+            """
+            INSERT INTO provider_instances
+                (instance_id, slug, worker_id, mode, container_id, sidecar_id, proxy_id, status, spec_encrypted, deployed_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? != '' THEN datetime('now') ELSE NULL END, datetime('now'))
+            ON CONFLICT(instance_id) DO UPDATE SET
+                slug = excluded.slug,
+                worker_id = excluded.worker_id,
+                mode = excluded.mode,
+                container_id = excluded.container_id,
+                sidecar_id = excluded.sidecar_id,
+                proxy_id = excluded.proxy_id,
+                status = excluded.status,
+                spec_encrypted = excluded.spec_encrypted,
+                deployed_at = COALESCE(excluded.deployed_at, provider_instances.deployed_at),
+                updated_at = datetime('now')
+            """,
+            (
+                instance_id,
+                slug,
+                worker_id,
+                mode,
+                container_id,
+                sidecar_id,
+                proxy_id,
+                status,
+                spec_encrypted,
+                container_id,
+            ),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def get_provider_instance(instance_id: str) -> dict[str, Any] | None:
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT * FROM provider_instances WHERE instance_id = ?", (instance_id,))
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        await db.close()
+
+
+async def get_provider_instance_spec(instance_id: str) -> dict[str, Any] | None:
+    row = await get_provider_instance(instance_id)
+    blob = (row or {}).get("spec_encrypted") or ""
+    if not blob:
+        return None
+    raw = decrypt_value(blob)
+    if not raw:
+        return None
+    try:
+        spec = json.loads(raw)
+    except ValueError:
+        return None
+    return spec if isinstance(spec, dict) else None
+
+
+async def list_provider_instances(*, slug: str | None = None, worker_id: int | None = None) -> list[dict[str, Any]]:
+    clauses = []
+    params: list[Any] = []
+    if slug is not None:
+        clauses.append("slug = ?")
+        params.append(slug)
+    if worker_id is not None:
+        clauses.append("worker_id = ?")
+        params.append(worker_id)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'provider_instances'")
+        if not await cursor.fetchone():
+            return []
+        cursor = await db.execute(
+            f"SELECT * FROM provider_instances {where} ORDER BY slug, mode, instance_id",
+            params,
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        await db.close()
+
+
+async def remove_provider_instance(instance_id: str) -> None:
+    db = await _get_db()
+    try:
+        await db.execute("DELETE FROM provider_instances WHERE instance_id = ?", (instance_id,))
         await db.commit()
     finally:
         await db.close()
@@ -2022,6 +2257,25 @@ async def set_worker_status(worker_id: int, status: str) -> None:
         await db.close()
 
 
+async def count_worker_heartbeats(worker_id: int, *, healthy_only: bool = True) -> int:
+    db = await _get_db()
+    try:
+        if healthy_only:
+            cursor = await db.execute(
+                "SELECT COUNT(*) AS cnt FROM workers WHERE id = ? AND status = 'online' AND last_heartbeat IS NOT NULL",
+                (worker_id,),
+            )
+        else:
+            cursor = await db.execute(
+                "SELECT COUNT(*) AS cnt FROM workers WHERE id = ? AND last_heartbeat IS NOT NULL",
+                (worker_id,),
+            )
+        row = await cursor.fetchone()
+        return int(row["cnt"]) if row else 0
+    finally:
+        await db.close()
+
+
 async def delete_worker(worker_id: int) -> None:
     db = await _get_db()
     try:
@@ -2032,6 +2286,7 @@ async def delete_worker(worker_id: int) -> None:
 
 
 # --- Proxy egress ---
+
 
 async def upsert_proxy_provider(
     name: str,
@@ -2065,6 +2320,7 @@ async def upsert_proxy_provider(
     finally:
         await db.close()
 
+
 async def list_proxy_providers() -> list[dict[str, Any]]:
     db = await _get_db()
     try:
@@ -2087,6 +2343,7 @@ async def list_proxy_providers() -> list[dict[str, Any]]:
     finally:
         await db.close()
 
+
 async def get_proxy_provider(provider_id: int, *, include_secret: bool = False) -> dict[str, Any] | None:
     db = await _get_db()
     try:
@@ -2104,6 +2361,7 @@ async def get_proxy_provider(provider_id: int, *, include_secret: bool = False) 
     finally:
         await db.close()
 
+
 async def upsert_proxy_endpoints(provider_id: int, proxies: Sequence[Mapping[str, Any]]) -> int:
     db = await _get_db()
     try:
@@ -2111,6 +2369,13 @@ async def upsert_proxy_endpoints(provider_id: int, proxies: Sequence[Mapping[str
             protocol = str(proxy.get("protocol") or "socks5").lower()
             if protocol not in {"http", "socks5"}:
                 continue
+            host = str(proxy.get("host") or "")
+            port = int(proxy.get("port") or 0)
+            username = str(proxy.get("username") or "")
+            endpoint = str(proxy.get("endpoint") or f"{host}:{port}")
+            provider_proxy_id = str(proxy.get("provider_proxy_id") or "").strip()
+            if not provider_proxy_id:
+                provider_proxy_id = f"{protocol}:{host}:{port}:{username}"
             password = str(proxy.get("password") or "")
             await db.execute(
                 """
@@ -2139,12 +2404,12 @@ async def upsert_proxy_endpoints(provider_id: int, proxies: Sequence[Mapping[str
                 """,
                 (
                     provider_id,
-                    str(proxy.get("provider_proxy_id") or ""),
-                    str(proxy.get("endpoint") or ""),
-                    str(proxy.get("host") or ""),
-                    int(proxy.get("port") or 0),
+                    provider_proxy_id,
+                    endpoint,
+                    host,
+                    port,
                     protocol,
-                    str(proxy.get("username") or ""),
+                    username,
                     encrypt_value(password) if password else "",
                     str(proxy.get("location") or ""),
                     str(proxy.get("status") or "unknown"),
@@ -2158,11 +2423,14 @@ async def upsert_proxy_endpoints(provider_id: int, proxies: Sequence[Mapping[str
             )
         await db.execute("UPDATE proxy_providers SET last_synced_at = datetime('now') WHERE id = ?", (provider_id,))
         await db.commit()
-        cur = await db.execute("SELECT id FROM proxy_endpoints WHERE provider_id = ? ORDER BY id DESC LIMIT 1", (provider_id,))
+        cur = await db.execute(
+            "SELECT id FROM proxy_endpoints WHERE provider_id = ? ORDER BY id DESC LIMIT 1", (provider_id,)
+        )
         row = await cur.fetchone()
         return int(row["id"]) if row else 0
     finally:
         await db.close()
+
 
 async def list_proxy_pool() -> list[dict[str, Any]]:
     db = await _get_db()
@@ -2175,10 +2443,12 @@ async def list_proxy_pool() -> list[dict[str, Any]]:
                    pe.hours_left, pe.exit_ip, pe.udp_ok, pe.latency_ms,
                    pe.last_synced_at, pe.last_checked_at,
                    CASE WHEN pe.password_enc IS NOT NULL AND pe.password_enc != '' THEN 1 ELSE 0 END AS password_set,
-                   pa.worker_id AS assigned_worker_id
+                   pa.worker_id AS assigned_worker_id,
+                   pawns.reason AS pawns_mask_reason
             FROM proxy_endpoints pe
             LEFT JOIN proxy_providers pp ON pp.id = pe.provider_id
             LEFT JOIN proxy_assignments pa ON pa.proxy_id = pe.id
+            LEFT JOIN proxy_provider_masks pawns ON pawns.proxy_id = pe.id AND pawns.provider_slug = 'iproyal'
             ORDER BY pp.name, pe.endpoint
             """
         )
@@ -2192,6 +2462,87 @@ async def list_proxy_pool() -> list[dict[str, Any]]:
         return rows
     finally:
         await db.close()
+
+
+async def mask_proxy_for_provider(proxy_id: int, provider_slug: str, reason: str = "") -> bool:
+    provider_slug = str(provider_slug or "").strip()
+    if int(proxy_id or 0) <= 0 or not provider_slug:
+        return False
+    db = await _get_db()
+    try:
+        cur = await db.execute("SELECT id FROM proxy_endpoints WHERE id = ?", (int(proxy_id),))
+        if not await cur.fetchone():
+            return False
+        await db.execute(
+            """
+            INSERT INTO proxy_provider_masks (proxy_id, provider_slug, reason, masked_at, updated_at)
+            VALUES (?, ?, ?, datetime('now'), datetime('now'))
+            ON CONFLICT(proxy_id, provider_slug) DO UPDATE SET
+                reason = excluded.reason,
+                updated_at = datetime('now')
+            """,
+            (int(proxy_id), provider_slug, str(reason or "")),
+        )
+        await db.commit()
+        return True
+    finally:
+        await db.close()
+
+
+async def unmask_proxy_for_provider(proxy_id: int | Sequence[int], provider_slug: str) -> int:
+    provider_slug = str(provider_slug or "").strip()
+    ids = [
+        int(x)
+        for x in (proxy_id if isinstance(proxy_id, Sequence) and not isinstance(proxy_id, (str, bytes)) else [proxy_id])
+        if int(x) > 0
+    ]
+    if not ids or not provider_slug:
+        return 0
+    db = await _get_db()
+    try:
+        placeholders = ",".join("?" for _ in ids)
+        cursor = await db.execute(
+            f"DELETE FROM proxy_provider_masks WHERE provider_slug = ? AND proxy_id IN ({placeholders})",
+            [provider_slug, *ids],
+        )
+        await db.commit()
+        return int(cursor.rowcount or 0)
+    finally:
+        await db.close()
+
+
+async def proxy_masked_for_provider(proxy_id: int, provider_slug: str) -> bool:
+    provider_slug = str(provider_slug or "").strip()
+    if int(proxy_id or 0) <= 0 or not provider_slug:
+        return False
+    db = await _get_db()
+    try:
+        cur = await db.execute(
+            "SELECT 1 FROM proxy_provider_masks WHERE proxy_id = ? AND provider_slug = ? LIMIT 1",
+            (int(proxy_id), provider_slug),
+        )
+        return bool(await cur.fetchone())
+    finally:
+        await db.close()
+
+
+async def delete_proxy_endpoints(proxy_ids: Sequence[int] | None = None, *, status: str | None = None) -> int:
+    ids = [int(x) for x in (proxy_ids or []) if int(x) > 0]
+    status = str(status or "").strip().lower()
+    if not ids and not status:
+        return 0
+    db = await _get_db()
+    try:
+        if ids:
+            placeholders = ",".join("?" for _ in ids)
+            cursor = await db.execute(f"DELETE FROM proxy_endpoints WHERE id IN ({placeholders})", ids)
+        else:
+            cursor = await db.execute("DELETE FROM proxy_endpoints WHERE lower(status) = ?", (status,))
+        await db.commit()
+        return int(cursor.rowcount or 0)
+    finally:
+        await db.close()
+
 
 async def _ensure_myst_wallets_table(db: Any) -> None:
     await db.executescript(_MYST_WALLETS_SCHEMA)
@@ -2215,6 +2566,30 @@ async def _ensure_myst_wallets_table(db: Any) -> None:
         await db.execute("ALTER TABLE myst_wallets ADD COLUMN last_heartbeat_at TEXT")
     if "evidence_json" not in cols:
         await db.execute("ALTER TABLE myst_wallets ADD COLUMN evidence_json TEXT NOT NULL DEFAULT '{}'")
+
+async def _ensure_nkn_wallets_table(db: Any) -> None:
+    await db.executescript(_NKN_WALLETS_SCHEMA)
+    cursor = await db.execute("PRAGMA table_info(nkn_wallets)")
+    cols = {row["name"] for row in await cursor.fetchall()}
+    if "leased_to_client_id" not in cols:
+        await db.execute("ALTER TABLE nkn_wallets ADD COLUMN leased_to_client_id TEXT NOT NULL DEFAULT ''")
+    if "leased_at" not in cols:
+        await db.execute("ALTER TABLE nkn_wallets ADD COLUMN leased_at TEXT")
+    if "release_reason" not in cols:
+        await db.execute("ALTER TABLE nkn_wallets ADD COLUMN release_reason TEXT NOT NULL DEFAULT ''")
+    if "wallet_assignment_version" not in cols:
+        await db.execute("ALTER TABLE nkn_wallets ADD COLUMN wallet_assignment_version INTEGER NOT NULL DEFAULT 0")
+    if "node_identity" not in cols:
+        await db.execute("ALTER TABLE nkn_wallets ADD COLUMN node_identity TEXT NOT NULL DEFAULT ''")
+    if "runtime_status" not in cols:
+        await db.execute("ALTER TABLE nkn_wallets ADD COLUMN runtime_status TEXT NOT NULL DEFAULT ''")
+    if "public_ip" not in cols:
+        await db.execute("ALTER TABLE nkn_wallets ADD COLUMN public_ip TEXT NOT NULL DEFAULT ''")
+    if "last_heartbeat_at" not in cols:
+        await db.execute("ALTER TABLE nkn_wallets ADD COLUMN last_heartbeat_at TEXT")
+    if "evidence_json" not in cols:
+        await db.execute("ALTER TABLE nkn_wallets ADD COLUMN evidence_json TEXT NOT NULL DEFAULT '{}'")
+
 
 async def import_myst_wallets(raw: str) -> int:
     from app.myst_wallets import iter_wallet_records
@@ -2248,13 +2623,58 @@ async def import_myst_wallets(raw: str) -> int:
     finally:
         await db.close()
 
+async def import_nkn_wallets_from_zip(raw_zip: bytes) -> int:
+    from app.nkn_wallets import iter_wallet_records_from_zip
+
+    rows = list(iter_wallet_records_from_zip(raw_zip))
+    return await import_nkn_wallet_records(rows)
+
+
+async def import_nkn_wallet_records(records: Sequence[Mapping[str, Any]]) -> int:
+    from app.nkn_wallets import normalize_wallet_record
+
+    rows = [row for record in records if (row := normalize_wallet_record(dict(record)))]
+    if not rows:
+        return 0
+    db = await _get_db()
+    try:
+        await _ensure_nkn_wallets_table(db)
+        for row in rows:
+            await db.execute(
+                """
+                INSERT INTO nkn_wallets (
+                    wallet_fingerprint, folder_name, wallet_json_enc, wallet_pswd_enc, address, state, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, 'AVAILABLE', datetime('now'))
+                ON CONFLICT(wallet_fingerprint) DO UPDATE SET
+                    folder_name = excluded.folder_name,
+                    wallet_json_enc = excluded.wallet_json_enc,
+                    wallet_pswd_enc = excluded.wallet_pswd_enc,
+                    address = excluded.address,
+                    updated_at = datetime('now')
+                """,
+                (
+                    row["wallet_fingerprint"],
+                    row["folder_name"],
+                    encrypt_value(row["wallet_json"]),
+                    encrypt_value(row["wallet_pswd"]),
+                    row["address"],
+                ),
+            )
+        await db.commit()
+        return len(rows)
+    finally:
+        await db.close()
+
+
 async def list_myst_wallets() -> list[dict[str, Any]]:
     db = await _get_db()
     try:
         await _ensure_myst_wallets_table(db)
+        await _repair_myst_wallet_addresses(db)
         cursor = await db.execute(
             """
-            SELECT id, wallet_fingerprint, address, state, funding, leased_to_worker_id,
+            SELECT id, wallet_fingerprint, address, state, funding, leased_to_worker_id, leased_to_client_id,
                    release_reason, wallet_assignment_version,
                    node_identity, runtime_status, public_ip, last_heartbeat_at,
                    quarantined_reason, imported_at, updated_at
@@ -2265,6 +2685,26 @@ async def list_myst_wallets() -> list[dict[str, Any]]:
         return [dict(row) for row in await cursor.fetchall()]
     finally:
         await db.close()
+
+async def list_nkn_wallets() -> list[dict[str, Any]]:
+    db = await _get_db()
+    try:
+        await _ensure_nkn_wallets_table(db)
+        cursor = await db.execute(
+            """
+            SELECT id, wallet_fingerprint, folder_name, address, state,
+                   leased_to_worker_id, leased_to_client_id, release_reason,
+                   wallet_assignment_version, node_identity, runtime_status,
+                   public_ip, last_heartbeat_at, quarantined_reason,
+                   imported_at, updated_at
+            FROM nkn_wallets
+            ORDER BY id DESC
+            """
+        )
+        return [dict(row) for row in await cursor.fetchall()]
+    finally:
+        await db.close()
+
 
 async def export_myst_wallets(*, funding: str | None = None) -> list[str]:
     db = await _get_db()
@@ -2280,6 +2720,7 @@ async def export_myst_wallets(*, funding: str | None = None) -> list[str]:
         return [decrypt_value(row["raw_wallet_enc"] or "") for row in await cursor.fetchall()]
     finally:
         await db.close()
+
 
 async def update_myst_wallet(
     wallet_id: int,
@@ -2326,6 +2767,7 @@ async def update_myst_wallet(
         return bool(cursor.rowcount)
     finally:
         await db.close()
+
 
 async def lease_myst_wallet(
     client_id: str,
@@ -2412,6 +2854,7 @@ async def lease_myst_wallet(
     finally:
         await db.close()
 
+
 async def release_myst_wallet(
     wallet_id: int,
     client_id: str,
@@ -2426,7 +2869,7 @@ async def release_myst_wallet(
         await _ensure_myst_wallets_table(db)
         params: list[Any] = [release_reason, wallet_id, client_id, wallet_assignment_version]
         cursor = await db.execute(
-            f"""
+            """
             UPDATE myst_wallets
             SET state = 'AVAILABLE',
                 leased_to_worker_id = NULL,
@@ -2444,12 +2887,15 @@ async def release_myst_wallet(
     finally:
         await db.close()
 
+
 def _myst_wallet_unfunded(runtime_status: str, evidence: Mapping[str, Any]) -> bool:
     _ = runtime_status
     return str(evidence.get("registration_status") or "").strip().lower() == "unregistered"
 
+
 def _myst_public_ip(evidence: Mapping[str, Any]) -> str:
     return str(evidence.get("public_ip") or evidence.get("egress_ip") or "").strip()
+
 
 async def sync_myst_wallet_runtime(
     wallet_id: int,
@@ -2469,9 +2915,16 @@ async def sync_myst_wallet_runtime(
     try:
         await _ensure_myst_wallets_table(db)
         if unfunded:
-            params: list[Any] = [node_identity, runtime_status, json.dumps(evidence, sort_keys=True), wallet_id, client_id, wallet_assignment_version]
+            params: list[Any] = [
+                node_identity,
+                runtime_status,
+                json.dumps(evidence, sort_keys=True),
+                wallet_id,
+                client_id,
+                wallet_assignment_version,
+            ]
             cursor = await db.execute(
-                f"""
+                """
                 UPDATE myst_wallets
                 SET state = 'AVAILABLE',
                     funding = 'UNFUNDED',
@@ -2490,9 +2943,17 @@ async def sync_myst_wallet_runtime(
                 params,
             )
         else:
-            params = [node_identity, runtime_status, public_ip, json.dumps(evidence, sort_keys=True), wallet_id, client_id, wallet_assignment_version]
+            params = [
+                node_identity,
+                runtime_status,
+                public_ip,
+                json.dumps(evidence, sort_keys=True),
+                wallet_id,
+                client_id,
+                wallet_assignment_version,
+            ]
             cursor = await db.execute(
-                f"""
+                """
                 UPDATE myst_wallets
                 SET node_identity = ?,
                     runtime_status = ?,
@@ -2509,39 +2970,10 @@ async def sync_myst_wallet_runtime(
     finally:
         await db.close()
 
-async def ack_myst_wallet(
-    wallet_id: int,
-    client_id: str,
-    *,
-    wallet_assignment_version: int,
-    node_identity: str = "",
-    evidence: Mapping[str, Any] | None = None,
-) -> bool:
-    evidence = {k: v for k, v in (evidence or {}).items() if k not in {"raw_wallet", "myst_wallet_raw"}}
-    public_ip = _myst_public_ip(evidence)
-    db = await _get_db()
-    try:
-        await _ensure_myst_wallets_table(db)
-        params: list[Any] = [node_identity, "wallet_imported", public_ip, json.dumps(evidence, sort_keys=True), wallet_id, client_id, wallet_assignment_version]
-        cursor = await db.execute(
-            """
-            UPDATE myst_wallets
-            SET node_identity = ?,
-                runtime_status = ?,
-                public_ip = ?,
-                last_heartbeat_at = datetime('now'),
-                evidence_json = ?,
-                updated_at = datetime('now')
-            WHERE id = ? AND leased_to_client_id = ? AND wallet_assignment_version = ?
-            """,
-            params,
-        )
-        await db.commit()
-        return bool(cursor.rowcount)
-    finally:
-        await db.close()
 
-async def set_worker_proxy_assignment(worker_id: int, proxy_id: int | None, mode: str = "proxy", fallback: str = "hold") -> bool:
+async def set_worker_proxy_assignment(
+    worker_id: int, proxy_id: int | None, mode: str = "proxy", fallback: str = "hold"
+) -> bool:
     mode = mode if mode in {"proxy", "direct", "auto"} else "proxy"
     fallback = fallback if fallback in {"hold", "rotate"} else "hold"
     db = await _get_db()
@@ -2570,13 +3002,14 @@ async def set_worker_proxy_assignment(worker_id: int, proxy_id: int | None, mode
     finally:
         await db.close()
 
+
 async def get_worker_proxy_assignment(worker_id: int) -> dict[str, Any] | None:
     db = await _get_db()
     try:
         cur = await db.execute(
             """
             SELECT pa.worker_id, pa.proxy_id, pa.mode, pa.fallback, pa.applied_at, pa.created_at,
-                   pe.endpoint, pe.host, pe.port, pe.protocol, pe.username,
+                   pe.endpoint, pe.host, pe.port, pe.protocol, pe.username, pe.location,
                    pe.password_enc, pe.status, pe.udp_ok, pp.name AS provider_name
             FROM proxy_assignments pa
             LEFT JOIN proxy_endpoints pe ON pe.id = pa.proxy_id
@@ -2595,6 +3028,135 @@ async def get_worker_proxy_assignment(worker_id: int) -> dict[str, Any] | None:
         return data
     finally:
         await db.close()
+
+
+async def _repair_myst_wallet_addresses(db: aiosqlite.Connection, *, limit: int = 300) -> None:
+    from app import myst_wallets
+
+    cursor = await db.execute(
+        """
+        SELECT id, raw_wallet_enc, address
+        FROM myst_wallets
+        WHERE length(coalesce(address, '')) != 40
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (max(1, int(limit)),),
+    )
+    changed = 0
+    for row in await cursor.fetchall():
+        current = str(row["address"] or "")
+        raw = decrypt_value(row["raw_wallet_enc"] or "")
+        address = myst_wallets.wallet_address_hint(raw)
+        if address and address != current and len(address) == 40:
+            await db.execute(
+                "UPDATE myst_wallets SET address = ?, updated_at = datetime('now') WHERE id = ?",
+                (address, int(row["id"])),
+            )
+            changed += 1
+    if changed:
+        await db.commit()
+
+
+async def export_proxy_pool(
+    *,
+    status: str | None = None,
+    provider: str | None = None,
+    location: str | None = None,
+    protocol: str | None = None,
+) -> list[dict[str, Any]]:
+    rows = await list_proxy_pool()
+    wanted_status = (status or "").strip().lower()
+    wanted_provider = (provider or "").strip().lower()
+    wanted_location = (location or "").strip().lower()
+    wanted_protocol = (protocol or "").strip().lower()
+    if wanted_status:
+        rows = [row for row in rows if str(row.get("status") or "").strip().lower() == wanted_status]
+    if wanted_provider:
+        rows = [row for row in rows if str(row.get("provider_name") or "").strip().lower() == wanted_provider]
+    if wanted_location:
+        rows = [row for row in rows if str(row.get("location") or "").strip().lower() == wanted_location]
+    if wanted_protocol:
+        rows = [row for row in rows if str(row.get("protocol") or "").strip().lower() == wanted_protocol]
+    return rows
+
+
+async def update_proxy_pool_check_results(
+    results: Mapping[int, str], *, protocols: Mapping[int, str] | None = None, exit_ips: Mapping[int, str] | None = None
+) -> int:
+    db = await _get_db()
+    try:
+        checked = 0
+        for proxy_id, status in results.items():
+            if str(status).lower() not in {"alive", "dead"}:
+                continue
+            protocol = str((protocols or {}).get(proxy_id) or "").lower()
+            exit_ip = str((exit_ips or {}).get(proxy_id) or "").strip()
+            cur = await db.execute(
+                """
+                UPDATE proxy_endpoints
+                SET status = ?,
+                    protocol = CASE WHEN ? IN ('http', 'socks5') THEN ? ELSE protocol END,
+                    exit_ip = CASE WHEN ? != '' THEN ? ELSE exit_ip END,
+                    last_checked_at = datetime('now')
+                WHERE id = ?
+                """,
+                (str(status).lower(), protocol, protocol, exit_ip, exit_ip, int(proxy_id)),
+            )
+            checked += int(cur.rowcount or 0)
+        await db.commit()
+        return checked
+    finally:
+        await db.close()
+
+
+async def lease_proxy_for_worker(worker_id: int, *, provider_slug: str | None = None) -> dict[str, Any] | None:
+    provider_slug = str(provider_slug or "").strip()
+    mask_clause = ""
+    params: list[Any] = [worker_id]
+    if provider_slug:
+        mask_clause = """
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM proxy_provider_masks ppm
+                  WHERE ppm.proxy_id = pe.id AND ppm.provider_slug = ?
+              )
+        """
+        params.append(provider_slug)
+    db = await _get_db()
+    try:
+        await db.execute(
+            f"""
+            INSERT INTO proxy_assignments (worker_id, proxy_id, mode, fallback, applied_at)
+            SELECT ?, pe.id, 'proxy', 'hold', datetime('now')
+            FROM proxy_endpoints pe
+            LEFT JOIN proxy_assignments pa ON pa.proxy_id = pe.id
+            WHERE pa.proxy_id IS NULL
+              AND lower(coalesce(pe.status, 'alive')) != 'dead'
+            {mask_clause}
+            ORDER BY pe.id
+            LIMIT 1
+            ON CONFLICT(worker_id) DO UPDATE SET
+                proxy_id = excluded.proxy_id,
+                mode = excluded.mode,
+                fallback = excluded.fallback,
+                applied_at = excluded.applied_at
+            """,
+            params,
+        )
+        await db.commit()
+    finally:
+        await db.close()
+    assignment = await get_worker_proxy_assignment(worker_id)
+    if (
+        assignment
+        and provider_slug
+        and assignment.get("proxy_id")
+        and await proxy_masked_for_provider(int(assignment["proxy_id"]), provider_slug)
+    ):
+        return None
+    return assignment
+
 
 async def get_proxy_endpoint(proxy_id: int) -> dict[str, Any] | None:
     db = await _get_db()
@@ -2620,6 +3182,7 @@ async def get_proxy_endpoint(proxy_id: int) -> dict[str, Any] | None:
         return data
     finally:
         await db.close()
+
 
 # --- Per-worker fleet keys ---
 #

@@ -15,9 +15,12 @@ from typing import Any
 
 import yaml
 
+from app import provider_runtime
+
 logger = logging.getLogger(__name__)
 
-SERVICES_DIR = Path(__file__).resolve().parent.parent / "services"
+_DEFAULT_SERVICES_DIR = Path(__file__).resolve().parent.parent / "services"
+SERVICES_DIR = _DEFAULT_SERVICES_DIR
 
 # In-memory cache
 _services: list[dict[str, Any]] = []
@@ -32,6 +35,7 @@ _VALID_STATUSES = {"active", "beta", "broken", "dead", "dropped"}
 _EGRESS_MODES = {"proxy", "direct", "auto"}
 _EGRESS_UDP = {"required", "optional", "none"}
 _CREDENTIAL_KINDS = {"email", "password", "api_key", "token", "cookie", "cid", "device_id", "text", "file"}
+
 
 def _validate_credentials(data: dict[str, Any], path: Path, owner: str) -> list[str]:
     errors: list[str] = []
@@ -133,6 +137,16 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
     return errors
 
 
+def _runtime_validation_errors(data: dict[str, Any], path: Path) -> list[str]:
+    if SERVICES_DIR.resolve() != _DEFAULT_SERVICES_DIR.resolve():
+        return []
+    slug = data.get("slug")
+    status = data.get("status")
+    if status not in {"broken", "dead", "dropped"} and slug not in provider_runtime.ACTIVE_SLUGS:
+        return [f"{path.name}: active service {slug!r} is not in provider-runtime truth matrix"]
+    return []
+
+
 def _load_from_disk() -> list[dict[str, Any]]:
     """Walk services/ recursively and parse all .yml/.yaml files."""
     services: list[dict[str, Any]] = []
@@ -154,11 +168,12 @@ def _load_from_disk() -> list[dict[str, Any]]:
             logger.error("Expected a mapping in %s, got %s", path, type(data).__name__)
             continue
 
-        errors = _validate(data, path)
+        errors = [*_validate(data, path), *_runtime_validation_errors(data, path)]
         if errors:
             for err in errors:
                 logger.warning("Validation: %s", err)
             continue
+        data["runtime"] = provider_runtime.catalog_runtime(str(data.get("slug") or ""))
         services.append(data)
 
     # Also pick up .yaml extension
@@ -171,11 +186,12 @@ def _load_from_disk() -> list[dict[str, Any]]:
             logger.error("Failed to parse %s: %s", path, exc)
             continue
         if isinstance(data, dict):
-            errors = _validate(data, path)
+            errors = [*_validate(data, path), *_runtime_validation_errors(data, path)]
             if errors:
                 for err in errors:
                     logger.warning("Validation: %s", err)
                 continue
+            data["runtime"] = provider_runtime.catalog_runtime(str(data.get("slug") or ""))
             services.append(data)
 
     return services
@@ -270,6 +286,7 @@ def vps_allowed(requirements: dict[str, Any] | None) -> bool | None:
     residential = reqs.get("residential_ip")
     return None if residential is None else not residential
 
+
 def service_egress_mode(service: dict[str, Any] | None, default: str = "proxy") -> str:
     """proxy/direct/auto for a service, defaulting to the worker policy."""
     if default not in _EGRESS_MODES:
@@ -279,6 +296,7 @@ def service_egress_mode(service: dict[str, Any] | None, default: str = "proxy") 
         return default
     mode = egress.get("mode")
     return mode if mode in _EGRESS_MODES else default
+
 
 def service_egress_udp(service: dict[str, Any] | None) -> str:
     """required/optional/none UDP requirement for egress policy."""

@@ -4,12 +4,12 @@ import asyncio
 import base64
 import hashlib
 import io
+import stat
 import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
-from app import database, main, runtime_assets
-from app import worker_api
+from app import database, main, runtime_assets, worker_api
 
 
 def test_runtime_asset_path_uses_worker_data_mountpoint(monkeypatch):
@@ -28,9 +28,11 @@ def test_runtime_asset_path_uses_worker_data_mountpoint(monkeypatch):
     monkeypatch.setenv("CASHPILOT_DATA_DIR", "/data")
     monkeypatch.setattr(worker_api.orchestrator, "_get_client", lambda: Client())
 
-    out = worker_api._docker_host_path(Path("/data/runtime-assets/adnade/chrome_profile_zip/chromeprofiledata"))
+    out = worker_api._docker_host_path(Path("/data/runtime-assets/uprock/credentials_json/credentials.json"))
 
-    assert out == Path("/var/lib/docker/volumes/cashpilot_worker_data/_data/runtime-assets/adnade/chrome_profile_zip/chromeprofiledata")
+    assert out == Path(
+        "/var/lib/docker/volumes/cashpilot_worker_data/_data/runtime-assets/uprock/credentials_json/credentials.json"
+    )
 
 
 class TestRuntimeAssets:
@@ -52,7 +54,19 @@ class TestRuntimeAssets:
 
     def test_config_sync_mirrors_runtime_assets(self):
         async def run():
-            with patch.object(main.catalog, "get_services", return_value=[{"slug": "uprock", "deploy": {"runtime_assets": [{"provider": "uprock", "asset_kind": "credentials_json"}]}}]), patch.object(database, "save_runtime_asset") as save:
+            with (
+                patch.object(
+                    main.catalog,
+                    "get_services",
+                    return_value=[
+                        {
+                            "slug": "uprock",
+                            "deploy": {"runtime_assets": [{"provider": "uprock", "asset_kind": "credentials_json"}]},
+                        }
+                    ],
+                ),
+                patch.object(database, "save_runtime_asset") as save,
+            ):
                 await main._sync_runtime_assets_from_config({"uprock_credentials_json": "seed"})
                 save.assert_awaited_once_with("uprock", "credentials_json", "seed")
 
@@ -83,18 +97,7 @@ class TestRuntimeAssets:
         asyncio.run(run())
 
     def test_chrome_profile_zip_is_allowed_as_runtime_asset_kind(self):
-        assert runtime_assets.validate("adnade", "chrome_profile_zip") == ("adnade", "chrome_profile_zip")
-
-    def test_adnade_chrome_profile_key_is_masked_as_secret(self, tmp_path):
-        async def run():
-            with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "assets.db"):
-                await database.init_db()
-                await database.set_config_bulk({"adnade_chrome_profile_key": "key"})
-                masked = await database.get_config_masked()
-                assert masked["_secrets"]["adnade_chrome_profile_key"] is True
-                assert "adnade_chrome_profile_key" not in masked
-
-        asyncio.run(run())
+        assert runtime_assets.validate("demo", "chrome_profile_zip") == ("demo", "chrome_profile_zip")
 
     def test_worker_unpacks_chrome_profile_zip_runtime_asset(self, tmp_path):
         async def run():
@@ -109,7 +112,7 @@ class TestRuntimeAssets:
                 image="img",
                 runtime_assets=[
                     worker_api.RuntimeAssetSpec(
-                        provider="adnade",
+                        provider="demo",
                         asset_kind="chrome_profile_zip",
                         target="/config",
                         encoding="zip",
@@ -118,16 +121,17 @@ class TestRuntimeAssets:
             )
             with (
                 patch.object(worker_api, "_RUNTIME_ASSET_DIR", tmp_path),
-                patch.object(worker_api, "_fetch_runtime_asset", return_value=base64.b64encode(buf.getvalue()).decode()),
+                patch.object(
+                    worker_api, "_fetch_runtime_asset", return_value=base64.b64encode(buf.getvalue()).decode()
+                ),
             ):
-                await worker_api._materialize_runtime_assets("adnade", spec)
+                await worker_api._materialize_runtime_assets("demo", spec)
 
             source = next(iter(spec.volumes))
             assert "/chrome_profile_zip-" in source.replace("\\", "/")
-            assert spec.volumes[source] == {"bind": "/config", "mode": "rw"}
+            assert spec.volumes[source] == {"bind": "/config", "mode": "ro"}
             prefs = Path(source) / ".config" / "chromium" / "Default" / "Preferences"
             assert prefs.exists()
-            assert (Path(source) / "cashpilot-extensions" / "fpdkjdnhkakefebpekbdhillbhonfjjp" / "manifest.json").exists()
 
         asyncio.run(run())
 
@@ -141,12 +145,12 @@ class TestRuntimeAssets:
             spec = worker_api.DeploySpec(
                 image="img",
                 deploy_credentials={
-                    "chrome_profile_url": "https://assets.example/adnade-profile.zip.fernet",
+                    "chrome_profile_url": "https://assets.example/profile.zip.fernet",
                     "chrome_profile_key": key,
                 },
                 runtime_assets=[
                     worker_api.RuntimeAssetSpec(
-                        provider="adnade",
+                        provider="demo",
                         asset_kind="chrome_profile_zip",
                         target="/config",
                         encoding="zip",
@@ -162,9 +166,11 @@ class TestRuntimeAssets:
                 patch.object(worker_api, "_download_runtime_asset", return_value=encrypted) as download,
                 patch.object(worker_api, "_decrypt_runtime_asset", return_value=buf.getvalue()) as decrypt,
             ):
-                await worker_api._materialize_runtime_assets("adnade", spec)
+                await worker_api._materialize_runtime_assets("demo", spec)
 
-            download.assert_awaited_once_with("https://assets.example/adnade-profile.zip.fernet", tmp_path / "adnade" / "chrome_profile_zip.download")
+            download.assert_awaited_once_with(
+                "https://assets.example/profile.zip.fernet", tmp_path / "demo" / "chrome_profile_zip.download"
+            )
             decrypt.assert_called_once_with(encrypted, "fernet", key)
             source = next(iter(spec.volumes))
             assert "/chrome_profile_zip-" in source.replace("\\", "/")
@@ -172,18 +178,68 @@ class TestRuntimeAssets:
 
         asyncio.run(run())
 
-    def test_adnade_artifact_includes_network_cookies(self):
-        artifact = Path(r"D:\1. WORK_true\CashPilot\secret\providers\adnade\rebuild-20260813e\chromeprofiledata.adnade-dawn-titan.zip")
-        with zipfile.ZipFile(artifact) as zf:
-            assert "chromeprofiledata/.config/chromium/Default/Network/Cookies" in zf.namelist()
-
-    def test_proxylite_user_id_is_masked_as_a_secret(self, tmp_path):
+    def test_worker_fetches_runtime_assets_with_active_worker_key(self):
         async def run():
-            with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "assets.db"):
-                await database.init_db()
-                await database.set_config_bulk({"proxylite_user_id": "521465"})
-                masked = await database.get_config_masked()
-                assert masked["_secrets"]["proxylite_user_id"] is True
-                assert "proxylite_user_id" not in masked
+            seen = {}
+
+            class Response:
+                status_code = 200
+
+                def raise_for_status(self):
+                    pass
+
+                def json(self):
+                    return {"value": "seed"}
+
+            class Client:
+                def __init__(self, *args, **kwargs):
+                    pass
+
+                async def __aenter__(self):
+                    return self
+
+                async def __aexit__(self, *args):
+                    return None
+
+                async def post(self, url, *, headers, json):
+                    seen["headers"] = headers
+                    seen["json"] = json
+                    return Response()
+
+            with (
+                patch.object(worker_api, "UI_URL", "http://ui"),
+                patch.object(worker_api, "API_KEY", "shared"),
+                patch.object(worker_api, "_worker_key", "own-worker-key"),
+                patch.object(worker_api.httpx, "AsyncClient", Client),
+            ):
+                value = await worker_api._fetch_runtime_asset("uprock", "credentials_json")
+
+            assert value == "seed"
+            assert seen["headers"] == {"Authorization": "Bearer own-worker-key"}
+
+        asyncio.run(run())
+
+    def test_worker_materialized_file_runtime_assets_are_container_readable(self, tmp_path):
+        async def run():
+            spec = worker_api.DeploySpec(
+                image="img",
+                runtime_assets=[
+                    worker_api.RuntimeAssetSpec(
+                        provider="uprock",
+                        asset_kind="credentials_json",
+                        target="/cashpilot/runtime-assets/uprock/credentials.json",
+                        encoding="text",
+                    )
+                ],
+            )
+            with (
+                patch.object(worker_api, "_RUNTIME_ASSET_DIR", tmp_path),
+                patch.object(worker_api, "_fetch_runtime_asset", return_value="seed"),
+            ):
+                await worker_api._materialize_runtime_assets("uprock", spec)
+
+            source = Path(next(iter(spec.volumes)))
+            assert source.read_text() == "seed"
+            assert source.stat().st_mode & stat.S_IROTH
 
         asyncio.run(run())

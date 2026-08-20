@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import platform
 from io import BytesIO
@@ -18,10 +19,12 @@ _GRASS_ALLOWED_HOST = "files.grass.io"
 _UPROCK_ALLOWED_HOST = "edge.uprock.com"
 _PROXYBASE_XYZ_INSTALLER = "https://proxybase.xyz/install.sh"
 
+
 def _fetch_json(url: str) -> dict:
     req = Request(url, headers={"Accept": "application/json", "User-Agent": "CashPilot/1.0"})
     with urlopen(req, timeout=30) as resp:  # noqa: S310 - URL is operator/provider config, validated by caller.
         return json.loads(resp.read().decode("utf-8"))
+
 
 def _platform_key() -> str:
     os_name = platform.system().lower()
@@ -35,10 +38,12 @@ def _platform_key() -> str:
         return f"windows-{arch}"
     return f"{os_name}-{arch}"
 
+
 def _safe_grass_url(url: str) -> None:
     parsed = urlparse(url)
     if parsed.scheme != "https" or parsed.hostname != _GRASS_ALLOWED_HOST:
         raise ValueError("Grass installer URL must be https://files.grass.io/...")
+
 
 def _safe_uprock_url(url: str) -> None:
     parsed = urlparse(url)
@@ -50,6 +55,7 @@ def _safe_uprock_url(url: str) -> None:
     ):
         raise ValueError("Uprock installer URL must point to an official https://edge.uprock.com/... .deb")
 
+
 def resolve_installer_manifest(provider: str, manifest_url: str, platform_key: str | None = None) -> dict[str, str]:
     if provider == "uprock":
         _safe_uprock_url(manifest_url)
@@ -59,6 +65,10 @@ def resolve_installer_manifest(provider: str, manifest_url: str, platform_key: s
     if provider != "grass":
         raise ValueError(f"Installer manifests are not supported for {provider!r}")
     _safe_grass_url(manifest_url)
+    if manifest_url.endswith(".deb"):
+        filename = manifest_url.rstrip("/").rsplit("/", 1)[-1]
+        version = filename.removeprefix("grass-desktop_").removesuffix("_amd64.deb")
+        return {"platform": platform_key or "linux-x86_64", "version": version, "url": manifest_url}
     manifest = _fetch_json(manifest_url)
     key = platform_key or _platform_key()
     platforms = manifest.get("platforms") or {}
@@ -69,12 +79,14 @@ def resolve_installer_manifest(provider: str, manifest_url: str, platform_key: s
     _safe_grass_url(url)
     return {"platform": key, "version": str(manifest.get("version") or "unknown"), "url": url}
 
+
 def ensure_installer_image(client, provider: str, resolved: dict[str, str]) -> str:
     if provider == "uprock":
         return _ensure_image(client, _UPROCK_IMAGE, resolved, _uprock_dockerfile)
     if provider == "grass":
         return _ensure_image(client, _GRASS_IMAGE, resolved, _grass_dockerfile)
     raise ValueError(f"Installer image builds are not supported for {provider!r}")
+
 
 def ensure_proxybase_xyz_image(client) -> str:
     return _ensure_image(
@@ -83,6 +95,7 @@ def ensure_proxybase_xyz_image(client) -> str:
         {"version": "latest", "url": _PROXYBASE_XYZ_INSTALLER},
         _proxybase_xyz_dockerfile,
     )
+
 
 def _ensure_image(client, image_base: str, resolved: dict[str, str], dockerfile_builder) -> str:
     version = "".join(c if c.isalnum() or c in ".-_" else "-" for c in resolved["version"])
@@ -96,14 +109,51 @@ def _ensure_image(client, image_base: str, resolved: dict[str, str], dockerfile_
     client.images.build(fileobj=BytesIO(dockerfile.encode("utf-8")), tag=image, rm=True, forcerm=True, pull=True)
     return image
 
+
 def _grass_dockerfile(deb_url: str) -> str:
     _safe_grass_url(deb_url)
+    runner = """#!/bin/sh
+set -eu
+mkdir -p "$XDG_RUNTIME_DIR" "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME" "$XDG_DATA_HOME"
+chmod 700 "$XDG_RUNTIME_DIR"
+if [ -f "$GRASS_SEED_ARCHIVE" ] && [ ! -f "$XDG_DATA_HOME/io.getgrass.desktop/store.json" ]; then
+  tmpdir="$(mktemp -d)"
+  tar -xzf "$GRASS_SEED_ARCHIVE" -C "$tmpdir"
+  if [ -d "$tmpdir/grass-xdg" ]; then
+    cp -a "$tmpdir/grass-xdg/config/." "$XDG_CONFIG_HOME/" 2>/dev/null || true
+    cp -a "$tmpdir/grass-xdg/cache/." "$XDG_CACHE_HOME/" 2>/dev/null || true
+    cp -a "$tmpdir/grass-xdg/data/." "$XDG_DATA_HOME/" 2>/dev/null || true
+  else
+    cp -a "$tmpdir/config/." "$XDG_CONFIG_HOME/" 2>/dev/null || true
+    cp -a "$tmpdir/cache/." "$XDG_CACHE_HOME/" 2>/dev/null || true
+    cp -a "$tmpdir/data/." "$XDG_DATA_HOME/" 2>/dev/null || true
+  fi
+  rm -rf "$tmpdir"
+fi
+if [ "${GRASS_RESET_DEVICE_ID:-false}" = "true" ] && [ -f "$XDG_DATA_HOME/io.getgrass.desktop/store.json" ] && [ ! -f "$XDG_DATA_HOME/.grass-device-reset-done" ]; then
+  sed -i '/"wynd:device_id"/d;/"wynd:device_privkey"/d;/"wynd:device_pubkey"/d;/"wynd:device_registered_pubkey"/d;/"wynd:device_registered_user_id"/d' "$XDG_DATA_HOME/io.getgrass.desktop/store.json"
+  : > "$XDG_DATA_HOME/.grass-device-reset-done"
+fi
+if [ "${GRASS_RESET_BROWSER_ID:-false}" = "true" ] && [ -f "$XDG_DATA_HOME/io.getgrass.desktop/store.json" ] && [ ! -f "$XDG_DATA_HOME/.grass-browser-reset-done" ]; then
+  sed -i '/"wynd:browser_id"/d' "$XDG_DATA_HOME/io.getgrass.desktop/store.json"
+  : > "$XDG_DATA_HOME/.grass-browser-reset-done"
+fi
+rm -f /tmp/.X99-lock
+Xvfb :99 -screen 0 1280x720x24 -nolisten tcp >/tmp/xvfb.log 2>&1 &
+fluxbox >/tmp/fluxbox.log 2>&1 &
+x11vnc -display :99 -forever -shared -nopw -listen 0.0.0.0 -xkb >/tmp/x11vnc.log 2>&1 &
+websockify --web=/usr/share/novnc/ 6080 localhost:5900 >/tmp/novnc.log 2>&1 &
+exec dbus-run-session -- /usr/bin/grass-desktop --no-sandbox
+"""
+    runner_b64 = base64.b64encode(runner.encode()).decode()
     return f"""FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive \\
     DISPLAY=:99 \\
-    HOME=/data/profile \\
-    XDG_CONFIG_HOME=/data/profile/.config \\
-    XDG_CACHE_HOME=/data/profile/.cache \\
+    XDG_RUNTIME_DIR=/tmp/runtime-grass \\
+    XDG_CONFIG_HOME=/var/lib/grass-xdg/config \\
+    XDG_CACHE_HOME=/var/lib/grass-xdg/cache \\
+    XDG_DATA_HOME=/var/lib/grass-xdg/data \\
+    GRASS_SEED_ARCHIVE=/seed/grass-xdg-seed.tar.gz \\
     ELECTRON_DISABLE_SECURITY_WARNINGS=true
 RUN apt-get update \\
  && apt-get install -y --no-install-recommends ca-certificates curl xvfb x11vnc fluxbox novnc websockify dbus-x11 python3-minimal \\
@@ -112,9 +162,12 @@ ADD {deb_url} /tmp/grass-desktop.deb
 RUN apt-get update \\
  && apt-get install -y --no-install-recommends /tmp/grass-desktop.deb \\
  && rm -rf /var/lib/apt/lists/* /tmp/grass-desktop.deb
+RUN python3 -c "import base64,pathlib; pathlib.Path('/usr/local/bin/cashpilot-grass').write_bytes(base64.b64decode('{runner_b64}'))" \\
+ && chmod +x /usr/local/bin/cashpilot-grass
 EXPOSE 6080
-CMD ["bash", "-lc", "mkdir -p $HOME; rm -f /tmp/.X99-lock; Xvfb :99 -screen 0 1366x768x24 -nolisten tcp >/tmp/xvfb.log 2>&1 & fluxbox >/tmp/fluxbox.log 2>&1 & x11vnc -display :99 -forever -shared -nopw -listen 0.0.0.0 -xkb >/tmp/x11vnc.log 2>&1 & websockify --web=/usr/share/novnc/ 6080 localhost:5900 >/tmp/novnc.log 2>&1 & dbus-run-session sh -lc 'grass-desktop --no-sandbox || Grass --no-sandbox || /opt/Grass/grass-desktop --no-sandbox || /opt/Grass/grass --no-sandbox'"]
+CMD ["cashpilot-grass"]
 """
+
 
 def _uprock_dockerfile(deb_url: str) -> str:
     _safe_uprock_url(deb_url)
@@ -133,6 +186,7 @@ EXPOSE 6080
 CMD ["bash", "-lc", "set -e; mkdir -p /root/.local/share/UpRock; if [ -s /cashpilot/runtime-assets/uprock/credentials.json ]; then cp /cashpilot/runtime-assets/uprock/credentials.json /root/.local/share/UpRock/credentials.json; chmod 600 /root/.local/share/UpRock/credentials.json; fi; if [ -s /cashpilot/runtime-assets/uprock/main.db ]; then cp /cashpilot/runtime-assets/uprock/main.db /root/.local/share/UpRock/main.db; chmod 600 /root/.local/share/UpRock/main.db; fi; rm -f /tmp/.X99-lock; Xvfb :99 -screen 0 1200x800x24 -nolisten tcp >/tmp/xvfb.log 2>&1 & fluxbox >/tmp/fluxbox.log 2>&1 & x11vnc -display :99 -forever -shared -nopw -listen 0.0.0.0 -xkb >/tmp/x11vnc.log 2>&1 & websockify --web=/usr/share/novnc/ 6080 localhost:5900 >/tmp/novnc.log 2>&1 & dbus-run-session sh -lc 'uprock-mining'"]
 """
 
+
 def _proxybase_xyz_dockerfile(installer_url: str) -> str:
     if installer_url != _PROXYBASE_XYZ_INSTALLER:
         raise ValueError("ProxyBase Markets installer URL is fixed to the official install.sh")
@@ -148,9 +202,11 @@ RUN curl -fsSL {installer_url} | sh \\
  && cp "$CLI" /usr/local/bin/proxybase-cli
 """
 
+
 def proxybase_xyz_command() -> str:
     return (
         "sh -lc 'set -e; "
+        'export HOME=/home/proxybase; mkdir -p "$HOME/.proxybase"; '
         'CLI="$(command -v proxybase-cli || true)"; '
         'if [ -z "$CLI" ]; then '
         'for p in "$HOME/.local/bin/proxybase-cli" "/root/.local/bin/proxybase-cli" "/usr/local/bin/proxybase-cli"; do '
@@ -159,5 +215,6 @@ def proxybase_xyz_command() -> str:
         'PHASE="${PROXYBASE_XYZ_PHRASE:?missing wallet phrase}"; '
         '"$CLI" wallet import "$PHASE"; '
         '"$CLI" login; '
-        '"$CLI" seller start --foreground\''
+        'if [ ! -s "$HOME/.proxybase/seller_config.json" ]; then printf \'{"upstream_proxies":[],"no_direct":false}\' > "$HOME/.proxybase/seller_config.json"; fi; '
+        'exec "$CLI" seller start --foreground\''
     )

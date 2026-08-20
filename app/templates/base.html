@@ -8,7 +8,7 @@
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="/static/css/style.css?v={{ csp_nonce(request) }}">
   <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" data-async-style>
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"></noscript>
   <script nonce="{{ csp_nonce(request) }}">
@@ -100,7 +100,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 20v-6"/><path d="M6 20V10"/><path d="M18 20V4"/><path d="M4 20h16"/>
         </svg>
-        Proxy provider
+        Proxy providers
       </a>
       <a href="/proxy-pool" class="sidebar-link {% if active_page == 'proxy-pool' %}active{% endif %}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -113,6 +113,12 @@
           <rect x="3" y="6" width="18" height="12" rx="2"/><path d="M17 11h4"/><circle cx="17" cy="12" r="1"/>
         </svg>
         MYST Wallet
+      </a>
+      <a href="/nkn-wallet" class="sidebar-link {% if active_page == 'nkn-wallet' %}active{% endif %}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/><path d="M7 4v16"/>
+        </svg>
+        NKN Wallet
       </a>
       <a href="/settings" class="sidebar-link {% if active_page == 'settings' %}active{% endif %}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -283,8 +289,8 @@
   <script nonce="{{ csp_nonce(request) }}">window._userRole = '{{ user.r }}';</script>
   {% endif %}
   <script async src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js" integrity="sha384-T/4KgSWuZEPozpPz7rnnp/5lDSnpY1VPJCojf1S81uTHS1E38qgLfMgVsAeRCWc4" crossorigin="anonymous"></script>
-  <script src="/static/js/app.js"></script>
+  <script src="/static/js/app.js?v={{ csp_nonce(request) }}"></script>
   {% block scripts %}{% endblock %}
-  <script src="/static/js/delegate.js"></script>
+  <script src="/static/js/delegate.js?v={{ csp_nonce(request) }}"></script>
 </body>
 </html>

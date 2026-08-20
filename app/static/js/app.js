@@ -554,7 +554,7 @@ const CP = (() => {
   }
 
   function sortServices(services, breakdownMap) {
-    const statusOrder = { running: 0, external: 1, restarting: 2, paused: 3, stopped: 4, exited: 5, error: 6 };
+    const statusOrder = { running: 0, external: 1, restarting: 2, paused: 3, stopped: 4, exited: 5, error: 6, not_deployed: 7 };
     services.sort((a, b) => {
       let va, vb;
       switch (_sortCol) {
@@ -978,6 +978,24 @@ const CP = (() => {
     }).join('');
   }
 
+  function deployModeSelect(svc, prefix = 'deploy-mode') {
+    const modes = Array.isArray(svc.supported_modes) ? svc.supported_modes : [];
+    if (!modes.length) return '';
+    const canBoth = modes.includes('direct') && modes.includes('proxy');
+    const selected = canBoth ? 'both' : (modes.includes('proxy') ? 'proxy' : 'direct');
+    const options = ['direct', 'proxy', 'both'].map(mode => {
+      const allowed = mode === 'both' ? canBoth : modes.includes(mode);
+      return `<option value="${mode}"${mode === selected ? ' selected' : ''}${allowed ? '' : ' disabled'}>${mode}</option>`;
+    }).join('');
+    return `
+      <div class="form-group">
+        <label class="form-label">Mode</label>
+        <select class="form-input" data-deploy-mode-for="${svc.slug}" id="${prefix}-${svc.slug}">
+          ${options}
+        </select>
+      </div>`;
+  }
+
   // The class is a parameter rather than unified, deliberately: the setup wizard
   // and the detail view can both be in the DOM at once, and their deploy
   // handlers select by class. One shared class would make each pick up the
@@ -1003,7 +1021,7 @@ const CP = (() => {
   function renderServiceRow(svc, bk) {
     const isExternal = svc.container_status === 'external';
     const statusClass = isExternal ? 'external' : (svc.container_status || 'stopped').toLowerCase();
-    const statusLabel = isExternal ? 'External' : statusClass.charAt(0).toUpperCase() + statusClass.slice(1);
+    const statusLabel = isExternal ? 'External' : (statusClass === 'not_deployed' ? 'Not deployed' : statusClass.charAt(0).toUpperCase() + statusClass.slice(1));
     const instances = svc.instances || 0;
     const details = svc.instance_details || [];
     const isMulti = details.length > 1;
@@ -1144,6 +1162,11 @@ const CP = (() => {
     const claimBtn = `<button class="btn btn-icon ${eligible ? 'btn-success' : ''}" data-action="openClaimModal" data-a1="${escapeHtml(svc.slug)}" title="${claimTitle}"${claimDisabled ? ' disabled' : ''}>
            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
          </button>`;
+    const collectBtn = _canWrite
+      ? `<button class="btn btn-icon" data-action="collectServiceNow" data-a1="${escapeHtml(svc.slug)}" title="Collect this provider now">
+           ${ICON_RESTART}
+         </button>`
+      : '';
 
     // Instance badge (shown next to status)
     const instanceLabel = !isExternal && instances > 0
@@ -1168,9 +1191,9 @@ const CP = (() => {
       const chevron = `<button class="btn btn-icon expand-toggle" data-action="toggleInstances" data-stop="1" data-a1="${escapeHtml(svc.slug)}" title="Expand instances">
         <svg class="expand-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
       </button>`;
-      actionBtns = `<div class="action-btns">${claimBtn}${settingsBtn}${chevron}</div>`;
+      actionBtns = `<div class="action-btns">${claimBtn}${collectBtn}${settingsBtn}${chevron}</div>`;
     } else if (isExternal) {
-      actionBtns = `<div class="action-btns">${claimBtn}${settingsBtn}</div>`;
+      actionBtns = `<div class="action-btns">${claimBtn}${collectBtn}${settingsBtn}</div>`;
     } else {
       // Single instance — build container buttons targeting the right node
       const inst = details[0] || {};
@@ -1187,6 +1210,7 @@ const CP = (() => {
         : (noDocker ? ' disabled title="No Docker access"' : '');
       actionBtns = `<div class="action-btns">
           ${claimBtn}
+          ${collectBtn}
           ${settingsBtn}
           ${_canWrite ? `
           <button class="btn btn-icon" data-action="restartService" data-a1="'${escapeHtml(svc.slug)}${wParam}" title="Restart"${disabledAttr}>
@@ -1298,6 +1322,18 @@ const CP = (() => {
   function refreshServices() {
     loadServicesTable();
     toast('Services refreshed', 'info');
+  }
+
+  async function collectServiceNow(slug) {
+    if (!slug) return;
+    try {
+      const result = await api(`/api/services/${encodeURIComponent(slug)}/collect`, { method: 'POST' });
+      const balance = result.balance == null ? '' : `: ${formatCurrency(result.balance, result.currency || 'USD')}`;
+      toast(`Collected ${slug}${balance}`, 'success');
+      await Promise.all([loadDashboardStats(), loadServicesTable(), loadCollectorAlerts()]);
+    } catch (err) {
+      toast(`Collect failed: ${err.message}`, 'error');
+    }
   }
 
   async function _waitForChart() {
@@ -1601,7 +1637,90 @@ const CP = (() => {
     }
   }
 
+  function arrayBufferToBase64(buf) {
+    const bytes = new Uint8Array(buf);
+    let raw = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+      raw += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    }
+    return btoa(raw);
+  }
+
+  async function importNknWalletZip(inputId = 'nkn-wallet-file') {
+    const input = document.getElementById(inputId);
+    const status = document.getElementById('nkn-wallet-import-status');
+    if (!input || !input.files || !input.files.length) {
+      toast('Choose a wallet folder first', 'warning');
+      return;
+    }
+    const files = Array.from(input.files || []);
+    const folderRecords = {};
+    if (status) status.textContent = `Scanning wallet files: 0 / ${files.length}`;
+    for (const [index, file] of files.entries()) {
+      const rel = (file.webkitRelativePath || file.name || '').replaceAll('\\', '/');
+      const parts = rel.split('/').filter(Boolean);
+      const filename = parts.pop();
+      const folder = parts.pop();
+      if (!folder || (filename !== 'wallet.json' && filename !== 'wallet.pswd')) continue;
+      folderRecords[folder] = folderRecords[folder] || { folder_name: folder };
+      folderRecords[folder][filename === 'wallet.json' ? 'wallet_json' : 'wallet_pswd'] = await file.text();
+      if ((index + 1) % 500 === 0 && status) {
+        status.textContent = `Scanning wallet files: ${index + 1} / ${files.length}`;
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+    }
+    const records = Object.values(folderRecords).filter(row => row.wallet_json && row.wallet_pswd);
+    if (status) status.textContent = `${files.length} files scanned, ${records.length} wallet folders detected`;
+    if (records.length) {
+      if (status) status.textContent = 'Importing...';
+      try {
+        let imported = 0;
+        for (let i = 0; i < records.length; i += _nknWalletImportBatchSize) {
+          const batch = records.slice(i, i + _nknWalletImportBatchSize);
+          if (status) status.textContent = `Importing wallet folders: ${i + 1}-${i + batch.length} / ${records.length}`;
+          const res = await api('/api/admin/nkn-wallets/import', { method: 'POST', body: { records: batch } });
+          imported += Number(res.imported || 0);
+        }
+        input.value = '';
+        if (status) status.textContent = '';
+        const skipped = Math.max(0, Object.keys(folderRecords).length - imported);
+        toast(`Imported ${imported} wallet folder${imported === 1 ? '' : 's'} from ${files.length} files scanned; skipped ${skipped} incomplete folder${skipped === 1 ? '' : 's'}`, 'success');
+        await loadNknWallets();
+      } catch (err) {
+        if (status) status.textContent = '';
+        toast(`Import failed: ${err.message}`, 'error');
+      }
+      return;
+    }
+
+    let buf = null;
+    try {
+      buf = await input.files[0].arrayBuffer();
+    } catch (err) {
+      toast(`Could not read file: ${err.message}`, 'error');
+      return;
+    }
+    if (!buf || !buf.byteLength) {
+      toast('Wallet zip is empty', 'warning');
+      return;
+    }
+    if (status) status.textContent = 'Importing...';
+    try {
+      const res = await api('/api/admin/nkn-wallets/import', { method: 'POST', body: { archive_b64: arrayBufferToBase64(buf) } });
+      input.value = '';
+      if (status) status.textContent = '';
+      toast(`Imported ${res.imported || 0} wallet${res.imported === 1 ? '' : 's'}`, 'success');
+      await loadNknWallets();
+    } catch (err) {
+      if (status) status.textContent = '';
+      toast(`Import failed: ${err.message}`, 'error');
+    }
+  }
+
   let _mystWalletRows = [];
+  let _mystWalletPage = 1;
+  let _mystWalletSort = { key: 'id', dir: -1 };
+  const _mystWalletPageSize = 20;
 
   function mystWalletFilters() {
     return {
@@ -1609,6 +1728,23 @@ const CP = (() => {
       funding: (document.getElementById('myst-wallet-funding-filter')?.value || '').trim(),
       query: (document.getElementById('myst-wallet-search')?.value || '').trim().toLowerCase(),
     };
+  }
+
+  function renderMystWalletCounts(rows, filtered) {
+    const el = document.getElementById('myst-wallet-counts');
+    if (!el) return;
+    const counts = {
+      total: rows.length,
+      funded: rows.filter(r => r.funding === 'FUNDED').length,
+      unfunded: rows.filter(r => r.funding === 'UNFUNDED').length,
+      available: rows.filter(r => r.state === 'AVAILABLE').length,
+      leased: rows.filter(r => r.state === 'LEASED').length,
+      quarantined: rows.filter(r => r.state === 'QUARANTINED').length,
+      filtered: filtered.length,
+    };
+    el.innerHTML = Object.entries(counts).map(([k, v]) =>
+      `<span class="badge badge-category">${escapeHtml(k)}: ${escapeHtml(v)}</span>`
+    ).join('');
   }
 
   function renderMystWalletRows(rows) {
@@ -1626,8 +1762,12 @@ const CP = (() => {
       ].join(' ').toLowerCase();
       return haystack.includes(filters.query);
     });
+    filtered.sort((a, b) => String(a[_mystWalletSort.key] ?? '').localeCompare(String(b[_mystWalletSort.key] ?? ''), undefined, {numeric: true}) * _mystWalletSort.dir);
+    renderMystWalletCounts(rows, filtered);
     if (!filtered.length) {
       list.innerHTML = '';
+      const pager = document.getElementById('myst-wallet-pager');
+      if (pager) pager.innerHTML = '';
       status.className = 'empty-state';
       status.style.display = 'block';
       status.innerHTML = rows.length
@@ -1635,11 +1775,15 @@ const CP = (() => {
         : '<div class="empty-state-title">No wallets imported yet</div><div class="empty-state-text">Choose a file and import raw wallet lines.</div>';
       return;
     }
+    const pages = Math.max(1, Math.ceil(filtered.length / _mystWalletPageSize));
+    if (_mystWalletPage > pages) _mystWalletPage = pages;
+    const visible = filtered.slice((_mystWalletPage - 1) * _mystWalletPageSize, _mystWalletPage * _mystWalletPageSize);
     status.style.display = 'none';
-    list.innerHTML = filtered.map((row) => `
+    list.innerHTML = visible.map((row) => `
       <tr>
         <td>${escapeHtml(row.id)}</td>
-        <td style="font-family:monospace;" title="${escapeHtml(row.address || '')}">${escapeHtml(row.wallet_fingerprint || '')}</td>
+        <td class="mono-cell address-cell" title="${escapeHtml(row.address || '')}">${escapeHtml(row.address || '-')}</td>
+        <td>${escapeHtml(row.public_ip || '-')}</td>
         <td><span class="badge badge-category">${escapeHtml(row.state || '')}</span></td>
         <td><span class="badge ${row.funding === 'FUNDED' ? 'badge-running' : 'badge-error'}">${escapeHtml(row.funding || '')}</span></td>
         <td>${escapeHtml(row.leased_to_client_id || '-')}</td>
@@ -1652,10 +1796,72 @@ const CP = (() => {
         </td>
       </tr>
     `).join('');
+    const pager = document.getElementById('myst-wallet-pager');
+    if (pager) {
+      pager.innerHTML = `
+        <button class="btn btn-ghost btn-sm" data-action="mystWalletPage" data-a1="prev" ${_mystWalletPage <= 1 ? 'disabled' : ''}>Prev</button>
+        <span style="font-size:0.8rem;color:var(--text-muted);">Page ${_mystWalletPage} / ${pages} (${filtered.length})</span>
+        <button class="btn btn-ghost btn-sm" data-action="mystWalletPage" data-a1="next" ${_mystWalletPage >= pages ? 'disabled' : ''}>Next</button>`;
+    }
+  }
+
+  function filteredMystWalletRows() {
+    const filters = mystWalletFilters();
+    const filtered = _mystWalletRows.filter(row => {
+      if (filters.state && row.state !== filters.state) return false;
+      if (filters.funding && row.funding !== filters.funding) return false;
+      if (!filters.query) return true;
+      const haystack = [
+        row.id, row.wallet_fingerprint, row.address, row.leased_to_client_id,
+        row.node_identity, row.runtime_status, row.public_ip,
+      ].join(' ').toLowerCase();
+      return haystack.includes(filters.query);
+    });
+    return filtered.sort((a, b) => String(a[_mystWalletSort.key] ?? '').localeCompare(String(b[_mystWalletSort.key] ?? ''), undefined, {numeric: true}) * _mystWalletSort.dir);
   }
 
   function applyMystWalletFilters() {
+    _mystWalletPage = 1;
     renderMystWalletRows(_mystWalletRows);
+  }
+
+  function mystWalletPage(dir) {
+    if (dir === 'prev') _mystWalletPage = Math.max(1, _mystWalletPage - 1);
+    if (dir === 'next') _mystWalletPage += 1;
+    renderMystWalletRows(_mystWalletRows);
+  }
+
+  function sortMystWallets(key) {
+    _mystWalletSort = { key, dir: _mystWalletSort.key === key ? -_mystWalletSort.dir : 1 };
+    renderMystWalletRows(_mystWalletRows);
+  }
+
+  function downloadTextFile(text, filename, type = 'text/plain') {
+    const blob = new Blob([text], { type });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async function exportMystWallets(funding = '') {
+    if (funding) {
+      try {
+        const res = await fetch(`/api/admin/myst-wallets/export?funding=${encodeURIComponent(funding)}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        downloadTextFile(await res.text(), `myst-wallet-${funding.toLowerCase()}.txt`);
+      } catch (err) {
+        toast(`Export failed: ${err.message}`, 'error');
+      }
+      return;
+    }
+    const headers = ['id','address','public_ip','state','funding','leased_to_client_id','release_reason','wallet_assignment_version','last_heartbeat_at'];
+    const csv = [headers.join(','), ...filteredMystWalletRows().map(row => headers.map(key => `"${String(row[key] ?? '').replaceAll('"', '""')}"`).join(','))].join('\n');
+    downloadTextFile(csv, 'myst-wallet-filtered.csv', 'text/csv');
   }
 
   async function updateMystWallet(walletId, field, value) {
@@ -1663,6 +1869,8 @@ const CP = (() => {
     if (field === 'funding') body.funding = value;
     else if (field === 'state') body.state = value;
     else return;
+    const dangerous = value === 'UNFUNDED' || value === 'QUARANTINED';
+    if (dangerous && !window.confirm(`Set wallet ${walletId} to ${value}? This changes wallet allocation state.`)) return;
     try {
       await api(`/api/admin/myst-wallets/${encodeURIComponent(walletId)}`, { method: 'PATCH', body });
       toast('Wallet updated', 'success');
@@ -1688,6 +1896,117 @@ const CP = (() => {
       status.style.display = 'block';
       status.innerHTML = `<div class="empty-state-title">Could not load wallets</div><div class="empty-state-text">${escapeHtml(err.message)}</div>`;
     }
+  }
+
+  let _nknWalletRows = [];
+  let _nknWalletPage = 1;
+  let _nknWalletSort = { key: 'id', dir: -1 };
+  const _nknWalletPageSize = 20;
+  const _nknWalletImportBatchSize = 500;
+
+  function nknWalletFilters() {
+    return {
+      state: (document.getElementById('nkn-wallet-state-filter')?.value || '').trim(),
+      query: (document.getElementById('nkn-wallet-search')?.value || '').trim().toLowerCase(),
+    };
+  }
+
+  function renderNknWalletCounts(rows, filtered) {
+    const el = document.getElementById('nkn-wallet-counts');
+    if (!el) return;
+    const counts = {
+      total: rows.length,
+      available: rows.filter(r => r.state === 'AVAILABLE').length,
+      leased: rows.filter(r => r.state === 'LEASED').length,
+      quarantined: rows.filter(r => r.state === 'QUARANTINED').length,
+      filtered: filtered.length,
+    };
+    el.innerHTML = Object.entries(counts).map(([k, v]) =>
+      `<span class="badge badge-category">${escapeHtml(k)}: ${escapeHtml(v)}</span>`
+    ).join('');
+  }
+
+  function renderNknWalletRows(rows) {
+    const list = document.getElementById('nkn-wallet-list');
+    const status = document.getElementById('nkn-wallet-refresh-status');
+    if (!list || !status) return;
+    const filters = nknWalletFilters();
+    const filtered = rows.filter(row => {
+      if (filters.state && row.state !== filters.state) return false;
+      if (!filters.query) return true;
+      const haystack = [row.id, row.wallet_fingerprint, row.folder_name, row.address, row.leased_to_client_id, row.node_identity, row.runtime_status, row.public_ip].join(' ').toLowerCase();
+      return haystack.includes(filters.query);
+    });
+    filtered.sort((a, b) => String(a[_nknWalletSort.key] ?? '').localeCompare(String(b[_nknWalletSort.key] ?? ''), undefined, {numeric: true}) * _nknWalletSort.dir);
+    renderNknWalletCounts(rows, filtered);
+    if (!filtered.length) {
+      list.innerHTML = '';
+      const pager = document.getElementById('nkn-wallet-pager');
+      if (pager) pager.innerHTML = '';
+      status.className = 'empty-state';
+      status.style.display = 'block';
+      status.innerHTML = rows.length
+        ? '<div class="empty-state-title">No wallets match the filters</div>'
+        : '<div class="empty-state-title">No wallets imported yet</div><div class="empty-state-text">Choose a zip and import wallet folders.</div>';
+      return;
+    }
+    const pages = Math.max(1, Math.ceil(filtered.length / _nknWalletPageSize));
+    if (_nknWalletPage > pages) _nknWalletPage = pages;
+    const visible = filtered.slice((_nknWalletPage - 1) * _nknWalletPageSize, _nknWalletPage * _nknWalletPageSize);
+    status.style.display = 'none';
+    list.innerHTML = visible.map((row) => `
+      <tr>
+        <td>${escapeHtml(row.id)}</td>
+        <td>${escapeHtml(row.folder_name || '-')}</td>
+        <td class="mono-cell address-cell" title="${escapeHtml(row.address || '')}">${escapeHtml(row.address || '-')}</td>
+        <td>${escapeHtml(row.public_ip || '-')}</td>
+        <td><span class="badge badge-category">${escapeHtml(row.state || '')}</span></td>
+        <td>${escapeHtml(row.leased_to_client_id || '-')}</td>
+        <td>${escapeHtml(row.node_identity || '-')}</td>
+        <td>${escapeHtml(row.last_heartbeat_at || '-')}</td>
+      </tr>
+    `).join('');
+    const pager = document.getElementById('nkn-wallet-pager');
+    if (pager) {
+      pager.innerHTML = `
+        <button class="btn btn-ghost btn-sm" data-action="nknWalletPage" data-a1="prev" ${_nknWalletPage <= 1 ? 'disabled' : ''}>Prev</button>
+        <span style="font-size:0.8rem;color:var(--text-muted);">Page ${_nknWalletPage} / ${pages} (${filtered.length})</span>
+        <button class="btn btn-ghost btn-sm" data-action="nknWalletPage" data-a1="next" ${_nknWalletPage >= pages ? 'disabled' : ''}>Next</button>`;
+    }
+  }
+
+  async function loadNknWallets() {
+    const list = document.getElementById('nkn-wallet-list');
+    const status = document.getElementById('nkn-wallet-refresh-status');
+    if (!list || !status) return;
+    status.style.display = 'none';
+    status.innerHTML = '';
+    try {
+      const rows = await api('/api/admin/nkn-wallets');
+      _nknWalletRows = rows;
+      renderNknWalletRows(rows);
+    } catch (err) {
+      list.innerHTML = '';
+      status.className = 'empty-state';
+      status.style.display = 'block';
+      status.innerHTML = `<div class="empty-state-title">Could not load wallets</div><div class="empty-state-text">${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  function applyNknWalletFilters() {
+    _nknWalletPage = 1;
+    renderNknWalletRows(_nknWalletRows);
+  }
+
+  function nknWalletPage(dir) {
+    if (dir === 'prev') _nknWalletPage = Math.max(1, _nknWalletPage - 1);
+    if (dir === 'next') _nknWalletPage += 1;
+    renderNknWalletRows(_nknWalletRows);
+  }
+
+  function sortNknWallets(key) {
+    _nknWalletSort = { key, dir: _nknWalletSort.key === key ? -_nknWalletSort.dir : 1 };
+    renderNknWalletRows(_nknWalletRows);
   }
 
   // -----------------------------------------------------------
@@ -2231,7 +2550,9 @@ const CP = (() => {
     let manualNotice = '';
     if (isManual) {
       const platforms = (svc.platforms || []).map(p => p.charAt(0).toUpperCase() + p.slice(1)).join('/');
-      manualNotice = `<div class="manual-notice">${platforms || 'Desktop'} only — earnings tracking available</div>`;
+      manualNotice = svc.deploy_surface === 'host_systemd'
+        ? '<div class="manual-notice">Host systemd runtime — CashPilot deploy runner pending</div>'
+        : `<div class="manual-notice">${platforms || 'Desktop'} only — earnings tracking available</div>`;
     }
 
     return `
@@ -2331,6 +2652,9 @@ const CP = (() => {
       const manualBtnLabel = isDeployed && dashboardUrl
         ? `Dashboard for ${escapeHtml(svc.name)}`
         : `Sign Up for ${escapeHtml(svc.name)}`;
+      const manualReason = svc.deploy_surface === 'host_systemd'
+        ? 'Host systemd runtime — CashPilot worker deploy is not implemented for this provider yet.'
+        : `${platforms || 'Desktop'} only — no Docker image available for automated deployment.`;
       return `
       <div class="card" style="margin-bottom: 16px;" id="setup-${svc.slug}">
         <div class="card-header">
@@ -2339,7 +2663,7 @@ const CP = (() => {
         </div>
         <div style="padding: 8px 0;">
           <p style="color: var(--warning, #f59e0b); margin-bottom: 12px;">
-            <strong>${platforms || 'Desktop'} only</strong> — no Docker image available for automated deployment.
+            <strong>${escapeHtml(manualReason)}</strong>
           </p>
           <p style="color: var(--text-secondary); margin-bottom: 16px;">
             Install the app on your device, then CashPilot will track your earnings automatically.
@@ -2382,6 +2706,7 @@ const CP = (() => {
       </div>
 
       ${envFields}
+      ${deployModeSelect(svc, 'setup-deploy-mode')}
 
       ${svc.has_collector ? collectorCredentialsNotice(svc.slug) : ''}
 
@@ -2487,6 +2812,9 @@ const CP = (() => {
       return;
     }
 
+    const modeSelect = document.querySelector(`[data-deploy-mode-for="${slug}"]`);
+    const mode = modeSelect ? modeSelect.value : null;
+
     // Preflight, at the deploy step — which is where the backend's own comments
     // say it belongs, "not buried in an FAQ". It has been computed since 1.10.x
     // and asked by nothing.
@@ -2509,7 +2837,7 @@ const CP = (() => {
     let ok = 0, fail = 0;
     for (const wid of workerIds) {
       try {
-        await api(`/api/deploy/${slug}?worker_id=${wid}`, { method: 'POST', body: { env } });
+        await api(`/api/deploy/${slug}?worker_id=${wid}`, { method: 'POST', body: { env, mode } });
         ok++;
       } catch (err) {
         fail++;
@@ -2586,6 +2914,28 @@ const CP = (() => {
     container.innerHTML = filtered.map(renderCatalogCard).join('');
   }
 
+  function readinessBadges(svc) {
+    const deploy = svc.docker && svc.docker.image ? 'Deploy runtime' : 'No deploy';
+    const runtime = svc.runtime || {};
+    const collector = runtime.collector_kind === 'count_only'
+      ? 'Count only'
+      : runtime.collector_kind === 'dashboard_only'
+      ? 'Dashboard only'
+      : svc.has_collector ? 'Earnings collector' : 'No collector';
+    const dashboard = (svc.cashout && svc.cashout.dashboard_url) || svc.website ? 'Dashboard / session' : 'No dashboard';
+    const modes = Array.isArray(runtime.modes) && runtime.modes.length
+      ? runtime.modes.join('+')
+      : (svc.egress && svc.egress.mode) || 'unknown';
+    const egress = `mode: ${modes}`;
+    return `
+      <div class="platform-badges" style="margin-top:8px;">
+        <span class="platform-badge">${escapeHtml(deploy)}</span>
+        <span class="platform-badge">${escapeHtml(collector)}</span>
+        <span class="platform-badge">${escapeHtml(dashboard)}</span>
+        <span class="platform-badge">${escapeHtml(egress)}</span>
+      </div>`;
+  }
+
   function renderCatalogCard(svc) {
     const initial = (svc.name || '?')[0].toUpperCase();
     const earning = svc.earnings
@@ -2632,7 +2982,8 @@ const CP = (() => {
         ${statusBadge}
         ${svc.requirements && svc.requirements.residential_ip ? '<span class="badge badge-residential">Residential IP</span>' : ''}
       </div>
-      ${platformBadges ? `<div class="platform-badges" style="margin-top:8px;">${platformBadges}</div>` : ''}
+    ${platformBadges ? `<div class="platform-badges" style="margin-top:8px;">${platformBadges}</div>` : ''}
+      ${readinessBadges(svc)}
       <div class="service-stats" style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border-color);">
         <span></span>
         ${actionBtn}
@@ -2776,6 +3127,7 @@ const CP = (() => {
 
       html += `<h4 style="margin-bottom: 12px; font-size: 0.95rem;">Deploy</h4>`;
       html += envFields;
+      html += deployModeSelect(svc, 'detail-deploy-mode');
 
       // Earnings tracking uses SEPARATE credentials (Settings → Collectors).
       // The fields above only configure the container that earns; they don't
@@ -2961,6 +3313,7 @@ const CP = (() => {
         api('/api/collectors/meta').catch(() => []),
       ]);
       renderEnvVars(envInfo, config);
+      renderSettingsConfig(config);
       renderCollectors(collectorsMeta, config);
       loadCredentialHealth();
     } catch (err) {
@@ -2993,7 +3346,6 @@ const CP = (() => {
       if (el) el.innerHTML = `<p style="color:var(--error);font-size:0.85rem;">${escapeHtml(message)}</p>`;
     });
   }
-
   function renderEnvVars(envInfo, config) {
     const container = document.getElementById('env-vars-container');
     if (!container) return;
@@ -3061,6 +3413,19 @@ const CP = (() => {
     </div>`;
   }
 
+  function renderSettingsConfig(config) {
+    document.querySelectorAll('.settings-config-input').forEach(input => {
+      const key = input.dataset.config;
+      if (!key) return;
+      const value = config[key];
+      if (input.type === 'checkbox') {
+        input.checked = String(value || '').toLowerCase() === 'true';
+      } else if (value != null && value !== '') {
+        input.value = value;
+      }
+    });
+  }
+
   function toggleEnvSecret(inputId, btn) {
     const input = document.getElementById(inputId);
     if (!input) return;
@@ -3073,12 +3438,13 @@ const CP = (() => {
   }
 
   async function saveEnvSettings() {
-    const inputs = document.querySelectorAll('.env-var-input:not(:disabled)');
+    const inputs = document.querySelectorAll('.env-var-input:not(:disabled), .settings-config-input:not(:disabled)');
     const data = {};
     inputs.forEach(input => {
-      const val = input.value.trim();
+      const key = input.dataset.envKey || input.dataset.config;
+      const val = input.type === 'checkbox' ? (input.checked ? 'true' : 'false') : input.value.trim();
       if (val) {
-        data[input.dataset.envKey] = val;
+        data[key] = val;
       }
     });
     if (Object.keys(data).length === 0) {
@@ -3122,7 +3488,9 @@ const CP = (() => {
       const setCount = required.filter(isSet).length;
       const configured = required.length > 0 && setCount === required.length;
       const partial = setCount > 0 && setCount < required.length;
-      const statusBadge = partial
+      const statusBadge = sectionId === 'none'
+        ? '<span class="badge badge-category">No credentials</span>'
+        : partial
         ? '<span class="badge badge-warning" title="Some required credentials are missing, so this service is not being collected">Incomplete</span>'
         : configured
         ? '<span class="badge badge-deployed">Configured</span>'
@@ -3165,7 +3533,7 @@ const CP = (() => {
         </summary>
         <div class="collector-body">
           ${col.hint ? `<div class="form-hint" style="margin-bottom:12px;">${sanitizeHint(col.hint)}</div>` : ''}
-          ${renderedFields || '<div class="form-hint">No credentials needed.</div>'}
+          ${renderedFields || `<div class="form-hint">${col.count_only ? 'Count-only provider. CashPilot tracks node count, not earnings.' : col.manual_only ? 'Manual/dashboard-only provider. No earnings collector credentials are required.' : 'No credentials needed.'}</div>`}
           ${clearBtn}
         </div>
       </details>`;
@@ -3195,6 +3563,7 @@ const CP = (() => {
       </section>` : '';
     container.innerHTML = groupHtml + noCredentialHtml || '<p style="color:var(--text-muted);font-size:0.85rem;">No provider credential metadata available.</p>';
   }
+
 
   async function saveCollectorCredentials() {
     const inputs = document.querySelectorAll('.collector-input');
@@ -3737,7 +4106,28 @@ const CP = (() => {
           if (!el) return;
           el.addEventListener(id === 'myst-wallet-search' ? 'input' : 'change', applyMystWalletFilters);
         });
+        document.querySelectorAll('[data-myst-sort]').forEach(el => {
+          el.style.cursor = 'pointer';
+          el.addEventListener('click', () => sortMystWallets(el.dataset.mystSort));
+        });
         loadMystWallets();
+        break;
+      case 'nkn-wallet':
+        ['nkn-wallet-file'].forEach(id => {
+          const el = document.getElementById(id);
+          if (!el) return;
+          el.addEventListener('change', () => importNknWalletZip(id));
+        });
+        ['nkn-wallet-state-filter', 'nkn-wallet-search'].forEach(id => {
+          const el = document.getElementById(id);
+          if (!el) return;
+          el.addEventListener(id === 'nkn-wallet-search' ? 'input' : 'change', applyNknWalletFilters);
+        });
+        document.querySelectorAll('[data-nkn-sort]').forEach(el => {
+          el.style.cursor = 'pointer';
+          el.addEventListener('click', () => sortNknWallets(el.dataset.nknSort));
+        });
+        loadNknWallets();
         break;
       case 'setup':
         initWizard();
@@ -3803,8 +4193,16 @@ const CP = (() => {
     saveEnvSettings,
     toggleEnvSecret,
     importMystWalletFile,
+    importNknWalletZip,
     loadMystWallets,
+    loadNknWallets,
     applyMystWalletFilters,
+    applyNknWalletFilters,
+    mystWalletPage,
+    nknWalletPage,
+    sortMystWallets,
+    sortNknWallets,
+    exportMystWallets,
     updateMystWallet,
     filterCatalog,
     refreshServices,
@@ -3823,6 +4221,7 @@ const CP = (() => {
     loadCredentialHealth,
     loadPayoutProgress,
     loadDeployRisk,
+    collectServiceNow,
     confirmPayout,
     rejectPayout,
     // Exposed for fleet.html, which rendered running costs with a bare
@@ -3834,3 +4233,4 @@ const CP = (() => {
     fmtTimestamp,
   };
 })();
+window.CP = CP;

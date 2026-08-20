@@ -85,8 +85,43 @@ def test_singbox_config_uses_tun_and_socks_outbound():
         worker_name="vps-main",
     )
     assert config["inbounds"][0]["type"] == "tun"
+    assert len(config["inbounds"][0]["interface_name"]) <= 15
     assert config["outbounds"][0]["type"] == "socks"
     assert config["route"]["final"] == "proxy-out"
+    assert config["dns"]["strategy"] == "ipv4_only"
+    assert {"port": 53, "outbound": "direct"} in config["route"]["rules"]
+    assert {"domain": ["dc-t5.proxyvt.com"], "outbound": "direct"} in config["route"]["rules"]
+
+
+def test_singbox_config_can_use_repocket_safe_tun_name():
+    from app.singbox_config import render_tun_proxy_config
+
+    config = render_tun_proxy_config(
+        {"host": "proxy.example.com", "port": 1080, "protocol": "socks5"},
+        worker_name="repocket-proxy",
+        interface_name="cpegress",
+    )
+    assert config["inbounds"][0]["interface_name"] == "cpegress"
+
+
+def test_singbox_config_can_route_udp_direct_for_traffmonetizer_proxy():
+    from app.singbox_config import render_tun_proxy_config
+
+    config = render_tun_proxy_config(
+        {
+            "host": "dc-t5.proxyvt.com",
+            "port": 45884,
+            "username": "user123",
+            "password": "pass456",
+            "protocol": "socks5",
+        },
+        worker_name="traffmonetizer-proxy",
+        udp_direct=True,
+    )
+    assert {"network": "udp", "outbound": "direct"} in config["route"]["rules"]
+    assert {"network": "tcp", "outbound": "proxy-out"} in config["route"]["rules"]
+    assert config["route"]["final"] == "proxy-out"
+
 
 def test_http_proxy_never_satisfies_udp_required():
     from app import proxy_egress
@@ -98,37 +133,52 @@ def test_http_proxy_never_satisfies_udp_required():
     )
     assert mode == "direct"
 
+
 def test_socks5_proxy_satisfies_udp_only_when_marked_ok():
     from app import proxy_egress
 
-    assert proxy_egress.choose_mode(
-        requested_mode="auto",
-        service_udp="required",
-        proxy={"protocol": "socks5", "udp_ok": False},
-    ) == "direct"
-    assert proxy_egress.choose_mode(
-        requested_mode="auto",
-        service_udp="required",
-        proxy={"protocol": "socks5", "udp_ok": True},
-    ) == "proxy"
+    assert (
+        proxy_egress.choose_mode(
+            requested_mode="auto",
+            service_udp="required",
+            proxy={"protocol": "socks5", "udp_ok": False},
+        )
+        == "direct"
+    )
+    assert (
+        proxy_egress.choose_mode(
+            requested_mode="auto",
+            service_udp="required",
+            proxy={"protocol": "socks5", "udp_ok": True},
+        )
+        == "proxy"
+    )
+
 
 def test_direct_provider_bypasses_fake_proxy():
     from app import proxy_egress
 
-    assert proxy_egress.choose_mode(
-        requested_mode="direct",
-        service_udp="none",
-        proxy={"protocol": "socks5", "udp_ok": True},
-    ) == "direct"
+    assert (
+        proxy_egress.choose_mode(
+            requested_mode="direct",
+            service_udp="none",
+            proxy={"protocol": "socks5", "udp_ok": True},
+        )
+        == "direct"
+    )
+
 
 def test_auto_chooses_direct_for_udp_when_proxy_cannot_udp():
     from app import proxy_egress
 
-    assert proxy_egress.choose_mode(
-        requested_mode="auto",
-        service_udp="required",
-        proxy={"protocol": "http"},
-    ) == "direct"
+    assert (
+        proxy_egress.choose_mode(
+            requested_mode="auto",
+            service_udp="required",
+            proxy={"protocol": "http"},
+        )
+        == "direct"
+    )
 
 
 def test_init_db_creates_proxy_tables(tmp_path):
@@ -149,6 +199,7 @@ def test_init_db_creates_proxy_tables(tmp_path):
             assert {"proxy_providers", "proxy_endpoints", "proxy_assignments"} <= tables
 
         asyncio.run(check())
+
 
 def test_worker_egress_apply_writes_singbox_config(tmp_path):
     from app import worker_api

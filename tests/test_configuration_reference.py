@@ -115,6 +115,13 @@ class TestTheAdvertiseOnlyPortIsCalledOut:
         dockerfile = (ROOT / "Dockerfile.worker").read_text(encoding="utf-8")
         assert '"--port", "8081"' in dockerfile, "the worker's port is no longer hardcoded; the warning may be stale"
 
+    def test_worker_image_copies_catalog_imports(self):
+        dockerfile = (ROOT / "Dockerfile.worker").read_text(encoding="utf-8")
+        assert "app/catalog.py" in dockerfile
+        assert "app/provider_runtime.py" in dockerfile, (
+            "catalog.py imports provider_runtime; missing copy crashes worker"
+        )
+
     def test_the_variable_really_is_only_advertised(self):
         source = (ROOT / "app" / "worker_api.py").read_text(encoding="utf-8")
         uses = [ln for ln in source.splitlines() if "WORKER_PORT" in ln and "getenv" not in ln]

@@ -33,6 +33,17 @@ docker:
   network_mode: ""
   privileged: false
 
+deploy:
+  credentials:
+    - key: cid
+      label: "Client ID"
+      kind: text
+      secret: false
+      required: true
+      env: CID
+      source: "PacketStream dashboard setup command"
+      description: "CID shown in PacketStream's Docker setup command."
+
 requirements:
   residential_ip: true
   min_bandwidth: ""
@@ -62,6 +73,14 @@ platforms: [docker, windows, macos, linux]
 
 collector:
   type: scrape
+  credentials:
+    - key: auth_token
+      label: "Auth cookie"
+      kind: cookie
+      secret: true
+      required: true
+      source: "PacketStream logged-in browser cookie"
+      description: "auth cookie/JWT used by the earnings collector."
   notes: "Dashboard is CAPTCHA-protected. May need manual JWT from browser session for API access."
   credential_hint: "Log in at <a href='https://packetstream.io' target='_blank'>packetstream.io</a>, press F12 → Application → Cookies, copy the <b>auth</b> cookie value (it’s a JWT)."
 

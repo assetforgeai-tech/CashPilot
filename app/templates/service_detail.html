@@ -135,6 +135,12 @@
         Already have an account? Enter your credentials below and deploy.
       </p>
 
+      {% if service.deploy and service.deploy.deploy_surface == 'host_systemd' %}
+      <p style="color: var(--warning, #f59e0b); font-size: 0.85rem; margin-bottom: 16px;">
+        This provider is source-defined as host-systemd. CashPilot worker deploy is not implemented for it yet.
+      </p>
+      {% endif %}
+
       {% if service.docker and service.docker.env %}
         {% for env in service.docker.env %}
         <div class="form-group">
@@ -152,7 +158,7 @@
       {% endif %}
 
       <div style="display: flex; gap: 8px; align-items: center;">
-        <button class="btn btn-success" data-action="deployService" data-a1="{{ service.slug }}">Deploy</button>
+        <button class="btn btn-success" data-action="deployService" data-a1="{{ service.slug }}" {% if service.deploy and service.deploy.deploy_surface == 'host_systemd' %}disabled title="Host-systemd provider: deploy is not implemented yet"{% endif %}>Deploy</button>
         <span id="deploy-status-{{ service.slug }}" style="font-size: 0.85rem;"></span>
       </div>
     </div>
