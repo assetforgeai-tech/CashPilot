@@ -115,11 +115,6 @@ def apply_grass_store_patch(
     result = container.exec_run(["python3", "-c", script])
     if getattr(result, "exit_code", 1) != 0:
         raise RuntimeError("Grass store.json patch failed")
-    # Grass flushes its unauthenticated in-memory state during graceful shutdown,
-    # which can overwrite the patched identity. Kill avoids the flush; explicit
-    # start relaunches against the patched store.json.
-    container.kill()
-    container.start()
 
 
 def extract_spide_device_key(logs: str) -> str | None:

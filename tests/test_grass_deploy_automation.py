@@ -65,6 +65,8 @@ def test_grass_patch_waits_for_device_identity_before_overwriting_auth_seed():
         )
 
     assert container.put_archive.called
+    container.kill.assert_not_called()
+    container.start.assert_not_called()
 
 
 def test_deploy_raw_maps_wipter_credentials_to_env_and_restarts_after_login_state():
