@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from app import database
+from app import database, main
 from app.main import app
 from app.routers import proxies as proxy_routes
 
@@ -499,6 +499,77 @@ def test_proxy_lease_skips_dead_proxies(tmp_path):
 
             assert lease
             assert lease["endpoint"] == "2.2.2.2:1000"
+
+    import asyncio
+
+    asyncio.run(run())
+
+
+def test_proxy_lease_clears_dead_worker_assignment_before_releasing_new_proxy(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("vtproxy", "vtproxy")
+            await database.upsert_proxy_endpoints(
+                provider_id,
+                [
+                    {
+                        "provider_proxy_id": "dead",
+                        "endpoint": "1.1.1.1:1000",
+                        "host": "1.1.1.1",
+                        "port": 1000,
+                        "status": "alive",
+                    },
+                    {
+                        "provider_proxy_id": "alive",
+                        "endpoint": "2.2.2.2:1000",
+                        "host": "2.2.2.2",
+                        "port": 1000,
+                        "status": "alive",
+                    },
+                ],
+            )
+            worker = await database.upsert_worker("worker-a", "a", "http://a")
+            await database.set_worker_proxy_assignment(worker, 1, "proxy", "hold")
+
+            with (
+                patch(
+                    "app.main.database.get_worker_proxy_assignment",
+                    new_callable=AsyncMock,
+                    return_value={
+                        "worker_id": worker,
+                        "proxy_id": 1,
+                        "host": "1.1.1.1",
+                        "port": 1000,
+                        "username": "",
+                        "password": "",
+                    },
+                ),
+                patch("app.main.database.proxy_masked_for_provider", new_callable=AsyncMock, return_value=False),
+                patch(
+                    "app.main.database.clear_worker_proxy_assignment", new_callable=AsyncMock, return_value=True
+                ) as clear,
+                patch(
+                    "app.main.database.lease_proxy_for_worker",
+                    new_callable=AsyncMock,
+                    return_value={
+                        "worker_id": worker,
+                        "proxy_id": 2,
+                        "host": "2.2.2.2",
+                        "port": 1000,
+                    },
+                ) as lease,
+                patch(
+                    "app.routers.proxies._probe_proxy_confirmed",
+                    new_callable=AsyncMock,
+                    return_value={"status": "dead"},
+                ),
+            ):
+                proxy = await main._proxy_for_worker_instance(worker)
+
+            assert proxy["proxy_id"] == 2
+            clear.assert_awaited_once_with(worker)
+            lease.assert_awaited_once_with(worker, provider_slug=None)
 
     import asyncio
 

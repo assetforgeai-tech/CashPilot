@@ -3006,6 +3006,16 @@ async def set_worker_proxy_assignment(
         await db.close()
 
 
+async def clear_worker_proxy_assignment(worker_id: int) -> bool:
+    db = await _get_db()
+    try:
+        cursor = await db.execute("DELETE FROM proxy_assignments WHERE worker_id = ?", (worker_id,))
+        await db.commit()
+        return bool(cursor.rowcount)
+    finally:
+        await db.close()
+
+
 async def get_worker_proxy_assignment(worker_id: int) -> dict[str, Any] | None:
     db = await _get_db()
     try:

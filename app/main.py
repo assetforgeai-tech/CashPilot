@@ -2065,7 +2065,22 @@ async def _proxy_for_worker_instance(worker_id: int, *, provider_slug: str | Non
             and proxy.get("proxy_id")
             and await database.proxy_masked_for_provider(int(proxy["proxy_id"]), provider_slug)
         ):
+            await database.clear_worker_proxy_assignment(worker_id)
             proxy = None
+        if proxy and proxy.get("proxy_id"):
+            from app.routers.proxies import _probe_proxy_confirmed
+
+            probe = await _probe_proxy_confirmed(
+                str(proxy.get("host") or "").strip(),
+                int(proxy.get("port") or 0),
+                username=str(proxy.get("username") or "").strip(),
+                password=str(proxy.get("password") or "").strip(),
+                retries=1,
+                retry_delay=0,
+            )
+            if probe.get("status") != "alive":
+                await database.clear_worker_proxy_assignment(worker_id)
+                proxy = None
         if not proxy or not proxy.get("proxy_id"):
             proxy = await database.lease_proxy_for_worker(worker_id, provider_slug=provider_slug)
         if proxy and proxy.get("proxy_id"):
