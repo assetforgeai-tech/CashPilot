@@ -120,7 +120,12 @@ mkdir -p "$XDG_RUNTIME_DIR" "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME" "$XDG_DATA_HOME
 chmod 700 "$XDG_RUNTIME_DIR"
 python3 - <<'PY'
 import pathlib, uuid
-mid = uuid.uuid4().hex
+seed = pathlib.Path('/var/lib/grass-xdg/.machine-id')
+if seed.exists():
+    mid = seed.read_text().strip()
+else:
+    mid = uuid.uuid4().hex
+    seed.write_text(mid)
 pathlib.Path('/etc/machine-id').write_text(mid)
 pathlib.Path('/var/lib/dbus').mkdir(parents=True, exist_ok=True)
 pathlib.Path('/var/lib/dbus/machine-id').write_text(mid)
