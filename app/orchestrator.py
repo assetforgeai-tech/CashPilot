@@ -8,12 +8,12 @@ inspection for cashpilot-managed containers via the Docker SDK.
 from __future__ import annotations
 
 import base64
+import contextlib
 import json
 import logging
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from pathlib import Path
 from typing import Any
 from urllib.request import Request, urlopen
 
@@ -438,6 +438,7 @@ def _remove_named_volumes(volumes: dict[str, Any]) -> None:
         except NotFound:
             pass
 
+
 def _grass_seed_from_credentials(deploy_credentials: dict[str, Any]) -> dict[str, str]:
     seed = {
         "accessToken": str(deploy_credentials.get("store_access_token") or ""),
@@ -453,6 +454,7 @@ def _grass_seed_from_credentials(deploy_credentials: dict[str, Any]) -> dict[str
         seed["wynd:device_registered_user_id"] = optional
     return seed
 
+
 def _preseed_grass_named_volume(volumes: dict[str, dict[str, str]], deploy_credentials: dict[str, Any]) -> bool:
     client = _get_client()
     payload = _grass_seed_from_credentials(deploy_credentials)
@@ -463,15 +465,30 @@ def _preseed_grass_named_volume(volumes: dict[str, dict[str, str]], deploy_crede
         if target != "/var/lib/grass-xdg":
             continue
         try:
-            volume = client.volumes.get(source)
+            client.volumes.get(source)
         except NotFound:
-            volume = client.volumes.create(source)
-        mountpoint = Path(str((volume.attrs or {}).get("Mountpoint") or ""))
-        if not mountpoint:
-            continue
-        store = mountpoint / "data" / "io.getgrass.desktop" / "store.json"
-        store.parent.mkdir(parents=True, exist_ok=True)
-        store.write_text(raw, encoding="utf-8")
+            client.volumes.create(source)
+        seed_name = f"{_container_name(str(source))}-seed"
+        with contextlib.suppress(NotFound):
+            client.containers.get(seed_name).remove(force=True)
+        client.containers.run(
+            image="python:3.14-alpine",
+            name=seed_name,
+            environment={"GRASS_STORE_JSON": raw},
+            volumes={source: {"bind": "/seed", "mode": "rw"}},
+            command=[
+                "python3",
+                "-c",
+                (
+                    "import os,pathlib;"
+                    "p=pathlib.Path('/seed/data/io.getgrass.desktop/store.json');"
+                    "p.parent.mkdir(parents=True,exist_ok=True);"
+                    "p.write_text(os.environ['GRASS_STORE_JSON'])"
+                ),
+            ],
+            detach=False,
+            remove=True,
+        )
         seeded = True
         logger.info("Preseeded Grass store.json into named volume %s", source)
     return seeded

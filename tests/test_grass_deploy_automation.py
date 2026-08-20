@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from app import orchestrator
@@ -94,22 +93,19 @@ def test_deploy_raw_preseeds_grass_named_volume_before_start(tmp_path):
     client = MagicMock()
     client.containers.get.side_effect = orchestrator.NotFound("nope")
     container = MagicMock(short_id="abc123", id="container-id")
-    mountpoint = tmp_path / "grass-volume"
     events = []
 
     class _Volumes:
         def get(self, name):
             assert name == "grass-profile-proxy-2"
-            return MagicMock(attrs={"Mountpoint": str(mountpoint)})
+            return MagicMock()
 
         def create(self, name):
             assert name == "grass-profile-proxy-2"
-            mountpoint.mkdir(parents=True, exist_ok=True)
-            return MagicMock(attrs={"Mountpoint": str(mountpoint)})
+            return MagicMock()
 
     def run(**_kwargs):
-        store = mountpoint / "data" / "io.getgrass.desktop" / "store.json"
-        events.append(("run", store.exists()))
+        events.append(_kwargs["name"])
         return container
 
     client.volumes = _Volumes()
@@ -135,9 +131,11 @@ def test_deploy_raw_preseeds_grass_named_volume_before_start(tmp_path):
             },
         )
 
-    assert events == [("run", True)]
-    store = Path(mountpoint / "data" / "io.getgrass.desktop" / "store.json")
-    assert '"tokenExpiry":"1818650340"' in store.read_text()
+    assert events == ["cashpilot-grass-profile-proxy-2-seed", "cashpilot-grass-proxy-2"]
+    seed_call = client.containers.run.call_args_list[0].kwargs
+    assert seed_call["remove"] is True
+    assert seed_call["volumes"] == {"grass-profile-proxy-2": {"bind": "/seed", "mode": "rw"}}
+    assert '"tokenExpiry":"1818650340"' in seed_call["environment"]["GRASS_STORE_JSON"]
     post_start_patch.assert_not_called()
 
 
