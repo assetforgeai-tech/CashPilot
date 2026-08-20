@@ -37,7 +37,23 @@ def test_deploy_raw_patches_grass_auth_seed_after_first_start():
     patch_store.assert_called_once_with(container, credentials)
 
 
-def test_grass_patch_waits_for_device_identity_before_overwriting_auth_seed():
+def test_grass_store_patch_includes_token_expiry():
+    patch = orchestrator.provider_automation.grass_store_patch(
+        {
+            "store_access_token": '"access"',
+            "store_refresh_token": '"refresh"',
+            "store_token_expiry": "1818650340",
+            "store_wynd_status": '"CONNECTED"',
+            "store_wynd_authenticated": "true",
+            "store_wynd_user_id": '"user"',
+            "store_auto_update": "true",
+        }
+    )
+
+    assert patch["tokenExpiry"] == "1818650340"
+
+
+def test_grass_patch_waits_only_for_store_file_before_overwriting_auth_seed():
     container = MagicMock(short_id="abc123", id="container-id")
     container.exec_run.side_effect = [
         MagicMock(exit_code=1),
@@ -55,6 +71,7 @@ def test_grass_patch_waits_for_device_identity_before_overwriting_auth_seed():
             {
                 "store_access_token": '"access"',
                 "store_refresh_token": '"refresh"',
+                "store_token_expiry": "1818650340",
                 "store_wynd_status": '"CONNECTED"',
                 "store_wynd_authenticated": "true",
                 "store_wynd_user_id": '"user"',
@@ -67,6 +84,9 @@ def test_grass_patch_waits_for_device_identity_before_overwriting_auth_seed():
     assert container.put_archive.called
     container.kill.assert_not_called()
     container.start.assert_not_called()
+    check = container.exec_run.call_args_list[0].args[0]
+    assert "test -s" in check[-1]
+    assert "wynd:device_id" not in check[-1]
 
 
 def test_deploy_raw_maps_wipter_credentials_to_env_and_restarts_after_login_state():
