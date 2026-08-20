@@ -53,7 +53,7 @@ def test_grass_store_patch_includes_token_expiry():
     assert patch["tokenExpiry"] == "1818650340"
 
 
-def test_grass_store_patch_includes_browser_id():
+def test_grass_store_patch_does_not_overwrite_browser_id():
     patch = orchestrator.provider_automation.grass_store_patch(
         {
             "store_access_token": '"access"',
@@ -67,7 +67,7 @@ def test_grass_store_patch_includes_browser_id():
         }
     )
 
-    assert patch["wynd:browser_id"] == '"browser"'
+    assert "wynd:browser_id" not in patch
 
 
 def test_grass_store_patch_unwraps_status_literal():
@@ -133,6 +133,7 @@ def test_grass_patch_waits_only_for_store_file_before_overwriting_auth_seed():
     assert container.put_archive.called
     container.kill.assert_not_called()
     container.start.assert_not_called()
+    container.restart.assert_called_once_with()
     check = container.exec_run.call_args_list[0].args[0]
     assert "test -s" in check[-1]
     assert "wynd:device_id" in check[-1]

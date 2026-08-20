@@ -41,7 +41,6 @@ _GRASS_STORE_KEYS = {
 }
 _GRASS_OPTIONAL_STORE_KEYS = {
     "store_wynd_status": "wynd:status",
-    "store_wynd_browser_id": "wynd:browser_id",
     "store_wynd_device_registered_user_id": "wynd:device_registered_user_id",
 }
 
@@ -126,6 +125,7 @@ def apply_grass_store_patch(
     result = container.exec_run(["python3", "-c", script])
     if getattr(result, "exit_code", 1) != 0:
         raise RuntimeError("Grass store.json patch failed")
+    container.restart()
 
 
 def extract_spide_device_key(logs: str) -> str | None:
