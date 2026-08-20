@@ -70,17 +70,19 @@ def test_grass_manifest_build_tags_image_by_resolved_version():
 
     image = provider_installers.ensure_installer_image(client, "grass", resolved)
 
-    assert image == "cashpilot/grass-desktop:v7.6.0-ubuntu24.04"
+    assert image == "cashpilot/grass-desktop:v7.6.0-ubuntu24.04-authpatch"
     dockerfile = client.images.build.call_args.kwargs["fileobj"].getvalue().decode()
     assert "FROM ubuntu:24.04" in dockerfile
     assert "grass-desktop_7.6.0_amd64.deb" in dockerfile
     assert "novnc" in dockerfile
     assert "base64.b64decode" in dockerfile
     script = base64.b64decode(re.search(r"b64decode\('([^']+)'\)", dockerfile).group(1)).decode()
-    assert 'tar -xzf "$GRASS_SEED_ARCHIVE" -C "$tmpdir"' in script
-    assert '"$tmpdir/grass-xdg/data/."' in script
-    assert "GRASS_RESET_DEVICE_ID:-false" in script
-    assert "GRASS_RESET_BROWSER_ID:-false" in script
+    assert "GRASS_SEED_ARCHIVE" not in script
+    assert "tmpdir" not in script
+    assert "GRASS_RESET_DEVICE_ID" not in script
+    assert "GRASS_RESET_BROWSER_ID" not in script
+    assert "wynd:device_privkey" not in script
+    assert "wynd:browser_id" not in script
     assert "--no-sandbox" in script
     assert ".grass-configured" not in script
     assert "USER_EMAIL" not in script

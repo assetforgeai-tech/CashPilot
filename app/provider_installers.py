@@ -15,6 +15,7 @@ _GRASS_IMAGE = "cashpilot/grass-desktop"
 _UPROCK_IMAGE = "cashpilot/uprock-mining"
 _PROXYBASE_XYZ_IMAGE = "cashpilot/proxybase-xyz-cli"
 _RUNNER = "ubuntu24.04"
+_GRASS_RUNNER = "ubuntu24.04-authpatch"
 _GRASS_ALLOWED_HOST = "files.grass.io"
 _UPROCK_ALLOWED_HOST = "edge.uprock.com"
 _PROXYBASE_XYZ_INSTALLER = "https://proxybase.xyz/install.sh"
@@ -99,7 +100,8 @@ def ensure_proxybase_xyz_image(client) -> str:
 
 def _ensure_image(client, image_base: str, resolved: dict[str, str], dockerfile_builder) -> str:
     version = "".join(c if c.isalnum() or c in ".-_" else "-" for c in resolved["version"])
-    image = f"{image_base}:{version}-{_RUNNER}"
+    runner = _GRASS_RUNNER if image_base == _GRASS_IMAGE else _RUNNER
+    image = f"{image_base}:{version}-{runner}"
     try:
         client.images.get(image)
         return image
@@ -116,28 +118,6 @@ def _grass_dockerfile(deb_url: str) -> str:
 set -eu
 mkdir -p "$XDG_RUNTIME_DIR" "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME" "$XDG_DATA_HOME"
 chmod 700 "$XDG_RUNTIME_DIR"
-if [ -f "$GRASS_SEED_ARCHIVE" ] && [ ! -f "$XDG_DATA_HOME/io.getgrass.desktop/store.json" ]; then
-  tmpdir="$(mktemp -d)"
-  tar -xzf "$GRASS_SEED_ARCHIVE" -C "$tmpdir"
-  if [ -d "$tmpdir/grass-xdg" ]; then
-    cp -a "$tmpdir/grass-xdg/config/." "$XDG_CONFIG_HOME/" 2>/dev/null || true
-    cp -a "$tmpdir/grass-xdg/cache/." "$XDG_CACHE_HOME/" 2>/dev/null || true
-    cp -a "$tmpdir/grass-xdg/data/." "$XDG_DATA_HOME/" 2>/dev/null || true
-  else
-    cp -a "$tmpdir/config/." "$XDG_CONFIG_HOME/" 2>/dev/null || true
-    cp -a "$tmpdir/cache/." "$XDG_CACHE_HOME/" 2>/dev/null || true
-    cp -a "$tmpdir/data/." "$XDG_DATA_HOME/" 2>/dev/null || true
-  fi
-  rm -rf "$tmpdir"
-fi
-if [ "${GRASS_RESET_DEVICE_ID:-false}" = "true" ] && [ -f "$XDG_DATA_HOME/io.getgrass.desktop/store.json" ] && [ ! -f "$XDG_DATA_HOME/.grass-device-reset-done" ]; then
-  sed -i '/"wynd:device_id"/d;/"wynd:device_privkey"/d;/"wynd:device_pubkey"/d;/"wynd:device_registered_pubkey"/d;/"wynd:device_registered_user_id"/d' "$XDG_DATA_HOME/io.getgrass.desktop/store.json"
-  : > "$XDG_DATA_HOME/.grass-device-reset-done"
-fi
-if [ "${GRASS_RESET_BROWSER_ID:-false}" = "true" ] && [ -f "$XDG_DATA_HOME/io.getgrass.desktop/store.json" ] && [ ! -f "$XDG_DATA_HOME/.grass-browser-reset-done" ]; then
-  sed -i '/"wynd:browser_id"/d' "$XDG_DATA_HOME/io.getgrass.desktop/store.json"
-  : > "$XDG_DATA_HOME/.grass-browser-reset-done"
-fi
 rm -f /tmp/.X99-lock
 Xvfb :99 -screen 0 1280x720x24 -nolisten tcp >/tmp/xvfb.log 2>&1 &
 fluxbox >/tmp/fluxbox.log 2>&1 &
@@ -153,7 +133,6 @@ ENV DEBIAN_FRONTEND=noninteractive \\
     XDG_CONFIG_HOME=/var/lib/grass-xdg/config \\
     XDG_CACHE_HOME=/var/lib/grass-xdg/cache \\
     XDG_DATA_HOME=/var/lib/grass-xdg/data \\
-    GRASS_SEED_ARCHIVE=/seed/grass-xdg-seed.tar.gz \\
     ELECTRON_DISABLE_SECURITY_WARNINGS=true
 RUN apt-get update \\
  && apt-get install -y --no-install-recommends ca-certificates curl xvfb x11vnc fluxbox novnc websockify dbus-x11 python3-minimal \\
