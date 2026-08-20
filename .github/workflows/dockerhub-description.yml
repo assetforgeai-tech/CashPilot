@@ -7,7 +7,25 @@ on:
   workflow_dispatch:
 
 jobs:
+  check-secrets:
+    runs-on: ubuntu-latest
+    outputs:
+      can_sync: ${{ steps.check.outputs.can_sync }}
+    steps:
+      - id: check
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -n "$DOCKERHUB_USERNAME" ] && [ -n "$DOCKERHUB_TOKEN" ]; then
+            echo "can_sync=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "can_sync=false" >> "$GITHUB_OUTPUT"
+          fi
+
   update-description:
+    needs: check-secrets
+    if: needs.check-secrets.outputs.can_sync == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
