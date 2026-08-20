@@ -78,7 +78,7 @@ class TestTheComposePinTracksReleases:
         import subprocess
 
         out = subprocess.run(
-            ["git", "tag", "--sort=-creatordate"], capture_output=True, text=True, cwd=PROJECT_ROOT
+            ["git", "tag", "--sort=-v:refname"], capture_output=True, text=True, cwd=PROJECT_ROOT
         ).stdout
         for line in out.splitlines():
             m = re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)", line.strip())
