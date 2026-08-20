@@ -32,6 +32,10 @@ concurrency:
   group: build-${{ inputs.version || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   resolve-tags:
     runs-on: ubuntu-latest
@@ -40,6 +44,7 @@ jobs:
       worker_tags: ${{ steps.tags.outputs.worker_tags }}
       version: ${{ steps.tags.outputs.version }}
       can_push: ${{ steps.auth.outputs.can_push }}
+      registry: ${{ steps.auth.outputs.registry }}
     steps:
       - id: auth
         env:
@@ -48,15 +53,25 @@ jobs:
         run: |
           if [ -n "$DOCKERHUB_USERNAME" ] && [ -n "$DOCKERHUB_TOKEN" ]; then
             echo "can_push=true" >> "$GITHUB_OUTPUT"
+            echo "registry=dockerhub" >> "$GITHUB_OUTPUT"
           else
-            echo "can_push=false" >> "$GITHUB_OUTPUT"
+            echo "can_push=true" >> "$GITHUB_OUTPUT"
+            echo "registry=ghcr" >> "$GITHUB_OUTPUT"
           fi
       - id: tags
         run: |
           VERSION="${{ inputs.version }}"
+          if [ "${{ steps.auth.outputs.registry }}" = "ghcr" ]; then
+            OWNER="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
+            UI_REPO="ghcr.io/${OWNER}/cashpilot"
+            WORKER_REPO="ghcr.io/${OWNER}/cashpilot-worker"
+          else
+            UI_REPO="drumsergio/cashpilot"
+            WORKER_REPO="drumsergio/cashpilot-worker"
+          fi
           if [ -z "$VERSION" ]; then
-            echo "ui_tags=drumsergio/cashpilot:latest" >> "$GITHUB_OUTPUT"
-            echo "worker_tags=drumsergio/cashpilot-worker:latest" >> "$GITHUB_OUTPUT"
+            echo "ui_tags=${UI_REPO}:latest" >> "$GITHUB_OUTPUT"
+            echo "worker_tags=${WORKER_REPO}:latest" >> "$GITHUB_OUTPUT"
             echo "version=latest" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -64,13 +79,13 @@ jobs:
           MAJOR_MINOR="$(echo "$VER" | cut -d. -f1).$(echo "$VER" | cut -d. -f2)"
           echo "version=$VER" >> "$GITHUB_OUTPUT"
 
-          UI="drumsergio/cashpilot:latest
-          drumsergio/cashpilot:${VER}
-          drumsergio/cashpilot:${MAJOR_MINOR}"
+          UI="${UI_REPO}:latest
+          ${UI_REPO}:${VER}
+          ${UI_REPO}:${MAJOR_MINOR}"
 
-          WORKER="drumsergio/cashpilot-worker:latest
-          drumsergio/cashpilot-worker:${VER}
-          drumsergio/cashpilot-worker:${MAJOR_MINOR}"
+          WORKER="${WORKER_REPO}:latest
+          ${WORKER_REPO}:${VER}
+          ${WORKER_REPO}:${MAJOR_MINOR}"
 
           {
             echo "ui_tags<<EOF"
@@ -114,16 +129,17 @@ jobs:
       - uses: actions/checkout@v7
       - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
-      - name: Docker Hub secrets required for versioned builds
-        if: ${{ inputs.version != '' && needs.resolve-tags.outputs.can_push != 'true' }}
-        run: |
-          echo "::error::DOCKERHUB_USERNAME and DOCKERHUB_TOKEN are required to publish versioned images."
-          exit 1
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
-        if: ${{ needs.resolve-tags.outputs.can_push == 'true' }}
+        if: ${{ needs.resolve-tags.outputs.registry == 'dockerhub' }}
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        if: ${{ needs.resolve-tags.outputs.registry == 'ghcr' }}
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
@@ -153,16 +169,17 @@ jobs:
       - uses: actions/checkout@v7
       - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
-      - name: Docker Hub secrets required for versioned builds
-        if: ${{ inputs.version != '' && needs.resolve-tags.outputs.can_push != 'true' }}
-        run: |
-          echo "::error::DOCKERHUB_USERNAME and DOCKERHUB_TOKEN are required to publish versioned images."
-          exit 1
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
-        if: ${{ needs.resolve-tags.outputs.can_push == 'true' }}
+        if: ${{ needs.resolve-tags.outputs.registry == 'dockerhub' }}
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        if: ${{ needs.resolve-tags.outputs.registry == 'ghcr' }}
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
@@ -193,9 +210,17 @@ jobs:
       # that is actually complete.
       - name: Log in to Docker Hub
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        if: ${{ needs.resolve-tags.outputs.registry == 'dockerhub' }}
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        if: ${{ needs.resolve-tags.outputs.registry == 'ghcr' }}
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Every published tag must resolve
         env:
