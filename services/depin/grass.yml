@@ -23,38 +23,67 @@ docker:
     oom_score_adj: 300
   env: []
   ports:
-    - "5900:5900"
     - "6080:6080"
-  volumes: []
+  volumes:
+    - "grass-profile:/var/lib/grass-xdg"
   command: ""
   network_mode: ""
 
 deploy:
-  automation: official_deb_seed_profile
-  installer_manifest_url: "https://files.grass.io/file/grass-extension-upgrades/desktop-installer-latest.json"
-  notes: "Runtime builds the official Grass Desktop Linux package and seeds the logged-in desktop profile bundle when present. Email/password stay available for manual fallback. Collector still uses the Grass dashboard accessToken."
-  runtime_assets:
-    - provider: grass
-      asset_kind: seed_bundle
-      target: /cashpilot/runtime-assets/grass/profile.tar.gz
-      encoding: base64
+  automation: store_json_patch
+  installer_manifest_url: "https://files.grass.io/file/grass-extension-upgrades/v7.6.0/grass-desktop_7.6.0_amd64.deb"
+  installer_platform: "linux-x86_64"
+  notes: "Runtime builds the official Grass Desktop Linux .deb wrapper, waits for store.json, patches only the logged-in auth seed, then restarts Grass."
   credentials:
-    - key: email
-      label: "Email"
-      kind: email
+    - key: store_access_token
+      label: "store.json accessToken"
+      kind: token
       secret: true
       required: true
-      source: "Grass account"
-      env: USER_EMAIL
-      description: "Grass account email used by the desktop Docker runtime."
-    - key: password
-      label: "Password"
-      kind: password
+      source: "Logged-in Grass Desktop store.json"
+      description: "Copy the exact accessToken value from a confirmed logged-in and connected seed."
+    - key: store_refresh_token
+      label: "store.json refreshToken"
+      kind: token
       secret: true
       required: true
-      source: "Grass account"
-      env: USER_PASSWORD
-      description: "Grass account password used by the desktop Docker runtime."
+      source: "Logged-in Grass Desktop store.json"
+      description: "Copy the exact refreshToken value from a confirmed logged-in and connected seed."
+    - key: store_token_expiry
+      label: "store.json tokenExpiry"
+      kind: text
+      secret: true
+      required: true
+      source: "Logged-in Grass Desktop store.json"
+      description: "Copy the exact tokenExpiry value from a confirmed logged-in and connected seed."
+    - key: store_wynd_status
+      label: "store.json wynd:status"
+      kind: text
+      secret: true
+      required: true
+      source: "Logged-in Grass Desktop store.json"
+      description: "Copy the exact wynd:status value from a confirmed connected seed."
+    - key: store_wynd_authenticated
+      label: "store.json wynd:authenticated"
+      kind: text
+      secret: true
+      required: true
+      source: "Logged-in Grass Desktop store.json"
+      description: "Copy the exact wynd:authenticated value from a confirmed logged-in and connected seed."
+    - key: store_wynd_user_id
+      label: "store.json wynd:user_id"
+      kind: text
+      secret: true
+      required: true
+      source: "Logged-in Grass Desktop store.json"
+      description: "Copy the exact wynd:user_id value from a confirmed logged-in and connected seed."
+    - key: store_auto_update
+      label: "store.json autoUpdate"
+      kind: text
+      secret: true
+      required: true
+      source: "Logged-in Grass Desktop store.json"
+      description: "Copy the exact autoUpdate value from a confirmed connected seed."
 
 requirements:
   residential_ip: true
@@ -89,7 +118,7 @@ platforms: [browser-extension, windows, macos, linux, android, ios]
 
 collector:
   type: api
-  notes: "Dashboard API at app.grass.io. Auth via accessToken. Runtime login uses email/password separately."
+  notes: "Dashboard API at app.grass.io. Auth via accessToken. Runtime login uses the seeded Grass Desktop store identity separately."
   credentials:
     - key: access_token
       label: "Access Token"
@@ -102,34 +131,10 @@ collector:
 
 dashboard:
   credentials:
-    - key: grass_store_wynd_status
-      label: "Wynd status"
-      kind: text
-      secret: false
-      required: false
-      source: "Grass local storage"
-    - key: grass_store_wynd_user_id
-      label: "Wynd user ID"
-      kind: text
-      secret: false
-      required: false
-      source: "Grass local storage"
-    - key: grass_store_token_expiry
-      label: "Token expiry"
-      kind: text
-      secret: false
-      required: false
-      source: "Grass local storage"
-    - key: grass_store_auto_update
-      label: "Auto update"
-      kind: text
-      secret: false
-      required: false
-      source: "Grass local storage"
-    - key: grass_store_wynd_authenticated
-      label: "Wynd authenticated"
-      kind: text
-      secret: false
+    - key: grass_store_access_token
+      label: "Access token"
+      kind: token
+      secret: true
       required: false
       source: "Grass local storage"
     - key: grass_store_refresh_token
@@ -138,9 +143,69 @@ dashboard:
       secret: true
       required: false
       source: "Grass local storage"
-    - key: grass_store_access_token
-      label: "Access token"
-      kind: token
+    - key: grass_store_token_expiry
+      label: "Token expiry"
+      kind: text
+      secret: true
+      required: false
+      source: "Grass local storage"
+    - key: grass_store_wynd_status
+      label: "Wynd status"
+      kind: text
+      secret: true
+      required: false
+      source: "Grass local storage"
+    - key: grass_store_wynd_authenticated
+      label: "Wynd authenticated"
+      kind: text
+      secret: true
+      required: false
+      source: "Grass local storage"
+    - key: grass_store_wynd_user_id
+      label: "Wynd user ID"
+      kind: text
+      secret: true
+      required: false
+      source: "Grass local storage"
+    - key: grass_store_auto_update
+      label: "Auto update"
+      kind: text
+      secret: true
+      required: false
+      source: "Grass local storage"
+    - key: grass_store_wynd_browser_id
+      label: "Browser ID"
+      kind: text
+      secret: true
+      required: false
+      source: "Grass local storage"
+    - key: grass_store_wynd_device_privkey
+      label: "Device private key"
+      kind: text
+      secret: true
+      required: false
+      source: "Grass local storage"
+    - key: grass_store_wynd_device_pubkey
+      label: "Device public key"
+      kind: text
+      secret: true
+      required: false
+      source: "Grass local storage"
+    - key: grass_store_wynd_device_id
+      label: "Device ID"
+      kind: text
+      secret: true
+      required: false
+      source: "Grass local storage"
+    - key: grass_store_wynd_device_registered_pubkey
+      label: "Registered public key"
+      kind: text
+      secret: true
+      required: false
+      source: "Grass local storage"
+    - key: grass_store_wynd_device_registered_user_id
+      label: "Registered user ID"
+      kind: text
       secret: true
       required: false
       source: "Grass local storage"

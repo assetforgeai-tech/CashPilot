@@ -41,22 +41,22 @@ For earnings collection, copy a fresh `accessToken` from the logged-in Grass das
 
 ### 3. Runtime
 
-CashPilot resolves Grass' official desktop installer manifest when a new node is installed, picks the matching Linux build, builds a local noVNC Docker wrapper, starts Grass once so it creates `store.json`, patches the seven confirmed login fields, and restarts the node.
+CashPilot builds a local noVNC wrapper from Grass' official Linux desktop `.deb`, starts Grass once so it creates `store.json`, patches only the confirmed auth fields, and restarts the node. Device/browser identity must stay self-generated per node.
 
 Required deploy credentials from a confirmed logged-in Grass Desktop `store.json`:
 
-- `wynd:status`
-- `wynd:user_id`
-- `tokenExpiry`
-- `autoUpdate`
-- `wynd:authenticated`
 - `refreshToken`
 - `accessToken`
+- `tokenExpiry`
+- `wynd:status`
+- `autoUpdate`
+- `wynd:authenticated`
+- `wynd:user_id`
 
 ## Docker Configuration
 
 - **Image:** `cashpilot/grass-desktop:auto`
-- **Installer manifest:** `https://files.grass.io/file/grass-extension-upgrades/desktop-installer-latest.json`
+- **Installer:** `https://files.grass.io/file/grass-extension-upgrades/v7.6.0/grass-desktop_7.6.0_amd64.deb`
 - **Platforms:** browser-extension, windows, macos, linux, android, ios
 
 ### Environment Variables

@@ -75,14 +75,16 @@ def test_grass_manifest_build_tags_image_by_resolved_version():
     assert "FROM ubuntu:24.04" in dockerfile
     assert "grass-desktop_7.6.0_amd64.deb" in dockerfile
     assert "novnc" in dockerfile
-    assert "xdotool" in dockerfile
     assert "base64.b64decode" in dockerfile
     script = base64.b64decode(re.search(r"b64decode\('([^']+)'\)", dockerfile).group(1)).decode()
-    assert 'tar -xzf /cashpilot/runtime-assets/grass/profile.tar.gz -C "$HOME"' in script
-    assert "mousemove 270 607 click 1" in script
+    assert 'tar -xzf "$GRASS_SEED_ARCHIVE" -C "$tmpdir"' in script
+    assert '"$tmpdir/grass-xdg/data/."' in script
+    assert 'GRASS_RESET_DEVICE_ID:-false' in script
+    assert 'GRASS_RESET_BROWSER_ID:-false' in script
+    assert "--no-sandbox" in script
     assert ".grass-configured" not in script
-    assert "USER_EMAIL" in script
-    assert "USER_PASSWORD" in script
+    assert "USER_EMAIL" not in script
+    assert "USER_PASSWORD" not in script
 
 
 def test_uprock_deb_url_resolves_as_linux_amd64_installer():

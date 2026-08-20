@@ -7,14 +7,27 @@ from app import catalog, main
 from app.collectors import collector_credential_fields, service_credential_fields
 
 
-def test_grass_deploy_credentials_map_from_stored_config_to_worker_args():
+def test_grass_deploy_credentials_map_auth_seed_to_worker_args():
     svc = catalog.get_service("grass")
     config = {
-        "grass_email": "user@example.com",
-        "grass_password": "secret",
+        "grass_store_access_token": '"access"',
+        "grass_store_refresh_token": '"refresh"',
+        "grass_store_token_expiry": "1818650340",
+        "grass_store_wynd_status": '"CONNECTED"',
+        "grass_store_wynd_authenticated": "true",
+        "grass_store_wynd_user_id": '"user"',
+        "grass_store_auto_update": "true",
     }
 
-    assert main._resolve_deploy_credentials("grass", svc, config) == {"email": "user@example.com", "password": "secret"}
+    assert main._resolve_deploy_credentials("grass", svc, config) == {
+        "store_access_token": '"access"',
+        "store_refresh_token": '"refresh"',
+        "store_token_expiry": "1818650340",
+        "store_wynd_status": '"CONNECTED"',
+        "store_wynd_authenticated": "true",
+        "store_wynd_user_id": '"user"',
+        "store_auto_update": "true",
+    }
 
 
 def test_grass_deploy_credentials_are_required_before_worker_deploy():
@@ -24,8 +37,8 @@ def test_grass_deploy_credentials_are_required_before_worker_deploy():
         main._resolve_deploy_credentials("grass", svc, {})
 
     assert exc.value.status_code == 400
-    assert "Email" in exc.value.detail
-    assert "Password" in exc.value.detail
+    assert "store.json accessToken" in exc.value.detail
+    assert "store.json wynd:user_id" in exc.value.detail
 
 
 def test_wipter_deploy_credentials_map_from_stored_config_to_worker_args():
@@ -87,7 +100,15 @@ def test_proxyrack_deploy_runtime_requires_only_api_key():
 def test_settings_deploy_credentials_cover_node_creation_inputs_from_runtime_scripts():
     expected = {
         "earnfm": {"token"},
-        "grass": {"email", "password"},
+        "grass": {
+            "store_access_token",
+            "store_refresh_token",
+            "store_token_expiry",
+            "store_wynd_status",
+            "store_wynd_authenticated",
+            "store_wynd_user_id",
+            "store_auto_update",
+        },
         "packetstream": {"cid"},
         "iproyal": {"email", "password", "device_name", "device_id"},
         "proxies-sx": {"api_key", "agent_name"},

@@ -4,26 +4,36 @@ from unittest.mock import MagicMock, patch
 
 from app import orchestrator
 
-
-def test_deploy_raw_maps_grass_account_credentials_to_env():
+def test_deploy_raw_patches_grass_auth_seed_after_first_start():
     client = MagicMock()
     client.containers.get.side_effect = orchestrator.NotFound("nope")
     container = MagicMock(short_id="abc123", id="container-id")
     client.containers.run.return_value = container
+    credentials = {
+        "store_access_token": '"access"',
+        "store_refresh_token": '"refresh"',
+        "store_token_expiry": "1818650340",
+        "store_wynd_status": '"CONNECTED"',
+        "store_wynd_authenticated": "true",
+        "store_wynd_user_id": '"user"',
+        "store_auto_update": "true",
+    }
 
-    with patch.object(orchestrator, "_get_client", return_value=client):
+    with (
+        patch.object(orchestrator, "_get_client", return_value=client),
+        patch.object(orchestrator.provider_automation, "apply_grass_store_patch") as patch_store,
+    ):
         orchestrator.deploy_raw(
             slug="grass",
             image="cashpilot/grass-desktop:auto",
-            env={"USER_EMAIL": "user@example.com", "USER_PASSWORD": "secret"},
-            deploy_credentials={"email": "user@example.com", "password": "secret"},
+            deploy_credentials=credentials,
         )
 
     env = client.containers.run.call_args.kwargs["environment"]
-    assert env["USER_EMAIL"] == "user@example.com"
-    assert env["USER_PASSWORD"] == "secret"
-    container.restart.assert_not_called()
-
+    assert "USER_EMAIL" not in env
+    assert "USER_PASSWORD" not in env
+    assert client.containers.run.call_args.kwargs["image"] == "cashpilot/grass-desktop:auto"
+    patch_store.assert_called_once_with(container, credentials)
 
 def test_deploy_raw_maps_wipter_credentials_to_env_and_restarts_after_login_state():
     client = MagicMock()
@@ -47,7 +57,6 @@ def test_deploy_raw_maps_wipter_credentials_to_env_and_restarts_after_login_stat
     assert env["WIPTER_EMAIL"] == "user@example.com"
     assert env["WIPTER_PASSWORD"] == "secret"
     restart_once.assert_called_once_with(container)
-
 
 def test_deploy_raw_builds_proxybase_xyz_command_from_deploy_phrase():
     client = MagicMock()
@@ -82,7 +91,6 @@ def test_deploy_raw_builds_proxybase_xyz_command_from_deploy_phrase():
     assert "seller_config.json" in command
     assert 'exec "$CLI" seller start --foreground' in command
 
-
 def test_deploy_raw_maps_proxybase_deploy_token_to_peer_cli_args():
     client = MagicMock()
     client.containers.get.side_effect = orchestrator.NotFound("nope")
@@ -100,7 +108,6 @@ def test_deploy_raw_maps_proxybase_deploy_token_to_peer_cli_args():
     env = client.containers.run.call_args.kwargs["environment"]
     assert env["NAME"] == "cashpilot-node"
     assert client.containers.run.call_args.kwargs["command"] == ["deploy-token", "cashpilot-node"]
-
 
 def test_deploy_raw_authenticates_urnetwork_with_api_key_before_provider_start():
     client = MagicMock()
@@ -127,7 +134,6 @@ def test_deploy_raw_authenticates_urnetwork_with_api_key_before_provider_start()
     assert auth_call.kwargs["volumes"] == {"urnetwork-data": {"bind": "/root/.urnetwork", "mode": "rw"}}
     assert provider_call.kwargs["command"] == "provide"
     assert provider_call.kwargs["environment"]["UR_API_KEY"] == "api-key"
-
 
 def test_deploy_raw_forwards_container_user_when_declared():
     client = MagicMock()

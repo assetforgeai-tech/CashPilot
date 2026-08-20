@@ -93,6 +93,15 @@ def _sidecar_name(slug: str) -> str:
     return f"{_container_name(slug)}-egress"
 
 
+def _tun2proxy_url(proxy: dict[str, Any]) -> str:
+    scheme = "http" if str(proxy.get("protocol") or "").lower() == "http" else "socks5"
+    auth = ""
+    if proxy.get("username"):
+        from urllib.parse import quote
+
+        auth = quote(str(proxy["username"]), safe="") + ":" + quote(str(proxy.get("password") or ""), safe="") + "@"
+    return f"{scheme}://{auth}{proxy['host']}:{int(proxy['port'])}"
+
 def _urnetwork_auth_code(api_key: str) -> str:
     req = Request(
         "https://api.bringyour.com/auth/code-create",
@@ -320,6 +329,7 @@ def deploy_raw(
     }
 
     if proxy and not network_mode:
+        logger.info("Creating egress sidecar %s", sidecar_name)
         config = singbox_config.render_tun_proxy_config(
             proxy,
             worker_name=slug,
@@ -327,11 +337,13 @@ def deploy_raw(
             interface_name="cpegress" if provider == "repocket" else "cp-egress",
         )
         encoded_config = base64.b64encode(json.dumps(config).encode()).decode()
-        logger.info("Creating egress sidecar %s", sidecar_name)
         client.containers.run(
             image="ghcr.io/sagernet/sing-box:latest",
             name=sidecar_name,
-            environment={"SINGBOX_CONFIG_B64": encoded_config, "ENABLE_DEPRECATED_LEGACY_DNS_SERVERS": "true"},
+            environment={
+                "SINGBOX_CONFIG_B64": encoded_config,
+                "ENABLE_DEPRECATED_LEGACY_DNS_SERVERS": "true",
+            },
             entrypoint=[
                 "/bin/sh",
                 "-c",
@@ -403,6 +415,8 @@ def deploy_raw(
             mmn_api_key=str(deploy_credentials.get("mmn_api_key") or deploy_credentials.get("myst_mmn_api_key") or ""),
         )
         deploy_credentials["myst_wallet_address"] = address
+    if provider == "grass" and deploy_credentials:
+        provider_automation.apply_grass_store_patch(container, deploy_credentials)
     if slug == "wipter" and deploy_credentials:
         provider_automation.schedule_wipter_post_login_restart(container)
     return container.id

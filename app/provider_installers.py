@@ -65,6 +65,10 @@ def resolve_installer_manifest(provider: str, manifest_url: str, platform_key: s
     if provider != "grass":
         raise ValueError(f"Installer manifests are not supported for {provider!r}")
     _safe_grass_url(manifest_url)
+    if manifest_url.endswith(".deb"):
+        filename = manifest_url.rstrip("/").rsplit("/", 1)[-1]
+        version = filename.removeprefix("grass-desktop_").removesuffix("_amd64.deb")
+        return {"platform": platform_key or "linux-x86_64", "version": version, "url": manifest_url}
     manifest = _fetch_json(manifest_url)
     key = platform_key or _platform_key()
     platforms = manifest.get("platforms") or {}
@@ -110,57 +114,53 @@ def _grass_dockerfile(deb_url: str) -> str:
     _safe_grass_url(deb_url)
     runner = """#!/bin/sh
 set -eu
-mkdir -p "$HOME"
+mkdir -p "$XDG_RUNTIME_DIR" "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME" "$XDG_DATA_HOME"
+chmod 700 "$XDG_RUNTIME_DIR"
+if [ -f "$GRASS_SEED_ARCHIVE" ] && [ ! -f "$XDG_DATA_HOME/io.getgrass.desktop/store.json" ]; then
+  tmpdir="$(mktemp -d)"
+  tar -xzf "$GRASS_SEED_ARCHIVE" -C "$tmpdir"
+  if [ -d "$tmpdir/grass-xdg" ]; then
+    cp -a "$tmpdir/grass-xdg/config/." "$XDG_CONFIG_HOME/" 2>/dev/null || true
+    cp -a "$tmpdir/grass-xdg/cache/." "$XDG_CACHE_HOME/" 2>/dev/null || true
+    cp -a "$tmpdir/grass-xdg/data/." "$XDG_DATA_HOME/" 2>/dev/null || true
+  else
+    cp -a "$tmpdir/config/." "$XDG_CONFIG_HOME/" 2>/dev/null || true
+    cp -a "$tmpdir/cache/." "$XDG_CACHE_HOME/" 2>/dev/null || true
+    cp -a "$tmpdir/data/." "$XDG_DATA_HOME/" 2>/dev/null || true
+  fi
+  rm -rf "$tmpdir"
+fi
+if [ "${GRASS_RESET_DEVICE_ID:-false}" = "true" ] && [ -f "$XDG_DATA_HOME/io.getgrass.desktop/store.json" ] && [ ! -f "$XDG_DATA_HOME/.grass-device-reset-done" ]; then
+  sed -i '/"wynd:device_id"/d;/"wynd:device_privkey"/d;/"wynd:device_pubkey"/d;/"wynd:device_registered_pubkey"/d;/"wynd:device_registered_user_id"/d' "$XDG_DATA_HOME/io.getgrass.desktop/store.json"
+  : > "$XDG_DATA_HOME/.grass-device-reset-done"
+fi
+if [ "${GRASS_RESET_BROWSER_ID:-false}" = "true" ] && [ -f "$XDG_DATA_HOME/io.getgrass.desktop/store.json" ] && [ ! -f "$XDG_DATA_HOME/.grass-browser-reset-done" ]; then
+  sed -i '/"wynd:browser_id"/d' "$XDG_DATA_HOME/io.getgrass.desktop/store.json"
+  : > "$XDG_DATA_HOME/.grass-browser-reset-done"
+fi
 rm -f /tmp/.X99-lock
 Xvfb :99 -screen 0 1280x720x24 -nolisten tcp >/tmp/xvfb.log 2>&1 &
 fluxbox >/tmp/fluxbox.log 2>&1 &
 x11vnc -display :99 -forever -shared -nopw -listen 0.0.0.0 -xkb >/tmp/x11vnc.log 2>&1 &
 websockify --web=/usr/share/novnc/ 6080 localhost:5900 >/tmp/novnc.log 2>&1 &
-if [ -s /cashpilot/runtime-assets/grass/profile.tar.gz ]; then
-  tar -xzf /cashpilot/runtime-assets/grass/profile.tar.gz -C "$HOME"
-fi
-dbus-run-session sh -lc 'grass-desktop --no-sandbox || Grass --no-sandbox || /opt/Grass/grass-desktop --no-sandbox || /opt/Grass/grass --no-sandbox' &
-grass_pid=$!
-if [ "${TRY_AUTOLOGIN:-true}" = "true" ] && [ -n "${USER_EMAIL:-}" ] && [ -n "${USER_PASSWORD:-}" ]; then
-  for _ in $(seq 1 90); do
-    wid="$(DISPLAY=:99 xdotool search --onlyvisible --name '^Grass$' 2>/dev/null | head -n1 || true)"
-    [ -n "$wid" ] && break
-    sleep 1
-  done
-  if [ -n "${wid:-}" ]; then
-    DISPLAY=:99 xdotool windowactivate --sync "$wid" || true
-    sleep 2
-    DISPLAY=:99 xdotool mousemove 255 210 click 1 || true
-    sleep 3
-    DISPLAY=:99 xdotool mousemove 275 587 click 1 || true
-    DISPLAY=:99 xdotool mousemove 270 607 click 1 || true
-    sleep 2
-    DISPLAY=:99 xdotool mousemove 100 202 click 1 key ctrl+a BackSpace type --delay 80 -- "$USER_EMAIL" || true
-    DISPLAY=:99 xdotool mousemove 170 273 click 1 || true
-    DISPLAY=:99 xdotool mousemove 170 366 click 1 || true
-    sleep 8
-    DISPLAY=:99 xdotool mousemove 177 479 click 1 || true
-    sleep 3
-    DISPLAY=:99 xdotool mousemove 130 226 click 1 key ctrl+a BackSpace type --delay 80 -- "$USER_PASSWORD" || true
-    DISPLAY=:99 xdotool mousemove 160 340 click 1 || true
-  fi
-fi
-wait "$grass_pid"
+exec dbus-run-session -- /usr/bin/grass-desktop --no-sandbox
 """
     runner_b64 = base64.b64encode(runner.encode()).decode()
     return f"""FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive \\
     DISPLAY=:99 \\
-    HOME=/data/profile \\
-    XDG_CONFIG_HOME=/data/profile/.config \\
-    XDG_CACHE_HOME=/data/profile/.cache \\
+    XDG_RUNTIME_DIR=/tmp/runtime-grass \\
+    XDG_CONFIG_HOME=/var/lib/grass-xdg/config \\
+    XDG_CACHE_HOME=/var/lib/grass-xdg/cache \\
+    XDG_DATA_HOME=/var/lib/grass-xdg/data \\
+    GRASS_SEED_ARCHIVE=/seed/grass-xdg-seed.tar.gz \\
     ELECTRON_DISABLE_SECURITY_WARNINGS=true
 RUN apt-get update \\
  && apt-get install -y --no-install-recommends ca-certificates curl xvfb x11vnc fluxbox novnc websockify dbus-x11 python3-minimal \\
  && rm -rf /var/lib/apt/lists/*
 ADD {deb_url} /tmp/grass-desktop.deb
 RUN apt-get update \\
- && apt-get install -y --no-install-recommends /tmp/grass-desktop.deb xdotool \\
+ && apt-get install -y --no-install-recommends /tmp/grass-desktop.deb \\
  && rm -rf /var/lib/apt/lists/* /tmp/grass-desktop.deb
 RUN python3 -c "import base64,pathlib; pathlib.Path('/usr/local/bin/cashpilot-grass').write_bytes(base64.b64decode('{runner_b64}'))" \\
  && chmod +x /usr/local/bin/cashpilot-grass

@@ -22,16 +22,16 @@ _WIPTER_TRAFFIC_RE = re.compile(
     r"<<< PONG|Request ID|Upload:|Download:|<<< MESSAGE|Received data|>>> PING|SOCKS.*Connection established|HTTPS.*Request ID",
     re.I,
 )
-_GRASS_STORE_PATH = "/data/profile/.local/share/io.getgrass.desktop/store.json"
+_GRASS_STORE_PATH = "/var/lib/grass-xdg/data/io.getgrass.desktop/store.json"
 _GRASS_PATCH_PATH = "/tmp/cashpilot-grass-store-patch.json"
 _GRASS_STORE_KEYS = {
-    "store_wynd_status": "wynd:status",
-    "store_wynd_user_id": "wynd:user_id",
-    "store_token_expiry": "tokenExpiry",
-    "store_auto_update": "autoUpdate",
-    "store_wynd_authenticated": "wynd:authenticated",
-    "store_refresh_token": "refreshToken",
     "store_access_token": "accessToken",
+    "store_refresh_token": "refreshToken",
+    "store_token_expiry": "tokenExpiry",
+    "store_wynd_status": "wynd:status",
+    "store_wynd_authenticated": "wynd:authenticated",
+    "store_wynd_user_id": "wynd:user_id",
+    "store_auto_update": "autoUpdate",
 }
 
 
@@ -87,7 +87,11 @@ def apply_grass_store_patch(
     result = container.exec_run(["python3", "-c", script])
     if getattr(result, "exit_code", 1) != 0:
         raise RuntimeError("Grass store.json patch failed")
-    container.restart()
+    # Grass flushes its unauthenticated in-memory state during graceful shutdown,
+    # which can overwrite the patched identity. Kill avoids the flush; explicit
+    # start relaunches against the patched store.json.
+    container.kill()
+    container.start()
 
 
 def extract_spide_device_key(logs: str) -> str | None:
