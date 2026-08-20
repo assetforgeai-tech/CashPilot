@@ -94,13 +94,7 @@ def apply_grass_store_patch(
                 "-lc",
                 (
                     f"test -s {_GRASS_STORE_PATH!r} && "
-                    "python3 -c "
-                    + repr(
-                        "import json;"
-                        f"d=json.load(open({_GRASS_STORE_PATH!r}));"
-                        f"keys={_GRASS_IDENTITY_KEYS!r};"
-                        "raise SystemExit(0 if all(d.get(k) for k in keys) else 1)"
-                    )
+                    "python3 -c " + repr(f"import json;json.load(open({_GRASS_STORE_PATH!r}))")
                 ),
             ]
         )

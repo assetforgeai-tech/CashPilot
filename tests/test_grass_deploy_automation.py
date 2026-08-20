@@ -102,7 +102,7 @@ def test_grass_store_patch_allows_bootstrap_without_status():
     assert "wynd:status" not in patch
 
 
-def test_grass_patch_waits_only_for_store_file_before_overwriting_auth_seed():
+def test_grass_patch_applies_auth_before_device_identity_bootstrap():
     container = MagicMock(short_id="abc123", id="container-id")
     container.exec_run.side_effect = [
         MagicMock(exit_code=1),
@@ -136,7 +136,7 @@ def test_grass_patch_waits_only_for_store_file_before_overwriting_auth_seed():
     container.restart.assert_called_once_with()
     check = container.exec_run.call_args_list[0].args[0]
     assert "test -s" in check[-1]
-    assert "wynd:device_id" in check[-1]
+    assert "wynd:device_id" not in check[-1]
 
 
 def test_deploy_raw_patches_grass_after_device_identity_bootstrap(tmp_path):
