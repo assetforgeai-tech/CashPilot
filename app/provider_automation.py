@@ -31,6 +31,8 @@ _GRASS_STORE_KEYS = {
     "store_wynd_authenticated": "wynd:authenticated",
     "store_wynd_user_id": "wynd:user_id",
     "store_auto_update": "autoUpdate",
+}
+_GRASS_OPTIONAL_STORE_KEYS = {
     "store_wynd_device_registered_user_id": "wynd:device_registered_user_id",
 }
 
@@ -40,7 +42,15 @@ def grass_store_patch(credentials: dict[str, str]) -> dict[str, str]:
     missing = [key for key in _GRASS_STORE_KEYS if not str(credentials.get(key, "")).strip()]
     if missing:
         raise ValueError(f"Missing Grass deploy credential(s): {', '.join(missing)}")
-    return {store_key: str(credentials[key]) for key, store_key in _GRASS_STORE_KEYS.items()}
+    patch = {store_key: str(credentials[key]) for key, store_key in _GRASS_STORE_KEYS.items()}
+    patch.update(
+        {
+            store_key: str(credentials[key])
+            for key, store_key in _GRASS_OPTIONAL_STORE_KEYS.items()
+            if str(credentials.get(key, "")).strip()
+        }
+    )
+    return patch
 
 
 def _tar_patch_file(payload: dict[str, Any]) -> bytes:

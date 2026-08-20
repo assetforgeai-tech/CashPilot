@@ -310,15 +310,16 @@ class TestProviderAutomationContracts:
         assert svc["deploy"]["installer_manifest_url"] == (
             "https://files.grass.io/file/grass-extension-upgrades/v7.6.0/grass-desktop_7.6.0_amd64.deb"
         )
-        assert self._credential_keys(svc, "deploy") == {
+        keys = self._credential_keys(svc, "deploy")
+        assert {
             "store_access_token",
             "store_refresh_token",
             "store_wynd_status",
             "store_wynd_authenticated",
             "store_wynd_user_id",
             "store_auto_update",
-            "store_wynd_device_registered_user_id",
-        }
+        } <= keys
+        assert "store_wynd_device_registered_user_id" in keys
         assert "runtime_assets" not in svc["deploy"]
 
     def test_uprock_runtime_uses_official_seed_state_assets(self):

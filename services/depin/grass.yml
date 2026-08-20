@@ -81,9 +81,9 @@ deploy:
       label: "store.json wynd:device_registered_user_id"
       kind: text
       secret: true
-      required: true
+      required: false
       source: "Logged-in Grass Desktop store.json"
-      description: "Copy the exact wynd:device_registered_user_id value from a confirmed connected seed."
+      description: "Optional. Copy it only when the connected seed contains this key."
 
 requirements:
   residential_ip: true

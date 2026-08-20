@@ -107,7 +107,6 @@ def test_settings_deploy_credentials_cover_node_creation_inputs_from_runtime_scr
             "store_wynd_authenticated",
             "store_wynd_user_id",
             "store_auto_update",
-            "store_wynd_device_registered_user_id",
         },
         "packetstream": {"cid"},
         "iproyal": {"email", "password", "device_name", "device_id"},
