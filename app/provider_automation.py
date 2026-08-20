@@ -28,12 +28,12 @@ _GRASS_STORE_KEYS = {
     "store_access_token": "accessToken",
     "store_refresh_token": "refreshToken",
     "store_token_expiry": "tokenExpiry",
-    "store_wynd_status": "wynd:status",
     "store_wynd_authenticated": "wynd:authenticated",
     "store_wynd_user_id": "wynd:user_id",
     "store_auto_update": "autoUpdate",
 }
 _GRASS_OPTIONAL_STORE_KEYS = {
+    "store_wynd_status": "wynd:status",
     "store_wynd_browser_id": "wynd:browser_id",
     "store_wynd_device_registered_user_id": "wynd:device_registered_user_id",
 }

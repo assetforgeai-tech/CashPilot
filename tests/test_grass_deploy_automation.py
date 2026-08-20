@@ -70,6 +70,22 @@ def test_grass_store_patch_includes_browser_id():
     assert patch["wynd:browser_id"] == '"browser"'
 
 
+def test_grass_store_patch_allows_bootstrap_without_status():
+    patch = orchestrator.provider_automation.grass_store_patch(
+        {
+            "store_access_token": '"access"',
+            "store_refresh_token": '"refresh"',
+            "store_token_expiry": "1818650340",
+            "store_wynd_authenticated": "true",
+            "store_wynd_user_id": '"user"',
+            "store_auto_update": "true",
+        }
+    )
+
+    assert patch["accessToken"] == '"access"'
+    assert "wynd:status" not in patch
+
+
 def test_grass_patch_waits_only_for_store_file_before_overwriting_auth_seed():
     container = MagicMock(short_id="abc123", id="container-id")
     container.exec_run.side_effect = [
