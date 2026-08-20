@@ -440,19 +440,7 @@ def _remove_named_volumes(volumes: dict[str, Any]) -> None:
 
 
 def _grass_seed_from_credentials(deploy_credentials: dict[str, Any]) -> dict[str, str]:
-    seed = {
-        "accessToken": str(deploy_credentials.get("store_access_token") or ""),
-        "refreshToken": str(deploy_credentials.get("store_refresh_token") or ""),
-        "tokenExpiry": str(deploy_credentials.get("store_token_expiry") or ""),
-        "wynd:status": str(deploy_credentials.get("store_wynd_status") or ""),
-        "wynd:authenticated": str(deploy_credentials.get("store_wynd_authenticated") or ""),
-        "wynd:user_id": str(deploy_credentials.get("store_wynd_user_id") or ""),
-        "autoUpdate": str(deploy_credentials.get("store_auto_update") or ""),
-    }
-    optional = str(deploy_credentials.get("store_wynd_device_registered_user_id") or "").strip()
-    if optional:
-        seed["wynd:device_registered_user_id"] = optional
-    return seed
+    return provider_automation.grass_store_patch(deploy_credentials)
 
 
 def _preseed_grass_named_volume(volumes: dict[str, dict[str, str]], deploy_credentials: dict[str, Any]) -> bool:

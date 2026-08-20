@@ -144,6 +144,7 @@ def test_deploy_raw_preseeds_grass_named_volume_before_start(tmp_path):
                 "store_wynd_status": '"CONNECTED"',
                 "store_wynd_authenticated": "true",
                 "store_wynd_user_id": '"user"',
+                "store_wynd_browser_id": '"browser"',
                 "store_auto_update": "true",
             },
         )
@@ -153,6 +154,7 @@ def test_deploy_raw_preseeds_grass_named_volume_before_start(tmp_path):
     assert seed_call["remove"] is True
     assert seed_call["volumes"] == {"grass-profile-proxy-2": {"bind": "/seed", "mode": "rw"}}
     assert '"tokenExpiry":"1818650340"' in seed_call["environment"]["GRASS_STORE_JSON"]
+    assert '"wynd:browser_id":"\\"browser\\""' in seed_call["environment"]["GRASS_STORE_JSON"]
     post_start_patch.assert_not_called()
 
 
