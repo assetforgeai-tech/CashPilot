@@ -36,6 +36,7 @@ def test_deploy_raw_patches_grass_auth_seed_after_first_start():
     assert client.containers.run.call_args.kwargs["image"] == "cashpilot/grass-desktop:auto"
     patch_store.assert_called_once_with(container, credentials)
 
+
 def test_grass_patch_waits_for_device_identity_before_overwriting_auth_seed():
     container = MagicMock(short_id="abc123", id="container-id")
     container.exec_run.side_effect = [
@@ -45,8 +46,9 @@ def test_grass_patch_waits_for_device_identity_before_overwriting_auth_seed():
     ]
     container.put_archive.return_value = True
 
-    with patch.object(orchestrator.provider_automation.time, "sleep"), patch.object(
-        orchestrator.provider_automation.time, "monotonic", side_effect=[0, 1, 2]
+    with (
+        patch.object(orchestrator.provider_automation.time, "sleep"),
+        patch.object(orchestrator.provider_automation.time, "monotonic", side_effect=[0, 1, 2]),
     ):
         orchestrator.provider_automation.apply_grass_store_patch(
             container,
