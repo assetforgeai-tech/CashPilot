@@ -24,6 +24,12 @@ _WIPTER_TRAFFIC_RE = re.compile(
 )
 _GRASS_STORE_PATH = "/var/lib/grass-xdg/data/io.getgrass.desktop/store.json"
 _GRASS_PATCH_PATH = "/tmp/cashpilot-grass-store-patch.json"
+_GRASS_REQUIRED_DEVICE_KEYS = (
+    "wynd:device_id",
+    "wynd:device_privkey",
+    "wynd:device_pubkey",
+    "wynd:device_registered_pubkey",
+)
 _GRASS_STORE_KEYS = {
     "store_access_token": "accessToken",
     "store_refresh_token": "refreshToken",
@@ -71,15 +77,27 @@ def apply_grass_store_patch(
     timeout_seconds: int = 90,
     poll_seconds: float = 1.0,
 ) -> None:
-    """Wait for Grass to create store.json, patch it, then restart the container."""
+    """Wait for Grass to register a fresh device, patch auth, then restart."""
     patch = grass_store_patch(credentials)
     deadline = time.monotonic() + timeout_seconds
     while True:
-        result = container.exec_run(["sh", "-lc", f"test -f {_GRASS_STORE_PATH}"])
+        result = container.exec_run(
+            [
+                "python3",
+                "-c",
+                (
+                    "import json,sys;"
+                    f"store_path={_GRASS_STORE_PATH!r};"
+                    "store=json.load(open(store_path));"
+                    f"missing=[k for k in {_GRASS_REQUIRED_DEVICE_KEYS!r} if not str(store.get(k,'')).strip()];"
+                    "sys.exit(1 if missing else 0)"
+                ),
+            ]
+        )
         if getattr(result, "exit_code", 1) == 0:
             break
         if time.monotonic() >= deadline:
-            raise TimeoutError("Grass store.json was not created before timeout")
+            raise TimeoutError("Grass device identity was not registered before timeout")
         time.sleep(poll_seconds)
 
     container.put_archive("/tmp", _tar_patch_file({"store": patch}))

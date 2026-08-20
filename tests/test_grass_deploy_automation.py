@@ -36,6 +36,34 @@ def test_deploy_raw_patches_grass_auth_seed_after_first_start():
     assert client.containers.run.call_args.kwargs["image"] == "cashpilot/grass-desktop:auto"
     patch_store.assert_called_once_with(container, credentials)
 
+def test_grass_patch_waits_for_device_identity_before_overwriting_auth_seed():
+    container = MagicMock(short_id="abc123", id="container-id")
+    container.exec_run.side_effect = [
+        MagicMock(exit_code=1),
+        MagicMock(exit_code=0),
+        MagicMock(exit_code=0),
+    ]
+    container.put_archive.return_value = True
+
+    with patch.object(orchestrator.provider_automation.time, "sleep"), patch.object(
+        orchestrator.provider_automation.time, "monotonic", side_effect=[0, 1, 2]
+    ):
+        orchestrator.provider_automation.apply_grass_store_patch(
+            container,
+            {
+                "store_access_token": '"access"',
+                "store_refresh_token": '"refresh"',
+                "store_wynd_status": '"CONNECTED"',
+                "store_wynd_authenticated": "true",
+                "store_wynd_user_id": '"user"',
+                "store_auto_update": "true",
+            },
+            timeout_seconds=5,
+            poll_seconds=0,
+        )
+
+    assert container.put_archive.called
+
 
 def test_deploy_raw_maps_wipter_credentials_to_env_and_restarts_after_login_state():
     client = MagicMock()
