@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 #: The public releases endpoint. Unauthenticated, and deliberately the "latest"
 #: single-object form rather than a paginated list: it is one small response and
 #: it cannot be made expensive by a repository with a long release history.
-LATEST_URL = "https://api.github.com/repos/GeiserX/CashPilot/releases/latest"
+LATEST_URL = "https://api.github.com/repos/assetforgeai-tech/CashPilot/releases/latest"
 
 #: The Android client ships on its OWN release track and its versions will never
 #: match the server's. Comparing a phone running 0.3.0 against a UI running
