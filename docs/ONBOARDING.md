@@ -60,7 +60,9 @@ Chi tiết quyết định, tương thích dữ liệu cũ và bằng chứng n�
 
 ## Verification snapshot
 
-- Removal worktree full suite: `1281 passed, 7 skipped`.
+- Baseline `main` full suite: `1311 passed, 7 skipped`.
+- Current release: `v1.1.1`; both fork GHCR image manifests were published and
+  verified by Auto Release.
 - Current catalog: 14 providers; all 14 provider YAML files match the protected
   baseline hash.
 - Grass references remaining in source are limited to the explicit retired
