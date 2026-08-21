@@ -121,7 +121,7 @@ def log_failure(logger: Any, service_name: str, exc: BaseException) -> None:
     Every collector used to do this itself, as
     ``logger.error("X collection failed: %s", exc, exc_info=True)``. Both halves
     leak. Several providers are authenticated with a bare header value — Salad's
-    auth cookie, Grass's access token, ProxyRack's API key, EarnApp's OAuth
+    auth cookie, ProxyRack's API key, EarnApp's OAuth
     token, PacketStream's JWT — so when httpx rejects one, the exception TEXT is
     the credential, and ``exc_info`` then prints it again inside the chained
     httpcore/httpx traceback.

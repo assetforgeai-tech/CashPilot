@@ -11,7 +11,6 @@ from typing import Any
 
 from app.collectors.base import BaseCollector, EarningsResult
 from app.collectors.earnfm import EarnFMCollector
-from app.collectors.grass import GrassCollector
 from app.collectors.iproyal import IPRoyalCollector
 from app.collectors.mystnodes import MystNodesCollector
 from app.collectors.packetstream import PacketStreamCollector
@@ -32,7 +31,6 @@ COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
     "earnfm": EarnFMCollector,
     "packetstream": PacketStreamCollector,
     "proxies-sx": ProxiesSxCollector,
-    "grass": GrassCollector,
 }
 
 # Map of slug -> list of config keys needed to instantiate the collector
@@ -45,7 +43,6 @@ _COLLECTOR_ARGS: dict[str, list[str]] = {
     "earnfm": ["email", "password"],
     "packetstream": ["auth_token"],
     "proxies-sx": ["api_key"],
-    "grass": ["access_token"],
 }
 
 _SECRET_KINDS = {"password", "api_key", "token", "cookie", "bearer", "jwt", "oauth_token", "access_token"}
@@ -160,13 +157,6 @@ CREDENTIAL_LIFETIMES: dict[str, dict[str, dict[str, object]]] = {
             "hours": None,
             "durable": True,
             "why": "A browser session JWT. Lasts until you log out of PacketStream.",
-        },
-    },
-    "grass": {
-        "access_token": {
-            "hours": None,
-            "durable": True,
-            "why": "Bearer token from browser localStorage. Re-copy it if Grass signs you out.",
         },
     },
 }

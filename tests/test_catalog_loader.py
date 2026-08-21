@@ -293,7 +293,7 @@ class TestValidate:
 
     def test_all_shipped_services_pass_validation(self):
         # Guard: no real catalog entry is dropped by the loader's validation.
-        assert len(catalog.load_services()) >= 15
+        assert len(catalog.load_services()) >= 14
 
 
 class TestProviderAutomationContracts:
@@ -302,25 +302,6 @@ class TestProviderAutomationContracts:
 
     def _credential_keys(self, service, section):
         return {item["key"] for item in (service.get(section, {}).get("credentials") or [])}
-
-    def test_grass_runtime_uses_auth_seed(self):
-        svc = self._svc("grass")
-        assert svc["docker"]["image"] == "cashpilot/grass-desktop:auto"
-        assert svc["deploy"]["automation"] == "store_json_patch"
-        assert svc["deploy"]["installer_manifest_url"] == (
-            "https://files.grass.io/file/grass-extension-upgrades/v7.6.0/grass-desktop_7.6.0_amd64.deb"
-        )
-        keys = self._credential_keys(svc, "deploy")
-        assert {
-            "store_access_token",
-            "store_refresh_token",
-            "store_wynd_status",
-            "store_wynd_authenticated",
-            "store_wynd_user_id",
-            "store_auto_update",
-        } <= keys
-        assert "store_wynd_device_registered_user_id" in keys
-        assert "runtime_assets" not in svc["deploy"]
 
     def test_uprock_runtime_uses_official_seed_state_assets(self):
         svc = self._svc("uprock")

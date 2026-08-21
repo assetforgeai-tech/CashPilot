@@ -33,8 +33,12 @@ function grab(name) {
   const asyncPrefix = 'async ';
   if (src.slice(i - asyncPrefix.length, i) === asyncPrefix) i -= asyncPrefix.length;
   const rest = src.slice(i);
-  const end = rest.indexOf('\n  }\n');
-  return rest.slice(0, end + 4);
+  const match = /\r?\n  }\r?\n/.exec(rest);
+  if (!match) {
+    console.error(`FAIL: ${name} closing brace was not found`);
+    process.exit(1);
+  }
+  return rest.slice(0, match.index + match[0].length);
 }
 
 // The catalog the stub server will answer with.

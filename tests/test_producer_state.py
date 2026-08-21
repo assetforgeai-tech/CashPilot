@@ -54,7 +54,7 @@ class TestLogSignals:
 class TestItDoesNotClaimToKnow:
     def test_a_service_with_no_collector_is_unknown_not_idle(self):
         """We cannot see its earnings, so we must not call it idle."""
-        out = ps.assess(slug="grass", has_collector=False, earned_recently=None)
+        out = ps.assess(slug="demo-provider", has_collector=False, earned_recently=None)
         assert out["state"] == ps.UNKNOWN
         assert any("no collector" in r for r in out["reasons"])
 

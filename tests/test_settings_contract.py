@@ -11,20 +11,20 @@ def test_changed_deploy_credentials_mark_only_matching_deployed_provider(tmp_pat
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "settings.db"):
             await database.init_db()
-            await database.save_deployment("grass", "container-1", status="running", spec={"image": "grass"})
+            await database.save_deployment("earnfm", "container-1", status="running", spec={"image": "earnfm"})
             await database.save_deployment("proxies-sx", "container-2", status="running", spec={"image": "proxies-sx"})
 
             changed = main._changed_credential_sections(
                 {
-                    "grass_store_access_token": "new-token",
+                    "earnfm_token": "new-token",
                     "proxies-sx_api_key": "collector-only",
                 }
             )
             await main._mark_redeploy_needed_for_config_change(changed)
 
-            grass = await database.get_deployment("grass")
+            earnfm = await database.get_deployment("earnfm")
             proxies_sx = await database.get_deployment("proxies-sx")
-            assert grass["status"] == "needs_redeploy"
+            assert earnfm["status"] == "needs_redeploy"
             assert proxies_sx["status"] == "needs_redeploy"
 
     asyncio.run(run())
@@ -85,21 +85,21 @@ def test_credential_health_reports_age_without_values(tmp_path):
             await database.init_db()
             await database.set_config_bulk(
                 {
-                    "grass_access_token": "grass-token",
+                    "earnfm_token": "earnfm-token",
                 }
             )
             old = (datetime.now(UTC) - timedelta(hours=25)).replace(tzinfo=None).isoformat(sep=" ")
             db = await database._get_db()
             try:
-                await db.execute("UPDATE config SET updated_at = ? WHERE key = ?", (old, "grass_access_token"))
+                await db.execute("UPDATE config SET updated_at = ? WHERE key = ?", (old, "earnfm_token"))
                 await db.commit()
             finally:
                 await db.close()
 
             rows = await main.api_credential_health(object())
             by_key = {(row["service"], row["field"]): row for row in rows}
-            assert by_key[("grass", "access_token")]["status"] == "no_known_expiry"
-            assert "grass-token" not in str(rows)
+            assert by_key[("earnfm", "token")]["status"] == "no_known_expiry"
+            assert "earnfm-token" not in str(rows)
 
     asyncio.run(run())
 
@@ -253,7 +253,7 @@ def test_collectors_meta_carries_runtime_contract_for_all_providers():
         with patch.object(main, "_require_owner", lambda request: {"uid": 1}):
             rows = await main.api_collectors_meta(object())
             by_slug = {row["slug"]: row for row in rows}
-            assert len(by_slug) == 15
+            assert len(by_slug) == 14
             assert by_slug["proxybase"]["manual_only"] is True
             assert by_slug["earnfm"]["supported_modes"] == ["direct", "proxy"]
 

@@ -394,10 +394,10 @@ def test_active_services_counts_deployed_rows_not_running_only(tmp_path):
                     new_callable=AsyncMock,
                     return_value=[
                         {
-                            "slug": "grass",
-                            "name": "cashpilot-grass",
+                            "slug": "earnfm",
+                            "name": "cashpilot-earnfm",
                             "status": "running",
-                            "image": "grass",
+                            "image": "earnfm",
                             "_node": "w1",
                             "_worker_id": 7,
                             "_has_docker": True,
@@ -640,7 +640,7 @@ def test_proxy_pool_export_can_filter_by_protocol(tmp_path):
 def test_service_collect_route_calls_single_collector(client):
     class Result:
         error = None
-        platform = "grass"
+        platform = "earnfm"
         balance = 1.25
         currency = "USD"
 
@@ -650,13 +650,13 @@ def test_service_collect_route_calls_single_collector(client):
 
     with (
         patch("app.main.auth.get_current_user", return_value=_owner_user()),
-        patch("app.main.catalog.get_service", return_value={"name": "Grass", "slug": "grass"}),
+        patch("app.main.catalog.get_service", return_value={"name": "EarnFM", "slug": "earnfm"}),
         patch("app.main.database.get_config", new_callable=AsyncMock, return_value={}),
         patch("app.collectors.build_one", return_value=(Collector(), [])),
         patch("app.main._collect_bounded", new_callable=AsyncMock, return_value=Result()),
         patch("app.main.database.upsert_earnings", new_callable=AsyncMock) as upsert,
         patch("app.main._detect_payout", new_callable=AsyncMock, return_value=None),
     ):
-        resp = client.post("/api/services/grass/collect")
+        resp = client.post("/api/services/earnfm/collect")
     assert resp.status_code == 200
     upsert.assert_awaited_once()

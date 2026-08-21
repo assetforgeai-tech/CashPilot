@@ -389,7 +389,7 @@ CREATE TABLE IF NOT EXISTS earnings (
     date       TEXT    NOT NULL,
     -- USD per 1 unit of `currency` when this reading was taken (so USD rows store
     -- 1.0). Rates are only cached live, so without storing it here the historical
-    -- value of a non-USD balance (MYST, GRASS, ...) cannot be reconstructed later at
+    -- value of a non-USD balance (MYST and other currencies) cannot be reconstructed later at
     -- any accuracy — which is what a net-profit or tax export needs. NULL only when
     -- the rate was genuinely unavailable, never a guess.
     fx_rate_usd REAL,
@@ -1372,12 +1372,16 @@ def _usd_rate(currency: str, raw: Any) -> float | None:
     return value if math.isfinite(value) and value > 0 else None
 
 
-async def _usd_earned_per_date(db: Any) -> tuple[dict[str, float], int]:
+async def _usd_earned_per_date(
+    db: Any,
+    platforms: set[str] | frozenset[str] | None = None,
+    excluded_platforms: set[str] | frozenset[str] | None = None,
+) -> tuple[dict[str, float], int]:
     """USD earned per calendar date, summed across platforms.
 
     ONE implementation behind both the dashboard cards and the trend chart.
     They previously carried separate copies of the arithmetic and both filtered
-    ``currency = 'USD'``, so an installation earning MYST, GRASS or ANYONE saw
+    ``currency = 'USD'``, so an installation earning MYST or another token saw
     "$0.00 today", "$0.00 this month" and a flat-zero chart while its balances
     climbed — verified against a MystNodes-only fixture, which reported 0.00
     where the correct figure was 0.20.
@@ -1392,6 +1396,10 @@ async def _usd_earned_per_date(db: Any) -> tuple[dict[str, float], int]:
     * a reading that cannot be priced drops the baseline instead of anchoring
       the next delta, so an unpriced stretch is not silently counted whole.
     """
+    normalized_platforms = {slug.strip().lower() for slug in platforms} if platforms is not None else None
+    normalized_exclusions = (
+        {slug.strip().lower() for slug in excluded_platforms} if excluded_platforms is not None else None
+    )
     cursor = await db.execute(
         """
         SELECT platform, date, balance, currency, fx_rate_usd, source
@@ -1409,6 +1417,11 @@ async def _usd_earned_per_date(db: Any) -> tuple[dict[str, float], int]:
     unpriced = 0
     for row in await cursor.fetchall():
         platform = row["platform"]
+        normalized_platform = str(platform or "").strip().lower()
+        if normalized_platforms is not None and normalized_platform not in normalized_platforms:
+            continue
+        if normalized_exclusions is not None and normalized_platform in normalized_exclusions:
+            continue
         # Absent source means a row written before the column existed; those
         # were all this server's own, so they join the 'server' series rather
         # than forming a phantom one.
@@ -1431,7 +1444,11 @@ async def _usd_earned_per_date(db: Any) -> tuple[dict[str, float], int]:
     return per_date, unpriced
 
 
-async def get_earnings_dashboard_summary() -> dict[str, Any]:
+async def get_earnings_dashboard_summary(
+    platforms: set[str] | frozenset[str] | None = None,
+    *,
+    excluded_platforms: set[str] | frozenset[str] | None = None,
+) -> dict[str, Any]:
     """Return aggregated earnings stats for the dashboard."""
     db = await _get_db()
     try:
@@ -1439,10 +1456,17 @@ async def get_earnings_dashboard_summary() -> dict[str, Any]:
         yesterday = (datetime.now(UTC) - timedelta(days=1)).strftime("%Y-%m-%d")
         first_of_month = datetime.now(UTC).replace(day=1).strftime("%Y-%m-%d")
 
-        # Total: sum of latest balance per platform (USD only for now)
+        normalized_platforms = {slug.strip().lower() for slug in platforms} if platforms is not None else None
+        normalized_exclusions = (
+            {slug.strip().lower() for slug in excluded_platforms} if excluded_platforms is not None else None
+        )
+
+        # Total: sum of latest balance per platform (USD only for now).
+        # Filter in Python so callers can exclude retired providers without
+        # mutating historical rows or building a variable-length SQL clause.
         cursor = await db.execute(
             """
-            SELECT COALESCE(SUM(e.balance), 0) as total
+            SELECT e.platform, e.balance
             FROM earnings e
             INNER JOIN (
                 SELECT platform, MAX(date) as max_date
@@ -1453,14 +1477,20 @@ async def get_earnings_dashboard_summary() -> dict[str, Any]:
               AND COALESCE(e.source, 'server') NOT LIKE 'node:%'
             """
         )
-        row = await cursor.fetchone()
-        total = row["total"]
+        total = sum(
+            float(row["balance"] or 0.0)
+            for row in await cursor.fetchall()
+            if (normalized_platforms is None or str(row["platform"] or "").strip().lower() in normalized_platforms)
+            and (
+                normalized_exclusions is None or str(row["platform"] or "").strip().lower() not in normalized_exclusions
+            )
+        )
 
         # Today, this month and yesterday all come from one priced series.
         # They used to be three separate SQL aggregates that each filtered
         # currency = 'USD', so every non-USD platform was missing from all
         # three at once and the cards read $0.00 while balances climbed.
-        per_date, unpriced = await _usd_earned_per_date(db)
+        per_date, unpriced = await _usd_earned_per_date(db, platforms, excluded_platforms)
         if unpriced:
             _logger.warning(
                 "%d earnings reading(s) have no usable USD rate and are left out of the "
@@ -1536,19 +1566,24 @@ async def get_earnings_per_service() -> list[dict[str, Any]]:
         await db.close()
 
 
-async def get_daily_earnings(days: int = 7) -> list[dict[str, Any]]:
+async def get_daily_earnings(
+    days: int = 7,
+    platforms: set[str] | frozenset[str] | None = None,
+    *,
+    excluded_platforms: set[str] | frozenset[str] | None = None,
+) -> list[dict[str, Any]]:
     """Return daily aggregated earnings for charting (delta per day)."""
     db = await _get_db()
     try:
         # Shares the priced series with the dashboard cards, so the chart and
         # the "Today" card can no longer disagree. The previous version built
         # its own per-date balance map filtered to currency = 'USD', which drew
-        # a flat-zero line for a fleet earning MYST, GRASS or ANYONE.
+        # a flat-zero line for a fleet earning MYST or another token.
         #
         # It also treated a platform's FIRST-EVER reading as a delta against
         # zero, so a newly added service drew a spike the size of its whole
         # opening balance. The shared helper requires a predecessor.
-        per_date, unpriced = await _usd_earned_per_date(db)
+        per_date, unpriced = await _usd_earned_per_date(db, platforms, excluded_platforms)
         if unpriced:
             _logger.warning(
                 "%d earnings reading(s) have no usable USD rate and are left out of the "
@@ -3511,8 +3546,8 @@ async def record_alert(
     """Persist an alert, returning True only when the caller should notify.
 
     Suppression is by TIME WINDOW per kind+subject, not by message equality. Message
-    equality alone is not enough: several collectors alternate between two error
-    strings for the same underlying fault (grass flips between an expired-token error
+    equality alone is not enough: collectors can alternate between two error
+    strings for the same underlying fault (for example an expired-token error
     and a Cloudflare rate-limit depending on which request tripped first), so a
     "changed message means new" rule would notify every single hour and grow the
     table without bound — exactly what this is meant to prevent.
@@ -3536,7 +3571,7 @@ async def record_alert(
         if (row := await cursor.fetchone()) is not None:
             # Refresh what the stored row SAYS while keeping the push
             # suppressed. Without this the first category of a failure window
-            # is pinned for 24h: grass alternates between an expired-token
+            # is pinned for 24h: a provider can alternate between an expired-token
             # error (auth) and a Cloudflare rate-limit (transient) with no
             # success in between, so a restart could restore "transient" for a
             # dead credential — rendered muted, with no fix button, as a blip

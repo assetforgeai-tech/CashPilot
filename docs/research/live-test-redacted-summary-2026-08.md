@@ -28,7 +28,7 @@ First post-firewall rollout used worker `52-237-120-118-1786648057` and proxy le
 | Provider | Result | Cause |
 | --- | --- | --- |
 | adnade | failed | worker deploy failed after R2 profile download; no container created |
-| grass | running | container `cashpilot-grass` running after 5-minute check |
+| grass | historical/retired | Old runtime observation; provider removed from the current product. |
 | mysterium | partial | container running, but logs show TUN/sudo permission failure during WireGuard session |
 | proxybase | running | container `cashpilot-proxybase` running after 5-minute check |
 | proxybase-xyz | running | container now uses `HOME=/home/proxybase`; seller daemon running in foreground |
@@ -51,7 +51,7 @@ First post-firewall rollout used worker `52-237-120-118-1786648057` and proxy le
 | adnade | provider/dashboard node online if exposed | noVNC URL, container name, browser URL, logs | pending | pending | Dawn/Titan ride this profile runtime. |
 | dawn | dashboard/session node online if exposed | Adnade profile extension state, logs, provider page | pending | pending | Collector/session only; no separate deploy if bundled with Adnade. |
 | titan | dashboard/session node online if exposed | Adnade profile extension state, logs, provider page | pending | pending | Collector/session only; no separate deploy if bundled with Adnade. |
-| grass | dashboard node online | container logs, worker provider state | pending | pending | Direct-IP provider. |
+| grass | retired | Historical evidence only | n/a | removed | See `provider-removal-grass-2026-08.md`. |
 | uprock | dashboard node online | container logs, worker provider state | pending | pending | Direct-IP provider. |
 | wipter | dashboard node online if exposed | container logs, login-ready marker, worker provider state | pending | pending | Provider tunnel namespace. |
 | earnfm | dashboard node online | container logs, worker provider state | pending | pending | Direct-IP provider. |

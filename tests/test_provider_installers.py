@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import base64
-import re
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from app import provider_installers
 
@@ -31,65 +29,6 @@ def test_proxybase_xyz_installer_image_installs_cli_at_build_time():
     assert "apt-get install -y --no-install-recommends ca-certificates curl" in dockerfile
     assert "https://proxybase.xyz/install.sh" in dockerfile
     assert "proxybase-cli" in dockerfile
-
-
-def test_grass_manifest_resolves_linux_amd64_url_and_version():
-    manifest = {
-        "version": "v7.6.0",
-        "platforms": {
-            "linux-x86_64": {
-                "url": "https://files.grass.io/file/grass-extension-upgrades/v7.6.0/grass-desktop_7.6.0_amd64.deb"
-            }
-        },
-    }
-
-    with (
-        patch.object(provider_installers, "_fetch_json", return_value=manifest),
-        patch.object(provider_installers.platform, "system", return_value="Linux"),
-        patch.object(provider_installers.platform, "machine", return_value="x86_64"),
-    ):
-        resolved = provider_installers.resolve_installer_manifest(
-            "grass", "https://files.grass.io/file/grass-extension-upgrades/desktop-installer-latest.json"
-        )
-
-    assert resolved == {
-        "platform": "linux-x86_64",
-        "version": "v7.6.0",
-        "url": "https://files.grass.io/file/grass-extension-upgrades/v7.6.0/grass-desktop_7.6.0_amd64.deb",
-    }
-
-
-def test_grass_manifest_build_tags_image_by_resolved_version():
-    client = MagicMock()
-    client.images.get.side_effect = provider_installers.ImageNotFound("missing")
-    resolved = {
-        "platform": "linux-x86_64",
-        "version": "v7.6.0",
-        "url": "https://files.grass.io/file/grass-extension-upgrades/v7.6.0/grass-desktop_7.6.0_amd64.deb",
-    }
-
-    image = provider_installers.ensure_installer_image(client, "grass", resolved)
-
-    assert image == "cashpilot/grass-desktop:v7.6.0-ubuntu24.04-authpatch"
-    dockerfile = client.images.build.call_args.kwargs["fileobj"].getvalue().decode()
-    assert "FROM ubuntu:24.04" in dockerfile
-    assert "grass-desktop_7.6.0_amd64.deb" in dockerfile
-    assert "novnc" in dockerfile
-    assert "base64.b64decode" in dockerfile
-    script = base64.b64decode(re.search(r"b64decode\('([^']+)'\)", dockerfile).group(1)).decode()
-    assert "GRASS_SEED_ARCHIVE" not in script
-    assert "tmpdir" not in script
-    assert "GRASS_RESET_DEVICE_ID" not in script
-    assert "GRASS_RESET_BROWSER_ID" not in script
-    assert "wynd:device_privkey" not in script
-    assert "wynd:browser_id" not in script
-    assert "/var/lib/grass-xdg/.machine-id" in script
-    assert "/etc/machine-id" in script
-    assert "/var/lib/dbus/machine-id" in script
-    assert "--no-sandbox" in script
-    assert ".grass-configured" not in script
-    assert "USER_EMAIL" not in script
-    assert "USER_PASSWORD" not in script
 
 
 def test_uprock_deb_url_resolves_as_linux_amd64_installer():

@@ -13,19 +13,6 @@
   const jsonStores = scanJsonStores(stores);
 
   const readers = {
-    grass: () => {
-      add("grass_store_wynd_status", pick([
-        textMatch(/Registration Status:\s*(Registered|Unregistered)/i, 1),
-        storeMatch(/wynd:?status|registration status|status/i),
-      ]), "Grass registration state");
-      add("grass_store_wynd_user_id", pick([storeMatch(/wynd:?user_id|user_id|user id|userid/i), jsonMatch(["wynd:user_id", "user_id", "userId", "user_id"]) ]), "Grass user id");
-      add("grass_store_token_expiry", pick([storeMatch(/tokenExpiry|token_expiry|expires/i), jsonMatch(["tokenExpiry", "expiresAt", "expires_at"]) ]), "Grass token expiry");
-      add("grass_store_auto_update", pick([storeMatch(/autoUpdate|auto_update/i), jsonMatch(["autoUpdate", "auto_update"]) ]), "Grass auto update");
-      add("grass_store_wynd_authenticated", pick([storeMatch(/wynd:?authenticated|authenticated/i), jsonMatch(["wynd:authenticated", "authenticated"]) ]), "Grass auth flag");
-      add("grass_store_refresh_token", pick([storeMatch(/refreshToken|refresh_token/i), jsonMatch(["refreshToken", "refresh_token"]) ]), "Grass refresh token");
-      add("grass_store_access_token", pick([storeMatch(/accessToken|access_token/i), jsonMatch(["accessToken", "access_token"]) ]), "Grass access token");
-      add("grass_access_token", pick([storeMatch(/accessToken|access_token/i), jsonMatch(["accessToken", "access_token"]) ]), "Grass access token");
-    },
     uprock: () => {
       add("uprock_credentials_json", pick([jsonStoreMatch(/credentials_json/i), storeMatch(/credentials_json/i)]), "Uprock credentials_json");
       add("uprock_main_db", pick([storeMatch(/main_db|main\.db/i)]), "Uprock main.db");
@@ -81,7 +68,6 @@
   };
 
   function detectSlug(hostname, url, pageText) {
-    if (hostname.includes("app.grass.io")) return "grass";
     if (hostname.includes("uprock.com")) return "uprock";
     if (hostname.includes("wipter.com")) return "wipter";
     if (hostname.includes("traffmonetizer.com")) return "traffmonetizer";

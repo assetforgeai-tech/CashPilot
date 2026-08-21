@@ -43,7 +43,7 @@ _BEARER_RE = re.compile(r"((?:bearer|basic)\s+)[A-Za-z0-9._\-+/=]+", re.IGNORECA
 
 # httpx/h11 report a rejected header as `Illegal header value b'<the whole value>'`.
 # Several collectors send a raw secret as a bare header value with no `name=` and no
-# `Bearer ` prefix (grass Authorization, repocket Auth-Token, earnfm X-API-Key,
+# `Bearer ` prefix (provider Authorization, repocket Auth-Token, earnfm X-API-Key,
 # proxyrack Api-Key), so those match neither pattern above.
 # Match the ERROR's shape instead of trying to recognise every secret's shape, and
 # drop the entire quoted value.

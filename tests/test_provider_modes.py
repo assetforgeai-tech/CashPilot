@@ -1,10 +1,10 @@
 from app import catalog, provider_modes, provider_runtime
 
 
-def test_provider_modes_cover_15_runtime_providers():
+def test_provider_modes_cover_14_runtime_providers():
     providers = provider_modes.BOTH | provider_modes.PROXY_ONLY | provider_modes.DIRECT_ONLY
     active = {svc["slug"] for svc in catalog.get_services()}
-    assert len(providers) == 15
+    assert len(providers) == 14
     assert providers == active == set(provider_runtime.ACTIVE_SLUGS)
     assert "adnade" not in providers
     assert "dawn" not in providers

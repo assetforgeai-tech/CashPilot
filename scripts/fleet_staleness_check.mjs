@@ -113,7 +113,7 @@ check('and it is no longer the raw UTC string', !offline.includes('2026-08-04 09
   'the raw stored value is still being shown to the viewer');
 
 // 4. A stopped container on a LIVE host must still read as stopped, not stale.
-const stoppedLive = renderContainers({...WORKER, containers: [{slug: 'grass', status: 'exited'}]}, true);
+const stoppedLive = renderContainers({...WORKER, containers: [{slug: 'demo-provider', status: 'exited'}]}, true);
 check('a stopped container on a live host is not green', !stoppedLive.includes('var(--success)'),
   'an exited container rendered as running');
 check('a live host carries no staleness note', !stoppedLive.includes('Last known state'),

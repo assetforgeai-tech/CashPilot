@@ -120,7 +120,7 @@ The worker **never handles or stores credentials**:
 The UI runs scheduled collectors for each configured service:
 
 - **11 automated collectors** fetch balances via service APIs (JWT auth, cookie auth, API keys)
-- Results stored in SQLite with native currency (USD, MYST, GRASS, STORJ, etc.)
+- Results stored in SQLite with native currency (USD, MYST, and other provider currencies)
 - Exchange rates fetched from CoinGecko (crypto) and Frankfurter (fiat), cached 15 minutes
 - Dashboard converts and displays in the user's preferred currency
 

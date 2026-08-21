@@ -4,7 +4,7 @@
 
 Setup and configuration for every service CashPilot supports.
 
-**15 providers** across 2 categories. The table is sortable â€” click a heading to reorder it.
+**14 providers** across 2 categories. The table is sortable — click a heading to reorder it.
 
 !!! tip "Choosing what to run"
 
@@ -18,26 +18,24 @@ Setup and configuration for every service CashPilot supports.
 |---|---|---|---|---|
 | [Earn.fm](earnfm.md) | Residential IP | Docker | $3 | active |
 | [IPRoyal Pawns](iproyal.md) | Residential IP | Docker | $5 | active |
-| [MystNodes](mysterium.md) | â€” | Docker | 4 MYST | active |
+| [MystNodes](mysterium.md) | — | Docker | 4 MYST | active |
 | [PacketStream](packetstream.md) | Residential IP | Docker | $5 | active |
 | [Proxies.sx](proxies-sx.md) | Residential IP, 500 KB/s upload | Docker | $5 | beta |
-| [ProxyBase](proxybase.md) | â€” | Docker | $1 | active |
-| [ProxyBase Markets](proxybase-xyz.md) | â€” | Docker | $1 | active |
-| [ProxyRack](proxyrack.md) | â€” | Docker | $20 | active |
+| [ProxyBase](proxybase.md) | — | Docker | $1 | active |
+| [ProxyBase Markets](proxybase-xyz.md) | — | App only | $1 | active |
+| [ProxyRack](proxyrack.md) | — | Docker | $20 | active |
 | [Repocket](repocket.md) | Residential IP | Docker | $20 | active |
 | [Spide](spide.md) | Residential IP | Docker | $5 | active |
-| [Traffmonetizer](traffmonetizer.md) | â€” | Docker | $10 | active |
-| [URnetwork](urnetwork.md) | â€” | Docker | $5 | active |
+| [Traffmonetizer](traffmonetizer.md) | — | Docker | $10 | active |
+| [URnetwork](urnetwork.md) | — | Docker | $5 | active |
 
 ## DePIN
 
 | Service | Needs | Runs as | Minimum payout | Status |
 |---|---|---|---|---|
-| [Grass](grass.md) | Residential IP | Docker | â€” | active |
 | [Uprock](uprock.md) | Residential IP | Docker | $5 | active |
 | [Wipter](wipter.md) | Residential IP | Docker | $20 | active |
 
 ## Not a service guide
 
-- [Prometheus metrics](prometheus-metrics.md) â€” what CashPilot exports for scraping.
-
+- [Prometheus metrics](prometheus-metrics.md) — what CashPilot exports for scraping.

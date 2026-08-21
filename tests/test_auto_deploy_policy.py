@@ -61,9 +61,9 @@ def test_auto_deploy_uses_one_lock_per_worker_and_continues_after_failure():
 def test_auto_deploy_one_uses_server_deploy_endpoint():
     async def run():
         with patch.object(main, "api_deploy", AsyncMock(return_value={"status": "deployed"})) as deploy:
-            await main._auto_deploy_one(9, "grass")
+            await main._auto_deploy_one(9, "demo-provider")
         args, kwargs = deploy.await_args
-        assert args[1] == "grass"
+        assert args[1] == "demo-provider"
         assert isinstance(args[2], main.DeployRequest)
         assert kwargs["worker_id"] == 9
 

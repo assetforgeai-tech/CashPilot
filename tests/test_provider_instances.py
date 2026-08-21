@@ -39,15 +39,17 @@ def test_provider_instances_filter_by_worker_and_slug(tmp_path):
             worker_b = await database.upsert_worker("worker-b", "worker-b", "http://b")
             await database.save_provider_instance("earnfm", "earnfm-direct", worker_id=worker_a, mode="direct")
             await database.save_provider_instance("earnfm", "earnfm-proxy", worker_id=worker_b, mode="proxy")
-            await database.save_provider_instance("grass", "grass-proxy", worker_id=worker_a, mode="proxy")
+            await database.save_provider_instance(
+                "demo-provider", "demo-provider-proxy", worker_id=worker_a, mode="proxy"
+            )
 
             assert [r["instance_id"] for r in await database.list_provider_instances(slug="earnfm")] == [
                 "earnfm-direct",
                 "earnfm-proxy",
             ]
             assert [r["instance_id"] for r in await database.list_provider_instances(worker_id=worker_a)] == [
+                "demo-provider-proxy",
                 "earnfm-direct",
-                "grass-proxy",
             ]
 
     asyncio.run(run())

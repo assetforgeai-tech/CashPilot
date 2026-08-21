@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Normalize all 18 active CashPilot providers so server Settings, Setup Wizard, Service Catalog, Dashboard, Payouts, Proxy Provider, Proxy Pool, MYST Wallet, and Fleet all agree with the worker runtime and can deploy/recover providers automatically.
+**Goal (historical):** Normalize the then-active CashPilot providers so server Settings, Setup Wizard, Service Catalog, Dashboard, Payouts, Proxy Provider, Proxy Pool, MYST Wallet, and Fleet agree with the worker runtime. The current product baseline is 14 providers; Grass removal supersedes its active-provider work.
 
 **Architecture:** CashPilot server is the only source of truth for provider catalog, credentials, runtime assets, proxy leases, MYST wallet leases, auto-deploy policy, payout metadata, and earnings collection. Workers enroll, heartbeat, receive server commands, apply a single worker-level proxy egress via sing-box, deploy providers sequentially, and report `provider_states`. Proxy Pool and MYST Wallet do not run their own heartbeat loops; they reconcile from CashPilot worker heartbeat plus provider state evidence.
 
@@ -12,13 +12,13 @@
 
 **RESUME_FROM:** Task 17 / Step 1
 
-**CURRENT_STATUS:** [IN_PROGRESS]
+**CURRENT_STATUS:** [CHANGED]
 
 **LAST_SAFE_COMMIT:** `42c02df`
 
 **LAST_DEPLOYED_VPS:** `42c02df`
 
-**CURRENT_BRANCH:** `provider-standard-40834f6`
+**CURRENT_BRANCH:** historical planning branch; current removal work is isolated in `codex/remove-grass-provider`
 
 **DO_NOT_TOUCH:** VPS server DB, Docker volumes, committed history, local secret files outside explicit secret audit output.
 
@@ -52,7 +52,7 @@
 | 2026-08-13 | [DONE] | Credential health now has regression coverage for age/status without leaking values. | The settings panel must show freshness and expiry truth without printing secrets. | Health UI can warn before provider collection dies. | pending |
 | 2026-08-13 | [DONE] | Worker bootstrap contract verified against existing fleet UI and worker key tests. | Current code already uses public IP/timestamp copy snippet, public worker URL, stable client_id, worker key re-enrollment, and MYST provider state on worker heartbeat. | No extra runtime logic added for Task 5. | pending |
 | 2026-08-13 | [DONE] | Auto-deploy policy now has server-side toggle/delay and sequential worker batch behavior. | Stable workers can be auto-sequenced from heartbeat after 3 healthy beats, with per-worker locking and deployable-only filtering. | Auto deploy is opt-in, per-worker, and continues after per-provider failure. | pending |
-| 2026-08-15 | [CHANGED] | Adnade, Dawn, and Titan are removed from the active plan scope. | User explicitly dropped the three Chrome-extension providers; active catalog now has 15 providers. | Remaining work targets active providers only and docs/tests must use 15-provider source-of-truth. | `42c02df` |
+| 2026-08-15 | [CHANGED] | Adnade, Dawn, and Titan were removed from the historical plan scope. | The then-active catalog had 15 providers; this plan is now superseded by the 14-provider baseline and Grass removal decision. | Do not use this row as current deployment guidance. | `42c02df` |
 | 2026-08-15 | [IN_PROGRESS] | Add provider instance mode UI/API wiring as the first core runtime checkpoint. | Providers need direct/proxy/both instances on the same worker without container collisions. | Setup Wizard and Service Detail now send deploy `mode`; VPS is deployed at `42c02df`. | `42c02df` |
 
 ### Open Drift
@@ -62,7 +62,7 @@
 | [DONE] | VPS deploy | `LAST_DEPLOYED_VPS` verified at `42c02df`. | Continue provider runtime normalization from current deployed commit. |
 | [TODO] | Chrome audit | Chrome profile 40 tab inventory not captured in this plan file yet. | Capture provider tab list during Task 1. |
 | [TODO] | Credentials | Some server Settings credentials may be missing/expired. | Audit and write gaps to local secret file. |
-| [IN_PROGRESS] | Provider runtime | Active catalog has 15 providers, but runtime contracts still need full normalization against manual setup scripts. | Execute Task 17. |
+| [CHANGED] | Provider runtime | Historical plan covered 15 providers; current runtime truth is maintained by the 14-provider catalog and removal regressions. | See current branch and removal decision. |
 
 ### Deploy Checkpoint
 
@@ -77,7 +77,7 @@
 
 | Provider | Status | Deploy Runtime | Earnings Collector | Dashboard / Session | Payout | Proxy / Direct | Runtime Test | UI Ready | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| grass | [TODO] | 7 store.json keys | existing/verify | dashboard audit | needs_user_info | direct | prior manual success, needs codified test | partial | Keys: `wynd:status`, `wynd:user_id`, `tokenExpiry`, `autoUpdate`, `wynd:authenticated`, `refreshToken`, `accessToken`. |
+| grass | [REMOVED] | retired | retired | historical only | n/a | n/a | n/a | Removed by product decision; see `provider-removal-grass-2026-08.md`. |
 | uprock | [TODO] | `credentials.json` + `main.db` | limited/no API unless confirmed | dashboard audit | needs_user_info | direct | prior manual success | partial | Official runtime only. |
 | wipter | [TODO] | email/password | scrape/manual unless API confirmed | dashboard audit | needs_user_info | provider tunnel namespace | partial | partial | Needs login marker verification. |
 | earnfm | [TODO] | deploy credential audit | existing/verify | dashboard audit | payout audit | direct | pending | pending | Direct provider. |
@@ -449,7 +449,7 @@ pytest tests/test_myst_wallets_module.py tests/test_myst_runtime.py tests/test_w
 
 ---
 
-## Task 9 [DONE]: Provider Catalog Contracts For 21 Providers
+## Task 9 [DONE]: Historical Provider Catalog Contracts
 
 **Files:**
 - Modify: `services/bandwidth/earnfm.yml`
@@ -464,7 +464,7 @@ pytest tests/test_myst_wallets_module.py tests/test_myst_runtime.py tests/test_w
 - Modify: `services/bandwidth/spide.yml`
 - Modify: `services/bandwidth/traffmonetizer.yml`
 - Modify: `services/bandwidth/urnetwork.yml`
-- Modify: `services/depin/grass.yml`
+- Grass catalog work is superseded by the removal decision; no active Grass file remains.
 - Modify: `services/depin/uprock.yml`
 - Modify: `services/depin/wipter.yml`
 - Test: `tests/test_catalog.py`, `tests/test_catalog_loader.py`, `tests/test_provider_automation.py`, `tests/test_provider_installers.py`
@@ -480,7 +480,7 @@ pytest tests/test_myst_wallets_module.py tests/test_myst_runtime.py tests/test_w
 - [x] Mark every dashboard/API-capable provider with exact dashboard/session fields.
 - [x] Mark every payout-capable collector provider with withdrawable/minimum/dashboard URL fields.
 - [x] Mark every proxy-mode provider as proxy egress.
-- [x] Mark direct providers explicitly: Grass, Uprock, EarnFM, Proxybase.org, Proxyrack, Repocket, Traffmonetizer, Proxylite, Bitping, MYST.
+- [x] Mark current direct providers explicitly: Uprock, EarnFM, Proxybase.org, Proxyrack, Repocket, Traffmonetizer, MYST.
 - [x] Keep provider names unambiguous: `proxybase` is Docker `ghcr.io/proxybaseorg/peer-cli`; `proxybase-xyz` is CLI `https://proxybase.xyz/install.sh`.
 - [x] Keep MYST wallet dependency separate from proxy provider wallet.
 - [x] For provider fields not yet known, write exact gap to local secret audit file and set catalog `needs_user_info`.
@@ -504,12 +504,12 @@ pytest tests/test_catalog.py tests/test_catalog_loader.py tests/test_provider_au
 
 **Interfaces:**
 
-**Checkpoint:** Status [DONE]; Owner Codex; Started 2026-08-13; Evidence `40 passed` (`tests/test_provider_automation.py`, `tests/test_provider_installers.py`, `tests/test_grass_deploy_automation.py`, `tests/test_optional_runtime.py`); Commit pending.
+**Checkpoint:** Historical Grass automation work is retained in Git history; current branch removes that provider and verifies the retired-provider boundary.
 
 - Produces: deploy helpers that materialize runtime assets into containers correctly.
 
 - [x] Adnade: download R2 `.fernet`, decrypt profile on worker, run Chrome profile from InternetIncome test branch behavior, preserve Dawn, auto-enable Titan.
-- [x] Grass: patch 7 required `store.json` keys and restart Grass.
+- [x] Historical Grass patch experiment documented; provider subsequently removed from the product.
 - [x] Uprock: materialize `credentials.json` and `main.db`, run official image/package flow, verify earning state.
 - [x] Wipter: run email/password login flow, detect login-ready markers, restart once.
 - [x] Proxybase: run official Docker token/device flow.
@@ -731,7 +731,7 @@ git log --oneline -1
 
 **Checkpoint:** Status [DONE]; Owner Codex; Started 2026-08-15; Evidence `1242 passed, 7 skipped`; `python scripts/check_deploy_baseline.py` passed; Commit pending.
 
-- Produces: active 15 providers can be represented as direct, proxy, or both runtime instances without name/volume/container collisions.
+- Historical output covered the then-active provider set; current mode truth is the 14-provider catalog.
 
 - [x] Read every manual provider setup script under `provider-runtime/provider_code_setup_node`.
 - [x] Build the source-of-truth provider mode matrix from manual scripts and catalog YAML.
