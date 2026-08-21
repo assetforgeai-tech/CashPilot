@@ -1,15 +1,19 @@
 # CashPilot Active Context
 
-Updated: 2026-08-21 (provider removal baseline)
+Updated: 2026-08-21 (post-merge provider removal baseline)
 
 ## Current repository state
 
-- Worktree: `repo-remove-grass`.
-- Branch: `codex/remove-grass-provider`.
-- Base HEAD: `7588739f56a5ad20546ec8c71b3065407e0275ff`.
-- This removal is repository-only. Publishing the implementation branch or PR
-  does not authorize a release, deploy, VPS mutation, container recreation,
-  credential rotation, proxy rotation or wallet operation.
+- Canonical branch: `main`.
+- Audited product/release baseline: `c2b8d6539c28187fd95ce1ed41b1bde87c8d6f3d`
+  (`c2b8d65`), the merge commit for PR #4.
+- PR #2 (`ci: publish and pin fork GHCR images`), PR #3 (fork install surfaces)
+  and PR #4 (redacted historical evidence) are merged.
+- Release `v1.1.1` is published with both fork GHCR images and passed the release
+  image verification gates.
+- The removal is repository-only. This context does not authorize a deploy,
+  VPS mutation, container recreation, credential rotation, proxy rotation or
+  wallet operation.
 - The implementation decision and safety boundaries are recorded in
   `docs/research/provider-removal-grass-2026-08.md`.
 
@@ -57,6 +61,8 @@ Updated: 2026-08-21 (provider removal baseline)
 - Added regression tests for masked legacy secrets, hidden legacy rows,
   aggregate/chart exclusion, health-check exclusion, collection-run detection
   and official deploy rejection.
+- Moved the old local Grass lab/profile artifacts to the non-Git quarantine
+  `secret/retired/grass-20260821`; external repositories were not touched.
 
 ## Protected provider matrix
 
@@ -70,7 +76,7 @@ approval.
 
 ## Verification status
 
-- Full suite: 1281 passed, 7 skipped (`python -m pytest -q`), including
+- Full suite: 1311 passed, 7 skipped (`python -m pytest -q`), including
   endpoint, payout, metric and case-normalization retired-provider regressions.
 - Ruff lint and format checks pass; JavaScript syntax and browser-free behavior
   checks pass; README/catalog and documentation-nav checks pass.
@@ -81,5 +87,4 @@ approval.
   this Windows machine. No dependency, lockfile, or VPS workaround was used.
 - `git diff --check` passes, and all 14 protected provider YAML hashes match
   HEAD.
-- No live or VPS verification is authorized or required for this repository-only
-  removal.
+- No live or VPS verification was performed as part of the repository cleanup.
