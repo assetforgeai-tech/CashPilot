@@ -37,7 +37,7 @@ The MVP: deploy, monitor, and manage passive income containers from a single web
 
 Turn CashPilot from a deployment tool into an earnings optimization platform. All core features complete; only webhook/email notifications remain.
 
-- [x] **Earnings collectors** — 13 services with automated balance tracking
+- [x] **Earnings collectors** — 8 current services with automated balance tracking
   - [x] Honeygain (JWT auth + /v2/earnings)
   - [x] EarnApp (OAuth cookie auth + /dashboard/api/money/)
   - [x] MystNodes (Tequila API at localhost:4449)
@@ -49,7 +49,6 @@ Turn CashPilot from a deployment tool into an earnings optimization platform. Al
   - [x] Bitping (email/password auth)
   - [x] EarnFM (email/password auth)
   - [x] PacketStream (auth token)
-  - [x] Grass (access token + 429 retry logic)
   - [x] Bytelixir (session cookie + remember_web + XSRF persistent auth)
   - [x] Dynamic credential forms in Settings page (auto-generated from collector args)
   - [x] Startup collection trigger (collectors run immediately on container start)
@@ -72,7 +71,7 @@ Turn CashPilot from a deployment tool into an earnings optimization platform. Al
   - [x] Health score displayed on service cards (color-coded badge)
   - [x] GET /api/health/scores endpoint
 - [ ] **Notifications** — webhook/email alerts for container crashes, earnings drops, payout thresholds (collector alerts are in-app only for now)
-- [ ] **Auto-claim daily rewards** — automated daily reward collection for services that support it (Honeygain lucky pot, Grass daily check-in, etc.); per-service opt-in with schedule configuration
+- [ ] **Auto-claim daily rewards** — automated daily reward collection for services that support it; per-service opt-in with schedule configuration
 
 ## v1.2 — Multi-Node Fleet Management ✅
 
@@ -157,7 +156,7 @@ Let CashPilot make intelligent recommendations.
 
 Broaden beyond bandwidth sharing.
 
-- [ ] **DePIN browser automation** — headless browser containers for extension-only services (Grass, Gradient, Teneo, etc.)
+- [ ] **DePIN browser automation** — headless browser containers for extension-only services
 - [ ] **GPU compute support** — detect available GPUs, deploy compute services (Vast.ai, Salad, Nosana)
 - [ ] **Storage sharing** — guided Storj setup with disk allocation UI
 - [ ] **VPN relay nodes** — Sentinel dVPN, Mysterium (already supported), Orchid
@@ -200,7 +199,7 @@ Each agent lives in its own repo (different language, build system, release arti
 
 ### Android agent (first priority)
 
-17 services have Android apps: Honeygain, EarnApp, IPRoyal, Mysterium, PacketStream, Traffmonetizer, Repocket, Peer2Profit, Bytelixir, ByteBenefit, Grass, Gaganode, Titan, Nodle, PassiveApp, Uprock, Wipter.
+16 services have Android apps in the historical research list: Honeygain, EarnApp, IPRoyal, Mysterium, PacketStream, Traffmonetizer, Repocket, Peer2Profit, Bytelixir, ByteBenefit, Gaganode, Titan, Nodle, PassiveApp, Uprock, Wipter.
 
 Detection strategy (no root required, Android 8+):
 
@@ -236,7 +235,7 @@ Transform CashPilot into a passive income operating system.
 - [ ] **Helm chart** — deploy CashPilot on Kubernetes clusters
 - [ ] **Service marketplace** — community-curated service definitions with ratings and reviews
 - [ ] **Earnings export** — CSV/JSON export for tax reporting and accounting
-- [ ] **Multi-currency support** — track crypto earnings (MYST, ATH, GRASS tokens) alongside USD
+- [ ] **Multi-currency support** — track crypto earnings (MYST, ATH and other provider currencies) alongside USD
 - [ ] **Two-factor authentication** — TOTP support for the web UI
 
 ## Future Ideas (unscheduled)

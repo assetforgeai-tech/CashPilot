@@ -52,32 +52,6 @@ class TestNothingIsEverDefaulted:
             orchestrator.deploy_raw(slug="demo", image="img:1")
         assert captured["runtime"] is None
 
-    def test_grass_manifest_is_resolved_before_pull(self):
-        client = MagicMock()
-        client.containers.get.side_effect = orchestrator.NotFound("nope")
-        with (
-            patch.object(orchestrator, "_get_client", return_value=client),
-            patch("app.orchestrator.provider_installers.resolve_installer_manifest") as resolve,
-            patch(
-                "app.orchestrator.provider_installers.ensure_installer_image",
-                return_value="cashpilot/grass-desktop:v7.6.0",
-            ) as build,
-        ):
-            resolve.return_value = {
-                "platform": "linux-x86_64",
-                "version": "v7.6.0",
-                "url": "https://files.grass.io/file/grass-extension-upgrades/v7.6.0/grass-desktop_7.6.0_amd64.deb",
-            }
-            orchestrator.deploy_raw(
-                slug="grass",
-                image="cashpilot/grass-desktop:auto",
-                installer_manifest_url="https://files.grass.io/file/grass-extension-upgrades/desktop-installer-latest.json",
-            )
-
-        resolve.assert_called_once()
-        build.assert_called_once_with(client, "grass", resolve.return_value)
-        client.images.pull.assert_called_once_with("cashpilot/grass-desktop:v7.6.0")
-
 
 class TestTheAllowlistComesFromTheDaemon:
     def test_a_runtime_this_host_provides_is_accepted(self):

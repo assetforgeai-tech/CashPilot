@@ -235,7 +235,7 @@
 #         encoding: text
 #     `runtime_assets` are server-managed secrets/assets materialized by the
 #     worker at deploy time and mounted read-only into the provider container.
-#     installer_manifest_url: "https://files.grass.io/file/.../latest.json"
+#     installer_manifest_url: "https://provider.example/downloads/manifest.json"
 #     installer_platform: linux-x86_64  # optional override; worker auto-detects by default
 #   dashboard:
 #     credentials:

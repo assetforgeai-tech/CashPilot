@@ -65,7 +65,7 @@ def load_services(services_dir: pathlib.Path) -> list[dict]:
 def code_attributes_url(code: str, url: str) -> bool:
     """True when the code is ANCHORED in the URL, not merely a substring.
 
-    `"grass" in "https://app.grass.io/register"` is a hostname coincidence,
+    `"example" in "https://provider.example/register"` is a hostname coincidence,
     not attribution. The code counts only where a provider would read it: a
     query-parameter value (?ref=CODE), a bare query key (?CODE -- spide's
     shape), or a whole path segment (/i/CODE -- uprock, honeygain).

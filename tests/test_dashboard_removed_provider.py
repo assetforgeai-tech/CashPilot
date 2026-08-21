@@ -41,7 +41,7 @@ def test_deployed_services_hides_removed_catalog_slugs():
 
     assert resp.status_code == 200
     slugs = [row["slug"] for row in resp.json()]
-    assert "grass" in slugs
+    assert "grass" not in slugs
     assert "bytelixir" not in slugs
 
 
@@ -117,7 +117,7 @@ def test_provider_instances_group_under_canonical_provider_slug():
     assert resp.status_code == 200
     rows = resp.json()
     by_slug = {row["slug"]: row for row in rows}
-    assert len(rows) == 15
+    assert len(rows) == 14
     assert by_slug["earnfm"]["instances"] == 2
     assert {item["mode"] for item in by_slug["earnfm"]["instance_details"]} == {"direct", "proxy"}
 
@@ -137,7 +137,7 @@ def test_dashboard_lists_active_catalog_providers_even_before_deploy():
 
     assert resp.status_code == 200
     rows = resp.json()
-    assert len(rows) == 15
+    assert len(rows) == 14
     by_slug = {row["slug"]: row for row in rows}
     assert by_slug["proxybase-xyz"]["container_status"] == "not_deployed"
     assert by_slug["proxybase-xyz"]["collector_needs_setup"] is False

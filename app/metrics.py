@@ -25,6 +25,8 @@ import time
 
 from fastapi import FastAPI, Request
 
+from app.retired_providers import is_retired_provider as _is_retired_provider
+
 logger = logging.getLogger(__name__)
 
 METRICS_ENABLED = os.getenv("CASHPILOT_METRICS_ENABLED", "").lower() in ("1", "true", "yes")
@@ -376,6 +378,11 @@ async def _refresh_gauges() -> None:
             containers = []
             with contextlib.suppress(json.JSONDecodeError, TypeError):
                 containers = json.loads(w.get("containers", "[]"))  # type: ignore[arg-type]
+            containers = [
+                c
+                for c in containers
+                if isinstance(c, dict) and not _is_retired_provider(c.get("provider") or c.get("slug"))
+            ]
             container_count = len(containers)
             for c in containers:
                 slug = c.get("slug", "unknown")
@@ -402,7 +409,7 @@ async def _refresh_gauges() -> None:
         m["workers_total"].labels(status=st).set(count)
 
     # -- Earnings --
-    summary = await database.get_earnings_summary()
+    summary = [row for row in await database.get_earnings_summary() if not _is_retired_provider(row.get("platform"))]
     m["earnings_balance"].clear()
     m["earnings_balance_usd"].clear()
     total_usd = 0.0
@@ -418,7 +425,7 @@ async def _refresh_gauges() -> None:
     m["earnings_total_usd"].set(total_usd)
 
     # -- Deployments --
-    deployments = await database.get_deployments()
+    deployments = [row for row in await database.get_deployments() if not _is_retired_provider(row.get("slug"))]
     m["services_deployed_total"].set(len(deployments))
 
     with contextlib.suppress(Exception):
@@ -428,7 +435,7 @@ async def _refresh_gauges() -> None:
             m["services_available_total"].set(len(get_services()))
 
     # -- Health --
-    scores = await database.get_health_scores()
+    scores = [row for row in await database.get_health_scores() if not _is_retired_provider(row.get("slug"))]
     m["health_score"].clear()
     m["health_uptime_percent"].clear()
     for entry in scores:
@@ -461,14 +468,14 @@ def record_collection_end(start_time: float, success: bool, platforms_scraped: i
 
 def record_collection_error(platform: str) -> None:
     """Increment error counter for a platform."""
-    if not METRICS_ENABLED or not _metrics:
+    if not METRICS_ENABLED or not _metrics or _is_retired_provider(platform):
         return
     _metrics["collection_errors_total"].labels(platform=platform).inc()
 
 
 def record_container_lifecycle(action: str, service: str) -> None:
     """Record a container lifecycle event (deploy, stop, restart, remove)."""
-    if not METRICS_ENABLED or not _metrics:
+    if not METRICS_ENABLED or not _metrics or _is_retired_provider(service):
         return
     _metrics["container_lifecycle_total"].labels(action=action, service=service).inc()
 

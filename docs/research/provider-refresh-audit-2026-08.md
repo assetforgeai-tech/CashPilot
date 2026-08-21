@@ -1,11 +1,11 @@
-# Provider refresh audit - 2026-08-11
+# Provider refresh audit - 2026-08-11 (historical)
 
 Status: implementation snapshot. Source priority is official site/docs/dashboard/API/GitHub first. No hidden dashboard/API fields are guessed.
 
-Catalog source-of-truth after deletion batch: 21 providers total; 15 bandwidth,
-6 DePIN. Current operator docs track 10 normalized provider runtimes and 13
-collector implementations; exact per-provider readiness lives in the service
-YAML and Settings readiness badges.
+This is a historical research snapshot. The current catalog has 14 providers
+(12 bandwidth, 2 DePIN) and 8 collectors. The current removal boundary is in
+`provider-removal-grass-2026-08.md`; do not use older rows as deployment
+guidance.
 
 ## Logged-in dashboard workflow
 
@@ -68,7 +68,7 @@ or official docs make the update certain.
 | repocket | active | Docker/app | api | keep; Firebase collector exists. |
 | traffmonetizer | active | Docker/app | api | keep; token collector exists. |
 | proxies-sx | beta | SDK Docker peer | api | keep; recently added API collector/per-node earnings. |
-| grass | active | extension/app | api | keep; token collector exists. |
+| grass | removed | retired extension/app | n/a | removed from current product; retain history only. |
 | titan | active | app | api | logged-in dashboard shows per-device rows, daily history, TNTIP/USDC split, and paused-extension warning. |
 | wipter | active | Docker/app | scrape | runtime is env-login based and restart-once friendly; no public API found. |
 
@@ -133,9 +133,11 @@ Spide should be automated as a two-phase worker flow:
 
 Open design point: Spide dashboard credential should probably be stored as a collector/setup credential entered in Settings first. Chrome profile extraction can remain an audit helper, not deploy default.
 
-### Grass multi-node test
+### Historical Grass multi-node test
 
-Approved test: on `vps-test-sing`, create two trial Grass nodes with the same seed/profile material and blank `device_id` / `browser_id`, then compare dashboard after a few minutes. Do not normalize Grass multi-node install until this is verified by dashboard or runtime evidence.
+This historical experiment is closed by the product-removal decision. Do not
+recreate or normalize Grass nodes from this document.
 
-Live probe on 2026-08-11: two containers on `vps-test-sing` with the same seed and `GRASS_RESET_DEVICE_ID=true` / `GRASS_RESET_BROWSER_ID=true` both reached local `CONNECTED` state. `device_id` regenerated distinctly per node, but `browser_id` remained identical. The visible dashboard still showed no networks and the seed token returned `401` from `https://api.getgrass.io/activeDevices`, so dashboard-level multi-node proof remains inconclusive. Keep Grass multi-node defaults unresolved until a fresh seed/dashboard token for the same account verifies `activeDevices`.
+Live probe evidence remains in history as a record of why the provider was not
+accepted as a stable product contract.
 

@@ -1,7 +1,7 @@
 # CLAUDE.md â€” CashPilot
 
 ## Overview
-Self-hosted passive income platform with a web UI that guides setup, deploys Docker containers for 16+ services, and tracks earnings from 40+ bandwidth sharing, DePIN, storage, and GPU compute services in a unified dashboard.
+Self-hosted passive income platform with a web UI that guides setup, deploys Docker containers for 14 catalog services, and tracks earnings from the current bandwidth and DePIN baseline in a unified dashboard.
 
 ## Tech Stack
 
@@ -45,7 +45,7 @@ Two containers: `cashpilot-ui` (port 8080, web dashboard + earnings collection) 
 
 1. Create `services/{category}/{slug}.yml` following `_schema.yml`
 2. **Include a `cashout` section** in the YAML â€” every service must define how users can cash out (API endpoint, redirect URL, or manual instructions). This is mandatory.
-3. Manually update README.md service tables and `docs/guides/{slug}.md`
+3. Regenerate README.md service tables and documentation navigation with the catalog scripts; add `docs/guides/{slug}.md`
 4. Add a collector in `app/collectors/{slug}.py` and register it in `__init__.py`
 5. Submit a PR (one service per PR)
 
@@ -76,9 +76,7 @@ cashpilot/
       js/app.js         # Vanilla JS, CP namespace, Chart.js, wizard state machine
   services/             # YAML service definitions (SINGLE SOURCE OF TRUTH)
     _schema.yml         # Schema documentation
-    depin/              # 10 services (grass, gradient, teneo, etc.)
-    storage/            # 1 service (storj)
-    compute/            # 4 services (vast-ai, salad, nosana, golem)
+    depin/              # 2 current services
   docs/guides/          # Per-service setup guides (manually maintained)
   unraid/               # Unraid-specific deployment templates
   Dockerfile            # UI image: multi-stage python:3.14-alpine, su-exec, non-root
@@ -96,7 +94,7 @@ cashpilot/
 - **Container naming:** All managed containers are `cashpilot-{slug}` with labels `cashpilot.managed=true` and `cashpilot.service={slug}`.
 - **Data directory:** `/data` volume holds SQLite DB and persistent config. Never write outside `/data` at runtime.
 - **Credentials:** Encrypted at rest with Fernet using a key at `/data/.fernet_key`, auto-generated when absent and overridable via `CASHPILOT_ENCRYPTION_KEY` (the file wins; the env var is adopted whenever no key file exists, which covers both a fresh install and a restore). This is NOT `CASHPILOT_SECRET_KEY`, which signs sessions (`/data/.secret_key`).
-- **README table is manually maintained.** Update the tables in README.md directly when adding/changing services.
+- **Catalog tables are generated.** Update YAML, then run `python scripts/generate_readme_tables.py` and `python scripts/sync_docs_nav.py`.
 
 ## UI + Worker Architecture
 
@@ -188,7 +186,7 @@ filtered on `service` silently matched nothing in production. Use
 ### Multi-Currency & Exchange Rates
 
 - `app/exchange_rates.py` fetches crypto-to-USD from CoinGecko (free) and USD-to-fiat from Frankfurter API. Cached, refreshed every 15 min.
-- Each collector returns native currency in `EarningsResult.currency` (MYST, GRASS, USD, etc.).
+- Each collector returns its native currency in `EarningsResult.currency` (for example MYST or USD).
 - Frontend converts via `/api/exchange-rates`. Display currency auto-detected from locale, user-overridable in Settings.
 
 ## Key Rules
@@ -236,21 +234,15 @@ Triggers on version tags (`v*`). Lints with ruff, builds multi-arch (amd64 + arm
 
 ## Collector Implementation Status
 
-Working collectors (15 total, in `app/collectors/__init__.py` `COLLECTOR_MAP`):
-- **Honeygain** â€” JWT auth, `/v1/users/tokens` + `/v1/users/balances`
-- **MystNodes** â€” Cloud API (`my.mystnodes.com/api/v2`), email/password auth. Per-node earnings via `GET /api/v2/node`
-- **Traffmonetizer** â€” JWT token, `data.traffmonetizer.com/api/app_user/get_balance`
-- **IPRoyal** â€” Email/password auth
-- **Repocket** â€” Firebase auth (Google Identity Toolkit)
-- **Bitping** â€” JWT cookie auth, `/api/v2/payouts/earnings`
-- **Earn.fm** â€” Supabase auth, `/v2/harvester/view_balance`
-- **PacketStream** â€” Manual JWT cookie, HTML scraping `window.userData`
-- **ProxyRack** â€” API key auth, POST `/api/balance`
-- **Storj** â€” API URL-based
-- **Grass** â€” Bearer token from localStorage, `api.getgrass.io`. GRASS token converted via CoinGecko
-- **Bytelixir** â€” Laravel session cookie (~3.5h), `dash.bytelixir.com`. hCaptcha blocks automated login
-- **Anyone Protocol** â€” AO smart-contract dry-run (relay-rewards process) per relay fingerprint, ANYONE price via CoinGecko
-- **Salad** â€” `auth` cookie (ASP.NET Core double-submit XSRF), `app-api.salad.com/api/v1/profile/balance`
+Working collectors (8 total, in `app/collectors/__init__.py` `COLLECTOR_MAP`):
+- **Earn.fm** — Supabase auth, `/v2/harvester/view_balance`
+- **IPRoyal** — Email/password auth
+- **MystNodes** — Cloud API, email/password auth, per-node earnings
+- **PacketStream** — Manual JWT cookie and HTML scraping
+- **Proxies.sx** — API-key dashboard collector
+- **ProxyRack** — API-key balance collector
+- **Repocket** — Firebase auth
+- **Traffmonetizer** — JWT balance collector
 
 ### Per-Node/Per-Device Earnings
 
@@ -267,7 +259,6 @@ Working collectors (15 total, in `app/collectors/__init__.py` `COLLECTOR_MAP`):
 | **PacketStream** | CAPTCHA blocks login. Need manual JWT from browser. |
 | **ProxyRack** | Cloudflare-protected dashboard. Need API key from browser. |
 | **Nodepay** | Behind Cloudflare. Requires browser session cookies. |
-| **Grass** | Token from browser localStorage at `app.grass.io`. |
 | **Bytelixir** | hCaptcha blocks login. Manually extract cookie. "Remember Me" sessions last days/weeks. |
 
 ## Service Status
@@ -285,7 +276,6 @@ Working collectors (15 total, in `app/collectors/__init__.py` `COLLECTOR_MAP`):
 
 | Service | Type | Notes |
 |---------|------|-------|
-| Grass | Browser extension | OTP-only login. WebSocket approach using `user_id` UUID bypasses login |
 | Gradient | Browser extension | `?referralCode=` param (camelCase) |
 | Teneo | Browser extension | WebSocket-based |
 | Dawn | Chrome extension / hardware | Community Python bots (HTTP API) exist, containerizable |

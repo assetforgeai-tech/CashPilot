@@ -91,7 +91,6 @@ Strategy: Offer them something (exclusive guide, early feature access), not just
 | r/EarnApp | ~5K | [ ] | Same angle |
 | r/IPRoyal | ~3K | [ ] | Same |
 | r/Mysterium | ~10K | [ ] | DePIN angle |
-| r/GrassApp | ~5K | [ ] | Same |
 
 ### Tech Subs
 
@@ -113,7 +112,6 @@ Strategy: Don't drop links. Spend 1-2 weeks answering questions. When someone as
 | EarnApp | [ ] | Same |
 | IPRoyal Pawns | [ ] | Same |
 | Mysterium | [ ] | Community channel, DePIN angle |
-| Grass | [ ] | Active Discord, many non-technical users |
 | Traffmonetizer | [ ] | Smaller, friendlier |
 | Repocket | [ ] | Same |
 | Peer2Profit | [ ] | Same |

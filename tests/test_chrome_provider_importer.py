@@ -25,7 +25,6 @@ def test_importer_has_explicit_provider_key_mapping():
     extractor = (EXT / "extractor.js").read_text(encoding="utf-8")
     for slug in (
         "earnfm",
-        "grass",
         "iproyal",
         "mysterium",
         "packetstream",
@@ -51,7 +50,6 @@ def test_importer_has_explicit_provider_key_mapping():
         "packetstream_cid",
         "proxies-sx_api_key",
         "proxybase-xyz_phrase",
-        "grass_store_access_token",
         "spide_dashboard_token",
         "urnetwork_api_key",
         "urnetwork_email",

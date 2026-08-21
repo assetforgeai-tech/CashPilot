@@ -2,48 +2,16 @@
 
 from __future__ import annotations
 
-import base64
-import json
-import platform
 from io import BytesIO
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
 
 from docker.errors import ImageNotFound
 
-_GRASS_IMAGE = "cashpilot/grass-desktop"
 _UPROCK_IMAGE = "cashpilot/uprock-mining"
 _PROXYBASE_XYZ_IMAGE = "cashpilot/proxybase-xyz-cli"
 _RUNNER = "ubuntu24.04"
-_GRASS_RUNNER = "ubuntu24.04-authpatch"
-_GRASS_ALLOWED_HOST = "files.grass.io"
 _UPROCK_ALLOWED_HOST = "edge.uprock.com"
 _PROXYBASE_XYZ_INSTALLER = "https://proxybase.xyz/install.sh"
-
-
-def _fetch_json(url: str) -> dict:
-    req = Request(url, headers={"Accept": "application/json", "User-Agent": "CashPilot/1.0"})
-    with urlopen(req, timeout=30) as resp:  # noqa: S310 - URL is operator/provider config, validated by caller.
-        return json.loads(resp.read().decode("utf-8"))
-
-
-def _platform_key() -> str:
-    os_name = platform.system().lower()
-    machine = platform.machine().lower()
-    arch = "aarch64" if machine in {"arm64", "aarch64"} else "x86_64"
-    if os_name == "linux":
-        return f"linux-{arch}"
-    if os_name == "darwin":
-        return f"darwin-{arch}"
-    if os_name == "windows":
-        return f"windows-{arch}"
-    return f"{os_name}-{arch}"
-
-
-def _safe_grass_url(url: str) -> None:
-    parsed = urlparse(url)
-    if parsed.scheme != "https" or parsed.hostname != _GRASS_ALLOWED_HOST:
-        raise ValueError("Grass installer URL must be https://files.grass.io/...")
 
 
 def _safe_uprock_url(url: str) -> None:
@@ -63,29 +31,12 @@ def resolve_installer_manifest(provider: str, manifest_url: str, platform_key: s
         filename = manifest_url.rstrip("/").rsplit("/", 1)[-1]
         version = filename.removeprefix("UpRock-Mining-").removesuffix(".deb")
         return {"platform": platform_key or "linux-x86_64", "version": version, "url": manifest_url}
-    if provider != "grass":
-        raise ValueError(f"Installer manifests are not supported for {provider!r}")
-    _safe_grass_url(manifest_url)
-    if manifest_url.endswith(".deb"):
-        filename = manifest_url.rstrip("/").rsplit("/", 1)[-1]
-        version = filename.removeprefix("grass-desktop_").removesuffix("_amd64.deb")
-        return {"platform": platform_key or "linux-x86_64", "version": version, "url": manifest_url}
-    manifest = _fetch_json(manifest_url)
-    key = platform_key or _platform_key()
-    platforms = manifest.get("platforms") or {}
-    item = platforms.get(key)
-    if not isinstance(item, dict) or not item.get("url"):
-        raise ValueError(f"Grass installer manifest has no {key!r} build; available: {sorted(platforms)}")
-    url = str(item["url"])
-    _safe_grass_url(url)
-    return {"platform": key, "version": str(manifest.get("version") or "unknown"), "url": url}
+    raise ValueError(f"Installer manifests are not supported for {provider!r}")
 
 
 def ensure_installer_image(client, provider: str, resolved: dict[str, str]) -> str:
     if provider == "uprock":
         return _ensure_image(client, _UPROCK_IMAGE, resolved, _uprock_dockerfile)
-    if provider == "grass":
-        return _ensure_image(client, _GRASS_IMAGE, resolved, _grass_dockerfile)
     raise ValueError(f"Installer image builds are not supported for {provider!r}")
 
 
@@ -100,8 +51,7 @@ def ensure_proxybase_xyz_image(client) -> str:
 
 def _ensure_image(client, image_base: str, resolved: dict[str, str], dockerfile_builder) -> str:
     version = "".join(c if c.isalnum() or c in ".-_" else "-" for c in resolved["version"])
-    runner = _GRASS_RUNNER if image_base == _GRASS_IMAGE else _RUNNER
-    image = f"{image_base}:{version}-{runner}"
+    image = f"{image_base}:{version}-{_RUNNER}"
     try:
         client.images.get(image)
         return image
@@ -110,54 +60,6 @@ def _ensure_image(client, image_base: str, resolved: dict[str, str], dockerfile_
     dockerfile = dockerfile_builder(resolved["url"])
     client.images.build(fileobj=BytesIO(dockerfile.encode("utf-8")), tag=image, rm=True, forcerm=True, pull=True)
     return image
-
-
-def _grass_dockerfile(deb_url: str) -> str:
-    _safe_grass_url(deb_url)
-    runner = """#!/bin/sh
-set -eu
-mkdir -p "$XDG_RUNTIME_DIR" "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME" "$XDG_DATA_HOME"
-chmod 700 "$XDG_RUNTIME_DIR"
-python3 - <<'PY'
-import pathlib, uuid
-seed = pathlib.Path('/var/lib/grass-xdg/.machine-id')
-if seed.exists():
-    mid = seed.read_text().strip()
-else:
-    mid = uuid.uuid4().hex
-    seed.write_text(mid)
-pathlib.Path('/etc/machine-id').write_text(mid)
-pathlib.Path('/var/lib/dbus').mkdir(parents=True, exist_ok=True)
-pathlib.Path('/var/lib/dbus/machine-id').write_text(mid)
-PY
-rm -f /tmp/.X99-lock
-Xvfb :99 -screen 0 1280x720x24 -nolisten tcp >/tmp/xvfb.log 2>&1 &
-fluxbox >/tmp/fluxbox.log 2>&1 &
-x11vnc -display :99 -forever -shared -nopw -listen 0.0.0.0 -xkb >/tmp/x11vnc.log 2>&1 &
-websockify --web=/usr/share/novnc/ 6080 localhost:5900 >/tmp/novnc.log 2>&1 &
-exec dbus-run-session -- /usr/bin/grass-desktop --no-sandbox
-"""
-    runner_b64 = base64.b64encode(runner.encode()).decode()
-    return f"""FROM ubuntu:24.04
-ENV DEBIAN_FRONTEND=noninteractive \\
-    DISPLAY=:99 \\
-    XDG_RUNTIME_DIR=/tmp/runtime-grass \\
-    XDG_CONFIG_HOME=/var/lib/grass-xdg/config \\
-    XDG_CACHE_HOME=/var/lib/grass-xdg/cache \\
-    XDG_DATA_HOME=/var/lib/grass-xdg/data \\
-    ELECTRON_DISABLE_SECURITY_WARNINGS=true
-RUN apt-get update \\
- && apt-get install -y --no-install-recommends ca-certificates curl xvfb x11vnc fluxbox novnc websockify dbus-x11 python3-minimal \\
- && rm -rf /var/lib/apt/lists/*
-ADD {deb_url} /tmp/grass-desktop.deb
-RUN apt-get update \\
- && apt-get install -y --no-install-recommends /tmp/grass-desktop.deb \\
- && rm -rf /var/lib/apt/lists/* /tmp/grass-desktop.deb
-RUN python3 -c "import base64,pathlib; pathlib.Path('/usr/local/bin/cashpilot-grass').write_bytes(base64.b64decode('{runner_b64}'))" \\
- && chmod +x /usr/local/bin/cashpilot-grass
-EXPOSE 6080
-CMD ["cashpilot-grass"]
-"""
 
 
 def _uprock_dockerfile(deb_url: str) -> str:

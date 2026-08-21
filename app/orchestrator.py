@@ -415,8 +415,6 @@ def deploy_raw(
             mmn_api_key=str(deploy_credentials.get("mmn_api_key") or deploy_credentials.get("myst_mmn_api_key") or ""),
         )
         deploy_credentials["myst_wallet_address"] = address
-    if provider == "grass" and deploy_credentials:
-        provider_automation.apply_grass_store_patch(container, deploy_credentials)
     if slug == "wipter" and deploy_credentials:
         provider_automation.schedule_wipter_post_login_restart(container)
     return container.id

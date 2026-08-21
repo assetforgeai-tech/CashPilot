@@ -26,7 +26,7 @@ def test_uprock_provider_evidence_reads_daemon_status_and_device_id():
 
 
 def test_non_uprock_provider_evidence_is_empty():
-    assert orchestrator._provider_evidence("grass", MagicMock()) == {}
+    assert orchestrator._provider_evidence("demo-provider", MagicMock()) == {}
 
 
 def test_wipter_provider_evidence_reads_login_and_traffic_logs():

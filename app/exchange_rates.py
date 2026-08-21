@@ -20,9 +20,6 @@ logger = logging.getLogger(__name__)
 
 # CoinGecko IDs for crypto tokens tracked by CashPilot collectors.
 # Map: our internal currency code -> CoinGecko coin id
-# Note: Grass *points* are NOT the GRASS token — they're an internal reward
-# that converts to tokens only during airdrops at unknown ratios, so we
-# intentionally do NOT map GRASS here.
 CRYPTO_IDS: dict[str, str] = {
     "MYST": "mysterium",
     # Anyone Protocol. The id really is "airtor-protocol" — the project was

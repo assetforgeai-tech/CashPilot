@@ -1,6 +1,6 @@
 site_name: CashPilot
 site_url: https://geiserx.github.io/CashPilot
-site_description: Self-hosted passive income orchestrator. Deploy, manage, and monitor 21 providers from a single dashboard.
+site_description: Self-hosted passive income orchestrator. Deploy, manage, and monitor 14 providers from a single dashboard.
 site_author: Sergio Fernandez
 repo_url: https://github.com/GeiserX/CashPilot
 repo_name: GeiserX/CashPilot
@@ -146,7 +146,6 @@ nav:
       - Traffmonetizer: guides/traffmonetizer.md
       - URnetwork: guides/urnetwork.md
     - DePIN:
-      - Grass: guides/grass.md
       - Uprock: guides/uprock.md
       - Wipter: guides/wipter.md
   - Configuration:

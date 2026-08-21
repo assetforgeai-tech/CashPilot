@@ -24,7 +24,6 @@ Values are never printed in the popup. The extension only saves keys explicitly 
 
 - Traffmonetizer: `traffmonetizer_token`
 - PacketStream: `packetstream_auth_token`, `packetstream_cid`
-- Grass: `grass_access_token`, `grass_store_access_token`, `grass_store_refresh_token`, `grass_store_token_expiry`, `grass_store_wynd_user_id`
 - Spide: `spide_dashboard_token`
 - URnetwork: `urnetwork_api_key`, `urnetwork_email`, `urnetwork_password`
 - ProxyBase dashboard: `proxybase_dashboard_access_token`

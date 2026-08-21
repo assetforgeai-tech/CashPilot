@@ -60,6 +60,8 @@ from app import (
     update_check,
     version,
 )
+from app.retired_providers import RETIRED_PROVIDER_SLUGS
+from app.retired_providers import is_retired_provider as _is_retired_provider
 from app.worker_proxy import _pin_url_to_ip, _validate_worker_url
 
 logging.basicConfig(
@@ -232,6 +234,31 @@ def _safe_json(raw: str, fallback: Any = None) -> Any:
         return fallback if fallback is not None else []
 
 
+def _without_retired_provider_rows(rows: list[dict[str, Any]], key: str = "platform") -> list[dict[str, Any]]:
+    """Hide explicitly retired providers while preserving generic/unknown rows."""
+    return [row for row in rows if not _is_retired_provider(row.get(key))]
+
+
+def _without_retired_provider_values(values: dict[str, Any]) -> dict[str, Any]:
+    return {slug: value for slug, value in values.items() if not _is_retired_provider(slug)}
+
+
+def _filter_worker_provider_entries(worker: dict[str, Any]) -> None:
+    """Hide heartbeat entries for explicitly retired providers."""
+    worker["containers"] = [
+        entry
+        for entry in worker.get("containers", [])
+        if not _is_retired_provider(entry.get("provider") or entry.get("slug"))
+    ]
+    worker["apps"] = [entry for entry in worker.get("apps", []) if not _is_retired_provider(entry.get("slug"))]
+    is_android = worker.get("system_info", {}).get("device_type") == "android"
+    entries = worker["apps"] if is_android else worker["containers"]
+    worker["container_count"] = len(entries)
+    worker["running_count"] = sum(
+        1 for entry in entries if (entry.get("running") is True if is_android else entry.get("status") == "running")
+    )
+
+
 def _decoded_worker(worker: dict[str, Any]) -> dict[str, Any]:
     """A worker row with its JSON-TEXT columns decoded into real structures.
 
@@ -244,6 +271,7 @@ def _decoded_worker(worker: dict[str, Any]) -> dict[str, Any]:
     # Deliberately delegates rather than repeating the three _safe_json calls:
     # a second copy of the decoding is how one caller ends up forgetting it.
     _parse_worker_json(decoded)
+    _filter_worker_provider_entries(decoded)
     return decoded
 
 
@@ -312,8 +340,8 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
         if not is_android:
             containers = _safe_json(w.get("containers", "[]"))
             for c in containers:
-                slug = c.get("slug", "")
-                if slug:
+                slug = c.get("provider") or c.get("slug", "")
+                if slug and not _is_retired_provider(slug):
                     result.append(
                         {
                             "slug": slug,
@@ -347,7 +375,7 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
             apps = _safe_json(w.get("apps", "[]"))
             for a in apps:
                 slug = a.get("slug", "")
-                if slug:
+                if slug and not _is_retired_provider(slug):
                     result.append(
                         {
                             "slug": slug,
@@ -415,7 +443,7 @@ async def _run_health_check() -> None:
     Docker-backed deployment missing from every online worker's current data
     now gets an explicit check_down. Scoped to "at least one worker online"
     so a fully-offline fleet (no heartbeat data to trust either way) never
-    triggers false check_downs; "external" deployments (e.g. Grass)
+    triggers false check_downs; external deployments
     have no container and are excluded since no worker ever reports them.
     """
     try:
@@ -457,7 +485,7 @@ async def _run_health_check() -> None:
             deployments = await database.get_deployments()
             for d in deployments:
                 slug = d["slug"]
-                if d.get("status") == "external" or slug in slug_best:
+                if _is_retired_provider(slug) or d.get("status") == "external" or slug in slug_best:
                     continue
                 events.append((slug, "check_down", "missing from heartbeat"))
         elif blind:
@@ -521,7 +549,7 @@ async def _pending_payout_alerts(seen: set[str] | None = None) -> list[dict[str,
     """
     seen = seen or set()
     try:
-        rows = await database.get_payouts()
+        rows = _without_retired_provider_rows(await database.get_payouts())
     except Exception as exc:
         logger.warning("Could not load pending payouts for the alert bell: %s", exc)
         return []
@@ -655,7 +683,7 @@ async def _flatline_check() -> list[dict[str, str]]:
     """
     bell: list[dict[str, str]] = []
     try:
-        flat_services = await database.get_flatlined_services()
+        flat_services = _without_retired_provider_rows(await database.get_flatlined_services())
         flat_now = {f["platform"] for f in flat_services}
 
         # Clear the cooldown for anything that has started earning again.
@@ -719,6 +747,8 @@ async def _warm_collector_alerts() -> None:
         # silently clears a warning about a service that is still not earning.
         if alert["kind"] not in ("collector", "payout", "flatline"):
             continue
+        if _is_retired_provider(alert["subject"]):
+            continue
         key = f"{alert['kind']}:{alert['subject']}"
         if key in seen:
             continue
@@ -735,7 +765,7 @@ async def _warm_collector_alerts() -> None:
         _collection_has_run = True
     else:
         try:
-            _collection_has_run = bool(await database.get_earnings_summary())
+            _collection_has_run = bool(_without_retired_provider_rows(await database.get_earnings_summary()))
         except Exception as exc:  # noqa: BLE001 - a warm-up must not block startup
             logger.warning("Could not tell whether a collection has run before: %s", exc)
 
@@ -1528,12 +1558,12 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
     statuses: list[dict[str, Any]] = await _get_all_worker_containers()
 
     # Get latest earnings per platform for balance display
-    earnings = await database.get_earnings_summary()
+    earnings = _without_retired_provider_rows(await database.get_earnings_summary())
     balance_map = {e["platform"]: e["balance"] for e in earnings}
     currency_map = {e["platform"]: e["currency"] for e in earnings}
 
     # Get health scores
-    health_scores = await database.get_health_scores(7)
+    health_scores = _without_retired_provider_rows(await database.get_health_scores(7), key="slug")
     health_map = {h["slug"]: h for h in health_scores}
 
     provider_instances = await database.list_provider_instances()
@@ -1542,7 +1572,7 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
         instances_by_slug.setdefault(inst["slug"], []).append(inst)
 
     # Build set of slugs with collector errors (disconnected)
-    alert_slugs = {a["platform"] for a in _collector_alerts}
+    alert_slugs = {a["platform"] for a in _collector_alerts if not _is_retired_provider(a.get("platform"))}
 
     # Config (decrypted) to detect collectors whose credentials aren't set yet.
     # A config-read failure must not blank the dashboard — degrade to "unknown".
@@ -1695,7 +1725,7 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             entry["image_outdated"] = _image_outdated(agg["image"], (svc.get("docker") or {}).get("image", ""))
         result.append(entry)
 
-    # Include external services (no Docker container, e.g. Grass)
+    # Include external services (no Docker container)
     seen_slugs = {r["slug"] for r in result}
     for slug, inst_rows in instances_by_slug.items():
         if slug in seen_slugs:
@@ -2969,14 +2999,14 @@ async def api_compose_all(request: Request):
 @app.get("/api/earnings")
 async def api_earnings(request: Request) -> list[dict[str, Any]]:
     _require_auth_api(request)
-    return await database.get_earnings_summary()
+    return _without_retired_provider_rows(await database.get_earnings_summary())
 
 
 @app.get("/api/earnings/summary")
 async def api_earnings_summary(request: Request) -> dict[str, Any]:
     """Aggregated earnings stats for the dashboard."""
     _require_reader(request)
-    summary = await database.get_earnings_dashboard_summary()
+    summary = await database.get_earnings_dashboard_summary(excluded_platforms=RETIRED_PROVIDER_SLUGS)
 
     # Load config for signup bonus offsets
     all_config = await database.get_config()
@@ -2986,7 +3016,7 @@ async def api_earnings_summary(request: Request) -> dict[str, Any]:
     # Include non-USD balances converted to USD in the total.
     # Compute total_adjusted as the sum of clamped per-service adjusted
     # balances (converted to USD) so it always matches the breakdown view.
-    all_earnings = await database.get_earnings_summary()
+    all_earnings = _without_retired_provider_rows(await database.get_earnings_summary())
     total_bonus_usd = 0.0
     total_adjusted = 0.0
     # CashPilot-oj4: the count was computed deep in database.py and only ever
@@ -3059,14 +3089,14 @@ async def api_earnings_daily(request: Request, days: int = 7) -> list[dict[str, 
     _require_auth_api(request)
     if days < 1 or days > 365:
         raise HTTPException(status_code=400, detail="days must be between 1 and 365")
-    return await database.get_daily_earnings(days)
+    return await database.get_daily_earnings(days, excluded_platforms=RETIRED_PROVIDER_SLUGS)
 
 
 @app.get("/api/earnings/breakdown")
 async def api_earnings_breakdown(request: Request) -> list[dict[str, Any]]:
     """Per-service earnings breakdown with cashout eligibility."""
     _require_reader(request)
-    rows = await database.get_earnings_per_service()
+    rows = _without_retired_provider_rows(await database.get_earnings_per_service())
 
     # Load config for per-service signup bonus offsets
     all_config = await database.get_config()
@@ -3150,7 +3180,7 @@ async def api_earnings_history(request: Request, period: str = "week") -> list[d
     _require_auth_api(request)
     if period not in ("week", "month", "year", "all"):
         raise HTTPException(status_code=400, detail="period must be week, month, year, or all")
-    return await database.get_earnings_history(period)
+    return _without_retired_provider_rows(await database.get_earnings_history(period))
 
 
 @app.get("/api/health/scores")
@@ -3159,7 +3189,7 @@ async def api_health_scores(request: Request, days: int = 7) -> list[dict[str, A
     _require_reader(request)
     if days < 1 or days > 90:
         raise HTTPException(status_code=400, detail="days must be between 1 and 90")
-    scores = await database.get_health_scores(days)
+    scores = _without_retired_provider_rows(await database.get_health_scores(days), key="slug")
     # Enrich with service names
     for s in scores:
         svc = catalog.get_service(s["slug"])
@@ -3187,7 +3217,7 @@ _MAX_ALERT_ERROR_LEN = 200
 async def api_earnings_flatlines(request: Request) -> list[dict[str, Any]]:
     """Services that are running but whose balance has stopped moving."""
     _require_auth_api(request)
-    return await database.get_flatlined_services()
+    return _without_retired_provider_rows(await database.get_flatlined_services())
 
 
 @app.get("/api/credentials/health")
@@ -3428,7 +3458,7 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
     hours = max(1, int(days)) * 24.0
     # Earned OVER THE WINDOW, not the latest balance: subtracting a window's
     # electricity from a running total would be meaningless arithmetic.
-    earned = await database.get_earned_by_platform(max(1, int(days)))
+    earned = _without_retired_provider_values(await database.get_earned_by_platform(max(1, int(days))))
 
     watts_by_service: dict[str, float] = {}
     unmetered_services: set[str] = set()
@@ -3702,7 +3732,9 @@ async def api_test_credentials(request: Request, slug: str) -> dict[str, Any]:
 async def api_payouts(request: Request, platform: str | None = None) -> dict[str, Any]:
     """Payouts, split into confirmed income and drops still awaiting a human."""
     _require_auth_api(request)
-    rows = await database.get_payouts(platform=platform)
+    if platform and _is_retired_provider(platform):
+        raise HTTPException(status_code=404, detail=f"Unknown service '{platform}'")
+    rows = _without_retired_provider_rows(await database.get_payouts(platform=platform))
     return {
         "confirmed": [r for r in rows if r.get("confirmed")],
         "probable": [r for r in rows if not r.get("confirmed")],
@@ -3738,6 +3770,9 @@ async def api_confirm_payout(request: Request, payout_id: int, method: str = "")
     # Writer, not viewer: this mutates financial records, and rejection is a
     # hard DELETE. A read-only account must not be able to destroy them.
     _require_writer(request)
+    platform = await _payout_platform(payout_id)
+    if _is_retired_provider(platform):
+        raise HTTPException(status_code=404, detail="No unconfirmed payout with that id")
     # Forward `method`. The endpoint has always accepted it and the database
     # has always had a column for it, but it was never passed along, so every
     # confirmation recorded an empty method however the caller was paid.
@@ -3746,7 +3781,7 @@ async def api_confirm_payout(request: Request, payout_id: int, method: str = "")
     # The question has been answered, so retire the prompt. Left behind, the
     # stored alert would be restored on the next restart and ask again about a
     # payout the user already confirmed.
-    await _retire_payout_alert(payout_id)
+    await _retire_payout_alert(payout_id, platform=platform)
     return {"ok": True, "id": payout_id, "confirmed": True}
 
 
@@ -3757,6 +3792,8 @@ async def api_reject_payout(request: Request, payout_id: int) -> dict[str, Any]:
     # hard DELETE. A read-only account must not be able to destroy them.
     _require_writer(request)
     platform = await _payout_platform(payout_id)
+    if _is_retired_provider(platform):
+        raise HTTPException(status_code=404, detail="No unconfirmed payout with that id")
     if not await database.reject_payout(payout_id):
         raise HTTPException(status_code=404, detail="No unconfirmed payout with that id")
     await _retire_payout_alert(payout_id, platform=platform)
@@ -3879,7 +3916,7 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
     # to build the same list in a single request.
     raw_workers = await database.list_workers()
     workers = [_decoded_worker(w) for w in raw_workers]
-    earned = await database.get_earned_by_platform(days=30)
+    earned = _without_retired_provider_values(await database.get_earned_by_platform(days=30))
     containers = await _get_all_worker_containers(raw_workers)
 
     # Attribute each service's gross to the worker running it. A service on two
@@ -4096,6 +4133,8 @@ async def api_collector_alerts(request: Request) -> dict[str, Any]:
     _require_auth_api(request)
     sanitized: list[dict[str, str]] = []
     for alert in _collector_alerts:
+        if _is_retired_provider(alert.get("platform")):
+            continue
         error_msg = alert.get("error", "")
         clean = error_msg[:_MAX_ALERT_ERROR_LEN]
         if len(error_msg) > _MAX_ALERT_ERROR_LEN:
@@ -4807,7 +4846,7 @@ async def _earnings_for_worker(body: WorkerHeartbeat, days: int = 30) -> dict[st
     THE HONESTY CONSTRAINT, which shapes the whole payload:
 
     Earnings are collected per PLATFORM, from the provider's account. They are
-    not, and cannot be, attributed to a device. If two machines both run Grass,
+    not, and cannot be, attributed to a device. If two machines run one account,
     the provider reports one balance and nothing can split it. So this never
     says "this device earned X" — it says "the platforms this device is running
     earned X on your account", and it flags each platform that is running on
@@ -4817,15 +4856,16 @@ async def _earnings_for_worker(body: WorkerHeartbeat, days: int = 30) -> dict[st
     a caller must not render it as zero.
     """
     slugs = {
-        str(entry.get("slug") or "").strip()
+        slug
         for entry in (body.apps or []) + (body.containers or [])
-        if str(entry.get("slug") or "").strip()
+        for slug in (str(entry.get("slug") or "").strip(),)
+        if slug and not _is_retired_provider(slug)
     }
     if not slugs:
         return None
 
     try:
-        earned = await database.get_earned_by_platform(days)
+        earned = _without_retired_provider_values(await database.get_earned_by_platform(days))
         workers = await database.list_workers()
     except Exception as exc:  # noqa: BLE001 - a heartbeat must never fail on this
         logger.warning("Could not attach earnings to the heartbeat response: %s", exc)
@@ -4839,7 +4879,7 @@ async def _earnings_for_worker(body: WorkerHeartbeat, days: int = 30) -> dict[st
         seen: set[str] = set()
         for entry in (worker.get("apps") or []) + (worker.get("containers") or []):
             slug = str(entry.get("slug") or "").strip()
-            if slug and slug not in seen:
+            if slug and not _is_retired_provider(slug) and slug not in seen:
                 seen.add(slug)
                 running_on[slug] = running_on.get(slug, 0) + 1
 
@@ -4940,12 +4980,16 @@ class RuntimeAssetRequest(BaseModel):
 @app.get("/api/admin/runtime-assets")
 async def api_runtime_assets_list(request: Request) -> list[dict[str, Any]]:
     _require_owner(request)
-    return await database.list_runtime_assets()
+    # Runtime assets are an operational settings surface. Keep legacy Grass
+    # rows in SQLite for audit, but do not present them as current assets.
+    return _without_retired_provider_rows(await database.list_runtime_assets(), key="provider")
 
 
 @app.post("/api/admin/runtime-assets")
 async def api_runtime_asset_save(request: Request, body: RuntimeAssetSaveRequest) -> dict[str, str]:
     _require_owner(request)
+    if _is_retired_provider(body.provider):
+        raise HTTPException(status_code=404, detail=f"Unknown provider '{body.provider}'")
     if not body.value:
         raise HTTPException(status_code=400, detail="Asset value required")
     try:
@@ -4966,6 +5010,8 @@ async def _require_confirmed_worker(request: Request, client_id: str) -> None:
 @app.post("/api/workers/runtime-asset")
 async def api_worker_runtime_asset(request: Request, body: RuntimeAssetRequest) -> dict[str, str]:
     await _require_confirmed_worker(request, body.client_id)
+    if _is_retired_provider(body.provider):
+        raise HTTPException(status_code=404, detail="Runtime asset not found")
     try:
         value = await database.get_runtime_asset(body.provider, body.asset_kind)
     except ValueError as exc:
@@ -5126,6 +5172,7 @@ async def api_list_workers(request: Request) -> list[dict[str, Any]]:
     ui_version = version.current()
     for w in workers:
         _parse_worker_json(w)
+        _filter_worker_provider_entries(w)
         w["provider_states"] = await _worker_provider_states(w)
         # Skew is judged here, where the UI's own version is known, rather than
         # in the browser: the fleet page would otherwise have to learn what the
@@ -5228,6 +5275,7 @@ async def api_get_worker(request: Request, worker_id: int) -> dict[str, Any]:
     if not worker:
         raise HTTPException(status_code=404, detail="Worker not found")
     _parse_worker_json(worker)
+    _filter_worker_provider_entries(worker)
     worker["provider_states"] = await _worker_provider_states(worker)
     return worker
 
@@ -5342,6 +5390,7 @@ async def api_fleet_summary(request: Request) -> dict[str, Any]:
 
     for w in workers:
         _parse_worker_json(w)
+        _filter_worker_provider_entries(w)
         if w["status"] != "online":
             if w["container_count"]:
                 unreachable_workers += 1
