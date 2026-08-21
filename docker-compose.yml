@@ -15,14 +15,14 @@ name: cashpilot
 # quickstart therefore installed a version many releases behind, and issue #188
 # is someone hitting a first-run bug that had been fixed for months because of
 # it. Keep this comment honest about what the file actually does.
-# See https://hub.docker.com/r/drumsergio/cashpilot/tags for available tags.
+# See https://github.com/assetforgeai-tech/CashPilot/pkgs/container/cashpilot for available tags.
 # NOTE: versions before 1.0.0 predate the per-worker fleet-key auth cutover and
 # are not compatible with a worker running 1.x -- pin UI and worker together.
 # Building from source? Use: docker compose -f docker-compose.build.yml up -d
 
 services:
   cashpilot-ui:
-    image: drumsergio/cashpilot:1.36
+    image: ghcr.io/assetforgeai-tech/cashpilot:1.1
     pull_policy: always
     container_name: cashpilot-ui
     # Published on loopback by default: the dashboard can command the Docker-socket
@@ -63,7 +63,7 @@ services:
       - /tmp:size=64M
 
   cashpilot-worker:
-    image: drumsergio/cashpilot-worker:1.36
+    image: ghcr.io/assetforgeai-tech/cashpilot-worker:1.1
     pull_policy: always
     container_name: cashpilot-worker
     expose:

@@ -142,7 +142,7 @@ def _shipped_docs() -> list[Path]:
 #: 0.0.0.0, so it is the difference between "reachable from this machine" and
 #: "reachable from the whole network".
 _UNBOUND_WORKER_PORT = re.compile(r'^\s*-\s*"?8081:8081"?\s*$', re.MULTILINE)
-_LATEST_IMAGE = re.compile(r"image:\s*drumsergio/\S+:latest")
+_LATEST_IMAGE = re.compile(r"image:\s*(?:drumsergio/\S+|ghcr\.io/[^/\s]+/cashpilot(?:-worker)?):latest")
 
 
 @pytest.mark.parametrize("path", _shipped_docs(), ids=lambda p: str(p.relative_to(ROOT)))
@@ -187,6 +187,7 @@ class TestTheseChecksCanActuallyFail:
 
     def test_the_latest_pattern_matches_a_real_image_line(self):
         assert _LATEST_IMAGE.search("    image: drumsergio/cashpilot-worker:latest\n")
+        assert _LATEST_IMAGE.search("    image: ghcr.io/assetforgeai-tech/cashpilot-worker:latest\n")
 
     def test_the_latest_pattern_ignores_prose_about_latest(self):
         """SECURITY.md discusses `:latest` in order to warn about it. Flagging
@@ -195,3 +196,4 @@ class TestTheseChecksCanActuallyFail:
 
     def test_the_latest_pattern_accepts_a_pinned_image(self):
         assert not _LATEST_IMAGE.search("    image: drumsergio/cashpilot-worker:1.19\n")
+        assert not _LATEST_IMAGE.search("    image: ghcr.io/assetforgeai-tech/cashpilot-worker:1.1\n")

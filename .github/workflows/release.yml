@@ -34,14 +34,14 @@ jobs:
       - name: Fetch release tags
         run: |
           git fetch --force origin 'refs/tags/*:refs/tags/*'
-          git fetch --force https://github.com/GeiserX/CashPilot.git 'refs/tags/*:refs/tags/*'
-          test -n "$(git tag --list 'v*' | head -n 1)"
+          git fetch --force origin 'refs/tags/*:refs/fork-tags/*'
+          test -n "$(git for-each-ref --format='%(refname)' 'refs/fork-tags/v*' | head -n 1)"
       - uses: actions/setup-python@v7
         with:
           # The interpreter the images ship (Dockerfile:2, Dockerfile.worker:2),
           # and the one test.yml uses. This job is what the release is actually
           # gated on -- test.yml gates nothing -- so on 3.12 a commit could be
-          # tagged and pushed to Docker Hub while its 3.14 suite was red.
+          # tagged and pushed to the registry while its 3.14 suite was red.
           # uv sync --frozen resolves markers per interpreter, so the two really
           # did install different wheels. Same class as CashPilot-de1.
           python-version: '3.14'
@@ -70,6 +70,10 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+      - name: Fetch fork release tags
+        run: |
+          git fetch --force origin 'refs/tags/*:refs/fork-tags/*'
+          test -n "$(git for-each-ref --format='%(refname)' 'refs/fork-tags/v*' | head -n 1)"
       - name: Check approved deploy baseline
         run: python3 scripts/check_deploy_baseline.py
 
@@ -83,10 +87,11 @@ jobs:
           # workflow_dispatch run) detected "nothing to build", skipped the
           # version step, and silently produced no tag and no image while the
           # run still reported success.
-          LAST_TAG=$(git tag -l 'v*.*.*' --sort=-v:refname | head -1)
-          if [ -n "$LAST_TAG" ]; then
-            CHANGED=$(git diff --name-only "$LAST_TAG"..HEAD 2>/dev/null || echo "")
-            echo "Comparing $LAST_TAG..HEAD"
+          LAST_TAG_REF=$(git for-each-ref --sort=-v:refname \
+            --format='%(refname)' 'refs/fork-tags/v*.*.*' | head -1)
+          if [ -n "$LAST_TAG_REF" ]; then
+            CHANGED=$(git diff --name-only "$LAST_TAG_REF"..HEAD 2>/dev/null || echo "")
+            echo "Comparing ${LAST_TAG_REF#refs/fork-tags/}..HEAD"
           else
             CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
             echo "No previous tag; comparing HEAD~1..HEAD"
@@ -147,7 +152,8 @@ jobs:
         id: version
         if: steps.changes.outputs.ui == 'true' || steps.changes.outputs.worker == 'true'
         run: |
-          LATEST=$(git tag -l 'v*.*.*' --sort=-v:refname | head -1)
+          LATEST=$(git for-each-ref --sort=-v:refname \
+            --format='%(refname:strip=2)' 'refs/fork-tags/v*.*.*' | head -1)
           if [ -z "$LATEST" ]; then
             LATEST="v0.0.0"
           fi
@@ -164,7 +170,7 @@ jobs:
           if [ "$LATEST" = "v0.0.0" ]; then
             RANGE="HEAD"
           else
-            RANGE="${LATEST}..HEAD"
+            RANGE="refs/fork-tags/${LATEST}..HEAD"
           fi
           LOG=$(git log --format='%s%n%b' "$RANGE")
           if echo "$LOG" | grep -qE '^BREAKING CHANGE:|^[a-z]+(\([^)]*\))?!:'; then
@@ -212,7 +218,7 @@ jobs:
   # Nothing is announced until the images exist.
   #
   # The tag was pushed and the GitHub Release published BEFORE this build ran,
-  # so any failure in it — a Docker Hub outage, a rate limit, or the arm64 QEMU
+  # so any failure in it — a GHCR outage, a rate limit, or the arm64 QEMU
   # emulation, which is the slowest and most failure-prone step — left an
   # announced version with no images. A user saw the release notification,
   # edited their compose, ran docker compose pull and got "manifest unknown".
@@ -277,6 +283,8 @@ jobs:
           set -euo pipefail
           TAG="${{ needs.release.outputs.new_tag }}"
           SERIES="${TAG#v}"; SERIES="${SERIES%.*}"   # v1.16.2 -> 1.16
+          OWNER="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
+          IMAGE_REPO="ghcr.io/${OWNER}/cashpilot"
 
           # Read the pins from BOTH files, and tolerate finding none.
           #
@@ -286,9 +294,9 @@ jobs:
           # turn a successful release into a red one over a cosmetic edit. That
           # is the exact failure this step's retry/warning logic exists to avoid,
           # reappearing three lines earlier.
-          CURRENT=$(grep -ohE 'drumsergio/cashpilot(-worker)?:[0-9]+\.[0-9]+' \
+          CURRENT=$(grep -ohE "${IMAGE_REPO}(-worker)?:[0-9]+\\.[0-9]+" \
                       docker-compose.yml docker-compose.fleet.yml \
-                    | cut -d: -f2 | sort -u | tr '\n' ' ' || true)
+                    | awk -F: '{print $NF}' | sort -u | tr '\n' ' ' || true)
           CURRENT=$(echo "$CURRENT" | xargs || true)   # trim
 
           if [ -z "$CURRENT" ]; then
@@ -308,7 +316,7 @@ jobs:
           fi
           echo "Bumping the example pins [$CURRENT] -> $SERIES"
 
-          sed -i -E "s|(drumsergio/cashpilot(-worker)?):[0-9]+\.[0-9]+|\1:$SERIES|g" \
+          sed -i -E "s|(${IMAGE_REPO}(-worker)?):[0-9]+\\.[0-9]+|\1:$SERIES|g" \
             docker-compose.yml docker-compose.fleet.yml
 
           # Prove the edit did what it claims before committing it. A silently
@@ -319,9 +327,9 @@ jobs:
           # REFUSES -E and -P together ("conflicting matchers specified"). The
           # first version of this used both and appeared to work locally only
           # because that shell's `grep` is a ugrep shim, which accepts it.
-          STRAY=$(grep -ohE 'drumsergio/cashpilot(-worker)?:[0-9]+\.[0-9]+' \
+          STRAY=$(grep -ohE "${IMAGE_REPO}(-worker)?:[0-9]+\\.[0-9]+" \
                     docker-compose.yml docker-compose.fleet.yml \
-                  | cut -d: -f2 | sort -u | grep -vx "$SERIES" || true)
+                  | awk -F: '{print $NF}' | sort -u | grep -vx "$SERIES" || true)
           if [ -n "$STRAY" ]; then
             echo "::error::a pin did not move to $SERIES (still on: $STRAY)"; exit 1
           fi
