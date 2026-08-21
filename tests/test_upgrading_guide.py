@@ -29,6 +29,18 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 UPGRADING = ROOT / "UPGRADING.md"
 
+# These entries were inherited from the upstream release history before the
+# fork established its own tag namespace. The commits are part of this fork's
+# graph, so immutable commit anchors keep the guide verifiable without fetching
+# upstream tags into release/test jobs.
+_HISTORICAL_RELEASE_COMMITS = {
+    "v1.11.30": "9b8fcd97d025b38a4d1b8fc8b1c94d45d76c26a9",
+    "v1.11.4": "bb64ad58e933242a222600c557ed8cd135562aef",
+    "v1.5.0": "3b7c62d4dad774e803034eae39a59cef67f321d0",
+    "v1.0.4": "c734cda7c86ddab597d80852debef1e7b551429f",
+    "v1.0.0": "607b19b302cdc6b223756c70bc4531c24a51b9d8",
+}
+
 
 def _normalised(version):
     """A section's body as lowercase single-spaced text.
@@ -116,9 +128,47 @@ class TestEverythingHereNeedsAnAction:
 class TestTheVersionsAreReal:
     """A guide with invented version numbers is worse than no guide."""
 
-    def _tags(self):
-        out = subprocess.run(["git", "tag"], cwd=ROOT, capture_output=True, text=True, check=False).stdout
+    def _fork_tags(self):
+        out = subprocess.run(
+            [
+                "git",
+                "for-each-ref",
+                "--format=%(refname:strip=2)",
+                "refs/fork-tags/v*",
+            ],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        ).stdout
         return set(out.split())
+
+    def _historical_commit_is_present(self, version):
+        commit = _HISTORICAL_RELEASE_COMMITS.get(version)
+        if not commit:
+            return False
+        exists = (
+            subprocess.run(
+                ["git", "cat-file", "-e", f"{commit}^{{commit}}"],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            ).returncode
+            == 0
+        )
+        if not exists:
+            return False
+        return (
+            subprocess.run(
+                ["git", "merge-base", "--is-ancestor", commit, "HEAD"],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            ).returncode
+            == 0
+        )
 
     @pytest.mark.parametrize("version", sorted(_sections()))
     def test_the_release_exists(self, version):
@@ -130,15 +180,16 @@ class TestTheVersionsAreReal:
         """
         import os
 
-        tags = self._tags() if (ROOT / ".git").exists() else set()
-        if not tags:
+        tags = self._fork_tags() if (ROOT / ".git").exists() else set()
+        if not tags and not self._historical_commit_is_present(version):
             if os.environ.get("CI"):
-                pytest.fail(
-                    "no git tags available, so release headings cannot be verified. "
-                    "The workflow must check out with fetch-depth: 0 and fetch-tags: true."
-                )
-            pytest.skip("not a git checkout with tags; this invariant is enforced in CI")
-        assert version in tags, f"{version} is documented but was never released"
+                pytest.fail("no fork tags or anchored historical release commit available")
+            pytest.skip("not a git checkout with release evidence; this invariant is enforced in CI")
+        if version in tags:
+            return
+        assert self._historical_commit_is_present(version), (
+            f"{version} is neither a fork release tag nor an anchored release commit in this history"
+        )
 
     def test_the_enrollment_window_entry_names_the_release_that_shipped_it(self):
         """Pinned because this is the entry most likely to disconnect somebody.
@@ -149,6 +200,10 @@ class TestTheVersionsAreReal:
         assert "24 hours" in body, "the v1.11.30 entry does not state the window"
         assert "401" in body, "it does not name the observable symptom"
         assert "worker_id" in body, "it omits the identity file, without which re-enrolling duplicates the worker"
+
+    def test_an_unanchored_historical_version_is_rejected(self):
+        """The commit map must not become a blanket escape from release checks."""
+        assert not self._historical_commit_is_present("v9.9.9")
 
 
 class TestItIsDiscoverable:

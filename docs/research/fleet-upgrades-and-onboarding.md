@@ -69,7 +69,7 @@ So managed mode uses a **short-lived upgrader sidecar**:
    it is an order, not standing state.
 2. The worker validates the target (well-formed release tag, same MAJOR —
    cross-major upgrades always stay manual), pulls
-   `drumsergio/cashpilot-worker:<target>` (the worker already has full image
+   `ghcr.io/assetforgeai-tech/cashpilot-worker:<target>` (the worker already has full image
    pull capability), and starts the sidecar: a container from the *new* image
    whose entrypoint is the upgrade script, labelled
    `cashpilot.role=upgrader`, given the Docker socket and nothing else.

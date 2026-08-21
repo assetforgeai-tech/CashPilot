@@ -38,6 +38,26 @@ ROOT = Path(__file__).resolve().parents[1]
 GETTING_STARTED = ROOT / "docs" / "getting-started.md"
 SECURITY = ROOT / "docs" / "security-defaults.md"
 
+# These are the pages and configuration users are expected to copy or follow.
+# Changelogs and research snapshots may retain historical image provenance.
+ACTIVE_DOCS = [
+    ROOT / "README.md",
+    ROOT / "docs" / "index.md",
+    ROOT / "docs" / "getting-started.md",
+    ROOT / "docs" / "fleet.md",
+    ROOT / "docs" / "architecture.md",
+    ROOT / "docs" / "upgrade-v1.md",
+    ROOT / "docs" / "research" / "fleet-upgrades-and-onboarding.md",
+    ROOT / "SECURITY.md",
+    ROOT / "UPGRADING.md",
+    ROOT / "mkdocs.yml",
+]
+
+_LEGACY_CASHPILOT_IMAGE = re.compile(
+    r"(?:drumsergio/(?:cashpilot|cashpilot-worker)|"
+    r"https://hub\.docker\.com/r/drumsergio/(?:cashpilot|cashpilot-worker))"
+)
+
 
 class TestTheQuickstartShowsTheRealComposeFile:
     def test_it_includes_rather_than_copies(self):
@@ -142,7 +162,7 @@ def _shipped_docs() -> list[Path]:
 #: 0.0.0.0, so it is the difference between "reachable from this machine" and
 #: "reachable from the whole network".
 _UNBOUND_WORKER_PORT = re.compile(r'^\s*-\s*"?8081:8081"?\s*$', re.MULTILINE)
-_LATEST_IMAGE = re.compile(r"image:\s*drumsergio/\S+:latest")
+_LATEST_IMAGE = re.compile(r"image:\s*(?:drumsergio/\S+|ghcr\.io/[^/\s]+/cashpilot(?:-worker)?):latest")
 
 
 @pytest.mark.parametrize("path", _shipped_docs(), ids=lambda p: str(p.relative_to(ROOT)))
@@ -187,6 +207,7 @@ class TestTheseChecksCanActuallyFail:
 
     def test_the_latest_pattern_matches_a_real_image_line(self):
         assert _LATEST_IMAGE.search("    image: drumsergio/cashpilot-worker:latest\n")
+        assert _LATEST_IMAGE.search("    image: ghcr.io/assetforgeai-tech/cashpilot-worker:latest\n")
 
     def test_the_latest_pattern_ignores_prose_about_latest(self):
         """SECURITY.md discusses `:latest` in order to warn about it. Flagging
@@ -195,3 +216,17 @@ class TestTheseChecksCanActuallyFail:
 
     def test_the_latest_pattern_accepts_a_pinned_image(self):
         assert not _LATEST_IMAGE.search("    image: drumsergio/cashpilot-worker:1.19\n")
+        assert not _LATEST_IMAGE.search("    image: ghcr.io/assetforgeai-tech/cashpilot-worker:1.1\n")
+
+
+@pytest.mark.parametrize("path", ACTIVE_DOCS, ids=lambda p: str(p.relative_to(ROOT)))
+def test_active_docs_use_the_fork_ghcr_registry(path):
+    """User-facing instructions must not send deployments to the retired registry."""
+    text = path.read_text(encoding="utf-8")
+    found = _LEGACY_CASHPILOT_IMAGE.findall(text)
+    assert not found, f"{path.relative_to(ROOT)} still advertises legacy CashPilot images: {found}"
+
+
+def test_getting_started_clones_the_fork_that_owns_the_shipped_images():
+    text = GETTING_STARTED.read_text(encoding="utf-8")
+    assert "https://github.com/assetforgeai-tech/CashPilot.git" in text

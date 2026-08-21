@@ -20,12 +20,97 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SHIPPED_COMPOSE = ["docker-compose.yml", "docker-compose.fleet.yml"]
+CANONICAL_UI = "ghcr.io/assetforgeai-tech/cashpilot"
+CANONICAL_WORKER = "ghcr.io/assetforgeai-tech/cashpilot-worker"
+CANONICAL_IMAGES = (CANONICAL_UI, CANONICAL_WORKER)
 
 _IMAGE = re.compile(r"^\s*image:\s*(\S+)", re.M)
 
 
 def _images(name: str) -> list[str]:
     return _IMAGE.findall((PROJECT_ROOT / name).read_text())
+
+
+def _cashpilot_images(name: str) -> list[str]:
+    return [image for image in _images(name) if "cashpilot" in image]
+
+
+@pytest.mark.parametrize("compose", SHIPPED_COMPOSE)
+def test_shipped_compose_uses_the_fork_ghcr_images(compose):
+    """The fork must not silently deploy the upstream Docker Hub images."""
+    images = _cashpilot_images(compose)
+    assert images, f"{compose} contains no CashPilot image"
+    repositories = {image.rsplit(":", 1)[0] for image in images}
+    assert repositories == set(CANONICAL_IMAGES), f"{compose} uses non-canonical images: {images}"
+
+
+def test_release_workflows_do_not_import_upstream_release_tags():
+    """Fork release drift must be calculated from fork tags only."""
+    workflows = [
+        PROJECT_ROOT / ".github" / "workflows" / "release.yml",
+        PROJECT_ROOT / ".github" / "workflows" / "test.yml",
+    ]
+    offenders = [str(path) for path in workflows if "GeiserX/CashPilot.git" in path.read_text(encoding="utf-8")]
+    assert not offenders, f"workflows import upstream release tags: {offenders}"
+
+
+def test_workflows_fetch_fork_tags_into_an_isolated_namespace():
+    """Fork tags must not collide with same-named tags already present locally."""
+    test_workflow = (PROJECT_ROOT / ".github" / "workflows" / "test.yml").read_text(encoding="utf-8")
+    release_workflow = (PROJECT_ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    refspec = "git fetch --force origin 'refs/tags/*:refs/fork-tags/*'"
+    assert refspec in test_workflow
+    # release.yml has two independent checkouts: CI and version calculation.
+    assert release_workflow.count(refspec) >= 2
+    assert 'git diff --name-only "$LAST_TAG_REF"..HEAD' in release_workflow
+    assert 'RANGE="refs/fork-tags/${LATEST}..HEAD"' in release_workflow
+    # ghcr.io itself contains a colon, so splitting on the second field would
+    # extract "io/..." instead of the image tag during the compose bump.
+    assert "awk -F: '{print $NF}'" in release_workflow
+    assert "cut -d: -f2" not in release_workflow
+
+
+def test_build_and_release_workflows_use_the_fork_ghcr_images():
+    """A release must publish and pin the same fork images users pull."""
+    build = (PROJECT_ROOT / ".github" / "workflows" / "build.yml").read_text(encoding="utf-8")
+    release = (PROJECT_ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    assert "drumsergio/cashpilot" not in build
+    assert "ghcr.io/${OWNER}/cashpilot" in build
+    assert "ghcr.io/${OWNER}/cashpilot" in release
+
+
+def test_release_pin_update_is_direct_and_precedes_release_publication():
+    """A pin failure must stop the tag/release instead of leaving a green stale release."""
+    release = (PROJECT_ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    assert "gh pr create" not in release
+    assert "gh pr merge" not in release
+    assert 'git push origin "HEAD:${GITHUB_REF_NAME}"' in release
+    assert 'gh api "repos/${GITHUB_REPOSITORY}/branches/${GITHUB_REF_NAME}"' in release
+    assert release.index("Bump the example compose pins") < release.index("Create and push tag")
+    assert "could not push the compose pin" in release
+
+
+def test_release_pin_preflight_fails_closed_when_images_have_no_pin():
+    """A missing compose pin is an unsafe release condition, not a warning."""
+    release = (PROJECT_ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    marker = 'echo "::error::no canonical CashPilot UI and worker image pins found"'
+    assert marker in release
+    start = release.index(marker)
+    assert "exit 1" in release[start : start + 250]
+
+
+def test_release_pin_preflight_requires_ui_and_worker_pins():
+    """A release must not pass with only one of the two compose images pinned."""
+    release = (PROJECT_ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    assert 'UI_CURRENT=$(grep -ohE "${IMAGE_REPO}:' in release
+    assert 'WORKER_CURRENT=$(grep -ohE "${IMAGE_REPO}-worker:' in release
+    assert "no canonical CashPilot UI and worker image pins found" in release
+    assert 'if [ "$UI_CURRENT" != "$SERIES" ] || [ "$WORKER_CURRENT" != "$SERIES" ]' in release
+
+
+def test_fork_has_no_dockerhub_publication_workflow():
+    """The fork must not keep a workflow that writes descriptions upstream."""
+    assert not (PROJECT_ROOT / ".github" / "workflows" / "dockerhub-description.yml").exists()
 
 
 @pytest.mark.parametrize("compose", SHIPPED_COMPOSE)
@@ -41,16 +126,14 @@ def test_no_latest_tag_in_shipped_compose(compose):
 @pytest.mark.parametrize("compose", SHIPPED_COMPOSE)
 def test_every_cashpilot_image_carries_an_explicit_tag(compose):
     """An untagged image is :latest by another name."""
-    for image in _images(compose):
-        if "drumsergio/cashpilot" not in image:
-            continue
+    for image in _cashpilot_images(compose):
         assert ":" in image.split("/")[-1], f"{compose}: {image} has no explicit tag"
 
 
 @pytest.mark.parametrize("compose", SHIPPED_COMPOSE)
 def test_the_two_cashpilot_images_are_pinned_together(compose):
     """A UI and worker on different versions is a support problem nobody wants."""
-    tags = {image.rsplit(":", 1)[1] for image in _images(compose) if "drumsergio/cashpilot" in image}
+    tags = {image.rsplit(":", 1)[1] for image in _cashpilot_images(compose)}
     assert len(tags) == 1, f"{compose}: UI and worker pinned to different tags {sorted(tags)}"
 
 
@@ -78,7 +161,16 @@ class TestTheComposePinTracksReleases:
         import subprocess
 
         out = subprocess.run(
-            ["git", "tag", "--sort=-v:refname"], capture_output=True, text=True, cwd=PROJECT_ROOT
+            [
+                "git",
+                "for-each-ref",
+                "--sort=-v:refname",
+                "--format=%(refname:strip=2)",
+                "refs/fork-tags/v*.*.*",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=PROJECT_ROOT,
         ).stdout
         for line in out.splitlines():
             m = re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)", line.strip())
@@ -86,10 +178,10 @@ class TestTheComposePinTracksReleases:
                 return f"{m.group(1)}.{m.group(2)}"
         if os.environ.get("CI"):
             pytest.fail(
-                "no semver tags in this checkout — CI must fetch tags (fetch-tags: true), "
+                "no fork semver tags in refs/fork-tags — CI must fetch the fork tag refspec, "
                 "otherwise this drift test silently passes and the pin can rot again"
             )
-        pytest.skip("no semver tags available in this local checkout")
+        pytest.skip("no fork semver tags available in refs/fork-tags")
 
     @pytest.mark.parametrize("name", ["docker-compose.yml", "docker-compose.fleet.yml"])
     def test_the_pin_matches_the_newest_released_series(self, name):
@@ -99,7 +191,12 @@ class TestTheComposePinTracksReleases:
         # Comments included on purpose. docker-compose.fleet.yml's commented
         # remote-worker block is a template users uncomment and run, so a stale
         # pin there ships an old image just as surely as a live one.
-        pins = set(re.findall(r"image: drumsergio/cashpilot(?:-worker)?:(\S+)", text))
+        pins = set(
+            re.findall(
+                r"image: ghcr\.io/assetforgeai-tech/cashpilot(?:-worker)?:(\S+)",
+                text,
+            )
+        )
         assert pins, f"{name} pins no cashpilot image"
         newest = self._newest_series()
         assert pins == {newest}, (

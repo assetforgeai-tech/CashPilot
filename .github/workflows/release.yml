@@ -34,14 +34,14 @@ jobs:
       - name: Fetch release tags
         run: |
           git fetch --force origin 'refs/tags/*:refs/tags/*'
-          git fetch --force https://github.com/GeiserX/CashPilot.git 'refs/tags/*:refs/tags/*'
-          test -n "$(git tag --list 'v*' | head -n 1)"
+          git fetch --force origin 'refs/tags/*:refs/fork-tags/*'
+          test -n "$(git for-each-ref --format='%(refname)' 'refs/fork-tags/v*' | head -n 1)"
       - uses: actions/setup-python@v7
         with:
           # The interpreter the images ship (Dockerfile:2, Dockerfile.worker:2),
           # and the one test.yml uses. This job is what the release is actually
           # gated on -- test.yml gates nothing -- so on 3.12 a commit could be
-          # tagged and pushed to Docker Hub while its 3.14 suite was red.
+          # tagged and pushed to the registry while its 3.14 suite was red.
           # uv sync --frozen resolves markers per interpreter, so the two really
           # did install different wheels. Same class as CashPilot-de1.
           python-version: '3.14'
@@ -70,6 +70,10 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+      - name: Fetch fork release tags
+        run: |
+          git fetch --force origin 'refs/tags/*:refs/fork-tags/*'
+          test -n "$(git for-each-ref --format='%(refname)' 'refs/fork-tags/v*' | head -n 1)"
       - name: Check approved deploy baseline
         run: python3 scripts/check_deploy_baseline.py
 
@@ -83,10 +87,11 @@ jobs:
           # workflow_dispatch run) detected "nothing to build", skipped the
           # version step, and silently produced no tag and no image while the
           # run still reported success.
-          LAST_TAG=$(git tag -l 'v*.*.*' --sort=-v:refname | head -1)
-          if [ -n "$LAST_TAG" ]; then
-            CHANGED=$(git diff --name-only "$LAST_TAG"..HEAD 2>/dev/null || echo "")
-            echo "Comparing $LAST_TAG..HEAD"
+          LAST_TAG_REF=$(git for-each-ref --sort=-v:refname \
+            --format='%(refname)' 'refs/fork-tags/v*.*.*' | head -1)
+          if [ -n "$LAST_TAG_REF" ]; then
+            CHANGED=$(git diff --name-only "$LAST_TAG_REF"..HEAD 2>/dev/null || echo "")
+            echo "Comparing ${LAST_TAG_REF#refs/fork-tags/}..HEAD"
           else
             CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
             echo "No previous tag; comparing HEAD~1..HEAD"
@@ -147,7 +152,8 @@ jobs:
         id: version
         if: steps.changes.outputs.ui == 'true' || steps.changes.outputs.worker == 'true'
         run: |
-          LATEST=$(git tag -l 'v*.*.*' --sort=-v:refname | head -1)
+          LATEST=$(git for-each-ref --sort=-v:refname \
+            --format='%(refname:strip=2)' 'refs/fork-tags/v*.*.*' | head -1)
           if [ -z "$LATEST" ]; then
             LATEST="v0.0.0"
           fi
@@ -164,7 +170,7 @@ jobs:
           if [ "$LATEST" = "v0.0.0" ]; then
             RANGE="HEAD"
           else
-            RANGE="${LATEST}..HEAD"
+            RANGE="refs/fork-tags/${LATEST}..HEAD"
           fi
           LOG=$(git log --format='%s%n%b' "$RANGE")
           if echo "$LOG" | grep -qE '^BREAKING CHANGE:|^[a-z]+(\([^)]*\))?!:'; then
@@ -211,17 +217,10 @@ jobs:
 
   # Nothing is announced until the images exist.
   #
-  # The tag was pushed and the GitHub Release published BEFORE this build ran,
-  # so any failure in it — a Docker Hub outage, a rate limit, or the arm64 QEMU
-  # emulation, which is the slowest and most failure-prone step — left an
-  # announced version with no images. A user saw the release notification,
-  # edited their compose, ran docker compose pull and got "manifest unknown".
-  #
-  # Recovery was manual and the repo's own CLAUDE.md flags the trap: re-running
-  # release.yml fails at `git tag -a` with already_exists, so someone had to
-  # hand-dispatch build.yml with the version. Publishing last removes the whole
-  # failure mode, and the tag step below is idempotent so a re-run after a
-  # partial failure works rather than erroring on a tag it created itself.
+  # The tag and GitHub Release are created only after the image build succeeds.
+  # A GHCR outage, a rate limit, or the arm64 QEMU emulation therefore cannot
+  # leave an announced version with no images. The tag step is idempotent so a
+  # re-run after a partial failure does not die on a tag it created itself.
   # (CashPilot-85s)
   publish:
     needs: [release, build]
@@ -230,32 +229,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      # For the compose-pin bump, which must go through a PR because main is
-      # protected. Nothing else in this job needs it.
-      pull-requests: write
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true
-
-      - name: Create and push tag
-        run: |
-          TAG="${{ needs.release.outputs.new_tag }}"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          # Idempotent: a re-run after a failed build must not die on the tag it
-          # pushed the first time round.
-          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
-            echo "Tag $TAG already exists locally; not recreating it."
-          else
-            git tag -a "$TAG" -m "Release $TAG"
-          fi
-          if git ls-remote --exit-code --tags origin "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG is already on the remote."
-          else
-            git push origin "$TAG"
-          fi
 
       # The example compose files pin the major.minor series, and nothing moved
       # them. So every minor release left docker-compose.yml and
@@ -266,35 +244,38 @@ jobs:
       # hand. It blocked two unrelated PRs within hours of v1.15.0.
       #
       # The check was a tripwire on other people's work when it should have been
-      # a guard on the release. Now the release moves the pin itself, straight
-      # after the tag it is pinning to. (CashPilot-9fg.)
+      # a guard on the release. Now the release moves the pin itself before the
+      # tag and GitHub Release are published. (CashPilot-9fg.)
       - name: Bump the example compose pins to this series
         env:
-          # gh needs a token; the job already holds contents: write, and
-          # pull-requests: write is added on the job below for the PR itself.
+          # gh needs a token for the branch-protection preflight.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           TAG="${{ needs.release.outputs.new_tag }}"
           SERIES="${TAG#v}"; SERIES="${SERIES%.*}"   # v1.16.2 -> 1.16
+          OWNER="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
+          IMAGE_REPO="ghcr.io/${OWNER}/cashpilot"
 
-          # Read the pins from BOTH files, and tolerate finding none.
-          #
-          # `|| true` is load-bearing twice over. Under `set -o pipefail` a grep
-          # that matches nothing fails the whole pipeline, so `set -e` would kill
-          # this step -- and this step runs AFTER the tag is pushed, so it would
-          # turn a successful release into a red one over a cosmetic edit. That
-          # is the exact failure this step's retry/warning logic exists to avoid,
-          # reappearing three lines earlier.
-          CURRENT=$(grep -ohE 'drumsergio/cashpilot(-worker)?:[0-9]+\.[0-9]+' \
-                      docker-compose.yml docker-compose.fleet.yml \
-                    | cut -d: -f2 | sort -u | tr '\n' ' ' || true)
-          CURRENT=$(echo "$CURRENT" | xargs || true)   # trim
+          # Read the UI and worker pins independently from BOTH files. Under
+          # `set -o pipefail`, grep matching nothing must be handled explicitly
+          # so a partially edited compose pair fails the release visibly.
+          UI_CURRENT=$(grep -ohE "${IMAGE_REPO}:[0-9]+\\.[0-9]+" \
+                       docker-compose.yml docker-compose.fleet.yml \
+                     | awk -F: '{print $NF}' | sort -u | tr '\n' ' ' || true)
+          WORKER_CURRENT=$(grep -ohE "${IMAGE_REPO}-worker:[0-9]+\\.[0-9]+" \
+                           docker-compose.yml docker-compose.fleet.yml \
+                         | awk -F: '{print $NF}' | sort -u | tr '\n' ' ' || true)
+          UI_CURRENT=$(echo "$UI_CURRENT" | xargs || true)
+          WORKER_CURRENT=$(echo "$WORKER_CURRENT" | xargs || true)
 
-          if [ -z "$CURRENT" ]; then
-            echo "::warning::found no pinned cashpilot image in the compose files; leaving them alone"
-            exit 0
+          if [ -z "$UI_CURRENT" ] || [ -z "$WORKER_CURRENT" ]; then
+            echo "::error::no canonical CashPilot UI and worker image pins found"
+            exit 1
           fi
+          CURRENT=$(printf '%s\n%s\n' "$UI_CURRENT" "$WORKER_CURRENT" \
+                    | tr ' ' '\n' | sort -u | tr '\n' ' ')
+          CURRENT=$(echo "$CURRENT" | xargs || true)   # trim
           if [ "$CURRENT" = "$SERIES" ]; then
             # A patch release does not change the series. Committing an
             # unchanged file would push an empty commit on every patch.
@@ -303,12 +284,16 @@ jobs:
             # drifted and the other had not, reading only the first would report
             # "already on $SERIES" and leave the other stale forever -- a silent
             # no-op that looks exactly like success.
+            if [ "$UI_CURRENT" != "$SERIES" ] || [ "$WORKER_CURRENT" != "$SERIES" ]; then
+              echo "::error::compose pins are inconsistent (UI: $UI_CURRENT; worker: $WORKER_CURRENT)"
+              exit 1
+            fi
             echo "Pins already on $SERIES; nothing to do."
             exit 0
           fi
           echo "Bumping the example pins [$CURRENT] -> $SERIES"
 
-          sed -i -E "s|(drumsergio/cashpilot(-worker)?):[0-9]+\.[0-9]+|\1:$SERIES|g" \
+          sed -i -E "s|(${IMAGE_REPO}(-worker)?):[0-9]+\\.[0-9]+|\1:$SERIES|g" \
             docker-compose.yml docker-compose.fleet.yml
 
           # Prove the edit did what it claims before committing it. A silently
@@ -319,9 +304,9 @@ jobs:
           # REFUSES -E and -P together ("conflicting matchers specified"). The
           # first version of this used both and appeared to work locally only
           # because that shell's `grep` is a ugrep shim, which accepts it.
-          STRAY=$(grep -ohE 'drumsergio/cashpilot(-worker)?:[0-9]+\.[0-9]+' \
+          STRAY=$(grep -ohE "${IMAGE_REPO}(-worker)?:[0-9]+\\.[0-9]+" \
                     docker-compose.yml docker-compose.fleet.yml \
-                  | cut -d: -f2 | sort -u | grep -vx "$SERIES" || true)
+                  | awk -F: '{print $NF}' | sort -u | grep -vx "$SERIES" || true)
           if [ -n "$STRAY" ]; then
             echo "::error::a pin did not move to $SERIES (still on: $STRAY)"; exit 1
           fi
@@ -335,39 +320,42 @@ jobs:
           # ever widens.
           git commit -m "chore(compose): pin the examples to $SERIES [skip ci]"
 
-          # THROUGH A PULL REQUEST, because main is protected.
-          #
-          # The first version pushed straight to main and was rejected three
-          # times with "Changes must be made through a pull request" (GH006) --
-          # observed in the v1.16.0 run, which shipped green only because the
-          # failure warns instead of failing. Branch protection is not going
-          # away, so the mechanism has to change rather than the retry count.
-          #
-          # A PR can be merged immediately here: main requires a PR but demands
-          # no approvals and no status checks (verified against the protection
-          # API). If that ever tightens, the merge below fails, the warning
-          # fires, and the release still ships -- which is the behaviour to keep.
-          BRANCH="chore/compose-pins-$SERIES"
-          git checkout -b "$BRANCH"
-          # --force-with-lease so a re-run reuses the branch instead of dying on
-          # it. Protection covers main, not this branch.
-          if ! git push --force-with-lease origin "$BRANCH"; then
-            echo "::warning::could not push $BRANCH; bump the compose pins to $SERIES by hand"
-            exit 0
+          # A direct push is safe only while the target branch is unprotected.
+          # Query the branch API first and fail closed if the policy changes or
+          # the API cannot be read; a stale pin must never be hidden by a green
+          # release.
+          if ! BRANCH_PROTECTED=$(gh api "repos/${GITHUB_REPOSITORY}/branches/${GITHUB_REF_NAME}" --jq '.protected'); then
+            echo "::error::could not query branch protection for ${GITHUB_REF_NAME}"
+            exit 1
+          fi
+          if [ "$BRANCH_PROTECTED" != "false" ]; then
+            echo "::error::branch ${GITHUB_REF_NAME} is protected; could not push the compose pin directly"
+            exit 1
           fi
 
-          if ! gh pr create --base "${GITHUB_REF_NAME}" --head "$BRANCH" \
-                 --title "chore(compose): pin the examples to $SERIES" \
-                 --body "Automated by the $TAG release. The example compose files pin the major.minor series, and tests/test_compose_image_pins.py compares that pin against the newest released series -- so without this every open branch goes red until someone bumps them by hand."; then
-            echo "::warning::could not open the pin-bump PR for $SERIES; merge $BRANCH by hand"
-            exit 0
+          if ! git push origin "HEAD:${GITHUB_REF_NAME}"; then
+            echo "::error::could not push the compose pin to ${GITHUB_REF_NAME}"
+            exit 1
           fi
+          echo "Pins bumped to $SERIES on ${GITHUB_REF_NAME}."
 
-          if ! gh pr merge "$BRANCH" --squash --delete-branch; then
-            echo "::warning::opened the pin-bump PR for $SERIES but could not merge it; merge it by hand"
-            exit 0
+      - name: Create and push tag
+        run: |
+          TAG="${{ needs.release.outputs.new_tag }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Idempotent: a re-run after a failed publish must not die on the tag
+          # it pushed the first time round.
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "Tag $TAG already exists locally; not recreating it."
+          else
+            git tag -a "$TAG" -m "Release $TAG"
           fi
-          echo "Pins bumped to $SERIES via $BRANCH."
+          if git ls-remote --exit-code --tags origin "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG is already on the remote."
+          else
+            git push origin "$TAG"
+          fi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3

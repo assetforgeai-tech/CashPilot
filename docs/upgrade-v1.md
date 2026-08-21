@@ -30,8 +30,8 @@ You don't handle keys by hand — this all happens on the next heartbeat.
 
 ## Upgrade steps
 
-1. **Upgrade the UI** image to `drumsergio/cashpilot:1.0.0` (or newer).
-2. **Upgrade every worker** image to `drumsergio/cashpilot-worker:1.0.0` (or newer).
+1. **Upgrade the UI** image to `ghcr.io/assetforgeai-tech/cashpilot:1.1` (v1.0.0 or newer).
+2. **Upgrade every worker** image to `ghcr.io/assetforgeai-tech/cashpilot-worker:1.1` (v1.0.0 or newer).
    Do not leave old-version workers running against a v1.0.0 UI. An old worker
    image only knows the shared key and cannot persist the one it is issued, so it
    never finishes enrolling: for the first 24 hours it keeps heartbeating on the
