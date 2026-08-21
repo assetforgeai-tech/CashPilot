@@ -1,8 +1,8 @@
 # CashPilot: Repo và GitHub Understanding
 
-Ngày chụp trạng thái: 2026-08-21
+Ngày chụp trạng thái: 2026-08-22
 
-Commit được phân tích: `0374956a2f60a77890a78432fb7b533e480fa537`
+Commit được phân tích: `082b947ebdae31e9e0ced9eef76d5e53c9f16da6`
 
 ## Phạm vi và nguyên tắc
 
@@ -14,15 +14,15 @@ Tất cả 14 provider hiện hành là baseline bất biến. Grass đã bị l
 
 | Hạng mục | Trạng thái đã kiểm chứng |
 |---|---|
-| Local branch | `main`, theo dõi `origin/main` |
-| Local HEAD | `0374956`, khớp `origin/main` |
+| Canonical base branch | `main`, theo dõi `origin/main` |
+| Audited base HEAD | `082b947`, khớp `origin/main` trước branch tài liệu này |
 | Fork | `assetforgeai-tech/CashPilot` |
 | Upstream | `GeiserX/CashPilot` |
-| Divergence | 323 fork-only commits, 26 upstream-only commits |
-| Fork release mới nhất | `v1.0.10` |
+| Divergence | Fork ahead 331, behind 26; histories diverged |
+| Fork release mới nhất | `v1.1.1` |
 | Upstream release quan sát | `v1.36.2` |
-| Fork CI tại HEAD | Auto Release, CodeQL, Lint, Action Pins, Catalog Check và Tests thành công |
-| Local uncommitted trước phân tích | `docs/ACTIVE_CONTEXT.md`; graph local dưới `.understand-anything/` |
+| Fork CI tại HEAD | Documentation, Tests, Catalog Check, CodeQL và Lint thành công; deploy job skipped |
+| Audit worktree | Branch `docs/refresh-read-only-baseline-2026-08-22`; chỉ có thay đổi Markdown, local Understand artifacts được ignore |
 
 Upstream mới hơn không đồng nghĩa fork phải merge. Fork-only history chứa nhiều contract quan trọng về provider/runtime hardening, Grass identity/auth, MYST wallet lease/runtime, proxy lease rotation và CI/release. Mọi merge hoặc cherry-pick phải được đánh giá riêng và nằm ngoài giai đoạn này.
 
@@ -34,7 +34,7 @@ Luồng deploy bắt đầu từ API/UI, resolve service catalog và deploy mode
 
 Proxy lifecycle tách probe khỏi assignment. Scheduler/probe đánh giá endpoint và exit IP; lease được gắn theo worker/provider/instance. Dead lease phải được release trước khi reassignment. Một probe khỏe không phải lý do rotate lease.
 
-Release workflow tạo version/tag, chạy gate tests, build và publish hai image UI/worker lên GHCR, xác minh tag rồi tạo GitHub release. Fork `v1.0.10` là baseline release hiện tại.
+Release workflow dùng diff từ tag trước để quyết định có tạo release hay không. Khi có release, workflow tạo version, chạy gate tests, build và publish cả UI lẫn worker lên GHCR, xác minh image/tag rồi mới tạo Git tag và GitHub release. Fork `v1.1.1` là release hiện tại; tag trỏ tới `78edd1b` và release này có cả hai fork image. Việc release không tự đồng nghĩa deploy.
 
 ## Ma trận bảo vệ provider
 
@@ -53,7 +53,7 @@ Release workflow tạo version/tag, chạy gate tests, build và publish hai ima
 | `urnetwork` | `PROTECTED_DONE` | Không sửa hoặc redeploy |
 | `uprock` | `PROTECTED_DONE` | Không sửa hoặc redeploy |
 | `wipter` | `PROTECTED_DONE` | Không sửa hoặc redeploy |
-| `grass` | `REMOVED` | Không còn catalog/runtime; giữ legacy rows/secrets để tương thích |
+| `grass` | `RETIRED` | Không còn catalog/runtime; giữ legacy rows/secrets để tương thích |
 | `mysterium` | `PROTECTED_DONE` | Direct-only; không đưa vào Proxy Pool |
 
 ## Retired Grass history
@@ -71,3 +71,10 @@ Registration được đọc từ `myst cli identities get` và đồng bộ có
 ## Gate cho thay đổi tương lai
 
 Mọi provider hiện hành đều là baseline bảo vệ. Nếu buộc phải sửa shared module, cần impact map, danh sách provider có thể bị ảnh hưởng, regression tests cho shared contracts, canary riêng, rollback bảo toàn identity/volume/credential/lease và phê duyệt rõ ràng của người dùng.
+
+## Read-only audit artifacts
+
+Read-only audit ngày 2026-08-21/22 đã xác nhận knowledge graph 1.563 nodes,
+domain graph 63 nodes và coverage 301/301 files tại commit `082b947`. Các graph
+và báo cáo chi tiết nằm trong local ignored directory `.understand-anything/`;
+chúng không phải runtime state và không thay thế live verification.

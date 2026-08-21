@@ -1,14 +1,15 @@
 # CashPilot Active Context
 
-Updated: 2026-08-21 (post-merge provider removal baseline)
+Updated: 2026-08-22 (post-audit documentation baseline)
 
 ## Current repository state
 
 - Canonical branch: `main`.
-- Audited product/release baseline: `c2b8d6539c28187fd95ce1ed41b1bde87c8d6f3d`
-  (`c2b8d65`), the merge commit for PR #4.
-- PR #2 (`ci: publish and pin fork GHCR images`), PR #3 (fork install surfaces)
-  and PR #4 (redacted historical evidence) are merged.
+- Audited product/release baseline: `082b947ebdae31e9e0ced9eef76d5e53c9f16da6`
+  (`082b947`), the merge commit for PR #5.
+- PR #1 (Grass retirement), PR #2 (fork GHCR images), PR #3 (fork install
+  surfaces), PR #4 (redacted historical evidence) and PR #5 (current context)
+  are merged.
 - Release `v1.1.1` is published with both fork GHCR images and passed the release
   image verification gates.
 - The removal is repository-only. This context does not authorize a deploy,
@@ -38,7 +39,7 @@ Updated: 2026-08-21 (post-merge provider removal baseline)
   not make the retired provider deployable.
 - Git history and historical changelog entries remain available for research.
 
-## Work completed in this branch
+## Product work represented by this merged baseline
 
 - Removed provider YAML, collector, installer/automation paths and provider-only
   tests/fixtures.
@@ -78,13 +79,14 @@ approval.
 
 - Full suite: 1311 passed, 7 skipped (`python -m pytest -q`), including
   endpoint, payout, metric and case-normalization retired-provider regressions.
-- Ruff lint and format checks pass; JavaScript syntax and browser-free behavior
-  checks pass; README/catalog and documentation-nav checks pass.
+- Ruff lint and browser-free behavior checks pass; README/catalog and
+  documentation-nav checks pass.
 - `mkdocs build --strict` passes with a temporary docs-only environment. The
   build reports the internal research/onboarding pages as intentionally
   unlisted from the public nav.
 - Docker smoke builds were not run because Docker CLI/daemon is unavailable on
   this Windows machine. No dependency, lockfile, or VPS workaround was used.
 - `git diff --check` passes, and all 14 protected provider YAML hashes match
-  HEAD.
+  HEAD. The read-only baseline audit also validated graph coverage for 301/301
+  scanned files and refreshed the local knowledge/domain graph artifacts.
 - No live or VPS verification was performed as part of the repository cleanup.

@@ -1,8 +1,8 @@
 # Platform Baseline: Wallet, Proxy Pool, Settings và Fleet
 
-Ngày rà soát: 2026-08-21
+Ngày rà soát: 2026-08-22
 
-Commit source được đối chiếu: `0374956a2f60a77890a78432fb7b533e480fa537`
+Commit source được đối chiếu: `082b947ebdae31e9e0ced9eef76d5e53c9f16da6`
 
 Tài liệu này bổ sung baseline vận hành cho các subsystem dùng chung. Đây là tài liệu đọc hiểu, không phải ủy quyền thay đổi code hoặc live state. Mọi provider hiện hành, bao gồm Mysterium direct-only, là `PROTECTED_DONE`; Grass đã bị loại khỏi product.
 
@@ -16,7 +16,7 @@ MYST Wallet là asset inventory riêng, không phải proxy pool và không đư
 
 **Invariants cần bảo vệ:**
 
-- Raw wallet chỉ tồn tại trong inventory được mã hóa; không gửi trong heartbeat, logs hoặc graph artifacts.
+- Khi lưu at rest, raw wallet chỉ tồn tại trong inventory được mã hóa; không gửi trong heartbeat, logs hoặc graph artifacts.
 - Lease có assignment version và optimistic checks; không release wallet của assignment mới bằng stale worker event.
 - Identity, wallet address, client instance và public IP phải nhất quán qua restart hợp lệ.
 - `Registered` không đồng nghĩa earning; cần TUN, `NET_ADMIN`, WireGuard active và traffic/session evidence.
@@ -28,11 +28,13 @@ Evidence chính: `app/myst_wallets.py`, `app/myst_runtime.py`, `app/worker_api.p
 
 ## 2. NKN Wallet
 
-NKN Wallet là pool riêng phục vụ provider/runtime NKN. Git history xác nhận các thay đổi import wallet từ folders và wallet pool (`6d88c0d`, `4442254`), nhưng không được suy ra NKN Wallet có cùng lifecycle với MYST Wallet.
+NKN Wallet hiện là inventory/admin surface riêng, không phải provider trong catalog 14 provider và chưa có deploy/worker runtime integration. Git history xác nhận các thay đổi tạo wallet pool và import từ folders (`6d88c0d`, `4442254`), nhưng không được suy ra NKN có lifecycle hoàn chỉnh như MYST.
 
-**Baseline cần giữ:** inventory/import boundary, address/fingerprint, assignment/exclusivity, funding/quarantine, persistence và runtime evidence phải được xác minh riêng. Không dùng MYST wallet lease hoặc proxy lease để đại diện cho NKN.
+**Source contract hiện có:** import folder/ZIP; validate `wallet.json` + `wallet.pswd`; lưu wallet material mã hóa; deduplicate theo folder/fingerprint; owner-only API/UI để import và list inventory. Schema có các cột dự phòng cho lease/runtime state, nhưng repo chưa có NKN lease/release, deploy attach, heartbeat sync hoặc runtime evidence flow. Sự tồn tại của cột không phải bằng chứng tính năng đã hoạt động.
 
-**Khoảng bằng chứng hiện tại:** repository/graph đã ghi nhận lịch sử và boundary ở mức platform, nhưng chưa có live completion evidence được chụp trong snapshot này. Vì vậy NKN không được tự hạ hoặc nâng trạng thái provider; mọi thao tác wallet phải chờ impact map và approval.
+**Baseline cần giữ:** bảo toàn encryption, import validation, uniqueness và owner authorization. Không dùng MYST wallet lease hoặc proxy lease để đại diện cho NKN; cũng không gán trạng thái provider cho NKN khi chưa có catalog/runtime contract.
+
+**Khoảng bằng chứng hiện tại:** chưa có live inventory snapshot, và source hiện tại chưa cung cấp runtime contract để có thể tuyên bố completion về assignment, funding, persistence hoặc heartbeat. Mọi mở rộng NKN phải là feature riêng có impact map và approval.
 
 ## 3. Proxy Pool
 
@@ -48,7 +50,7 @@ Proxy Pool cung cấp worker-level egress qua sing-box. Provider direct không t
 - Rotation không được làm mất provider volume, identity, credential hoặc wallet assignment.
 - Một worker-level proxy change có thể ảnh hưởng nhiều provider; phải lập impact map trước mutation.
 
-Evidence chính: `app/database.py`, `app/proxy_pool.py`, `app/worker_api.py`, proxy lease tests, `docs/configuration.md`, `docs/ACTIVE_CONTEXT.md`.
+Evidence chính: `app/database.py`, `app/routers/proxies.py`, `app/proxy_egress.py`, `app/worker_api.py`, proxy lease tests, `docs/configuration.md`, `docs/ACTIVE_CONTEXT.md`.
 
 ## 4. Settings
 
@@ -85,7 +87,7 @@ Evidence chính: `docs/fleet.md`, `docs/architecture.md`, `docs/upgrade-v1.md`, 
 | Subsystem | Có thể ảnh hưởng | Baseline action |
 |---|---|---|
 | MYST Wallet | Mysterium, database, worker heartbeat | Chỉ canary wallet riêng |
-| NKN Wallet | NKN runtime và wallet inventory | Chưa có live evidence đủ; chỉ điều tra |
+| NKN Wallet | Database và owner admin UI hiện tại; runtime tương lai nếu được bổ sung | Bảo toàn inventory; không tuyên bố lease/runtime đã có |
 | Proxy Pool | Nhiều provider trên cùng worker | Không rotate lease khỏe |
 | Settings | Mọi provider nếu credential/policy dùng chung | Phân biệt deploy credential và collector credential |
 | Fleet | Toàn bộ worker/provider trên fleet | Không bulk upgrade/redeploy |
@@ -96,11 +98,11 @@ Trước mọi thay đổi shared module phải có call/data-flow, provider imp
 
 Sau khi bổ sung tài liệu này, các nội dung nền tảng còn thiếu hoặc chưa đủ bằng chứng là:
 
-1. **NKN Wallet live baseline:** chưa có snapshot live về inventory, assignment, funding, persistence và runtime evidence.
+1. **NKN Wallet boundary:** chưa có live inventory snapshot; repo cũng chưa có active provider, lease/release hoặc worker runtime flow để kiểm chứng completion.
 2. **MYST live completion:** chưa có bằng chứng live đầy đủ cho funded lease + Registered + TUN/WireGuard traffic + dashboard identity.
 3. **Proxy Pool live matrix:** chưa có bảng mapping hiện tại giữa từng worker, lease, exit IP và provider impact; không được tự thu thập bằng mutation.
 4. **Settings credential audit:** chưa có inventory không lộ secret chứng minh mọi provider đã phân biệt deploy credential với collector/session credential.
 5. **Fleet current-state snapshot:** tài liệu mô tả contract tốt, nhưng cần snapshot read-only về worker/client_id/version/heartbeat/offline history trước rollout tương lai.
-6. **Contract-test index:** chưa có một bảng duy nhất nối từng invariant trên với test file/command tương ứng.
+6. **NKN product decision:** chưa có quyết định riêng về việc giữ inventory-only, hoàn thiện runtime hay retire surface này; không tự suy diễn từ schema dự phòng.
 
-Các khoảng trống trên chỉ được ghi nhận; không tự sửa, deploy, rotate lease, migrate database hoặc thay đổi provider baseline.
+Các khoảng trống trên chỉ được ghi nhận; không tự sửa, deploy, rotate lease, migrate database hoặc thay đổi provider baseline. Read-only audit tại commit `082b947` xác nhận đây vẫn là các khoảng trống live, không phải lỗi đã được giải quyết bằng source-only evidence.
