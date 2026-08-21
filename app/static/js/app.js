@@ -3800,7 +3800,7 @@ const CP = (() => {
       text.textContent = `CashPilot ${state.latest} is available \u2014 you are running ${state.current}.`;
     }
     if (link) {
-      link.href = `https://github.com/GeiserX/CashPilot/releases/tag/${encodeURIComponent(state.latest)}`;
+      link.href = `https://github.com/assetforgeai-tech/CashPilot/releases/tag/${encodeURIComponent(state.latest)}`;
     }
     const dismiss = document.getElementById('update-banner-dismiss');
     if (dismiss) {

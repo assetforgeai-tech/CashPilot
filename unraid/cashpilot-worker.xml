@@ -11,12 +11,12 @@
        an app whose whole job is to keep earning.
        Decided 2026-08-07. Do not "fix" this to a pinned tag without changing
        how CA users are meant to upgrade. See CashPilot-3c2n. -->
-  <Repository>drumsergio/cashpilot-worker:latest</Repository>
-  <Registry>https://hub.docker.com/r/drumsergio/cashpilot-worker</Registry>
+  <Repository>ghcr.io/assetforgeai-tech/cashpilot-worker:latest</Repository>
+  <Registry>https://github.com/assetforgeai-tech/CashPilot/pkgs/container/cashpilot-worker</Registry>
   <Network>bridge</Network>
   <Privileged>false</Privileged>
-  <Support>https://github.com/GeiserX/CashPilot/issues</Support>
-  <Project>https://github.com/GeiserX/CashPilot</Project>
+  <Support>https://github.com/assetforgeai-tech/CashPilot/issues</Support>
+  <Project>https://github.com/assetforgeai-tech/CashPilot</Project>
   <Overview>(CashPilot UI required separately) CashPilot Worker is the Docker agent that deploys and monitors passive income containers on this server. It requires Docker socket access and reports container health back to the CashPilot UI via heartbeats every 60 seconds.&#xD;
 [br][br]&#xD;
 Deploy one worker per server. Each worker manages local containers and reports status to the central CashPilot UI dashboard.&#xD;
@@ -25,10 +25,10 @@ Deploy one worker per server. Each worker manages local containers and reports s
 [br][br]&#xD;
 The worker exposes a minimal status page on port 8081 showing connection status and local container list.&#xD;
 [br][br]&#xD;
-More info: https://github.com/GeiserX/CashPilot</Overview>
+More info: https://github.com/assetforgeai-tech/CashPilot</Overview>
   <Category>Crypto: Tools: Productivity:</Category>
-  <TemplateURL>https://raw.githubusercontent.com/selfhosters/unRAID-CA-templates/master/templates/cashpilot-worker.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/GeiserX/CashPilot/main/docs/icon.svg</Icon>
+  <TemplateURL>https://raw.githubusercontent.com/assetforgeai-tech/CashPilot/main/unraid/cashpilot-worker.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/assetforgeai-tech/CashPilot/main/docs/icon.svg</Icon>
   <ExtraSearchTerms>passive income bandwidth sharing earnings money</ExtraSearchTerms>
   <Requires>CashPilot UI container (cashpilot) must be running and accessible</Requires>
   <Config Name="Worker Port" Target="8081" Default="8081" Mode="tcp" Description="Port for the worker mini-UI and API" Type="Port" Display="always" Required="true" Mask="false"/>

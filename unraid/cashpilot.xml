@@ -11,12 +11,12 @@
        an app whose whole job is to keep earning.
        Decided 2026-08-07. Do not "fix" this to a pinned tag without changing
        how CA users are meant to upgrade. See CashPilot-3c2n. -->
-  <Repository>drumsergio/cashpilot:latest</Repository>
-  <Registry>https://hub.docker.com/r/drumsergio/cashpilot</Registry>
+  <Repository>ghcr.io/assetforgeai-tech/cashpilot:latest</Repository>
+  <Registry>https://github.com/assetforgeai-tech/CashPilot/pkgs/container/cashpilot</Registry>
   <Network>bridge</Network>
   <Privileged>false</Privileged>
-  <Support>https://github.com/GeiserX/CashPilot/issues</Support>
-  <Project>https://github.com/GeiserX/CashPilot</Project>
+  <Support>https://github.com/assetforgeai-tech/CashPilot/issues</Support>
+  <Project>https://github.com/assetforgeai-tech/CashPilot</Project>
   <Overview>CashPilot is a self-hosted passive income orchestrator. Deploy, manage, and monitor bandwidth-sharing, DePIN, storage, and GPU compute Docker containers from a single web dashboard. Tracks earnings across 49 services with historical charts and trend analysis.&#xD;
 [br][br]&#xD;
 This is the UI container. It provides the web dashboard, earnings collection, service catalog, and fleet management. It does NOT require Docker socket access.&#xD;
@@ -25,11 +25,11 @@ This is the UI container. It provides the web dashboard, earnings collection, se
 [br][br]&#xD;
 Set the same CASHPILOT_API_KEY on both the UI and all workers to authenticate them.&#xD;
 [br][br]&#xD;
-More info: https://github.com/GeiserX/CashPilot</Overview>
+More info: https://github.com/assetforgeai-tech/CashPilot</Overview>
   <Category>Crypto: Tools: Productivity:</Category>
   <WebUI>http://[IP]:[PORT:8080]/</WebUI>
-  <TemplateURL>https://raw.githubusercontent.com/selfhosters/unRAID-CA-templates/master/templates/cashpilot.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/GeiserX/CashPilot/main/docs/icon.svg</Icon>
+  <TemplateURL>https://raw.githubusercontent.com/assetforgeai-tech/CashPilot/main/unraid/cashpilot.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/assetforgeai-tech/CashPilot/main/docs/icon.svg</Icon>
   <ExtraSearchTerms>passive income bandwidth sharing earnings money</ExtraSearchTerms>
   <Requires>CashPilot Worker container (cashpilot-worker) for container management</Requires>
   <Config Name="WebUI Port" Target="8080" Default="8080" Mode="tcp" Description="Port for the CashPilot web dashboard" Type="Port" Display="always" Required="true" Mask="false"/>
