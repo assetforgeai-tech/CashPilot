@@ -31,6 +31,10 @@ The remaining catalog baseline is 14 providers:
 - Git history and historical changelogs are retained. They are not runtime
   documentation and must not be used as deployment instructions.
 
+The final pre-removal canary diagnosis is retained separately as
+[historical, redacted evidence](grass-quota-blocker-2026-08-21.md). It records
+why the experiment stopped, not a supported recovery or deployment path.
+
 ## Removed surfaces
 
 - Service catalog entry and Docker definition.
