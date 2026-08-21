@@ -47,7 +47,7 @@ defensible on its own; together they are impossible to guess.
 | `CASHPILOT_TELEGRAM_CHAT_ID` | unset | Telegram alerts. | — |
 | `CASHPILOT_WORKER_ALLOWED_HOSTS` | unset | Restrict which hosts the UI will proxy to. | — |
 | `CASHPILOT_WORKER_ALLOW_METADATA` | `false` | Allow proxying to cloud metadata IPs. Leave off. | — |
-| `CASHPILOT_WORKER_URL_POLICY` | strict | How worker URLs are validated. | — |
+| `CASHPILOT_WORKER_URL_POLICY` | `permissive` | How worker URLs are validated; use `strict` with `CASHPILOT_WORKER_ALLOWED_HOSTS` for allowlist-only mode. | — |
 
 ## Runtime Settings
 
