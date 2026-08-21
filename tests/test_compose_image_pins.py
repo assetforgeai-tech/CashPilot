@@ -79,6 +79,35 @@ def test_build_and_release_workflows_use_the_fork_ghcr_images():
     assert "ghcr.io/${OWNER}/cashpilot" in release
 
 
+def test_release_pin_update_is_direct_and_precedes_release_publication():
+    """A pin failure must stop the tag/release instead of leaving a green stale release."""
+    release = (PROJECT_ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    assert "gh pr create" not in release
+    assert "gh pr merge" not in release
+    assert 'git push origin "HEAD:${GITHUB_REF_NAME}"' in release
+    assert 'gh api "repos/${GITHUB_REPOSITORY}/branches/${GITHUB_REF_NAME}"' in release
+    assert release.index("Bump the example compose pins") < release.index("Create and push tag")
+    assert "could not push the compose pin" in release
+
+
+def test_release_pin_preflight_fails_closed_when_images_have_no_pin():
+    """A missing compose pin is an unsafe release condition, not a warning."""
+    release = (PROJECT_ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    marker = 'echo "::error::no canonical CashPilot UI and worker image pins found"'
+    assert marker in release
+    start = release.index(marker)
+    assert "exit 1" in release[start : start + 250]
+
+
+def test_release_pin_preflight_requires_ui_and_worker_pins():
+    """A release must not pass with only one of the two compose images pinned."""
+    release = (PROJECT_ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    assert 'UI_CURRENT=$(grep -ohE "${IMAGE_REPO}:' in release
+    assert 'WORKER_CURRENT=$(grep -ohE "${IMAGE_REPO}-worker:' in release
+    assert "no canonical CashPilot UI and worker image pins found" in release
+    assert 'if [ "$UI_CURRENT" != "$SERIES" ] || [ "$WORKER_CURRENT" != "$SERIES" ]' in release
+
+
 def test_fork_has_no_dockerhub_publication_workflow():
     """The fork must not keep a workflow that writes descriptions upstream."""
     assert not (PROJECT_ROOT / ".github" / "workflows" / "dockerhub-description.yml").exists()

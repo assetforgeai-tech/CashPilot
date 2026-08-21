@@ -11,7 +11,7 @@
 ### 1. Clone and launch
 
 ```bash
-git clone https://github.com/GeiserX/CashPilot.git
+git clone https://github.com/assetforgeai-tech/CashPilot.git
 cd CashPilot
 docker compose up -d
 ```
@@ -127,33 +127,34 @@ The UI's web port inside the container is fixed at `8080` (set via the container
 
 ## Updating CashPilot
 
-The published images use floating tags, so updating is just a pull + recreate:
+The shipped compose files use a floating **major.minor** tag, so updating to the
+latest patch in that series is just a pull + recreate:
 
 ```bash
 docker compose pull
 docker compose up -d
 ```
 
-`docker compose pull` fetches the newest published image and `up -d` recreates
+`docker compose pull` fetches the newest published image in the pinned series and `up -d` recreates
 only the containers whose image changed. The shipped compose files set
-`pull_policy: always`, so even a bare `docker compose up -d` will pull the
-latest image first.
+`pull_policy: always`, so even a bare `docker compose up -d` will check that
+series for a newer patch first.
 
 !!! note "You do **not** need to rebuild"
-    CashPilot ships prebuilt multi-arch images on Docker Hub
-    ([`drumsergio/cashpilot`](https://hub.docker.com/r/drumsergio/cashpilot),
-    [`drumsergio/cashpilot-worker`](https://hub.docker.com/r/drumsergio/cashpilot-worker)).
+    CashPilot ships prebuilt multi-arch images on GitHub Container Registry
+    ([`ghcr.io/assetforgeai-tech/cashpilot`](https://github.com/assetforgeai-tech/CashPilot/pkgs/container/cashpilot),
+    [`ghcr.io/assetforgeai-tech/cashpilot-worker`](https://github.com/assetforgeai-tech/CashPilot/pkgs/container/cashpilot-worker)).
     `docker compose build` / `--build` is only relevant if you deliberately
     build from source with `docker-compose.build.yml`. For normal installs,
     `pull` + `up -d` is the complete and correct update procedure.
 
 ### Pinning a specific version
 
-`:latest` always tracks the newest release. To stay on a fixed version,
-replace the tag (e.g. `drumsergio/cashpilot:0.6.13`) and remove
+To stay on one exact patch instead of following the compose file's major.minor
+series, replace the tag (e.g. `ghcr.io/assetforgeai-tech/cashpilot:1.1.0`) and remove
 `pull_policy: always`. Browse available tags on
-[Docker Hub](https://hub.docker.com/r/drumsergio/cashpilot/tags). The minor
-tag (e.g. `:0.6`) tracks the latest patch within that minor series.
+[GitHub Container Registry](https://github.com/assetforgeai-tech/CashPilot/pkgs/container/cashpilot). The minor
+tag (e.g. `:1.1`) tracks the latest patch within that minor series.
 
 ### Automating updates (optional)
 

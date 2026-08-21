@@ -10,7 +10,7 @@ hide:
 </p>
 
 <p align="center">
-  <a href="https://hub.docker.com/r/drumsergio/cashpilot"><img alt="Docker Pulls" src="https://img.shields.io/docker/pulls/drumsergio/cashpilot?style=flat-square&logo=docker"></a>
+  <a href="https://github.com/assetforgeai-tech/CashPilot/pkgs/container/cashpilot"><img alt="GHCR Image" src="https://img.shields.io/badge/GHCR-cashpilot-2496ED?style=flat-square&logo=github"></a>
   <a href="https://github.com/GeiserX/CashPilot/stargazers"><img alt="GitHub Stars" src="https://img.shields.io/github/stars/GeiserX/CashPilot?style=flat-square&logo=github"></a>
   <a href="https://github.com/GeiserX/CashPilot/blob/main/LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/github/license/GeiserX/CashPilot?style=flat-square"></a>
 </p>

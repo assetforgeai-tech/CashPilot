@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://hub.docker.com/r/drumsergio/cashpilot"><img alt="Docker Pulls" src="https://img.shields.io/docker/pulls/drumsergio/cashpilot?style=flat-square&logo=docker"></a>
+  <a href="https://github.com/assetforgeai-tech/CashPilot/pkgs/container/cashpilot"><img alt="GHCR Image" src="https://img.shields.io/badge/GHCR-cashpilot-2496ED?style=flat-square&logo=github"></a>
   <a href="https://github.com/GeiserX/CashPilot/stargazers"><img alt="GitHub Stars" src="https://img.shields.io/github/stars/GeiserX/CashPilot?style=flat-square&logo=github"></a>
   <a href="LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/github/license/GeiserX/CashPilot?style=flat-square"></a>
   <a href="https://github.com/GeiserX/CashPilot/actions/workflows/test.yml"><img alt="Tests" src="https://img.shields.io/github/actions/workflow/status/GeiserX/CashPilot/test.yml?style=flat-square&label=tests"></a>
@@ -114,8 +114,8 @@ These services have no Docker image. CashPilot lists them in the catalog with si
 
 CashPilot uses a split UI + Worker architecture:
 
-- **UI container** (`drumsergio/cashpilot`) -- FastAPI web application with dashboard, earnings collection, service catalog, and credential storage. No Docker socket needed.
-- **Worker container** (`drumsergio/cashpilot-worker`) -- Agent with Docker socket access that deploys, monitors, and manages service containers. Reports status to the UI via API.
+- **UI container** (`ghcr.io/assetforgeai-tech/cashpilot`) -- FastAPI web application with dashboard, earnings collection, service catalog, and credential storage. No Docker socket needed.
+- **Worker container** (`ghcr.io/assetforgeai-tech/cashpilot-worker`) -- Agent with Docker socket access that deploys, monitors, and manages service containers. Reports status to the UI via API.
 - **Database:** SQLite -- zero configuration, backed up via the mounted volume
 - **Service definitions:** YAML files in `services/` are the single source of truth for all service metadata, Docker configuration, and earning estimates
 - **Frontend:** Server-rendered templates with a responsive dark UI
@@ -209,7 +209,7 @@ On each additional server, deploy only a worker pointing to the UI:
 ```yaml
 services:
   cashpilot-worker:
-    image: drumsergio/cashpilot-worker:1.19
+    image: ghcr.io/assetforgeai-tech/cashpilot-worker:1.1
     pull_policy: always
     container_name: cashpilot-worker
     ports:

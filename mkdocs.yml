@@ -85,7 +85,7 @@ extra:
     - icon: fontawesome/brands/github
       link: https://github.com/GeiserX/CashPilot
     - icon: fontawesome/brands/docker
-      link: https://hub.docker.com/r/drumsergio/cashpilot
+      link: https://github.com/assetforgeai-tech/CashPilot/pkgs/container/cashpilot
 
 extra_css:
   - stylesheets/theme.css

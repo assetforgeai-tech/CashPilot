@@ -87,7 +87,7 @@ quickstart gives you a known version rather than whatever was pushed most
 recently.
 
 **What to do.** Nothing. If you want a different version, pin an explicit one —
-`drumsergio/cashpilot:1.12.0` — rather than a floating tag. `:latest` is not
+`ghcr.io/assetforgeai-tech/cashpilot:1.1.0` — rather than a floating tag. `:latest` is not
 supported: it makes the version you are running unknowable, which is what
 produced a months-old bug report against a bug that had already been fixed.
 
