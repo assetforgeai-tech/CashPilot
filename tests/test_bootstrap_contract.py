@@ -29,6 +29,15 @@ def test_bootstrap_does_not_restart_docker_when_it_is_already_running():
     assert "systemctl enable --now docker" in text
 
 
+def test_bootstrap_does_not_install_docker_io_over_an_existing_docker_engine():
+    text = SCRIPT.read_text(encoding="utf-8")
+
+    assert "if ! command -v docker >/dev/null 2>&1; then" in text
+    assert 'packages=(docker.io "${packages[@]}")' in text
+    assert 'apt-get install -y "${packages[@]}"' in text
+    assert "apt-get install -y docker.io ufw" not in text
+
+
 def test_bootstrap_disables_docker_masquerade_for_per_slot_snat():
     text = SCRIPT.read_text(encoding="utf-8")
     assert "com.docker.network.bridge.enable_ip_masquerade=false" in text

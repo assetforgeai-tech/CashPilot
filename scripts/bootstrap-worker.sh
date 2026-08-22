@@ -95,7 +95,11 @@ fi
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y docker.io ufw curl jq iproute2 iptables python3 ca-certificates
+packages=(ufw curl jq iproute2 iptables python3 ca-certificates)
+if ! command -v docker >/dev/null 2>&1; then
+  packages=(docker.io "${packages[@]}")
+fi
+apt-get install -y "${packages[@]}"
 systemctl enable --now docker
 
 ufw allow 22/tcp
