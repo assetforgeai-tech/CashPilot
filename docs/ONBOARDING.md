@@ -6,9 +6,9 @@ CashPilot là hệ thống điều phối provider bandwidth/DePIN qua FastAPI s
 worker Docker, service catalog, resource leasing, collectors và dashboard.
 Repo dùng chủ yếu Python, YAML, Docker/Compose và GitHub Actions.
 
-Tài liệu này mô tả baseline hiện hành sau quyết định loại bỏ một provider cũ và
-merge proxy worker ACK rotation. Code đã ở `main`, nhưng image mới chưa được
-release hoặc deploy; release công khai gần nhất vẫn là `v1.1.1`.
+Tài liệu này mô tả baseline hiện hành sau quyết định loại bỏ Grass, merge proxy
+worker ACK rotation và bổ sung NKN direct runtime. Code hiện ở `main`; release
+công khai gần nhất là `v1.3.2`, đã có cả UI và worker image.
 Chi tiết quyết định, tương thích dữ liệu cũ và bằng chứng nằm tại
 `docs/research/provider-removal-grass-2026-08.md`.
 
@@ -16,8 +16,9 @@ Chi tiết quyết định, tương thích dữ liệu cũ và bằng chứng n�
 
 - `PROTECTED_DONE`: `earnfm`, `iproyal`, `mysterium`, `packetstream`,
   `proxies-sx`, `proxybase`, `proxybase-xyz`, `proxyrack`, `repocket`,
-  `spide`, `traffmonetizer`, `uprock`, `urnetwork`, `wipter`.
-- Không có provider mở để redesign trong nhánh này.
+  `spide`, `traffmonetizer`, `uprock`, `urnetwork`, `wipter`, `nkn`.
+- NKN được chốt direct-only sau khi canary hoàn tất `PERSIST_FINISHED`, worker
+  heartbeat và Fleet đều xác nhận online; không provider nào mở để redesign.
 - Mysterium là direct-only; không suy ra proxy mode từ lịch sử cũ.
 - Dữ liệu provider đã nghỉ được giữ ở database để audit nhưng bị loại khỏi
   catalog và các current-product views.
@@ -46,8 +47,10 @@ Chi tiết quyết định, tương thích dữ liệu cũ và bằng chứng n�
 5. Theo proxy probe/lease/rotation và điều kiện release dead lease.
 6. Đọc MYST modules: wallet inventory/lease, identity persistence và
    WireGuard/TUN.
-7. Đọc CI/release workflows để hiểu tag và UI/worker images.
-8. Dùng `docs/research/repo-github-understanding.md` và
+7. Đọc NKN modules: public-IP slot bootstrap, exclusive wallet lease, direct
+   runtime, heartbeat evidence và beneficiary collector.
+8. Đọc CI/release workflows để hiểu tag và UI/worker images.
+9. Dùng `docs/research/repo-github-understanding.md` và
    `docs/ACTIVE_CONTEXT.md` trước mọi thao tác live.
 
 ## Hotspots
@@ -57,21 +60,25 @@ Chi tiết quyết định, tương thích dữ liệu cũ và bằng chứng n�
 - `app/database.py`: schema, history và lease/runtime synchronization.
 - `app/myst_runtime.py` và `app/myst_wallets.py`: identity, funded wallet lease
   và sensitive state.
+- `app/public_ip_slots.py`, `app/nkn_runtime.py` và NKN wallet functions trong
+  `app/database.py`: direct slot, identity volume và assignment-CAS lifecycle.
 - Proxy rotation hiện là server-authoritative với worker-local probe/ACK; mô hình
-  assignment vẫn worker-level. Topology theo `(worker, public_ip_slot, provider,
-  instance)` chưa được triển khai.
+  proxy assignment chung vẫn worker-level. NKN dùng topology direct riêng theo
+  `(worker, public_ip_slot, wallet, instance)`.
 - `services/`: catalog contract cho provider; không normalize hàng loạt.
 - `.github/workflows/`: release gates và publication của UI/worker images.
 
 ## Verification snapshot
 
-- Baseline `main` full suite sau PR #7: `1358 passed, 7 skipped`.
-- PR #7 đã pass CodeQL, Analyze, Documentation/build, Lint và Tests; deploy bị
-  skip theo chủ đích. Merge commit dùng `[skip ci]`, nên chưa có image mới.
-- Current release: `v1.1.1`; both fork GHCR image manifests were published and
-  verified by Auto Release.
-- Current catalog: 15 providers (14 protected baseline providers plus NKN in
-  `FOCUS_NKN`); the protected provider YAML files match the baseline hash.
+- Fresh full docs-branch suite: `1456 passed, 7 skipped`; targeted NKN,
+  credential and docs-safety suite: `77 passed`.
+- PRs #10-#13 merged NKN runtime and canary fixes. Commit `4c55eac` passed
+  CodeQL, Lint, Catalog Check, Tests and Auto Release.
+- Current release: `v1.3.2`; both fork GHCR image manifests were published and
+  verified, then deployed only to the approved UI/test worker components.
+- Current catalog: 15 providers, all `PROTECTED_DONE`. The 14 pre-existing
+  provider YAML files match the protected baseline; NKN is protected by its
+  completed direct-only canary evidence.
 - Grass references remaining in source are limited to the explicit retired
   provider boundary, legacy secret masking compatibility, tests and historical
   research/changelog records.

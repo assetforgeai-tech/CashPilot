@@ -1,30 +1,30 @@
 # CashPilot Active Context
 
-Updated: 2026-08-22 (NKN implementation checkpoint; no NKN live canary yet)
+Updated: 2026-08-23 (NKN live canary complete; docs-only closeout)
 
 ## Current repository state
 
-- Canonical branch: `feat/nkn-direct-runtime` (implementation branch; not merged).
-- Source/release baseline before this docs-only context refresh:
-  `b6f1e528974b8d5e3b089ab55007331e78c6064c` (`b6f1e52`).
-- Audited product/repository baseline: `78e95538b28d51e4b09dc663873928b69dcab414`
-  (`78e9553`), the squash merge commit for PR #7.
+- Canonical source branch: `main` at
+  `4c55eac762dc375d1381cab42a902ec21796793f` (`4c55eac`). The live-canary
+  evidence is being recorded on docs-only branch `docs/nkn-live-canary`.
+- NKN direct runtime merged through PR #10. Bootstrap reuse, assignment-CAS
+  removal and light-node memory bounds merged through PRs #11-#13.
 - PR #1 (Grass retirement), PR #2 (fork GHCR images), PR #3 (fork install
   surfaces), PR #4 (redacted historical evidence), PR #5 (current context),
-  PR #6 (read-only baseline refresh) and PR #7 (proxy worker ACK rotation) are
-  merged.
-- Release `v1.2.0` is published with both fork GHCR images and passed the
-  release image verification gates. The exact verified image digests are
-  recorded below in the live canary section.
+  PR #6 (read-only baseline refresh), PR #7 (proxy worker ACK rotation), PR #8
+  (post-merge baseline), PR #9 (`v1.2.0` canary context), PR #10 (NKN direct
+  runtime), and PRs #11-#13 (NKN canary fixes) are merged.
+- Release `v1.3.2` is published with both fork GHCR images and passed the
+  release image verification gates. The exact deployed image digests are
+  recorded below.
 - The source branch remains `main`; release/deploy state is operational
   evidence and does not change the protected provider catalog.
-- Proxy lease rotation is now server-authoritative with worker-local probe/ACK,
-  persistent sidecar configuration and fail-closed CAS semantics. The current
-  assignment model remains worker-level; public-IP/provider slot topology is a
-  follow-up and is not yet deployed.
-- Grass removal remains repository-only in product code. The live test-sing
-  host still contains historical Grass lab containers; they were deliberately
-  not used, recreated or cleaned during the v1.2.0 canary.
+- Proxy lease rotation is server-authoritative with worker-local probe/ACK,
+  persistent sidecar configuration and fail-closed CAS semantics. Generic proxy
+  assignment remains worker-level; NKN has its own direct public-IP slot model.
+- Grass remains retired from the product. `test-sing` was explicitly approved
+  as disposable test state and cleaned before the NKN canary; it now contains
+  only the worker and the isolated NKN node.
 - The implementation decision and safety boundaries are recorded in
   `docs/research/provider-removal-grass-2026-08.md`.
 
@@ -34,9 +34,9 @@ Updated: 2026-08-22 (NKN implementation checkpoint; no NKN live canary yet)
 - Current collectors: 9 (NKN beneficiary balance plus node summary).
 - Current Docker-deployable catalog entries: 14; manual-only catalog behavior
   remains explicit.
-- The 14 pre-existing provider YAML definitions are the protected baseline. NKN
-  is the only new `FOCUS_NKN` provider in this branch; do not change any other
-  provider definition incidentally.
+- The 14 pre-existing provider YAML definitions remain the protected baseline.
+  NKN is now also `PROTECTED_DONE` after its isolated direct-only canary; no
+  current provider is open for incidental redesign.
 - Mysterium remains direct-only. Its wallet inventory, lease, identity,
   WireGuard/TUN and runtime contracts are not altered by this branch.
 
@@ -95,9 +95,11 @@ Updated: 2026-08-22 (NKN implementation checkpoint; no NKN live canary yet)
   unacknowledged node at 14 minutes without deleting identity, ahead of the
   server's 15-minute reclaim; a valid ACK resumes it, while a rejected stale
   token removes only its label-matched NKN container/volume.
-- Current status: full local suite passes `1450 passed, 7 skipped`; static,
-  documentation and protected-provider gates are still being finalized. No NKN
-  container/wallet/volume has been created on VPS `test-sing` yet.
+- Current source status: PR #13 and release `v1.3.2` are green; the fresh full
+  docs-branch suite passed `1456 passed, 7 skipped`. The
+  unchanged `test-sing` canary completed first sync, and fresh runtime,
+  heartbeat, Fleet, wallet and collector snapshots close NKN as
+  `PROTECTED_DONE`.
 
 ## Proxy ACK rotation baseline
 
@@ -145,28 +147,60 @@ Updated: 2026-08-22 (NKN implementation checkpoint; no NKN live canary yet)
   (`dev`) by design; it was not bulk-redeployed. This is an explicit mixed
   deployment state, not evidence that the release failed.
 
+## v1.3.2 NKN live canary (2026-08-22/23)
+
+- Auto Release for commit `4c55eac` published and verified both `v1.3.2`
+  images. The server UI runs
+  `ghcr.io/assetforgeai-tech/cashpilot@sha256:25450f4790a98f53508228e726f2e3ee1f8701e024c852acfe3a841fd302f31e`;
+  `test-sing` worker `43406` runs
+  `ghcr.io/assetforgeai-tech/cashpilot-worker@sha256:e487e8acaf56043df18c906ce16e961e3e86a6ac27b9420429d055c1b8a87a28`
+  and reports version `1.3.2`.
+- The approved clean `test-sing` canary has one direct slot at public IP
+  `4.193.231.232`, bridge `cashpilot-direct-ipv4-001`, and only two containers:
+  `cashpilot-worker` plus `nkn-direct-ipv4-001`.
+- NKN container ID
+  `4a84d3d96b14468d9e6396c3e84d1352042ea5adfd955768397dd35c6283f84e`
+  has remained stable through the VPS reboot. It uses the official
+  `nknorg/nkn:latest` image, private volume `cashpilot-nkn-ipv4-001-data`,
+  one CPU, 1 GiB RAM, PIDs limit 512, `restart: always`, and TCP/UDP ports
+  `30000-30005` bound to the slot private IP.
+- Wallet `1` remains exclusively `LEASED` to worker `43406`, slot
+  `ipv4-001`, assignment version `3`; the worker state and heartbeat expose no
+  wallet JSON or password. Node ID begins `2c58f11ddb37`; container restart
+  count is `0` and OOM state is false.
+- The authenticated NKN credential test reads the authoritative Settings
+  beneficiary and reports `17006.09284572 NKN`. The unchanged node reached
+  `PERSIST_FINISHED` at RPC height `9684184` and continued accepting blocks.
+- Fresh heartbeats returned HTTP 200 and synchronized redacted evidence
+  `{running: true, online: true, sync_state: PERSIST_FINISHED}`. Fleet reports
+  `total_nodes=1`, `online=1`, `offline=0`; wallet `1` remains `LEASED` to
+  worker `43406`, slot `ipv4-001`, assignment version `3`.
+- After the recorded VPS reboot, no manual container restart, recreate, remove,
+  wallet rotation or provider redeploy was used to obtain completion evidence.
+  NKN is now `PROTECTED_DONE`; keep this successful node, identity volume and
+  lease unchanged unless a separately approved lifecycle operation requires
+  otherwise.
+
 ## Protected provider matrix
 
 `PROTECTED_DONE`: `earnfm`, `iproyal`, `mysterium`, `packetstream`,
 `proxies-sx`, `proxybase`, `proxybase-xyz`, `proxyrack`, `repocket`, `spide`,
-`traffmonetizer`, `uprock`, `urnetwork`, `wipter`.
+`traffmonetizer`, `uprock`, `urnetwork`, `wipter`, `nkn`.
 
-`FOCUS_NKN`: `nkn` (implementation and isolated canary only). No other provider
-is open for redesign in this branch. Any future shared-module change requires an
-impact map, regression coverage, isolated canary and explicit user approval.
+No current provider is open for redesign in this branch. Any future
+shared-module change requires an impact map, regression coverage, isolated
+canary and explicit user approval.
 
 ## Verification status
 
-- Full suite for the merged ACK branch: 1358 passed, 7 skipped
-  (`python -m pytest -q`), including proxy rotation, redaction and SSRF
-  regression coverage.
-- Fresh targeted ACK/sidecar/route regression run: `85 passed`.
+- Fresh full docs-branch suite: `1456 passed, 7 skipped`; targeted NKN,
+  credential and docs-safety suite: `77 passed`.
 - Fresh live canary evidence passed apply/rollback/confirm isolation gates;
   no database CAS row was fabricated for the isolated sidecar.
-- PR #7 CI passed `CodeQL`, `Analyze`, `build (strict)`, `ruff` and `test`;
-  deploy was skipped by policy. The merge commit has no post-merge workflow run.
-- Ruff lint and browser-free behavior checks pass; README/catalog and
-  documentation-nav checks pass.
+- Commit `4c55eac` passed CodeQL, Lint, Catalog Check, Tests and Auto Release;
+  both `v1.3.2` image manifests and embedded versions were verified.
+- Ruff lint, Python compileall and browser-free behavior checks pass;
+  README/catalog and documentation-nav checks pass.
 - `mkdocs build --strict` passes with a temporary docs-only environment. The
   build reports the internal research/onboarding pages as intentionally
   unlisted from the public nav.
@@ -175,7 +209,13 @@ impact map, regression coverage, isolated canary and explicit user approval.
 - `git diff --check` passes, and all 14 protected provider YAML hashes match
   the merged baseline. The read-only baseline audit also validated graph coverage for 301/301
   scanned files and refreshed the local knowledge/domain graph artifacts.
-- Live/VPS verification for the v1.2.0 canary is complete as recorded above.
+- `ruff format --check` continues to report only the two pre-existing baseline
+  files `tests/test_ci_gates_report_what_they_checked.py` and
+  `tests/test_worker_myst_sync.py`; neither file is changed by this docs branch.
+- Live/VPS verification for the `v1.2.0` proxy canary and `v1.3.2` NKN canary is
+  complete. Final NKN API proof shows worker `43406` online, Fleet NKN
+  `1/1/0`, exclusive wallet assignment version `3` and a successful balance
+  collector without exposing wallet material.
 - Future provider deployment still requires an impact map and explicit approval;
   this canary did not authorize bulk redeploy, wallet rotation, credential
   rotation or changes to any protected provider.
