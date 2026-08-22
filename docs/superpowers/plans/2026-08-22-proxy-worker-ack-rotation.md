@@ -87,3 +87,20 @@
 - Final diff review added SOCKS support to the locked worker runtime, serialized rotations per worker, required full finalize ACK instance matching, ignored failed instance tombstones, preserved manual fallback policy, and routed deploy-time dead-proxy replacement through the same ACK path.
 - Changed-file review: only proxy ACK/sidecar/database/deploy-path implementation, dependency manifests, tests, and contract documentation changed; no provider catalog or provider-specific runtime contract changed.
 - Operational boundary: no VPS, live container, volume, database, credential, proxy lease, wallet lease, release, or deploy operation was performed in this phase.
+
+## Post-merge checkpoint (2026-08-22)
+
+- CodeQL identified the request-supplied probe target as a full SSRF path. A
+  regression test was added first; the worker probe endpoint now rejects custom
+  target lists and uses only its built-in safe targets.
+- Fix commit: `31e35b2`; local verification after the fix: `1358 passed, 7
+  skipped`, `ruff check`, targeted format, compileall, lockfile and deploy
+  baseline all passed.
+- PR #7 passed CodeQL, Analyze, Documentation/build, Lint and Tests, then was
+  squash-merged as `78e9553` with `[skip ci]`.
+- No release, tag, GHCR image publication, VPS operation, container operation,
+  proxy lease operation or wallet operation followed the merge. Latest published
+  release remains `v1.1.1`.
+- The next independent phase is a read-only release-readiness audit; topology-slot
+  migration and any canary/deploy require a separate impact map and explicit
+  approval.

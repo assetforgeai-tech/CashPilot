@@ -2,7 +2,7 @@
 
 Ngày chụp trạng thái: 2026-08-22
 
-Commit được phân tích: `082b947ebdae31e9e0ced9eef76d5e53c9f16da6`
+Commit được phân tích: `78e95538b28d51e4b09dc663873928b69dcab414`
 
 ## Phạm vi và nguyên tắc
 
@@ -15,14 +15,15 @@ Tất cả 14 provider hiện hành là baseline bất biến. Grass đã bị l
 | Hạng mục | Trạng thái đã kiểm chứng |
 |---|---|
 | Canonical base branch | `main`, theo dõi `origin/main` |
-| Audited base HEAD | `082b947`, khớp `origin/main` trước branch tài liệu này |
+| Audited base HEAD | `78e9553`, squash merge PR #7, khớp `origin/main` |
 | Fork | `assetforgeai-tech/CashPilot` |
 | Upstream | `GeiserX/CashPilot` |
 | Divergence | Fork ahead 331, behind 26; histories diverged |
 | Fork release mới nhất | `v1.1.1` |
 | Upstream release quan sát | `v1.36.2` |
-| Fork CI tại HEAD | Documentation, Tests, Catalog Check, CodeQL và Lint thành công; deploy job skipped |
-| Audit worktree | Branch `docs/refresh-read-only-baseline-2026-08-22`; chỉ có thay đổi Markdown, local Understand artifacts được ignore |
+| Fork CI của PR #7 | CodeQL, Analyze, Documentation/build, Lint và Tests thành công; deploy job skipped |
+| Merge/release state | PR #7 đã merge bằng commit `[skip ci]`; chưa có release/tag/image/deploy mới; latest release vẫn `v1.1.1` |
+| Audit worktree | Branch `docs/post-merge-baseline-2026-08-22`; thay đổi dự kiến chỉ là Markdown, local Understand artifacts được ignore |
 
 Upstream mới hơn không đồng nghĩa fork phải merge. Fork-only history chứa nhiều contract quan trọng về provider/runtime hardening, Grass identity/auth, MYST wallet lease/runtime, proxy lease rotation và CI/release. Mọi merge hoặc cherry-pick phải được đánh giá riêng và nằm ngoài giai đoạn này.
 
@@ -36,7 +37,7 @@ Proxy lifecycle hiện dùng server-authoritative, worker-ACK rotation. Server p
 
 Giới hạn phase này là assignment vẫn ở worker-level để giữ compatibility. Target topology dài hạn là `(worker, public_ip_slot, provider, instance)`, cần cho Pawns private binding và VPS nhiều public IPv4. Legacy sidecar chưa có persistent config volume fail closed; không bulk redeploy provider đã `PROTECTED_DONE`. MYST và NKN là direct-only nên không tham gia Proxy Pool.
 
-Release workflow dùng diff từ tag trước để quyết định có tạo release hay không. Khi có release, workflow tạo version, chạy gate tests, build và publish cả UI lẫn worker lên GHCR, xác minh image/tag rồi mới tạo Git tag và GitHub release. Fork `v1.1.1` là release hiện tại; tag trỏ tới `78edd1b` và release này có cả hai fork image. Việc release không tự đồng nghĩa deploy.
+Release workflow dùng diff từ tag trước để quyết định có tạo release hay không. Khi có release, workflow tạo version, chạy gate tests, build và publish cả UI lẫn worker lên GHCR, xác minh image/tag rồi mới tạo Git tag và GitHub release. Fork `v1.1.1` vẫn là release hiện tại và có cả hai fork image. PR #7 được merge với `[skip ci]` để không kích hoạt luồng này; vì vậy code ACK rotation đã ở `main` nhưng image mới chưa được phát hành và không có deploy nào xảy ra. Việc release không tự đồng nghĩa deploy.
 
 ## Ma trận bảo vệ provider
 
@@ -73,6 +74,19 @@ Registration được đọc từ `myst cli identities get` và đồng bộ có
 ## Gate cho thay đổi tương lai
 
 Mọi provider hiện hành đều là baseline bảo vệ. Nếu buộc phải sửa shared module, cần impact map, danh sách provider có thể bị ảnh hưởng, regression tests cho shared contracts, canary riêng, rollback bảo toàn identity/volume/credential/lease và phê duyệt rõ ràng của người dùng.
+
+## Trạng thái sau PR #7
+
+- Proxy rotation hiện có contract server-authoritative/worker-ACK: worker probe
+  candidate từ chính VPS, stage persistent sing-box config, restart sidecar liên
+  quan và trả ACK đã redacted; server chỉ CAS-commit assignment sau ACK hợp lệ.
+- Custom probe targets do request cung cấp bị từ chối trước network access; đây là
+  guard chống SSRF, có regression test và CodeQL đã xác nhận.
+- Assignment vẫn worker-level để bảo toàn compatibility. Mô hình dài hạn
+  `(worker, public_ip_slot, provider, instance)` chưa được triển khai; không được
+  dùng PR #7 làm lý do bulk redeploy hoặc thay đổi provider protected.
+- Bước tiếp theo được đề xuất là release-readiness audit read-only, sau đó chỉ
+  khi có phê duyệt riêng mới phát hành image và chạy canary trên worker test.
 
 ## Read-only audit artifacts
 
