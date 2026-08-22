@@ -85,6 +85,12 @@ def test_seed_archive_preserves_the_exact_tested_config_and_wallet_files():
         "beneficiaryAddr": BENEFICIARY,
         "SyncMode": "light",
         "PasswordFile": "wallet.pswd",
+        "SyncStateMaxThread": 8,
+        "SyncHeaderMaxMemorySize": 8,
+        "SyncBatchWindowSize": 8,
+        "SyncBlocksMaxMemorySize": 32,
+        "TxPoolMaxMemorySize": 8,
+        "ClientMsgCacheSize": 8,
     }
     assert wallet_json == _wallet_json()
     assert wallet_pswd == "password-value"
