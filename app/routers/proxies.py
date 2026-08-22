@@ -8,7 +8,9 @@ import contextlib
 import csv
 import io
 import json
+import logging
 import re
+import secrets
 from typing import Any
 from urllib.parse import urlparse
 
@@ -20,6 +22,27 @@ from app import database, deps, egress, proxy_egress
 from app.proxy_providers.vtproxy import sync_vtproxy_provider
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+_proxy_rotation_locks: dict[tuple[int, int], asyncio.Lock] = {}
+
+
+def _is_active_proxy_instance(row: dict[str, Any]) -> bool:
+    # Failed deploy rows have no sidecar to rotate; other persisted rows remain
+    # fail-closed because stop/remove bookkeeping does not currently rewrite status.
+    return bool(
+        row.get("mode") == "proxy"
+        and str(row.get("status") or "").strip().lower() != "failed"
+        and str(row.get("instance_id") or "").strip()
+    )
+
+
+def _proxy_rotation_lock(worker_id: int) -> asyncio.Lock:
+    key = (id(asyncio.get_running_loop()), worker_id)
+    lock = _proxy_rotation_locks.get(key)
+    if lock is None:
+        lock = asyncio.Lock()
+        _proxy_rotation_locks[key] = lock
+    return lock
 
 
 class ProxyProviderIn(BaseModel):
@@ -466,6 +489,146 @@ async def _apply_proxy_to_worker(worker_id: int, proxy: dict[str, Any]) -> dict[
     return await _proxy_to_worker(worker_id, "POST", "/api/egress/apply", json=payload, timeout=30)
 
 
+async def _worker_has_proxy_instances(worker_id: int) -> bool:
+    return any(_is_active_proxy_instance(row) for row in await database.list_provider_instances(worker_id=worker_id))
+
+
+async def _finalize_worker_proxy_binding(
+    worker_id: int, binding_version: str, instances: list[str], *, commit: bool
+) -> bool:
+    """Confirm or roll back a worker binding without exposing worker errors."""
+    from app.main import _proxy_to_worker  # local import avoids main -> router cycle at startup
+
+    try:
+        finalized = await _proxy_to_worker(
+            worker_id,
+            "POST",
+            "/api/egress/bindings/finalize",
+            json={"binding_version": binding_version, "instances": instances, "commit": commit},
+            timeout=45,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Worker binding %s finalization failed (commit=%s): %s",
+            binding_version,
+            commit,
+            type(exc).__name__,
+        )
+        return False
+    return bool(
+        isinstance(finalized, dict)
+        and finalized.get("ok")
+        and str(finalized.get("binding_version") or "") == binding_version
+        and str(finalized.get("action") or "") == ("confirmed" if commit else "rolled_back")
+        and set(finalized.get("finalized_instances") or []) == set(instances)
+    )
+
+
+async def _rotate_worker_proxy_after_ack(
+    worker_id: int, candidate: dict[str, Any], *, fallback: str | None = None
+) -> bool:
+    """Apply a candidate on the worker and commit it only after a matching ACK."""
+    async with _proxy_rotation_lock(worker_id):
+        return await _rotate_worker_proxy_after_ack_locked(worker_id, candidate, fallback=fallback)
+
+
+async def _rotate_worker_proxy_after_ack_locked(
+    worker_id: int, candidate: dict[str, Any], *, fallback: str | None = None
+) -> bool:
+    """Run one serialized worker rotation while holding its runtime lock."""
+    current = await database.get_worker_proxy_assignment(worker_id)
+    if not current or not current.get("proxy_id"):
+        return False
+    candidate_id = int(candidate.get("proxy_id") or candidate.get("id") or 0)
+    if candidate_id <= 0:
+        return False
+
+    active_rows = [
+        row for row in await database.list_provider_instances(worker_id=worker_id) if _is_active_proxy_instance(row)
+    ]
+    current_proxy_id = int(current.get("proxy_id") or 0)
+    if any(int(row.get("proxy_id") or 0) != current_proxy_id for row in active_rows):
+        # The worker-level contract requires every active proxy instance to
+        # share the assignment being rotated; mixed rows need reconciliation.
+        return False
+    instances = [str(row["instance_id"]).strip() for row in active_rows]
+    if not instances:
+        return False
+
+    binding_version = f"rotation_{secrets.token_hex(16)}"
+    payload = {
+        "binding_version": binding_version,
+        "proxy": {**candidate, "proxy_id": candidate_id},
+        "instances": instances,
+    }
+    from app.main import _proxy_to_worker  # local import avoids main -> router cycle at startup
+
+    try:
+        ack = await _proxy_to_worker(
+            worker_id,
+            "POST",
+            "/api/egress/bindings/apply",
+            json=payload,
+            timeout=60,
+        )
+    except HTTPException:
+        # Any worker error is ambiguous: apply may have restarted one or more
+        # sidecars before returning a validation/finalization-safe 4xx response.
+        await _finalize_worker_proxy_binding(worker_id, binding_version, instances, commit=False)
+        return False
+    except Exception:
+        # Transport failure is ambiguous: the worker may have applied the
+        # candidate before the response was lost. A best-effort rollback is
+        # safe because finalize validates the binding token before restoring.
+        await _finalize_worker_proxy_binding(worker_id, binding_version, instances, commit=False)
+        return False
+    ack_matches = bool(
+        isinstance(ack, dict)
+        and ack.get("ok")
+        and str(ack.get("binding_version") or "") == binding_version
+        and int(ack.get("proxy_id") or 0) == candidate_id
+        and set(ack.get("applied_instances") or []) == set(instances)
+    )
+    if not ack_matches:
+        # A 2xx apply response may have changed sidecars even if its metadata is
+        # unusable. Revert that binding before leaving the old DB lease intact.
+        await _finalize_worker_proxy_binding(worker_id, binding_version, instances, commit=False)
+        return False
+    expected_exit_ip = str(candidate.get("exit_ip") or "").strip()
+    observed_exit_ip = str(ack.get("observed_exit_ip") or "").strip()
+    if expected_exit_ip and observed_exit_ip != expected_exit_ip:
+        await _finalize_worker_proxy_binding(worker_id, binding_version, instances, commit=False)
+        return False
+    if not observed_exit_ip:
+        await _finalize_worker_proxy_binding(worker_id, binding_version, instances, commit=False)
+        return False
+    try:
+        committed = await database.commit_proxy_rotation(
+            worker_id,
+            expected_proxy_id=int(current.get("proxy_id") or 0),
+            expected_assignment_version=int(current.get("assignment_version") or 0),
+            new_proxy_id=candidate_id,
+            instance_ids=instances,
+            fallback=str(fallback or current.get("fallback") or "rotate"),
+        )
+    except Exception:
+        await _finalize_worker_proxy_binding(worker_id, binding_version, instances, commit=False)
+        raise
+    if not committed:
+        await _finalize_worker_proxy_binding(worker_id, binding_version, instances, commit=False)
+        return False
+
+    confirmed = await _finalize_worker_proxy_binding(worker_id, binding_version, instances, commit=True)
+    if confirmed:
+        return True
+    # The DB/runtime candidate is already authoritative after a successful CAS.
+    # Retry cleanup once, but never roll the committed DB row back blindly.
+    if await _finalize_worker_proxy_binding(worker_id, binding_version, instances, commit=True):
+        return True
+    logger.warning("Proxy binding %s committed; sidecar cleanup remains pending", binding_version)
+    return True
+
+
 async def run_proxy_pool_recheck(*, proxy_ids: list[int] | None = None, concurrency: int = 8) -> dict[str, Any]:
     wanted = {int(x) for x in (proxy_ids or []) if int(x) > 0}
     rows = await database.list_proxy_pool()
@@ -510,13 +673,11 @@ async def run_proxy_pool_recheck(*, proxy_ids: list[int] | None = None, concurre
             continue
         worker_id = int(row["assigned_worker_id"])
         try:
-            ok = await database.set_worker_proxy_assignment(
-                worker_id, int(replacement["id"]), proxy_egress.PROXY, "rotate"
-            )
-            if not ok:
+            candidate = dict(proxy)
+            candidate["proxy_id"] = int(replacement["id"])
+            if not await _rotate_worker_proxy_after_ack(worker_id, candidate):
                 rotate_errors += 1
                 continue
-            await _apply_proxy_to_worker(worker_id, proxy)
             replacement["assigned_worker_id"] = worker_id
             rotated += 1
         except Exception:
@@ -684,13 +845,28 @@ async def api_worker_proxy_assignment(request: Request, worker_id: int, body: Pr
         raise HTTPException(status_code=400, detail="Invalid proxy mode")
     if body.fallback not in {"hold", "rotate"}:
         raise HTTPException(status_code=400, detail="Invalid proxy fallback")
-    ok = await database.set_worker_proxy_assignment(worker_id, body.proxy_id, body.mode, body.fallback)
-    if not ok:
-        raise HTTPException(status_code=404, detail="Worker or proxy not found")
     worker = await database.get_worker(worker_id)
+    if not worker:
+        raise HTTPException(status_code=404, detail="Worker not found")
     proxy = (
         await database.get_proxy_endpoint(body.proxy_id) if body.proxy_id and body.mode != proxy_egress.DIRECT else None
     )
+    if body.mode == proxy_egress.PROXY and not proxy:
+        raise HTTPException(status_code=404, detail="Proxy not found")
+    active_instances = await _worker_has_proxy_instances(worker_id)
+    if active_instances and body.mode != proxy_egress.PROXY:
+        # A worker with live proxy sidecars cannot use the legacy worker-level
+        # direct/auto write path; it would leave runtime and DB out of sync.
+        raise HTTPException(status_code=409, detail="Active proxy instances require an acknowledged proxy rotation")
+    if body.mode == proxy_egress.PROXY and active_instances:
+        candidate = dict(proxy or {})
+        candidate["proxy_id"] = body.proxy_id
+        if not await _rotate_worker_proxy_after_ack(worker_id, candidate, fallback=body.fallback):
+            raise HTTPException(status_code=409, detail="Worker did not acknowledge the proxy binding")
+        return {"status": "ok", "applied": {"binding": "committed"}}
+    ok = await database.set_worker_proxy_assignment(worker_id, body.proxy_id, body.mode, body.fallback)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Worker or proxy not found")
     payload = {
         "mode": body.mode,
         "worker_name": (worker or {}).get("name") or str(worker_id),
@@ -705,9 +881,18 @@ async def api_worker_proxy_assignment(request: Request, worker_id: int, body: Pr
 @router.post("/api/workers/{worker_id}/proxy-lease")
 async def api_worker_proxy_lease(request: Request, worker_id: int) -> dict[str, Any]:
     deps._require_owner(request)
-    lease = await database.lease_proxy_for_worker(worker_id)
+    active_instances = await _worker_has_proxy_instances(worker_id)
+    lease = (
+        await database.find_available_proxy_for_worker(worker_id)
+        if active_instances
+        else await database.lease_proxy_for_worker(worker_id)
+    )
     if not lease:
         raise HTTPException(status_code=404, detail="No available proxy")
+    if active_instances:
+        if not await _rotate_worker_proxy_after_ack(worker_id, lease):
+            raise HTTPException(status_code=409, detail="Worker did not acknowledge the proxy binding")
+        return {"status": "ok", "lease": lease, "applied": {"binding": "committed"}}
     worker = await database.get_worker(worker_id)
     payload = {
         "mode": lease.get("mode") or proxy_egress.PROXY,

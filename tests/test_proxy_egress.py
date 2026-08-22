@@ -3,7 +3,7 @@
 import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -229,3 +229,271 @@ def test_worker_egress_apply_writes_singbox_config(tmp_path):
     assert resp.json()["mode"] == "direct"
     assert "secret-pass" not in resp.text
     assert config_file.read_text(encoding="utf-8")
+
+
+def test_worker_proxy_probe_rejects_untrusted_target_before_network():
+    from app import worker_api
+
+    @asynccontextmanager
+    async def noop_lifespan(_app):
+        yield
+
+    worker_api.app.router.lifespan_context = noop_lifespan
+    with (
+        patch.object(worker_api, "_verify_api_key", lambda _request: None),
+        patch.object(
+            worker_api,
+            "_probe_proxy_targets",
+            new_callable=AsyncMock,
+            return_value={"ok": True, "results": []},
+        ) as probe,
+        TestClient(worker_api.app, raise_server_exceptions=False) as client,
+    ):
+        resp = client.post(
+            "/api/proxy/probe-targets",
+            json={
+                "proxy": {"host": "proxy.example.com", "port": 1080},
+                "targets": ["http://127.0.0.1:8080/admin"],
+            },
+        )
+
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "custom proxy probe targets are not allowed"
+    probe.assert_not_awaited()
+
+
+def test_worker_proxy_binding_apply_returns_redacted_ack():
+    from app import worker_api
+
+    @asynccontextmanager
+    async def noop_lifespan(_app):
+        yield
+
+    worker_api.app.router.lifespan_context = noop_lifespan
+    proxy = {
+        "proxy_id": 17,
+        "host": "proxy.example.com",
+        "port": 1080,
+        "protocol": "socks5",
+        "username": "proxy-user",
+        "password": "secret-pass",
+    }
+    with (
+        patch.object(worker_api, "_verify_api_key", lambda _request: None),
+        patch.object(
+            worker_api,
+            "_probe_proxy_targets",
+            new_callable=AsyncMock,
+            return_value={"ok": True, "observed_exit_ip": "8.8.8.8", "results": []},
+        ) as probe,
+        patch.object(
+            worker_api.orchestrator,
+            "apply_proxy_binding_batch",
+            return_value={
+                "applied_instances": ["earnfm-proxy"],
+                "config_sha256": "a" * 64,
+            },
+        ) as apply,
+        patch.object(worker_api.asyncio, "to_thread", new_callable=AsyncMock) as to_thread,
+        TestClient(worker_api.app, raise_server_exceptions=False) as client,
+    ):
+        to_thread.return_value = {
+            "applied_instances": ["earnfm-proxy"],
+            "config_sha256": "a" * 64,
+        }
+        resp = client.post(
+            "/api/egress/bindings/apply",
+            json={
+                "binding_version": "rotation_1234567890",
+                "proxy": proxy,
+                "instances": ["earnfm-proxy"],
+            },
+        )
+
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "ok": True,
+        "binding_version": "rotation_1234567890",
+        "proxy_id": 17,
+        "observed_exit_ip": "8.8.8.8",
+        "applied_instances": ["earnfm-proxy"],
+        "config_sha256": "a" * 64,
+    }
+    assert "secret-pass" not in resp.text
+    assert "proxy-user" not in resp.text
+    probe.assert_awaited_once_with(proxy, worker_api._PROXY_BINDING_PROBE_TARGETS)
+    to_thread.assert_awaited_once_with(apply, ["earnfm-proxy"], proxy, "rotation_1234567890")
+
+
+def test_worker_proxy_binding_apply_rejects_empty_version_without_touching_runtime():
+    from app import worker_api
+
+    @asynccontextmanager
+    async def noop_lifespan(_app):
+        yield
+
+    worker_api.app.router.lifespan_context = noop_lifespan
+    with (
+        patch.object(worker_api, "_verify_api_key", lambda _request: None),
+        patch.object(worker_api.orchestrator, "apply_proxy_binding_batch") as apply,
+        TestClient(worker_api.app, raise_server_exceptions=False) as client,
+    ):
+        resp = client.post(
+            "/api/egress/bindings/apply",
+            json={
+                "binding_version": "",
+                "proxy": {"proxy_id": 17, "host": "proxy.example.com", "port": 1080},
+                "instances": ["earnfm-proxy"],
+            },
+        )
+
+    assert resp.status_code == 422
+    apply.assert_not_called()
+
+
+def test_worker_proxy_binding_apply_does_not_touch_sidecars_when_local_probe_fails():
+    from app import worker_api
+
+    @asynccontextmanager
+    async def noop_lifespan(_app):
+        yield
+
+    worker_api.app.router.lifespan_context = noop_lifespan
+    with (
+        patch.object(worker_api, "_verify_api_key", lambda _request: None),
+        patch.object(
+            worker_api,
+            "_probe_proxy_targets",
+            new_callable=AsyncMock,
+            return_value={"ok": False, "observed_exit_ip": "", "results": [{"ok": False, "status_code": 0}]},
+        ),
+        patch.object(worker_api.orchestrator, "apply_proxy_binding_batch") as apply,
+        TestClient(worker_api.app, raise_server_exceptions=False) as client,
+    ):
+        resp = client.post(
+            "/api/egress/bindings/apply",
+            json={
+                "binding_version": "rotation_1234567890",
+                "proxy": {
+                    "proxy_id": 17,
+                    "host": "proxy.example.com",
+                    "port": 1080,
+                    "username": "proxy-user",
+                    "password": "secret-pass",
+                },
+                "instances": ["earnfm-proxy"],
+            },
+        )
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["error"] == "proxy_unreachable_from_worker"
+    assert "secret-pass" not in resp.text
+    assert "proxy-user" not in resp.text
+    apply.assert_not_called()
+
+
+def test_worker_proxy_binding_ack_uses_exit_ip_observed_through_candidate():
+    from app import worker_api
+
+    class Response:
+        status_code = 200
+        headers = {"content-type": "application/json"}
+        text = '{"ip":"8.8.4.4"}'
+
+        @staticmethod
+        def json():
+            return {"ip": "8.8.4.4"}
+
+    class ProxyClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, _target, headers):
+            assert headers["user-agent"] == "Mozilla/5.0"
+            return Response()
+
+    with patch.object(worker_api.httpx, "AsyncClient", return_value=ProxyClient()):
+        result = asyncio.run(
+            worker_api._probe_proxy_targets(
+                {"host": "proxy.example.com", "port": 1080, "protocol": "socks5"},
+                worker_api._PROXY_BINDING_PROBE_TARGETS,
+            )
+        )
+
+    assert result["ok"] is True
+    assert result["observed_exit_ip"] == "8.8.4.4"
+
+
+def test_worker_proxy_binding_probe_requires_an_observed_exit_ip():
+    from app import worker_api
+
+    class Response:
+        status_code = 200
+        headers = {"content-type": "application/json"}
+        text = '{"ip":"not-a-public-ip"}'
+
+        @staticmethod
+        def json():
+            return {"ip": "not-a-public-ip"}
+
+    class ProxyClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, _target, headers):
+            return Response()
+
+    with patch.object(worker_api.httpx, "AsyncClient", return_value=ProxyClient()):
+        result = asyncio.run(
+            worker_api._probe_proxy_targets(
+                {"host": "proxy.example.com", "port": 1080, "protocol": "socks5"},
+                worker_api._PROXY_BINDING_PROBE_TARGETS,
+            )
+        )
+
+    assert result["ok"] is False
+    assert result["observed_exit_ip"] == ""
+
+
+def test_worker_proxy_binding_finalize_returns_redacted_result():
+    from app import worker_api
+
+    @asynccontextmanager
+    async def noop_lifespan(_app):
+        yield
+
+    worker_api.app.router.lifespan_context = noop_lifespan
+    with (
+        patch.object(worker_api, "_verify_api_key", lambda _request: None),
+        patch.object(worker_api.orchestrator, "finalize_proxy_binding_batch") as finalize,
+        patch.object(
+            worker_api.asyncio,
+            "to_thread",
+            new_callable=AsyncMock,
+            return_value={"finalized_instances": ["earnfm-proxy"], "action": "confirmed"},
+        ) as to_thread,
+        TestClient(worker_api.app, raise_server_exceptions=False) as client,
+    ):
+        resp = client.post(
+            "/api/egress/bindings/finalize",
+            json={
+                "binding_version": "rotation_1234567890",
+                "instances": ["earnfm-proxy"],
+                "commit": True,
+            },
+        )
+
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "ok": True,
+        "binding_version": "rotation_1234567890",
+        "action": "confirmed",
+        "finalized_instances": ["earnfm-proxy"],
+    }
+    to_thread.assert_awaited_once_with(finalize, ["earnfm-proxy"], "rotation_1234567890", commit=True)

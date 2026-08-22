@@ -8,9 +8,14 @@ inspection for cashpilot-managed containers via the Docker SDK.
 from __future__ import annotations
 
 import base64
+import contextlib
+import hashlib
+import io
 import json
 import logging
 import os
+import re
+import tarfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
@@ -91,6 +96,21 @@ def _container_name(slug: str) -> str:
 
 def _sidecar_name(slug: str) -> str:
     return f"{_container_name(slug)}-egress"
+
+
+def _sidecar_config_volume(slug: str) -> str:
+    return f"{_sidecar_name(slug)}-config"
+
+
+def _remove_sidecar_config_volume(client: Any, slug: str) -> None:
+    """Drop only the ephemeral egress config volume before a fresh deploy."""
+    try:
+        client.volumes.get(_sidecar_config_volume(slug)).remove(force=True)
+    except NotFound:
+        pass
+    except APIError as exc:
+        logger.error("Failed to remove egress config volume for %s: %s", slug, exc)
+        raise
 
 
 def _tun2proxy_url(proxy: dict[str, Any]) -> str:
@@ -287,6 +307,10 @@ def deploy_raw(
         old_sidecar.remove(force=True)
     except NotFound:
         pass
+    # Only proxy deployments own a generated sing-box config volume. Direct
+    # providers (notably MYST) must never touch that unrelated state.
+    if proxy and not network_mode:
+        _remove_sidecar_config_volume(client, slug)
     if provider == "mysterium" and deploy_credentials and deploy_credentials.get("myst_wallet_raw"):
         _remove_named_volumes(volumes or {})
     all_labels = {
@@ -336,7 +360,7 @@ def deploy_raw(
             udp_direct=provider in {"traffmonetizer", "mysterium"},
             interface_name="cpegress" if provider == "repocket" else "cp-egress",
         )
-        encoded_config = base64.b64encode(json.dumps(config).encode()).decode()
+        encoded_config = base64.b64encode(json.dumps(config, sort_keys=True).encode()).decode()
         client.containers.run(
             image="ghcr.io/sagernet/sing-box:latest",
             name=sidecar_name,
@@ -347,8 +371,12 @@ def deploy_raw(
             entrypoint=[
                 "/bin/sh",
                 "-c",
-                'printf "%s" "$SINGBOX_CONFIG_B64" | base64 -d > /tmp/sing-box.json && exec sing-box run -c /tmp/sing-box.json',
+                "if [ ! -f /etc/sing-box/.cashpilot-initialized ]; then "
+                'printf "%s" "$SINGBOX_CONFIG_B64" | base64 -d > /etc/sing-box/config.json && '
+                "touch /etc/sing-box/.cashpilot-initialized; fi; "
+                "exec sing-box run -c /etc/sing-box/config.json",
             ],
+            volumes={_sidecar_config_volume(slug): {"bind": "/etc/sing-box", "mode": "rw"}},
             cap_add=["NET_ADMIN"],
             devices=["/dev/net/tun:/dev/net/tun"],
             ports=ports if provider == "mysterium" and ports else None,
@@ -358,6 +386,8 @@ def deploy_raw(
                 LABEL_VERSION: "1",
                 LABEL_CATEGORY: category,
                 LABEL_DEPLOYED_BY: "worker",
+                "cashpilot.provider": str((labels or {}).get("cashpilot.provider") or provider),
+                "cashpilot.instance_mode": str((labels or {}).get("cashpilot.instance_mode") or "proxy"),
                 "cashpilot.role": "egress-sidecar",
             },
             detach=True,
@@ -418,6 +448,172 @@ def deploy_raw(
     if slug == "wipter" and deploy_credentials:
         provider_automation.schedule_wipter_post_login_restart(container)
     return container.id
+
+
+def apply_proxy_binding_batch(instance_slugs: list[str], proxy: dict[str, Any], binding_version: str) -> dict[str, Any]:
+    """Atomically replace and restart only the requested persistent egress sidecars."""
+    slugs = list(dict.fromkeys(str(slug or "").strip() for slug in instance_slugs if str(slug or "").strip()))
+    if not slugs:
+        raise ValueError("at least one proxy instance is required")
+    version = str(binding_version or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9._-]{8,128}", version):
+        raise ValueError("binding_version is required")
+
+    client = _get_client()
+    prepared: list[tuple[str, Any, bytes, str]] = []
+    for slug in slugs:
+        sidecar = client.containers.get(_sidecar_name(slug))
+        labels = sidecar.labels or {}
+        if labels.get("cashpilot.role") != "egress-sidecar":
+            raise RuntimeError(f"{slug} has no managed egress sidecar")
+        mounts = sidecar.attrs.get("Mounts", []) or []
+        if not any(m.get("Destination") == "/etc/sing-box" and m.get("RW", True) for m in mounts):
+            raise RuntimeError(f"{slug} egress sidecar predates persistent binding support")
+        provider = str(labels.get("cashpilot.provider") or slug.rsplit("-", 1)[0])
+        config = singbox_config.render_tun_proxy_config(
+            proxy,
+            worker_name=slug,
+            udp_direct=provider in {"traffmonetizer", "mysterium"},
+            interface_name="cpegress" if provider == "repocket" else "cp-egress",
+        )
+        raw = json.dumps(config, sort_keys=True).encode()
+        prepared.append((slug, sidecar, raw, hashlib.sha256(raw).hexdigest()))
+
+    staged: list[tuple[str, Any, bytes, str]] = []
+
+    def discard_staged() -> None:
+        for _staged_slug, staged_sidecar, _raw, _hash in staged:
+            with contextlib.suppress(Exception):
+                staged_sidecar.exec_run(["/bin/sh", "-c", "rm -f /etc/sing-box/config.json.cashpilot-new"])
+
+    for slug, sidecar, raw, config_hash in prepared:
+        try:
+            archive_buffer = io.BytesIO()
+            with tarfile.open(fileobj=archive_buffer, mode="w") as archive:
+                entry = tarfile.TarInfo(name="config.json.cashpilot-new")
+                entry.size = len(raw)
+                entry.mode = 0o600
+                archive.addfile(entry, io.BytesIO(raw))
+            if not sidecar.put_archive("/etc/sing-box", archive_buffer.getvalue()):
+                raise RuntimeError(f"{slug} rejected the candidate egress config archive")
+            result = sidecar.exec_run(["/bin/sh", "-c", "sing-box check -c /etc/sing-box/config.json.cashpilot-new"])
+            exit_code = int(getattr(result, "exit_code", result[0] if isinstance(result, tuple) else 1))
+            if exit_code != 0:
+                raise RuntimeError(f"{slug} rejected the candidate egress config")
+            staged.append((slug, sidecar, raw, config_hash))
+        except Exception:
+            discard_staged()
+            with contextlib.suppress(Exception):
+                sidecar.exec_run(["/bin/sh", "-c", "rm -f /etc/sing-box/config.json.cashpilot-new"])
+            raise
+
+    activate_command = (
+        "set -eu; "
+        "cp /etc/sing-box/config.json /etc/sing-box/config.json.cashpilot-prev; "
+        "mv /etc/sing-box/config.json.cashpilot-new /etc/sing-box/config.json; "
+        f'printf "%s" "{version}" > /etc/sing-box/.cashpilot-binding-version'
+    )
+    rollback_command = (
+        "set -eu; "
+        "if [ -f /etc/sing-box/config.json.cashpilot-prev ]; then "
+        "mv /etc/sing-box/config.json.cashpilot-prev /etc/sing-box/config.json; fi; "
+        "rm -f /etc/sing-box/config.json.cashpilot-new /etc/sing-box/.cashpilot-binding-version"
+    )
+
+    try:
+        for slug, sidecar, _raw, _config_hash in staged:
+            result = sidecar.exec_run(["/bin/sh", "-c", activate_command])
+            exit_code = int(getattr(result, "exit_code", result[0] if isinstance(result, tuple) else 1))
+            if exit_code != 0:
+                raise RuntimeError(f"{slug} could not activate the candidate egress config")
+
+        for slug, sidecar, _raw, _config_hash in staged:
+            sidecar.restart(timeout=30)
+            sidecar.reload()
+            if str(sidecar.status or "").lower() != "running":
+                raise RuntimeError(f"{slug} egress sidecar did not restart")
+            verify = sidecar.exec_run(
+                [
+                    "/bin/sh",
+                    "-c",
+                    f'test "$(cat /etc/sing-box/.cashpilot-binding-version)" = "{version}" '
+                    "&& sing-box check -c /etc/sing-box/config.json",
+                ]
+            )
+            verify_exit = int(getattr(verify, "exit_code", verify[0] if isinstance(verify, tuple) else 1))
+            if verify_exit != 0:
+                raise RuntimeError(f"{slug} did not acknowledge the candidate egress config")
+    except Exception:
+        for _slug, sidecar, _raw, _config_hash in staged:
+            with contextlib.suppress(Exception):
+                sidecar.exec_run(["/bin/sh", "-c", rollback_command])
+            with contextlib.suppress(Exception):
+                sidecar.restart(timeout=30)
+        raise
+
+    hashes = {config_hash for _slug, _sidecar, _raw, config_hash in staged}
+
+    return {
+        "applied_instances": [slug for slug, _sidecar, _raw, _hash in staged],
+        "config_sha256": hashes.pop() if len(hashes) == 1 else "",
+    }
+
+
+def finalize_proxy_binding_batch(instance_slugs: list[str], binding_version: str, *, commit: bool) -> dict[str, Any]:
+    """Confirm or roll back a previously acknowledged sidecar binding."""
+    slugs = list(dict.fromkeys(str(slug or "").strip() for slug in instance_slugs if str(slug or "").strip()))
+    version = str(binding_version or "").strip()
+    if not slugs:
+        raise ValueError("at least one proxy instance is required")
+    if not re.fullmatch(r"[A-Za-z0-9._-]{8,128}", version):
+        raise ValueError("invalid binding_version")
+
+    client = _get_client()
+    sidecars: list[tuple[str, Any]] = []
+    for slug in slugs:
+        sidecar = client.containers.get(_sidecar_name(slug))
+        if (sidecar.labels or {}).get("cashpilot.role") != "egress-sidecar":
+            raise RuntimeError(f"{slug} has no managed egress sidecar")
+        mounts = sidecar.attrs.get("Mounts", []) or []
+        if not any(m.get("Destination") == "/etc/sing-box" and m.get("RW", True) for m in mounts):
+            raise RuntimeError(f"{slug} egress sidecar predates persistent binding support")
+        sidecars.append((slug, sidecar))
+
+    preflight = f'test "$(cat /etc/sing-box/.cashpilot-binding-version)" = "{version}"' + (
+        "" if commit else " && test -f /etc/sing-box/config.json.cashpilot-prev"
+    )
+    for slug, sidecar in sidecars:
+        result = sidecar.exec_run(["/bin/sh", "-c", preflight])
+        exit_code = int(getattr(result, "exit_code", result[0] if isinstance(result, tuple) else 1))
+        if exit_code != 0:
+            raise RuntimeError(f"{slug} binding version does not match")
+
+    if commit:
+        command = "rm -f /etc/sing-box/config.json.cashpilot-prev /etc/sing-box/config.json.cashpilot-new"
+        for slug, sidecar in sidecars:
+            result = sidecar.exec_run(["/bin/sh", "-c", command])
+            exit_code = int(getattr(result, "exit_code", result[0] if isinstance(result, tuple) else 1))
+            if exit_code != 0:
+                raise RuntimeError(f"{slug} could not confirm the proxy binding")
+        return {"finalized_instances": slugs, "action": "confirmed"}
+
+    command = (
+        "set -eu; "
+        "mv /etc/sing-box/config.json.cashpilot-prev /etc/sing-box/config.json; "
+        "rm -f /etc/sing-box/config.json.cashpilot-new /etc/sing-box/.cashpilot-binding-version; "
+        "sing-box check -c /etc/sing-box/config.json"
+    )
+    for slug, sidecar in sidecars:
+        result = sidecar.exec_run(["/bin/sh", "-c", command])
+        exit_code = int(getattr(result, "exit_code", result[0] if isinstance(result, tuple) else 1))
+        if exit_code != 0:
+            raise RuntimeError(f"{slug} could not roll back the proxy binding")
+    for slug, sidecar in sidecars:
+        sidecar.restart(timeout=30)
+        sidecar.reload()
+        if str(sidecar.status or "").lower() != "running":
+            raise RuntimeError(f"{slug} egress sidecar did not recover after rollback")
+    return {"finalized_instances": slugs, "action": "rolled_back"}
 
 
 def _remove_named_volumes(volumes: dict[str, Any]) -> None:
