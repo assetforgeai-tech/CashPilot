@@ -78,8 +78,8 @@ def test_worker_nkn_deploy_persists_only_redacted_assignment_state(tmp_path, mon
 
 
 def test_nkn_state_path_is_normalized_and_confined_to_state_root(tmp_path, monkeypatch):
+    (tmp_path / "state").mkdir()
     raw_root = tmp_path / "state" / ".." / "state"
-    raw_root.mkdir(parents=True)
     monkeypatch.setattr(worker_api, "_nkn_state_dir", lambda: raw_root)
 
     path = worker_api._nkn_state_path("ipv4-001")
