@@ -1,6 +1,6 @@
 # NKN
 
-> **Category:** Bandwidth Sharing | **Status:** Active (FOCUS_NKN)
+> **Category:** Bandwidth Sharing | **Status:** Active (PROTECTED_DONE; direct-only)
 > **Website:** [https://nkn.org](https://nkn.org)
 
 ## CashPilot contract
@@ -71,9 +71,21 @@ dashboard shows NKN total/online/offline counts. The collector reads the
 beneficiary balance from the official NKN wallet JSON-RPC endpoint and reports
 the unit as `NKN`.
 
-## Canary checklist
+## Current canary evidence
 
-NKN remains `FOCUS_NKN` until an isolated canary on VPS `test-sing` proves:
+The approved `test-sing` canary uses worker `43406`, slot `ipv4-001`, public IP
+`4.193.231.232`, wallet assignment version `3`, and a dedicated volume and
+bridge. It has survived a VPS reboot without changing its container or node
+identity. The authenticated beneficiary check reports `17006.09284572 NKN`.
+The unchanged node reached `PERSIST_FINISHED` at RPC height `9684184` and
+continued accepting blocks. Fresh worker evidence reports `running=true` and
+`online=true`; Fleet reports one total NKN node, one online and zero offline.
+Wallet `1` remains exclusively leased to the same worker/slot at assignment
+version `3`, with container restart count `0` and no OOM event.
+
+## Completion checklist
+
+NKN is `PROTECTED_DONE` because the isolated canary on VPS `test-sing` proved:
 
 1. a fresh slot receives a unique wallet lease and assignment version;
 2. the exact bridge, public IP, ports, resource limits and restart policy are
@@ -81,4 +93,5 @@ NKN remains `FOCUS_NKN` until an isolated canary on VPS `test-sing` proves:
 3. official logs show a healthy node and `getnodestate` reaches
    `PERSIST_FINISHED`;
 4. heartbeat and dashboard evidence show the node online; and
-5. no existing provider, NKN/npool node, identity, volume or lease was changed.
+5. no protected provider was changed, and the canary's own container identity,
+   volume and wallet lease stayed stable through reboot and first sync.
