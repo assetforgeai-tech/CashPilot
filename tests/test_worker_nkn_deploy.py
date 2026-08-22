@@ -77,6 +77,17 @@ def test_worker_nkn_deploy_persists_only_redacted_assignment_state(tmp_path, mon
     assert "password-value" not in json.dumps(saved)
 
 
+def test_nkn_state_path_is_normalized_and_confined_to_state_root(tmp_path, monkeypatch):
+    raw_root = tmp_path / "state" / ".." / "state"
+    raw_root.mkdir(parents=True)
+    monkeypatch.setattr(worker_api, "_nkn_state_dir", lambda: raw_root)
+
+    path = worker_api._nkn_state_path("ipv4-001")
+
+    assert path == (tmp_path / "state" / "ipv4-001.json").resolve()
+    assert path.parent == raw_root.resolve()
+
+
 def test_worker_nkn_deploy_rejects_unknown_slot_without_touching_docker():
     spec = worker_api.NknDeploySpec(
         wallet_id=7,

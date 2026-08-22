@@ -343,9 +343,18 @@ def _nkn_state_dir() -> Path:
 
 
 def _nkn_state_path(slot_id: str) -> Path:
-    if not re.fullmatch(r"ipv4-\d{3,6}", str(slot_id or "")):
+    match = re.fullmatch(r"ipv4-(\d{3,6})", str(slot_id or ""))
+    if match is None:
         raise ValueError("invalid NKN slot id")
-    return _nkn_state_dir() / f"{slot_id}.json"
+    # Resolve and confine the generated name before any filesystem access. The
+    # route value originates at an HTTP boundary, so validation alone must not
+    # be the only protection against path traversal or symlinked state roots.
+    canonical_slot_id = match.group(0)
+    root = os.path.realpath(os.fspath(_nkn_state_dir()))
+    path = os.path.realpath(os.path.join(root, f"{canonical_slot_id}.json"))
+    if not path.startswith(root + os.sep):
+        raise ValueError("invalid NKN state path")
+    return Path(path)
 
 
 def _save_nkn_wallet_state(slot_id: str, state: dict[str, Any]) -> None:
