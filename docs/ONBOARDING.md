@@ -6,7 +6,9 @@ CashPilot là hệ thống điều phối provider bandwidth/DePIN qua FastAPI s
 worker Docker, service catalog, resource leasing, collectors và dashboard.
 Repo dùng chủ yếu Python, YAML, Docker/Compose và GitHub Actions.
 
-Tài liệu này mô tả baseline hiện hành sau quyết định loại bỏ một provider cũ.
+Tài liệu này mô tả baseline hiện hành sau quyết định loại bỏ một provider cũ và
+merge proxy worker ACK rotation. Code đã ở `main`, nhưng image mới chưa được
+release hoặc deploy; release công khai gần nhất vẫn là `v1.1.1`.
 Chi tiết quyết định, tương thích dữ liệu cũ và bằng chứng nằm tại
 `docs/research/provider-removal-grass-2026-08.md`.
 
@@ -55,12 +57,17 @@ Chi tiết quyết định, tương thích dữ liệu cũ và bằng chứng n�
 - `app/database.py`: schema, history và lease/runtime synchronization.
 - `app/myst_runtime.py` và `app/myst_wallets.py`: identity, funded wallet lease
   và sensitive state.
+- Proxy rotation hiện là server-authoritative với worker-local probe/ACK; mô hình
+  assignment vẫn worker-level. Topology theo `(worker, public_ip_slot, provider,
+  instance)` chưa được triển khai.
 - `services/`: catalog contract cho provider; không normalize hàng loạt.
 - `.github/workflows/`: release gates và publication của UI/worker images.
 
 ## Verification snapshot
 
-- Baseline `main` full suite: `1311 passed, 7 skipped`.
+- Baseline `main` full suite sau PR #7: `1358 passed, 7 skipped`.
+- PR #7 đã pass CodeQL, Analyze, Documentation/build, Lint và Tests; deploy bị
+  skip theo chủ đích. Merge commit dùng `[skip ci]`, nên chưa có image mới.
 - Current release: `v1.1.1`; both fork GHCR image manifests were published and
   verified by Auto Release.
 - Current catalog: 14 providers; all 14 provider YAML files match the protected

@@ -1,17 +1,25 @@
 # CashPilot Active Context
 
-Updated: 2026-08-22 (post-audit documentation baseline)
+Updated: 2026-08-22 (post-merge proxy ACK baseline)
 
 ## Current repository state
 
 - Canonical branch: `main`.
-- Audited product/release baseline: `082b947ebdae31e9e0ced9eef76d5e53c9f16da6`
-  (`082b947`), the merge commit for PR #5.
+- Audited product/repository baseline: `78e95538b28d51e4b09dc663873928b69dcab414`
+  (`78e9553`), the squash merge commit for PR #7.
 - PR #1 (Grass retirement), PR #2 (fork GHCR images), PR #3 (fork install
-  surfaces), PR #4 (redacted historical evidence) and PR #5 (current context)
-  are merged.
-- Release `v1.1.1` is published with both fork GHCR images and passed the release
-  image verification gates.
+  surfaces), PR #4 (redacted historical evidence), PR #5 (current context),
+  PR #6 (read-only baseline refresh) and PR #7 (proxy worker ACK rotation) are
+  merged.
+- Release `v1.1.1` remains published with both fork GHCR images and passed the
+  release image verification gates.
+- The merge commit deliberately contains `[skip ci]`: no new release, tag,
+  GHCR image or deployment was created. The latest published release remains
+  `v1.1.1`.
+- Proxy lease rotation is now server-authoritative with worker-local probe/ACK,
+  persistent sidecar configuration and fail-closed CAS semantics. The current
+  assignment model remains worker-level; public-IP/provider slot topology is a
+  follow-up and is not yet deployed.
 - The removal is repository-only. This context does not authorize a deploy,
   VPS mutation, container recreation, credential rotation, proxy rotation or
   wallet operation.
@@ -65,6 +73,20 @@ Updated: 2026-08-22 (post-audit documentation baseline)
 - Moved the old local Grass lab/profile artifacts to the non-Git quarantine
   `secret/retired/grass-20260821`; external repositories were not touched.
 
+## Proxy ACK rotation baseline
+
+- The server remains the only proxy-pool and lease authority. A candidate is
+  not committed until the worker probes it from the VPS, stages it into the
+  named sing-box sidecar volume, restarts only the affected sidecars and returns
+  a redacted binding ACK.
+- Failed probe/apply/ACK/CAS or ambiguous transport leaves the previous lease
+  intact; token-checked runtime rollback is best effort only when the worker may
+  have applied a candidate.
+- The worker probe endpoint accepts only the built-in safe target set. Arbitrary
+  request-supplied URLs are rejected before network access to prevent SSRF.
+- No live worker, proxy lease, provider identity, volume or database was touched
+  while implementing or merging this baseline.
+
 ## Protected provider matrix
 
 `PROTECTED_DONE`: `earnfm`, `iproyal`, `mysterium`, `packetstream`,
@@ -77,8 +99,11 @@ approval.
 
 ## Verification status
 
-- Full suite: 1311 passed, 7 skipped (`python -m pytest -q`), including
-  endpoint, payout, metric and case-normalization retired-provider regressions.
+- Full suite for the merged ACK branch: 1358 passed, 7 skipped
+  (`python -m pytest -q`), including proxy rotation, redaction and SSRF
+  regression coverage.
+- PR #7 CI passed `CodeQL`, `Analyze`, `build (strict)`, `ruff` and `test`;
+  deploy was skipped by policy. The merge commit has no post-merge workflow run.
 - Ruff lint and browser-free behavior checks pass; README/catalog and
   documentation-nav checks pass.
 - `mkdocs build --strict` passes with a temporary docs-only environment. The
@@ -87,6 +112,8 @@ approval.
 - Docker smoke builds were not run because Docker CLI/daemon is unavailable on
   this Windows machine. No dependency, lockfile, or VPS workaround was used.
 - `git diff --check` passes, and all 14 protected provider YAML hashes match
-  HEAD. The read-only baseline audit also validated graph coverage for 301/301
+  the merged baseline. The read-only baseline audit also validated graph coverage for 301/301
   scanned files and refreshed the local knowledge/domain graph artifacts.
 - No live or VPS verification was performed as part of the repository cleanup.
+- Release-readiness and VPS canary remain separate, explicitly gated follow-up
+  steps; neither is authorized by this context update.
