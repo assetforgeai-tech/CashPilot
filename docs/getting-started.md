@@ -171,14 +171,14 @@ are entirely optional — CashPilot does not bundle an updater.
 
 ## Supported Services
 
-CashPilot tracks **14 providers** across two active categories:
+CashPilot tracks **15 providers** across two active categories:
 
-- **Bandwidth Sharing** (12 providers) -- Share your internet bandwidth for passive income
+- **Bandwidth Sharing** (13 providers) -- Share your internet bandwidth for passive income
 - **DePIN** (2 providers) -- Decentralized physical infrastructure networks
 
-Of these, **13 providers** can be deployed and managed automatically via Docker, and **8 collectors** can read earnings from provider APIs or dashboards. Providers without collectors remain deployable but need dashboard/manual verification for earnings.
+Of these, **14 providers** can be deployed and managed automatically via Docker, and **9 collectors** can read earnings from provider APIs or dashboards. Providers without collectors remain deployable but need dashboard/manual verification for earnings.
 
-The server-side Settings page is where you keep provider runtime assets, collector secrets, dashboard/session credentials, proxy policy, MYST default password, and auto-deploy policy. The worker bootstrap command is in `client command setup script.txt` and is the canonical way to add a new VPS worker.
+The server-side Settings page is where you keep provider runtime assets, collector secrets, dashboard/session credentials, proxy policy, MYST default password, NKN beneficiary address, and auto-deploy policy. NKN is direct-only: the worker bootstrap discovers public IPv4 slots and CashPilot assigns one wallet and node per ready slot. The worker bootstrap command is in `client command setup script.txt` and is the canonical way to add a new VPS worker.
 
 Browse the full catalog in the [Service Guides](guides/README.md) section.
 

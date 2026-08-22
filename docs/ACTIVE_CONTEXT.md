@@ -1,10 +1,10 @@
 # CashPilot Active Context
 
-Updated: 2026-08-22 (v1.2.0 UI/worker canary verified)
+Updated: 2026-08-22 (NKN implementation checkpoint; no NKN live canary yet)
 
 ## Current repository state
 
-- Canonical branch: `main`.
+- Canonical branch: `feat/nkn-direct-runtime` (implementation branch; not merged).
 - Source/release baseline before this docs-only context refresh:
   `b6f1e528974b8d5e3b089ab55007331e78c6064c` (`b6f1e52`).
 - Audited product/repository baseline: `78e95538b28d51e4b09dc663873928b69dcab414`
@@ -30,12 +30,13 @@ Updated: 2026-08-22 (v1.2.0 UI/worker canary verified)
 
 ## Product baseline
 
-- Current catalog: 14 providers, 12 bandwidth and 2 DePIN.
-- Current collectors: 8.
-- Current Docker-deployable catalog entries: 13; manual-only catalog behavior
+- Current catalog: 15 providers, 13 bandwidth and 2 DePIN.
+- Current collectors: 9 (NKN beneficiary balance plus node summary).
+- Current Docker-deployable catalog entries: 14; manual-only catalog behavior
   remains explicit.
-- The 14 provider YAML definitions are the protected baseline. Do not change
-  them incidentally while completing this branch.
+- The 14 pre-existing provider YAML definitions are the protected baseline. NKN
+  is the only new `FOCUS_NKN` provider in this branch; do not change any other
+  provider definition incidentally.
 - Mysterium remains direct-only. Its wallet inventory, lease, identity,
   WireGuard/TUN and runtime contracts are not altered by this branch.
 
@@ -74,6 +75,29 @@ Updated: 2026-08-22 (v1.2.0 UI/worker canary verified)
   and official deploy rejection.
 - Moved the old local Grass lab/profile artifacts to the non-Git quarantine
   `secret/retired/grass-20260821`; external repositories were not touched.
+
+## NKN implementation status
+
+- NKN is official `nknorg/nkn:latest`, direct-only, and uses one exclusive
+  wallet lease per bootstrap-discovered public IPv4 slot.
+- Host bootstrap owns public-IP discovery, bridge/SNAT routing, Docker
+  prerequisites and persistent `LimitNOFILE=1048576`; worker deploy only reads
+  the resulting slot state and never mutates host routes.
+- Server auto-deploy leases and deploys slots sequentially. A failed slot keeps
+  its lease for retry; deliberate remove is the only normal release path.
+- Worker heartbeat reports redacted `getnodestate` evidence; `PERSIST_FINISHED`
+  plus a running container is required for online status. NKN balance uses the
+  official wallet RPC and the Settings beneficiary address.
+- Pre-PR audit closed the fleet-wide slot-id collision, generic deploy bypass,
+  fake global deployment row, public-IP rebinding, stale evidence, Docker client
+  lifecycle, zero-slot completion and worker slot-state mount gaps. Reclaimed
+  assignment tokens are now lease-guarded end to end. The worker suspends an
+  unacknowledged node at 14 minutes without deleting identity, ahead of the
+  server's 15-minute reclaim; a valid ACK resumes it, while a rejected stale
+  token removes only its label-matched NKN container/volume.
+- Current status: full local suite passes `1450 passed, 7 skipped`; static,
+  documentation and protected-provider gates are still being finalized. No NKN
+  container/wallet/volume has been created on VPS `test-sing` yet.
 
 ## Proxy ACK rotation baseline
 
@@ -127,9 +151,9 @@ Updated: 2026-08-22 (v1.2.0 UI/worker canary verified)
 `proxies-sx`, `proxybase`, `proxybase-xyz`, `proxyrack`, `repocket`, `spide`,
 `traffmonetizer`, `uprock`, `urnetwork`, `wipter`.
 
-No provider is open for redesign in this branch. Any future shared-module change
-requires an impact map, regression coverage, isolated canary and explicit user
-approval.
+`FOCUS_NKN`: `nkn` (implementation and isolated canary only). No other provider
+is open for redesign in this branch. Any future shared-module change requires an
+impact map, regression coverage, isolated canary and explicit user approval.
 
 ## Verification status
 

@@ -521,6 +521,9 @@ const CP = (() => {
       // The endpoint sends null when the count could not be taken
       // (CashPilot-45k).
       setTextContent('active-services', data.active_services == null ? '\u2014' : data.active_services);
+      const nkn = data.nkn || {};
+      setTextContent('nkn-total-nodes', nkn.total_nodes == null ? '\u2014' : nkn.total_nodes);
+      setTextContent('nkn-node-state', `${nkn.online ?? 0} online · ${nkn.offline ?? 0} offline`);
 
       const nothingYet = document.getElementById('no-readings-note');
       if (nothingYet) nothingYet.style.display = data.has_readings === false ? '' : 'none';

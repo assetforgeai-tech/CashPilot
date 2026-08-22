@@ -42,7 +42,18 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
-from app import egress, fleet_key, myst_runtime, orchestrator, proxy_egress, singbox_config, state_backup, version
+from app import (
+    egress,
+    fleet_key,
+    myst_runtime,
+    nkn_runtime,
+    orchestrator,
+    proxy_egress,
+    public_ip_slots,
+    singbox_config,
+    state_backup,
+    version,
+)
 
 try:
     from app.catalog import get_services as _catalog_get_services
@@ -68,6 +79,9 @@ WORKER_NAME = os.getenv("CASHPILOT_WORKER_NAME", socket.gethostname())
 WORKER_PORT = int(os.getenv("CASHPILOT_PORT", "8081"))
 WORKER_URL = os.getenv("CASHPILOT_WORKER_URL", "")
 HEARTBEAT_INTERVAL = 60  # seconds
+# Stop locally one heartbeat before the server's 15-minute reclaim boundary so
+# the old wallet cannot still be running when the server makes it available.
+NKN_LEASE_GUARD_SECONDS = 14 * 60
 
 _heartbeat_task: asyncio.Task | None = None
 _ui_connected = False
@@ -304,6 +318,264 @@ _EGRESS_MAX_BYTES = 128
 _EGRESS_CONFIG_DIR = Path(os.getenv("CASHPILOT_DATA_DIR", "/data")) / "egress"
 _EGRESS_CONFIG_FILE = _EGRESS_CONFIG_DIR / "sing-box.json"
 _RUNTIME_ASSET_DIR = Path(os.getenv("CASHPILOT_DATA_DIR", "/data")) / "runtime-assets"
+
+
+def _public_ip_slots_path() -> Path:
+    configured = os.getenv("CASHPILOT_PUBLIC_IP_SLOTS_FILE", "").strip()
+    if configured:
+        return Path(configured)
+    # The canonical one-command VPS installer mounts only the worker's /data
+    # volume.  The host bootstrap mirrors the state file there; standard Compose
+    # files may still opt into the dedicated read-only /network mount.
+    persistent = Path(os.getenv("CASHPILOT_DATA_DIR", "/data")) / "public-ip-slots.json"
+    if persistent.exists():
+        return persistent
+    return Path("/etc/cashpilot/public-ip-slots.json")
+
+
+def _load_public_ip_slots() -> list[dict[str, Any]]:
+    """Read bootstrap-owned routing slots without mutating host networking."""
+    return public_ip_slots.load_slots(_public_ip_slots_path())
+
+
+def _nkn_state_dir() -> Path:
+    return Path(os.getenv("CASHPILOT_DATA_DIR", "/data")) / "nkn-wallets"
+
+
+def _nkn_state_path(slot_id: str) -> Path:
+    match = re.fullmatch(r"ipv4-(\d{3,6})", str(slot_id or ""))
+    if match is None:
+        raise ValueError("invalid NKN slot id")
+    # Resolve and confine the generated name before any filesystem access. The
+    # route value originates at an HTTP boundary, so validation alone must not
+    # be the only protection against path traversal or symlinked state roots.
+    canonical_slot_id = match.group(0)
+    root = os.path.realpath(os.fspath(_nkn_state_dir()))
+    path = os.path.realpath(os.path.join(root, f"{canonical_slot_id}.json"))
+    if not path.startswith(root + os.sep):
+        raise ValueError("invalid NKN state path")
+    return Path(path)
+
+
+def _save_nkn_wallet_state(slot_id: str, state: dict[str, Any]) -> None:
+    """Persist redacted assignment/runtime state; never write wallet secrets."""
+    payload = dict(state)
+    for secret in ("wallet_json", "wallet_pswd", "raw_wallet", "password"):
+        payload.pop(secret, None)
+    path = _nkn_state_path(slot_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+    temporary.chmod(0o600)
+    temporary.replace(path)
+
+
+def _load_nkn_states() -> list[dict[str, Any]]:
+    states: list[dict[str, Any]] = []
+    directory = _nkn_state_dir()
+    try:
+        paths = sorted(directory.glob("ipv4-*.json"))
+    except OSError:
+        return states
+    for path in paths:
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(value, dict):
+            for secret in ("wallet_json", "wallet_pswd", "raw_wallet", "password"):
+                value.pop(secret, None)
+            states.append(value)
+    return states
+
+
+def _nkn_assignment_identity(state: dict[str, Any]) -> tuple[str, int, int, str] | None:
+    slot_id = str(state.get("slot_id") or "")
+    wallet_id = int(state.get("wallet_id") or 0)
+    assignment_version = int(state.get("wallet_assignment_version") or 0)
+    lease_client_id = str(state.get("lease_client_id") or "")
+    if not re.fullmatch(r"ipv4-\d{3,6}", slot_id) or wallet_id <= 0 or assignment_version <= 0 or not lease_client_id:
+        return None
+    return slot_id, wallet_id, assignment_version, lease_client_id
+
+
+def _same_nkn_identity(state: dict[str, Any], item: dict[str, Any]) -> bool:
+    identity = _nkn_assignment_identity(state)
+    return identity is not None and identity == (
+        str(item.get("slot_id") or ""),
+        int(item.get("wallet_id") or 0),
+        int(item.get("wallet_assignment_version") or 0),
+        str(item.get("lease_client_id") or ""),
+    )
+
+
+async def _reconcile_nkn_assignment_acks(
+    acknowledgements: list[dict[str, Any]], *, acknowledged_at: float | None = None
+) -> None:
+    """Refresh local lease deadlines and resume only the exact ACKed assignment."""
+    ack_time = time.time() if acknowledged_at is None else float(acknowledged_at)
+    for item in acknowledgements:
+        if not isinstance(item, dict):
+            continue
+        slot_id = str(item.get("slot_id") or "")
+        try:
+            path = _nkn_state_path(slot_id)
+            state = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(state, dict) or not _same_nkn_identity(state, item):
+                continue
+            if state.get("lease_guard_suspended") is True:
+                client = await asyncio.to_thread(orchestrator._get_client)
+                try:
+                    identity = _nkn_assignment_identity(state)
+                    if identity is None:
+                        continue
+                    _, wallet_id, assignment_version, lease_client_id = identity
+                    await asyncio.to_thread(
+                        nkn_runtime.resume_slot,
+                        slot_id,
+                        wallet_id=wallet_id,
+                        wallet_assignment_version=assignment_version,
+                        lease_client_id=lease_client_id,
+                        client=client,
+                    )
+                finally:
+                    with contextlib.suppress(Exception):
+                        await asyncio.to_thread(client.close)
+            state["last_server_ack_at"] = ack_time
+            state["lease_guard_suspended"] = False
+            state["runtime_status"] = "running"
+            _save_nkn_wallet_state(slot_id, state)
+        except Exception as exc:  # noqa: BLE001 - retry on the next successful heartbeat
+            logger.warning("Could not apply NKN lease ACK for slot %s: %s", slot_id, type(exc).__name__)
+
+
+async def _enforce_nkn_lease_guard(*, now: float | None = None) -> None:
+    """Fail closed after the local 14-minute ACK deadline, preserving identity."""
+    current = time.time() if now is None else float(now)
+    for state in _load_nkn_states():
+        identity = _nkn_assignment_identity(state)
+        if identity is None:
+            continue
+        last_ack = float(state.get("last_server_ack_at") or 0)
+        if last_ack <= 0:
+            # A pre-guard state has no proof of a successful server round-trip.
+            # Stop it fail-closed; the next valid ACK resumes it immediately.
+            last_ack = 0
+        if state.get("lease_guard_suspended") is not True and current - last_ack < NKN_LEASE_GUARD_SECONDS:
+            continue
+        slot_id, wallet_id, assignment_version, lease_client_id = identity
+        try:
+            client = await asyncio.to_thread(orchestrator._get_client)
+            try:
+                await asyncio.to_thread(
+                    nkn_runtime.suspend_slot,
+                    slot_id,
+                    wallet_id=wallet_id,
+                    wallet_assignment_version=assignment_version,
+                    lease_client_id=lease_client_id,
+                    client=client,
+                )
+            finally:
+                with contextlib.suppress(Exception):
+                    await asyncio.to_thread(client.close)
+            state["lease_guard_suspended"] = True
+            state["runtime_status"] = "lease_guard_suspended"
+            evidence = dict(state.get("evidence") or {})
+            evidence.update({"running": False, "online": False, "lease_guard_suspended": True})
+            state["evidence"] = evidence
+            _save_nkn_wallet_state(slot_id, state)
+            logger.warning("Suspended NKN slot %s after the 14-minute lease ACK deadline", slot_id)
+        except Exception as exc:  # noqa: BLE001 - retry each heartbeat until safely stopped
+            logger.warning("Could not suspend stale NKN slot %s: %s", slot_id, type(exc).__name__)
+
+
+async def _reconcile_nkn_assignment_rejections(rejections: list[dict[str, Any]]) -> None:
+    """Remove local NKN state whose server lease was reclaimed or reassigned.
+
+    The runtime checks Docker labels before deleting anything, so a new local
+    assignment can never be removed by a stale heartbeat response.
+    """
+    for item in rejections:
+        if not isinstance(item, dict):
+            continue
+        slot_id = str(item.get("slot_id") or "")
+        try:
+            path = _nkn_state_path(slot_id)
+            state = json.loads(path.read_text(encoding="utf-8"))
+            if (
+                int(state.get("wallet_id") or 0) != int(item.get("wallet_id") or 0)
+                or int(state.get("wallet_assignment_version") or 0) != int(item.get("wallet_assignment_version") or 0)
+                or str(state.get("lease_client_id") or "") != str(item.get("lease_client_id") or "")
+            ):
+                continue
+            client = await asyncio.to_thread(orchestrator._get_client)
+            try:
+                await asyncio.to_thread(
+                    nkn_runtime.remove_slot,
+                    slot_id,
+                    wallet_id=int(item.get("wallet_id") or 0),
+                    wallet_assignment_version=int(item.get("wallet_assignment_version") or 0),
+                    lease_client_id=str(item.get("lease_client_id") or ""),
+                    client=client,
+                    delete_volume=True,
+                )
+            finally:
+                with contextlib.suppress(Exception):
+                    await asyncio.to_thread(client.close)
+            with contextlib.suppress(FileNotFoundError):
+                path.unlink()
+        except Exception as exc:  # noqa: BLE001 - retry on the next heartbeat
+            logger.warning("Could not reconcile stale NKN slot %s: %s", slot_id, type(exc).__name__)
+
+
+async def _nkn_provider_state() -> dict[str, Any] | None:
+    states = _load_nkn_states()
+    if not states:
+        return None
+    try:
+        containers = await asyncio.to_thread(orchestrator.get_status)
+    except Exception as exc:  # noqa: BLE001 - heartbeat must remain alive
+        logger.debug("NKN container evidence unavailable: %s", exc)
+        containers = []
+    try:
+        docker_client = await asyncio.to_thread(orchestrator._get_client)
+    except Exception:  # noqa: BLE001 - evidence is best effort
+        docker_client = None
+    by_instance = {str(item.get("instance_id") or ""): item for item in containers if isinstance(item, dict)}
+    instances: list[dict[str, Any]] = []
+    try:
+        for state in states:
+            item = dict(state)
+            instance_id = str(item.get("instance_id") or "")
+            runtime = by_instance.get(instance_id) or next(
+                (
+                    candidate
+                    for candidate in containers
+                    if isinstance(candidate, dict)
+                    and str(candidate.get("instance_slug") or candidate.get("name") or "") == instance_id
+                ),
+                {},
+            )
+            item["runtime_status"] = str(runtime.get("status") or item.get("runtime_status") or "unknown")
+            item["evidence"] = dict(item.get("evidence") or {})
+            container = None
+            if docker_client is not None and instance_id:
+                try:
+                    container = await asyncio.to_thread(docker_client.containers.get, instance_id)
+                except Exception:  # noqa: BLE001 - a missing container is offline evidence
+                    container = None
+            if container is not None:
+                with contextlib.suppress(Exception):
+                    item["evidence"] = nkn_runtime.node_evidence(container)
+                item["container_id"] = str(getattr(container, "id", "") or item.get("container_id") or "")
+            item["evidence"].setdefault("running", item["runtime_status"] == "running")
+            instances.append(item)
+    finally:
+        if docker_client is not None:
+            with contextlib.suppress(Exception):
+                await asyncio.to_thread(docker_client.close)
+    online = sum(1 for item in instances if item.get("evidence", {}).get("online") is True)
+    return {"instances": instances, "online": online, "offline": len(instances) - online}
 
 
 def _docker_host_path(path: Path) -> Path:
@@ -674,11 +946,18 @@ async def _send_heartbeat() -> None:
             # helpers (CashPilot-cle).
             "disk": await asyncio.to_thread(_disk_usage),
             "gpu": await asyncio.to_thread(_gpu_info),
+            "public_ip_slots": _load_public_ip_slots(),
         },
     }
+    provider_states: dict[str, dict[str, Any]] = {}
     myst_state = await _myst_provider_state()
     if myst_state:
-        payload["provider_states"] = {"mysterium": myst_state}
+        provider_states["mysterium"] = myst_state
+    nkn_state = await _nkn_provider_state()
+    if nkn_state:
+        provider_states["nkn"] = nkn_state
+    if provider_states:
+        payload["provider_states"] = provider_states
 
     try:
         async with httpx.AsyncClient(timeout=15) as client:
@@ -690,8 +969,10 @@ async def _send_heartbeat() -> None:
             resp.raise_for_status()
             # Enrollment: the UI returns our own per-worker key exactly once.
             issued = None
+            response_payload: dict[str, Any] = {}
             with contextlib.suppress(Exception):
-                issued = resp.json().get("worker_key")
+                response_payload = resp.json()
+                issued = response_payload.get("worker_key")
             if issued and issued != _worker_key:
                 if _save_worker_key(issued):
                     logger.info("Enrolled: received and persisted this worker's own fleet key")
@@ -701,6 +982,12 @@ async def _send_heartbeat() -> None:
             _last_heartbeat = datetime.now(UTC).strftime("%H:%M:%S UTC")
             _last_error = ""
             _consecutive_auth_failures = 0
+            rejections = response_payload.get("nkn_assignment_rejections")
+            if isinstance(rejections, list) and rejections:
+                await _reconcile_nkn_assignment_rejections(rejections)
+            acknowledgements = response_payload.get("nkn_assignment_acks")
+            if isinstance(acknowledgements, list) and acknowledgements:
+                await _reconcile_nkn_assignment_acks(acknowledgements)
             logger.debug("Heartbeat sent to %s", UI_URL)
     except httpx.HTTPStatusError as exc:
         _ui_connected = False
@@ -784,6 +1071,10 @@ async def _heartbeat_loop() -> None:
             raise
         except Exception:
             logger.exception("Heartbeat cycle failed — continuing")
+        try:
+            await _enforce_nkn_lease_guard()
+        except Exception:
+            logger.exception("NKN lease guard cycle failed — continuing")
         await asyncio.sleep(HEARTBEAT_INTERVAL)
 
 
@@ -975,6 +1266,21 @@ class DeploySpec(BaseModel):
     # what everything uses and what everything is tested against.
     runtime: str | None = None
     user: str | None = None
+
+
+class NknDeploySpec(BaseModel):
+    wallet_id: int
+    wallet_assignment_version: int
+    lease_client_id: str = Field(min_length=3, max_length=256)
+    wallet_json: str = Field(min_length=1, max_length=200_000)
+    wallet_pswd: str = Field(min_length=1, max_length=10_000)
+    beneficiary_address: str = Field(min_length=9, max_length=128)
+
+
+class NknRemoveSpec(BaseModel):
+    wallet_id: int
+    wallet_assignment_version: int
+    lease_client_id: str = Field(min_length=3, max_length=256)
 
 
 class EgressApplySpec(BaseModel):
@@ -1451,6 +1757,13 @@ async def api_worker_status(request: Request) -> dict[str, Any]:
     }
 
 
+@app.get("/api/network/slots")
+async def api_network_slots(request: Request) -> list[dict[str, Any]]:
+    """Return the read-only public-IP slot state prepared during bootstrap."""
+    _verify_api_key(request)
+    return _load_public_ip_slots()
+
+
 @app.get("/api/containers")
 async def api_list_containers(request: Request) -> list[dict[str, Any]]:
     """List all CashPilot-managed containers."""
@@ -1459,6 +1772,106 @@ async def api_list_containers(request: Request) -> list[dict[str, Any]]:
         return await asyncio.to_thread(orchestrator.get_status_cached)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
+
+
+@app.post("/api/nkn/slots/{slot_id}/deploy")
+async def api_deploy_nkn_slot(request: Request, slot_id: str, spec: NknDeploySpec) -> dict[str, str]:
+    """Deploy exactly one NKN node into a bootstrap-prepared public-IP slot."""
+    _verify_api_key(request)
+    slots = {str(slot.get("slot_id")): slot for slot in _load_public_ip_slots()}
+    slot = slots.get(slot_id)
+    if slot is None:
+        raise HTTPException(status_code=404, detail="NKN public-IP slot not found")
+    if spec.wallet_id <= 0 or spec.wallet_assignment_version <= 0:
+        raise HTTPException(status_code=400, detail="Invalid NKN wallet assignment")
+    wallet_address = nkn_runtime._wallet_address(spec.wallet_json)
+    assignment = {
+        "wallet_id": spec.wallet_id,
+        "wallet_assignment_version": spec.wallet_assignment_version,
+        "lease_client_id": spec.lease_client_id,
+        "wallet_json": spec.wallet_json,
+        "wallet_pswd": spec.wallet_pswd,
+        "beneficiary_address": spec.beneficiary_address,
+    }
+
+    def _deploy() -> dict[str, str]:
+        client = orchestrator._get_client()
+        try:
+            return nkn_runtime.deploy_slot(slot, assignment, client=client)
+        finally:
+            with contextlib.suppress(Exception):
+                client.close()
+
+    try:
+        result = await asyncio.to_thread(_deploy)
+    except nkn_runtime.NknAssignmentConflict as exc:
+        raise HTTPException(status_code=409, detail="NKN slot assignment conflict") from exc
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    state = {
+        "slot_id": slot_id,
+        "instance_id": result["instance_id"],
+        "container_id": result.get("container_id", ""),
+        "wallet_id": spec.wallet_id,
+        "wallet_assignment_version": spec.wallet_assignment_version,
+        "lease_client_id": spec.lease_client_id,
+        "wallet_address": wallet_address,
+        "public_ip": slot.get("public_ip", ""),
+        "runtime_status": "running",
+        "evidence": {"running": True, "online": False},
+        "last_server_ack_at": time.time(),
+        "lease_guard_suspended": False,
+    }
+    _save_nkn_wallet_state(slot_id, state)
+    return {
+        "status": "deployed",
+        "container_id": result["container_id"],
+        "instance_id": result["instance_id"],
+        "slot_id": slot_id,
+    }
+
+
+@app.delete("/api/nkn/slots/{slot_id}")
+async def api_remove_nkn_slot(request: Request, slot_id: str, spec: NknRemoveSpec) -> dict[str, Any]:
+    """Deliberately remove one NKN node and its identity volume with assignment CAS."""
+    _verify_api_key(request)
+    try:
+        state = json.loads(_nkn_state_path(slot_id).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail="NKN slot state not found") from exc
+    expected = (
+        int(state.get("wallet_id") or 0),
+        int(state.get("wallet_assignment_version") or 0),
+        str(state.get("lease_client_id") or ""),
+    )
+    supplied = (spec.wallet_id, spec.wallet_assignment_version, spec.lease_client_id)
+    if supplied != expected:
+        raise HTTPException(status_code=409, detail="NKN slot assignment conflict")
+
+    def _remove() -> dict[str, Any]:
+        client = orchestrator._get_client()
+        try:
+            return nkn_runtime.remove_slot(
+                slot_id,
+                wallet_id=spec.wallet_id,
+                wallet_assignment_version=spec.wallet_assignment_version,
+                lease_client_id=spec.lease_client_id,
+                client=client,
+                delete_volume=True,
+            )
+        finally:
+            with contextlib.suppress(Exception):
+                client.close()
+
+    try:
+        result = await asyncio.to_thread(_remove)
+    except nkn_runtime.NknAssignmentConflict as exc:
+        raise HTTPException(status_code=409, detail="NKN slot assignment conflict") from exc
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    with contextlib.suppress(FileNotFoundError):
+        _nkn_state_path(slot_id).unlink()
+    return {"status": "removed", "slot_id": slot_id, **result}
 
 
 @app.post("/api/containers/{slug}/deploy")

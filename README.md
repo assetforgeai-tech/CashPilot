@@ -18,7 +18,7 @@ CashPilot is a self-hosted platform that lets you deploy, manage, and monitor pa
 
 It supports both **Docker-based services** (deployed and managed automatically) and **browser extension / desktop-only services** (tracked via the web UI with signup links, earning estimates, and balance monitoring). Whether a service runs in a container or in your browser, CashPilot aggregates all your earnings into a unified dashboard with historical tracking.
 
-The key differentiator: a browser-based setup wizard guides you through account creation and provider deployment, orchestrates containers through Docker workers, and collects earnings from 14 providers across bandwidth sharing and DePIN categories.
+The key differentiator: a browser-based setup wizard guides you through account creation and provider deployment, orchestrates containers through Docker workers, and collects earnings from 15 providers across bandwidth sharing and DePIN categories.
 
 ![Dashboard](docs/screenshot-dashboard.png)
 
@@ -70,6 +70,7 @@ Services CashPilot can deploy and manage automatically via Docker.
 | [Earn.fm](https://earn.fm/ref/GEISYB91) | [Guide](docs/guides/earnfm.md) | ✅ | ✅ | ? \*\*\* | 1 | Crypto |
 | [IPRoyal Pawns](https://pawns.app?r=19266874) | [Guide](docs/guides/iproyal.md) | ✅ | ❌ | ? \*\*\* | 1 | PayPal, Crypto, Bank Transfer |
 | [MystNodes](https://mystnodes.co/?referral_code=do7v7YOoBBpbOstKQovX2pUvZYKia4ZhH3QIdNtE) | [Guide](docs/guides/mysterium.md) | ❌ | ✅ | ? \*\*\* | Unlimited | Crypto |
+| [NKN](https://nkn.org) | [Guide](docs/guides/nkn.md) | ❌ | ✅ | ? \*\*\* | 1 | Crypto |
 | [PacketStream](https://packetstream.io/?psr=7xgZ) | [Guide](docs/guides/packetstream.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | PayPal |
 | [Proxies.sx](https://www.proxies.sx) | [Guide](docs/guides/proxies-sx.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto |
 | [ProxyBase](https://peer.proxybase.org?referral=nXzS3c6iTO) | [Guide](docs/guides/proxybase.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto |
@@ -328,8 +329,8 @@ There are several good open-source projects in this space, and the honest summar
 CashPilot is built around three things that shape its whole design:
 
 - **A fleet, not a machine.** One dashboard holds the state for many servers, each running a worker. Earnings are collected centrally exactly once, so nothing is double-counted, and every figure drills down per server and per service.
-- **Earnings pulled from the providers themselves.** 8 collectors authenticate against provider APIs and dashboards and record real balances into a local history, rather than reporting that a container is running. That is what makes "running but not earning" detectable at all.
-- **Breadth beyond bandwidth.** 14 catalogued providers spanning bandwidth sharing and DePIN, each with a setup guide, a payout method, and a status that is re-checked weekly in CI.
+- **Earnings pulled from the providers themselves.** 9 collectors authenticate against provider APIs and dashboards and record real balances into a local history, rather than reporting that a container is running. That is what makes "running but not earning" detectable at all.
+- **Breadth beyond bandwidth.** 15 catalogued providers spanning bandwidth sharing and DePIN, each with a setup guide, a payout method, and a status that is re-checked weekly in CI.
 
 If none of those matter to you, use whichever tool you prefer — they will all start the same containers.
 

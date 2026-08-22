@@ -14,6 +14,7 @@ EXPECTED_PROVIDERS = {
     "earnfm",
     "iproyal",
     "mysterium",
+    "nkn",
     "packetstream",
     "proxies-sx",
     "proxybase",

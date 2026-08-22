@@ -36,6 +36,23 @@
   </div>
 </div>
 
+<div class="card settings-section">
+  <h3 class="settings-section-title">NKN</h3>
+  <p class="settings-section-desc">
+    One beneficiary address is shared by the collector; node wallets are leased
+    privately per public IPv4 slot and are never shown in Settings.
+  </p>
+  <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:center;padding:10px 0;">
+    <label class="form-label" for="nkn-beneficiary-address">Beneficiary address</label>
+    <input class="form-input settings-config-input" type="text" id="nkn-beneficiary-address"
+           data-config="nkn_beneficiary_address" autocomplete="off" spellcheck="false"
+           placeholder="NKN...">
+  </div>
+  <div style="display:flex;justify-content:flex-end;margin-top:12px;">
+    <button class="btn btn-ghost" data-action="saveEnvSettings">Save NKN settings</button>
+  </div>
+</div>
+
 <!-- Credential health.
      Several providers issue short-lived session cookies — a few hours in the
      worst case. When one dies, collection stops and NOTHING says so: the

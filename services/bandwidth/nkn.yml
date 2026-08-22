@@ -1,0 +1,105 @@
+name: NKN
+slug: nkn
+category: bandwidth
+status: active
+website: https://nkn.org
+description: >
+  Official NKN light node runtime. CashPilot deploys one direct node per
+  bootstrap-discovered public IPv4 slot and assigns an exclusive NKN wallet to
+  each node.
+short_description: Official NKN direct node - one wallet and public IPv4 per slot
+
+docker:
+  image: nknorg/nkn:latest
+  platforms: [linux/amd64, linux/arm64]
+  resources:
+    mem_limit: "1g"
+    nano_cpus: 1000000000
+  env: []
+  ports: []
+  volumes:
+    - "cashpilot-nkn-${NKN_SLOT_ID}-data:/nkn/data"
+  critical_volumes:
+    - target: "/nkn/data"
+      holds: >-
+        NKN wallet, password and node state. Destroying it changes the node
+        identity or loses the leased wallet material.
+  command: ""
+  cap_add: []
+  privileged: false
+  stop_timeout: 30
+
+egress:
+  mode: direct
+  udp: required
+  reason: "NKN direct nodes use the bootstrap public-IP slot and do not use Proxy Pool."
+
+requirements:
+  residential_ip: false
+  vps_ip: true
+  devices_per_ip: 1
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+
+deploy:
+  automation: direct_wallet_slots
+  credentials:
+    - key: beneficiary_address
+      label: "Beneficiary NKN address"
+      kind: text
+      secret: false
+      required: true
+      source: "CashPilot Settings"
+      description: "Address receiving NKN rewards; wallet seed material is leased separately per node."
+
+collector:
+  type: api
+  credentials:
+    - key: beneficiary_address
+      label: "Beneficiary NKN address"
+      kind: text
+      secret: false
+      required: true
+      source: "CashPilot Settings"
+      description: "Used with the official NKN mainnet wallet RPC."
+  currency: NKN
+  notes: "Balance comes from the official NKN JSON-RPC endpoint; node counts come from worker heartbeat evidence."
+
+payment:
+  methods: [crypto]
+  minimum_payout: "0 NKN"
+  currency: NKN
+  frequency: "Network dependent"
+
+earnings:
+  monthly_low: 0
+  monthly_high: 0
+  currency: NKN
+  per: "device"
+  notes: "Dashboard-only beneficiary balance and node runtime evidence."
+
+cashout:
+  method: manual
+  dashboard_url: "https://explorer.nkn.org"
+  min_amount: 0
+  currency: NKN
+  notes: "CashPilot does not initiate NKN transfers."
+
+payout:
+  model: external
+  chain: nkn
+  address_source: beneficiary_address
+  notes: "The user supplies the beneficiary address; CashPilot never holds its key."
+
+disclosure:
+  sells: >-
+    Network relay capacity for the NKN network.
+  third_party_traffic: >-
+    Yes. The node may relay traffic for the NKN network.
+  data_collected: >-
+    Node address, public IP and runtime status are published or reported to the network.
+  isp_risk: >-
+    Unknown. Review the NKN terms and your VPS provider policy before enabling a node.
+  account_rules: >-
+    One node and one wallet are assigned per public IPv4 slot by CashPilot.
