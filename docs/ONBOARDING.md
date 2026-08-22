@@ -70,8 +70,8 @@ Chi tiết quyết định, tương thích dữ liệu cũ và bằng chứng n�
   skip theo chủ đích. Merge commit dùng `[skip ci]`, nên chưa có image mới.
 - Current release: `v1.1.1`; both fork GHCR image manifests were published and
   verified by Auto Release.
-- Current catalog: 14 providers; all 14 provider YAML files match the protected
-  baseline hash.
+- Current catalog: 15 providers (14 protected baseline providers plus NKN in
+  `FOCUS_NKN`); the protected provider YAML files match the baseline hash.
 - Grass references remaining in source are limited to the explicit retired
   provider boundary, legacy secret masking compatibility, tests and historical
   research/changelog records.

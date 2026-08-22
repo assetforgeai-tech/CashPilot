@@ -103,6 +103,7 @@ services:
       # too. Pick ONE; do not set both.
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - cashpilot_public_ip_slots:/network:ro
       # SEPARATE FROM THE UI'S /data, DELIBERATELY. This container has the
       # Docker socket, which is root on the host. The UI's /data holds
       # cashpilot.db and .fernet_key -- the credential store and the only key
@@ -122,6 +123,7 @@ services:
       - CASHPILOT_UI_URL=http://cashpilot-ui:8080
       - CASHPILOT_API_KEY=${CASHPILOT_API_KEY:-}
       - CASHPILOT_WORKER_NAME=local
+      - CASHPILOT_PUBLIC_IP_SLOTS_FILE=/network/public-ip-slots.json
     init: true
     restart: unless-stopped
     security_opt:
@@ -133,3 +135,5 @@ volumes:
   cashpilot_data:
   cashpilot_worker_data:
   cashpilot_fleet:
+  cashpilot_public_ip_slots:
+    name: cashpilot_public_ip_slots

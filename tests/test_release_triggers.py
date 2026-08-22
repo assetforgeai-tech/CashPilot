@@ -25,6 +25,7 @@ without anyone remembering.
 
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 
@@ -90,11 +91,13 @@ class TestTheWorkerBuildMatchesItsDockerfile:
         machine rather than a build failure here.
         """
         source = (ROOT / "app" / "worker_api.py").read_text(encoding="utf-8")
-        imported = set()
-        for line in source.splitlines():
-            m = re.match(r"\s*from app import (.+)", line)
-            if m:
-                imported |= {n.strip().split(" as ")[0] for n in m.group(1).split(",")}
+        tree = ast.parse(source)
+        imported = {
+            alias.name.split(".", 1)[0]
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and node.module == "app"
+            for alias in node.names
+        }
         copied = {m[:-3] for m in worker_copied_modules()}
         missing = {n for n in imported if n and not n.startswith("_")} - copied
         assert not missing, f"worker_api imports modules the worker image does not contain: {sorted(missing)}"
@@ -102,11 +105,13 @@ class TestTheWorkerBuildMatchesItsDockerfile:
     def test_orchestrator_imports_are_all_copied(self):
         """worker_api imports orchestrator, so orchestrator's app imports must ship too."""
         source = (ROOT / "app" / "orchestrator.py").read_text(encoding="utf-8")
-        imported = set()
-        for line in source.splitlines():
-            m = re.match(r"\s*from app import (.+)", line)
-            if m:
-                imported |= {n.strip().split(" as ")[0] for n in m.group(1).split(",")}
+        tree = ast.parse(source)
+        imported = {
+            alias.name.split(".", 1)[0]
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and node.module == "app"
+            for alias in node.names
+        }
         copied = {m[:-3] for m in worker_copied_modules()}
         missing = {n for n in imported if n and not n.startswith("_")} - copied
         assert not missing, f"orchestrator imports modules the worker image does not contain: {sorted(missing)}"

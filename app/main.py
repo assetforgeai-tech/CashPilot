@@ -108,6 +108,8 @@ def _spawn(coro) -> asyncio.Task:
 
 _AUTO_DEPLOY_LOCKS: dict[int, asyncio.Lock] = {}
 _AUTO_DEPLOY_ACTIVE: set[int] = set()
+_NKN_AUTO_DEPLOY_DONE: set[int] = set()
+_NKN_DEPLOY_LOCKS: dict[int, asyncio.Lock] = {}
 _WORKER_HEARTBEAT_STREAKS: dict[int, int] = {}
 _proxy_pool_last_recheck: datetime | None = None
 
@@ -129,9 +131,194 @@ def _auto_deploy_slugs(services: list[dict[str, Any]]) -> list[str]:
         svc.get("slug", "")
         for svc in services
         if svc.get("slug")
+        and svc.get("slug") != "nkn"
         and svc.get("status") not in _UNDEPLOYABLE_STATUSES
         and (svc.get("docker") or {}).get("image")
     ]
+
+
+def _nkn_deploy_lock(worker_id: int) -> asyncio.Lock:
+    """Serialize slot scheduling for one worker without sharing legacy locks."""
+    loop_key = (id(asyncio.get_running_loop()) << 32) ^ int(worker_id)
+    lock = _NKN_DEPLOY_LOCKS.get(loop_key)
+    if lock is None:
+        lock = asyncio.Lock()
+        _NKN_DEPLOY_LOCKS[loop_key] = lock
+    return lock
+
+
+def _nkn_record_instance_id(worker_id: int, slot_id: str) -> str:
+    """Return a globally unique bookkeeping id for one worker slot.
+
+    Docker names remain worker-local (the worker owns that daemon), but the UI
+    stores provider instances for the whole fleet in one table.  Prefixing the
+    slot with the durable worker row id prevents two workers' ``ipv4-001``
+    records from overwriting each other.
+    """
+    if not re.fullmatch(r"ipv4-\d{3,6}", str(slot_id or "")):
+        raise ValueError("invalid NKN slot id")
+    if int(worker_id) <= 0:
+        raise ValueError("invalid NKN worker id")
+    return f"nkn-direct-w{int(worker_id)}-{slot_id}"
+
+
+async def _get_nkn_instance_for_worker(worker_id: int, slot_id: str) -> tuple[str, dict[str, Any] | None]:
+    """Read the scoped record, falling back to the pre-scope id during upgrade."""
+    scoped_id = _nkn_record_instance_id(worker_id, slot_id)
+    row = await database.get_provider_instance(scoped_id)
+    if row:
+        return str(row.get("instance_id") or scoped_id), row
+    legacy_id = f"nkn-direct-{slot_id}"
+    if legacy_id != scoped_id:
+        row = await database.get_provider_instance(legacy_id)
+        if row and row.get("worker_id") in (None, worker_id):
+            return legacy_id, row
+    return scoped_id, None
+
+
+async def _worker_public_ip_slots(worker_id: int) -> list[dict[str, Any]]:
+    """Read bootstrap-owned slots from a worker; never discover or mutate routes here."""
+    payload = await _proxy_to_worker(worker_id, "GET", "/api/network/slots", timeout=15)
+    if isinstance(payload, list):
+        raw_slots = payload
+    elif isinstance(payload, dict) and isinstance(payload.get("slots"), list):
+        raw_slots = payload["slots"]
+    else:
+        return []
+    slots: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    seen_ips: set[str] = set()
+    for raw in raw_slots:
+        if not isinstance(raw, dict):
+            continue
+        slot_id = str(raw.get("slot_id") or "").strip()
+        public_ip = str(raw.get("public_ip") or "").strip()
+        if not re.fullmatch(r"ipv4-\d{3,6}", slot_id) or not public_ip or raw.get("route_ready") is not True:
+            continue
+        if slot_id in seen_ids or public_ip in seen_ips:
+            continue
+        seen_ids.add(slot_id)
+        seen_ips.add(public_ip)
+        slots.append(dict(raw))
+    return sorted(slots, key=lambda item: int(str(item["slot_id"])[6:]))
+
+
+async def _proxy_worker_nkn_deploy(worker_id: int, slot_id: str, spec: dict[str, Any]) -> dict[str, Any]:
+    """Send one NKN assignment to the dedicated worker endpoint."""
+    if not re.fullmatch(r"ipv4-\d{3,6}", str(slot_id or "")):
+        raise ValueError("invalid NKN slot id")
+    return await _proxy_to_worker(
+        worker_id,
+        "POST",
+        f"/api/nkn/slots/{slot_id}/deploy",
+        json=spec,
+        timeout=60,
+    )
+
+
+def _nkn_instance_assignment_matches(existing: dict[str, Any] | None, lease: dict[str, Any], slot_id: str) -> bool:
+    if not existing or str(existing.get("status") or "").lower() not in {"running", "deployed"}:
+        return False
+    spec = existing.get("spec")
+    if not isinstance(spec, dict):
+        return False
+    return (
+        str(spec.get("slot_id") or slot_id) == slot_id
+        and int(spec.get("wallet_id") or 0) == int(lease.get("id") or 0)
+        and int(spec.get("wallet_assignment_version") or 0) == int(lease.get("wallet_assignment_version") or 0)
+    )
+
+
+async def _deploy_nkn_slots(worker_id: int, *, beneficiary_address: str) -> dict[str, Any]:
+    """Lease and deploy NKN slots in order; one failed slot never blocks the next."""
+    beneficiary = str(beneficiary_address or "").strip()
+    if not beneficiary:
+        raise HTTPException(status_code=400, detail="NKN beneficiary address is required")
+    worker = await database.get_worker(worker_id)
+    if not worker:
+        raise HTTPException(status_code=404, detail="Worker not found")
+    client_id = str(worker.get("client_id") or worker.get("name") or "").strip()
+    if not client_id:
+        raise HTTPException(status_code=409, detail="Worker has no durable client id")
+
+    async with _nkn_deploy_lock(worker_id):
+        # A malformed or stale worker response must never turn into a wallet lease;
+        # keep this guard at the mutation boundary as well as in the reader.
+        slots = [slot for slot in await _worker_public_ip_slots(worker_id) if slot.get("route_ready") is True]
+        outcome: dict[str, Any] = {"deployed": [], "skipped": [], "failed": [], "slots": len(slots)}
+        for slot in slots:
+            slot_id = str(slot["slot_id"])
+            public_ip = str(slot.get("public_ip") or "")
+            lease_client_id = f"{client_id}:nkn:{slot_id}"
+            instance_id = _nkn_record_instance_id(worker_id, slot_id)
+            lease: dict[str, Any] | None = None
+            base_spec: dict[str, Any] = {
+                "slot_id": slot_id,
+                "public_ip": public_ip,
+                "beneficiary_address": beneficiary,
+            }
+            try:
+                lease = await database.lease_nkn_wallet(lease_client_id, worker_id=worker_id, public_ip=public_ip)
+                if not lease:
+                    raise RuntimeError("NKN wallet unavailable for slot")
+                base_spec.update(
+                    {
+                        "wallet_id": int(lease["id"]),
+                        "wallet_assignment_version": int(lease["wallet_assignment_version"]),
+                        "lease_client_id": lease_client_id,
+                    }
+                )
+                existing = await database.get_provider_instance(instance_id)
+                existing_instance_id = instance_id
+                # Older installs used a fleet-global slot id.  Read it once so
+                # an upgrade does not duplicate an already tracked assignment;
+                # newly written rows always use the worker-scoped id above.
+                if existing is None:
+                    legacy_id = f"nkn-direct-{slot_id}"
+                    if legacy_id != instance_id:
+                        legacy = await database.get_provider_instance(legacy_id)
+                        if legacy and legacy.get("worker_id") in (None, worker_id):
+                            existing = legacy
+                            existing_instance_id = legacy_id
+                if existing and existing.get("spec_encrypted") and not existing.get("spec"):
+                    with contextlib.suppress(Exception):
+                        existing["spec"] = await database.get_provider_instance_spec(existing_instance_id)
+                if _nkn_instance_assignment_matches(existing, lease, slot_id):
+                    outcome["skipped"].append(slot_id)
+                    continue
+                deploy_spec = {
+                    **base_spec,
+                    "wallet_json": str(lease.get("wallet_json") or ""),
+                    "wallet_pswd": str(lease.get("wallet_pswd") or ""),
+                }
+                result = await _proxy_worker_nkn_deploy(worker_id, slot_id, deploy_spec)
+                container_id = str(result.get("container_id") or "remote")
+                # Persist only non-secret assignment metadata. The wallet pool remains
+                # the sole server-side source of wallet material on retry.
+                await database.save_provider_instance(
+                    "nkn",
+                    instance_id,
+                    worker_id=worker_id,
+                    mode="direct",
+                    container_id=container_id,
+                    status="running",
+                    spec=base_spec,
+                )
+                outcome["deployed"].append(slot_id)
+            except Exception as exc:  # noqa: BLE001 - continue with the next slot
+                safe_error = type(exc).__name__
+                logger.warning("NKN slot %s deploy failed on worker %s: %s", slot_id, worker_id, safe_error)
+                with contextlib.suppress(Exception):
+                    await database.save_provider_instance(
+                        "nkn",
+                        instance_id,
+                        worker_id=worker_id,
+                        mode="direct",
+                        status="failed",
+                        spec=base_spec,
+                    )
+                outcome["failed"].append(slot_id)
+        return outcome
 
 
 def _worker_allowed_for_auto_deploy(worker: dict[str, Any], config: dict[str, str]) -> bool:
@@ -181,6 +368,24 @@ async def _maybe_auto_deploy_after_heartbeat(worker_id: int) -> None:
     _WORKER_HEARTBEAT_STREAKS[worker_id] = streak
     if streak < 3:
         return
+    # NKN is slot-based and must not enter the legacy one-row catalog batch.
+    # Run it once after a stable heartbeat streak; failed slots remain retryable
+    # on a later worker heartbeat, while a fully successful run is idempotently
+    # suppressed for the lifetime of this server process.
+    if worker_id not in _NKN_AUTO_DEPLOY_DONE:
+        beneficiary = str(config.get("nkn_beneficiary_address") or "").strip()
+        if beneficiary:
+
+            async def _deploy_nkn_once() -> None:
+                try:
+                    result = await _deploy_nkn_slots(worker_id, beneficiary_address=beneficiary)
+                    slots = result.get("slots")
+                    if (slots is None or int(slots) > 0) and not result.get("failed"):
+                        _NKN_AUTO_DEPLOY_DONE.add(worker_id)
+                except Exception as exc:  # noqa: BLE001 - legacy batch must continue
+                    logger.warning("NKN auto deploy failed on worker %s: %s", worker_id, type(exc).__name__)
+
+            _spawn(_deploy_nkn_once())
     deployed = {d["slug"] for d in await database.get_deployments()}
     services = [svc for svc in catalog.get_services() if svc.get("slug") not in deployed]
     slugs = _auto_deploy_slugs(services)
@@ -779,6 +984,12 @@ def _service_tracking_ready(slug: str, config: dict[str, str]) -> bool:
     dashboard/session credentials must create the same placeholder row that
     collector credentials already did.
     """
+    # NKN collection is synthesized from leased wallet rows.  A global
+    # ``deployments`` row would make a slot-only provider look like one node and
+    # would also invite the generic deploy path to manage it.
+    if slug == "nkn":
+        return False
+
     from app.collectors import fully_configured_slugs
 
     if slug in fully_configured_slugs(config):
@@ -844,6 +1055,21 @@ async def _track_fully_configured_services() -> int:
         return 0
 
 
+async def _collection_deployments() -> list[dict[str, Any]]:
+    """Build collector inputs, including slot-based NKN without a fake global container row."""
+    deployments = list(await database.get_deployments())
+    config = await database.get_config() or {}
+    if not isinstance(config, dict):
+        config = {}
+    beneficiary = str(config.get("nkn_beneficiary_address") or "").strip()
+    if beneficiary:
+        nkn_rows = await database.list_nkn_wallets()
+        has_nkn = any(row.get("state") == "LEASED" for row in nkn_rows)
+        if has_nkn and not any(str(row.get("slug") or "") == "nkn" for row in deployments):
+            deployments.append({"slug": "nkn", "status": "external"})
+    return deployments
+
+
 async def _run_collection() -> None:
     """Collect earnings from all deployed services that have collectors."""
     global _collector_alerts
@@ -855,7 +1081,7 @@ async def _run_collection() -> None:
         start_time = 0.0
         try:
             start_time = metrics.record_collection_start()
-            deployments = await database.get_deployments()
+            deployments = await _collection_deployments()
             config = await database.get_config() or {}
             if not isinstance(config, dict):
                 config = {}
@@ -1099,6 +1325,17 @@ async def _check_stale_workers() -> None:
                 logger.info("Purged stale unenrolled worker '%s' (offline since %s)", w["name"], last_hb)
         except Exception as exc:
             logger.warning("Stale worker check error for worker '%s': %s", w.get("name", w.get("id")), exc)
+    try:
+        reclaimed = await database.reclaim_stale_nkn_wallets(stale_after_seconds=NKN_WALLET_STALE_SECONDS)
+        for item in reclaimed:
+            logger.warning(
+                "Reclaimed NKN wallet %s from stale worker %s slot %s",
+                item.get("wallet_id"),
+                item.get("worker_id"),
+                item.get("slot_id"),
+            )
+    except Exception as exc:
+        logger.warning("NKN stale wallet reclaim error: %s", exc)
 
 
 FLEET_API_KEY = fleet_key.resolve_fleet_key()
@@ -1106,6 +1343,7 @@ HOSTNAME_PREFIX = os.getenv("CASHPILOT_HOSTNAME_PREFIX", "cashpilot")
 MYST_PROXY_UDP_PORTS = range(56000, 56021)
 COLLECT_INTERVAL_MIN = int(os.getenv("CASHPILOT_COLLECT_INTERVAL", "60"))
 STALE_WORKER_SECONDS = 180  # Mark worker offline after 3 missed heartbeats
+NKN_WALLET_STALE_SECONDS = 900
 
 
 async def _warm_session_epochs() -> None:
@@ -2273,6 +2511,17 @@ async def api_deploy(
             detail=f"Service '{slug}' is no longer available for deployment ({status})",
         )
 
+    # NKN is slot-based rather than a single catalog container.  Keep every
+    # caller on the dedicated scheduler so a manual deploy cannot create a
+    # misleading global deployment row or bypass wallet/slot CAS.
+    if slug == "nkn":
+        if body.mode not in (None, "", "direct"):
+            raise HTTPException(status_code=400, detail="NKN supports direct mode only")
+        config = await database.get_config() or {}
+        beneficiary = str(config.get("nkn_beneficiary_address") or "").strip()
+        result = await _deploy_nkn_slots(worker_id, beneficiary_address=beneficiary)
+        return {"status": "deployed", "provider": "nkn", **result}
+
     docker_conf = svc.get("docker", {})
     deploy_conf = svc.get("deploy", {}) or {}
     deploy_surface = _service_deploy_surface(svc)
@@ -2695,11 +2944,64 @@ def _merge_recorded_spec(
 # resolution, proxy, and bookkeeping live in exactly one place per action.
 async def _svc_stop(request: Request, slug: str, worker_id: int | None) -> dict[str, str]:
     _require_writer(request)
+    if slug == "nkn" or str(slug).startswith("nkn-direct-"):
+        raise HTTPException(status_code=409, detail="NKN nodes use deliberate remove, not stop")
     worker_id = await _resolve_worker_id(worker_id)
     result = await _proxy_worker_command(worker_id, "stop", slug)
     await database.record_health_event(slug, "stop")
     metrics.record_container_lifecycle("stop", slug)
     return result
+
+
+async def _remove_nkn_slot(request: Request, slot_id: str, *, worker_id: int | None = None) -> dict[str, Any]:
+    """Remove a single NKN slot on the worker, then release its wallet by CAS."""
+    _require_writer(request)
+    if not re.fullmatch(r"ipv4-\d{3,6}", str(slot_id or "")):
+        raise HTTPException(status_code=400, detail="Invalid NKN slot id")
+    worker_id = await _resolve_worker_id(worker_id)
+    instance_id, instance = await _get_nkn_instance_for_worker(worker_id, slot_id)
+    if not instance:
+        raise HTTPException(status_code=404, detail="NKN slot is not tracked")
+    if instance.get("worker_id") not in (None, worker_id):
+        raise HTTPException(status_code=409, detail="NKN slot belongs to another worker")
+    spec = await database.get_provider_instance_spec(instance_id) or {}
+    try:
+        wallet_id = int(spec.get("wallet_id") or 0)
+        assignment_version = int(spec.get("wallet_assignment_version") or 0)
+        lease_client_id = str(spec.get("lease_client_id") or "")
+        if wallet_id <= 0 or assignment_version <= 0 or not lease_client_id:
+            raise ValueError("NKN slot assignment metadata is incomplete")
+        result = await _proxy_to_worker(
+            worker_id,
+            "DELETE",
+            f"/api/nkn/slots/{slot_id}",
+            json={
+                "wallet_id": wallet_id,
+                "wallet_assignment_version": assignment_version,
+                "lease_client_id": lease_client_id,
+            },
+            timeout=60,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001 - do not release while worker state is uncertain
+        logger.warning("NKN slot %s remove failed: %s", slot_id, type(exc).__name__)
+        raise HTTPException(status_code=503, detail="NKN worker removal failed") from exc
+
+    released = await database.release_nkn_wallet(
+        wallet_id,
+        lease_client_id,
+        release_reason="REMOVED",
+        wallet_assignment_version=assignment_version,
+    )
+    if not released:
+        # The worker is already removed, but releasing with a stale token would
+        # risk freeing a reassigned wallet. Keep the database record for repair.
+        raise HTTPException(status_code=409, detail="NKN wallet assignment changed during remove")
+    await database.remove_provider_instance(instance_id)
+    await database.record_health_event("nkn", "remove", f"removed {instance_id} from worker {worker_id}")
+    metrics.record_container_lifecycle("remove", "nkn")
+    return {"status": "removed", "slot_id": slot_id, "instance_id": instance_id, **(result or {})}
 
 
 async def _svc_restart(request: Request, slug: str, worker_id: int | None) -> dict[str, str]:
@@ -2718,6 +3020,18 @@ async def _svc_remove(
     delete_volumes: bool,
     allow_delete_critical: bool = False,
 ) -> dict[str, Any]:
+    if str(slug).startswith("nkn-direct-"):
+        suffix = str(slug).removeprefix("nkn-direct-")
+        scoped = re.fullmatch(r"w(\d+)-(ipv4-\d{3,6})", suffix)
+        if scoped:
+            parsed_worker = int(scoped.group(1))
+            if worker_id is not None and worker_id != parsed_worker:
+                raise HTTPException(status_code=409, detail="NKN slot belongs to another worker")
+            worker_id = parsed_worker
+            suffix = scoped.group(2)
+        return await _remove_nkn_slot(request, suffix, worker_id=worker_id)
+    if slug == "nkn":
+        raise HTTPException(status_code=400, detail="Specify an NKN slot for removal")
     _require_writer(request)
     if allow_delete_critical:
         # Overriding the critical-volume guard destroys state with no server-side
@@ -2740,6 +3054,11 @@ async def _svc_remove(
 @app.post("/api/stop/{slug}")
 async def api_stop(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     return await _svc_stop(request, slug, worker_id)
+
+
+@app.delete("/api/nkn/slots/{slot_id}")
+async def api_remove_nkn_slot(request: Request, slot_id: str, worker_id: int | None = None) -> dict[str, Any]:
+    return await _remove_nkn_slot(request, slot_id, worker_id=worker_id)
 
 
 @app.post("/api/restart/{slug}")
@@ -2870,7 +3189,7 @@ async def _proxy_to_worker(
             if verb == "GET":
                 resp = await client.get(f"{url}{path}", params=params, headers=headers)
             elif verb == "DELETE":
-                resp = await client.delete(f"{url}{path}", params=params, headers=headers)
+                resp = await client.delete(f"{url}{path}", json=json, params=params, headers=headers)
             else:
                 resp = await client.post(f"{url}{path}", json=json, params=params, headers=headers)
             if resp.status_code >= 400:
@@ -3089,6 +3408,11 @@ async def api_earnings_summary(request: Request) -> dict[str, Any]:
     summary["unpriced_platforms"] = sorted(set(unpriced_platforms))
     summary["total_bonus"] = round(total_bonus_usd, 2)
     summary["total_adjusted"] = round(total_adjusted, 2)
+    try:
+        summary["nkn"] = await _nkn_dashboard_summary()
+    except Exception as exc:  # noqa: BLE001 - earnings summary must remain available
+        logger.warning("Could not attach NKN node summary: %s", type(exc).__name__)
+        summary["nkn"] = {"total_nodes": 0, "online": 0, "offline": 0}
     return summary
 
 
@@ -5139,6 +5463,49 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
             runtime_status=str(myst.get("runtime_status") or ""),
             evidence=evidence,
         )
+    nkn = body.provider_states.get("nkn") or {}
+    nkn_assignment_acks: list[dict[str, Any]] = []
+    nkn_assignment_rejections: list[dict[str, Any]] = []
+    for instance in nkn.get("instances") or []:
+        if not isinstance(instance, dict):
+            continue
+        lease_client_id = str(instance.get("lease_client_id") or "")
+        # A worker may only report leases under its own durable identity. This
+        # is separate from wallet CAS: reject the forged relationship before
+        # even asking the database to compare the assignment token.
+        if not lease_client_id.startswith(f"{cid}:nkn:"):
+            continue
+        evidence = dict(instance.get("evidence") or {})
+        synced = await database.sync_nkn_wallet_runtime(
+            int(instance.get("wallet_id") or 0),
+            lease_client_id,
+            wallet_assignment_version=int(instance.get("wallet_assignment_version") or 0),
+            node_identity=str(instance.get("node_identity") or instance.get("wallet_address") or ""),
+            runtime_status=str(instance.get("runtime_status") or ""),
+            public_ip=str(instance.get("public_ip") or ""),
+            evidence=evidence,
+        )
+        if not synced:
+            # The lease may have been reclaimed/reassigned while this worker was
+            # offline.  Return only non-secret CAS identity so the worker can
+            # remove its stale local container/volume before it retries.
+            nkn_assignment_rejections.append(
+                {
+                    "slot_id": str(instance.get("slot_id") or ""),
+                    "wallet_id": int(instance.get("wallet_id") or 0),
+                    "wallet_assignment_version": int(instance.get("wallet_assignment_version") or 0),
+                    "lease_client_id": lease_client_id,
+                }
+            )
+        else:
+            nkn_assignment_acks.append(
+                {
+                    "slot_id": str(instance.get("slot_id") or ""),
+                    "wallet_id": int(instance.get("wallet_id") or 0),
+                    "wallet_assignment_version": int(instance.get("wallet_assignment_version") or 0),
+                    "lease_client_id": lease_client_id,
+                }
+            )
     metrics.record_heartbeat(body.name)
     resp: dict[str, Any] = {"status": "ok", "worker_id": worker_id}
     if state == "enroll":
@@ -5168,6 +5535,10 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
     earnings = await _earnings_for_worker(body)
     if earnings is not None:
         resp["earnings"] = earnings
+    if nkn_assignment_rejections:
+        resp["nkn_assignment_rejections"] = nkn_assignment_rejections
+    if nkn_assignment_acks:
+        resp["nkn_assignment_acks"] = nkn_assignment_acks
     _spawn(_maybe_auto_deploy_after_heartbeat(worker_id))
     return resp
 
@@ -5273,7 +5644,48 @@ async def _worker_provider_states(worker: dict[str, Any]) -> dict[str, Any]:
             "public_ip": leased.get("public_ip") or "",
             "release_reason": leased.get("release_reason") or "",
         }
+    nkn_rows = await database.list_nkn_wallets()
+    prefix = f"{client_id}:nkn:"
+    nkn_instances: list[dict[str, Any]] = []
+    for row in nkn_rows:
+        lease_client_id = str(row.get("leased_to_client_id") or "")
+        if row.get("state") != "LEASED" or not lease_client_id.startswith(prefix):
+            continue
+        evidence = _safe_json(str(row.get("evidence_json") or "{}"), {})
+        evidence = evidence if isinstance(evidence, dict) else {}
+        nkn_instances.append(
+            {
+                "wallet_id": row.get("id"),
+                "wallet_assignment_version": row.get("wallet_assignment_version") or 0,
+                "lease_client_id": lease_client_id,
+                "slot_id": lease_client_id.removeprefix(prefix),
+                "node_identity": row.get("node_identity") or "",
+                "runtime_status": row.get("runtime_status") or "",
+                "public_ip": row.get("public_ip") or "",
+                "release_reason": row.get("release_reason") or "",
+                "evidence": evidence,
+            }
+        )
+    if nkn_instances:
+        online = sum(1 for item in nkn_instances if item["evidence"].get("online") is True)
+        states["nkn"] = {
+            "instances": nkn_instances,
+            "online": online,
+            "offline": len(nkn_instances) - online,
+        }
     return states
+
+
+async def _nkn_dashboard_summary() -> dict[str, int]:
+    """Return aggregate NKN node evidence without exposing wallet material."""
+    rows = await database.list_nkn_wallets()
+    leased = [row for row in rows if row.get("state") == "LEASED" and row.get("leased_to_client_id")]
+    online = 0
+    for row in leased:
+        evidence = _safe_json(str(row.get("evidence_json") or "{}"), {})
+        if isinstance(evidence, dict) and evidence.get("online") is True:
+            online += 1
+    return {"total_nodes": len(leased), "online": online, "offline": len(leased) - online}
 
 
 @app.get("/api/workers/{worker_id}")
@@ -5296,7 +5708,13 @@ async def api_delete_worker(request: Request, worker_id: int) -> dict[str, str]:
     worker = await database.get_worker(worker_id)
     if not worker:
         raise HTTPException(status_code=404, detail="Worker not found")
-    await database.delete_worker(worker_id)
+    try:
+        await database.delete_worker(worker_id)
+    except database.NknWalletLeaseActive as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Remove or reclaim the worker's NKN slots before deleting the worker",
+        ) from exc
     return {"status": "deleted"}
 
 
@@ -5322,6 +5740,11 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
         # full bookkeeping below, so it would look deployed while earning nothing.
         # An unknown slug is left alone: this raw route is not catalog-only.
         deploy_status = (catalog.get_service(body.slug) or {}).get("status")
+        if body.slug == "nkn" or str(body.slug).startswith("nkn-direct-"):
+            raise HTTPException(
+                status_code=409,
+                detail="NKN is slot-based; use /api/deploy/nkn or the dedicated slot lifecycle endpoint",
+            )
         if deploy_status in _UNDEPLOYABLE_STATUSES:
             raise HTTPException(
                 status_code=409 if deploy_status == "broken" else 410,
@@ -5337,8 +5760,21 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
                     await _release_myst_wallet_from_spec(spec, reason="DEPLOY_FAILED")
             raise
     elif body.command in ("stop", "restart", "start"):
+        if body.slug == "nkn" or str(body.slug).startswith("nkn-direct-"):
+            raise HTTPException(status_code=409, detail="NKN nodes use deliberate slot remove, not generic lifecycle")
         result = await _proxy_to_worker(worker_id, "POST", f"/api/containers/{body.slug}/{body.command}")
     elif body.command == "remove":
+        if str(body.slug).startswith("nkn-direct-"):
+            suffix = str(body.slug).removeprefix("nkn-direct-")
+            scoped = re.fullmatch(r"w(\d+)-(ipv4-\d{3,6})", suffix)
+            if scoped:
+                parsed_worker = int(scoped.group(1))
+                if parsed_worker != worker_id:
+                    raise HTTPException(status_code=409, detail="NKN slot belongs to another worker")
+                suffix = scoped.group(2)
+            return await _remove_nkn_slot(request, suffix, worker_id=worker_id)
+        if body.slug == "nkn":
+            raise HTTPException(status_code=400, detail="Specify an NKN slot for removal")
         result = await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{body.slug}")
     else:
         raise HTTPException(status_code=400, detail=f"Unknown command: {body.command}")
@@ -5409,6 +5845,12 @@ async def api_fleet_summary(request: Request) -> dict[str, Any]:
         total_services += w["container_count"]
         total_running += w["running_count"]
 
+    try:
+        nkn_summary = await _nkn_dashboard_summary()
+    except Exception as exc:  # noqa: BLE001 - preserve legacy fleet response on DB issues
+        logger.warning("Could not count NKN nodes: %s", type(exc).__name__)
+        nkn_summary = {"total_nodes": 0, "online": 0, "offline": 0}
+
     return {
         "total_workers": len(workers),
         "online_workers": online_workers,
@@ -5416,6 +5858,7 @@ async def api_fleet_summary(request: Request) -> dict[str, Any]:
         "running_containers": total_running,
         "unreachable_containers": unreachable_containers,
         "unreachable_workers": unreachable_workers,
+        "nkn": nkn_summary,
     }
 
 

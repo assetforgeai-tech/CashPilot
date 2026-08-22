@@ -4,7 +4,7 @@
 
 Setup and configuration for every service CashPilot supports.
 
-**14 providers** across 2 categories. The table is sortable — click a heading to reorder it.
+**15 providers** across 2 categories. The table is sortable — click a heading to reorder it.
 
 !!! tip "Choosing what to run"
 
@@ -19,6 +19,7 @@ Setup and configuration for every service CashPilot supports.
 | [Earn.fm](earnfm.md) | Residential IP | Docker | $3 | active |
 | [IPRoyal Pawns](iproyal.md) | Residential IP | Docker | $5 | active |
 | [MystNodes](mysterium.md) | — | Docker | 4 MYST | active |
+| [NKN](nkn.md) | — | Docker | 0 NKN | active |
 | [PacketStream](packetstream.md) | Residential IP | Docker | $5 | active |
 | [Proxies.sx](proxies-sx.md) | Residential IP, 500 KB/s upload | Docker | $5 | beta |
 | [ProxyBase](proxybase.md) | — | Docker | $1 | active |

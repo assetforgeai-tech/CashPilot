@@ -29,6 +29,11 @@
     <div class="stat-label" title="Counted across workers that are currently online. Containers on an offline worker keep running and earning; they are not included here.">Running <span style="opacity:0.6;">(online)</span></div>
     <div class="stat-value" id="fleet-running-containers">-</div>
   </div>
+  <div class="stat-card" id="fleet-nkn-card">
+    <div class="stat-label">NKN Nodes</div>
+    <div class="stat-value" id="fleet-nkn-total">—</div>
+    <div style="font-size:0.72rem;color:var(--text-muted);" id="fleet-nkn-state">—</div>
+  </div>
 </div>
 <div id="fleet-unreachable-note" style="display:none; margin:-8px 0 16px; font-size:0.82rem; color:var(--warning);"></div>
 
@@ -177,6 +182,9 @@ CASHPILOT_WORKER_URL=http://public-vps-ip:8081</code>
       document.getElementById('fleet-online-workers').textContent = summary.online_workers || 0;
       document.getElementById('fleet-total-containers').textContent = summary.total_containers || 0;
       document.getElementById('fleet-running-containers').textContent = summary.running_containers || 0;
+      const nkn = summary.nkn || {};
+      document.getElementById('fleet-nkn-total').textContent = nkn.total_nodes ?? '—';
+      document.getElementById('fleet-nkn-state').textContent = `${nkn.online ?? 0} online · ${nkn.offline ?? 0} offline`;
 
       // Name what the two online-only cards leave out, rather than letting the
       // drop read as containers lost.
@@ -388,7 +396,7 @@ CASHPILOT_WORKER_URL=http://public-vps-ip:8081</code>
                   : w.enrollment === 'pending'
                   ? `<span style="font-size:0.7rem; padding:2px 6px; border-radius:4px; background:var(--bg-hover); color:var(--text-muted);" title="This worker has been issued its own key but has not used it yet, so the shared key still works for it for a short while. It clears itself on the worker's next heartbeat.">enrolling</span>`
                   : ''}
-                ${(w.provider_states && (w.provider_states.proxy || w.provider_states.mysterium))
+                ${(w.provider_states && (w.provider_states.proxy || w.provider_states.mysterium || w.provider_states.nkn))
                   ? `<span style="font-size:0.7rem; padding:2px 6px; border-radius:4px; background:var(--bg-hover); color:var(--text-muted);" title="Worker provider state from heartbeat">provider states</span>`
                   : ''}
                 <code style="font-size:0.68rem; color:var(--text-muted); background:var(--bg-hover); padding:1px 5px; border-radius:3px;" title="This worker's client_id — the id CashPilot keys it on. Two rows with the same name always have different ids; this is how to tell which is which.">${esc(w.client_id || ('#' + w.id))}</code>
@@ -430,6 +438,7 @@ CASHPILOT_WORKER_URL=http://public-vps-ip:8081</code>
                   })()
                 : `<span title="This worker predates version reporting, so CashPilot cannot tell which release it is. Update it to find out.">version unknown</span>`}
             </div>
+            ${w.provider_states?.nkn ? `<div style="margin-top:8px;font-size:0.78rem;color:var(--text-muted);">NKN: ${esc(w.provider_states.nkn.online ?? 0)} online · ${esc(w.provider_states.nkn.offline ?? 0)} offline</div>` : ''}
             ${isAndroid && items.length > 0 ? renderApps(items, isOnline, w.last_heartbeat) : ''}
             ${!isAndroid && items.length > 0 ? renderContainers(w, isOnline) : ''}
           </div>

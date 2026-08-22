@@ -13,6 +13,7 @@ from app.collectors.base import BaseCollector, EarningsResult
 from app.collectors.earnfm import EarnFMCollector
 from app.collectors.iproyal import IPRoyalCollector
 from app.collectors.mystnodes import MystNodesCollector
+from app.collectors.nkn import NknCollector
 from app.collectors.packetstream import PacketStreamCollector
 from app.collectors.proxies_sx import ProxiesSxCollector
 from app.collectors.proxyrack import ProxyRackCollector
@@ -25,6 +26,7 @@ logger = logging.getLogger(__name__)
 COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
     "iproyal": IPRoyalCollector,
     "mysterium": MystNodesCollector,
+    "nkn": NknCollector,
     "traffmonetizer": TraffmonetizerCollector,
     "repocket": RepocketCollector,
     "proxyrack": ProxyRackCollector,
@@ -37,6 +39,7 @@ COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
 _COLLECTOR_ARGS: dict[str, list[str]] = {
     "iproyal": ["collector_email", "collector_password"],
     "mysterium": ["email", "password"],
+    "nkn": ["beneficiary_address"],
     "traffmonetizer": ["email", "password"],
     "repocket": ["email", "password"],
     "proxyrack": ["api_key"],

@@ -30,6 +30,7 @@ defensible on its own; together they are impossible to guess.
 | `CASHPILOT_ADMIN_API_KEY` | unset | Bearer token for API access without a session. Grants **owner**: it can deploy, stop and remove containers and read stored credentials. | — |
 | `CASHPILOT_READONLY_API_KEY` | unset | Bearer token for **reporting only**. Accepted on a small allowlist of GET endpoints (earnings summary and breakdown, fleet summary, health scores, deployed services) and refused everywhere else, including on endpoints added in the future. Use this for a dashboard tile, a Grafana panel or Home Assistant sensors rather than handing them a key that controls containers. | — |
 | `CASHPILOT_DATA_DIR` | `/data` | Where the database and keys live. | — |
+| `CASHPILOT_PUBLIC_IP_SLOTS_FILE` | `/data/public-ip-slots.json`, then `/etc/cashpilot/public-ip-slots.json` | Worker read-only slot state mirrored by the host bootstrap; standard Compose sets `/network/public-ip-slots.json`. Provider deploy does not discover or mutate routes. | — |
 | `CASHPILOT_FLEET_DIR` | `/fleet` | Where the shared enrolment key lives. | — |
 | `CASHPILOT_BASE_URL` | unset | Absolute base URL, for links in notifications. | — |
 | `CASHPILOT_SECURE_COOKIE` | auto | Force the `Secure` cookie flag. | — |

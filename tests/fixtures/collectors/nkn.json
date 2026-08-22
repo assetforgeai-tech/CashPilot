@@ -1,0 +1,10 @@
+{
+  "slug": "nkn",
+  "currency": "NKN",
+  "sample": {
+    "result": {
+      "amount": "16996.39104266"
+    }
+  },
+  "fields": ["result.amount"]
+}

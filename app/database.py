@@ -28,6 +28,10 @@ class MystWalletPublicIpInUse(RuntimeError):
     pass
 
 
+class NknWalletLeaseActive(RuntimeError):
+    """Raised when deleting a worker would strand an active NKN wallet lease."""
+
+
 DB_DIR = Path(os.getenv("CASHPILOT_DATA_DIR", "/data"))
 DB_PATH = DB_DIR / "cashpilot.db"
 
@@ -732,6 +736,7 @@ CREATE INDEX IF NOT EXISTS idx_alerts_created
 
 _shared_conns: dict[int, aiosqlite.Connection] = {}
 _proxy_assignment_locks: dict[int, asyncio.Lock] = {}
+_nkn_wallet_locks: dict[int, asyncio.Lock] = {}
 
 
 def _proxy_assignment_lock() -> asyncio.Lock:
@@ -741,6 +746,16 @@ def _proxy_assignment_lock() -> asyncio.Lock:
     if lock is None:
         lock = asyncio.Lock()
         _proxy_assignment_locks[loop_key] = lock
+    return lock
+
+
+def _nkn_wallet_lock() -> asyncio.Lock:
+    """Serialize NKN wallet lease transactions per event loop."""
+    loop_key = id(asyncio.get_running_loop())
+    lock = _nkn_wallet_locks.get(loop_key)
+    if lock is None:
+        lock = asyncio.Lock()
+        _nkn_wallet_locks[loop_key] = lock
     return lock
 
 
@@ -2339,12 +2354,24 @@ async def count_worker_heartbeats(worker_id: int, *, healthy_only: bool = True) 
 
 
 async def delete_worker(worker_id: int) -> None:
-    db = await _get_db()
-    try:
-        await db.execute("DELETE FROM workers WHERE id = ?", (worker_id,))
-        await db.commit()
-    finally:
-        await db.close()
+    async with _nkn_wallet_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            await _ensure_nkn_wallets_table(db)
+            cursor = await db.execute(
+                "SELECT 1 FROM nkn_wallets WHERE state = 'LEASED' AND leased_to_worker_id = ? LIMIT 1",
+                (worker_id,),
+            )
+            if await cursor.fetchone():
+                raise NknWalletLeaseActive(f"worker {worker_id} still owns an active NKN wallet lease")
+            await db.execute("DELETE FROM workers WHERE id = ?", (worker_id,))
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
 
 
 # --- Proxy egress ---
@@ -2760,13 +2787,279 @@ async def list_nkn_wallets() -> list[dict[str, Any]]:
             SELECT id, wallet_fingerprint, folder_name, address, state,
                    leased_to_worker_id, leased_to_client_id, release_reason,
                    wallet_assignment_version, node_identity, runtime_status,
-                   public_ip, last_heartbeat_at, quarantined_reason,
+                   public_ip, last_heartbeat_at, evidence_json, quarantined_reason,
                    imported_at, updated_at
             FROM nkn_wallets
             ORDER BY id DESC
             """
         )
         return [dict(row) for row in await cursor.fetchall()]
+    finally:
+        await db.close()
+
+
+def _nkn_slot_from_client_id(client_id: str) -> str:
+    value = str(client_id or "").strip()
+    marker = ":nkn:"
+    slot = value.split(marker, 1)[1] if marker in value else ""
+    if not slot.startswith("ipv4-") or not slot[6:].isdigit():
+        return ""
+    return slot
+
+
+def _redact_nkn_evidence(evidence: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Keep runtime evidence JSON-safe and prevent accidental secret persistence."""
+    secret_fragments = ("wallet", "password", "passwd", "seed", "private", "mnemonic", "secret")
+
+    def clean(value: Any, key: str = "") -> Any:
+        lowered = key.lower()
+        if any(fragment in lowered for fragment in secret_fragments):
+            return "[redacted]"
+        if isinstance(value, Mapping):
+            return {str(k): clean(v, str(k)) for k, v in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [clean(item, key) for item in value]
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            return value
+        return str(value)
+
+    value = clean(dict(evidence or {}))
+    return value if isinstance(value, dict) else {}
+
+
+async def lease_nkn_wallet(
+    client_id: str,
+    worker_id: int | None = None,
+    *,
+    public_ip: str = "",
+) -> dict[str, Any] | None:
+    """Lease one exclusive NKN wallet for a worker/slot client id.
+
+    The compare-and-swap transaction makes retries idempotent and prevents two
+    workers from receiving the same wallet or public-IP assignment.
+    """
+    client_id = str(client_id or "").strip()
+    slot_id = _nkn_slot_from_client_id(client_id)
+    if not client_id or not slot_id:
+        return None
+    public_ip = str(public_ip or "").strip()
+    async with _nkn_wallet_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            await _ensure_nkn_wallets_table(db)
+            current_cursor = await db.execute(
+                "SELECT * FROM nkn_wallets WHERE state = 'LEASED' AND leased_to_client_id = ? ORDER BY id DESC LIMIT 1",
+                (client_id,),
+            )
+            current = await current_cursor.fetchone()
+            if current:
+                current_ip = str(current["public_ip"] or "")
+                if public_ip and current_ip and current_ip != public_ip:
+                    await db.rollback()
+                    return None
+                if public_ip and not current_ip:
+                    await db.execute(
+                        "UPDATE nkn_wallets SET public_ip = ?, updated_at = datetime('now') WHERE id = ?",
+                        (public_ip, current["id"]),
+                    )
+                    current = dict(current)
+                    current["public_ip"] = public_ip
+                else:
+                    current = dict(current)
+                await db.commit()
+                current["wallet_json"] = decrypt_value(current.pop("wallet_json_enc") or "")
+                current["wallet_pswd"] = decrypt_value(current.pop("wallet_pswd_enc") or "")
+                return current
+
+            if public_ip:
+                conflict_cursor = await db.execute(
+                    "SELECT id FROM nkn_wallets WHERE state = 'LEASED' AND public_ip = ? LIMIT 1",
+                    (public_ip,),
+                )
+                if await conflict_cursor.fetchone():
+                    await db.rollback()
+                    return None
+            available_cursor = await db.execute(
+                "SELECT * FROM nkn_wallets WHERE state = 'AVAILABLE' ORDER BY id LIMIT 1"
+            )
+            row = await available_cursor.fetchone()
+            if not row:
+                await db.rollback()
+                return None
+            next_version = int(row["wallet_assignment_version"] or 0) + 1
+            updated = await db.execute(
+                """
+                UPDATE nkn_wallets
+                SET state = 'LEASED', leased_to_worker_id = ?, leased_to_client_id = ?,
+                    leased_at = datetime('now'), release_reason = '', public_ip = ?,
+                    wallet_assignment_version = ?, updated_at = datetime('now')
+                WHERE id = ? AND state = 'AVAILABLE' AND wallet_assignment_version = ?
+                """,
+                (worker_id, client_id, public_ip, next_version, row["id"], row["wallet_assignment_version"]),
+            )
+            if int(updated.rowcount or 0) != 1:
+                await db.rollback()
+                return None
+            await db.commit()
+            item = dict(row)
+            item.update(
+                {
+                    "state": "LEASED",
+                    "leased_to_worker_id": worker_id,
+                    "leased_to_client_id": client_id,
+                    "leased_at": datetime.now(UTC).isoformat(),
+                    "release_reason": "",
+                    "public_ip": public_ip,
+                    "wallet_assignment_version": next_version,
+                    "wallet_json": decrypt_value(item.pop("wallet_json_enc") or ""),
+                    "wallet_pswd": decrypt_value(item.pop("wallet_pswd_enc") or ""),
+                }
+            )
+            return item
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
+
+
+async def release_nkn_wallet(
+    wallet_id: int,
+    client_id: str,
+    *,
+    release_reason: str = "",
+    wallet_assignment_version: int | None = None,
+) -> bool:
+    """Release an NKN wallet only when the lease token still matches."""
+    if wallet_assignment_version is None or not _nkn_slot_from_client_id(client_id):
+        return False
+    db = await _open_transaction_connection()
+    try:
+        await db.execute("BEGIN IMMEDIATE")
+        await _ensure_nkn_wallets_table(db)
+        cursor = await db.execute(
+            """
+            UPDATE nkn_wallets
+            SET state = 'AVAILABLE', leased_to_worker_id = NULL, leased_to_client_id = '',
+                leased_at = NULL, public_ip = '', release_reason = ?,
+                node_identity = '', runtime_status = '', last_heartbeat_at = NULL, evidence_json = '{}',
+                wallet_assignment_version = wallet_assignment_version + 1,
+                updated_at = datetime('now')
+            WHERE id = ? AND state = 'LEASED' AND leased_to_client_id = ?
+              AND wallet_assignment_version = ?
+            """,
+            (str(release_reason or ""), int(wallet_id), str(client_id), int(wallet_assignment_version)),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+    except Exception:
+        await db.rollback()
+        raise
+    finally:
+        await db.close()
+
+
+async def sync_nkn_wallet_runtime(
+    wallet_id: int,
+    client_id: str,
+    *,
+    wallet_assignment_version: int,
+    node_identity: str = "",
+    runtime_status: str = "",
+    public_ip: str = "",
+    evidence: Mapping[str, Any] | None = None,
+) -> bool:
+    """CAS-update NKN runtime evidence from an authenticated worker heartbeat."""
+    if not _nkn_slot_from_client_id(client_id) or wallet_assignment_version <= 0:
+        return False
+    evidence_json = json.dumps(_redact_nkn_evidence(evidence), sort_keys=True)
+    db = await _get_db()
+    try:
+        await _ensure_nkn_wallets_table(db)
+        cursor = await db.execute(
+            """
+            UPDATE nkn_wallets
+            SET node_identity = ?, runtime_status = ?,
+                last_heartbeat_at = datetime('now'), evidence_json = ?, updated_at = datetime('now')
+            WHERE id = ? AND state = 'LEASED' AND leased_to_client_id = ?
+              AND wallet_assignment_version = ?
+              AND (NULLIF(?, '') IS NULL OR public_ip = ?)
+            """,
+            (
+                str(node_identity or "")[:256],
+                str(runtime_status or "")[:128],
+                evidence_json,
+                int(wallet_id),
+                str(client_id),
+                int(wallet_assignment_version),
+                str(public_ip or ""),
+                str(public_ip or ""),
+            ),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+    finally:
+        await db.close()
+
+
+async def reclaim_stale_nkn_wallets(*, stale_after_seconds: int = 900) -> list[dict[str, Any]]:
+    """Reclaim leases from offline workers after the 15-minute grace period."""
+    threshold = max(900, int(stale_after_seconds))
+    db = await _open_transaction_connection()
+    reclaimed: list[dict[str, Any]] = []
+    try:
+        await db.execute("BEGIN IMMEDIATE")
+        await _ensure_nkn_wallets_table(db)
+        cursor = await db.execute(
+            """
+            SELECT nw.id, nw.wallet_assignment_version, nw.leased_to_client_id,
+                   nw.leased_to_worker_id, w.last_heartbeat
+            FROM nkn_wallets nw
+            JOIN workers w ON w.id = nw.leased_to_worker_id
+            WHERE nw.state = 'LEASED' AND w.status = 'offline'
+              AND w.last_heartbeat IS NOT NULL
+              AND (julianday('now') - julianday(w.last_heartbeat)) * 86400 >= ?
+            ORDER BY nw.id
+            """,
+            (threshold,),
+        )
+        rows = await cursor.fetchall()
+        for row in rows:
+            client_id = str(row["leased_to_client_id"] or "")
+            slot_id = _nkn_slot_from_client_id(client_id)
+            if not slot_id:
+                continue
+            old_version = int(row["wallet_assignment_version"] or 0)
+            updated = await db.execute(
+                """
+                UPDATE nkn_wallets
+                SET state = 'AVAILABLE', leased_to_worker_id = NULL, leased_to_client_id = '',
+                    leased_at = NULL, public_ip = '', release_reason = 'WORKER_HEARTBEAT_STALE_15M',
+                    node_identity = '', runtime_status = '', last_heartbeat_at = NULL, evidence_json = '{}',
+                    wallet_assignment_version = wallet_assignment_version + 1,
+                    updated_at = datetime('now')
+                WHERE id = ? AND state = 'LEASED' AND leased_to_client_id = ?
+                  AND wallet_assignment_version = ?
+                """,
+                (row["id"], client_id, old_version),
+            )
+            if int(updated.rowcount or 0) == 1:
+                reclaimed.append(
+                    {
+                        "wallet_id": int(row["id"]),
+                        "wallet_assignment_version": old_version + 1,
+                        "previous_wallet_assignment_version": old_version,
+                        "lease_client_id": client_id,
+                        "worker_id": row["leased_to_worker_id"],
+                        "slot_id": slot_id,
+                    }
+                )
+        await db.commit()
+        return reclaimed
+    except Exception:
+        await db.rollback()
+        raise
     finally:
         await db.close()
 

@@ -8,7 +8,7 @@ Commit được phân tích: `78e95538b28d51e4b09dc663873928b69dcab414`
 
 Tài liệu này tổng hợp kết quả đọc source, tests, docs, Git history và GitHub metadata bằng `gh`. Giai đoạn phân tích không sửa product source, không truy cập hoặc thay đổi VPS, container, volume, database, credential, proxy lease, wallet lease hay provider identity.
 
-Tất cả 14 provider hiện hành là baseline bất biến. Grass đã bị loại khỏi product theo quyết định ghi tại `provider-removal-grass-2026-08.md`; Mysterium vẫn direct-only. Phát hiện lịch sử chỉ có giá trị tham khảo; không được dùng làm lý do refactor hoặc redeploy khi chưa có phê duyệt rõ ràng.
+14 provider đã chốt là baseline bất biến; `nkn` là provider `FOCUS_NKN` mới trên nhánh triển khai này và chưa được đánh dấu hoàn tất live. Grass đã bị loại khỏi product theo quyết định ghi tại `provider-removal-grass-2026-08.md`; Mysterium vẫn direct-only. Phát hiện lịch sử chỉ có giá trị tham khảo; không được dùng làm lý do refactor hoặc redeploy khi chưa có phê duyệt rõ ràng.
 
 ## Snapshot Git và GitHub
 
@@ -23,7 +23,7 @@ Tất cả 14 provider hiện hành là baseline bất biến. Grass đã bị l
 | Upstream release quan sát | `v1.36.2` |
 | Fork CI của PR #7 | CodeQL, Analyze, Documentation/build, Lint và Tests thành công; deploy job skipped |
 | Merge/release state | PR #7 đã merge bằng commit `[skip ci]`; chưa có release/tag/image/deploy mới; latest release vẫn `v1.1.1` |
-| Audit worktree | Branch `docs/post-merge-baseline-2026-08-22`; thay đổi dự kiến chỉ là Markdown, local Understand artifacts được ignore |
+| Audit worktree | Branch `feat/nkn-direct-runtime`; thay đổi gồm NKN runtime/worker contracts và tài liệu liên quan, local Understand artifacts được ignore |
 
 Upstream mới hơn không đồng nghĩa fork phải merge. Fork-only history chứa nhiều contract quan trọng về provider/runtime hardening, Grass identity/auth, MYST wallet lease/runtime, proxy lease rotation và CI/release. Mọi merge hoặc cherry-pick phải được đánh giá riêng và nằm ngoài giai đoạn này.
 
@@ -35,7 +35,7 @@ Luồng deploy bắt đầu từ API/UI, resolve service catalog và deploy mode
 
 Proxy lifecycle hiện dùng server-authoritative, worker-ACK rotation. Server probe pool và chọn candidate nhưng không đổi lease trước; worker probe candidate từ chính VPS, stage config vào named volume `/etc/sing-box`, validate toàn bộ sidecar, restart riêng các sidecar liên quan rồi trả ACK đã redacted gồm binding token, proxy ID, observed exit IP, instance list và config hash. Server serialize các proxy-assignment transaction và chỉ CAS-commit `proxy_assignments` cùng `provider_instances` sau ACK hợp lệ. Assignment generation cũ, candidate vừa bị worker khác giữ hoặc mixed proxy rows trên cùng worker làm flow fail closed và worker rollback config cũ. Nếu response apply bị mất, server thử rollback theo binding token vì worker có thể đã restart thành công. Nếu CAS đã thành công nhưng confirm cleanup thất bại, DB/runtime vẫn cùng candidate; chỉ cleanup backup còn pending, không rollback DB mù quáng.
 
-Giới hạn phase này là assignment vẫn ở worker-level để giữ compatibility. Target topology dài hạn là `(worker, public_ip_slot, provider, instance)`, cần cho Pawns private binding và VPS nhiều public IPv4. Legacy sidecar chưa có persistent config volume fail closed; không bulk redeploy provider đã `PROTECTED_DONE`. MYST và NKN là direct-only nên không tham gia Proxy Pool.
+Giới hạn phase này là assignment proxy vẫn ở worker-level để giữ compatibility. NKN dùng topology riêng `(worker, public_ip_slot, wallet, instance)` và không tham gia Proxy Pool. Legacy sidecar chưa có persistent config volume fail closed; không bulk redeploy provider đã `PROTECTED_DONE`. MYST và NKN là direct-only.
 
 Release workflow dùng diff từ tag trước để quyết định có tạo release hay không. Khi có release, workflow tạo version, chạy gate tests, build và publish cả UI lẫn worker lên GHCR, xác minh image/tag rồi mới tạo Git tag và GitHub release. Fork `v1.1.1` vẫn là release hiện tại và có cả hai fork image. PR #7 được merge với `[skip ci]` để không kích hoạt luồng này; vì vậy code ACK rotation đã ở `main` nhưng image mới chưa được phát hành và không có deploy nào xảy ra. Việc release không tự đồng nghĩa deploy.
 
