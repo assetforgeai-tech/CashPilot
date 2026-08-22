@@ -62,7 +62,11 @@ Provider credentials are grouped by purpose:
 
 Auto deploy is off by default. When enabled, the server waits for three healthy worker heartbeats, then deploys missing deployable providers sequentially with the configured per-provider delay.
 
-Proxy Pool leases are worker-level. A worker gets one default proxy for sing-box egress; when health checks mark that proxy dead, the server rotates the lease and the worker restarts only sing-box. Direct providers continue to run without a proxy lease.
+Proxy Pool leases are currently worker-level. The server is the only pool and lease authority: it probes the pool, sends one exact candidate to the worker, and keeps the old database assignment until the worker has probed that candidate from the VPS, staged it in every named sing-box sidecar, restarted only those sidecars, and returned a redacted ACK with the binding token and observed exit IP. The server then CAS-commits the assignment and affected provider-instance rows in one transaction. Proxy assignment transactions are serialized on the server; a stale assignment generation, a candidate claimed by another worker, or mixed per-instance proxy rows loses the CAS/fails closed and the worker restores the previous sidecar configuration.
+
+A failed probe, apply, ACK validation, or pre-commit CAS leaves the old lease in place. If the apply response is lost, the server makes a token-checked best-effort rollback because the worker may have restarted with the candidate. After a successful CAS, failure to delete the worker's backup config is cleanup-pending only: database and runtime already agree on the new candidate, so CashPilot retries confirmation and never rolls the committed assignment back blindly. Legacy sidecars without the persistent `/etc/sing-box` config volume fail closed and require an isolated redeploy before they can rotate. Manual assignment and lease routes use the same ACK path whenever proxy instances are active; direct providers continue without a Proxy Pool lease.
+
+This worker-level assignment is an intentional compatibility limit, not the final topology. Per-provider private bindings (including IPRoyal Pawns) and multiple public-IP slots still require a future `(worker, public_ip_slot, provider, instance)` lease model.
 
 MYST Wallet is a separate asset inventory. Wallet lease/reclaim follows the normal worker heartbeat plus `provider_states`, and funding state is derived from the node registration status when it can be read.
 

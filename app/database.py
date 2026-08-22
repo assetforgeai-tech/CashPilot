@@ -547,6 +547,7 @@ CREATE TABLE IF NOT EXISTS proxy_assignments (
     proxy_id   INTEGER,
     mode       TEXT NOT NULL DEFAULT 'proxy' CHECK(mode IN ('proxy', 'direct', 'auto')),
     fallback   TEXT NOT NULL DEFAULT 'hold' CHECK(fallback IN ('hold', 'rotate')),
+    assignment_version INTEGER NOT NULL DEFAULT 0,
     applied_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY(worker_id) REFERENCES workers(id) ON DELETE CASCADE,
@@ -730,6 +731,17 @@ CREATE INDEX IF NOT EXISTS idx_alerts_created
 # handle's ``finally`` never actually tears down the shared connection.
 
 _shared_conns: dict[int, aiosqlite.Connection] = {}
+_proxy_assignment_locks: dict[int, asyncio.Lock] = {}
+
+
+def _proxy_assignment_lock() -> asyncio.Lock:
+    """Serialize multi-statement proxy assignment transactions per event loop."""
+    loop_key = id(asyncio.get_running_loop())
+    lock = _proxy_assignment_locks.get(loop_key)
+    if lock is None:
+        lock = asyncio.Lock()
+        _proxy_assignment_locks[loop_key] = lock
+    return lock
 
 
 class _BorrowedConnection:
@@ -773,6 +785,16 @@ def _open_connection() -> aiosqlite.Connection:
     """
     DB_DIR.mkdir(parents=True, exist_ok=True)
     return aiosqlite.connect(str(DB_PATH))
+
+
+async def _open_transaction_connection() -> aiosqlite.Connection:
+    """Open an isolated connection for a short compare-and-swap transaction."""
+    conn = await _open_connection()
+    conn.row_factory = aiosqlite.Row
+    await conn.execute("PRAGMA foreign_keys=ON")
+    await conn.execute("PRAGMA busy_timeout=5000")
+    await conn.execute("PRAGMA synchronous=NORMAL")
+    return conn
 
 
 async def _get_db() -> _BorrowedConnection:
@@ -938,7 +960,7 @@ async def _encrypt_legacy_plaintext_credentials(db: Any) -> int:
 #: missing a column -- an interrupted upgrade, a restored backup, a hand-edited
 #: file -- could never be repaired, because the gate would say there was nothing
 #: to do. The guards are idempotent and cheap; the version is for the operator.
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 17
 
 
 async def init_db() -> None:
@@ -1092,6 +1114,11 @@ async def init_db() -> None:
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_proxy_provider_masks_provider ON proxy_provider_masks(provider_slug, proxy_id)"
         )
+        cursor = await db.execute("PRAGMA table_info(proxy_assignments)")
+        proxy_assignment_cols = {row["name"] for row in await cursor.fetchall()}
+        if "assignment_version" not in proxy_assignment_cols:
+            applied.append("proxy_assignments.assignment_version")
+            await db.execute("ALTER TABLE proxy_assignments ADD COLUMN assignment_version INTEGER NOT NULL DEFAULT 0")
         # Migrate config table: add updated_at so credential age is knowable.
         # Existing rows are left NULL — see the note on the back-fill below.
         # (This comment used to say they receive the migration time, which is
@@ -3014,41 +3041,73 @@ async def set_worker_proxy_assignment(
 ) -> bool:
     mode = mode if mode in {"proxy", "direct", "auto"} else "proxy"
     fallback = fallback if fallback in {"hold", "rotate"} else "hold"
-    db = await _get_db()
-    try:
-        cur = await db.execute("SELECT id FROM workers WHERE id = ?", (worker_id,))
-        if not await cur.fetchone():
-            return False
-        if proxy_id is not None:
-            cur = await db.execute("SELECT id FROM proxy_endpoints WHERE id = ?", (proxy_id,))
+    async with _proxy_assignment_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            cur = await db.execute("SELECT id FROM workers WHERE id = ?", (worker_id,))
             if not await cur.fetchone():
+                await db.rollback()
                 return False
-        await db.execute(
-            """
-            INSERT INTO proxy_assignments (worker_id, proxy_id, mode, fallback, applied_at)
-            VALUES (?, ?, ?, ?, NULL)
-            ON CONFLICT(worker_id) DO UPDATE SET
-                proxy_id = excluded.proxy_id,
-                mode = excluded.mode,
-                fallback = excluded.fallback,
-                applied_at = NULL
-            """,
-            (worker_id, proxy_id, mode, fallback),
-        )
-        await db.commit()
-        return True
-    finally:
-        await db.close()
+            if proxy_id is not None:
+                cur = await db.execute("SELECT id FROM proxy_endpoints WHERE id = ?", (proxy_id,))
+                if not await cur.fetchone():
+                    await db.rollback()
+                    return False
+                cur = await db.execute(
+                    "SELECT worker_id FROM proxy_assignments WHERE proxy_id = ? AND worker_id != ? LIMIT 1",
+                    (proxy_id, worker_id),
+                )
+                if await cur.fetchone():
+                    await db.rollback()
+                    return False
+            await db.execute(
+                """
+                INSERT INTO proxy_assignments (worker_id, proxy_id, mode, fallback, assignment_version, applied_at)
+                VALUES (?, ?, ?, ?, 1, NULL)
+                ON CONFLICT(worker_id) DO UPDATE SET
+                    proxy_id = excluded.proxy_id,
+                    mode = excluded.mode,
+                    fallback = excluded.fallback,
+                    assignment_version = proxy_assignments.assignment_version + 1,
+                    applied_at = NULL
+                """,
+                (worker_id, proxy_id, mode, fallback),
+            )
+            await db.commit()
+            return True
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
 
 
 async def clear_worker_proxy_assignment(worker_id: int) -> bool:
-    db = await _get_db()
-    try:
-        cursor = await db.execute("DELETE FROM proxy_assignments WHERE worker_id = ?", (worker_id,))
-        await db.commit()
-        return bool(cursor.rowcount)
-    finally:
-        await db.close()
+    async with _proxy_assignment_lock():
+        db = await _open_transaction_connection()
+        try:
+            # Keep the row as a tombstone so an in-flight rotation cannot reuse an
+            # old assignment version after a clear/re-lease race.
+            cursor = await db.execute(
+                """
+                UPDATE proxy_assignments
+                SET proxy_id = NULL,
+                    mode = 'direct',
+                    fallback = 'hold',
+                    assignment_version = assignment_version + 1,
+                    applied_at = datetime('now')
+                WHERE worker_id = ?
+                """,
+                (worker_id,),
+            )
+            await db.commit()
+            return bool(cursor.rowcount)
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
 
 
 async def get_worker_proxy_assignment(worker_id: int) -> dict[str, Any] | None:
@@ -3056,7 +3115,8 @@ async def get_worker_proxy_assignment(worker_id: int) -> dict[str, Any] | None:
     try:
         cur = await db.execute(
             """
-            SELECT pa.worker_id, pa.proxy_id, pa.mode, pa.fallback, pa.applied_at, pa.created_at,
+            SELECT pa.worker_id, pa.proxy_id, pa.mode, pa.fallback, pa.assignment_version,
+                   pa.applied_at, pa.created_at,
                    pe.endpoint, pe.host, pe.port, pe.protocol, pe.username, pe.location,
                    pe.password_enc, pe.status, pe.udp_ok, pp.name AS provider_name
             FROM proxy_assignments pa
@@ -3076,6 +3136,83 @@ async def get_worker_proxy_assignment(worker_id: int) -> dict[str, Any] | None:
         return data
     finally:
         await db.close()
+
+
+async def commit_proxy_rotation(
+    worker_id: int,
+    *,
+    expected_proxy_id: int,
+    expected_assignment_version: int,
+    new_proxy_id: int,
+    instance_ids: Sequence[str],
+    fallback: str = "rotate",
+) -> bool:
+    """CAS-commit a worker proxy rotation and its affected instances in one transaction."""
+    ids = [str(value or "").strip() for value in instance_ids if str(value or "").strip()]
+    if not ids:
+        return False
+    fallback = fallback if fallback in {"hold", "rotate"} else "rotate"
+    async with _proxy_assignment_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            cursor = await db.execute("SELECT id FROM proxy_endpoints WHERE id = ?", (new_proxy_id,))
+            if not await cursor.fetchone():
+                await db.rollback()
+                return False
+            cursor = await db.execute(
+                """
+                SELECT worker_id
+                FROM proxy_assignments
+                WHERE proxy_id = ? AND worker_id != ?
+                LIMIT 1
+                """,
+                (new_proxy_id, worker_id),
+            )
+            if await cursor.fetchone():
+                # A candidate may have been read before another worker claimed it.
+                # Do not create duplicate active leases during the CAS commit.
+                await db.rollback()
+                return False
+            cursor = await db.execute(
+                """
+                UPDATE proxy_assignments
+                SET proxy_id = ?,
+                    mode = 'proxy',
+                    fallback = ?,
+                    assignment_version = assignment_version + 1,
+                    applied_at = datetime('now')
+                WHERE worker_id = ?
+                  AND proxy_id = ?
+                  AND assignment_version = ?
+                """,
+                (new_proxy_id, fallback, worker_id, expected_proxy_id, expected_assignment_version),
+            )
+            if int(cursor.rowcount or 0) != 1:
+                await db.rollback()
+                return False
+            placeholders = ",".join("?" for _ in ids)
+            cursor = await db.execute(
+                f"""
+                UPDATE provider_instances
+                SET proxy_id = ?, updated_at = datetime('now')
+                WHERE worker_id = ?
+                  AND mode = 'proxy'
+                  AND proxy_id = ?
+                  AND instance_id IN ({placeholders})
+                """,
+                [new_proxy_id, worker_id, expected_proxy_id, *ids],
+            )
+            if int(cursor.rowcount or 0) != len(ids):
+                await db.rollback()
+                return False
+            await db.commit()
+            return True
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
 
 
 async def _repair_myst_wallet_addresses(db: aiosqlite.Connection, *, limit: int = 300) -> None:
@@ -3171,30 +3308,36 @@ async def lease_proxy_for_worker(worker_id: int, *, provider_slug: str | None = 
               )
         """
         params.append(provider_slug)
-    db = await _get_db()
-    try:
-        await db.execute(
-            f"""
-            INSERT INTO proxy_assignments (worker_id, proxy_id, mode, fallback, applied_at)
-            SELECT ?, pe.id, 'proxy', 'hold', datetime('now')
-            FROM proxy_endpoints pe
-            LEFT JOIN proxy_assignments pa ON pa.proxy_id = pe.id
-            WHERE pa.proxy_id IS NULL
-              AND lower(coalesce(pe.status, 'alive')) != 'dead'
-            {mask_clause}
-            ORDER BY pe.id
-            LIMIT 1
-            ON CONFLICT(worker_id) DO UPDATE SET
-                proxy_id = excluded.proxy_id,
-                mode = excluded.mode,
-                fallback = excluded.fallback,
-                applied_at = excluded.applied_at
-            """,
-            params,
-        )
-        await db.commit()
-    finally:
-        await db.close()
+    async with _proxy_assignment_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            await db.execute(
+                f"""
+                INSERT INTO proxy_assignments (worker_id, proxy_id, mode, fallback, assignment_version, applied_at)
+                SELECT ?, pe.id, 'proxy', 'hold', 1, datetime('now')
+                FROM proxy_endpoints pe
+                LEFT JOIN proxy_assignments pa ON pa.proxy_id = pe.id
+                WHERE pa.proxy_id IS NULL
+                  AND lower(coalesce(pe.status, 'alive')) != 'dead'
+                {mask_clause}
+                ORDER BY pe.id
+                LIMIT 1
+                ON CONFLICT(worker_id) DO UPDATE SET
+                    proxy_id = excluded.proxy_id,
+                    mode = excluded.mode,
+                    fallback = excluded.fallback,
+                    assignment_version = proxy_assignments.assignment_version + 1,
+                    applied_at = excluded.applied_at
+                """,
+                params,
+            )
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
     assignment = await get_worker_proxy_assignment(worker_id)
     if (
         assignment
@@ -3204,6 +3347,51 @@ async def lease_proxy_for_worker(worker_id: int, *, provider_slug: str | None = 
     ):
         return None
     return assignment
+
+
+async def find_available_proxy_for_worker(worker_id: int, *, provider_slug: str | None = None) -> dict[str, Any] | None:
+    """Read a candidate without mutating the worker assignment.
+
+    Rotation uses this reservation-free lookup so the existing binding remains
+    the CAS guard until the worker has applied and acknowledged the candidate.
+    """
+    provider_slug = str(provider_slug or "").strip()
+    clauses = [
+        "pa.proxy_id IS NULL",
+        "lower(coalesce(pe.status, 'alive')) != 'dead'",
+    ]
+    params: list[Any] = []
+    if provider_slug:
+        clauses.append(
+            "NOT EXISTS (SELECT 1 FROM proxy_provider_masks ppm WHERE ppm.proxy_id = pe.id AND ppm.provider_slug = ?)"
+        )
+        params.append(provider_slug)
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            f"""
+            SELECT pe.id AS proxy_id, pe.endpoint, pe.host, pe.port, pe.protocol,
+                   pe.username, pe.location, pe.password_enc, pe.status, pe.udp_ok,
+                   pp.name AS provider_name
+            FROM proxy_endpoints pe
+            LEFT JOIN proxy_assignments pa ON pa.proxy_id = pe.id
+            LEFT JOIN proxy_providers pp ON pp.id = pe.provider_id
+            WHERE {" AND ".join(clauses)}
+            ORDER BY pe.id
+            LIMIT 1
+            """,
+            params,
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        data = dict(row)
+        enc = data.pop("password_enc", "") or ""
+        if enc:
+            data["password"] = decrypt_value(enc)
+        return data
+    finally:
+        await db.close()
 
 
 async def get_proxy_endpoint(proxy_id: int) -> dict[str, Any] | None:

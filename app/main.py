@@ -2089,15 +2089,13 @@ async def _proxy_for_worker_instance(worker_id: int, *, provider_slug: str | Non
     attempts = 20
     for _ in range(attempts):
         proxy = await database.get_worker_proxy_assignment(worker_id)
-        if (
+        replacement_needed = bool(
             proxy
             and provider_slug
             and proxy.get("proxy_id")
             and await database.proxy_masked_for_provider(int(proxy["proxy_id"]), provider_slug)
-        ):
-            await database.clear_worker_proxy_assignment(worker_id)
-            proxy = None
-        if proxy and proxy.get("proxy_id"):
+        )
+        if proxy and proxy.get("proxy_id") and not replacement_needed:
             from app.routers.proxies import _probe_proxy_confirmed
 
             probe = await _probe_proxy_confirmed(
@@ -2109,8 +2107,19 @@ async def _proxy_for_worker_instance(worker_id: int, *, provider_slug: str | Non
                 retry_delay=0,
             )
             if probe.get("status") != "alive":
+                replacement_needed = True
+
+        if replacement_needed:
+            from app.routers.proxies import _rotate_worker_proxy_after_ack, _worker_has_proxy_instances
+
+            if await _worker_has_proxy_instances(worker_id):
+                candidate = await database.find_available_proxy_for_worker(worker_id, provider_slug=provider_slug)
+                if candidate and await _rotate_worker_proxy_after_ack(worker_id, candidate):
+                    return candidate
+                raise HTTPException(status_code=409, detail="No acknowledged proxy available for this worker")
+            if proxy and proxy.get("proxy_id"):
                 await database.clear_worker_proxy_assignment(worker_id)
-                proxy = None
+            proxy = None
         if not proxy or not proxy.get("proxy_id"):
             proxy = await database.lease_proxy_for_worker(worker_id, provider_slug=provider_slug)
         if proxy and proxy.get("proxy_id"):

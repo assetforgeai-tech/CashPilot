@@ -70,6 +70,11 @@ def _reset_shared_db():
 
     conns = list(database._shared_conns.values())
     database._shared_conns.clear()
+    database._proxy_assignment_locks.clear()
+    with contextlib.suppress(Exception):
+        from app.routers import proxies
+
+        proxies._proxy_rotation_locks.clear()
     if not conns:
         return
 

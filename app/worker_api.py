@@ -989,6 +989,12 @@ class ProxyTargetProbeSpec(BaseModel):
     targets: list[str] = Field(default_factory=list)
 
 
+class ProxyBindingApplySpec(BaseModel):
+    binding_version: str = Field(min_length=8, max_length=128, pattern=r"^[A-Za-z0-9._-]+$")
+    proxy: dict[str, Any]
+    instances: list[str] = Field(min_length=1, max_length=256)
+
+
 def _probe_proxy_url(proxy: dict[str, Any]) -> str:
     scheme = str(proxy.get("protocol") or proxy.get("scheme") or "socks5").strip().lower()
     if scheme == "socks":
@@ -1003,6 +1009,44 @@ def _probe_proxy_url(proxy: dict[str, Any]) -> str:
     if username:
         auth = urllib.parse.quote(username, safe="") + ":" + urllib.parse.quote(password, safe="") + "@"
     return f"{scheme}://{auth}{host}:{port}"
+
+
+_PROXY_BINDING_PROBE_TARGETS = ["https://api.ipify.org?format=json"]
+
+
+async def _probe_proxy_targets(proxy: dict[str, Any], targets: list[str]) -> dict[str, Any]:
+    try:
+        proxy_url = _probe_proxy_url(proxy)
+    except ValueError as exc:
+        return {"ok": False, "observed_exit_ip": "", "results": [], "error": type(exc).__name__}
+
+    results: list[dict[str, Any]] = []
+    observed_exit_ip = ""
+    try:
+        async with httpx.AsyncClient(proxy=proxy_url, timeout=12, follow_redirects=False, trust_env=False) as client:
+            for target in targets:
+                try:
+                    resp = await client.get(target, headers={"user-agent": "Mozilla/5.0"})
+                    ok = 0 < resp.status_code < 500
+                    results.append({"target": target, "status_code": resp.status_code, "ok": ok})
+                    if ok and "ipify" in target:
+                        with contextlib.suppress(Exception):
+                            value = (
+                                resp.json().get("ip") if "json" in resp.headers.get("content-type", "") else resp.text
+                            )
+                            observed_exit_ip = egress.public_ip(str(value or "")) or ""
+                except Exception as exc:
+                    results.append({"target": target, "status_code": 0, "ok": False, "error": type(exc).__name__})
+    except Exception as exc:
+        return {"ok": False, "observed_exit_ip": "", "results": results, "error": type(exc).__name__}
+    requires_exit_ip = any("ipify" in target for target in targets)
+    return {
+        "ok": bool(results)
+        and all(item["ok"] for item in results)
+        and (bool(observed_exit_ip) or not requires_exit_ip),
+        "observed_exit_ip": observed_exit_ip,
+        "results": results,
+    }
 
 
 async def _fetch_runtime_asset(provider: str, asset_kind: str) -> str:
@@ -1465,23 +1509,77 @@ async def api_probe_proxy_targets(request: Request, spec: ProxyTargetProbeSpec) 
         "https://proxyjs.brdtnet.com/",
         "https://api.ipify.org?format=json",
     ]
+    result = await _probe_proxy_targets(spec.proxy, targets)
+    return {"ok": result["ok"], "results": result["results"]}
+
+
+@app.post("/api/egress/bindings/apply")
+async def api_apply_proxy_binding(request: Request, spec: ProxyBindingApplySpec) -> dict[str, Any]:
+    _verify_api_key(request)
+    probe = await _probe_proxy_targets(spec.proxy, _PROXY_BINDING_PROBE_TARGETS)
+    if not probe.get("ok"):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "proxy_unreachable_from_worker",
+                "binding_version": spec.binding_version,
+                "proxy_id": int(spec.proxy.get("proxy_id") or spec.proxy.get("id") or 0),
+            },
+        )
     try:
-        proxy_url = _probe_proxy_url(spec.proxy)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    results: list[dict[str, Any]] = []
+        applied = await asyncio.to_thread(
+            orchestrator.apply_proxy_binding_batch,
+            spec.instances,
+            spec.proxy,
+            spec.binding_version,
+        )
+    except (RuntimeError, ValueError) as exc:
+        logger.warning("Proxy binding apply failed for %s: %s", spec.instances, exc)
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "proxy_binding_apply_failed",
+                "binding_version": spec.binding_version,
+                "proxy_id": int(spec.proxy.get("proxy_id") or spec.proxy.get("id") or 0),
+            },
+        ) from exc
+    return {
+        "ok": True,
+        "binding_version": spec.binding_version,
+        "proxy_id": int(spec.proxy.get("proxy_id") or spec.proxy.get("id") or 0),
+        "observed_exit_ip": str(probe.get("observed_exit_ip") or ""),
+        "applied_instances": list(applied.get("applied_instances") or []),
+        "config_sha256": str(applied.get("config_sha256") or ""),
+    }
+
+
+class ProxyBindingFinalizeSpec(BaseModel):
+    binding_version: str = Field(min_length=8, max_length=128, pattern=r"^[A-Za-z0-9._-]+$")
+    instances: list[str] = Field(min_length=1, max_length=256)
+    commit: bool = True
+
+
+@app.post("/api/egress/bindings/finalize")
+async def api_finalize_proxy_binding(request: Request, spec: ProxyBindingFinalizeSpec) -> dict[str, Any]:
+    _verify_api_key(request)
     try:
-        async with httpx.AsyncClient(proxy=proxy_url, timeout=12, follow_redirects=False, trust_env=False) as client:
-            for target in targets:
-                try:
-                    resp = await client.get(target, headers={"user-agent": "Mozilla/5.0"})
-                    ok = 0 < resp.status_code < 500
-                    results.append({"target": target, "status_code": resp.status_code, "ok": ok})
-                except Exception as exc:
-                    results.append({"target": target, "status_code": 0, "ok": False, "error": type(exc).__name__})
-    except Exception as exc:
-        return {"ok": False, "results": results, "error": type(exc).__name__}
-    return {"ok": all(item["ok"] for item in results), "results": results}
+        result = await asyncio.to_thread(
+            orchestrator.finalize_proxy_binding_batch,
+            spec.instances,
+            spec.binding_version,
+            commit=spec.commit,
+        )
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"error": "proxy_binding_finalize_failed", "binding_version": spec.binding_version},
+        ) from exc
+    return {
+        "ok": True,
+        "binding_version": spec.binding_version,
+        "action": str(result.get("action") or ""),
+        "finalized_instances": list(result.get("finalized_instances") or []),
+    }
 
 
 @app.post("/api/containers/{slug}/restart")

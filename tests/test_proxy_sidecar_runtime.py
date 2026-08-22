@@ -27,6 +27,12 @@ def test_proxy_instance_runs_provider_inside_singbox_sidecar_namespace():
     assert sidecar_call.kwargs["environment"]["ENABLE_DEPRECATED_LEGACY_DNS_SERVERS"] == "true"
     assert sidecar_call.kwargs["cap_add"] == ["NET_ADMIN"]
     assert "/dev/net/tun:/dev/net/tun" in sidecar_call.kwargs["devices"]
+    assert sidecar_call.kwargs["volumes"] == {
+        "cashpilot-earnfm-proxy-egress-config": {"bind": "/etc/sing-box", "mode": "rw"}
+    }
+    assert ".cashpilot-initialized" in sidecar_call.kwargs["entrypoint"][2]
+    assert sidecar_call.kwargs["labels"]["cashpilot.provider"] == "earnfm"
+    assert sidecar_call.kwargs["labels"]["cashpilot.instance_mode"] == "proxy"
     assert provider_call.kwargs["network_mode"] == "container:cashpilot-earnfm-proxy-egress"
     assert provider_call.kwargs["name"] == "cashpilot-earnfm-proxy"
     assert provider_call.kwargs["labels"]["cashpilot.provider"] == "earnfm"
@@ -91,3 +97,209 @@ def test_remove_proxy_instance_removes_egress_sidecar():
     provider.remove.assert_called_once_with(force=True)
     sidecar.remove.assert_called_once_with(force=True)
     client.containers.get.assert_any_call("cashpilot-earnfm-proxy-egress")
+
+
+def test_apply_proxy_binding_preflights_every_sidecar_before_writing_any_config():
+    client = MagicMock()
+    current = MagicMock()
+    current.labels = {
+        "cashpilot.role": "egress-sidecar",
+        "cashpilot.provider": "earnfm",
+    }
+    current.attrs = {"Mounts": [{"Destination": "/etc/sing-box", "RW": True}]}
+    legacy = MagicMock()
+    legacy.labels = {
+        "cashpilot.role": "egress-sidecar",
+        "cashpilot.provider": "proxybase",
+    }
+    legacy.attrs = {"Mounts": []}
+    client.containers.get.side_effect = [current, legacy]
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        try:
+            orchestrator.apply_proxy_binding_batch(
+                ["earnfm-proxy", "proxybase-proxy"],
+                {"host": "2.2.2.2", "port": 1080, "protocol": "socks5"},
+                "rotation_1234567890",
+            )
+        except RuntimeError as exc:
+            assert "predates persistent binding support" in str(exc)
+        else:
+            raise AssertionError("legacy sidecar must fail closed")
+
+    current.exec_run.assert_not_called()
+    current.restart.assert_not_called()
+
+
+def test_apply_proxy_binding_restarts_only_sidecar_and_reports_config_hash():
+    client = MagicMock()
+    sidecar = MagicMock()
+    sidecar.labels = {
+        "cashpilot.role": "egress-sidecar",
+        "cashpilot.provider": "earnfm",
+    }
+    sidecar.attrs = {"Mounts": [{"Destination": "/etc/sing-box", "RW": True}]}
+    sidecar.exec_run.return_value = MagicMock(exit_code=0)
+    sidecar.status = "running"
+    client.containers.get.return_value = sidecar
+
+    with (
+        patch.object(orchestrator, "_get_client", return_value=client),
+        patch.object(
+            orchestrator.singbox_config, "render_tun_proxy_config", return_value={"route": {"final": "proxy-out"}}
+        ),
+    ):
+        result = orchestrator.apply_proxy_binding_batch(
+            ["earnfm-proxy"],
+            {"host": "2.2.2.2", "port": 1080, "protocol": "socks5"},
+            "rotation_1234567890",
+        )
+
+    assert result["applied_instances"] == ["earnfm-proxy"]
+    assert len(result["config_sha256"]) == 64
+    assert sidecar.exec_run.call_count >= 3
+    sidecar.put_archive.assert_called_once()
+    archive_path, archive_payload = sidecar.put_archive.call_args.args
+    assert archive_path == "/etc/sing-box"
+    assert len(archive_payload) > 0
+    commands = [call.args[0][2] for call in sidecar.exec_run.call_args_list]
+    assert any("sing-box check" in command for command in commands)
+    assert any("rotation_1234567890" in command for command in commands)
+    assert all("base64" not in command for command in commands)
+    sidecar.restart.assert_called_once_with(timeout=30)
+
+
+def test_deploy_raw_replaces_ephemeral_config_volume_before_seeding_new_proxy():
+    client = MagicMock()
+    client.containers.get.side_effect = [orchestrator.NotFound("provider"), orchestrator.NotFound("sidecar")]
+    client.containers.run.side_effect = [MagicMock(id="sidecar-id"), MagicMock(id="provider-id", short_id="provider")]
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        orchestrator.deploy_raw(
+            slug="earnfm-proxy",
+            image="fazalfarhan01/earnfm-client:latest",
+            labels={"cashpilot.provider": "earnfm", "cashpilot.instance_mode": "proxy"},
+            proxy={"host": "2.2.2.2", "port": 1080, "protocol": "socks5"},
+        )
+
+    client.volumes.get.assert_called_once_with("cashpilot-earnfm-proxy-egress-config")
+    client.volumes.get.return_value.remove.assert_called_once_with(force=True)
+
+
+def test_deploy_raw_fails_closed_when_config_volume_cannot_be_reset():
+    client = MagicMock()
+    client.containers.get.side_effect = [orchestrator.NotFound("provider"), orchestrator.NotFound("sidecar")]
+    client.volumes.get.return_value.remove.side_effect = orchestrator.APIError("volume is busy")
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        try:
+            orchestrator.deploy_raw(
+                slug="earnfm-proxy",
+                image="fazalfarhan01/earnfm-client:latest",
+                labels={"cashpilot.provider": "earnfm", "cashpilot.instance_mode": "proxy"},
+                proxy={"host": "2.2.2.2", "port": 1080, "protocol": "socks5"},
+            )
+        except orchestrator.APIError as exc:
+            assert "volume is busy" in str(exc)
+        else:
+            raise AssertionError("a stale config volume must block proxy deployment")
+
+    client.containers.run.assert_not_called()
+
+
+def test_proxy_binding_validates_every_candidate_before_activating_any_sidecar():
+    client = MagicMock()
+    first = MagicMock()
+    first.labels = {"cashpilot.role": "egress-sidecar", "cashpilot.provider": "earnfm"}
+    first.attrs = {"Mounts": [{"Destination": "/etc/sing-box", "RW": True}]}
+    first.exec_run.return_value = MagicMock(exit_code=0)
+    second = MagicMock()
+    second.labels = {"cashpilot.role": "egress-sidecar", "cashpilot.provider": "proxybase"}
+    second.attrs = {"Mounts": [{"Destination": "/etc/sing-box", "RW": True}]}
+    second.exec_run.return_value = MagicMock(exit_code=1)
+    client.containers.get.side_effect = [first, second]
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        try:
+            orchestrator.apply_proxy_binding_batch(
+                ["earnfm-proxy", "proxybase-proxy"],
+                {"host": "2.2.2.2", "port": 1080, "protocol": "socks5"},
+                "rotation_1234567890",
+            )
+        except RuntimeError as exc:
+            assert "rejected the candidate" in str(exc)
+        else:
+            raise AssertionError("invalid candidate must fail closed")
+
+    first.restart.assert_not_called()
+    second.restart.assert_not_called()
+    first_commands = [call.args[0][2] for call in first.exec_run.call_args_list]
+    assert any("sing-box check" in command for command in first_commands)
+    assert all('mv "$tmp" /etc/sing-box/config.json' not in command for command in first_commands)
+
+
+def test_proxy_binding_rolls_back_all_activated_sidecars_when_restart_fails():
+    client = MagicMock()
+    first = MagicMock()
+    first.labels = {"cashpilot.role": "egress-sidecar", "cashpilot.provider": "earnfm"}
+    first.attrs = {"Mounts": [{"Destination": "/etc/sing-box", "RW": True}]}
+    first.exec_run.return_value = MagicMock(exit_code=0)
+    first.status = "running"
+    second = MagicMock()
+    second.labels = {"cashpilot.role": "egress-sidecar", "cashpilot.provider": "proxybase"}
+    second.attrs = {"Mounts": [{"Destination": "/etc/sing-box", "RW": True}]}
+    second.exec_run.return_value = MagicMock(exit_code=0)
+    second.restart.side_effect = [RuntimeError("docker restart failed"), None]
+    client.containers.get.side_effect = [first, second]
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        try:
+            orchestrator.apply_proxy_binding_batch(
+                ["earnfm-proxy", "proxybase-proxy"],
+                {"host": "2.2.2.2", "port": 1080, "protocol": "socks5"},
+                "rotation_1234567890",
+            )
+        except RuntimeError as exc:
+            assert "docker restart failed" in str(exc)
+        else:
+            raise AssertionError("restart failure must fail the binding")
+
+    first_commands = [call.args[0][2] for call in first.exec_run.call_args_list]
+    second_commands = [call.args[0][2] for call in second.exec_run.call_args_list]
+    assert any("config.json.cashpilot-prev" in command and "mv" in command for command in first_commands)
+    assert any("config.json.cashpilot-prev" in command and "mv" in command for command in second_commands)
+
+
+def test_proxy_binding_finalize_confirms_matching_version_without_restart():
+    client = MagicMock()
+    sidecar = MagicMock()
+    sidecar.labels = {"cashpilot.role": "egress-sidecar"}
+    sidecar.attrs = {"Mounts": [{"Destination": "/etc/sing-box", "RW": True}]}
+    sidecar.exec_run.return_value = MagicMock(exit_code=0)
+    client.containers.get.return_value = sidecar
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        result = orchestrator.finalize_proxy_binding_batch(["earnfm-proxy"], "rotation_1234567890", commit=True)
+
+    assert result == {"finalized_instances": ["earnfm-proxy"], "action": "confirmed"}
+    commands = [call.args[0][2] for call in sidecar.exec_run.call_args_list]
+    assert any(".cashpilot-binding-version" in command for command in commands)
+    assert any("rm -f /etc/sing-box/config.json.cashpilot-prev" in command for command in commands)
+    sidecar.restart.assert_not_called()
+
+
+def test_proxy_binding_finalize_rolls_back_matching_version_and_restarts_sidecar():
+    client = MagicMock()
+    sidecar = MagicMock()
+    sidecar.labels = {"cashpilot.role": "egress-sidecar"}
+    sidecar.attrs = {"Mounts": [{"Destination": "/etc/sing-box", "RW": True}]}
+    sidecar.exec_run.return_value = MagicMock(exit_code=0)
+    sidecar.status = "running"
+    client.containers.get.return_value = sidecar
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        result = orchestrator.finalize_proxy_binding_batch(["earnfm-proxy"], "rotation_1234567890", commit=False)
+
+    assert result == {"finalized_instances": ["earnfm-proxy"], "action": "rolled_back"}
+    command = sidecar.exec_run.call_args.args[0][2]
+    assert "mv /etc/sing-box/config.json.cashpilot-prev /etc/sing-box/config.json" in command
+    sidecar.restart.assert_called_once_with(timeout=30)
