@@ -4,18 +4,18 @@ Updated: 2026-08-23 (NKN live canary complete; docs-only closeout)
 
 ## Current repository state
 
-- Canonical source branch: `main` at
-  `881b0ea52da1921a11ceda35a1b3225c65395ad5` (`881b0ea`). The completed
-  live-canary evidence is merged through docs-only PR #14; its source branch
-  `docs/nkn-live-canary` is retained for traceability.
+- Canonical source branch: `main`. The NKN implementation/release baseline
+  entered `main` at `4c55eac`; completed live-canary evidence followed through
+  docs-only PR #14 (`881b0ea`). PR #15 removed the stale in-progress wording.
+  The source branch `docs/nkn-live-canary` is retained for traceability.
 - NKN direct runtime merged through PR #10. Bootstrap reuse, assignment-CAS
   removal and light-node memory bounds merged through PRs #11-#13.
 - PR #1 (Grass retirement), PR #2 (fork GHCR images), PR #3 (fork install
   surfaces), PR #4 (redacted historical evidence), PR #5 (current context),
   PR #6 (read-only baseline refresh), PR #7 (proxy worker ACK rotation), PR #8
   (post-merge baseline), PR #9 (`v1.2.0` canary context), PR #10 (NKN direct
-  runtime), PRs #11-#13 (NKN canary fixes), and PR #14 (completed live-canary
-  evidence) are merged.
+  runtime), PRs #11-#13 (NKN canary fixes), PR #14 (completed live-canary
+  evidence), and PR #15 (post-merge context correction) are merged.
 - Release `v1.3.2` is published with both fork GHCR images and passed the
   release image verification gates. The exact deployed image digests are
   recorded below.
