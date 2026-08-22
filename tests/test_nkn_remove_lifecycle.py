@@ -91,7 +91,7 @@ def test_generic_nkn_stop_is_rejected_instead_of_stopping_the_node():
 def test_worker_proxy_sends_assignment_body_on_delete():
     async def run():
         response = type("Response", (), {"status_code": 200, "json": lambda self: {"status": "removed"}})()
-        client = type("Client", (), {"delete": AsyncMock(return_value=response)})()
+        client = type("Client", (), {"request": AsyncMock(return_value=response)})()
         with (
             patch.object(
                 main.database,
@@ -104,6 +104,7 @@ def test_worker_proxy_sends_assignment_body_on_delete():
             factory.return_value.__aenter__ = AsyncMock(return_value=client)
             factory.return_value.__aexit__ = AsyncMock(return_value=None)
             await main._proxy_to_worker(7, "DELETE", "/api/nkn/slots/ipv4-001", json={"wallet_id": 7})
-        assert client.delete.await_args.kwargs["json"] == {"wallet_id": 7}
+        assert client.request.await_args.args[:2] == ("DELETE", "http://127.0.0.1:8081/api/nkn/slots/ipv4-001")
+        assert client.request.await_args.kwargs["json"] == {"wallet_id": 7}
 
     asyncio.run(run())
