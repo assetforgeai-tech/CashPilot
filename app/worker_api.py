@@ -1011,6 +1011,11 @@ def _probe_proxy_url(proxy: dict[str, Any]) -> str:
     return f"{scheme}://{auth}{host}:{port}"
 
 
+_DEFAULT_PROXY_PROBE_TARGETS = [
+    "https://example.com/",
+    "https://proxyjs.brdtnet.com/",
+    "https://api.ipify.org?format=json",
+]
 _PROXY_BINDING_PROBE_TARGETS = ["https://api.ipify.org?format=json"]
 
 
@@ -1504,11 +1509,9 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
 @app.post("/api/proxy/probe-targets")
 async def api_probe_proxy_targets(request: Request, spec: ProxyTargetProbeSpec) -> dict[str, Any]:
     _verify_api_key(request)
-    targets = spec.targets or [
-        "https://example.com/",
-        "https://proxyjs.brdtnet.com/",
-        "https://api.ipify.org?format=json",
-    ]
+    if spec.targets and spec.targets != _DEFAULT_PROXY_PROBE_TARGETS:
+        raise HTTPException(status_code=400, detail="custom proxy probe targets are not allowed")
+    targets = _DEFAULT_PROXY_PROBE_TARGETS
     result = await _probe_proxy_targets(spec.proxy, targets)
     return {"ok": result["ok"], "results": result["results"]}
 

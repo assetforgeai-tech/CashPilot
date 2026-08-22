@@ -231,6 +231,37 @@ def test_worker_egress_apply_writes_singbox_config(tmp_path):
     assert config_file.read_text(encoding="utf-8")
 
 
+def test_worker_proxy_probe_rejects_untrusted_target_before_network():
+    from app import worker_api
+
+    @asynccontextmanager
+    async def noop_lifespan(_app):
+        yield
+
+    worker_api.app.router.lifespan_context = noop_lifespan
+    with (
+        patch.object(worker_api, "_verify_api_key", lambda _request: None),
+        patch.object(
+            worker_api,
+            "_probe_proxy_targets",
+            new_callable=AsyncMock,
+            return_value={"ok": True, "results": []},
+        ) as probe,
+        TestClient(worker_api.app, raise_server_exceptions=False) as client,
+    ):
+        resp = client.post(
+            "/api/proxy/probe-targets",
+            json={
+                "proxy": {"host": "proxy.example.com", "port": 1080},
+                "targets": ["http://127.0.0.1:8080/admin"],
+            },
+        )
+
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "custom proxy probe targets are not allowed"
+    probe.assert_not_awaited()
+
+
 def test_worker_proxy_binding_apply_returns_redacted_ack():
     from app import worker_api
 
