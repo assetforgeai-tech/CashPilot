@@ -3175,10 +3175,11 @@ async def _proxy_to_worker(
     """Proxy one request to a worker's REST API and return its parsed JSON.
 
     Single home for the fetch-worker -> verified-URL+auth-header -> httpx call ->
-    error-mapping sequence the deploy/command/logs paths all repeated. Dispatch uses
-    the concrete httpx verbs (never client.request) so per-verb test mocks keep
-    landing; the caller owns the timeout (deploy needs 60s, the rest 30s) and any
-    query params (the logs line clamp, remove's delete_volumes).
+    error-mapping sequence the deploy/command/logs paths all repeated. DELETE is
+    dispatched through ``request`` because httpx 0.28 intentionally does not
+    accept a JSON body on ``AsyncClient.delete``; NKN removal needs its CAS body.
+    The caller owns the timeout (deploy needs 60s, the rest 30s) and any query
+    params (the logs line clamp, remove's delete_volumes).
     """
     worker = await database.get_worker(worker_id)
     url, headers = await _get_verified_worker_url(worker)
@@ -3189,7 +3190,7 @@ async def _proxy_to_worker(
             if verb == "GET":
                 resp = await client.get(f"{url}{path}", params=params, headers=headers)
             elif verb == "DELETE":
-                resp = await client.delete(f"{url}{path}", json=json, params=params, headers=headers)
+                resp = await client.request("DELETE", f"{url}{path}", json=json, params=params, headers=headers)
             else:
                 resp = await client.post(f"{url}{path}", json=json, params=params, headers=headers)
             if resp.status_code >= 400:
