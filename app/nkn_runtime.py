@@ -94,6 +94,14 @@ def seed_archive(wallet_json: str, wallet_pswd: str, beneficiary_address: str) -
         "beneficiaryAddr": beneficiary,
         "SyncMode": "light",
         "PasswordFile": "wallet.pswd",
+        # Keep the official light-node config within the 1 GiB container cap.
+        # The image otherwise sizes sync caches from host RAM, not its cgroup.
+        "SyncStateMaxThread": 8,
+        "SyncHeaderMaxMemorySize": 8,
+        "SyncBatchWindowSize": 8,
+        "SyncBlocksMaxMemorySize": 32,
+        "TxPoolMaxMemorySize": 8,
+        "ClientMsgCacheSize": 8,
     }
     files = {
         "config.json": (json.dumps(config, indent=2).encode("utf-8"), 0o644),
