@@ -1,32 +1,34 @@
 # CashPilot Active Context
 
-Updated: 2026-08-23 (NKN live canary complete; docs-only closeout)
+Updated: 2026-08-23 (NKN LXD runtime and live closeout; docs-only closeout)
 
 ## Current repository state
 
-- Canonical source branch: `main`. The NKN implementation/release baseline
-  entered `main` at `4c55eac`; completed live-canary evidence followed through
-  docs-only PR #14 (`881b0ea`). PR #15 removed the stale in-progress wording.
-  The source branch `docs/nkn-live-canary` is retained for traceability.
-- NKN direct runtime merged through PR #10. Bootstrap reuse, assignment-CAS
-  removal and light-node memory bounds merged through PRs #11-#13.
+- Canonical source branch: `main`. The original direct-runtime and Docker canary
+  history is retained for traceability. The LXD runtime landed through PR #17,
+  guarded canary adoption through PR #18, and the adoption timeout fix through
+  PR #19 (`7df2fdd`).
+- Release `v1.5.1` is published and verified. The server-only timeout fix is in
+  the UI image; `test-sing` intentionally remains on the already-verified
+  worker image `v1.5.0`.
 - PR #1 (Grass retirement), PR #2 (fork GHCR images), PR #3 (fork install
   surfaces), PR #4 (redacted historical evidence), PR #5 (current context),
   PR #6 (read-only baseline refresh), PR #7 (proxy worker ACK rotation), PR #8
   (post-merge baseline), PR #9 (`v1.2.0` canary context), PR #10 (NKN direct
-  runtime), PRs #11-#13 (NKN canary fixes), PR #14 (completed live-canary
-  evidence), and PR #15 (post-merge context correction) are merged.
-- Release `v1.3.2` is published with both fork GHCR images and passed the
-  release image verification gates. The exact deployed image digests are
-  recorded below.
+  runtime), PRs #11-#13 (NKN canary fixes), PRs #14-#16 (NKN context history),
+  and PRs #17-#19 (LXD runtime, adoption and timeout fix) are merged.
+- Both fork GHCR images were built and verified by the `v1.5.1` Auto Release
+  workflow. The deployed UI digest and the intentionally unchanged worker
+  digest are recorded in the current NKN closeout below.
 - The source branch remains `main`; release/deploy state is operational
   evidence and does not change the protected provider catalog.
 - Proxy lease rotation is server-authoritative with worker-local probe/ACK,
   persistent sidecar configuration and fail-closed CAS semantics. Generic proxy
   assignment remains worker-level; NKN has its own direct public-IP slot model.
 - Grass remains retired from the product. `test-sing` was explicitly approved
-  as disposable test state and cleaned before the NKN canary; it now contains
-  only the worker and the isolated NKN node.
+  as disposable test state and cleaned before the NKN canary; its current state
+  is the worker, one LXD NKN node, and the stopped legacy Docker NKN container
+  retained only for rollback evidence.
 - The implementation decision and safety boundaries are recorded in
   `docs/research/provider-removal-grass-2026-08.md`.
 
@@ -82,6 +84,10 @@ Updated: 2026-08-23 (NKN live canary complete; docs-only closeout)
 
 - NKN is official `nknorg/nkn:latest`, direct-only, and uses one exclusive
   wallet lease per bootstrap-discovered public IPv4 slot.
+- New NKN slots run in an NKN-only LXD instance with the official Docker node
+  inside it. Server Settings are authoritative for future creation/adoption:
+  `nkn_lxd_cpu=1` and `nkn_lxd_memory_mib=1024` are the current verified values;
+  saving different values never silently resizes a running node.
 - Host bootstrap owns public-IP discovery, bridge/SNAT routing, Docker
   prerequisites and persistent `LimitNOFILE=1048576`; worker deploy only reads
   the resulting slot state and never mutates host routes.
@@ -97,10 +103,10 @@ Updated: 2026-08-23 (NKN live canary complete; docs-only closeout)
   unacknowledged node at 14 minutes without deleting identity, ahead of the
   server's 15-minute reclaim; a valid ACK resumes it, while a rejected stale
   token removes only its label-matched NKN container/volume.
-- Current source status: PR #13 and release `v1.3.2` are green; the fresh full
-  docs-branch suite passed `1456 passed, 7 skipped`. The
-  unchanged `test-sing` canary completed first sync, and fresh runtime,
-  heartbeat, Fleet, wallet and collector snapshots close NKN as
+- Current source status: PRs #17-#19 and release `v1.5.1` are green. The patch
+  keeps normal deploy timeout at 60 seconds and gives only guarded LXD adoption
+  900 seconds. The fresh full suite passed `1515 passed, 7 skipped`. Runtime,
+  heartbeat, Fleet, wallet, RPC and lease-guard snapshots keep NKN
   `PROTECTED_DONE`.
 
 ## Proxy ACK rotation baseline
@@ -151,6 +157,10 @@ Updated: 2026-08-23 (NKN live canary complete; docs-only closeout)
 
 ## v1.3.2 NKN live canary (2026-08-22/23)
 
+This section is historical Docker-canary evidence. The current runtime is the
+LXD closeout recorded in the next section; the legacy Docker container remains
+stopped and must not be mistaken for the active node.
+
 - Auto Release for commit `4c55eac` published and verified both `v1.3.2`
   images. The server UI runs
   `ghcr.io/assetforgeai-tech/cashpilot@sha256:25450f4790a98f53508228e726f2e3ee1f8701e024c852acfe3a841fd302f31e`;
@@ -183,6 +193,42 @@ Updated: 2026-08-23 (NKN live canary complete; docs-only closeout)
   lease unchanged unless a separately approved lifecycle operation requires
   otherwise.
 
+## v1.5.1 NKN LXD closeout (2026-08-23)
+
+- PR #17 introduced the restricted NKN host helper and LXD runtime; PR #18
+  adopted the pre-provisioned canary without changing its NKN data, wallet or
+  Node ID. PR #19 fixed the server timeout mismatch discovered during adoption:
+  ordinary deploy remains 60 seconds and guarded adoption receives 900 seconds.
+- Auto Release run `32631080399` published and verified both `v1.5.1` images.
+  Only the server UI was redeployed because the fix is in `app/main.py`. The UI
+  is healthy at
+  `ghcr.io/assetforgeai-tech/cashpilot@sha256:08c69e606a9fdca18edb1479e9b229e04c8d2f6915d0d3779cb028c806cd4bf5`;
+  SQLite integrity is `ok` and schema version remains `17`. Server snapshot:
+  `/opt/cashpilot/backups/ui-20260823T163408Z`.
+- `test-sing` worker `43406` remains healthy on `v1.5.0` at digest
+  `sha256:35d9b31458edb306e2b98bb1583ef04bfe54592c582bdb656f71fcf0f1841247`;
+  it was not recreated for the UI-only patch. The NKN LXD helper socket is
+  active and restricted to `root:docker` mode `0660`.
+- Active target `cashpilot-nkn-ipv4-001` has LXD IP `10.252.0.2`, hard
+  `1 CPU / 1 GiB` limits and swap disabled. Its inner container
+  `cashpilot-nkn` keeps ID
+  `c4b7c9f3df9ec439ba1ecd636d0937ec1f1020901dc4ddba2810d147ddc73fd1`,
+  `restart=always`, host networking and the official pinned image digest
+  `nknorg/nkn@sha256:9a96013030545d71bdacee29922bb412a01bb71325ce246c36fb13623dfed07a`.
+- Node ID is
+  `2c58f11ddb37bd4c8e1bf16804bf19bd719038340afee0ea8ab373eed13604c2`;
+  RPC returned `PERSIST_FINISHED` after adoption and again after the controlled
+  lease-guard test. Fleet reports NKN `total=1`, `online=1`, `offline=0`.
+- Wallet `1` remains `LEASED` to worker `43406`, slot `ipv4-001`, client
+  `a38e77d55a2442af8fd79f096d0f69da:nkn:ipv4-001`, assignment version `3`.
+  The controlled guard test forced a stale local ACK, suspended the LXD node,
+  then used the authenticated server heartbeat ACK with the exact CAS tuple to
+  resume it. No wallet release, reassignment, identity rotation or volume
+  deletion occurred.
+- Legacy Docker container
+  `4a84d3d96b14468d9e6396c3e84d1352042ea5adfd955768397dd35c6283f84e`
+  remains `exited` with restart policy `no`; it was not started or recreated.
+
 ## Protected provider matrix
 
 `PROTECTED_DONE`: `earnfm`, `iproyal`, `mysterium`, `packetstream`,
@@ -195,12 +241,15 @@ canary and explicit user approval.
 
 ## Verification status
 
-- Fresh full docs-branch suite: `1456 passed, 7 skipped`; targeted NKN,
-  credential and docs-safety suite: `77 passed`.
-- Fresh live canary evidence passed apply/rollback/confirm isolation gates;
-  no database CAS row was fabricated for the isolated sidecar.
-- Commit `4c55eac` passed CodeQL, Lint, Catalog Check, Tests and Auto Release;
-  both `v1.3.2` image manifests and embedded versions were verified.
+- Fresh source suite: `1515 passed, 7 skipped`; targeted NKN/LXD suite:
+  `80 passed`.
+- PR #19 passed Analyze, CodeQL, Ruff and Tests. Merge commit `7df2fdd`
+  triggered Auto Release run `32631080399`; both `v1.5.1` image manifests and
+  embedded versions were verified before the tag and GitHub Release were
+  published.
+- Fresh live evidence proves the LXD runtime, exact CAS lease-guard
+  suspend/resume, UI-only upgrade isolation, Fleet `1/1/0`, wallet continuity,
+  Node ID continuity and legacy Docker stopped state.
 - Ruff lint, Python compileall and browser-free behavior checks pass;
   README/catalog and documentation-nav checks pass.
 - `mkdocs build --strict` passes with a temporary docs-only environment. The
@@ -214,10 +263,10 @@ canary and explicit user approval.
 - `ruff format --check` continues to report only the two pre-existing baseline
   files `tests/test_ci_gates_report_what_they_checked.py` and
   `tests/test_worker_myst_sync.py`; neither file is changed by this docs branch.
-- Live/VPS verification for the `v1.2.0` proxy canary and `v1.3.2` NKN canary is
-  complete. Final NKN API proof shows worker `43406` online, Fleet NKN
-  `1/1/0`, exclusive wallet assignment version `3` and a successful balance
-  collector without exposing wallet material.
+- Live/VPS verification for the historical `v1.2.0` proxy canary, historical
+  `v1.3.2` Docker NKN canary and current `v1.5.1` LXD closeout is complete.
+  Final NKN API proof shows worker `43406` online, Fleet NKN `1/1/0`, exclusive
+  wallet assignment version `3` and redacted `PERSIST_FINISHED` evidence.
 - Future provider deployment still requires an impact map and explicit approval;
   this canary did not authorize bulk redeploy, wallet rotation, credential
   rotation or changes to any protected provider.

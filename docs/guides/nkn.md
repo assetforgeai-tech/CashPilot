@@ -8,7 +8,10 @@
 CashPilot runs the official `nknorg/nkn:latest` light node in direct mode. The
 worker bootstrap discovers usable public IPv4 mappings and prepares one isolated
 bridge/routing slot per address. The server then leases one exclusive NKN wallet
-and creates one node for each ready slot, sequentially.
+and creates one node for each ready slot, sequentially. New direct nodes run in
+an NKN-only LXD instance; the official Docker node remains inside that instance
+so the LXD boundary, rather than an application hint, enforces the resource
+limit.
 
 NKN does not use the Proxy Pool. A slot is not deployable until the bootstrap
 state reports `route_ready: true`; the worker never discovers or changes host
@@ -20,6 +23,10 @@ Enter one beneficiary address in **Settings -> NKN**. This address is used only
 for the official balance collector. Per-node wallet JSON and passwords are
 leased from the server-side NKN Wallet inventory and are never shown in the UI,
 heartbeat or logs.
+
+The same Settings group is authoritative for new LXD nodes: `nkn_lxd_cpu`
+controls the integer CPU limit and `nkn_lxd_memory_mib` controls the hard memory
+limit in MiB. The shipped defaults are `1` CPU and `1024` MiB.
 
 ## Worker bootstrap
 
@@ -45,11 +52,21 @@ all existing providers continue to start normally.
 Each node uses:
 
 - image `nknorg/nkn:latest`;
-- a private named volume mounted at `/nkn/data`;
+- persistent NKN data mounted at `/nkn/data` (the adopted canary retained its
+  original data volume and node identity);
 - the tested `config.json` keys `BeneficiaryAddr`, `beneficiaryAddr`,
   `SyncMode: light` and `PasswordFile`;
-- `restart: always`, at most one CPU and 1 GiB RAM;
+- `restart: always` for the inner Docker node;
+- hard LXD limits from **Settings -> NKN** (`nkn_lxd_cpu` and
+  `nkn_lxd_memory_mib`, default `1 CPU / 1024 MiB`), with swap disabled;
 - one public IPv4 slot, bridge network and wallet assignment.
+
+Settings are authoritative for future NKN LXD creation/adoption payloads. Saving
+new values does not resize an already-running instance; a deliberate recreate
+is required to apply a changed limit. The server keeps ordinary deploy requests
+at a 60-second worker timeout, while the guarded pre-provisioned canary adoption
+uses a 900-second timeout so LXD image/bootstrap work can finish without being
+misclassified as a failed lease.
 
 CashPilot does not stop an NKN node as a routine action. Use deliberate remove
 for one slot; the worker verifies the wallet assignment token before removing
@@ -80,8 +97,20 @@ identity. The authenticated beneficiary check reports `17006.09284572 NKN`.
 The unchanged node reached `PERSIST_FINISHED` at RPC height `9684184` and
 continued accepting blocks. Fresh worker evidence reports `running=true` and
 `online=true`; Fleet reports one total NKN node, one online and zero offline.
+After the LXD adoption and the `v1.5.1` server patch, the same node still
+reports Node ID `2c58f11ddb37bd4c8e1bf16804bf19bd719038340afee0ea8ab373eed13604c2`,
+RPC `PERSIST_FINISHED`, LXD `1 CPU / 1 GiB` hard limits, and the pinned inner
+image digest
+`nknorg/nkn@sha256:9a96013030545d71bdacee29922bb412a01bb71325ce246c36fb13623dfed07a`.
+The server UI runs release `v1.5.1` at digest
+`sha256:08c69e606a9fdca18edb1479e9b229e04c8d2f6915d0d3779cb028c806cd4bf5`.
 Wallet `1` remains exclusively leased to the same worker/slot at assignment
-version `3`, with container restart count `0` and no OOM event.
+version `3`, with the inner container restart policy `always` and no OOM event.
+
+The lease guard was exercised with the exact CAS tuple: the worker suspended the
+LXD node without deleting its volume, a successful heartbeat ACK resumed it, and
+the node returned to `PERSIST_FINISHED`. The wallet remained `LEASED` at version
+`3`; the legacy Docker container was not started and remains stopped.
 
 ## Completion checklist
 
@@ -94,4 +123,5 @@ NKN is `PROTECTED_DONE` because the isolated canary on VPS `test-sing` proved:
    `PERSIST_FINISHED`;
 4. heartbeat and dashboard evidence show the node online; and
 5. no protected provider was changed, and the canary's own container identity,
-   volume and wallet lease stayed stable through reboot and first sync.
+   volume and wallet lease stayed stable through reboot, first sync, guarded
+   suspend/resume and the server-only `v1.5.1` upgrade.
