@@ -16,7 +16,13 @@ from typing import Any
 SOCKET_PATH = os.getenv("CASHPILOT_NKN_AGENT_SOCKET", "/run/cashpilot-nkn-agent/agent.sock")
 
 
-def _request(method: str, path: str, *, payload: Mapping[str, Any] | None = None) -> dict[str, Any]:
+def _request(
+    method: str,
+    path: str,
+    *,
+    payload: Mapping[str, Any] | None = None,
+    timeout: float = 900,
+) -> dict[str, Any]:
     body = json.dumps(dict(payload or {}), separators=(",", ":")).encode("utf-8")
     request = (
         f"{method} {path} HTTP/1.1\r\n"
@@ -25,7 +31,7 @@ def _request(method: str, path: str, *, payload: Mapping[str, Any] | None = None
         f"Content-Length: {len(body)}\r\n\r\n"
     ).encode("ascii") + body
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
-        client.settimeout(900)
+        client.settimeout(float(timeout))
         client.connect(SOCKET_PATH)
         client.sendall(request)
         chunks: list[bytes] = []
@@ -68,6 +74,7 @@ def deploy_slot(
     assignment: Mapping[str, Any],
     *,
     settings: Mapping[str, Any],
+    snapshot: Mapping[str, Any] | None = None,
     adopt_instance: str | None = None,
     expected_node_id: str | None = None,
 ) -> dict[str, Any]:
@@ -90,12 +97,15 @@ def deploy_slot(
         "lxd_cpu": int(settings["cpu"]),
         "lxd_memory_mib": int(settings["memory_mib"]),
     }
+    if snapshot:
+        payload["chaindb_snapshot"] = dict(snapshot)
     if bool(adopt_instance) != bool(expected_node_id):
         raise ValueError("canary adoption requires both instance name and expected node id")
     if adopt_instance:
         payload["adopt_instance"] = str(adopt_instance)
         payload["expected_node_id"] = str(expected_node_id)
-    return _request("POST", f"/v1/slots/{slot_id}", payload=payload)
+    request_timeout = 6 * 60 * 60 if snapshot else 900
+    return _request("POST", f"/v1/slots/{slot_id}", payload=payload, timeout=request_timeout)
 
 
 def suspend_slot(

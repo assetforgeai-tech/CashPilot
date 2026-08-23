@@ -47,6 +47,7 @@ SECRET_CONFIG_KEYS = {
     "token",
     "auth_token",
     "access_token",
+    "access_key",
     "api_key",
     "secret_key",
     "session_cookie",
@@ -2922,6 +2923,134 @@ async def lease_nkn_wallet(
             raise
         finally:
             await db.close()
+
+
+async def reserve_nkn_publisher_wallet(
+    *, public_ip: str, client_id: str = "nkn-chaindb-publisher"
+) -> dict[str, Any] | None:
+    """Reserve one NKN wallet for the dedicated ChainDB publisher.
+
+    Publisher reservations use a separate state and client-id namespace, so a
+    publisher wallet can never be handed to an ordinary worker slot. Repeating
+    the same request is idempotent for the same public IP.
+    """
+    public_ip = str(public_ip or "").strip()
+    client_id = str(client_id or "").strip()
+    if not public_ip or not client_id.startswith("nkn-chaindb-publisher"):
+        return None
+    lease_client_id = f"{client_id}:{public_ip}"
+    async with _nkn_wallet_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            await _ensure_nkn_wallets_table(db)
+            current_cursor = await db.execute(
+                "SELECT * FROM nkn_wallets WHERE state = 'RESERVED' AND leased_to_client_id = ? LIMIT 1",
+                (lease_client_id,),
+            )
+            current = await current_cursor.fetchone()
+            if current:
+                item = dict(current)
+                item["wallet_json"] = decrypt_value(item.pop("wallet_json_enc") or "")
+                item["wallet_pswd"] = decrypt_value(item.pop("wallet_pswd_enc") or "")
+                item["reservation_created"] = False
+                await db.commit()
+                return item
+            available_cursor = await db.execute(
+                "SELECT * FROM nkn_wallets WHERE state = 'AVAILABLE' ORDER BY id LIMIT 1"
+            )
+            row = await available_cursor.fetchone()
+            if not row:
+                await db.rollback()
+                return None
+            next_version = int(row["wallet_assignment_version"] or 0) + 1
+            updated = await db.execute(
+                """
+                UPDATE nkn_wallets
+                SET state = 'RESERVED', leased_to_worker_id = NULL, leased_to_client_id = ?,
+                    leased_at = datetime('now'), release_reason = '', public_ip = ?,
+                    wallet_assignment_version = ?, updated_at = datetime('now')
+                WHERE id = ? AND state = 'AVAILABLE' AND wallet_assignment_version = ?
+                """,
+                (lease_client_id, public_ip, next_version, row["id"], row["wallet_assignment_version"]),
+            )
+            if int(updated.rowcount or 0) != 1:
+                await db.rollback()
+                return None
+            await db.commit()
+            item = dict(row)
+            item.update(
+                {
+                    "state": "RESERVED",
+                    "leased_to_worker_id": None,
+                    "leased_to_client_id": lease_client_id,
+                    "leased_at": datetime.now(UTC).isoformat(),
+                    "public_ip": public_ip,
+                    "wallet_assignment_version": next_version,
+                    "wallet_json": decrypt_value(item.pop("wallet_json_enc") or ""),
+                    "wallet_pswd": decrypt_value(item.pop("wallet_pswd_enc") or ""),
+                    "reservation_created": True,
+                }
+            )
+            return item
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
+
+
+async def release_nkn_publisher_wallet(
+    *, wallet_id: int, public_ip: str, client_id: str = "nkn-chaindb-publisher"
+) -> bool:
+    """Release only the exact publisher reservation identified by its IP."""
+    lease_client_id = f"{str(client_id).strip()}:{str(public_ip).strip()}"
+    db = await _open_transaction_connection()
+    try:
+        await db.execute("BEGIN IMMEDIATE")
+        await _ensure_nkn_wallets_table(db)
+        cursor = await db.execute(
+            """
+            UPDATE nkn_wallets
+            SET state = 'AVAILABLE', leased_to_worker_id = NULL, leased_to_client_id = '',
+                leased_at = NULL, public_ip = '', release_reason = 'PUBLISHER_RELEASED',
+                node_identity = '', runtime_status = '', last_heartbeat_at = NULL, evidence_json = '{}',
+                wallet_assignment_version = wallet_assignment_version + 1, updated_at = datetime('now')
+            WHERE id = ? AND state = 'RESERVED' AND leased_to_client_id = ?
+            """,
+            (int(wallet_id), lease_client_id),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+    except Exception:
+        await db.rollback()
+        raise
+    finally:
+        await db.close()
+
+
+async def get_nkn_publisher_reservation(
+    *, wallet_id: int, public_ip: str, client_id: str = "nkn-chaindb-publisher"
+) -> dict[str, Any] | None:
+    """Return only public metadata for the exact publisher reservation."""
+    lease_client_id = f"{str(client_id).strip()}:{str(public_ip).strip()}"
+    db = await _get_db()
+    try:
+        await _ensure_nkn_wallets_table(db)
+        cursor = await db.execute(
+            """
+            SELECT id, state, leased_to_client_id, public_ip, wallet_assignment_version,
+                   leased_at, updated_at
+            FROM nkn_wallets
+            WHERE id = ? AND state = 'RESERVED' AND leased_to_client_id = ?
+            LIMIT 1
+            """,
+            (int(wallet_id), lease_client_id),
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        await db.close()
 
 
 async def release_nkn_wallet(

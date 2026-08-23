@@ -1,0 +1,12 @@
+[Unit]
+Description=Run the NKN ChainDB publisher daily
+
+[Timer]
+OnBootSec=20min
+OnCalendar=daily
+RandomizedDelaySec=1h
+Persistent=true
+Unit=cashpilot-nkn-chaindb-publisher.service
+
+[Install]
+WantedBy=timers.target

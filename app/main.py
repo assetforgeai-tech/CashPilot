@@ -15,10 +15,14 @@ import math
 import os
 import re
 import secrets
+import shutil
+import subprocess
+import tempfile
 import time
 from collections.abc import Mapping
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -115,6 +119,8 @@ _WORKER_HEARTBEAT_STREAKS: dict[int, int] = {}
 _proxy_pool_last_recheck: datetime | None = None
 _NKN_ADOPTABLE_CANARY = "cashpilot-nkn-lxd-canary"
 _NKN_NODE_ID_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+_NKN_PUBLISHER_KNOWN_HOSTS = Path("/data/nkn-chaindb-known-hosts")
+_SSH_SHA256_RE = re.compile(r"^SHA256:[A-Za-z0-9+/]{43}=?$")
 
 
 def _nkn_lxd_settings(config: Mapping[str, Any] | None) -> dict[str, int]:
@@ -136,6 +142,63 @@ def _nkn_lxd_settings(config: Mapping[str, Any] | None) -> dict[str, int]:
     return {
         "cpu": _bounded_int(cpu_key, 1, 1, 64),
         "memory_mib": _bounded_int(memory_key, 1024, 128, 65536),
+    }
+
+
+def _nkn_chaindb_settings(config: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Normalize the optional private R2 snapshot and publisher settings."""
+    from urllib.parse import urlsplit
+
+    values = config or {}
+
+    def _bounded_int(key: str, default: int, minimum: int, maximum: int) -> int:
+        raw = values.get(key, default)
+        text = str(raw if raw is not None else default).strip()
+        if not re.fullmatch(r"\d+", text):
+            raise ValueError(f"{key} must be an integer")
+        value = int(text)
+        if not minimum <= value <= maximum:
+            raise ValueError(f"{key} must be between {minimum} and {maximum}")
+        return value
+
+    enabled = str(values.get("nkn_chaindb_enabled") or "").strip().lower() in {"1", "true", "yes", "on"}
+    endpoint = str(values.get("nkn_chaindb_endpoint") or "").strip().rstrip("/")
+    if endpoint:
+        parsed = urlsplit(endpoint)
+        if parsed.scheme != "https" or not parsed.netloc or parsed.query or parsed.fragment:
+            raise ValueError("nkn_chaindb_endpoint must be an HTTPS URL without a query")
+    bucket = str(values.get("nkn_chaindb_bucket") or "").strip()
+    if bucket and not re.fullmatch(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]", bucket):
+        raise ValueError("nkn_chaindb_bucket is invalid")
+    prefix = str(values.get("nkn_chaindb_prefix") or "nkn/chaindb").strip().strip("/")
+    if not prefix or ".." in prefix.split("/") or not re.fullmatch(r"[A-Za-z0-9._/-]+", prefix):
+        raise ValueError("nkn_chaindb_prefix is invalid")
+    publisher_host = str(values.get("nkn_chaindb_publisher_host") or "").strip()
+    publisher_host_key_sha256 = str(values.get("nkn_chaindb_publisher_host_key_sha256") or "").strip()
+    if publisher_host_key_sha256 and not _SSH_SHA256_RE.fullmatch(publisher_host_key_sha256):
+        raise ValueError("nkn_chaindb_publisher_host_key_sha256 is invalid")
+    publisher_user = str(values.get("nkn_chaindb_publisher_user") or "root").strip()
+    if publisher_user and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.-]{0,31}", publisher_user):
+        raise ValueError("nkn_chaindb_publisher_user is invalid")
+    return {
+        "enabled": enabled,
+        "endpoint": endpoint,
+        "bucket": bucket,
+        "prefix": prefix,
+        "access_key": str(values.get("nkn_chaindb_r2_access_key") or "").strip(),
+        "secret_key": str(values.get("nkn_chaindb_r2_secret_key") or "").strip(),
+        "max_age_seconds": _bounded_int("nkn_chaindb_max_age_hours", 48, 1, 720) * 60 * 60,
+        "url_ttl_seconds": max(
+            6 * 60 * 60,
+            _bounded_int("nkn_chaindb_url_ttl_seconds", 6 * 60 * 60, 1, 7 * 24 * 60 * 60),
+        ),
+        "retention": _bounded_int("nkn_chaindb_retention", 2, 1, 10),
+        "publisher_host": publisher_host,
+        "publisher_port": _bounded_int("nkn_chaindb_publisher_port", 22, 1, 65535),
+        "publisher_user": publisher_user,
+        "publisher_password": str(values.get("nkn_chaindb_publisher_password") or ""),
+        "publisher_private_key": str(values.get("nkn_chaindb_publisher_private_key") or ""),
+        "publisher_host_key_sha256": publisher_host_key_sha256,
     }
 
 
@@ -245,6 +308,60 @@ async def _proxy_worker_nkn_deploy(
         json=spec,
         timeout=timeout,
     )
+
+
+async def _nkn_chaindb_snapshot_for_deploy(config: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """Return a validated manifest plus a short-lived URL, or fall back silently."""
+    from app import nkn_chaindb_r2
+
+    try:
+        settings = _nkn_chaindb_settings(config)
+        manifest = await _nkn_chaindb_latest_manifest(config)
+        if manifest is None:
+            return None
+        archive_url = nkn_chaindb_r2.presign_get(
+            settings["endpoint"],
+            settings["bucket"],
+            manifest["archive_key"],
+            settings["access_key"],
+            settings["secret_key"],
+            settings["url_ttl_seconds"],
+        )
+        return {
+            "manifest": manifest,
+            "archive_url": archive_url,
+            "prefix": settings["prefix"],
+            "max_age_seconds": settings["max_age_seconds"],
+        }
+    except Exception as exc:  # noqa: BLE001 - snapshot acceleration must never block NKN
+        logger.warning("NKN ChainDB snapshot unavailable; falling back to normal sync: %s", type(exc).__name__)
+        return None
+
+
+async def _nkn_chaindb_latest_manifest(config: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """Fetch and validate latest.json without returning a presigned object URL."""
+    from app import nkn_chaindb, nkn_chaindb_r2
+
+    settings = _nkn_chaindb_settings(config)
+    if not settings["enabled"]:
+        return None
+    required = ("endpoint", "bucket", "access_key", "secret_key")
+    if any(not str(settings[key] or "").strip() for key in required):
+        raise ValueError("NKN ChainDB R2 settings are incomplete")
+    manifest_key = f"{settings['prefix']}/manifests/latest.json"
+    manifest_url = nkn_chaindb_r2.presign_get(
+        settings["endpoint"],
+        settings["bucket"],
+        manifest_key,
+        settings["access_key"],
+        settings["secret_key"],
+        min(settings["url_ttl_seconds"], 900),
+    )
+    async with httpx.AsyncClient(timeout=20, follow_redirects=False, trust_env=False) as client:
+        response = await client.get(manifest_url)
+        response.raise_for_status()
+        raw = response.json()
+    return nkn_chaindb.validate_manifest(raw, max_age_seconds=settings["max_age_seconds"])
 
 
 def _nkn_instance_assignment_matches(
@@ -389,8 +506,19 @@ async def _deploy_nkn_slots(
                     "wallet_json": str(lease.get("wallet_json") or ""),
                     "wallet_pswd": str(lease.get("wallet_pswd") or ""),
                 }
+                if not adopt_instance:
+                    snapshot = await _nkn_chaindb_snapshot_for_deploy(lxd_settings)
+                    if snapshot:
+                        deploy_spec["chaindb_snapshot"] = snapshot
                 if adopt_instance:
                     result = await _proxy_worker_nkn_deploy(worker_id, slot_id, deploy_spec, timeout=900)
+                elif "chaindb_snapshot" in deploy_spec:
+                    result = await _proxy_worker_nkn_deploy(
+                        worker_id,
+                        slot_id,
+                        deploy_spec,
+                        timeout=6 * 60 * 60,
+                    )
                 else:
                     result = await _proxy_worker_nkn_deploy(worker_id, slot_id, deploy_spec)
                 container_id = str(result.get("container_id") or "remote")
@@ -4977,6 +5105,351 @@ def _validate_config_update(data: Mapping[str, str]) -> None:
         # Validate the merged pair so a request that changes one field keeps the
         # documented default for the other rather than inventing a partial state.
         _nkn_lxd_settings(data)
+    if any(key.startswith("nkn_chaindb_") for key in data):
+        _nkn_chaindb_settings(data)
+
+
+@app.get("/api/nkn/chaindb/status")
+async def api_nkn_chaindb_status(request: Request) -> dict[str, Any]:
+    """Return only masked snapshot settings and non-secret publication state."""
+    _require_owner(request)
+    config = await database.get_config_masked()
+    secrets_set = config.get("_secrets") if isinstance(config.get("_secrets"), dict) else {}
+    safe_config = {key: value for key, value in config.items() if key.startswith("nkn_chaindb_")}
+    safe_config["_secrets"] = {
+        key: bool(value) for key, value in secrets_set.items() if str(key).startswith("nkn_chaindb_")
+    }
+    latest_manifest = None
+    snapshot_status = "disabled"
+    try:
+        raw_config = await database.get_config() or {}
+        settings = _nkn_chaindb_settings(raw_config)
+        if settings["enabled"]:
+            snapshot_status = "unavailable"
+            latest_manifest = await _nkn_chaindb_latest_manifest(raw_config)
+            if latest_manifest is not None:
+                snapshot_status = "ready"
+    except Exception as exc:  # noqa: BLE001 - status must stay read-only and redacted
+        logger.warning("NKN ChainDB status unavailable: %s", type(exc).__name__)
+        snapshot_status = "unavailable"
+    return {
+        "config": safe_config,
+        "snapshot_status": snapshot_status,
+        "latest_manifest": latest_manifest,
+    }
+
+
+def _publisher_asset_path(name: str) -> str:
+    """Resolve release-bundled publisher assets in containers and local tests."""
+    candidates = [
+        os.path.join(os.path.dirname(os.path.dirname(__file__)), "deploy-assets", name),
+        os.path.join(os.path.dirname(os.path.dirname(__file__)), "scripts", name),
+    ]
+    for candidate in candidates:
+        if os.path.isfile(candidate):
+            return candidate
+    raise ValueError(f"publisher asset is missing: {name}")
+
+
+def _prepare_publisher_known_hosts(settings: Mapping[str, Any]) -> str:
+    """Pin the configured SSH fingerprint before any authenticated connection."""
+    host = str(settings.get("publisher_host") or "").strip()
+    port = int(settings.get("publisher_port") or 0)
+    expected = str(settings.get("publisher_host_key_sha256") or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,253}", host) or not 1 <= port <= 65535:
+        raise ValueError("publisher SSH host/port is invalid")
+    if not _SSH_SHA256_RE.fullmatch(expected):
+        raise ValueError("publisher SSH host-key fingerprint is required")
+    scan = subprocess.run(
+        ["ssh-keyscan", "-T", "20", "-t", "ed25519", "-p", str(port), host],
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+    if scan.returncode != 0 or not scan.stdout.strip():
+        raise RuntimeError("publisher SSH host key scan failed")
+    fingerprint = subprocess.run(
+        ["ssh-keygen", "-lf", "-", "-E", "sha256"],
+        input=scan.stdout,
+        capture_output=True,
+        check=False,
+        timeout=20,
+    )
+    if fingerprint.returncode != 0:
+        raise RuntimeError("publisher SSH host key fingerprint failed")
+    observed = {
+        part
+        for line in fingerprint.stdout.decode("utf-8", errors="replace").splitlines()
+        for part in line.split()
+        if part.startswith("SHA256:")
+    }
+    if expected not in observed:
+        raise RuntimeError("publisher SSH host key fingerprint mismatch")
+    known_hosts = Path(_NKN_PUBLISHER_KNOWN_HOSTS)
+    known_hosts.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = known_hosts.with_name(f".{known_hosts.name}.{secrets.token_hex(8)}.tmp")
+    try:
+        temp_path.write_bytes(scan.stdout)
+        os.chmod(temp_path, 0o600)
+        os.replace(temp_path, known_hosts)
+    finally:
+        temp_path.unlink(missing_ok=True)
+    os.chmod(known_hosts, 0o600)
+    return str(known_hosts)
+
+
+def _ssh_command_base(settings: Mapping[str, Any]) -> list[str]:
+    host = str(settings.get("publisher_host") or "").strip()
+    user = str(settings.get("publisher_user") or "").strip()
+    port = int(settings.get("publisher_port") or 0)
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,253}", host) or not user or not 1 <= port <= 65535:
+        raise ValueError("publisher SSH host/user/port is invalid")
+    batch_mode = "no" if str(settings.get("publisher_password") or "") else "yes"
+    return [
+        "ssh",
+        "-o",
+        f"BatchMode={batch_mode}",
+        "-o",
+        "StrictHostKeyChecking=yes",
+        "-o",
+        "UserKnownHostsFile=/data/nkn-chaindb-known-hosts",
+        "-o",
+        "ConnectTimeout=20",
+        "-o",
+        "ServerAliveInterval=30",
+        "-o",
+        "ServerAliveCountMax=3",
+        "-p",
+        str(port),
+        f"{user}@{host}",
+    ]
+
+
+def _run_publisher_ssh(settings: Mapping[str, Any], command: list[str], *, key_file: str | None = None) -> None:
+    base = _ssh_command_base(settings)
+    env = os.environ.copy()
+    prefix: list[str] = []
+    if key_file:
+        base[1:1] = ["-i", key_file]
+    else:
+        prefix = ["sshpass", "-e"]
+        env["SSHPASS"] = str(settings.get("publisher_password") or "")
+        base[1:1] = ["-o", "PreferredAuthentications=password", "-o", "PubkeyAuthentication=no"]
+    result = subprocess.run([*prefix, *base, *command], capture_output=True, check=False, timeout=900, env=env)
+    if result.returncode != 0:
+        raise RuntimeError("publisher SSH command failed")
+
+
+def _copy_publisher_file(settings: Mapping[str, Any], source: str, target: str, *, key_file: str | None = None) -> None:
+    port = int(settings.get("publisher_port") or 0)
+    command = [
+        "scp",
+        "-o",
+        "StrictHostKeyChecking=yes",
+        "-o",
+        "UserKnownHostsFile=/data/nkn-chaindb-known-hosts",
+        "-o",
+        "ConnectTimeout=20",
+        "-o",
+        "ServerAliveInterval=30",
+        "-o",
+        "ServerAliveCountMax=3",
+        "-P",
+        str(port),
+    ]
+    env = os.environ.copy()
+    prefix: list[str] = []
+    if key_file:
+        command += ["-i", key_file]
+    else:
+        prefix = ["sshpass", "-e"]
+        env["SSHPASS"] = str(settings.get("publisher_password") or "")
+        command += ["-o", "PreferredAuthentications=password", "-o", "PubkeyAuthentication=no"]
+    result = subprocess.run([*prefix, *command, source, target], capture_output=True, check=False, timeout=900, env=env)
+    if result.returncode != 0:
+        raise RuntimeError("publisher bundle transfer failed")
+
+
+def _deploy_nkn_chaindb_publisher_sync(settings: Mapping[str, Any]) -> dict[str, str]:
+    """Install the publisher bundle over a bounded SSH/SCP connection."""
+    host = str(settings.get("publisher_host") or "").strip()
+    user = str(settings.get("publisher_user") or "").strip()
+    port = int(settings.get("publisher_port") or 0)
+    private_key = str(settings.get("publisher_private_key") or "")
+    password = str(settings.get("publisher_password") or "")
+    if not host or not user or port <= 0:
+        raise ValueError("NKN ChainDB publisher SSH settings are incomplete")
+    if bool(private_key) == bool(password):
+        raise ValueError("Configure exactly one publisher SSH authentication method")
+
+    beneficiary = str(settings.get("beneficiary_address") or "").strip()
+    if not beneficiary:
+        raise ValueError("NKN beneficiary address is required")
+    wallet = settings.get("publisher_wallet")
+    if not isinstance(wallet, Mapping) or not wallet.get("wallet_json") or not wallet.get("wallet_pswd"):
+        raise ValueError("Publisher wallet reservation is missing")
+
+    with tempfile.TemporaryDirectory(prefix="cashpilot-nkn-chaindb-") as temp_dir:
+        _prepare_publisher_known_hosts(settings)
+        bundle = os.path.join(temp_dir, "bundle")
+        os.makedirs(bundle, mode=0o700)
+        assets = {
+            "install-nkn-chaindb-publisher.sh": _publisher_asset_path("install-nkn-chaindb-publisher.sh"),
+            "nkn_chaindb.py": os.path.join(os.path.dirname(__file__), "nkn_chaindb.py"),
+            "nkn_chaindb_publisher.py": _publisher_asset_path("nkn_chaindb_publisher.py"),
+            "cashpilot-nkn-chaindb-publisher.service": _publisher_asset_path("cashpilot-nkn-chaindb-publisher.service"),
+            "cashpilot-nkn-chaindb-publisher-failure.service": _publisher_asset_path(
+                "cashpilot-nkn-chaindb-publisher-failure.service"
+            ),
+            "cashpilot-nkn-chaindb-publisher.timer": _publisher_asset_path("cashpilot-nkn-chaindb-publisher.timer"),
+        }
+        for name, source in assets.items():
+            shutil.copyfile(source, os.path.join(bundle, name))
+        Path(os.path.join(bundle, "publisher.json")).write_text(
+            json.dumps(
+                {
+                    "endpoint": settings["endpoint"],
+                    "bucket": settings["bucket"],
+                    "access_key_id": settings["access_key"],
+                    "secret_access_key": settings["secret_key"],
+                    "prefix": settings["prefix"],
+                    "retention": settings["retention"],
+                    "ssh_port": port,
+                    "data_dir": "/opt/nkn",
+                    "archive_dir": "/var/lib/cashpilot/nkn-chaindb",
+                    "container": "cashpilot-nkn",
+                    "image": "nknorg/nkn:latest",
+                },
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        Path(os.path.join(bundle, "wallet.json")).write_text(str(wallet["wallet_json"]), encoding="utf-8")
+        Path(os.path.join(bundle, "wallet.pswd")).write_text(str(wallet["wallet_pswd"]), encoding="utf-8")
+        Path(os.path.join(bundle, "config.json")).write_text(
+            json.dumps(
+                {
+                    "BeneficiaryAddr": beneficiary,
+                    "beneficiaryAddr": beneficiary,
+                    "SyncMode": "light",
+                    "PasswordFile": "wallet.pswd",
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        for path in Path(bundle).iterdir():
+            os.chmod(path, 0o600 if path.name in {"publisher.json", "wallet.json", "wallet.pswd"} else 0o755)
+
+        key_path = None
+        if private_key:
+            key_path = os.path.join(temp_dir, "publisher-key")
+            Path(key_path).write_text(private_key, encoding="utf-8")
+            os.chmod(key_path, 0o600)
+        remote = "/tmp/cashpilot-nkn-chaindb-bundle"
+        try:
+            # Create the remote directory first; command and paths are constants.
+            _run_publisher_ssh(settings, ["mkdir", "-m", "700", "-p", remote], key_file=key_path)
+            for name in os.listdir(bundle):
+                source = os.path.join(bundle, name)
+                target = f"{user}@{host}:{remote}/{name}"
+                _copy_publisher_file(settings, source, target, key_file=key_path)
+            _run_publisher_ssh(
+                settings,
+                ["bash", f"{remote}/install-nkn-chaindb-publisher.sh", remote],
+                key_file=key_path,
+            )
+            _run_publisher_ssh(
+                settings,
+                [
+                    "python3",
+                    "/usr/local/lib/cashpilot/nkn_chaindb_publisher.py",
+                    "--config",
+                    "/etc/cashpilot/nkn-chaindb-publisher.json",
+                    "--verify-only",
+                ],
+                key_file=key_path,
+            )
+        finally:
+            with contextlib.suppress(Exception):
+                _run_publisher_ssh(settings, ["rm", "-rf", remote], key_file=key_path)
+    return {"status": "deployed", "publisher_host": host}
+
+
+async def _deploy_nkn_chaindb_publisher(settings: Mapping[str, Any]) -> dict[str, str]:
+    return await asyncio.to_thread(_deploy_nkn_chaindb_publisher_sync, settings)
+
+
+@app.post("/api/nkn/chaindb/publisher/deploy")
+async def api_deploy_nkn_chaindb_publisher(request: Request) -> dict[str, str]:
+    _require_owner(request)
+    config = await database.get_config() or {}
+    wallet: dict[str, Any] | None = None
+    try:
+        settings = _nkn_chaindb_settings(config)
+        if not settings["enabled"]:
+            raise ValueError("Enable NKN ChainDB snapshots before deploying the publisher")
+        required = (
+            "endpoint",
+            "bucket",
+            "access_key",
+            "secret_key",
+            "publisher_host",
+            "publisher_user",
+            "publisher_host_key_sha256",
+        )
+        if any(not str(settings[key] or "").strip() for key in required):
+            raise ValueError("NKN ChainDB R2 and publisher settings are incomplete")
+        if bool(settings["publisher_private_key"]) == bool(settings["publisher_password"]):
+            raise ValueError("Configure exactly one publisher SSH authentication method")
+        beneficiary = str(config.get("nkn_beneficiary_address") or "").strip()
+        if not beneficiary:
+            raise ValueError("NKN beneficiary address is required")
+        wallet = await database.reserve_nkn_publisher_wallet(
+            public_ip=str(settings.get("publisher_host") or ""),
+        )
+        if not wallet:
+            raise ValueError("No AVAILABLE NKN wallet for the ChainDB publisher")
+        settings["publisher_wallet"] = wallet
+        settings["beneficiary_address"] = beneficiary
+        return await _deploy_nkn_chaindb_publisher(settings)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+class NknPublisherWalletReleaseRequest(BaseModel):
+    wallet_id: int = Field(gt=0)
+    publisher_host: str = Field(min_length=1, max_length=253)
+    acknowledge_remote_state_unknown: bool = False
+    confirmation: str = ""
+
+
+@app.post("/api/nkn/chaindb/publisher/wallet/release")
+async def api_release_nkn_chaindb_publisher_wallet(
+    request: Request, payload: NknPublisherWalletReleaseRequest
+) -> dict[str, Any]:
+    """Guarded owner action for an abandoned publisher reservation."""
+    _require_owner(request)
+    if not payload.acknowledge_remote_state_unknown or payload.confirmation != "RELEASE":
+        raise HTTPException(
+            status_code=400,
+            detail="Confirm RELEASE and acknowledge that remote publisher state is unknown",
+        )
+    reservation = await database.get_nkn_publisher_reservation(
+        wallet_id=payload.wallet_id,
+        public_ip=payload.publisher_host,
+    )
+    if not reservation:
+        raise HTTPException(status_code=404, detail="Publisher wallet reservation not found")
+    released = await database.release_nkn_publisher_wallet(
+        wallet_id=payload.wallet_id,
+        public_ip=payload.publisher_host,
+    )
+    if not released:
+        raise HTTPException(status_code=409, detail="Publisher wallet reservation changed")
+    return {"status": "released", "wallet_id": payload.wallet_id}
 
 
 async def _sync_runtime_assets_from_config(config: dict[str, str]) -> None:

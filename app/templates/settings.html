@@ -63,6 +63,93 @@
   <div style="display:flex;justify-content:flex-end;margin-top:12px;">
     <button class="btn btn-ghost" data-action="saveEnvSettings">Save NKN settings</button>
   </div>
+
+  <h4 style="margin:20px 0 8px;">ChainDB snapshot acceleration</h4>
+  <p class="settings-section-desc">
+    Optional private R2 snapshots accelerate only new NKN nodes. CashPilot
+    verifies age, size and SHA-256 before a staged restore; an unavailable or
+    invalid snapshot falls back to normal chain synchronization.
+  </p>
+  <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--border-color);">
+    <label class="form-label" for="nkn-chaindb-enabled">Use ChainDB snapshots</label>
+    <input class="settings-config-input" type="checkbox" id="nkn-chaindb-enabled" data-config="nkn_chaindb_enabled" value="true">
+  </div>
+  <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:center;padding:10px 0;">
+    <label class="form-label" for="nkn-chaindb-endpoint">R2 S3 endpoint</label>
+    <input class="form-input settings-config-input" type="url" id="nkn-chaindb-endpoint"
+           data-config="nkn_chaindb_endpoint" placeholder="https://ACCOUNT.r2.cloudflarestorage.com">
+  </div>
+  <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:center;padding:10px 0;">
+    <label class="form-label" for="nkn-chaindb-bucket">Private bucket</label>
+    <input class="form-input settings-config-input" type="text" id="nkn-chaindb-bucket"
+           data-config="nkn_chaindb_bucket" placeholder="cashpilot-nkn-chaindb">
+  </div>
+  <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:center;padding:10px 0;">
+    <label class="form-label" for="nkn-chaindb-prefix">Object prefix</label>
+    <input class="form-input settings-config-input" type="text" id="nkn-chaindb-prefix"
+           data-config="nkn_chaindb_prefix" value="nkn/chaindb">
+  </div>
+  <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:center;padding:10px 0;">
+    <label class="form-label" for="nkn-chaindb-access-key">R2 access key</label>
+    <input class="form-input settings-config-input" type="password" id="nkn-chaindb-access-key"
+           data-config="nkn_chaindb_r2_access_key" autocomplete="new-password" placeholder="Leave blank to keep stored value">
+  </div>
+  <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:center;padding:10px 0;">
+    <label class="form-label" for="nkn-chaindb-secret-key">R2 secret key</label>
+    <input class="form-input settings-config-input" type="password" id="nkn-chaindb-secret-key"
+           data-config="nkn_chaindb_r2_secret_key" autocomplete="new-password" placeholder="Leave blank to keep stored value">
+  </div>
+  <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:center;padding:10px 0;">
+    <label class="form-label" for="nkn-chaindb-max-age">Maximum snapshot age (hours)</label>
+    <input class="form-input settings-config-input" type="number" min="1" max="720" step="1"
+           id="nkn-chaindb-max-age" data-config="nkn_chaindb_max_age_hours" value="48">
+  </div>
+  <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:center;padding:10px 0;">
+    <label class="form-label" for="nkn-chaindb-url-ttl">Download URL lifetime (seconds)</label>
+    <input class="form-input settings-config-input" type="number" min="21600" max="604800" step="1"
+           id="nkn-chaindb-url-ttl" data-config="nkn_chaindb_url_ttl_seconds" value="21600">
+  </div>
+  <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:center;padding:10px 0;">
+    <label class="form-label" for="nkn-chaindb-retention">Remote snapshots to retain</label>
+    <input class="form-input settings-config-input" type="number" min="1" max="10" step="1"
+           id="nkn-chaindb-retention" data-config="nkn_chaindb_retention" value="2">
+  </div>
+  <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--border-color);">
+    <label class="form-label" for="nkn-chaindb-publisher-host">Publisher VPS host</label>
+    <input class="form-input settings-config-input" type="text" id="nkn-chaindb-publisher-host"
+           data-config="nkn_chaindb_publisher_host" placeholder="203.0.113.10">
+  </div>
+  <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:center;padding:10px 0;">
+    <label class="form-label" for="nkn-chaindb-publisher-port">Publisher SSH port</label>
+    <input class="form-input settings-config-input" type="number" min="1" max="65535" step="1"
+           id="nkn-chaindb-publisher-port" data-config="nkn_chaindb_publisher_port" value="22">
+  </div>
+  <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:center;padding:10px 0;">
+    <label class="form-label" for="nkn-chaindb-publisher-user">Publisher SSH user</label>
+    <input class="form-input settings-config-input" type="text" id="nkn-chaindb-publisher-user"
+           data-config="nkn_chaindb_publisher_user" value="root">
+  </div>
+  <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:center;padding:10px 0;">
+    <label class="form-label" for="nkn-chaindb-publisher-host-key">Publisher SSH host key</label>
+    <input class="form-input settings-config-input" type="text" id="nkn-chaindb-publisher-host-key"
+           data-config="nkn_chaindb_publisher_host_key_sha256" autocomplete="off" spellcheck="false"
+           placeholder="SHA256:...">
+  </div>
+  <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:center;padding:10px 0;">
+    <label class="form-label" for="nkn-chaindb-publisher-password">Publisher SSH password</label>
+    <input class="form-input settings-config-input" type="password" id="nkn-chaindb-publisher-password"
+           data-config="nkn_chaindb_publisher_password" autocomplete="new-password" placeholder="Leave blank to keep stored value">
+  </div>
+  <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:center;padding:10px 0;">
+    <label class="form-label" for="nkn-chaindb-publisher-key">Publisher private key</label>
+    <textarea class="form-input settings-config-input" id="nkn-chaindb-publisher-key"
+              data-config="nkn_chaindb_publisher_private_key" autocomplete="new-password"
+              placeholder="Leave blank to keep stored value" rows="4"></textarea>
+  </div>
+  <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
+    <button class="btn btn-ghost" data-action="saveEnvSettings">Save ChainDB settings</button>
+    <button class="btn btn-primary" data-action="deployNknChaindbPublisher">Deploy publisher VPS</button>
+  </div>
 </div>
 
 <!-- Credential health.

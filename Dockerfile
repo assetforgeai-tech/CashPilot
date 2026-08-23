@@ -35,7 +35,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/app/.venv/bin:$PATH"
 
-RUN apk add --no-cache su-exec
+RUN apk add --no-cache openssh-client sshpass su-exec
 
 RUN adduser -D -u 1000 cashpilot \
     && mkdir -p /data && chown cashpilot:root /data
@@ -46,6 +46,11 @@ COPY --from=builder /build/.venv ./.venv
 
 COPY --chown=cashpilot:root app/ ./app/
 COPY --chown=cashpilot:root services/ ./services/
+COPY --chown=cashpilot:root scripts/install-nkn-chaindb-publisher.sh ./deploy-assets/
+COPY --chown=cashpilot:root scripts/nkn_chaindb_publisher.py ./deploy-assets/
+COPY --chown=cashpilot:root scripts/cashpilot-nkn-chaindb-publisher.service ./deploy-assets/
+COPY --chown=cashpilot:root scripts/cashpilot-nkn-chaindb-publisher-failure.service ./deploy-assets/
+COPY --chown=cashpilot:root scripts/cashpilot-nkn-chaindb-publisher.timer ./deploy-assets/
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 

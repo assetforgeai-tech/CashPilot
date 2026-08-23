@@ -1326,6 +1326,7 @@ class NknDeploySpec(BaseModel):
     runtime_backend: str = Field(default="docker", pattern=r"^(docker|lxd)$")
     lxd_cpu: int = Field(default=1, ge=1, le=64)
     lxd_memory_mib: int = Field(default=1024, ge=128, le=65536)
+    chaindb_snapshot: dict[str, Any] | None = None
     # One-shot, owner-authorized migration of the pre-existing LXD canary.
     # The host helper applies the same exact-name and node-identity guard.
     adopt_instance: str | None = Field(default=None, pattern=r"^cashpilot-nkn-lxd-canary$")
@@ -1863,6 +1864,7 @@ async def api_deploy_nkn_slot(request: Request, slot_id: str, spec: NknDeploySpe
                 slot,
                 assignment,
                 settings={"cpu": spec.lxd_cpu, "memory_mib": spec.lxd_memory_mib},
+                snapshot=spec.chaindb_snapshot,
                 adopt_instance=spec.adopt_instance,
                 expected_node_id=spec.expected_node_id,
             )
@@ -1895,14 +1897,18 @@ async def api_deploy_nkn_slot(request: Request, slot_id: str, spec: NknDeploySpe
         "evidence": {"running": True, "online": False},
         "last_server_ack_at": time.time(),
         "lease_guard_suspended": False,
+        "snapshot_status": str(result.get("snapshot_status") or "skipped"),
     }
     _save_nkn_wallet_state(slot_id, state)
-    return {
+    response = {
         "status": "deployed",
         "container_id": result["container_id"],
         "instance_id": result["instance_id"],
         "slot_id": slot_id,
     }
+    if result.get("snapshot_status"):
+        response["snapshot_status"] = str(result["snapshot_status"])
+    return response
 
 
 @app.delete("/api/nkn/slots/{slot_id}")

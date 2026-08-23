@@ -58,6 +58,44 @@ def test_lxd_deploy_can_forward_the_exact_canary_adoption_guard():
     assert payload["expected_node_id"] == "a" * 64
 
 
+def test_lxd_deploy_forwards_only_redacted_snapshot_contract():
+    snapshot = {
+        "manifest": {
+            "schema_version": 1,
+            "provider": "nkn",
+            "network": "mainnet",
+            "archive_key": "nkn/chaindb/snapshots/1-20260823T120000Z-" + "a" * 64 + ".tar.zst",
+            "sha256": "a" * 64,
+            "size_bytes": 123,
+            "block_height": 1,
+            "created_at": "2026-08-23T12:00:00Z",
+            "image": "nknorg/nkn:latest",
+            "chain_db_root": "ChainDB",
+        },
+        "archive_url": "https://example.invalid/signed-object",
+        "prefix": "nkn/chaindb",
+        "max_age_seconds": 48 * 60 * 60,
+    }
+    with patch.object(nkn_lxd_runtime, "_request", return_value={"instance_id": "nkn"}) as request:
+        nkn_lxd_runtime.deploy_slot(_slot(), _assignment(), settings={"cpu": 1, "memory_mib": 1024}, snapshot=snapshot)
+    payload = request.call_args.kwargs["payload"]
+    assert payload["chaindb_snapshot"] == snapshot
+    assert "wallet_pswd" in payload
+    assert "secret" not in str(payload["chaindb_snapshot"])
+
+
+def test_lxd_snapshot_deploy_uses_extended_socket_timeout():
+    snapshot = {
+        "manifest": {"archive_key": "nkn/chaindb/snapshots/1-20260823T120000Z-" + "a" * 64 + ".tar.zst"},
+        "archive_url": "https://example.invalid/signed-object",
+        "prefix": "nkn/chaindb",
+        "max_age_seconds": 48 * 60 * 60,
+    }
+    with patch.object(nkn_lxd_runtime, "_request", return_value={"instance_id": "nkn"}) as request:
+        nkn_lxd_runtime.deploy_slot(_slot(), _assignment(), settings={"cpu": 1, "memory_mib": 1024}, snapshot=snapshot)
+    assert request.call_args.kwargs["timeout"] == 6 * 60 * 60
+
+
 def test_lxd_lifecycle_requests_are_assignment_cas_scoped():
     with patch.object(nkn_lxd_runtime, "_request", return_value={"status": "ok"}) as request:
         nkn_lxd_runtime.suspend_slot(
