@@ -64,3 +64,22 @@ def test_bootstrap_does_not_embed_fleet_or_provider_credentials():
         "beneficiaryaddr",
     )
     assert not any(token in text for token in forbidden)
+
+
+def test_bootstrap_installs_the_restricted_nkn_lxd_host_helper_without_deploying_a_node():
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert "cashpilot-nkn-agent.py" in text
+    assert "cashpilot-nkn-agent.service" in text
+    assert "/run/cashpilot-nkn-agent/agent.sock" in text
+    assert "lxd init --auto" in text
+    assert "systemctl enable --now cashpilot-nkn-agent.service" in text
+    assert "lxc launch" not in text
+    assert "nknorg/nkn" not in text
+
+
+def test_worker_compose_mounts_only_the_restricted_nkn_agent_socket():
+    root = SCRIPT.parents[1]
+    for name in ("docker-compose.yml", "docker-compose.fleet.yml", "docker-compose.build.yml"):
+        text = (root / name).read_text(encoding="utf-8")
+        assert "/run/cashpilot-nkn-agent:/run/cashpilot-nkn-agent" in text
+        assert "/var/snap/lxd/common/lxd/unix.socket" not in text

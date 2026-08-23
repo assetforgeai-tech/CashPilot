@@ -46,6 +46,7 @@ from app import (
     egress,
     fleet_key,
     myst_runtime,
+    nkn_lxd_runtime,
     nkn_runtime,
     orchestrator,
     proxy_egress,
@@ -424,23 +425,32 @@ async def _reconcile_nkn_assignment_acks(
             if not isinstance(state, dict) or not _same_nkn_identity(state, item):
                 continue
             if state.get("lease_guard_suspended") is True:
-                client = await asyncio.to_thread(orchestrator._get_client)
-                try:
-                    identity = _nkn_assignment_identity(state)
-                    if identity is None:
-                        continue
-                    _, wallet_id, assignment_version, lease_client_id = identity
+                identity = _nkn_assignment_identity(state)
+                if identity is None:
+                    continue
+                _, wallet_id, assignment_version, lease_client_id = identity
+                if str(state.get("runtime_backend") or "docker") == "lxd":
                     await asyncio.to_thread(
-                        nkn_runtime.resume_slot,
+                        nkn_lxd_runtime.resume_slot,
                         slot_id,
                         wallet_id=wallet_id,
                         wallet_assignment_version=assignment_version,
                         lease_client_id=lease_client_id,
-                        client=client,
                     )
-                finally:
-                    with contextlib.suppress(Exception):
-                        await asyncio.to_thread(client.close)
+                else:
+                    client = await asyncio.to_thread(orchestrator._get_client)
+                    try:
+                        await asyncio.to_thread(
+                            nkn_runtime.resume_slot,
+                            slot_id,
+                            wallet_id=wallet_id,
+                            wallet_assignment_version=assignment_version,
+                            lease_client_id=lease_client_id,
+                            client=client,
+                        )
+                    finally:
+                        with contextlib.suppress(Exception):
+                            await asyncio.to_thread(client.close)
             state["last_server_ack_at"] = ack_time
             state["lease_guard_suspended"] = False
             state["runtime_status"] = "running"
@@ -465,19 +475,28 @@ async def _enforce_nkn_lease_guard(*, now: float | None = None) -> None:
             continue
         slot_id, wallet_id, assignment_version, lease_client_id = identity
         try:
-            client = await asyncio.to_thread(orchestrator._get_client)
-            try:
+            if str(state.get("runtime_backend") or "docker") == "lxd":
                 await asyncio.to_thread(
-                    nkn_runtime.suspend_slot,
+                    nkn_lxd_runtime.suspend_slot,
                     slot_id,
                     wallet_id=wallet_id,
                     wallet_assignment_version=assignment_version,
                     lease_client_id=lease_client_id,
-                    client=client,
                 )
-            finally:
-                with contextlib.suppress(Exception):
-                    await asyncio.to_thread(client.close)
+            else:
+                client = await asyncio.to_thread(orchestrator._get_client)
+                try:
+                    await asyncio.to_thread(
+                        nkn_runtime.suspend_slot,
+                        slot_id,
+                        wallet_id=wallet_id,
+                        wallet_assignment_version=assignment_version,
+                        lease_client_id=lease_client_id,
+                        client=client,
+                    )
+                finally:
+                    with contextlib.suppress(Exception):
+                        await asyncio.to_thread(client.close)
             state["lease_guard_suspended"] = True
             state["runtime_status"] = "lease_guard_suspended"
             evidence = dict(state.get("evidence") or {})
@@ -508,20 +527,33 @@ async def _reconcile_nkn_assignment_rejections(rejections: list[dict[str, Any]])
                 or str(state.get("lease_client_id") or "") != str(item.get("lease_client_id") or "")
             ):
                 continue
-            client = await asyncio.to_thread(orchestrator._get_client)
-            try:
+            wallet_id = int(item.get("wallet_id") or 0)
+            assignment_version = int(item.get("wallet_assignment_version") or 0)
+            lease_client_id = str(item.get("lease_client_id") or "")
+            if str(state.get("runtime_backend") or "docker") == "lxd":
                 await asyncio.to_thread(
-                    nkn_runtime.remove_slot,
+                    nkn_lxd_runtime.remove_slot,
                     slot_id,
-                    wallet_id=int(item.get("wallet_id") or 0),
-                    wallet_assignment_version=int(item.get("wallet_assignment_version") or 0),
-                    lease_client_id=str(item.get("lease_client_id") or ""),
-                    client=client,
+                    wallet_id=wallet_id,
+                    wallet_assignment_version=assignment_version,
+                    lease_client_id=lease_client_id,
                     delete_volume=True,
                 )
-            finally:
-                with contextlib.suppress(Exception):
-                    await asyncio.to_thread(client.close)
+            else:
+                client = await asyncio.to_thread(orchestrator._get_client)
+                try:
+                    await asyncio.to_thread(
+                        nkn_runtime.remove_slot,
+                        slot_id,
+                        wallet_id=wallet_id,
+                        wallet_assignment_version=assignment_version,
+                        lease_client_id=lease_client_id,
+                        client=client,
+                        delete_volume=True,
+                    )
+                finally:
+                    with contextlib.suppress(Exception):
+                        await asyncio.to_thread(client.close)
             with contextlib.suppress(FileNotFoundError):
                 path.unlink()
         except Exception as exc:  # noqa: BLE001 - retry on the next heartbeat
@@ -532,15 +564,18 @@ async def _nkn_provider_state() -> dict[str, Any] | None:
     states = _load_nkn_states()
     if not states:
         return None
+    has_docker_state = any(str(state.get("runtime_backend") or "docker") != "lxd" for state in states)
     try:
-        containers = await asyncio.to_thread(orchestrator.get_status)
+        containers = await asyncio.to_thread(orchestrator.get_status) if has_docker_state else []
     except Exception as exc:  # noqa: BLE001 - heartbeat must remain alive
         logger.debug("NKN container evidence unavailable: %s", exc)
         containers = []
-    try:
-        docker_client = await asyncio.to_thread(orchestrator._get_client)
-    except Exception:  # noqa: BLE001 - evidence is best effort
-        docker_client = None
+    docker_client = None
+    if has_docker_state:
+        try:
+            docker_client = await asyncio.to_thread(orchestrator._get_client)
+        except Exception:  # noqa: BLE001 - evidence is best effort
+            docker_client = None
     by_instance = {str(item.get("instance_id") or ""): item for item in containers if isinstance(item, dict)}
     instances: list[dict[str, Any]] = []
     try:
@@ -558,6 +593,17 @@ async def _nkn_provider_state() -> dict[str, Any] | None:
             )
             item["runtime_status"] = str(runtime.get("status") or item.get("runtime_status") or "unknown")
             item["evidence"] = dict(item.get("evidence") or {})
+            if str(item.get("runtime_backend") or "docker") == "lxd":
+                try:
+                    item["evidence"] = await asyncio.to_thread(nkn_lxd_runtime.node_evidence, item)
+                    item["runtime_status"] = "running" if item["evidence"].get("running") is True else "stopped"
+                    if item["evidence"].get("node_id"):
+                        item["node_identity"] = str(item["evidence"]["node_id"])
+                except Exception:  # noqa: BLE001 - a missing helper is offline evidence
+                    item["evidence"] = {"running": False, "online": False, "runtime_backend": "lxd"}
+                    item["runtime_status"] = "unknown"
+                instances.append(item)
+                continue
             container = None
             if docker_client is not None and instance_id:
                 try:
@@ -1275,6 +1321,11 @@ class NknDeploySpec(BaseModel):
     wallet_json: str = Field(min_length=1, max_length=200_000)
     wallet_pswd: str = Field(min_length=1, max_length=10_000)
     beneficiary_address: str = Field(min_length=9, max_length=128)
+    # Older workers default to the existing Docker backend; the current server
+    # always sends ``lxd`` explicitly for newly-created NKN nodes.
+    runtime_backend: str = Field(default="docker", pattern=r"^(docker|lxd)$")
+    lxd_cpu: int = Field(default=1, ge=1, le=64)
+    lxd_memory_mib: int = Field(default=1024, ge=128, le=65536)
 
 
 class NknRemoveSpec(BaseModel):
@@ -1795,6 +1846,12 @@ async def api_deploy_nkn_slot(request: Request, slot_id: str, spec: NknDeploySpe
     }
 
     def _deploy() -> dict[str, str]:
+        if spec.runtime_backend == "lxd":
+            return nkn_lxd_runtime.deploy_slot(
+                slot,
+                assignment,
+                settings={"cpu": spec.lxd_cpu, "memory_mib": spec.lxd_memory_mib},
+            )
         client = orchestrator._get_client()
         try:
             return nkn_runtime.deploy_slot(slot, assignment, client=client)
@@ -1818,6 +1875,9 @@ async def api_deploy_nkn_slot(request: Request, slot_id: str, spec: NknDeploySpe
         "wallet_address": wallet_address,
         "public_ip": slot.get("public_ip", ""),
         "runtime_status": "running",
+        "runtime_backend": spec.runtime_backend,
+        "lxd_cpu": spec.lxd_cpu if spec.runtime_backend == "lxd" else None,
+        "lxd_memory_mib": spec.lxd_memory_mib if spec.runtime_backend == "lxd" else None,
         "evidence": {"running": True, "online": False},
         "last_server_ack_at": time.time(),
         "lease_guard_suspended": False,
@@ -1849,6 +1909,14 @@ async def api_remove_nkn_slot(request: Request, slot_id: str, spec: NknRemoveSpe
         raise HTTPException(status_code=409, detail="NKN slot assignment conflict")
 
     def _remove() -> dict[str, Any]:
+        if str(state.get("runtime_backend") or "docker") == "lxd":
+            return nkn_lxd_runtime.remove_slot(
+                slot_id,
+                wallet_id=spec.wallet_id,
+                wallet_assignment_version=spec.wallet_assignment_version,
+                lease_client_id=spec.lease_client_id,
+                delete_volume=True,
+            )
         client = orchestrator._get_client()
         try:
             return nkn_runtime.remove_slot(

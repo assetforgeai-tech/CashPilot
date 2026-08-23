@@ -16,6 +16,7 @@ import os
 import re
 import secrets
 import time
+from collections.abc import Mapping
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -112,6 +113,28 @@ _NKN_AUTO_DEPLOY_DONE: set[int] = set()
 _NKN_DEPLOY_LOCKS: dict[int, asyncio.Lock] = {}
 _WORKER_HEARTBEAT_STREAKS: dict[int, int] = {}
 _proxy_pool_last_recheck: datetime | None = None
+
+
+def _nkn_lxd_settings(config: Mapping[str, Any] | None) -> dict[str, int]:
+    """Validate the server-authoritative limits used for future NKN LXD nodes."""
+    values = config or {}
+
+    def _bounded_int(key: str, default: int, minimum: int, maximum: int) -> int:
+        raw = values.get(key, default)
+        text = str(raw if raw is not None else default).strip()
+        if not re.fullmatch(r"\d+", text):
+            raise ValueError(f"{key} must be an integer")
+        value = int(text)
+        if not minimum <= value <= maximum:
+            raise ValueError(f"{key} must be between {minimum} and {maximum}")
+        return value
+
+    cpu_key = "cpu" if "cpu" in values else "nkn_lxd_cpu"
+    memory_key = "memory_mib" if "memory_mib" in values else "nkn_lxd_memory_mib"
+    return {
+        "cpu": _bounded_int(cpu_key, 1, 1, 64),
+        "memory_mib": _bounded_int(memory_key, 1024, 128, 65536),
+    }
 
 
 def _auto_deploy_settings(config: dict[str, str]) -> dict[str, Any]:
@@ -216,7 +239,13 @@ async def _proxy_worker_nkn_deploy(worker_id: int, slot_id: str, spec: dict[str,
     )
 
 
-def _nkn_instance_assignment_matches(existing: dict[str, Any] | None, lease: dict[str, Any], slot_id: str) -> bool:
+def _nkn_instance_assignment_matches(
+    existing: dict[str, Any] | None,
+    lease: dict[str, Any],
+    slot_id: str,
+    *,
+    runtime_backend: str,
+) -> bool:
     if not existing or str(existing.get("status") or "").lower() not in {"running", "deployed"}:
         return False
     spec = existing.get("spec")
@@ -226,10 +255,23 @@ def _nkn_instance_assignment_matches(existing: dict[str, Any] | None, lease: dic
         str(spec.get("slot_id") or slot_id) == slot_id
         and int(spec.get("wallet_id") or 0) == int(lease.get("id") or 0)
         and int(spec.get("wallet_assignment_version") or 0) == int(lease.get("wallet_assignment_version") or 0)
+        and str(spec.get("runtime_backend") or "docker") == runtime_backend
     )
 
 
-async def _deploy_nkn_slots(worker_id: int, *, beneficiary_address: str) -> dict[str, Any]:
+def _nkn_instance_resource_drift(existing: dict[str, Any] | None, *, lxd_cpu: int, lxd_memory_mib: int) -> bool:
+    spec = existing.get("spec") if isinstance(existing, dict) else None
+    if not isinstance(spec, dict):
+        return False
+    return int(spec.get("lxd_cpu") or 0) != int(lxd_cpu) or int(spec.get("lxd_memory_mib") or 0) != int(lxd_memory_mib)
+
+
+async def _deploy_nkn_slots(
+    worker_id: int,
+    *,
+    beneficiary_address: str,
+    lxd_settings: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     """Lease and deploy NKN slots in order; one failed slot never blocks the next."""
     beneficiary = str(beneficiary_address or "").strip()
     if not beneficiary:
@@ -240,12 +282,22 @@ async def _deploy_nkn_slots(worker_id: int, *, beneficiary_address: str) -> dict
     client_id = str(worker.get("client_id") or worker.get("name") or "").strip()
     if not client_id:
         raise HTTPException(status_code=409, detail="Worker has no durable client id")
+    try:
+        limits = _nkn_lxd_settings(lxd_settings or {})
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     async with _nkn_deploy_lock(worker_id):
         # A malformed or stale worker response must never turn into a wallet lease;
         # keep this guard at the mutation boundary as well as in the reader.
         slots = [slot for slot in await _worker_public_ip_slots(worker_id) if slot.get("route_ready") is True]
-        outcome: dict[str, Any] = {"deployed": [], "skipped": [], "failed": [], "slots": len(slots)}
+        outcome: dict[str, Any] = {
+            "deployed": [],
+            "skipped": [],
+            "resource_drift": [],
+            "failed": [],
+            "slots": len(slots),
+        }
         for slot in slots:
             slot_id = str(slot["slot_id"])
             public_ip = str(slot.get("public_ip") or "")
@@ -256,6 +308,13 @@ async def _deploy_nkn_slots(worker_id: int, *, beneficiary_address: str) -> dict
                 "slot_id": slot_id,
                 "public_ip": public_ip,
                 "beneficiary_address": beneficiary,
+                "runtime_backend": "lxd",
+                "lxd_cpu": limits["cpu"],
+                "lxd_memory_mib": limits["memory_mib"],
+                "worker_id": int(worker_id),
+                "instance_id": instance_id,
+                "bridge_subnet": str(slot.get("bridge_subnet") or ""),
+                "bridge_gateway": str(slot.get("bridge_gateway") or ""),
             }
             try:
                 lease = await database.lease_nkn_wallet(lease_client_id, worker_id=worker_id, public_ip=public_ip)
@@ -283,7 +342,16 @@ async def _deploy_nkn_slots(worker_id: int, *, beneficiary_address: str) -> dict
                 if existing and existing.get("spec_encrypted") and not existing.get("spec"):
                     with contextlib.suppress(Exception):
                         existing["spec"] = await database.get_provider_instance_spec(existing_instance_id)
-                if _nkn_instance_assignment_matches(existing, lease, slot_id):
+                if _nkn_instance_assignment_matches(
+                    existing,
+                    lease,
+                    slot_id,
+                    runtime_backend="lxd",
+                ):
+                    if _nkn_instance_resource_drift(
+                        existing, lxd_cpu=limits["cpu"], lxd_memory_mib=limits["memory_mib"]
+                    ):
+                        outcome["resource_drift"].append(slot_id)
                     outcome["skipped"].append(slot_id)
                     continue
                 deploy_spec = {
@@ -378,7 +446,7 @@ async def _maybe_auto_deploy_after_heartbeat(worker_id: int) -> None:
 
             async def _deploy_nkn_once() -> None:
                 try:
-                    result = await _deploy_nkn_slots(worker_id, beneficiary_address=beneficiary)
+                    result = await _deploy_nkn_slots(worker_id, beneficiary_address=beneficiary, lxd_settings=config)
                     slots = result.get("slots")
                     if (slots is None or int(slots) > 0) and not result.get("failed"):
                         _NKN_AUTO_DEPLOY_DONE.add(worker_id)
@@ -2519,7 +2587,7 @@ async def api_deploy(
             raise HTTPException(status_code=400, detail="NKN supports direct mode only")
         config = await database.get_config() or {}
         beneficiary = str(config.get("nkn_beneficiary_address") or "").strip()
-        result = await _deploy_nkn_slots(worker_id, beneficiary_address=beneficiary)
+        result = await _deploy_nkn_slots(worker_id, beneficiary_address=beneficiary, lxd_settings=config)
         return {"status": "deployed", "provider": "nkn", **result}
 
     docker_conf = svc.get("docker", {})
@@ -4853,6 +4921,13 @@ def _normalize_config_update(data: dict[str, str]) -> dict[str, str]:
     return canonical
 
 
+def _validate_config_update(data: Mapping[str, str]) -> None:
+    if {"nkn_lxd_cpu", "nkn_lxd_memory_mib"}.intersection(data):
+        # Validate the merged pair so a request that changes one field keeps the
+        # documented default for the other rather than inventing a partial state.
+        _nkn_lxd_settings(data)
+
+
 async def _sync_runtime_assets_from_config(config: dict[str, str]) -> None:
     """Mirror runtime asset form fields into the worker-facing asset store."""
     for svc in catalog.get_services():
@@ -4877,6 +4952,10 @@ async def api_set_config(
     request: Request, body: ConfigUpdate, _auth: dict[str, Any] = Depends(_require_owner)
 ) -> dict[str, str]:
     sanitized = _normalize_config_update(body.data)
+    try:
+        _validate_config_update(sanitized)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     await database.set_config_bulk(sanitized)
     await _sync_runtime_assets_from_config(sanitized)
     changed_sections = _changed_credential_sections(sanitized)

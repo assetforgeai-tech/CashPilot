@@ -40,13 +40,25 @@
   <h3 class="settings-section-title">NKN</h3>
   <p class="settings-section-desc">
     One beneficiary address is shared by the collector; node wallets are leased
-    privately per public IPv4 slot and are never shown in Settings.
+    privately per public IPv4 slot and are never shown in Settings. CPU and RAM
+    are authoritative for future NKN LXD node creation; saving them does not
+    resize or restart a node that is already running.
   </p>
   <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:center;padding:10px 0;">
     <label class="form-label" for="nkn-beneficiary-address">Beneficiary address</label>
     <input class="form-input settings-config-input" type="text" id="nkn-beneficiary-address"
            data-config="nkn_beneficiary_address" autocomplete="off" spellcheck="false"
            placeholder="NKN...">
+  </div>
+  <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--border-color);">
+    <label class="form-label" for="nkn-lxd-cpu">LXD CPU cores</label>
+    <input class="form-input settings-config-input" type="number" min="1" max="64" step="1"
+           id="nkn-lxd-cpu" data-config="nkn_lxd_cpu" value="1">
+  </div>
+  <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:center;padding:10px 0;">
+    <label class="form-label" for="nkn-lxd-memory">LXD memory (MiB)</label>
+    <input class="form-input settings-config-input" type="number" min="128" max="65536" step="128"
+           id="nkn-lxd-memory" data-config="nkn_lxd_memory_mib" value="1024">
   </div>
   <div style="display:flex;justify-content:flex-end;margin-top:12px;">
     <button class="btn btn-ghost" data-action="saveEnvSettings">Save NKN settings</button>

@@ -97,6 +97,7 @@ services:
       # too. Pick ONE; do not set both.
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - /run/cashpilot-nkn-agent:/run/cashpilot-nkn-agent
       - cashpilot_public_ip_slots:/network:ro
       # SEPARATE FROM THE UI'S /data, DELIBERATELY. This container has the
       # Docker socket, which is root on the host. The UI's /data holds
@@ -142,6 +143,7 @@ services:
 #        - "${CASHPILOT_WORKER_BIND_ADDR:-100.x.y.z}:8081:8081"  # this server's private/VPN IP
 #      volumes:
 #        - /var/run/docker.sock:/var/run/docker.sock
+#        - /run/cashpilot-nkn-agent:/run/cashpilot-nkn-agent
 #        - cashpilot_public_ip_slots:/network:ro
 #        - cashpilot_worker_data:/data
 #      environment:

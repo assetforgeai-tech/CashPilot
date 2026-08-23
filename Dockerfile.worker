@@ -65,6 +65,7 @@ COPY --chown=cashpilot:root app/provider_automation.py ./app/
 COPY --chown=cashpilot:root app/provider_installers.py ./app/
 COPY --chown=cashpilot:root app/myst_runtime.py ./app/
 COPY --chown=cashpilot:root app/nkn_runtime.py ./app/
+COPY --chown=cashpilot:root app/nkn_lxd_runtime.py ./app/
 COPY --chown=cashpilot:root app/public_ip_slots.py ./app/
 COPY --chown=cashpilot:root app/provider_runtime.py ./app/
 COPY --chown=cashpilot:root app/catalog.py ./app/

@@ -8,6 +8,8 @@ INSTALL_ROOT="/usr/local/lib/cashpilot"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 DISCOVERY="${INSTALL_ROOT}/public_ip_slots.py"
+NKN_AGENT="${INSTALL_ROOT}/cashpilot-nkn-agent.py"
+NKN_AGENT_SOCKET="/run/cashpilot-nkn-agent/agent.sock"
 
 publish_slots_volume() {
   local mountpoint
@@ -102,6 +104,18 @@ fi
 apt-get install -y "${packages[@]}"
 systemctl enable --now docker
 
+if ! command -v lxc >/dev/null 2>&1; then
+  if command -v snap >/dev/null 2>&1; then
+    snap install lxd
+  else
+    apt-get install -y lxd
+  fi
+fi
+lxd waitready
+if [ -z "$(lxc storage list --format csv -c n 2>/dev/null)" ]; then
+  lxd init --auto
+fi
+
 ufw allow 22/tcp
 ufw allow 80/tcp
 ufw allow 443/tcp
@@ -117,6 +131,7 @@ install -m 0755 "${BASH_SOURCE[0]}" "${INSTALLED_SCRIPT}"
 # The installed bootstrap must remain self-contained; the source checkout is
 # not present on a freshly provisioned VPS.
 install -m 0644 "${REPO_ROOT}/app/public_ip_slots.py" "${DISCOVERY}"
+install -m 0755 "${REPO_ROOT}/scripts/cashpilot-nkn-agent.py" "${NKN_AGENT}"
 
 task_tmp="$(mktemp -d)"
 trap 'rm -rf -- "${task_tmp}"' EXIT
@@ -184,6 +199,26 @@ Unit=cashpilot-slots-sync.service
 WantedBy=timers.target
 EOF
 
+cat >/etc/systemd/system/cashpilot-nkn-agent.service <<EOF
+[Unit]
+Description=Restricted CashPilot NKN LXD host helper
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 ${NKN_AGENT} --socket ${NKN_AGENT_SOCKET}
+Restart=always
+RestartSec=3
+RuntimeDirectory=cashpilot-nkn-agent
+RuntimeDirectoryMode=0755
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 systemctl daemon-reload
 if [ -z "$(docker ps -q)" ]; then
   systemctl restart docker
@@ -192,7 +227,8 @@ else
 fi
 systemctl enable cashpilot-network-slots.service
 systemctl enable --now cashpilot-slots-sync.timer
+systemctl enable --now cashpilot-nkn-agent.service
 prepare_networks
 systemctl restart cashpilot-network-slots.service
 
-echo "CashPilot host prerequisites and public IPv4 slots are ready."
+echo "CashPilot host prerequisites, public IPv4 slots, and the restricted NKN LXD helper are ready."

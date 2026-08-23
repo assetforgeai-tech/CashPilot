@@ -87,6 +87,7 @@ MYST Wallet is a separate asset inventory. Wallet lease/reclaim follows the norm
 | `CASHPILOT_ALLOWED_VOLUME_ROOTS` | unset | Host paths a deploy may bind-mount. | — |
 | `CASHPILOT_PIDS_LIMIT` | unset | `pids` limit applied to managed containers. | — |
 | `CASHPILOT_DATA_DIR` | `/data` | Where `.worker_id` and `.worker_key` live. | — |
+| `CASHPILOT_NKN_AGENT_SOCKET` | `/run/cashpilot-nkn-agent/agent.sock` | Unix socket for the restricted host helper that manages only NKN LXD instances. Standard Compose mounts its parent directory; this is not the raw LXD socket. | — |
 
 !!! danger "`CASHPILOT_PORT` does not change the port the worker listens on"
 

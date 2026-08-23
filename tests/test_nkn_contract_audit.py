@@ -61,7 +61,11 @@ def test_generic_nkn_deploy_uses_slot_scheduler_and_never_global_deploy_row():
             result = await main.api_deploy(
                 _request(), "nkn", main.DeployRequest(mode="direct"), worker_id=7, _auth={"r": "owner"}
             )
-        scheduler.assert_awaited_once_with(7, beneficiary_address="NKNBeneficiaryAddress")
+        scheduler.assert_awaited_once_with(
+            7,
+            beneficiary_address="NKNBeneficiaryAddress",
+            lxd_settings={"nkn_beneficiary_address": "NKNBeneficiaryAddress"},
+        )
         generic.assert_not_awaited()
         save.assert_not_awaited()
         assert result["status"] == "deployed"

@@ -336,3 +336,73 @@ def test_worker_nkn_state_uses_authoritative_node_evidence_and_container_id(tmp_
     assert state["online"] == 1
     assert state["instances"][0]["container_id"] == "container-123"
     assert state["instances"][0]["evidence"]["sync_state"] == "PERSIST_FINISHED"
+
+
+def test_worker_nkn_lxd_state_uses_host_helper_without_opening_docker(tmp_path, monkeypatch):
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    worker_api._save_nkn_wallet_state(
+        "ipv4-001",
+        {
+            "slot_id": "ipv4-001",
+            "instance_id": "cashpilot-nkn-w7-ipv4-001",
+            "runtime_backend": "lxd",
+            "wallet_id": 7,
+            "wallet_assignment_version": 3,
+            "lease_client_id": "worker-a:nkn:ipv4-001",
+        },
+    )
+
+    async def run():
+        with (
+            patch.object(
+                worker_api.nkn_lxd_runtime,
+                "node_evidence",
+                return_value={
+                    "running": True,
+                    "online": True,
+                    "sync_state": "PERSIST_FINISHED",
+                    "node_id": "NKNnode-id",
+                },
+            ) as evidence,
+            patch.object(worker_api.orchestrator, "_get_client") as docker,
+        ):
+            state = await worker_api._nkn_provider_state()
+        evidence.assert_called_once()
+        docker.assert_not_called()
+        return state
+
+    state = asyncio.run(run())
+    assert state["online"] == 1
+    assert state["instances"][0]["runtime_status"] == "running"
+    assert state["instances"][0]["node_identity"] == "NKNnode-id"
+
+
+def test_worker_lease_guard_suspends_lxd_without_opening_docker(tmp_path, monkeypatch):
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    worker_api._save_nkn_wallet_state(
+        "ipv4-001",
+        {
+            "slot_id": "ipv4-001",
+            "runtime_backend": "lxd",
+            "wallet_id": 7,
+            "wallet_assignment_version": 3,
+            "lease_client_id": "worker-a:nkn:ipv4-001",
+            "last_server_ack_at": 100.0,
+        },
+    )
+
+    async def run():
+        with (
+            patch.object(worker_api.nkn_lxd_runtime, "suspend_slot", return_value={"status": "stopped"}) as suspend,
+            patch.object(worker_api.orchestrator, "_get_client") as docker,
+        ):
+            await worker_api._enforce_nkn_lease_guard(now=1_000.0)
+        suspend.assert_called_once_with(
+            "ipv4-001",
+            wallet_id=7,
+            wallet_assignment_version=3,
+            lease_client_id="worker-a:nkn:ipv4-001",
+        )
+        docker.assert_not_called()
+
+    asyncio.run(run())
