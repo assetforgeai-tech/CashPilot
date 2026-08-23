@@ -88,6 +88,34 @@ dashboard shows NKN total/online/offline counts. The collector reads the
 beneficiary balance from the official NKN wallet JSON-RPC endpoint and reports
 the unit as `NKN`.
 
+## ChainDB snapshot acceleration
+
+ChainDB snapshots are an optional acceleration path for **new NKN nodes**. The
+publisher on the dedicated publisher VPS performs a clean stop/archive/start
+cycle, uploads an immutable `ChainDB/`-only `tar.zst` object to a private R2
+prefix, verifies its digest and size, and publishes `latest.json` last. The
+worker receives only a short-lived presigned URL and validates the manifest,
+age, archive paths and SHA-256 before restoring into staging.
+
+The restore never replaces `config.json`, `wallet.json`, `wallet.pswd`,
+`ChainDB.config`, the LXD instance identity or the wallet lease. It atomically
+swaps only `ChainDB/` after the node is stopped and keeps a timestamped backup
+for rollback. If R2, download, checksum, extraction or post-restore evidence
+fails, the worker reports a redacted `fallback`/`failed` status and starts the
+ordinary NKN ChainDB sync; snapshot failure must not block another provider or
+the worker heartbeat. Existing nodes and the approved `test-sing` canary never
+consume a snapshot restore path.
+
+The publisher keeps only the configured number of immutable snapshots and
+removes its temporary local archive after a successful publication. R2
+credentials, SSH credentials, wallet material and presigned URLs are not put
+in logs, manifests, worker state or documentation. Before enabling the
+publisher, verify the private bucket/prefix, disk headroom, pinned SSH host-key
+fingerprint and a dedicated publisher wallet reservation. An abandoned
+reservation can be released only through the owner-only guarded action that
+requires explicit `RELEASE` confirmation and acknowledgement that remote state
+is unknown.
+
 ## Current canary evidence
 
 The approved `test-sing` canary uses worker `43406`, slot `ipv4-001`, public IP

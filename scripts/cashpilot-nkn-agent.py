@@ -12,6 +12,7 @@ import re
 import socketserver
 import subprocess
 import time
+import urllib.parse
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any
@@ -191,6 +192,33 @@ def validate_deploy(slot_id: str, payload: dict[str, Any]) -> dict[str, Any]:
             raise AgentError("expected_node_id must be a 64-character hexadecimal NKN node id")
         validated["adopt_instance"] = adopt_instance
         validated["expected_node_id"] = expected_node_id.lower()
+    snapshot = payload.get("chaindb_snapshot")
+    if snapshot is not None:
+        if not isinstance(snapshot, dict) or not isinstance(snapshot.get("manifest"), dict):
+            raise AgentError("chaindb_snapshot is invalid")
+        archive_url = str(snapshot.get("archive_url") or "").strip()
+        parsed = urllib.parse.urlsplit(archive_url)
+        if parsed.scheme != "https" or not parsed.netloc:
+            raise AgentError("chaindb_snapshot archive_url must be HTTPS")
+        manifest = dict(snapshot["manifest"])
+        archive_key = str(manifest.get("archive_key") or "")
+        prefix = str(snapshot.get("prefix") or "nkn/chaindb").strip().strip("/")
+        if (
+            not re.fullmatch(r"[A-Za-z0-9._/-]+", prefix)
+            or ".." in prefix.split("/")
+            or not archive_key.startswith(f"{prefix}/snapshots/")
+            or not archive_key.endswith(".tar.zst")
+        ):
+            raise AgentError("chaindb_snapshot manifest is invalid")
+        raw_max_age = snapshot.get("max_age_seconds", 48 * 60 * 60)
+        if isinstance(raw_max_age, bool) or not 1 <= int(raw_max_age) <= 30 * 24 * 60 * 60:
+            raise AgentError("chaindb_snapshot max_age_seconds is invalid")
+        validated["chaindb_snapshot"] = {
+            "manifest": manifest,
+            "archive_url": archive_url,
+            "prefix": prefix,
+            "max_age_seconds": int(raw_max_age),
+        }
     return validated
 
 
@@ -591,7 +619,7 @@ class Controller:
                     "DEBIAN_FRONTEND=noninteractive",
                     "sh",
                     "-lc",
-                    "apt-get update && apt-get install -y docker.io curl ca-certificates iproute2",
+                    "apt-get update && apt-get install -y docker.io curl ca-certificates iproute2 zstd",
                 ],
                 timeout=900,
             )
@@ -601,7 +629,67 @@ class Controller:
         command = f"install -d -m 0700 /opt/nkn && umask 077; cat > {path}; chmod {mode} {path}"
         _run(["lxc", "exec", name, "--", "sh", "-lc", command], input_bytes=payload, timeout=60)
 
-    def _provision_inner(self, name: str, payload: dict[str, Any]) -> None:
+    def _install_snapshot(self, name: str, snapshot: dict[str, Any]) -> None:
+        _run(
+            [
+                "lxc",
+                "exec",
+                name,
+                "--",
+                "sh",
+                "-lc",
+                "command -v zstd >/dev/null 2>&1 || (apt-get update && apt-get install -y zstd)",
+            ],
+            timeout=900,
+        )
+        script = Path(__file__).with_name("nkn_chaindb_restore.py").read_bytes()
+        contract = Path(__file__).with_name("nkn_chaindb.py").read_bytes()
+        self._write_inner_file(name, "/usr/local/lib/cashpilot/nkn_chaindb.py", contract, "0644")
+        self._write_inner_file(name, "/usr/local/sbin/cashpilot-nkn-chaindb-restore", script, "0755")
+        request = json.dumps(
+            {
+                "manifest": snapshot["manifest"],
+                "archive_url": snapshot["archive_url"],
+                "data_dir": "/opt/nkn",
+                "container": INNER_CONTAINER,
+                "prefix": snapshot["prefix"],
+                "max_age_seconds": snapshot["max_age_seconds"],
+            },
+            separators=(",", ":"),
+        ).encode("utf-8")
+        self._write_inner_file(name, "/run/cashpilot-nkn-chaindb-request.json", request, "0600")
+        try:
+            _run(
+                [
+                    "lxc",
+                    "exec",
+                    name,
+                    "--",
+                    "env",
+                    "PYTHONPATH=/usr/local/lib/cashpilot",
+                    "python3",
+                    "/usr/local/sbin/cashpilot-nkn-chaindb-restore",
+                    "--data-dir",
+                    "/opt/nkn",
+                    "--archive",
+                    "/opt/nkn/.chaindb-placeholder.tar.zst",
+                    "--sha256",
+                    "0" * 64,
+                    "--size-bytes",
+                    "1",
+                    "--request",
+                    "/run/cashpilot-nkn-chaindb-request.json",
+                ],
+                timeout=6 * 60 * 60,
+            )
+        finally:
+            _run(
+                ["lxc", "exec", name, "--", "rm", "-f", "/run/cashpilot-nkn-chaindb-request.json"],
+                check=False,
+                timeout=30,
+            )
+
+    def _provision_inner(self, name: str, payload: dict[str, Any]) -> str:
         self._install_docker(name)
         if self._inner_exists(name):
             _run(
@@ -609,7 +697,7 @@ class Controller:
                 timeout=30,
             )
             _run(["lxc", "exec", name, "--", "docker", "start", INNER_CONTAINER], check=False, timeout=60)
-            return
+            return "skipped"
         files_ready = (
             _run(
                 [
@@ -633,6 +721,17 @@ class Controller:
             self._write_inner_file(name, "/opt/nkn/wallet.pswd", str(payload["wallet_pswd"]).encode("utf-8"), "0600")
         _run(["lxc", "exec", name, "--", "docker", "pull", IMAGE], timeout=900)
         _run(["lxc", "exec", name, "--", *inner_docker_run_command()], timeout=120)
+        snapshot_status = "skipped"
+        if isinstance(payload.get("chaindb_snapshot"), dict):
+            try:
+                self._install_snapshot(name, dict(payload["chaindb_snapshot"]))
+                snapshot_status = "restored"
+            except Exception:
+                # Snapshot acceleration is optional. A new node must still be
+                # allowed to sync normally when R2, checksum, or extraction fails.
+                snapshot_status = "fallback"
+                _run(["lxc", "exec", name, "--", "docker", "start", INNER_CONTAINER], check=False, timeout=60)
+        return snapshot_status
 
     def deploy(self, raw_payload: dict[str, Any]) -> dict[str, Any]:
         slot_id = str(raw_payload.get("slot_id") or "")
@@ -685,9 +784,15 @@ class Controller:
             self._set_metadata(name, payload)
         self._wait_ready(name)
         self._ensure_network(name, payload)
-        self._provision_inner(name, payload)
+        snapshot_status = self._provision_inner(name, payload)
         evidence = self.evidence(slot_id, payload)
-        return {"container_id": name, "instance_id": name, "slot_id": slot_id, **evidence}
+        return {
+            "container_id": name,
+            "instance_id": name,
+            "slot_id": slot_id,
+            "snapshot_status": snapshot_status,
+            **evidence,
+        }
 
     def _assigned(self, slot_id: str, payload: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         name = instance_name(slot_id)
@@ -881,8 +986,9 @@ class _Handler(BaseHTTPRequestHandler):
 
 if hasattr(socketserver, "UnixStreamServer"):
 
-    class _UnixServer(socketserver.UnixStreamServer):
+    class _UnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
         allow_reuse_address = True
+        daemon_threads = True
 
 else:
     _UnixServer = None

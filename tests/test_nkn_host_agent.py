@@ -134,6 +134,99 @@ def test_helper_rejects_non_authoritative_image_references_for_canary_adoption(r
     assert agent.is_official_nkn_image(reference) is False
 
 
+def test_helper_snapshot_contract_accepts_https_and_rejects_plaintext_urls():
+    agent = _module()
+    payload = _payload()
+    payload["chaindb_snapshot"] = {
+        "manifest": {"archive_key": "nkn/chaindb/snapshots/1-20260823T120000Z-" + "a" * 64 + ".tar.zst"},
+        "archive_url": "https://example.invalid/snapshot",
+        "prefix": "nkn/chaindb",
+        "max_age_seconds": 48 * 60 * 60,
+    }
+    validated = agent.validate_deploy("ipv4-001", payload)
+    assert validated["chaindb_snapshot"]["archive_url"].startswith("https://")
+
+    payload["chaindb_snapshot"]["archive_url"] = "http://example.invalid/snapshot"
+    with pytest.raises(agent.AgentError):
+        agent.validate_deploy("ipv4-001", payload)
+
+
+def test_helper_snapshot_contract_accepts_configured_safe_prefix():
+    agent = _module()
+    payload = _payload()
+    payload["chaindb_snapshot"] = {
+        "manifest": {"archive_key": "cashpilot/nkn-db/snapshots/1-20260823T120000Z-" + "a" * 64 + ".tar.zst"},
+        "archive_url": "https://example.invalid/snapshot",
+        "prefix": "cashpilot/nkn-db",
+        "max_age_seconds": 48 * 60 * 60,
+    }
+    validated = agent.validate_deploy("ipv4-001", payload)
+    assert validated["chaindb_snapshot"]["manifest"]["archive_key"].startswith("cashpilot/nkn-db/")
+
+
+def test_helper_unix_server_handles_heartbeat_while_snapshot_deploy_runs():
+    agent = _module()
+    if hasattr(agent.socketserver, "UnixStreamServer"):
+        assert issubclass(agent._UnixServer, agent.socketserver.ThreadingMixIn)
+        assert agent._UnixServer.daemon_threads is True
+
+
+def test_helper_snapshot_failure_falls_back_to_normal_sync(monkeypatch):
+    agent = _module()
+    controller = agent.Controller()
+    payload = agent.validate_deploy(
+        "ipv4-001",
+        {
+            **_payload(),
+            "chaindb_snapshot": {
+                "manifest": {"archive_key": "nkn/chaindb/snapshots/1-20260823T120000Z-" + "a" * 64 + ".tar.zst"},
+                "archive_url": "https://example.invalid/snapshot",
+                "prefix": "nkn/chaindb",
+                "max_age_seconds": 48 * 60 * 60,
+            },
+        },
+    )
+    controller._install_snapshot = lambda _name, _snapshot: (_ for _ in ()).throw(agent.AgentError("snapshot failed"))
+    controller._install_docker = lambda _name: None
+    controller._inner_exists = lambda _name: False
+    commands = []
+    monkeypatch.setattr(
+        agent, "_run", lambda args, **kwargs: commands.append(args) or subprocess.CompletedProcess(args, 0, b"", b"")
+    )
+    result = controller._provision_inner("cashpilot-nkn-ipv4-001", payload)
+    assert result == "fallback"
+    assert any(command[:3] == ["lxc", "exec", "cashpilot-nkn-ipv4-001"] for command in commands)
+
+
+def test_helper_snapshot_restore_allows_six_hour_transfer(tmp_path, monkeypatch):
+    agent = _module()
+    controller = agent.Controller()
+    installed_agent = tmp_path / "cashpilot-nkn-agent.py"
+    installed_agent.write_bytes(b"agent")
+    installed_agent.with_name("nkn_chaindb.py").write_bytes(b"contract")
+    installed_agent.with_name("nkn_chaindb_restore.py").write_bytes(b"restore")
+    monkeypatch.setattr(agent, "__file__", str(installed_agent))
+    snapshot = {
+        "manifest": {"archive_key": "nkn/chaindb/snapshots/1-20260823T120000Z-" + "a" * 64 + ".tar.zst"},
+        "archive_url": "https://example.invalid/snapshot",
+        "prefix": "nkn/chaindb",
+        "max_age_seconds": 48 * 60 * 60,
+    }
+    calls = []
+    monkeypatch.setattr(controller, "_write_inner_file", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        agent,
+        "_run",
+        lambda args, **kwargs: calls.append((args, kwargs)) or subprocess.CompletedProcess(args, 0, b"", b""),
+    )
+
+    controller._install_snapshot("cashpilot-nkn-ipv4-001", snapshot)
+
+    restore_calls = [kwargs for args, kwargs in calls if "nkn-chaindb-restore" in " ".join(args)]
+    assert restore_calls
+    assert restore_calls[0]["timeout"] == 6 * 60 * 60
+
+
 def test_helper_dispatch_exposes_only_nkn_slot_lifecycle():
     agent = _module()
 

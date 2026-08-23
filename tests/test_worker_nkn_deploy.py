@@ -122,6 +122,42 @@ def test_worker_nkn_deploy_forwards_canary_adoption_and_persists_lxd_target(tmp_
     assert saved["runtime_backend"] == "lxd"
 
 
+def test_worker_nkn_deploy_passes_snapshot_to_lxd_without_persisting_url(tmp_path, monkeypatch):
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    snapshot = {
+        "manifest": {"archive_key": "nkn/chaindb/snapshots/1-20260823T120000Z-" + "a" * 64 + ".tar.zst"},
+        "archive_url": "https://example.invalid/signed-secret-url",
+        "prefix": "nkn/chaindb",
+        "max_age_seconds": 48 * 60 * 60,
+    }
+    spec = worker_api.NknDeploySpec(
+        wallet_id=7,
+        wallet_assignment_version=3,
+        lease_client_id="worker-a:nkn:ipv4-001",
+        wallet_json=json.dumps({"Address": "NKNwalletAddress"}),
+        wallet_pswd="password-value",
+        beneficiary_address="NKNBeneficiaryAddress",
+        runtime_backend="lxd",
+        chaindb_snapshot=snapshot,
+    )
+
+    async def run():
+        with (
+            patch.object(worker_api, "_verify_api_key", return_value=None),
+            patch.object(worker_api, "_load_public_ip_slots", return_value=[_slot()]),
+            patch.object(
+                worker_api.nkn_lxd_runtime, "deploy_slot", return_value={"container_id": "c", "instance_id": "n"}
+            ) as deploy,
+        ):
+            response = await worker_api.api_deploy_nkn_slot(_request(), "ipv4-001", spec)
+        return response, deploy
+
+    _, deploy = asyncio.run(run())
+    assert deploy.call_args.kwargs["snapshot"]["archive_url"].startswith("https://")
+    saved = json.dumps(json.loads(Path(tmp_path, "nkn-wallets", "ipv4-001.json").read_text(encoding="utf-8")))
+    assert "signed-secret-url" not in saved
+
+
 @pytest.mark.parametrize(
     "overrides",
     [

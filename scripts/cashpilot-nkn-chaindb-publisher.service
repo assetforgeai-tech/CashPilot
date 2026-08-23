@@ -1,0 +1,21 @@
+[Unit]
+Description=Publish a verified NKN ChainDB snapshot to private R2
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+ConditionPathExists=/etc/cashpilot/nkn-chaindb-publisher.json
+OnFailure=cashpilot-nkn-chaindb-publisher-failure.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/flock --nonblock /run/cashpilot-nkn-chaindb-publisher.lock /usr/bin/python3 /usr/local/lib/cashpilot/nkn_chaindb_publisher.py --config /etc/cashpilot/nkn-chaindb-publisher.json --once
+ExecStopPost=-/usr/bin/docker start cashpilot-nkn
+Restart=on-failure
+RestartSec=15min
+TimeoutStartSec=6h
+LimitNOFILE=1048576
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/nkn /var/lib/cashpilot/nkn-chaindb /run

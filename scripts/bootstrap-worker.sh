@@ -9,6 +9,8 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 DISCOVERY="${INSTALL_ROOT}/public_ip_slots.py"
 NKN_AGENT="${INSTALL_ROOT}/cashpilot-nkn-agent.py"
+NKN_CHAINDb_CONTRACT="${INSTALL_ROOT}/nkn_chaindb.py"
+NKN_CHAINDb_RESTORE="${INSTALL_ROOT}/nkn_chaindb_restore.py"
 NKN_AGENT_SOCKET="/run/cashpilot-nkn-agent/agent.sock"
 
 publish_slots_volume() {
@@ -132,6 +134,8 @@ install -m 0755 "${BASH_SOURCE[0]}" "${INSTALLED_SCRIPT}"
 # not present on a freshly provisioned VPS.
 install -m 0644 "${REPO_ROOT}/app/public_ip_slots.py" "${DISCOVERY}"
 install -m 0755 "${REPO_ROOT}/scripts/cashpilot-nkn-agent.py" "${NKN_AGENT}"
+install -m 0644 "${REPO_ROOT}/app/nkn_chaindb.py" "${NKN_CHAINDb_CONTRACT}"
+install -m 0755 "${REPO_ROOT}/scripts/nkn_chaindb_restore.py" "${NKN_CHAINDb_RESTORE}"
 
 task_tmp="$(mktemp -d)"
 trap 'rm -rf -- "${task_tmp}"' EXIT

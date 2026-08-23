@@ -1742,6 +1742,7 @@ const CP = (() => {
       unfunded: rows.filter(r => r.funding === 'UNFUNDED').length,
       available: rows.filter(r => r.state === 'AVAILABLE').length,
       leased: rows.filter(r => r.state === 'LEASED').length,
+      reserved: rows.filter(r => r.state === 'RESERVED').length,
       quarantined: rows.filter(r => r.state === 'QUARANTINED').length,
       filtered: filtered.length,
     };
@@ -1957,7 +1958,13 @@ const CP = (() => {
     if (_nknWalletPage > pages) _nknWalletPage = pages;
     const visible = filtered.slice((_nknWalletPage - 1) * _nknWalletPageSize, _nknWalletPage * _nknWalletPageSize);
     status.style.display = 'none';
-    list.innerHTML = visible.map((row) => `
+    list.innerHTML = visible.map((row) => {
+      const isPublisherReservation = row.state === 'RESERVED'
+        && String(row.leased_to_client_id || '').startsWith('nkn-chaindb-publisher:');
+      const releaseAction = isPublisherReservation
+        ? `<button class="btn btn-ghost btn-sm" style="color:var(--error);" data-action="releaseNknPublisherWallet" data-a1="${escapeHtml(row.id)}" data-a2="${escapeHtml(row.public_ip || '')}">Release</button>`
+        : '-';
+      return `
       <tr>
         <td>${escapeHtml(row.id)}</td>
         <td>${escapeHtml(row.folder_name || '-')}</td>
@@ -1967,8 +1974,10 @@ const CP = (() => {
         <td>${escapeHtml(row.leased_to_client_id || '-')}</td>
         <td>${escapeHtml(row.node_identity || '-')}</td>
         <td>${escapeHtml(row.last_heartbeat_at || '-')}</td>
+        <td>${releaseAction}</td>
       </tr>
-    `).join('');
+    `;
+    }).join('');
     const pager = document.getElementById('nkn-wallet-pager');
     if (pager) {
       pager.innerHTML = `
@@ -2010,6 +2019,31 @@ const CP = (() => {
   function sortNknWallets(key) {
     _nknWalletSort = { key, dir: _nknWalletSort.key === key ? -_nknWalletSort.dir : 1 };
     renderNknWalletRows(_nknWalletRows);
+  }
+
+  async function releaseNknPublisherWallet(walletId, publisherHost) {
+    const warning = 'Release this publisher wallet only when the remote publisher is abandoned or confirmed absent. Remote state is not checked automatically. Continue?';
+    if (!confirm(warning)) return;
+    const confirmation = prompt('Type RELEASE to confirm the guarded wallet release:');
+    if (confirmation !== 'RELEASE') {
+      toast('Publisher wallet release cancelled', 'info');
+      return;
+    }
+    try {
+      await api('/api/nkn/chaindb/publisher/wallet/release', {
+        method: 'POST',
+        body: {
+          wallet_id: Number(walletId),
+          publisher_host: String(publisherHost || ''),
+          acknowledge_remote_state_unknown: true,
+          confirmation,
+        },
+      });
+      toast('Publisher wallet released', 'success');
+      loadNknWallets();
+    } catch (err) {
+      toast(`Publisher wallet release failed: ${err.message}`, 'error');
+    }
   }
 
   // -----------------------------------------------------------
@@ -3462,6 +3496,16 @@ const CP = (() => {
     }
   }
 
+  async function deployNknChaindbPublisher() {
+    if (!confirm('Deploy or refresh the dedicated NKN ChainDB publisher VPS using the saved Settings?')) return;
+    try {
+      const result = await api('/api/nkn/chaindb/publisher/deploy', { method: 'POST' });
+      toast(`Publisher ${result.status || 'deployed'}`, 'success');
+    } catch (err) {
+      toast(`Publisher deploy failed: ${err.message}`, 'error');
+    }
+  }
+
   function renderCollectors(meta, config) {
     const container = document.getElementById('collectors-container');
     if (!container) return;
@@ -4194,6 +4238,7 @@ const CP = (() => {
     saveCollectorCredentials,
     testCollectors,
     saveEnvSettings,
+    deployNknChaindbPublisher,
     toggleEnvSecret,
     importMystWalletFile,
     importNknWalletZip,
@@ -4201,6 +4246,7 @@ const CP = (() => {
     loadNknWallets,
     applyMystWalletFilters,
     applyNknWalletFilters,
+    releaseNknPublisherWallet,
     mystWalletPage,
     nknWalletPage,
     sortMystWallets,

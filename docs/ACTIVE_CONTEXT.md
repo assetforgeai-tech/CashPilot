@@ -1,6 +1,6 @@
 # CashPilot Active Context
 
-Updated: 2026-08-23 (NKN LXD runtime and live closeout; docs-only closeout)
+Updated: 2026-08-23 (NKN ChainDB snapshot branch; no live mutation yet)
 
 ## Current repository state
 
@@ -108,6 +108,28 @@ Updated: 2026-08-23 (NKN LXD runtime and live closeout; docs-only closeout)
   900 seconds. The fresh full suite passed `1515 passed, 7 skipped`. Runtime,
   heartbeat, Fleet, wallet, RPC and lease-guard snapshots keep NKN
   `PROTECTED_DONE`.
+
+## NKN ChainDB snapshot branch (pre-PR)
+
+- Branch `feat/nkn-chaindb-snapshot` is not committed, pushed, merged, released
+  or deployed. It adds an optional private-R2 publisher/restore path scoped to
+  NKN only; the successful `test-sing` node, identity, volume, wallet lease and
+  worker remain unchanged.
+- The archive contract contains `ChainDB/` only. Manifests are immutable,
+  digest/size/height/age checked, and published `latest.json` is written last.
+  Restore is staged and atomic with rollback; identity/config/wallet files are
+  preserved. Snapshot errors fall back to normal sync and cannot block another
+  provider.
+- Publisher settings are masked/encrypted; SSH uses a pinned host-key
+  fingerprint and `StrictHostKeyChecking=yes`. Publisher wallet reservations
+  are separate `RESERVED` records from worker leases and have an owner-only
+  guarded release action for abandoned/unknown remote state.
+- Focused snapshot/NKN tests are green. Before any PR or live action, run the
+  full suite, lint/format/compile/shell/JS checks, compare changed paths with
+  the protected-provider matrix, and verify the dedicated publisher VPS has
+  enough disk headroom for the measured ChainDB peak. No R2 object, VPS,
+  container, volume, database, credential, proxy or wallet has been changed by
+  this branch so far.
 
 ## Proxy ACK rotation baseline
 
