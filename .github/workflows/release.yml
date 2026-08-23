@@ -11,6 +11,8 @@ on:
       - 'uv.lock'
       - 'app/**'
       - 'services/**'
+      - 'scripts/**'
+      - '.dockerignore'
   workflow_dispatch:
 
 permissions:
@@ -109,6 +111,9 @@ jobs:
           # published nothing at all: no tag, no GitHub Release, no images.
           # Skipped steps do not fail a run, so it looked like a success.
           if echo "$CHANGED" | grep -qE '^(Dockerfile|entrypoint\.sh|pyproject\.toml|uv\.lock|app/)'; then
+            BUILD_UI=true
+          fi
+          if echo "$CHANGED" | grep -qE '^scripts/'; then
             BUILD_UI=true
           fi
           if echo "$CHANGED" | grep -qE '^services/'; then
