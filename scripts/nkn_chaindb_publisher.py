@@ -16,9 +16,11 @@ import re
 import shutil
 import subprocess
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+UTC = timezone.utc  # noqa: UP017 - keep Python 3.10 publisher compatibility
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:

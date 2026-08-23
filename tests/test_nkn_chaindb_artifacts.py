@@ -48,3 +48,14 @@ def test_worker_bootstrap_installs_snapshot_dependencies_without_credentials():
 def test_lxd_inner_runtime_installs_zstd_before_snapshot_restore():
     text = (ROOT / "scripts" / "cashpilot-nkn-agent.py").read_text(encoding="utf-8")
     assert "apt-get install -y zstd" in text
+
+
+def test_standalone_publisher_assets_support_ubuntu_2204_python310():
+    """The publisher installer targets Ubuntu 22.04, whose system Python is 3.10."""
+    installed_assets = [
+        ROOT / "app" / "nkn_chaindb.py",
+        ROOT / "scripts" / "nkn_chaindb_publisher.py",
+    ]
+    for path in installed_assets:
+        text = path.read_text(encoding="utf-8")
+        assert "from datetime import UTC" not in text, f"{path.name} requires Python 3.11+"
