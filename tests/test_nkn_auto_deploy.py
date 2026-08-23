@@ -29,6 +29,15 @@ def _lease(wallet_id: int, client_id: str, public_ip: str) -> dict[str, object]:
     }
 
 
+def test_proxy_worker_nkn_deploy_uses_the_requested_timeout():
+    async def run():
+        with patch.object(main, "_proxy_to_worker", AsyncMock(return_value={"status": "deployed"})) as proxy:
+            await main._proxy_worker_nkn_deploy(7, "ipv4-001", {"wallet_id": 1}, timeout=900)
+        assert proxy.await_args.kwargs["timeout"] == 900
+
+    asyncio.run(run())
+
+
 def test_nkn_deploy_runs_slots_sequentially_and_continues_after_failure():
     async def run():
         calls: list[str] = []
@@ -255,6 +264,7 @@ def test_nkn_canary_adoption_forces_the_existing_assignment_through_the_guard():
         deploy_spec = deploy.await_args.args[2]
         assert deploy_spec["adopt_instance"] == "cashpilot-nkn-lxd-canary"
         assert deploy_spec["expected_node_id"] == "a" * 64
+        assert deploy.await_args.kwargs["timeout"] == 900
 
     asyncio.run(run())
 

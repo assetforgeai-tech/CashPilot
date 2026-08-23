@@ -228,7 +228,13 @@ async def _worker_public_ip_slots(worker_id: int) -> list[dict[str, Any]]:
     return sorted(slots, key=lambda item: int(str(item["slot_id"])[6:]))
 
 
-async def _proxy_worker_nkn_deploy(worker_id: int, slot_id: str, spec: dict[str, Any]) -> dict[str, Any]:
+async def _proxy_worker_nkn_deploy(
+    worker_id: int,
+    slot_id: str,
+    spec: dict[str, Any],
+    *,
+    timeout: float = 60,
+) -> dict[str, Any]:
     """Send one NKN assignment to the dedicated worker endpoint."""
     if not re.fullmatch(r"ipv4-\d{3,6}", str(slot_id or "")):
         raise ValueError("invalid NKN slot id")
@@ -237,7 +243,7 @@ async def _proxy_worker_nkn_deploy(worker_id: int, slot_id: str, spec: dict[str,
         "POST",
         f"/api/nkn/slots/{slot_id}/deploy",
         json=spec,
-        timeout=60,
+        timeout=timeout,
     )
 
 
@@ -383,7 +389,10 @@ async def _deploy_nkn_slots(
                     "wallet_json": str(lease.get("wallet_json") or ""),
                     "wallet_pswd": str(lease.get("wallet_pswd") or ""),
                 }
-                result = await _proxy_worker_nkn_deploy(worker_id, slot_id, deploy_spec)
+                if adopt_instance:
+                    result = await _proxy_worker_nkn_deploy(worker_id, slot_id, deploy_spec, timeout=900)
+                else:
+                    result = await _proxy_worker_nkn_deploy(worker_id, slot_id, deploy_spec)
                 container_id = str(result.get("container_id") or "remote")
                 # Persist only non-secret assignment metadata. The wallet pool remains
                 # the sole server-side source of wallet material on retry.
