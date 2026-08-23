@@ -10,7 +10,12 @@ __pycache__
 venv
 node_modules
 docs/
-scripts/
+scripts/*
+!scripts/install-nkn-chaindb-publisher.sh
+!scripts/nkn_chaindb_publisher.py
+!scripts/cashpilot-nkn-chaindb-publisher.service
+!scripts/cashpilot-nkn-chaindb-publisher-failure.service
+!scripts/cashpilot-nkn-chaindb-publisher.timer
 *.md
 !requirements.txt
 .DS_Store
