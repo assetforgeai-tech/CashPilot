@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+from pydantic import ValidationError
 from starlette.requests import Request
 
 from app import worker_api
@@ -80,6 +82,69 @@ def test_worker_nkn_deploy_persists_only_redacted_assignment_state(tmp_path, mon
     assert "wallet_json" not in saved
     assert "wallet_pswd" not in saved
     assert "password-value" not in json.dumps(saved)
+
+
+def test_worker_nkn_deploy_forwards_canary_adoption_and_persists_lxd_target(tmp_path, monkeypatch):
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    spec = worker_api.NknDeploySpec(
+        wallet_id=7,
+        wallet_assignment_version=3,
+        lease_client_id="worker-a:nkn:ipv4-001",
+        wallet_json=json.dumps({"Address": "NKNwalletAddress"}),
+        wallet_pswd="password-value",
+        beneficiary_address="NKNBeneficiaryAddress",
+        runtime_backend="lxd",
+        lxd_cpu=1,
+        lxd_memory_mib=1024,
+        adopt_instance="cashpilot-nkn-lxd-canary",
+        expected_node_id="a" * 64,
+    )
+
+    async def run():
+        with (
+            patch.object(worker_api, "_verify_api_key", return_value=None),
+            patch.object(worker_api, "_load_public_ip_slots", return_value=[_slot()]),
+            patch.object(
+                worker_api.nkn_lxd_runtime,
+                "deploy_slot",
+                return_value={"container_id": "cashpilot-nkn-ipv4-001", "instance_id": "cashpilot-nkn-ipv4-001"},
+            ) as deploy,
+        ):
+            response = await worker_api.api_deploy_nkn_slot(_request(), "ipv4-001", spec)
+        return response, deploy
+
+    response, deploy = asyncio.run(run())
+    assert response["instance_id"] == "cashpilot-nkn-ipv4-001"
+    assert deploy.call_args.kwargs["adopt_instance"] == "cashpilot-nkn-lxd-canary"
+    assert deploy.call_args.kwargs["expected_node_id"] == "a" * 64
+    saved = json.loads(Path(tmp_path, "nkn-wallets", "ipv4-001.json").read_text(encoding="utf-8"))
+    assert saved["instance_id"] == "cashpilot-nkn-ipv4-001"
+    assert saved["runtime_backend"] == "lxd"
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"adopt_instance": "cashpilot-nkn-lxd-canary"},
+        {"expected_node_id": "a" * 64},
+        {
+            "runtime_backend": "docker",
+            "adopt_instance": "cashpilot-nkn-lxd-canary",
+            "expected_node_id": "a" * 64,
+        },
+    ],
+)
+def test_worker_nkn_deploy_rejects_incomplete_or_non_lxd_adoption(overrides):
+    with pytest.raises(ValidationError):
+        worker_api.NknDeploySpec(
+            wallet_id=7,
+            wallet_assignment_version=3,
+            lease_client_id="worker-a:nkn:ipv4-001",
+            wallet_json=json.dumps({"Address": "NKNwalletAddress"}),
+            wallet_pswd="password-value",
+            beneficiary_address="NKNBeneficiaryAddress",
+            **overrides,
+        )
 
 
 def test_nkn_state_path_is_normalized_and_confined_to_state_root(tmp_path, monkeypatch):

@@ -43,6 +43,21 @@ def test_lxd_deploy_sends_slot_assignment_and_hard_limits_without_returning_secr
     assert "password-value" not in str(result)
 
 
+def test_lxd_deploy_can_forward_the_exact_canary_adoption_guard():
+    with patch.object(nkn_lxd_runtime, "_request", return_value={"instance_id": "cashpilot-nkn-ipv4-001"}) as request:
+        nkn_lxd_runtime.deploy_slot(
+            _slot(),
+            _assignment(),
+            settings={"cpu": 1, "memory_mib": 1024},
+            adopt_instance="cashpilot-nkn-lxd-canary",
+            expected_node_id="a" * 64,
+        )
+
+    payload = request.call_args.kwargs["payload"]
+    assert payload["adopt_instance"] == "cashpilot-nkn-lxd-canary"
+    assert payload["expected_node_id"] == "a" * 64
+
+
 def test_lxd_lifecycle_requests_are_assignment_cas_scoped():
     with patch.object(nkn_lxd_runtime, "_request", return_value={"status": "ok"}) as request:
         nkn_lxd_runtime.suspend_slot(

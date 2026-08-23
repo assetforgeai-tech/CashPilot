@@ -220,6 +220,45 @@ def test_nkn_settings_drift_never_silently_resizes_or_redeploys_a_running_lxd_no
     asyncio.run(run())
 
 
+def test_nkn_canary_adoption_forces_the_existing_assignment_through_the_guard():
+    async def run():
+        lease = _lease(1, "worker-a:nkn:ipv4-001", "8.8.8.8")
+        existing = {
+            "status": "running",
+            "spec": {
+                "wallet_id": 1,
+                "wallet_assignment_version": 1,
+                "slot_id": "ipv4-001",
+                "runtime_backend": "lxd",
+                "lxd_cpu": 1,
+                "lxd_memory_mib": 1024,
+            },
+        }
+        with (
+            patch.object(database, "get_worker", AsyncMock(return_value={"id": 7, "client_id": "worker-a"})),
+            patch.object(main, "_worker_public_ip_slots", AsyncMock(return_value=[_slot("ipv4-001", "8.8.8.8")])),
+            patch.object(database, "lease_nkn_wallet", AsyncMock(return_value=lease)),
+            patch.object(database, "get_provider_instance", AsyncMock(return_value=existing)),
+            patch.object(
+                main, "_proxy_worker_nkn_deploy", AsyncMock(return_value={"container_id": "target"})
+            ) as deploy,
+            patch.object(database, "save_provider_instance", AsyncMock()),
+        ):
+            result = await main._deploy_nkn_slots(
+                7,
+                beneficiary_address="NKNBeneficiaryAddress",
+                lxd_settings={"cpu": 1, "memory_mib": 1024},
+                adopt_instance="cashpilot-nkn-lxd-canary",
+                expected_node_id="a" * 64,
+            )
+        assert result["deployed"] == ["ipv4-001"]
+        deploy_spec = deploy.await_args.args[2]
+        assert deploy_spec["adopt_instance"] == "cashpilot-nkn-lxd-canary"
+        assert deploy_spec["expected_node_id"] == "a" * 64
+
+    asyncio.run(run())
+
+
 def test_nkn_deploy_does_not_lease_or_attempt_unready_slots():
     async def run():
         with (

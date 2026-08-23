@@ -68,6 +68,8 @@ def deploy_slot(
     assignment: Mapping[str, Any],
     *,
     settings: Mapping[str, Any],
+    adopt_instance: str | None = None,
+    expected_node_id: str | None = None,
 ) -> dict[str, Any]:
     slot_id = str(slot.get("slot_id") or "")
     payload = {
@@ -88,6 +90,11 @@ def deploy_slot(
         "lxd_cpu": int(settings["cpu"]),
         "lxd_memory_mib": int(settings["memory_mib"]),
     }
+    if bool(adopt_instance) != bool(expected_node_id):
+        raise ValueError("canary adoption requires both instance name and expected node id")
+    if adopt_instance:
+        payload["adopt_instance"] = str(adopt_instance)
+        payload["expected_node_id"] = str(expected_node_id)
     return _request("POST", f"/v1/slots/{slot_id}", payload=payload)
 
 
