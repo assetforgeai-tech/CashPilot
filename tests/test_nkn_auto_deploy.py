@@ -93,6 +93,9 @@ def test_nkn_retry_reuses_existing_wallet_and_skips_already_running_assignment()
                             "wallet_id": 7,
                             "wallet_assignment_version": 1,
                             "slot_id": "ipv4-001",
+                            "runtime_backend": "lxd",
+                            "lxd_cpu": 1,
+                            "lxd_memory_mib": 1024,
                         },
                     }
                 ),
@@ -129,6 +132,9 @@ def test_nkn_legacy_instance_reads_the_legacy_encrypted_spec_before_skipping():
                         "wallet_id": 7,
                         "wallet_assignment_version": 1,
                         "slot_id": "ipv4-001",
+                        "runtime_backend": "lxd",
+                        "lxd_cpu": 1,
+                        "lxd_memory_mib": 1024,
                     }
                 ),
             ) as read_spec,
@@ -137,6 +143,78 @@ def test_nkn_legacy_instance_reads_the_legacy_encrypted_spec_before_skipping():
             result = await main._deploy_nkn_slots(7, beneficiary_address="NKNBeneficiaryAddress")
         assert result["skipped"] == ["ipv4-001"]
         read_spec.assert_awaited_once_with(legacy_id)
+        deploy.assert_not_awaited()
+
+    asyncio.run(run())
+
+
+def test_nkn_deploy_does_not_skip_a_legacy_docker_backend():
+    async def run():
+        lease = _lease(7, "worker-a:nkn:ipv4-001", "8.8.8.8")
+        existing_spec = {
+            "wallet_id": 7,
+            "wallet_assignment_version": 1,
+            "slot_id": "ipv4-001",
+            "runtime_backend": "docker",
+            "lxd_cpu": 1,
+            "lxd_memory_mib": 1024,
+        }
+        with (
+            patch.object(database, "get_worker", AsyncMock(return_value={"id": 7, "client_id": "worker-a"})),
+            patch.object(main, "_worker_public_ip_slots", AsyncMock(return_value=[_slot("ipv4-001", "8.8.8.8")])),
+            patch.object(database, "lease_nkn_wallet", AsyncMock(return_value=lease)),
+            patch.object(
+                database,
+                "get_provider_instance",
+                AsyncMock(return_value={"status": "running", "spec": existing_spec}),
+            ),
+            patch.object(
+                main,
+                "_proxy_worker_nkn_deploy",
+                AsyncMock(return_value={"container_id": "cashpilot-nkn-ipv4-001"}),
+            ) as deploy,
+            patch.object(database, "save_provider_instance", AsyncMock()),
+        ):
+            result = await main._deploy_nkn_slots(
+                7,
+                beneficiary_address="NKNBeneficiaryAddress",
+                lxd_settings={"cpu": 1, "memory_mib": 1024},
+            )
+        assert result["deployed"] == ["ipv4-001"]
+        deploy.assert_awaited_once()
+
+    asyncio.run(run())
+
+
+def test_nkn_settings_drift_never_silently_resizes_or_redeploys_a_running_lxd_node():
+    async def run():
+        lease = _lease(7, "worker-a:nkn:ipv4-001", "8.8.8.8")
+        existing_spec = {
+            "wallet_id": 7,
+            "wallet_assignment_version": 1,
+            "slot_id": "ipv4-001",
+            "runtime_backend": "lxd",
+            "lxd_cpu": 2,
+            "lxd_memory_mib": 2048,
+        }
+        with (
+            patch.object(database, "get_worker", AsyncMock(return_value={"id": 7, "client_id": "worker-a"})),
+            patch.object(main, "_worker_public_ip_slots", AsyncMock(return_value=[_slot("ipv4-001", "8.8.8.8")])),
+            patch.object(database, "lease_nkn_wallet", AsyncMock(return_value=lease)),
+            patch.object(
+                database,
+                "get_provider_instance",
+                AsyncMock(return_value={"status": "running", "spec": existing_spec}),
+            ),
+            patch.object(main, "_proxy_worker_nkn_deploy", AsyncMock()) as deploy,
+        ):
+            result = await main._deploy_nkn_slots(
+                7,
+                beneficiary_address="NKNBeneficiaryAddress",
+                lxd_settings={"cpu": 1, "memory_mib": 1024},
+            )
+        assert result["skipped"] == ["ipv4-001"]
+        assert result["resource_drift"] == ["ipv4-001"]
         deploy.assert_not_awaited()
 
     asyncio.run(run())

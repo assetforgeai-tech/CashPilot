@@ -43,6 +43,9 @@ def test_worker_nkn_deploy_persists_only_redacted_assignment_state(tmp_path, mon
         wallet_json=json.dumps({"Address": "NKNwalletAddress"}),
         wallet_pswd="password-value",
         beneficiary_address="NKNBeneficiaryAddress",
+        runtime_backend="lxd",
+        lxd_cpu=2,
+        lxd_memory_mib=2048,
     )
 
     async def run():
@@ -50,11 +53,10 @@ def test_worker_nkn_deploy_persists_only_redacted_assignment_state(tmp_path, mon
             patch.object(worker_api, "_verify_api_key", return_value=None),
             patch.object(worker_api, "_load_public_ip_slots", return_value=[_slot()]),
             patch.object(
-                worker_api.nkn_runtime,
+                worker_api.nkn_lxd_runtime,
                 "deploy_slot",
                 return_value={"container_id": "container-id", "instance_id": "nkn-direct-ipv4-001"},
             ),
-            patch.object(worker_api.orchestrator, "_get_client", return_value=MagicMock()),
         ):
             return await worker_api.api_deploy_nkn_slot(_request(), "ipv4-001", spec)
 
@@ -72,6 +74,9 @@ def test_worker_nkn_deploy_persists_only_redacted_assignment_state(tmp_path, mon
     assert saved["public_ip"] == "8.8.8.8"
     assert saved["last_server_ack_at"] > 0
     assert saved["lease_guard_suspended"] is False
+    assert saved["runtime_backend"] == "lxd"
+    assert saved["lxd_cpu"] == 2
+    assert saved["lxd_memory_mib"] == 2048
     assert "wallet_json" not in saved
     assert "wallet_pswd" not in saved
     assert "password-value" not in json.dumps(saved)
