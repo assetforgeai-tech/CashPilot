@@ -10,9 +10,11 @@ from __future__ import annotations
 import hashlib
 import re
 from collections.abc import Iterable, Mapping
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
+
+UTC = timezone.utc  # noqa: UP017 - keep Python 3.10 publisher compatibility
 
 SCHEMA_VERSION = 1
 DEFAULT_MAX_AGE_SECONDS = 48 * 60 * 60
