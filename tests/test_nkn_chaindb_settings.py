@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import io
+import json
 import os
+import subprocess
+import tarfile
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -330,6 +334,117 @@ def test_publisher_wallet_is_not_leased_to_worker_pool(tmp_path):
     asyncio.run(run())
 
 
+def test_publisher_bundle_keeps_sensitive_files_in_memory_with_private_modes(tmp_path, monkeypatch):
+    asset = tmp_path / "asset"
+    asset.write_text("asset", encoding="utf-8")
+    monkeypatch.setattr(main, "_publisher_asset_path", lambda name: str(asset))
+    settings = {
+        "publisher_port": 26266,
+        "beneficiary_address": "NKNBeneficiaryAddress",
+        "publisher_wallet": {
+            "wallet_json": '{"Address":"NKNPublisherAddress"}',
+            "wallet_pswd": "publisher-password",
+        },
+        "endpoint": "https://acct.r2.cloudflarestorage.com",
+        "bucket": "private-bucket",
+        "access_key": "access-key",
+        "secret_key": "secret-key",
+        "prefix": "nkn/chaindb",
+        "retention": 2,
+    }
+
+    bundle = main._publisher_bundle_bytes(settings)
+
+    with tarfile.open(fileobj=io.BytesIO(bundle), mode="r:") as archive:
+        members = {member.name: member for member in archive.getmembers()}
+        publisher = json.loads(archive.extractfile(members["publisher.json"]).read())
+        wallet_json = archive.extractfile(members["wallet.json"]).read().decode()
+        wallet_pswd = archive.extractfile(members["wallet.pswd"]).read().decode()
+        assert publisher["secret_access_key"] == "secret-key"
+        assert publisher["ssh_port"] == 26266
+        assert wallet_json == '{"Address":"NKNPublisherAddress"}'
+        assert wallet_pswd == "publisher-password"
+        assert members["publisher.json"].mode & 0o777 == 0o600
+        assert members["wallet.json"].mode & 0o777 == 0o600
+        assert members["wallet.pswd"].mode & 0o777 == 0o600
+        assert members["config.json"].mode & 0o777 == 0o644
+
+
+def test_publisher_deploy_streams_bundle_without_writing_sensitive_local_files(tmp_path, monkeypatch):
+    asset = tmp_path / "asset"
+    asset.write_text("asset", encoding="utf-8")
+    calls = []
+
+    def run_ssh(settings, command, **kwargs):
+        calls.append((command, kwargs.get("input_data")))
+
+    monkeypatch.setattr(main, "_publisher_asset_path", lambda name: str(asset))
+    monkeypatch.setattr(main, "_prepare_publisher_known_hosts", lambda settings: "/data/nkn-chaindb-known-hosts")
+    monkeypatch.setattr(main, "_run_publisher_ssh", run_ssh)
+    monkeypatch.setattr(
+        main.Path,
+        "write_text",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("sensitive local file write")),
+    )
+    settings = {
+        "publisher_host": "203.0.113.10",
+        "publisher_port": 26266,
+        "publisher_user": "root",
+        "publisher_password": "ssh-secret",
+        "publisher_private_key": "",
+        "publisher_host_key_sha256": PUBLISHER_FINGERPRINT,
+        "beneficiary_address": "NKNBeneficiaryAddress",
+        "publisher_wallet": {
+            "wallet_json": '{"Address":"NKNPublisherAddress"}',
+            "wallet_pswd": "publisher-password",
+        },
+        "endpoint": "https://acct.r2.cloudflarestorage.com",
+        "bucket": "private-bucket",
+        "access_key": "access-key",
+        "secret_key": "secret-key",
+        "prefix": "nkn/chaindb",
+        "retention": 2,
+    }
+
+    main._deploy_nkn_chaindb_publisher_sync(settings)
+
+    extract = next((command, data) for command, data in calls if command[:2] == ["tar", "-x"])
+    assert extract[1]
+    assert ["rm", "-rf", "/tmp/cashpilot-nkn-chaindb-bundle"] in [command for command, _ in calls]
+
+
+def test_ssh_private_key_is_loaded_into_ephemeral_agent_from_stdin(monkeypatch):
+    private_key = "-----BEGIN OPENSSH PRIVATE KEY-----\nprivate-value\n-----END OPENSSH PRIVATE KEY-----\n"
+    calls = []
+
+    def run(args, **kwargs):
+        calls.append((args, kwargs))
+        if args[:2] == ["ssh-agent", "-s"]:
+            output = (
+                b"SSH_AUTH_SOCK=/tmp/ssh-agent.sock; export SSH_AUTH_SOCK;\nSSH_AGENT_PID=1234; export SSH_AGENT_PID;\n"
+            )
+            return subprocess.CompletedProcess(args, 0, output, b"")
+        return subprocess.CompletedProcess(args, 0, b"", b"")
+
+    monkeypatch.setattr(main.subprocess, "run", run)
+    settings = {
+        "publisher_host": "203.0.113.10",
+        "publisher_port": 22,
+        "publisher_user": "root",
+        "publisher_password": "",
+        "publisher_private_key": private_key,
+    }
+
+    main._run_publisher_ssh(settings, ["true"])
+
+    add_call = next(kwargs for args, kwargs in calls if args[:2] == ["ssh-add", "-"])
+    ssh_call = next((args, kwargs) for args, kwargs in calls if args and args[0] == "ssh")
+    assert add_call["input"] == private_key.encode()
+    assert private_key not in " ".join(ssh_call[0])
+    assert ssh_call[1]["env"]["SSH_AUTH_SOCK"] == "/tmp/ssh-agent.sock"
+    assert any(args[:2] == ["ssh-agent", "-k"] for args, _ in calls)
+
+
 def test_settings_template_wires_publisher_deploy_action():
     from pathlib import Path
 
@@ -366,7 +481,6 @@ def test_ssh_password_uses_environment_not_process_arguments(monkeypatch):
         "publisher_password": "ssh-secret",
     }
     main._run_publisher_ssh(settings, ["true"])
-    main._copy_publisher_file(settings, "local-file", "root@203.0.113.10:/tmp/remote-file")
     assert all("ssh-secret" not in " ".join(args) for args, _ in calls)
     assert all(env.get("SSHPASS") == "ssh-secret" for _, env in calls)
     assert all("UserKnownHostsFile=/data/nkn-chaindb-known-hosts" in args for args, _ in calls)
@@ -476,13 +590,12 @@ def test_publisher_bundle_cleanup_runs_when_install_fails(tmp_path, monkeypatch)
     asset.write_text("asset", encoding="utf-8")
     calls = []
 
-    def run_ssh(settings, command, *, key_file=None):
-        calls.append(command)
+    def run_ssh(settings, command, *, key_file=None, input_data=None):
+        calls.append((command, input_data))
         if command and command[0] == "bash":
             raise RuntimeError("install failed")
 
     monkeypatch.setattr(main, "_publisher_asset_path", lambda name: str(asset))
-    monkeypatch.setattr(main, "_copy_publisher_file", lambda *args, **kwargs: None)
     monkeypatch.setattr(main, "_run_publisher_ssh", run_ssh)
     monkeypatch.setattr(main, "_prepare_publisher_known_hosts", lambda settings: "/data/nkn-chaindb-known-hosts")
     settings = {
@@ -506,20 +619,15 @@ def test_publisher_bundle_cleanup_runs_when_install_fails(tmp_path, monkeypatch)
     }
     with pytest.raises(RuntimeError, match="install failed"):
         main._deploy_nkn_chaindb_publisher_sync(settings)
-    assert ["rm", "-rf", "/tmp/cashpilot-nkn-chaindb-bundle"] in calls
+    assert any(command[:2] == ["tar", "-x"] and input_data for command, input_data in calls)
+    assert ["rm", "-rf", "/tmp/cashpilot-nkn-chaindb-bundle"] in [command for command, _ in calls]
 
 
 def test_publisher_bundle_carries_the_actual_ssh_port(tmp_path, monkeypatch):
     asset = tmp_path / "asset"
     asset.write_text("asset", encoding="utf-8")
-    copied_config = {}
-
-    def copy_file(settings, source, target, *, key_file=None):
-        if source.endswith("publisher.json"):
-            copied_config.update(__import__("json").loads(Path(source).read_text(encoding="utf-8")))
 
     monkeypatch.setattr(main, "_publisher_asset_path", lambda name: str(asset))
-    monkeypatch.setattr(main, "_copy_publisher_file", copy_file)
     monkeypatch.setattr(main, "_run_publisher_ssh", lambda *args, **kwargs: None)
     monkeypatch.setattr(main, "_prepare_publisher_known_hosts", lambda settings: "/data/nkn-chaindb-known-hosts")
     settings = {
@@ -544,7 +652,10 @@ def test_publisher_bundle_carries_the_actual_ssh_port(tmp_path, monkeypatch):
 
     main._deploy_nkn_chaindb_publisher_sync(settings)
 
-    assert copied_config["ssh_port"] == 26266
+    bundle = main._publisher_bundle_bytes(settings)
+    with tarfile.open(fileobj=io.BytesIO(bundle), mode="r:") as archive:
+        publisher = json.loads(archive.extractfile("publisher.json").read())
+    assert publisher["ssh_port"] == 26266
 
 
 def test_publisher_wallet_reservation_is_exclusive_and_idempotent(tmp_path):

@@ -9,15 +9,15 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hmac
+import io
 import json
 import logging
 import math
 import os
 import re
 import secrets
-import shutil
 import subprocess
-import tempfile
+import tarfile
 import time
 from collections.abc import Mapping
 from contextlib import asynccontextmanager
@@ -5225,49 +5225,150 @@ def _ssh_command_base(settings: Mapping[str, Any]) -> list[str]:
     ]
 
 
-def _run_publisher_ssh(settings: Mapping[str, Any], command: list[str], *, key_file: str | None = None) -> None:
+def _run_publisher_ssh(
+    settings: Mapping[str, Any],
+    command: list[str],
+    *,
+    key_file: str | None = None,
+    input_data: bytes | None = None,
+) -> None:
     base = _ssh_command_base(settings)
     env = os.environ.copy()
     prefix: list[str] = []
-    if key_file:
+    private_key = str(settings.get("publisher_private_key") or "")
+    agent_started = False
+    if private_key:
+        env, _ = _agent_environment(private_key)
+        agent_started = True
+        base[1:1] = ["-o", "PreferredAuthentications=publickey", "-o", "IdentitiesOnly=no"]
+    elif key_file:
         base[1:1] = ["-i", key_file]
     else:
         prefix = ["sshpass", "-e"]
         env["SSHPASS"] = str(settings.get("publisher_password") or "")
         base[1:1] = ["-o", "PreferredAuthentications=password", "-o", "PubkeyAuthentication=no"]
-    result = subprocess.run([*prefix, *base, *command], capture_output=True, check=False, timeout=900, env=env)
+    try:
+        result = subprocess.run(
+            [*prefix, *base, *command],
+            input=input_data,
+            capture_output=True,
+            check=False,
+            timeout=900,
+            env=env,
+        )
+    finally:
+        if agent_started:
+            subprocess.run(["ssh-agent", "-k"], capture_output=True, check=False, timeout=20, env=env)
     if result.returncode != 0:
         raise RuntimeError("publisher SSH command failed")
 
 
-def _copy_publisher_file(settings: Mapping[str, Any], source: str, target: str, *, key_file: str | None = None) -> None:
-    port = int(settings.get("publisher_port") or 0)
-    command = [
-        "scp",
-        "-o",
-        "StrictHostKeyChecking=yes",
-        "-o",
-        "UserKnownHostsFile=/data/nkn-chaindb-known-hosts",
-        "-o",
-        "ConnectTimeout=20",
-        "-o",
-        "ServerAliveInterval=30",
-        "-o",
-        "ServerAliveCountMax=3",
-        "-P",
-        str(port),
-    ]
-    env = os.environ.copy()
-    prefix: list[str] = []
-    if key_file:
-        command += ["-i", key_file]
-    else:
-        prefix = ["sshpass", "-e"]
-        env["SSHPASS"] = str(settings.get("publisher_password") or "")
-        command += ["-o", "PreferredAuthentications=password", "-o", "PubkeyAuthentication=no"]
-    result = subprocess.run([*prefix, *command, source, target], capture_output=True, check=False, timeout=900, env=env)
-    if result.returncode != 0:
-        raise RuntimeError("publisher bundle transfer failed")
+def _publisher_bundle_bytes(settings: Mapping[str, Any]) -> bytes:
+    """Build the publisher bundle in memory so secrets never hit UI storage."""
+    beneficiary = str(settings.get("beneficiary_address") or "").strip()
+    wallet = settings.get("publisher_wallet")
+    if not beneficiary or not isinstance(wallet, Mapping):
+        raise ValueError("publisher beneficiary and wallet are required")
+    wallet_json = str(wallet.get("wallet_json") or "")
+    wallet_pswd = str(wallet.get("wallet_pswd") or "")
+    if not wallet_json or not wallet_pswd:
+        raise ValueError("publisher wallet material is incomplete")
+
+    assets = {
+        "install-nkn-chaindb-publisher.sh": _publisher_asset_path("install-nkn-chaindb-publisher.sh"),
+        "nkn_chaindb.py": os.path.join(os.path.dirname(__file__), "nkn_chaindb.py"),
+        "nkn_chaindb_publisher.py": _publisher_asset_path("nkn_chaindb_publisher.py"),
+        "cashpilot-nkn-chaindb-publisher.service": _publisher_asset_path("cashpilot-nkn-chaindb-publisher.service"),
+        "cashpilot-nkn-chaindb-publisher-failure.service": _publisher_asset_path(
+            "cashpilot-nkn-chaindb-publisher-failure.service"
+        ),
+        "cashpilot-nkn-chaindb-publisher.timer": _publisher_asset_path("cashpilot-nkn-chaindb-publisher.timer"),
+    }
+    files: dict[str, tuple[bytes, int]] = {
+        name: (Path(source).read_bytes(), 0o755 if name.endswith(".sh") or name.endswith(".py") else 0o644)
+        for name, source in assets.items()
+    }
+    files.update(
+        {
+            "publisher.json": (
+                (
+                    json.dumps(
+                        {
+                            "endpoint": settings["endpoint"],
+                            "bucket": settings["bucket"],
+                            "access_key_id": settings["access_key"],
+                            "secret_access_key": settings["secret_key"],
+                            "prefix": settings["prefix"],
+                            "retention": settings["retention"],
+                            "ssh_port": int(settings["publisher_port"]),
+                            "data_dir": "/opt/nkn",
+                            "archive_dir": "/var/lib/cashpilot/nkn-chaindb",
+                            "container": "cashpilot-nkn",
+                            "image": "nknorg/nkn:latest",
+                        },
+                        sort_keys=True,
+                    )
+                    + "\n"
+                ).encode("utf-8"),
+                0o600,
+            ),
+            "wallet.json": (wallet_json.encode("utf-8"), 0o600),
+            "wallet.pswd": (wallet_pswd.encode("utf-8"), 0o600),
+            "config.json": (
+                (
+                    json.dumps(
+                        {
+                            "BeneficiaryAddr": beneficiary,
+                            "beneficiaryAddr": beneficiary,
+                            "SyncMode": "light",
+                            "PasswordFile": "wallet.pswd",
+                        },
+                        indent=2,
+                    )
+                    + "\n"
+                ).encode("utf-8"),
+                0o644,
+            ),
+        }
+    )
+    output = io.BytesIO()
+    with tarfile.open(fileobj=output, mode="w:") as archive:
+        for name, (payload, mode) in files.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(payload)
+            info.mode = mode
+            info.uid = 0
+            info.gid = 0
+            info.mtime = 0
+            archive.addfile(info, io.BytesIO(payload))
+    return output.getvalue()
+
+
+def _agent_environment(private_key: str) -> tuple[dict[str, str], str]:
+    """Load a private key into a short-lived ssh-agent without a temp file."""
+    agent = subprocess.run(["ssh-agent", "-s"], capture_output=True, check=False, timeout=20)
+    if agent.returncode != 0:
+        raise RuntimeError("publisher SSH agent failed to start")
+    environment = os.environ.copy()
+    for line in agent.stdout.decode("utf-8", errors="replace").splitlines():
+        for assignment in line.split(";"):
+            key, separator, value = assignment.partition("=")
+            if separator and key in {"SSH_AUTH_SOCK", "SSH_AGENT_PID"}:
+                environment[key.strip()] = value.strip()
+    if not environment.get("SSH_AUTH_SOCK") or not environment.get("SSH_AGENT_PID"):
+        raise RuntimeError("publisher SSH agent returned no environment")
+    added = subprocess.run(
+        ["ssh-add", "-"],
+        input=private_key.encode("utf-8"),
+        capture_output=True,
+        check=False,
+        timeout=30,
+        env=environment,
+    )
+    if added.returncode != 0:
+        subprocess.run(["ssh-agent", "-k"], capture_output=True, check=False, timeout=20, env=environment)
+        raise RuntimeError("publisher SSH private key could not be loaded")
+    return environment, str(environment["SSH_AGENT_PID"])
 
 
 def _deploy_nkn_chaindb_publisher_sync(settings: Mapping[str, Any]) -> dict[str, str]:
@@ -5289,92 +5390,28 @@ def _deploy_nkn_chaindb_publisher_sync(settings: Mapping[str, Any]) -> dict[str,
     if not isinstance(wallet, Mapping) or not wallet.get("wallet_json") or not wallet.get("wallet_pswd"):
         raise ValueError("Publisher wallet reservation is missing")
 
-    with tempfile.TemporaryDirectory(prefix="cashpilot-nkn-chaindb-") as temp_dir:
-        _prepare_publisher_known_hosts(settings)
-        bundle = os.path.join(temp_dir, "bundle")
-        os.makedirs(bundle, mode=0o700)
-        assets = {
-            "install-nkn-chaindb-publisher.sh": _publisher_asset_path("install-nkn-chaindb-publisher.sh"),
-            "nkn_chaindb.py": os.path.join(os.path.dirname(__file__), "nkn_chaindb.py"),
-            "nkn_chaindb_publisher.py": _publisher_asset_path("nkn_chaindb_publisher.py"),
-            "cashpilot-nkn-chaindb-publisher.service": _publisher_asset_path("cashpilot-nkn-chaindb-publisher.service"),
-            "cashpilot-nkn-chaindb-publisher-failure.service": _publisher_asset_path(
-                "cashpilot-nkn-chaindb-publisher-failure.service"
-            ),
-            "cashpilot-nkn-chaindb-publisher.timer": _publisher_asset_path("cashpilot-nkn-chaindb-publisher.timer"),
-        }
-        for name, source in assets.items():
-            shutil.copyfile(source, os.path.join(bundle, name))
-        Path(os.path.join(bundle, "publisher.json")).write_text(
-            json.dumps(
-                {
-                    "endpoint": settings["endpoint"],
-                    "bucket": settings["bucket"],
-                    "access_key_id": settings["access_key"],
-                    "secret_access_key": settings["secret_key"],
-                    "prefix": settings["prefix"],
-                    "retention": settings["retention"],
-                    "ssh_port": port,
-                    "data_dir": "/opt/nkn",
-                    "archive_dir": "/var/lib/cashpilot/nkn-chaindb",
-                    "container": "cashpilot-nkn",
-                    "image": "nknorg/nkn:latest",
-                },
-                sort_keys=True,
-            )
-            + "\n",
-            encoding="utf-8",
+    _prepare_publisher_known_hosts(settings)
+    bundle = _publisher_bundle_bytes(settings)
+    remote = "/tmp/cashpilot-nkn-chaindb-bundle"
+    try:
+        # The archive is streamed over SSH; sensitive files never exist on the
+        # UI container's filesystem or in a process argument.
+        _run_publisher_ssh(settings, ["mkdir", "-m", "700", "-p", remote])
+        _run_publisher_ssh(settings, ["tar", "-x", "-f", "-", "-C", remote], input_data=bundle)
+        _run_publisher_ssh(settings, ["bash", f"{remote}/install-nkn-chaindb-publisher.sh", remote])
+        _run_publisher_ssh(
+            settings,
+            [
+                "python3",
+                "/usr/local/lib/cashpilot/nkn_chaindb_publisher.py",
+                "--config",
+                "/etc/cashpilot/nkn-chaindb-publisher.json",
+                "--verify-only",
+            ],
         )
-        Path(os.path.join(bundle, "wallet.json")).write_text(str(wallet["wallet_json"]), encoding="utf-8")
-        Path(os.path.join(bundle, "wallet.pswd")).write_text(str(wallet["wallet_pswd"]), encoding="utf-8")
-        Path(os.path.join(bundle, "config.json")).write_text(
-            json.dumps(
-                {
-                    "BeneficiaryAddr": beneficiary,
-                    "beneficiaryAddr": beneficiary,
-                    "SyncMode": "light",
-                    "PasswordFile": "wallet.pswd",
-                },
-                indent=2,
-            )
-            + "\n",
-            encoding="utf-8",
-        )
-        for path in Path(bundle).iterdir():
-            os.chmod(path, 0o600 if path.name in {"publisher.json", "wallet.json", "wallet.pswd"} else 0o755)
-
-        key_path = None
-        if private_key:
-            key_path = os.path.join(temp_dir, "publisher-key")
-            Path(key_path).write_text(private_key, encoding="utf-8")
-            os.chmod(key_path, 0o600)
-        remote = "/tmp/cashpilot-nkn-chaindb-bundle"
-        try:
-            # Create the remote directory first; command and paths are constants.
-            _run_publisher_ssh(settings, ["mkdir", "-m", "700", "-p", remote], key_file=key_path)
-            for name in os.listdir(bundle):
-                source = os.path.join(bundle, name)
-                target = f"{user}@{host}:{remote}/{name}"
-                _copy_publisher_file(settings, source, target, key_file=key_path)
-            _run_publisher_ssh(
-                settings,
-                ["bash", f"{remote}/install-nkn-chaindb-publisher.sh", remote],
-                key_file=key_path,
-            )
-            _run_publisher_ssh(
-                settings,
-                [
-                    "python3",
-                    "/usr/local/lib/cashpilot/nkn_chaindb_publisher.py",
-                    "--config",
-                    "/etc/cashpilot/nkn-chaindb-publisher.json",
-                    "--verify-only",
-                ],
-                key_file=key_path,
-            )
-        finally:
-            with contextlib.suppress(Exception):
-                _run_publisher_ssh(settings, ["rm", "-rf", remote], key_file=key_path)
+    finally:
+        with contextlib.suppress(Exception):
+            _run_publisher_ssh(settings, ["rm", "-rf", remote])
     return {"status": "deployed", "publisher_host": host}
 
 
