@@ -40,7 +40,7 @@ import httpx
 from cryptography.fernet import Fernet
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app import (
     egress,
@@ -1326,6 +1326,18 @@ class NknDeploySpec(BaseModel):
     runtime_backend: str = Field(default="docker", pattern=r"^(docker|lxd)$")
     lxd_cpu: int = Field(default=1, ge=1, le=64)
     lxd_memory_mib: int = Field(default=1024, ge=128, le=65536)
+    # One-shot, owner-authorized migration of the pre-existing LXD canary.
+    # The host helper applies the same exact-name and node-identity guard.
+    adopt_instance: str | None = Field(default=None, pattern=r"^cashpilot-nkn-lxd-canary$")
+    expected_node_id: str | None = Field(default=None, pattern=r"^[0-9a-fA-F]{64}$")
+
+    @model_validator(mode="after")
+    def validate_canary_adoption(self) -> NknDeploySpec:
+        if bool(self.adopt_instance) != bool(self.expected_node_id):
+            raise ValueError("canary adoption requires both instance name and expected node id")
+        if self.adopt_instance and self.runtime_backend != "lxd":
+            raise ValueError("canary adoption requires the LXD runtime backend")
+        return self
 
 
 class NknRemoveSpec(BaseModel):
@@ -1851,6 +1863,8 @@ async def api_deploy_nkn_slot(request: Request, slot_id: str, spec: NknDeploySpe
                 slot,
                 assignment,
                 settings={"cpu": spec.lxd_cpu, "memory_mib": spec.lxd_memory_mib},
+                adopt_instance=spec.adopt_instance,
+                expected_node_id=spec.expected_node_id,
             )
         client = orchestrator._get_client()
         try:

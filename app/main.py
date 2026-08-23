@@ -113,6 +113,8 @@ _NKN_AUTO_DEPLOY_DONE: set[int] = set()
 _NKN_DEPLOY_LOCKS: dict[int, asyncio.Lock] = {}
 _WORKER_HEARTBEAT_STREAKS: dict[int, int] = {}
 _proxy_pool_last_recheck: datetime | None = None
+_NKN_ADOPTABLE_CANARY = "cashpilot-nkn-lxd-canary"
+_NKN_NODE_ID_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 
 
 def _nkn_lxd_settings(config: Mapping[str, Any] | None) -> dict[str, int]:
@@ -271,6 +273,9 @@ async def _deploy_nkn_slots(
     *,
     beneficiary_address: str,
     lxd_settings: Mapping[str, Any] | None = None,
+    adopt_instance: str | None = None,
+    expected_node_id: str | None = None,
+    adopt_slot_id: str = "ipv4-001",
 ) -> dict[str, Any]:
     """Lease and deploy NKN slots in order; one failed slot never blocks the next."""
     beneficiary = str(beneficiary_address or "").strip()
@@ -286,11 +291,23 @@ async def _deploy_nkn_slots(
         limits = _nkn_lxd_settings(lxd_settings or {})
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if bool(adopt_instance) != bool(expected_node_id):
+        raise HTTPException(status_code=400, detail="Canary adoption requires both instance and node id")
+    if adopt_instance and (
+        adopt_instance != _NKN_ADOPTABLE_CANARY
+        or not _NKN_NODE_ID_RE.fullmatch(str(expected_node_id or ""))
+        or not re.fullmatch(r"ipv4-\d{3,6}", str(adopt_slot_id or ""))
+    ):
+        raise HTTPException(status_code=400, detail="Invalid NKN canary adoption guard")
 
     async with _nkn_deploy_lock(worker_id):
         # A malformed or stale worker response must never turn into a wallet lease;
         # keep this guard at the mutation boundary as well as in the reader.
         slots = [slot for slot in await _worker_public_ip_slots(worker_id) if slot.get("route_ready") is True]
+        if adopt_instance:
+            slots = [slot for slot in slots if str(slot.get("slot_id") or "") == adopt_slot_id]
+            if not slots:
+                raise HTTPException(status_code=404, detail="NKN canary adoption slot not found")
         outcome: dict[str, Any] = {
             "deployed": [],
             "skipped": [],
@@ -316,6 +333,13 @@ async def _deploy_nkn_slots(
                 "bridge_subnet": str(slot.get("bridge_subnet") or ""),
                 "bridge_gateway": str(slot.get("bridge_gateway") or ""),
             }
+            if adopt_instance:
+                base_spec.update(
+                    {
+                        "adopt_instance": adopt_instance,
+                        "expected_node_id": str(expected_node_id),
+                    }
+                )
             try:
                 lease = await database.lease_nkn_wallet(lease_client_id, worker_id=worker_id, public_ip=public_ip)
                 if not lease:
@@ -342,7 +366,7 @@ async def _deploy_nkn_slots(
                 if existing and existing.get("spec_encrypted") and not existing.get("spec"):
                     with contextlib.suppress(Exception):
                         existing["spec"] = await database.get_provider_instance_spec(existing_instance_id)
-                if _nkn_instance_assignment_matches(
+                if not adopt_instance and _nkn_instance_assignment_matches(
                     existing,
                     lease,
                     slot_id,
@@ -372,6 +396,9 @@ async def _deploy_nkn_slots(
                     status="running",
                     spec=base_spec,
                 )
+                if existing_instance_id != instance_id:
+                    with contextlib.suppress(Exception):
+                        await database.remove_provider_instance(existing_instance_id)
                 outcome["deployed"].append(slot_id)
             except Exception as exc:  # noqa: BLE001 - continue with the next slot
                 safe_error = type(exc).__name__
@@ -2563,6 +2590,9 @@ async def api_deploy(
     slug: str,
     body: DeployRequest,
     worker_id: int | None = None,
+    adopt_instance: str | None = None,
+    expected_node_id: str | None = None,
+    adopt_slot_id: str = "ipv4-001",
     _auth: dict[str, Any] = Depends(_require_owner),
 ) -> dict[str, Any]:
     worker_id = await _resolve_worker_id(worker_id)
@@ -2587,7 +2617,19 @@ async def api_deploy(
             raise HTTPException(status_code=400, detail="NKN supports direct mode only")
         config = await database.get_config() or {}
         beneficiary = str(config.get("nkn_beneficiary_address") or "").strip()
-        result = await _deploy_nkn_slots(worker_id, beneficiary_address=beneficiary, lxd_settings=config)
+        deploy_kwargs: dict[str, Any] = {
+            "beneficiary_address": beneficiary,
+            "lxd_settings": config,
+        }
+        if adopt_instance is not None or expected_node_id is not None or adopt_slot_id != "ipv4-001":
+            deploy_kwargs.update(
+                {
+                    "adopt_instance": adopt_instance,
+                    "expected_node_id": expected_node_id,
+                    "adopt_slot_id": adopt_slot_id,
+                }
+            )
+        result = await _deploy_nkn_slots(worker_id, **deploy_kwargs)
         return {"status": "deployed", "provider": "nkn", **result}
 
     docker_conf = svc.get("docker", {})
