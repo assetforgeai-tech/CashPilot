@@ -42,12 +42,15 @@ def test_worker_bootstrap_installs_snapshot_dependencies_without_credentials():
     text = (ROOT / "scripts" / "bootstrap-worker.sh").read_text(encoding="utf-8")
     assert "nkn_chaindb_restore.py" in text
     assert "nkn_chaindb.py" in text
+    assert "nkn_chaindb_cache.py" in text
     assert "secret_access_key" not in text
 
 
 def test_lxd_inner_runtime_installs_zstd_before_snapshot_restore():
     text = (ROOT / "scripts" / "cashpilot-nkn-agent.py").read_text(encoding="utf-8")
     assert "apt-get install -y zstd" in text
+    assert 'NKN_SNAPSHOT_CACHE_DEVICE = "nkn-chaindb-cache"' in text
+    assert '"readonly=true"' in text
 
 
 def test_standalone_publisher_assets_support_ubuntu_2204_python310():

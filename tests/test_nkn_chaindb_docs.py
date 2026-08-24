@@ -21,10 +21,13 @@ def test_nkn_guide_documents_private_snapshot_fallback_and_identity_boundaries()
         assert phrase in text
 
 
-def test_active_context_records_snapshot_worktree_boundary_and_protected_matrix():
+def test_active_context_records_snapshot_live_closeout_and_protected_matrix():
     text = (ROOT / "docs" / "ACTIVE_CONTEXT.md").read_text(encoding="utf-8")
     assert "ChainDB snapshot" in text
     assert "PROTECTED_DONE" in text
     assert "test-sing" in text
     assert "publisher VPS" in text
-    assert "no live mutation" in text
+    assert "v1.6.1" in text
+    assert "PERSIST_FINISHED" in text
+    assert "active (waiting)" in text
+    assert "no live mutation yet" not in text

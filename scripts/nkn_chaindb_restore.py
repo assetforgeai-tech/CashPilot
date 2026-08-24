@@ -31,6 +31,7 @@ except ModuleNotFoundError:  # Installed consumer keeps the contract beside this
 
 PRESERVE_FILES = ["config.json", "wallet.json", "wallet.pswd", "ChainDB.config"]
 SNAPSHOT_OPERATION_TIMEOUT = 90 * 60
+CACHE_MOUNT_ROOT = Path("/var/lib/cashpilot/nkn-chaindb-cache")
 
 
 def _run(args: list[str], *, input_data: bytes | None = None, timeout: int = 900) -> subprocess.CompletedProcess[bytes]:
@@ -197,6 +198,14 @@ def download_archive(url: str, destination: Path, *, expected_size: int) -> None
         raise ValueError("snapshot download size does not match manifest")
 
 
+def _local_cache_archive(path: str | Path, *, expected_sha256: str) -> Path:
+    root = CACHE_MOUNT_ROOT.resolve()
+    archive = Path(path).resolve()
+    if archive.parent != root or archive.name != f"{expected_sha256}.tar.zst":
+        raise ValueError("snapshot cache archive path is invalid")
+    return archive
+
+
 def restore_request(request_path: str | Path) -> dict[str, Any]:
     request = json.loads(Path(request_path).read_text(encoding="utf-8"))
     if not isinstance(request, dict):
@@ -216,13 +225,23 @@ def restore_request(request_path: str | Path) -> dict[str, Any]:
     if container != "cashpilot-nkn":
         raise ValueError("invalid NKN inner container")
     runtime_data_dir = Path(str(data_dir))
-    archive = runtime_data_dir / f".chaindb-download-{secrets.token_hex(8)}.tar.zst"
+    archive_url = str(request.get("archive_url") or "").strip()
+    archive_path = str(request.get("archive_path") or "").strip()
+    if bool(archive_url) == bool(archive_path):
+        raise ValueError("snapshot request requires exactly one archive source")
+    temporary_archive = bool(archive_url)
+    archive = (
+        runtime_data_dir / f".chaindb-download-{secrets.token_hex(8)}.tar.zst"
+        if temporary_archive
+        else _local_cache_archive(archive_path, expected_sha256=str(validated["sha256"]))
+    )
     try:
-        download_archive(
-            str(request.get("archive_url") or ""),
-            Path(str(archive)),
-            expected_size=int(validated["size_bytes"]),
-        )
+        if temporary_archive:
+            download_archive(
+                archive_url,
+                Path(str(archive)),
+                expected_size=int(validated["size_bytes"]),
+            )
         result = restore_archive(
             runtime_data_dir,
             archive,
@@ -234,7 +253,8 @@ def restore_request(request_path: str | Path) -> dict[str, Any]:
         )
         return {"status": "restored", "backup": result["backup"]}
     finally:
-        archive.unlink(missing_ok=True)
+        if temporary_archive:
+            archive.unlink(missing_ok=True)
 
 
 def _node_state(container: str) -> dict[str, Any]:

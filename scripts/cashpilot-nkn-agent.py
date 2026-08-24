@@ -14,8 +14,18 @@ import subprocess
 import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
+
+try:
+    from app.nkn_chaindb import validate_manifest
+except ModuleNotFoundError:  # Installed helper keeps the contract beside this script.
+    from nkn_chaindb import validate_manifest  # type: ignore[no-redef]
+
+try:
+    from scripts.nkn_chaindb_cache import ensure_cached_archive
+except ModuleNotFoundError:  # Installed helper keeps the cache module beside this script.
+    from nkn_chaindb_cache import ensure_cached_archive  # type: ignore[no-redef]
 
 SOCKET_PATH = Path("/run/cashpilot-nkn-agent/agent.sock")
 INSTANCE_PREFIX = "cashpilot-nkn-"
@@ -24,6 +34,9 @@ ADOPTABLE_CANARY = "cashpilot-nkn-lxd-canary"
 ADOPTABLE_INNER_CONTAINER = "nkn-lxd-canary"
 IMAGE = "nknorg/nkn:latest"
 PORT_RANGE = "30000-30005"
+NKN_SNAPSHOT_CACHE_ROOT = Path("/var/lib/cashpilot/nkn-chaindb-cache")
+NKN_SNAPSHOT_CACHE_MOUNT = "/var/lib/cashpilot/nkn-chaindb-cache"
+NKN_SNAPSHOT_CACHE_DEVICE = "nkn-chaindb-cache"
 _SLOT_RE = re.compile(r"^ipv4-(\d{3,6})$")
 _IFACE_RE = re.compile(r"^[A-Za-z0-9_.:@-]{1,64}$")
 _ADDRESS_RE = re.compile(r"^NKN[1-9A-HJ-NP-Za-km-z]{8,}$")
@@ -120,6 +133,10 @@ def inner_docker_run_command(name: str = INNER_CONTAINER) -> list[str]:
         "always",
         "--network",
         "host",
+        "--dns",
+        "1.1.1.1",
+        "--dns",
+        "8.8.8.8",
         "-v",
         "/opt/nkn:/nkn/data",
         IMAGE,
@@ -565,6 +582,48 @@ class Controller:
             timeout=30,
         )
         _run(["ip", "rule", "add", "from", f"{lxd_ip}/32", "table", str(table), "priority", str(priority)])
+        forward_rules = [
+            [
+                "iptables",
+                "-D",
+                "FORWARD",
+                "-s",
+                f"{lxd_ip}/32",
+                "-o",
+                interface,
+                "-m",
+                "comment",
+                "--comment",
+                f"cashpilot-nkn-{payload['slot_id']}-egress",
+                "-j",
+                "ACCEPT",
+            ],
+            [
+                "iptables",
+                "-D",
+                "FORWARD",
+                "-d",
+                f"{lxd_ip}/32",
+                "-i",
+                interface,
+                "-m",
+                "conntrack",
+                "--ctstate",
+                "RELATED,ESTABLISHED",
+                "-m",
+                "comment",
+                "--comment",
+                f"cashpilot-nkn-{payload['slot_id']}-return",
+                "-j",
+                "ACCEPT",
+            ],
+        ]
+        for forward_rule in forward_rules:
+            for _ in range(8):
+                if _run(forward_rule, check=False, timeout=30).returncode != 0:
+                    break
+        for forward_rule in forward_rules:
+            _run(["iptables", "-I", "FORWARD", "1", *forward_rule[3:]], timeout=30)
         rule = [
             "iptables",
             "-t",
@@ -626,10 +685,54 @@ class Controller:
         _run(["lxc", "exec", name, "--", "systemctl", "enable", "--now", "docker"], timeout=120)
 
     def _write_inner_file(self, name: str, path: str, payload: bytes, mode: str) -> None:
-        command = f"install -d -m 0700 /opt/nkn && umask 077; cat > {path}; chmod {mode} {path}"
+        parent = str(PurePosixPath(path).parent)
+        command = f"install -d -m 0700 {parent} && umask 077; cat > {path}; chmod {mode} {path}"
         _run(["lxc", "exec", name, "--", "sh", "-lc", command], input_bytes=payload, timeout=60)
 
+    def _ensure_snapshot_cache_device(self, name: str) -> None:
+        NKN_SNAPSHOT_CACHE_ROOT.mkdir(mode=0o755, parents=True, exist_ok=True)
+        config = self._config(name)
+        devices = config.get("devices") if isinstance(config.get("devices"), dict) else {}
+        current = devices.get(NKN_SNAPSHOT_CACHE_DEVICE)
+        desired = {
+            "type": "disk",
+            "source": str(NKN_SNAPSHOT_CACHE_ROOT),
+            "path": NKN_SNAPSHOT_CACHE_MOUNT,
+            "readonly": "true",
+        }
+        if isinstance(current, dict) and all(str(current.get(key) or "") == value for key, value in desired.items()):
+            return
+        if current is not None:
+            _run(["lxc", "config", "device", "remove", name, NKN_SNAPSHOT_CACHE_DEVICE], timeout=30)
+        _run(
+            [
+                "lxc",
+                "config",
+                "device",
+                "add",
+                name,
+                NKN_SNAPSHOT_CACHE_DEVICE,
+                "disk",
+                f"source={NKN_SNAPSHOT_CACHE_ROOT}",
+                f"path={NKN_SNAPSHOT_CACHE_MOUNT}",
+                "readonly=true",
+            ],
+            timeout=60,
+        )
+
     def _install_snapshot(self, name: str, snapshot: dict[str, Any]) -> None:
+        max_age_seconds = int(snapshot["max_age_seconds"])
+        manifest = validate_manifest(snapshot["manifest"], max_age_seconds=max_age_seconds)
+        prefix = str(snapshot["prefix"])
+        if not str(manifest["archive_key"]).startswith(f"{prefix}/snapshots/"):
+            raise AgentError("chaindb_snapshot prefix does not match archive")
+        cached = ensure_cached_archive(
+            str(snapshot["archive_url"]),
+            expected_sha256=str(manifest["sha256"]),
+            expected_size=int(manifest["size_bytes"]),
+            cache_root=NKN_SNAPSHOT_CACHE_ROOT,
+        )
+        self._ensure_snapshot_cache_device(name)
         _run(
             [
                 "lxc",
@@ -648,12 +751,12 @@ class Controller:
         self._write_inner_file(name, "/usr/local/sbin/cashpilot-nkn-chaindb-restore", script, "0755")
         request = json.dumps(
             {
-                "manifest": snapshot["manifest"],
-                "archive_url": snapshot["archive_url"],
+                "manifest": manifest,
+                "archive_path": f"{NKN_SNAPSHOT_CACHE_MOUNT}/{cached.path.name}",
                 "data_dir": "/opt/nkn",
                 "container": INNER_CONTAINER,
-                "prefix": snapshot["prefix"],
-                "max_age_seconds": snapshot["max_age_seconds"],
+                "prefix": prefix,
+                "max_age_seconds": max_age_seconds,
             },
             separators=(",", ":"),
         ).encode("utf-8")
@@ -758,7 +861,7 @@ class Controller:
                 [
                     "lxc",
                     "launch",
-                    "images:ubuntu/24.04",
+                    "ubuntu:24.04",
                     name,
                     "-c",
                     f"limits.cpu={payload['lxd_cpu']}",
@@ -852,6 +955,46 @@ class Controller:
                 timeout=30,
             )
         if match and lxd_ip and interface and private_ip:
+            forward_rules = [
+                [
+                    "iptables",
+                    "-D",
+                    "FORWARD",
+                    "-s",
+                    f"{lxd_ip}/32",
+                    "-o",
+                    interface,
+                    "-m",
+                    "comment",
+                    "--comment",
+                    f"cashpilot-nkn-{slot_id}-egress",
+                    "-j",
+                    "ACCEPT",
+                ],
+                [
+                    "iptables",
+                    "-D",
+                    "FORWARD",
+                    "-d",
+                    f"{lxd_ip}/32",
+                    "-i",
+                    interface,
+                    "-m",
+                    "conntrack",
+                    "--ctstate",
+                    "RELATED,ESTABLISHED",
+                    "-m",
+                    "comment",
+                    "--comment",
+                    f"cashpilot-nkn-{slot_id}-return",
+                    "-j",
+                    "ACCEPT",
+                ],
+            ]
+            for forward_rule in forward_rules:
+                for _ in range(8):
+                    if _run(forward_rule, check=False, timeout=30).returncode != 0:
+                        break
             rule = [
                 "iptables",
                 "-t",

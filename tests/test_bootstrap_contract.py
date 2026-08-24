@@ -77,6 +77,21 @@ def test_bootstrap_installs_the_restricted_nkn_lxd_host_helper_without_deploying
     assert "nknorg/nkn" not in text
 
 
+def test_bootstrap_uses_supported_lxc_storage_list_syntax():
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert "lxc storage list --format csv -c n" not in text
+    assert "lxc storage list --format csv" in text
+
+
+def test_bootstrap_installs_the_nkn_snapshot_cache_without_credentials():
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert 'NKN_CHAINDb_CACHE="${INSTALL_ROOT}/nkn_chaindb_cache.py"' in text
+    assert 'install -m 0644 "${REPO_ROOT}/scripts/nkn_chaindb_cache.py" "${NKN_CHAINDb_CACHE}"' in text
+    assert "install -d -m 0755 /var/lib/cashpilot/nkn-chaindb-cache" in text
+    assert "X-Amz-Signature" not in text
+    assert "secret_access_key" not in text
+
+
 def test_worker_compose_mounts_only_the_restricted_nkn_agent_socket():
     root = SCRIPT.parents[1]
     for name in ("docker-compose.yml", "docker-compose.fleet.yml", "docker-compose.build.yml"):
