@@ -31,7 +31,10 @@ limit in MiB. The shipped defaults are `1` CPU and `1024` MiB.
 ## Worker bootstrap
 
 Run the canonical worker bootstrap from `client command setup script.txt` on a
-new VPS. The tracked bootstrap additionally prepares:
+new VPS. That command defaults to the fork `main` branch (set
+`CASHPILOT_BRANCH` to a reviewed ref when pinning is required), clones the
+source, and invokes the tracked `scripts/bootstrap-worker.sh`. The tracked
+bootstrap additionally prepares:
 
 - Docker and UFW prerequisites;
 - public IPv4 slot discovery (Azure IMDS first, a single-IP fallback only when
@@ -39,6 +42,15 @@ new VPS. The tracked bootstrap additionally prepares:
 - one Docker bridge and policy-routed SNAT mapping per slot;
 - NKN TCP/UDP ports `30000-30005`;
 - persistent Docker/systemd `LimitNOFILE=1048576`.
+
+The bootstrap installs the restricted helper assets under
+`/usr/local/lib/cashpilot` and enables `cashpilot-nkn-agent.service`; it never
+creates a provider node or embeds wallet/API/R2 credentials. An existing host
+receives a helper-only update with
+`sudo bash scripts/install-nkn-host-helper.sh <CashPilot-source-root>`. That
+operation reloads/restarts only the helper service and repairs root ownership
+of the cache directory and `0644` archive handoff permissions. It does not
+recreate, stop, delete or alter any NKN instance, wallet, identity or lease.
 
 The host keeps its canonical state at `/etc/cashpilot/public-ip-slots.json`.
 The bootstrap mirrors that file into the worker's persistent `/data` volume and
@@ -58,7 +70,11 @@ Each node uses:
   `SyncMode: light` and `PasswordFile`;
 - `restart: always` for the inner Docker node;
 - explicit public DNS servers for the inner Docker runtime, avoiding dependence
-  on the LXD systemd-resolved stub during a disk-intensive cold restore;
+  on the LXD systemd-resolved stub during a disk-intensive cold restore. For a
+  new node the helper reads non-loopback nameservers from the platform's
+  `/etc/resolv.conf`, de-duplicates them, and falls back to `1.1.1.1` and
+  `8.8.8.8` only when no usable resolver is advertised. Existing inner Docker
+  nodes are never recreated just to change DNS;
 - hard LXD limits from **Settings -> NKN** (`nkn_lxd_cpu` and
   `nkn_lxd_memory_mib`, default `1 CPU / 1024 MiB`), with swap disabled;
 - one public IPv4 slot, bridge network and wallet assignment.
@@ -128,6 +144,12 @@ is unknown.
 Retention applies to immutable objects below `<prefix>/snapshots/`. Operator
 seed or diagnostic objects stored under another path such as `<prefix>/manual/`
 are never selected by `latest.json` and are not pruned by the daily publisher.
+
+The worker cache directory is `/var/lib/cashpilot/nkn-chaindb-cache`, owned by
+`root:root` with mode `0755`; verified archives are `root:root` and `0644` so
+the read-only LXD disk device can consume them. A cache permission or mount
+failure is treated exactly like an unavailable snapshot and falls back to
+ordinary ChainDB sync.
 
 ## Current publisher evidence
 

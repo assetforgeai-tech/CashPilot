@@ -42,6 +42,7 @@ _IFACE_RE = re.compile(r"^[A-Za-z0-9_.:@-]{1,64}$")
 _ADDRESS_RE = re.compile(r"^NKN[1-9A-HJ-NP-Za-km-z]{8,}$")
 _NODE_ID_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 _OFFICIAL_IMAGE_DIGEST_RE = re.compile(r"^nknorg/nkn@sha256:[0-9a-fA-F]{64}$")
+_DEFAULT_DNS_SERVERS = ("1.1.1.1", "8.8.8.8")
 
 
 class AgentError(RuntimeError):
@@ -120,9 +121,31 @@ def nkn_config(beneficiary_address: str) -> dict[str, str]:
     }
 
 
-def inner_docker_run_command(name: str = INNER_CONTAINER) -> list[str]:
+def usable_dns_servers(values: list[str] | tuple[str, ...]) -> list[str]:
+    """Keep reachable, unique resolver addresses and discard local stubs."""
+    result: list[str] = []
+    for value in values:
+        candidate = str(value or "").strip().strip("[]")
+        try:
+            address = ipaddress.ip_address(candidate)
+        except ValueError:
+            continue
+        if address.is_loopback or address.is_unspecified or address.is_multicast or address.is_link_local:
+            continue
+        if candidate not in result:
+            result.append(candidate)
+    return result[:3]
+
+
+def inner_docker_run_command(
+    name: str = INNER_CONTAINER,
+    *,
+    dns_servers: list[str] | tuple[str, ...] | None = None,
+) -> list[str]:
     if name != INNER_CONTAINER:
         raise AgentError("invalid inner NKN container name")
+    selected_dns = usable_dns_servers(dns_servers or list(_DEFAULT_DNS_SERVERS)) or list(_DEFAULT_DNS_SERVERS)
+    dns_args = [item for server in selected_dns for item in ("--dns", server)]
     return [
         "docker",
         "run",
@@ -133,10 +156,7 @@ def inner_docker_run_command(name: str = INNER_CONTAINER) -> list[str]:
         "always",
         "--network",
         "host",
-        "--dns",
-        "1.1.1.1",
-        "--dns",
-        "8.8.8.8",
+        *dns_args,
         "-v",
         "/opt/nkn:/nkn/data",
         IMAGE,
@@ -666,6 +686,25 @@ class Controller:
             == 0
         )
 
+    def _inner_dns_servers(self, name: str) -> list[str]:
+        """Read the platform resolver and avoid inheriting 127.0.0.53."""
+        result = _run(
+            [
+                "lxc",
+                "exec",
+                name,
+                "--",
+                "sh",
+                "-lc",
+                "for file in /run/systemd/resolve/resolv.conf /etc/resolv.conf; do "
+                'test -r "$file" && awk \'$1 == "nameserver" {print $2}\' "$file"; done',
+            ],
+            check=False,
+            timeout=30,
+        )
+        raw = result.stdout.decode("utf-8", errors="replace").split()
+        return usable_dns_servers(raw) or list(_DEFAULT_DNS_SERVERS)
+
     def _install_docker(self, name: str) -> None:
         if _run(["lxc", "exec", name, "--", "sh", "-lc", "command -v docker"], check=False, timeout=30).returncode:
             _run(
@@ -823,7 +862,16 @@ class Controller:
             self._write_inner_file(name, "/opt/nkn/wallet.json", str(payload["wallet_json"]).encode("utf-8"), "0600")
             self._write_inner_file(name, "/opt/nkn/wallet.pswd", str(payload["wallet_pswd"]).encode("utf-8"), "0600")
         _run(["lxc", "exec", name, "--", "docker", "pull", IMAGE], timeout=900)
-        _run(["lxc", "exec", name, "--", *inner_docker_run_command()], timeout=120)
+        _run(
+            [
+                "lxc",
+                "exec",
+                name,
+                "--",
+                *inner_docker_run_command(dns_servers=self._inner_dns_servers(name)),
+            ],
+            timeout=120,
+        )
         snapshot_status = "skipped"
         if isinstance(payload.get("chaindb_snapshot"), dict):
             try:

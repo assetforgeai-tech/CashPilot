@@ -12,6 +12,7 @@ NKN_AGENT="${INSTALL_ROOT}/cashpilot-nkn-agent.py"
 NKN_CHAINDb_CONTRACT="${INSTALL_ROOT}/nkn_chaindb.py"
 NKN_CHAINDb_RESTORE="${INSTALL_ROOT}/nkn_chaindb_restore.py"
 NKN_CHAINDb_CACHE="${INSTALL_ROOT}/nkn_chaindb_cache.py"
+NKN_HELPER_INSTALLER="${REPO_ROOT}/scripts/install-nkn-host-helper.sh"
 NKN_AGENT_SOCKET="/run/cashpilot-nkn-agent/agent.sock"
 
 publish_slots_volume() {
@@ -135,10 +136,8 @@ install -m 0755 "${BASH_SOURCE[0]}" "${INSTALLED_SCRIPT}"
 # The installed bootstrap must remain self-contained; the source checkout is
 # not present on a freshly provisioned VPS.
 install -m 0644 "${REPO_ROOT}/app/public_ip_slots.py" "${DISCOVERY}"
-install -m 0755 "${REPO_ROOT}/scripts/cashpilot-nkn-agent.py" "${NKN_AGENT}"
-install -m 0644 "${REPO_ROOT}/app/nkn_chaindb.py" "${NKN_CHAINDb_CONTRACT}"
-install -m 0755 "${REPO_ROOT}/scripts/nkn_chaindb_restore.py" "${NKN_CHAINDb_RESTORE}"
-install -m 0644 "${REPO_ROOT}/scripts/nkn_chaindb_cache.py" "${NKN_CHAINDb_CACHE}"
+install -m 0755 "${NKN_HELPER_INSTALLER}" "${INSTALL_ROOT}/install-nkn-host-helper.sh"
+"${NKN_HELPER_INSTALLER}" "${REPO_ROOT}"
 
 task_tmp="$(mktemp -d)"
 trap 'rm -rf -- "${task_tmp}"' EXIT
@@ -204,26 +203,6 @@ Unit=cashpilot-slots-sync.service
 
 [Install]
 WantedBy=timers.target
-EOF
-
-cat >/etc/systemd/system/cashpilot-nkn-agent.service <<EOF
-[Unit]
-Description=Restricted CashPilot NKN LXD host helper
-After=network-online.target docker.service
-Wants=network-online.target
-Requires=docker.service
-
-[Service]
-Type=simple
-ExecStart=/usr/bin/python3 ${NKN_AGENT} --socket ${NKN_AGENT_SOCKET}
-Restart=always
-RestartSec=3
-RuntimeDirectory=cashpilot-nkn-agent
-RuntimeDirectoryMode=0755
-LimitNOFILE=1048576
-
-[Install]
-WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload

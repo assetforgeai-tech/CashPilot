@@ -86,8 +86,8 @@ def test_bootstrap_uses_supported_lxc_storage_list_syntax():
 def test_bootstrap_installs_the_nkn_snapshot_cache_without_credentials():
     text = SCRIPT.read_text(encoding="utf-8")
     assert 'NKN_CHAINDb_CACHE="${INSTALL_ROOT}/nkn_chaindb_cache.py"' in text
-    assert 'install -m 0644 "${REPO_ROOT}/scripts/nkn_chaindb_cache.py" "${NKN_CHAINDb_CACHE}"' in text
-    assert "install -d -m 0755 /var/lib/cashpilot/nkn-chaindb-cache" in text
+    assert 'NKN_HELPER_INSTALLER="${REPO_ROOT}/scripts/install-nkn-host-helper.sh"' in text
+    assert '"${NKN_HELPER_INSTALLER}" "${REPO_ROOT}"' in text
     assert "X-Amz-Signature" not in text
     assert "secret_access_key" not in text
 

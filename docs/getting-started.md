@@ -178,7 +178,7 @@ CashPilot tracks **15 providers** across two active categories:
 
 Of these, **14 providers** can be deployed and managed automatically via Docker, and **9 collectors** can read earnings from provider APIs or dashboards. Providers without collectors remain deployable but need dashboard/manual verification for earnings.
 
-The server-side Settings page is where you keep provider runtime assets, collector secrets, dashboard/session credentials, proxy policy, MYST default password, NKN beneficiary address, and auto-deploy policy. NKN is direct-only: the worker bootstrap discovers public IPv4 slots and CashPilot assigns one wallet and node per ready slot. The worker bootstrap command is in `client command setup script.txt` and is the canonical way to add a new VPS worker.
+The server-side Settings page is where you keep provider runtime assets, collector secrets, dashboard/session credentials, proxy policy, MYST default password, NKN beneficiary address, and auto-deploy policy. NKN is direct-only: the worker bootstrap discovers public IPv4 slots and CashPilot assigns one wallet and node per ready slot. The command in `client command setup script.txt` is the canonical one-command onboarding path; it defaults to the fork `main` branch, invokes the tracked host bootstrap, and installs the NKN helper/cache prerequisites without deploying a provider. Set `CASHPILOT_BRANCH` before running it when a reviewed ref must be pinned.
 
 Browse the full catalog in the [Service Guides](guides/README.md) section.
 

@@ -61,10 +61,23 @@ def _verify(path: Path, *, expected_sha256: str, expected_size: int) -> None:
         raise CacheError("snapshot cache digest validation failed")
 
 
+def _root_owned(path: Path, *, mode: int) -> None:
+    """Keep the host cache readable by LXD but writable only by root."""
+    try:
+        path.chmod(mode)
+        geteuid = getattr(os, "geteuid", lambda: 1)
+        chown = getattr(os, "chown", None)
+        if chown is not None and geteuid() == 0:
+            chown(path, 0, 0)
+    except OSError as exc:
+        raise CacheError("snapshot cache permissions could not be enforced") from exc
+
+
 @contextlib.contextmanager
 def _cache_lock(cache_root: Path):
     lock_path = cache_root / ".cache.lock"
     with _PROCESS_LOCK, lock_path.open("a+b") as handle:
+        _root_owned(lock_path, mode=0o644)
         if fcntl is not None:
             fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
         try:
@@ -126,6 +139,7 @@ def ensure_cached_archive(
     digest, size, retention = _validated_inputs(url, expected_sha256, expected_size, keep)
     root = Path(cache_root).resolve()
     root.mkdir(mode=0o755, parents=True, exist_ok=True)
+    _root_owned(root, mode=0o755)
     final = root / f"{digest}.tar.zst"
     partial = root / f"{digest}.tar.zst.partial"
 
@@ -136,6 +150,7 @@ def ensure_cached_archive(
             except (OSError, CacheError):
                 final.unlink(missing_ok=True)
             else:
+                _root_owned(final, mode=0o644)
                 _prune(root, keep=retention, exclude=final)
                 return CacheResult(path=final, sha256=digest, size_bytes=size, cache_hit=True)
 
@@ -143,8 +158,9 @@ def ensure_cached_archive(
         try:
             _download(url, partial, expected_size=size)
             _verify(partial, expected_sha256=digest, expected_size=size)
-            os.chmod(partial, 0o644)
+            _root_owned(partial, mode=0o644)
             os.replace(partial, final)
+            _root_owned(final, mode=0o644)
             _prune(root, keep=retention, exclude=final)
             return CacheResult(path=final, sha256=digest, size_bytes=size, cache_hit=False)
         except (OSError, CacheError) as exc:

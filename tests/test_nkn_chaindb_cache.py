@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 import os
+import stat
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -71,6 +72,40 @@ def test_cache_downloads_one_digest_once_and_uses_atomic_partial_file(tmp_path, 
     assert not list(tmp_path.glob("*.partial"))
     assert "secret" not in repr(first).lower()
     assert all("secret" not in path.name.lower() for path in tmp_path.iterdir())
+    if os.name != "nt":
+        assert stat.S_IMODE(tmp_path.stat().st_mode) == 0o755
+        assert stat.S_IMODE(first.path.stat().st_mode) == 0o644
+
+
+def test_cache_repairs_existing_directory_and_archive_handoff_permissions(tmp_path, monkeypatch):
+    payload = b"verified-chain-db"
+    digest = _digest(payload)
+    archive = tmp_path / f"{digest}.tar.zst"
+    archive.write_bytes(payload)
+    os.chmod(tmp_path, 0o700)
+    os.chmod(archive, 0o600)
+    chowns = []
+    monkeypatch.setattr(nkn_chaindb_cache.os, "geteuid", lambda: 0, raising=False)
+    monkeypatch.setattr(
+        nkn_chaindb_cache.os,
+        "chown",
+        lambda path, uid, gid: chowns.append((str(path), uid, gid)),
+        raising=False,
+    )
+
+    result = nkn_chaindb_cache.ensure_cached_archive(
+        "https://r2.example.invalid/object",
+        expected_sha256=digest,
+        expected_size=len(payload),
+        cache_root=tmp_path,
+    )
+
+    assert result.cache_hit is True
+    if os.name != "nt":
+        assert stat.S_IMODE(tmp_path.stat().st_mode) == 0o755
+        assert stat.S_IMODE(archive.stat().st_mode) == 0o644
+    assert (str(tmp_path.resolve()), 0, 0) in chowns
+    assert (str(archive.resolve()), 0, 0) in chowns
 
 
 def test_cache_serializes_concurrent_requests_for_the_same_digest(tmp_path, monkeypatch):
