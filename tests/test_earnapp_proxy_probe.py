@@ -1,5 +1,6 @@
 import asyncio
 import json
+import ssl
 
 from app import proxy_intelligence
 from app.proxy_probe_profiles import earnapp
@@ -23,6 +24,13 @@ def test_tunnel_identity_preserves_the_supplied_earnapp_contract():
     assert identity["status_send"] is True
     assert identity["ipv6_supported"] is False
     assert json.loads(identity["usage"]["app_bytes"])["wifi_connected"] is True
+
+
+def test_earnapp_tls_context_matches_the_supplied_probe_certificate_contract():
+    context = earnapp.build_tls_context()
+
+    assert context.check_hostname is False
+    assert context.verify_mode == ssl.CERT_NONE
 
 
 def test_client_websocket_text_frames_are_masked_and_round_trip():

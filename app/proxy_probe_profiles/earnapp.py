@@ -25,6 +25,14 @@ MAKEFLAGS = (
 _WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 
+def build_tls_context() -> ssl.SSLContext:
+    context = ssl.create_default_context()
+    # The supplied EarnApp probe accepts the proxy tunnel's interception certificate.
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    return context
+
+
 def classify_verdict(verdict: str, reason: str = "") -> str:
     value = str(verdict or "UNKNOWN").strip().upper()
     if value == "CID_SET":
@@ -233,7 +241,7 @@ async def _open_wss_tunnel(
             await _connect_http(reader, writer, username=username, password=password, timeout=timeout)
         else:
             raise ValueError("EarnApp probe supports only http and socks5 proxies")
-        context = ssl.create_default_context()
+        context = build_tls_context()
         await asyncio.wait_for(writer.start_tls(context, server_hostname=WSS_HOST), timeout=timeout)
 
         key = base64.b64encode(os.urandom(16)).decode("ascii")
