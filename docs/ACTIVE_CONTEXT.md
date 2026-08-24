@@ -1,10 +1,21 @@
 # CashPilot Active Context
 
-Updated: 2026-08-24 (NKN v1.6.3 release and live host-helper closeout)
+Updated: 2026-08-24 (EarnApp Proxy Pool qualification branch; not released or deployed)
 
 ## Current repository state
 
-- Canonical source branch: `main` at merge commit `f5ee981`. The original
+- Active implementation worktree: `repo-earnapp-proxy-pool`, branch
+  `feat/earnapp-proxy-pool`, based on `origin/main` at `f9c78b8`. This is a
+  review branch only: it has not been released or deployed, and no live Proxy
+  Pool or VPS state has been changed. Merge, release and deploy remain separate
+  approval gates.
+- The branch upgrades the reported SQLite schema from 17 to 18 through
+  idempotent guards. A migration regression starts from a populated v17 proxy
+  schema and verifies that endpoints, worker assignments and provider masks are
+  retained while the new intelligence, evidence, import and scoped-lease
+  structures are added.
+- Canonical source branch: `main` at merge commit `f9c78b8`; release `v1.6.3`
+  remains tagged at its product merge commit `f5ee981`. The original
   direct-runtime and Docker canary history is retained for traceability. The LXD
   runtime landed through PR #17, guarded canary adoption through PR #18, the
   adoption timeout fix through PR #19, and the optional ChainDB acceleration
@@ -52,6 +63,48 @@ Updated: 2026-08-24 (NKN v1.6.3 release and live host-helper closeout)
   current provider is open for incidental redesign.
 - Mysterium remains direct-only. Its wallet inventory, lease, identity,
   WireGuard/TUN and runtime contracts are not altered by this branch.
+
+## EarnApp Proxy Pool qualification branch
+
+- EarnApp runtime/provider/collector/catalog implementation remains out of
+  scope. This branch adds only the isolated Proxy Pool qualification and lease
+  contract required before EarnApp is designed as a provider.
+- Only the latest EarnApp WSS verdict `CID_SET` is eligible. `BLACKLIST` is
+  blocked, `DECLINE` is quality-rejected, and timeout/transport failures remain
+  unknown. WSS ping payloads are returned as binary pong frames without UTF-8
+  coercion.
+- Country evidence comes from `ipwho.is`; quality flags and IP type come from
+  `ipapi.is`. The dashboard shows country/source, IP type/source, generic live
+  state, UDP evidence, generic latency, EarnApp verdict/reason/latency and last
+  check time without exposing proxy credentials.
+- Duplicate egress rows remain available as raw import evidence, but only one
+  canonical endpoint can receive a new assignment or scoped lease. Existing
+  assignments are not revoked merely because duplicate detection discovers a
+  collision.
+- EarnApp uses a scoped lease keyed by provider, worker and instance, separate
+  from the legacy worker-level proxy assignment. Proxy eligibility for other
+  providers is unchanged except that every new lease rejects an egress already
+  in active use.
+- Duplicate export is masked by default. Raw credential export is owner-only
+  and requires an explicit operator action; stored import evidence remains
+  encrypted at rest.
+- `Delete all proxy pool` is intentionally absolute: after two UI confirmations
+  and two exact API confirmation values it deletes all endpoints, worker proxy
+  assignment rows, scoped leases, masks, probe evidence and import records.
+  Provider configuration and provider-instance rows remain, with their proxy
+  references cleared by foreign keys.
+- Protected provider catalog/runtime/collector files are outside this branch's
+  diff. No provider marked `PROTECTED_DONE` is redesigned, redeployed or used as
+  a canary by this work.
+- The final pre-PR audit corrected two isolated Proxy Pool edge cases: duplicate
+  canonicalization now prefers the latest EarnApp `CID_SET` evidence rather
+  than any historical/generic eligible probe, and partial geo/type metadata is
+  retried instead of being treated as a complete seven-day cache hit.
+- Fresh verification after those audit fixes: `1677 passed, 8 skipped` for the
+  full non-live suite and `180 passed` for the focused proxy/UI suite. Ruff
+  check, changed-file format check, Python compileall, `mkdocs build --strict`,
+  `git diff --check`, protected-path comparison and added-line secret-pattern
+  checks all pass.
 
 ## Retired-provider compatibility
 

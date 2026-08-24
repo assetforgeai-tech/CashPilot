@@ -796,6 +796,41 @@ class TestInventoryTablesHaveOperatorControls:
         ):
             assert needle in page
 
+    def test_proxy_pool_exposes_egress_intelligence_earnapp_duplicates_and_full_delete(self):
+        page = (ROOT / "app" / "templates" / "proxy_pool.html").read_text(encoding="utf-8")
+        for needle in (
+            'id="pool-ip-type-filter"',
+            'id="pool-earnapp-filter"',
+            'id="pool-duplicate-filter"',
+            'id="pool-earnapp-selected"',
+            'id="pool-earnapp-all"',
+            'id="pool-export-duplicates"',
+            'id="pool-export-duplicates-raw"',
+            'id="pool-delete-all"',
+            'data-sort="ip_type"',
+            'data-sort="earnapp_eligibility"',
+            'data-sort="duplicate_egress"',
+            "country_code",
+            "geo_source",
+            "p.latency_ms",
+            "p.udp_ok",
+            "earnapp_probe_reason",
+            "p.earnapp_latency_ms",
+            "p.scoped_provider_slug",
+            "p.scoped_worker_id",
+            "p.scoped_instance_id",
+            "canonical_proxy_id",
+            "/api/proxy-pool/earnapp-recheck",
+            "/api/proxy-pool/duplicates/export?raw=true",
+            "DELETE ALL PROXY POOL",
+            "confirmation_again",
+        ):
+            assert needle in page
+
+        delete_all = page[page.index("async function deleteAllPool()") :]
+        assert delete_all.count("confirm(") >= 2
+        assert "Every proxy, assignment, scoped lease, probe result and import record" in delete_all
+
     def test_myst_wallet_has_counts_search_sort_export_confirm_and_pagination(self):
         page = (ROOT / "app" / "templates" / "myst_wallet.html").read_text(encoding="utf-8")
         app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")

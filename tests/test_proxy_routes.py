@@ -324,7 +324,12 @@ def test_proxy_pool_import_rechecks_only_imported_proxies(client):
     with (
         patch("app.main.auth.get_current_user", return_value=_owner_user()),
         patch("app.routers.proxies.database.upsert_proxy_provider", new_callable=AsyncMock, return_value=9),
-        patch("app.routers.proxies.database.upsert_proxy_endpoints", new_callable=AsyncMock, return_value=4),
+        patch(
+            "app.routers.proxies.database.upsert_proxy_endpoints_returning_ids",
+            new_callable=AsyncMock,
+            return_value=[3, 4],
+        ),
+        patch("app.routers.proxies.database.create_proxy_import_batch", new_callable=AsyncMock),
         patch("app.routers.proxies.database.get_config", new_callable=AsyncMock, return_value={}),
         patch(
             "app.routers.proxies.run_proxy_pool_recheck",
@@ -346,7 +351,12 @@ socks5://user:pass@4.4.4.4:4000
     with (
         patch("app.main.auth.get_current_user", return_value=_owner_user()),
         patch("app.routers.proxies.database.upsert_proxy_provider", new_callable=AsyncMock, return_value=9),
-        patch("app.routers.proxies.database.upsert_proxy_endpoints", new_callable=AsyncMock, return_value=4) as upsert,
+        patch(
+            "app.routers.proxies.database.upsert_proxy_endpoints_returning_ids",
+            new_callable=AsyncMock,
+            return_value=[1, 2, 3, 4],
+        ) as upsert,
+        patch("app.routers.proxies.database.create_proxy_import_batch", new_callable=AsyncMock),
         patch("app.routers.proxies.database.get_config", new_callable=AsyncMock, return_value={}),
         patch(
             "app.routers.proxies.run_proxy_pool_recheck",
@@ -361,11 +371,32 @@ socks5://user:pass@4.4.4.4:4000
     recheck.assert_awaited_once()
 
 
+def test_proxy_import_parser_retains_each_raw_line_only_for_encrypted_audit_storage():
+    rows = proxy_routes._parse_proxy_import("proxy.example:1000:user:secret\n")
+
+    assert rows == [
+        {
+            "host": "proxy.example",
+            "port": 1000,
+            "username": "user",
+            "password": "secret",
+            "protocol": "socks5",
+            "location": "",
+            "_raw_line": "proxy.example:1000:user:secret",
+        }
+    ]
+
+
 def test_proxy_pool_import_reports_inserted_count_not_parse_count(client):
     with (
         patch("app.main.auth.get_current_user", return_value=_owner_user()),
         patch("app.routers.proxies.database.upsert_proxy_provider", new_callable=AsyncMock, return_value=9),
-        patch("app.routers.proxies.database.upsert_proxy_endpoints", new_callable=AsyncMock, return_value=2),
+        patch(
+            "app.routers.proxies.database.upsert_proxy_endpoints_returning_ids",
+            new_callable=AsyncMock,
+            return_value=[1, 2],
+        ),
+        patch("app.routers.proxies.database.create_proxy_import_batch", new_callable=AsyncMock),
         patch("app.routers.proxies.database.get_config", new_callable=AsyncMock, return_value={}),
         patch(
             "app.routers.proxies.run_proxy_pool_recheck",
@@ -390,6 +421,8 @@ async def test_proxy_pool_recheck_uses_decrypted_proxy_credentials():
         patch("app.routers.proxies.database.list_proxy_pool", new_callable=AsyncMock, return_value=rows),
         patch("app.routers.proxies.database.get_proxy_endpoint", new_callable=AsyncMock, return_value=proxy) as lookup,
         patch("app.routers.proxies.database.update_proxy_pool_check_results", new_callable=AsyncMock, return_value=1),
+        patch("app.routers.proxies.database.save_proxy_probe_result", new_callable=AsyncMock),
+        patch("app.routers.proxies.database.reconcile_proxy_duplicates", new_callable=AsyncMock, return_value=0),
         patch(
             "app.routers.proxies._probe_proxy_confirmed",
             new_callable=AsyncMock,
@@ -414,6 +447,11 @@ async def test_proxy_pool_recheck_persists_proxy_egress_ip():
         patch(
             "app.routers.proxies.database.update_proxy_pool_check_results", new_callable=AsyncMock, return_value=1
         ) as save,
+        patch("app.routers.proxies.database.save_proxy_probe_result", new_callable=AsyncMock),
+        patch("app.routers.proxies.database.get_cached_proxy_intelligence", new_callable=AsyncMock, return_value=None),
+        patch("app.routers.proxies.lookup_ip_intelligence", new_callable=AsyncMock, return_value={}),
+        patch("app.routers.proxies.database.update_proxy_endpoint_intelligence", new_callable=AsyncMock),
+        patch("app.routers.proxies.database.reconcile_proxy_duplicates", new_callable=AsyncMock, return_value=0),
         patch(
             "app.routers.proxies._probe_proxy_confirmed",
             new_callable=AsyncMock,
@@ -427,6 +465,128 @@ async def test_proxy_pool_recheck_persists_proxy_egress_ip():
         protocols={7: "socks5"},
         exit_ips={7: "8.8.8.8"},
     )
+
+
+@pytest.mark.asyncio
+async def test_generic_recheck_refreshes_ip_intelligence_and_duplicate_groups():
+    rows = [{"id": 7, "host": "proxy.example.com", "port": 1080, "assigned_worker_id": None}]
+    proxy = {"id": 7, "host": "proxy.example.com", "port": 1080}
+    intelligence = {
+        "location": "Singapore",
+        "country_code": "SG",
+        "country_name": "Singapore",
+        "ip_type": "residential",
+    }
+
+    with (
+        patch("app.routers.proxies.database.list_proxy_pool", new_callable=AsyncMock, return_value=rows),
+        patch("app.routers.proxies.database.get_proxy_endpoint", new_callable=AsyncMock, return_value=proxy),
+        patch(
+            "app.routers.proxies._probe_proxy_confirmed",
+            new_callable=AsyncMock,
+            return_value={"status": "alive", "protocol": "socks5", "exit_ip": "8.8.8.8"},
+        ),
+        patch("app.routers.proxies.database.update_proxy_pool_check_results", new_callable=AsyncMock, return_value=1),
+        patch("app.routers.proxies.database.save_proxy_probe_result", new_callable=AsyncMock) as save_evidence,
+        patch("app.routers.proxies.database.get_cached_proxy_intelligence", new_callable=AsyncMock, return_value=None),
+        patch(
+            "app.routers.proxies.lookup_ip_intelligence", new_callable=AsyncMock, return_value=intelligence
+        ) as lookup,
+        patch("app.routers.proxies.database.update_proxy_endpoint_intelligence", new_callable=AsyncMock) as save_geo,
+        patch(
+            "app.routers.proxies.database.reconcile_proxy_duplicates", new_callable=AsyncMock, return_value=2
+        ) as dedupe,
+    ):
+        result = await proxy_routes.run_proxy_pool_recheck(proxy_ids=[7], concurrency=1)
+
+    lookup.assert_awaited_once_with("8.8.8.8")
+    save_geo.assert_awaited_once_with(7, intelligence)
+    save_evidence.assert_awaited_once()
+    dedupe.assert_awaited_once_with()
+    assert result["duplicates_marked"] == 2
+
+
+@pytest.mark.asyncio
+async def test_generic_recheck_looks_up_shared_egress_intelligence_once():
+    rows = [
+        {"id": 7, "host": "one.example", "port": 1080, "assigned_worker_id": None},
+        {"id": 8, "host": "two.example", "port": 1080, "assigned_worker_id": None},
+    ]
+
+    async def endpoint(proxy_id):
+        return {**rows[proxy_id - 7], "protocol": "socks5"}
+
+    with (
+        patch("app.routers.proxies.database.list_proxy_pool", new_callable=AsyncMock, return_value=rows),
+        patch("app.routers.proxies.database.get_proxy_endpoint", new_callable=AsyncMock, side_effect=endpoint),
+        patch(
+            "app.routers.proxies._probe_proxy_confirmed",
+            new_callable=AsyncMock,
+            return_value={"status": "alive", "protocol": "socks5", "exit_ip": "8.8.8.8"},
+        ),
+        patch("app.routers.proxies.database.update_proxy_pool_check_results", new_callable=AsyncMock, return_value=2),
+        patch("app.routers.proxies.database.save_proxy_probe_result", new_callable=AsyncMock),
+        patch("app.routers.proxies.database.get_cached_proxy_intelligence", new_callable=AsyncMock, return_value=None),
+        patch(
+            "app.routers.proxies.lookup_ip_intelligence", new_callable=AsyncMock, return_value={"country_code": "US"}
+        ) as lookup,
+        patch("app.routers.proxies.database.update_proxy_endpoint_intelligence", new_callable=AsyncMock) as save_geo,
+        patch("app.routers.proxies.database.reconcile_proxy_duplicates", new_callable=AsyncMock, return_value=0),
+    ):
+        await proxy_routes.run_proxy_pool_recheck(concurrency=2)
+
+    lookup.assert_awaited_once_with("8.8.8.8")
+    assert save_geo.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_earnapp_recheck_persists_only_cid_set_as_eligible():
+    rows = [
+        {"id": 7, "host": "good.example", "port": 1080},
+        {"id": 8, "host": "blocked.example", "port": 1080},
+    ]
+    proxies = {
+        7: {**rows[0], "protocol": "socks5", "username": "u", "password": "p"},
+        8: {**rows[1], "protocol": "http", "username": "u", "password": "p"},
+    }
+
+    async def lookup_proxy(proxy_id):
+        return proxies[proxy_id]
+
+    async def probe(host, port, **kwargs):
+        if host == "good.example":
+            return {
+                "verdict": "CID_SET",
+                "eligibility": "eligible",
+                "reason": "cid",
+                "exit_ip": "8.8.8.8",
+                "latency_ms": 10,
+                "probe_version": "test",
+            }
+        return {
+            "verdict": "BLACKLIST",
+            "eligibility": "blocked",
+            "reason": "earnapp_blacklist",
+            "exit_ip": "9.9.9.9",
+            "latency_ms": 20,
+            "probe_version": "test",
+        }
+
+    with (
+        patch("app.routers.proxies.database.list_proxy_pool", new_callable=AsyncMock, return_value=rows),
+        patch("app.routers.proxies.database.get_proxy_endpoint", new_callable=AsyncMock, side_effect=lookup_proxy),
+        patch("app.routers.proxies.probe_earnapp_proxy", new_callable=AsyncMock, side_effect=probe),
+        patch("app.routers.proxies.database.save_proxy_probe_result", new_callable=AsyncMock) as save,
+        patch("app.routers.proxies.database.get_cached_proxy_intelligence", new_callable=AsyncMock, return_value=None),
+        patch("app.routers.proxies.lookup_ip_intelligence", new_callable=AsyncMock, return_value={}),
+        patch("app.routers.proxies.database.update_proxy_endpoint_intelligence", new_callable=AsyncMock),
+        patch("app.routers.proxies.database.reconcile_proxy_duplicates", new_callable=AsyncMock, return_value=0),
+    ):
+        result = await proxy_routes.run_earnapp_proxy_recheck(concurrency=2)
+
+    assert result["eligible"] == 1
+    assert result["blocked"] == 1
+    assert [call.kwargs["eligibility"] for call in save.await_args_list] == ["eligible", "blocked"]
 
 
 @pytest.mark.asyncio
@@ -957,6 +1117,13 @@ async def test_proxy_pool_recheck_rotates_only_after_worker_ack():
         patch("app.routers.proxies.database.list_proxy_pool", new_callable=AsyncMock, return_value=rows),
         patch("app.routers.proxies.database.get_proxy_endpoint", new_callable=AsyncMock, side_effect=endpoint),
         patch("app.routers.proxies.database.update_proxy_pool_check_results", new_callable=AsyncMock, return_value=2),
+        patch("app.routers.proxies.database.save_proxy_probe_result", new_callable=AsyncMock),
+        patch("app.routers.proxies.database.reconcile_proxy_duplicates", new_callable=AsyncMock, return_value=0),
+        patch(
+            "app.routers.proxies.database.find_available_proxy_for_worker",
+            new_callable=AsyncMock,
+            return_value={"proxy_id": 2, "host": "2.2.2.2", "port": 1080, "protocol": "socks5"},
+        ) as available,
         patch("app.routers.proxies._probe_proxy_confirmed", new_callable=AsyncMock, side_effect=probe),
         patch(
             "app.routers.proxies._rotate_worker_proxy_after_ack", new_callable=AsyncMock, return_value=True
@@ -970,6 +1137,7 @@ async def test_proxy_pool_recheck_rotates_only_after_worker_ack():
     rotate.assert_awaited_once()
     assert int(rotate.await_args.args[0]) == 7
     assert int(rotate.await_args.args[1]["proxy_id"]) == 2
+    available.assert_awaited_once_with(7)
     unsafe_commit.assert_not_awaited()
     legacy_apply.assert_not_awaited()
 
@@ -1293,6 +1461,19 @@ async def test_proxy_exit_ip_uses_raw_proxy_tunnel():
     fetch.assert_awaited_once()
 
 
+@pytest.mark.asyncio
+async def test_generic_proxy_probe_reports_elapsed_latency():
+    with (
+        patch("app.routers.proxies._probe_socks5_proxy", new_callable=AsyncMock, return_value=True),
+        patch("app.routers.proxies._probe_proxy_exit_ip", new_callable=AsyncMock, return_value="8.8.8.8"),
+        patch("app.routers.proxies.time.perf_counter", side_effect=[100.0, 100.012]),
+    ):
+        result = await proxy_routes._probe_proxy("proxy.example.com", 1080)
+
+    assert result["status"] == "alive"
+    assert result["latency_ms"] == 12
+
+
 def test_manual_proxy_import_persists_multiple_rows(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
@@ -1310,6 +1491,816 @@ def test_manual_proxy_import_persists_multiple_rows(tmp_path):
             assert {row["endpoint"] for row in rows} == {"1.1.1.1:1000", "2.2.2.2:2000"}
 
     import asyncio
+
+    asyncio.run(run())
+
+
+def test_manual_assignment_rejects_duplicate_noncanonical_and_scoped_egress(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            proxy_ids = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id,
+                [
+                    {"provider_proxy_id": "canonical", "host": "1.1.1.1", "port": 1000},
+                    {"provider_proxy_id": "duplicate", "host": "2.2.2.2", "port": 2000},
+                ],
+            )
+            for proxy_id in proxy_ids:
+                await database.save_proxy_probe_result(
+                    proxy_id,
+                    profile="generic",
+                    probe_status="alive",
+                    verdict="ALIVE",
+                    eligibility="eligible",
+                    reason="",
+                    exit_ip="8.8.8.8",
+                    latency_ms=10,
+                    probe_version="test",
+                )
+            await database.reconcile_proxy_duplicates()
+            scoped_worker = await database.upsert_worker("scoped", "scoped", "http://scoped")
+            manual_worker = await database.upsert_worker("manual", "manual", "http://manual")
+
+            assert await database.set_worker_proxy_assignment(manual_worker, proxy_ids[1], "proxy", "hold") is False
+            assert await database.lease_proxy_for_provider_instance("future", scoped_worker, "future-1")
+            assert await database.set_worker_proxy_assignment(manual_worker, proxy_ids[0], "proxy", "hold") is False
+
+    asyncio.run(run())
+
+
+def test_proxy_pool_schema_adds_intelligence_evidence_imports_and_scoped_leases(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            db = await database._get_db()
+            endpoint_cols = {
+                row["name"] for row in await (await db.execute("PRAGMA table_info(proxy_endpoints)")).fetchall()
+            }
+            tables = {
+                row["name"]
+                for row in await (await db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")).fetchall()
+            }
+
+            assert {
+                "country_code",
+                "country_name",
+                "geo_source",
+                "geo_confidence",
+                "geo_checked_at",
+                "ip_type",
+                "ip_type_source",
+                "ip_type_confidence",
+                "ip_type_checked_at",
+                "duplicate_egress",
+                "canonical_proxy_id",
+                "duplicate_reason",
+            } <= endpoint_cols
+            assert {
+                "proxy_probe_results",
+                "proxy_import_batches",
+                "proxy_import_rows",
+                "provider_proxy_leases",
+            } <= tables
+
+    asyncio.run(run())
+
+
+def test_proxy_pool_schema_migrates_a_v17_database_without_losing_existing_rows(tmp_path):
+    async def run():
+        db_path = tmp_path / "proxy-v17.db"
+        import aiosqlite
+
+        async with aiosqlite.connect(db_path) as db:
+            await db.executescript(
+                """
+                PRAGMA foreign_keys = ON;
+                CREATE TABLE workers (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    client_id TEXT NOT NULL UNIQUE,
+                    name TEXT NOT NULL DEFAULT '',
+                    url TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT 'online',
+                    containers TEXT NOT NULL DEFAULT '[]',
+                    apps TEXT NOT NULL DEFAULT '[]',
+                    system_info TEXT NOT NULL DEFAULT '{}',
+                    last_heartbeat TEXT,
+                    api_key_enc TEXT,
+                    key_confirmed INTEGER NOT NULL DEFAULT 0,
+                    key_issued_at TEXT,
+                    registered_at TEXT NOT NULL DEFAULT (datetime('now'))
+                );
+                CREATE TABLE proxy_providers (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    type TEXT NOT NULL,
+                    base_url TEXT NOT NULL DEFAULT '',
+                    api_key_enc TEXT NOT NULL DEFAULT '',
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    last_synced_at TEXT,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    UNIQUE(type, name)
+                );
+                CREATE TABLE proxy_endpoints (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    provider_id INTEGER,
+                    provider_proxy_id TEXT,
+                    endpoint TEXT NOT NULL,
+                    host TEXT NOT NULL,
+                    port INTEGER NOT NULL,
+                    protocol TEXT NOT NULL CHECK(protocol IN ('http', 'socks5')),
+                    username TEXT NOT NULL DEFAULT '',
+                    password_enc TEXT NOT NULL DEFAULT '',
+                    location TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT 'unknown',
+                    expiry_date TEXT,
+                    days_left INTEGER,
+                    hours_left INTEGER,
+                    exit_ip TEXT,
+                    udp_ok INTEGER,
+                    latency_ms INTEGER,
+                    last_synced_at TEXT,
+                    last_checked_at TEXT,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    FOREIGN KEY(provider_id) REFERENCES proxy_providers(id) ON DELETE SET NULL,
+                    UNIQUE(provider_id, provider_proxy_id)
+                );
+                CREATE TABLE proxy_assignments (
+                    worker_id INTEGER PRIMARY KEY,
+                    proxy_id INTEGER,
+                    mode TEXT NOT NULL DEFAULT 'proxy',
+                    fallback TEXT NOT NULL DEFAULT 'hold',
+                    assignment_version INTEGER NOT NULL DEFAULT 0,
+                    applied_at TEXT,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    FOREIGN KEY(worker_id) REFERENCES workers(id) ON DELETE CASCADE,
+                    FOREIGN KEY(proxy_id) REFERENCES proxy_endpoints(id) ON DELETE SET NULL
+                );
+                CREATE TABLE proxy_provider_masks (
+                    proxy_id INTEGER NOT NULL,
+                    provider_slug TEXT NOT NULL,
+                    reason TEXT NOT NULL DEFAULT '',
+                    masked_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    PRIMARY KEY(proxy_id, provider_slug),
+                    FOREIGN KEY(proxy_id) REFERENCES proxy_endpoints(id) ON DELETE CASCADE
+                );
+                INSERT INTO workers (id, client_id, name, url) VALUES (1, 'worker-v17', 'v17', 'http://v17');
+                INSERT INTO proxy_providers (id, name, type) VALUES (1, 'manual', 'manual');
+                INSERT INTO proxy_endpoints
+                    (id, provider_id, provider_proxy_id, endpoint, host, port, protocol, location, status, exit_ip)
+                VALUES (1, 1, 'legacy-1', '1.1.1.1:1000', '1.1.1.1', 1000, 'http', 'SG', 'alive', '8.8.8.8');
+                INSERT INTO proxy_assignments (worker_id, proxy_id, assignment_version) VALUES (1, 1, 4);
+                INSERT INTO proxy_provider_masks (proxy_id, provider_slug, reason) VALUES (1, 'iproyal', 'ip_used');
+                PRAGMA user_version = 17;
+                """
+            )
+            await db.commit()
+
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", db_path):
+            await database.init_db()
+            db = await database._get_db()
+            version = (await (await db.execute("PRAGMA user_version")).fetchone())[0]
+            columns = {row["name"] for row in await (await db.execute("PRAGMA table_info(proxy_endpoints)")).fetchall()}
+            endpoint = await (await db.execute("SELECT * FROM proxy_endpoints WHERE id = 1")).fetchone()
+            assignment = await (await db.execute("SELECT * FROM proxy_assignments WHERE worker_id = 1")).fetchone()
+            mask = await (await db.execute("SELECT * FROM proxy_provider_masks WHERE proxy_id = 1")).fetchone()
+            tables = {
+                row["name"]
+                for row in await (await db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")).fetchall()
+            }
+
+            assert version == 18
+            assert {
+                "country_code",
+                "country_name",
+                "geo_source",
+                "geo_confidence",
+                "ip_type",
+                "duplicate_egress",
+                "canonical_proxy_id",
+                "duplicate_reason",
+            } <= columns
+            assert {
+                "proxy_probe_results",
+                "proxy_import_batches",
+                "proxy_import_rows",
+                "provider_proxy_leases",
+            } <= tables
+            assert endpoint["provider_proxy_id"] == "legacy-1"
+            assert endpoint["location"] == "SG"
+            assert assignment["proxy_id"] == 1
+            assert assignment["assignment_version"] == 4
+            assert mask["reason"] == "ip_used"
+
+    asyncio.run(run())
+
+
+def test_duplicate_egress_keeps_raw_rows_and_selects_one_canonical_proxy(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            proxy_ids = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id,
+                [
+                    {"provider_proxy_id": "slow", "host": "1.1.1.1", "port": 1000, "latency_ms": 90},
+                    {"provider_proxy_id": "fast", "host": "2.2.2.2", "port": 2000, "latency_ms": 20},
+                    {"provider_proxy_id": "other", "host": "3.3.3.3", "port": 3000, "latency_ms": 10},
+                ],
+            )
+            for proxy_id, latency, exit_ip in zip(
+                proxy_ids, (90, 20, 10), ("8.8.8.8", "8.8.8.8", "9.9.9.9"), strict=True
+            ):
+                await database.save_proxy_probe_result(
+                    proxy_id,
+                    profile="generic",
+                    probe_status="alive",
+                    verdict="ALIVE",
+                    eligibility="eligible",
+                    reason="",
+                    exit_ip=exit_ip,
+                    latency_ms=latency,
+                    probe_version="test",
+                )
+            await database.reconcile_proxy_duplicates()
+            rows = {row["id"]: row for row in await database.list_proxy_pool()}
+
+            assert rows[proxy_ids[1]]["duplicate_egress"] is False
+            assert rows[proxy_ids[1]]["canonical_proxy_id"] == proxy_ids[1]
+            assert rows[proxy_ids[0]]["duplicate_egress"] is True
+            assert rows[proxy_ids[0]]["canonical_proxy_id"] == proxy_ids[1]
+            assert rows[proxy_ids[2]]["duplicate_egress"] is False
+
+    asyncio.run(run())
+
+
+def test_duplicate_egress_prefers_latest_earnapp_cid_set_over_generic_eligibility(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            proxy_ids = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id,
+                [
+                    {"provider_proxy_id": "blocked", "host": "1.1.1.1", "port": 1000},
+                    {"provider_proxy_id": "eligible", "host": "2.2.2.2", "port": 2000},
+                ],
+            )
+            for proxy_id in proxy_ids:
+                await database.save_proxy_probe_result(
+                    proxy_id,
+                    profile="generic",
+                    probe_status="alive",
+                    verdict="ALIVE",
+                    eligibility="eligible",
+                    reason="",
+                    exit_ip="8.8.8.8",
+                    latency_ms=10,
+                    probe_version="test",
+                )
+            await database.save_proxy_probe_result(
+                proxy_ids[0],
+                profile="earnapp_wss",
+                probe_status="alive",
+                verdict="BLACKLIST",
+                eligibility="blocked",
+                reason="earnapp_blacklist",
+                exit_ip="8.8.8.8",
+                latency_ms=5,
+                probe_version="test",
+            )
+            await database.save_proxy_probe_result(
+                proxy_ids[1],
+                profile="earnapp_wss",
+                probe_status="alive",
+                verdict="CID_SET",
+                eligibility="eligible",
+                reason="cid",
+                exit_ip="8.8.8.8",
+                latency_ms=20,
+                probe_version="test",
+            )
+
+            await database.reconcile_proxy_duplicates()
+            rows = {row["id"]: row for row in await database.list_proxy_pool()}
+
+            assert rows[proxy_ids[1]]["duplicate_egress"] is False
+            assert rows[proxy_ids[1]]["canonical_proxy_id"] == proxy_ids[1]
+            assert rows[proxy_ids[0]]["duplicate_egress"] is True
+
+    asyncio.run(run())
+
+
+def test_duplicate_reconciliation_does_not_revoke_existing_bound_endpoints(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            proxy_ids = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id,
+                [
+                    {"provider_proxy_id": "bound-a", "host": "1.1.1.1", "port": 1000},
+                    {"provider_proxy_id": "bound-b", "host": "2.2.2.2", "port": 2000},
+                    {"provider_proxy_id": "unbound", "host": "3.3.3.3", "port": 3000},
+                ],
+            )
+            workers = [
+                await database.upsert_worker("worker-a", "a", "http://a"),
+                await database.upsert_worker("worker-b", "b", "http://b"),
+            ]
+            assert await database.set_worker_proxy_assignment(workers[0], proxy_ids[0])
+            assert await database.set_worker_proxy_assignment(workers[1], proxy_ids[1])
+            for proxy_id in proxy_ids:
+                await database.save_proxy_probe_result(
+                    proxy_id,
+                    profile="generic",
+                    probe_status="alive",
+                    verdict="ALIVE",
+                    eligibility="eligible",
+                    reason="",
+                    exit_ip="8.8.8.8",
+                    latency_ms=10,
+                    probe_version="test",
+                )
+
+            await database.reconcile_proxy_duplicates()
+            rows = {row["id"]: row for row in await database.list_proxy_pool()}
+
+            assert rows[proxy_ids[0]]["duplicate_egress"] is False
+            assert rows[proxy_ids[1]]["duplicate_egress"] is True
+            assert rows[proxy_ids[2]]["duplicate_egress"] is True
+            assert (await database.get_worker_proxy_assignment(workers[0]))["proxy_id"] == proxy_ids[0]
+            assert (await database.get_worker_proxy_assignment(workers[1]))["proxy_id"] == proxy_ids[1]
+
+    asyncio.run(run())
+
+
+def test_proxy_intelligence_cache_preserves_verified_fields_on_unknown_refresh(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            (proxy_id,) = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id, [{"provider_proxy_id": "one", "host": "1.1.1.1", "port": 1000}]
+            )
+            await database.save_proxy_probe_result(
+                proxy_id,
+                profile="generic",
+                probe_status="alive",
+                verdict="ALIVE",
+                eligibility="eligible",
+                reason="",
+                exit_ip="8.8.8.8",
+                latency_ms=10,
+                probe_version="test",
+            )
+            await database.update_proxy_endpoint_intelligence(
+                proxy_id,
+                {
+                    "location": "United States",
+                    "country_code": "US",
+                    "country_name": "United States",
+                    "geo_source": "ipwho.is",
+                    "geo_confidence": "verified",
+                    "ip_type": "datacenter",
+                    "ip_type_source": "ipapi.is",
+                    "ip_type_confidence": "verified",
+                },
+            )
+            await database.update_proxy_endpoint_intelligence(
+                proxy_id,
+                {
+                    "location": "Unknown",
+                    "country_code": "",
+                    "country_name": "",
+                    "geo_source": "",
+                    "geo_confidence": "unknown",
+                    "ip_type": "unknown",
+                    "ip_type_source": "",
+                    "ip_type_confidence": "unknown",
+                },
+            )
+
+            cached = await database.get_cached_proxy_intelligence("8.8.8.8")
+            row = (await database.list_proxy_pool())[0]
+            assert cached and cached["country_code"] == "US"
+            assert cached["ip_type"] == "datacenter"
+            assert row["location"] == "United States"
+            assert row["geo_source"] == "ipwho.is"
+
+    asyncio.run(run())
+
+
+def test_proxy_intelligence_cache_retries_when_only_one_source_is_fresh(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            (proxy_id,) = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id, [{"provider_proxy_id": "one", "host": "1.1.1.1", "port": 1000}]
+            )
+            await database.save_proxy_probe_result(
+                proxy_id,
+                profile="generic",
+                probe_status="alive",
+                verdict="ALIVE",
+                eligibility="eligible",
+                reason="",
+                exit_ip="8.8.8.8",
+                latency_ms=10,
+                probe_version="test",
+            )
+            await database.update_proxy_endpoint_intelligence(
+                proxy_id,
+                {
+                    "location": "United States",
+                    "country_code": "US",
+                    "country_name": "United States",
+                    "geo_source": "ipwho.is",
+                    "geo_confidence": "verified",
+                    "ip_type": "unknown",
+                    "ip_type_source": "",
+                    "ip_type_confidence": "unknown",
+                },
+            )
+
+            assert await database.get_cached_proxy_intelligence("8.8.8.8") is None
+
+    asyncio.run(run())
+
+
+def test_earnapp_probe_keeps_generic_latency_separate(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            (proxy_id,) = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id, [{"provider_proxy_id": "one", "host": "1.1.1.1", "port": 1000}]
+            )
+            await database.save_proxy_probe_result(
+                proxy_id,
+                profile="generic",
+                probe_status="alive",
+                verdict="ALIVE",
+                eligibility="eligible",
+                reason="",
+                exit_ip="8.8.8.8",
+                latency_ms=11,
+                probe_version="generic-test",
+            )
+            await database.save_proxy_probe_result(
+                proxy_id,
+                profile="earnapp_wss",
+                probe_status="alive",
+                verdict="CID_SET",
+                eligibility="eligible",
+                reason="cid",
+                exit_ip="8.8.8.8",
+                latency_ms=99,
+                probe_version="earnapp-test",
+            )
+
+            row = (await database.list_proxy_pool())[0]
+            assert row["latency_ms"] == 11
+            assert row["earnapp_latency_ms"] == 99
+
+    asyncio.run(run())
+
+
+def test_duplicate_export_masks_credentials_by_default_and_can_restore_raw_import(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            parsed = proxy_routes._parse_proxy_import(
+                "one.example:1000:user-one:pass-one\ntwo.example:2000:user-two:pass-two\n"
+            )
+            proxy_ids = await database.upsert_proxy_endpoints_returning_ids(provider_id, parsed)
+            await database.create_proxy_import_batch(
+                provider_id,
+                source_name="manual",
+                raw_input="\n".join(row["_raw_line"] for row in parsed),
+                parsed_rows=parsed,
+                proxy_ids=proxy_ids,
+            )
+            for proxy_id in proxy_ids:
+                await database.save_proxy_probe_result(
+                    proxy_id,
+                    profile="generic",
+                    probe_status="alive",
+                    verdict="ALIVE",
+                    eligibility="eligible",
+                    reason="",
+                    exit_ip="8.8.8.8",
+                    latency_ms=10,
+                    probe_version="test",
+                )
+            await database.reconcile_proxy_duplicates()
+
+            masked = await database.export_duplicate_proxy_rows(raw=False)
+            raw = await database.export_duplicate_proxy_rows(raw=True)
+
+            assert len(masked) == len(raw) == 1
+            assert "pass-two" not in str(masked)
+            assert raw[0]["raw_proxy"] == "two.example:2000:user-two:pass-two"
+
+    asyncio.run(run())
+
+
+def test_earnapp_scoped_lease_requires_cid_set_and_never_mutates_worker_assignment(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            proxy_ids = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id,
+                [
+                    {"provider_proxy_id": "blocked", "host": "1.1.1.1", "port": 1000},
+                    {"provider_proxy_id": "good", "host": "2.2.2.2", "port": 2000},
+                ],
+            )
+            worker_id = await database.upsert_worker("worker-a", "a", "http://a")
+            for proxy_id, exit_ip in zip(proxy_ids, ("8.8.8.8", "9.9.9.9"), strict=True):
+                await database.save_proxy_probe_result(
+                    proxy_id,
+                    profile="generic",
+                    probe_status="alive",
+                    verdict="ALIVE",
+                    eligibility="eligible",
+                    reason="",
+                    exit_ip=exit_ip,
+                    latency_ms=10,
+                    probe_version="test",
+                )
+            await database.save_proxy_probe_result(
+                proxy_ids[0],
+                profile="earnapp_wss",
+                probe_status="alive",
+                verdict="BLACKLIST",
+                eligibility="blocked",
+                reason="earnapp_blacklist",
+                exit_ip="8.8.8.8",
+                latency_ms=10,
+                probe_version="test",
+            )
+            await database.save_proxy_probe_result(
+                proxy_ids[1],
+                profile="earnapp_wss",
+                probe_status="alive",
+                verdict="CID_SET",
+                eligibility="eligible",
+                reason="cid",
+                exit_ip="9.9.9.9",
+                latency_ms=20,
+                probe_version="test",
+            )
+            await database.reconcile_proxy_duplicates()
+
+            lease = await database.lease_proxy_for_provider_instance("earnapp", worker_id, "earnapp-1")
+
+            assert lease and lease["proxy_id"] == proxy_ids[1]
+            assert lease["provider_slug"] == "earnapp"
+            assert await database.get_worker_proxy_assignment(worker_id) is None
+
+    asyncio.run(run())
+
+
+def test_provider_scoped_lease_is_idempotent_for_the_same_instance(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            (proxy_id,) = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id, [{"provider_proxy_id": "one", "host": "1.1.1.1", "port": 1000}]
+            )
+            await database.save_proxy_probe_result(
+                proxy_id,
+                profile="generic",
+                probe_status="alive",
+                verdict="ALIVE",
+                eligibility="eligible",
+                reason="",
+                exit_ip="8.8.8.8",
+                latency_ms=10,
+                probe_version="test",
+            )
+            worker_id = await database.upsert_worker("worker-a", "a", "http://a")
+
+            first = await database.lease_proxy_for_provider_instance("future", worker_id, "future-1")
+            second = await database.lease_proxy_for_provider_instance("future", worker_id, "future-1")
+
+            assert first and second
+            assert first["proxy_id"] == second["proxy_id"] == proxy_id
+
+    asyncio.run(run())
+
+
+def test_new_scoped_leases_never_share_an_egress_ip_across_providers(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            proxy_ids = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id,
+                [
+                    {"provider_proxy_id": "first", "host": "1.1.1.1", "port": 1000},
+                    {"provider_proxy_id": "same-egress", "host": "2.2.2.2", "port": 2000},
+                    {"provider_proxy_id": "other-egress", "host": "3.3.3.3", "port": 3000},
+                ],
+            )
+            for proxy_id, exit_ip in zip(proxy_ids, ("8.8.8.8", "8.8.8.8", "9.9.9.9"), strict=True):
+                await database.save_proxy_probe_result(
+                    proxy_id,
+                    profile="generic",
+                    probe_status="alive",
+                    verdict="ALIVE",
+                    eligibility="eligible",
+                    reason="",
+                    exit_ip=exit_ip,
+                    latency_ms=10,
+                    probe_version="test",
+                )
+                await database.save_proxy_probe_result(
+                    proxy_id,
+                    profile="earnapp_wss",
+                    probe_status="alive",
+                    verdict="CID_SET",
+                    eligibility="eligible",
+                    reason="cid",
+                    exit_ip=exit_ip,
+                    latency_ms=10,
+                    probe_version="test",
+                )
+            await database.reconcile_proxy_duplicates()
+            worker_a = await database.upsert_worker("worker-a", "a", "http://a")
+            worker_b = await database.upsert_worker("worker-b", "b", "http://b")
+
+            first = await database.lease_proxy_for_provider_instance("earnapp", worker_a, "earnapp-1")
+            second = await database.lease_proxy_for_provider_instance("future-provider", worker_b, "future-1")
+
+            assert first and first["exit_ip"] == "8.8.8.8"
+            assert second and second["exit_ip"] == "9.9.9.9"
+
+    asyncio.run(run())
+
+
+def test_legacy_worker_lease_skips_duplicate_and_scoped_egress_for_new_assignments(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            proxy_ids = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id,
+                [
+                    {"provider_proxy_id": "leased", "host": "1.1.1.1", "port": 1000},
+                    {"provider_proxy_id": "same-egress", "host": "2.2.2.2", "port": 2000},
+                    {"provider_proxy_id": "free", "host": "3.3.3.3", "port": 3000},
+                ],
+            )
+            for proxy_id, exit_ip in zip(proxy_ids, ("8.8.8.8", "8.8.8.8", "9.9.9.9"), strict=True):
+                await database.save_proxy_probe_result(
+                    proxy_id,
+                    profile="generic",
+                    probe_status="alive",
+                    verdict="ALIVE",
+                    eligibility="eligible",
+                    reason="",
+                    exit_ip=exit_ip,
+                    latency_ms=10,
+                    probe_version="test",
+                )
+            await database.reconcile_proxy_duplicates()
+            scoped_worker = await database.upsert_worker("worker-scoped", "scoped", "http://scoped")
+            legacy_worker = await database.upsert_worker("worker-legacy", "legacy", "http://legacy")
+            scoped = await database.lease_proxy_for_provider_instance("future-provider", scoped_worker, "future-1")
+            legacy = await database.lease_proxy_for_worker(legacy_worker)
+
+            assert scoped and scoped["exit_ip"] == "8.8.8.8"
+            assert legacy and legacy["exit_ip"] == "9.9.9.9"
+
+    asyncio.run(run())
+
+
+def test_delete_all_proxy_pool_cascades_pool_state_and_preserves_provider_config(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            proxy_ids = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id,
+                [
+                    {"provider_proxy_id": "legacy", "host": "1.1.1.1", "port": 1000},
+                    {"provider_proxy_id": "scoped", "host": "2.2.2.2", "port": 2000},
+                ],
+            )
+            await database.create_proxy_import_batch(
+                provider_id,
+                source_name="manual",
+                raw_input="1.1.1.1:1000\n2.2.2.2:2000",
+                parsed_rows=[{"_raw_line": "1.1.1.1:1000"}, {"_raw_line": "2.2.2.2:2000"}],
+                proxy_ids=proxy_ids,
+            )
+            for proxy_id, exit_ip in zip(proxy_ids, ("8.8.8.8", "9.9.9.9"), strict=True):
+                await database.save_proxy_probe_result(
+                    proxy_id,
+                    profile="generic",
+                    probe_status="alive",
+                    verdict="ALIVE",
+                    eligibility="eligible",
+                    reason="cid",
+                    exit_ip=exit_ip,
+                    latency_ms=10,
+                    probe_version="test",
+                )
+            await database.save_proxy_probe_result(
+                proxy_ids[1],
+                profile="earnapp_wss",
+                probe_status="alive",
+                verdict="CID_SET",
+                eligibility="eligible",
+                reason="cid",
+                exit_ip="9.9.9.9",
+                latency_ms=10,
+                probe_version="test",
+            )
+            await database.reconcile_proxy_duplicates()
+            legacy_worker = await database.upsert_worker("worker-legacy", "legacy", "http://legacy")
+            scoped_worker = await database.upsert_worker("worker-scoped", "scoped", "http://scoped")
+            assert await database.set_worker_proxy_assignment(legacy_worker, proxy_ids[0])
+            assert await database.lease_proxy_for_provider_instance("earnapp", scoped_worker, "earnapp-1")
+            await database.mask_proxy_for_provider(proxy_ids[0], "iproyal", "ip_used")
+            await database.save_provider_instance(
+                "protected-example",
+                "protected-example-1",
+                worker_id=legacy_worker,
+                mode="proxy",
+                proxy_id=proxy_ids[0],
+                status="running",
+            )
+
+            deleted = await database.delete_all_proxy_pool()
+            db = await database._get_db()
+            counts = {}
+            for table in (
+                "proxy_endpoints",
+                "proxy_assignments",
+                "proxy_provider_masks",
+                "proxy_probe_results",
+                "provider_proxy_leases",
+                "proxy_import_batches",
+                "proxy_import_rows",
+            ):
+                counts[table] = (await (await db.execute(f"SELECT COUNT(*) AS n FROM {table}")).fetchone())["n"]
+            provider_instance = await database.get_provider_instance("protected-example-1")
+
+            assert deleted == 2
+            assert counts == {
+                "proxy_endpoints": 0,
+                "proxy_assignments": 0,
+                "proxy_provider_masks": 0,
+                "proxy_probe_results": 0,
+                "provider_proxy_leases": 0,
+                "proxy_import_batches": 0,
+                "proxy_import_rows": 0,
+            }
+            assert provider_instance is not None
+            assert provider_instance["proxy_id"] is None
+            assert await database.get_proxy_provider(provider_id) is not None
+
+    asyncio.run(run())
+
+
+def test_delete_all_proxy_pool_rolls_back_everything_if_endpoint_delete_fails(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            (proxy_id,) = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id, [{"provider_proxy_id": "one", "host": "1.1.1.1", "port": 1000}]
+            )
+            worker_id = await database.upsert_worker("worker-a", "a", "http://a")
+            assert await database.set_worker_proxy_assignment(worker_id, proxy_id)
+            db = await database._get_db()
+            await db.execute(
+                """
+                CREATE TRIGGER fail_proxy_pool_delete
+                BEFORE DELETE ON proxy_endpoints
+                BEGIN
+                    SELECT RAISE(ABORT, 'simulated delete failure');
+                END
+                """
+            )
+            await db.commit()
+
+            with pytest.raises(Exception, match="simulated delete failure"):
+                await database.delete_all_proxy_pool()
+
+            assignment_count = (await (await db.execute("SELECT COUNT(*) AS n FROM proxy_assignments")).fetchone())["n"]
+            endpoint_count = (await (await db.execute("SELECT COUNT(*) AS n FROM proxy_endpoints")).fetchone())["n"]
+            assert assignment_count == 1
+            assert endpoint_count == 1
 
     asyncio.run(run())
 
@@ -1334,6 +2325,102 @@ def test_proxy_pool_delete_selected_and_dead(client):
     assert resp.status_code == 200
     assert resp.json()["deleted"] == 3
     delete_dead.assert_awaited_once_with(None, status="dead")
+
+
+def test_proxy_pool_delete_all_requires_two_exact_confirmations(client):
+    with patch("app.main.auth.get_current_user", return_value=_owner_user()):
+        first = client.request(
+            "DELETE", "/api/proxy-pool", json={"delete_all": True, "confirmation": "DELETE ALL PROXY POOL"}
+        )
+    assert first.status_code == 400
+
+    with (
+        patch("app.main.auth.get_current_user", return_value=_owner_user()),
+        patch(
+            "app.routers.proxies.database.delete_all_proxy_pool", new_callable=AsyncMock, return_value=7
+        ) as delete_all,
+    ):
+        second = client.request(
+            "DELETE",
+            "/api/proxy-pool",
+            json={
+                "delete_all": True,
+                "confirmation": "DELETE ALL PROXY POOL",
+                "confirmation_again": "DELETE ALL PROXY POOL",
+            },
+        )
+    assert second.status_code == 200
+    assert second.json()["deleted"] == 7
+    delete_all.assert_awaited_once_with()
+
+
+def test_provider_scoped_lease_route_does_not_call_worker_level_assignment(client):
+    lease = {"provider_slug": "earnapp", "worker_id": 3, "instance_id": "earn-1", "proxy_id": 8}
+    with (
+        patch("app.main.auth.get_current_user", return_value=_owner_user()),
+        patch(
+            "app.routers.proxies.database.lease_proxy_for_provider_instance",
+            new_callable=AsyncMock,
+            return_value=lease,
+        ) as lease_proxy,
+    ):
+        response = client.post(
+            "/api/proxy-pool/provider-lease",
+            json={"provider_slug": "earnapp", "worker_id": 3, "instance_id": "earn-1"},
+        )
+    assert response.status_code == 200
+    assert response.json()["lease"] == lease
+    lease_proxy.assert_awaited_once_with("earnapp", 3, "earn-1")
+
+
+def test_provider_scoped_release_route_releases_only_the_requested_instance(client):
+    with (
+        patch("app.main.auth.get_current_user", return_value=_owner_user()),
+        patch(
+            "app.routers.proxies.database.release_proxy_for_provider_instance",
+            new_callable=AsyncMock,
+            return_value=True,
+        ) as release_proxy,
+    ):
+        response = client.post(
+            "/api/proxy-pool/provider-release",
+            json={"provider_slug": "EarnApp", "worker_id": 3, "instance_id": "earn-1"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["released"] is True
+    release_proxy.assert_awaited_once_with("EarnApp", 3, "earn-1", reason="manual release")
+
+
+def test_duplicate_export_supports_masked_default_and_explicit_raw_mode(client):
+    rows = [
+        {
+            "id": 5,
+            "endpoint": "proxy.example:1000",
+            "username": "secret-user",
+            "password": "secret-pass",
+            "exit_ip": "8.8.8.8",
+            "duplicate_egress": True,
+            "canonical_proxy_id": 4,
+            "duplicate_reason": "duplicate egress 8.8.8.8",
+        }
+    ]
+    with (
+        patch("app.main.auth.get_current_user", return_value=_owner_user()),
+        patch("app.routers.proxies.database.export_duplicate_proxy_rows", new_callable=AsyncMock, return_value=rows),
+    ):
+        masked = client.get("/api/proxy-pool/duplicates/export")
+    assert masked.status_code == 200
+    assert "secret-pass" not in masked.text
+    assert "duplicate egress" in masked.text
+
+    with (
+        patch("app.main.auth.get_current_user", return_value=_owner_user()),
+        patch("app.routers.proxies.database.export_duplicate_proxy_rows", new_callable=AsyncMock, return_value=rows),
+    ):
+        raw = client.get("/api/proxy-pool/duplicates/export?raw=true")
+    assert raw.status_code == 200
+    assert "secret-pass" in raw.text
 
 
 def test_active_services_counts_deployed_rows_not_running_only(tmp_path):
