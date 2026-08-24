@@ -507,6 +507,47 @@ async def test_generic_recheck_refreshes_ip_intelligence_and_duplicate_groups():
 
 
 @pytest.mark.asyncio
+async def test_generic_recheck_refreshes_intelligence_from_existing_egress_when_probe_omits_it():
+    rows = [
+        {
+            "id": 7,
+            "host": "proxy.example.com",
+            "port": 1080,
+            "exit_ip": "8.8.8.8",
+            "assigned_worker_id": None,
+        }
+    ]
+    intelligence = {
+        "location": "United States",
+        "country_code": "US",
+        "country_name": "United States",
+        "ip_type": "datacenter",
+    }
+
+    with (
+        patch("app.routers.proxies.database.list_proxy_pool", new_callable=AsyncMock, return_value=rows),
+        patch("app.routers.proxies.database.get_proxy_endpoint", new_callable=AsyncMock, return_value=rows[0]),
+        patch(
+            "app.routers.proxies._probe_proxy_confirmed",
+            new_callable=AsyncMock,
+            return_value={"status": "alive", "protocol": "socks5", "exit_ip": ""},
+        ),
+        patch("app.routers.proxies.database.update_proxy_pool_check_results", new_callable=AsyncMock, return_value=1),
+        patch("app.routers.proxies.database.save_proxy_probe_result", new_callable=AsyncMock),
+        patch("app.routers.proxies.database.get_cached_proxy_intelligence", new_callable=AsyncMock, return_value=None),
+        patch(
+            "app.routers.proxies.lookup_ip_intelligence", new_callable=AsyncMock, return_value=intelligence
+        ) as lookup,
+        patch("app.routers.proxies.database.update_proxy_endpoint_intelligence", new_callable=AsyncMock) as save_geo,
+        patch("app.routers.proxies.database.reconcile_proxy_duplicates", new_callable=AsyncMock, return_value=0),
+    ):
+        await proxy_routes.run_proxy_pool_recheck(proxy_ids=[7], concurrency=1)
+
+    lookup.assert_awaited_once_with("8.8.8.8")
+    save_geo.assert_awaited_once_with(7, intelligence)
+
+
+@pytest.mark.asyncio
 async def test_generic_recheck_looks_up_shared_egress_intelligence_once():
     rows = [
         {"id": 7, "host": "one.example", "port": 1080, "assigned_worker_id": None},
