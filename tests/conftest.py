@@ -75,6 +75,8 @@ def _reset_shared_db():
         from app.routers import proxies
 
         proxies._proxy_rotation_locks.clear()
+        proxies._proxy_recheck_jobs.clear()
+        proxies._proxy_recheck_tasks.clear()
     if not conns:
         return
 

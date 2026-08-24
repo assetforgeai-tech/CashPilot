@@ -9,7 +9,11 @@ from typing import Any
 import httpx
 
 _IPWHO_URL = "https://ipwho.is/{ip}"
-_IPAPI_URL = "https://api.ipapi.is/?q={ip}"
+_IPAPI_URLS = (
+    "https://api.ipapi.is/?q={ip}",
+    "https://us.ipapi.is/?q={ip}",
+    "https://de.ipapi.is/?q={ip}",
+)
 _KNOWN_IP_TYPES = {"residential", "datacenter", "proxy", "vpn", "hosting", "unknown"}
 
 
@@ -25,7 +29,7 @@ def normalize_ipwho_payload(payload: Mapping[str, Any] | None) -> dict[str, Any]
     }
 
 
-def normalize_ipapi_payload(payload: Mapping[str, Any] | None) -> dict[str, Any]:
+def normalize_ipapi_payload(payload: Mapping[str, Any] | None, *, source: str = "ipapi.is") -> dict[str, Any]:
     data = dict(payload or {})
     if not data or data.get("is_bogon") is True:
         return {}
@@ -36,7 +40,7 @@ def normalize_ipapi_payload(payload: Mapping[str, Any] | None) -> dict[str, Any]
         "is_vpn": bool(data.get("is_vpn")),
         "is_tor": bool(data.get("is_tor")),
         "is_hosting": bool(data.get("is_hosting")),
-        "ip_type_source": "ipapi.is",
+        "ip_type_source": source,
     }
 
 
@@ -100,10 +104,17 @@ async def lookup_ip_intelligence(exit_ip: str, *, timeout: float = 8.0) -> dict[
                 country_payload = normalize_ipwho_payload(response.json())
         except (httpx.HTTPError, ValueError, TypeError):
             pass
-        try:
-            response = await client.get(_IPAPI_URL.format(ip=value))
-            if response.status_code == 200:
-                quality_payload = normalize_ipapi_payload(response.json())
-        except (httpx.HTTPError, ValueError, TypeError):
-            pass
+        for quality_url in _IPAPI_URLS:
+            try:
+                response = await client.get(quality_url.format(ip=value))
+                if response.status_code == 200:
+                    source = quality_url.split("//", 1)[-1].split("/", 1)[0]
+                    quality_payload = normalize_ipapi_payload(response.json(), source=source)
+                    if quality_payload:
+                        break
+                elif response.status_code in {401, 403, 429}:
+                    # Do not fan out after an explicit provider limit or denial.
+                    break
+            except (httpx.HTTPError, ValueError, TypeError):
+                continue
     return merge_intelligence(value, country=country_payload, quality=quality_payload)

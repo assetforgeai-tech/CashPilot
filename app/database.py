@@ -2661,14 +2661,14 @@ async def upsert_proxy_endpoints_returning_ids(provider_id: int, proxies: Sequen
                     protocol = excluded.protocol,
                     username = excluded.username,
                     password_enc = CASE WHEN excluded.password_enc != '' THEN excluded.password_enc ELSE proxy_endpoints.password_enc END,
-                    location = excluded.location,
-                    status = excluded.status,
+                    location = CASE WHEN excluded.location != '' THEN excluded.location ELSE proxy_endpoints.location END,
+                    status = CASE WHEN excluded.status != 'unknown' THEN excluded.status ELSE proxy_endpoints.status END,
                     expiry_date = excluded.expiry_date,
                     days_left = excluded.days_left,
                     hours_left = excluded.hours_left,
-                    exit_ip = excluded.exit_ip,
-                    udp_ok = excluded.udp_ok,
-                    latency_ms = excluded.latency_ms,
+                    exit_ip = CASE WHEN excluded.exit_ip IS NOT NULL AND excluded.exit_ip != '' THEN excluded.exit_ip ELSE proxy_endpoints.exit_ip END,
+                    udp_ok = COALESCE(excluded.udp_ok, proxy_endpoints.udp_ok),
+                    latency_ms = COALESCE(excluded.latency_ms, proxy_endpoints.latency_ms),
                     last_synced_at = datetime('now')
                 """,
                 (
@@ -2758,7 +2758,7 @@ async def list_proxy_pool() -> list[dict[str, Any]]:
             """
             SELECT pe.id, pe.provider_id, pp.name AS provider_name, pp.type AS provider_type,
                    pe.provider_proxy_id, pe.endpoint, pe.host, pe.port, pe.protocol,
-                   pe.username, pe.location, pe.status, pe.expiry_date, pe.days_left,
+                   pe.location, pe.status, pe.expiry_date, pe.days_left,
                    pe.hours_left, pe.exit_ip, pe.udp_ok, pe.latency_ms,
                    pe.last_synced_at, pe.last_checked_at,
                    pe.country_code, pe.country_name, pe.geo_source, pe.geo_confidence, pe.geo_checked_at,
@@ -4033,20 +4033,45 @@ async def update_proxy_pool_check_results(
     try:
         checked = 0
         for proxy_id, status in results.items():
-            if str(status).lower() not in {"alive", "dead"}:
+            normalized_status = str(status).lower()
+            if normalized_status not in {"alive", "dead"}:
                 continue
             protocol = str((protocols or {}).get(proxy_id) or "").lower()
             exit_ip = str((exit_ips or {}).get(proxy_id) or "").strip()
+            clear_intelligence = normalized_status == "dead"
             cur = await db.execute(
                 """
                 UPDATE proxy_endpoints
                 SET status = ?,
                     protocol = CASE WHEN ? IN ('http', 'socks5') THEN ? ELSE protocol END,
-                    exit_ip = CASE WHEN ? != '' THEN ? ELSE exit_ip END,
+                    exit_ip = CASE
+                        WHEN ? THEN ''
+                        WHEN ? != '' THEN ?
+                        ELSE exit_ip
+                    END,
+                    location = CASE WHEN ? OR (? != '' AND ? != exit_ip) THEN '' ELSE location END,
+                    country_code = CASE WHEN ? OR (? != '' AND ? != exit_ip) THEN '' ELSE country_code END,
+                    country_name = CASE WHEN ? OR (? != '' AND ? != exit_ip) THEN '' ELSE country_name END,
+                    geo_source = CASE WHEN ? OR (? != '' AND ? != exit_ip) THEN '' ELSE geo_source END,
+                    geo_confidence = CASE WHEN ? OR (? != '' AND ? != exit_ip) THEN 'unknown' ELSE geo_confidence END,
+                    geo_checked_at = CASE WHEN ? OR (? != '' AND ? != exit_ip) THEN NULL ELSE geo_checked_at END,
+                    ip_type = CASE WHEN ? OR (? != '' AND ? != exit_ip) THEN 'unknown' ELSE ip_type END,
+                    ip_type_source = CASE WHEN ? OR (? != '' AND ? != exit_ip) THEN '' ELSE ip_type_source END,
+                    ip_type_confidence = CASE WHEN ? OR (? != '' AND ? != exit_ip) THEN 'unknown' ELSE ip_type_confidence END,
+                    ip_type_checked_at = CASE WHEN ? OR (? != '' AND ? != exit_ip) THEN NULL ELSE ip_type_checked_at END,
                     last_checked_at = datetime('now')
                 WHERE id = ?
                 """,
-                (str(status).lower(), protocol, protocol, exit_ip, exit_ip, int(proxy_id)),
+                (
+                    normalized_status,
+                    protocol,
+                    protocol,
+                    clear_intelligence,
+                    exit_ip,
+                    exit_ip,
+                    *(value for _field in range(10) for value in (clear_intelligence, exit_ip, exit_ip)),
+                    int(proxy_id),
+                ),
             )
             checked += int(cur.rowcount or 0)
         await db.commit()
@@ -4154,6 +4179,7 @@ async def save_proxy_probe_result(
     evidence: Mapping[str, Any] | None = None,
 ) -> int:
     """Append probe evidence and refresh only the endpoint fields it proves."""
+    observed_exit_ip = str(exit_ip or "").strip()
     db = await _get_db()
     try:
         cursor = await db.execute(
@@ -4170,7 +4196,7 @@ async def save_proxy_probe_result(
                 str(verdict or ""),
                 str(eligibility or "unknown"),
                 str(reason or "")[:500],
-                str(exit_ip or ""),
+                observed_exit_ip,
                 int(latency_ms) if latency_ms is not None else None,
                 str(probe_version or ""),
                 json.dumps(dict(evidence or {}), separators=(",", ":"), sort_keys=True),
@@ -4178,6 +4204,24 @@ async def save_proxy_probe_result(
         )
         is_generic = str(profile or "") == "generic"
         update_status = str(probe_status or "unknown").lower() if is_generic else ""
+        if observed_exit_ip:
+            await db.execute(
+                """
+                UPDATE proxy_endpoints
+                SET location = '',
+                    country_code = '',
+                    country_name = '',
+                    geo_source = '',
+                    geo_confidence = 'unknown',
+                    geo_checked_at = NULL,
+                    ip_type = 'unknown',
+                    ip_type_source = '',
+                    ip_type_confidence = 'unknown',
+                    ip_type_checked_at = NULL
+                WHERE id = ? AND exit_ip != ?
+                """,
+                (int(proxy_id), observed_exit_ip),
+            )
         await db.execute(
             """
             UPDATE proxy_endpoints
@@ -4188,8 +4232,8 @@ async def save_proxy_probe_result(
             WHERE id = ?
             """,
             (
-                str(exit_ip or ""),
-                str(exit_ip or ""),
+                observed_exit_ip,
+                observed_exit_ip,
                 is_generic,
                 latency_ms,
                 latency_ms,
