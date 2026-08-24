@@ -1,0 +1,17 @@
+[Unit]
+Description=Restricted CashPilot NKN LXD host helper
+After=network-online.target docker.service snap.lxd.daemon.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/local/lib/cashpilot/cashpilot-nkn-agent.py --socket /run/cashpilot-nkn-agent/agent.sock
+Restart=always
+RestartSec=3
+RuntimeDirectory=cashpilot-nkn-agent
+RuntimeDirectoryMode=0755
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target

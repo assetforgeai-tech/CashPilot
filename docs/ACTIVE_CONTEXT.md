@@ -1,10 +1,10 @@
 # CashPilot Active Context
 
-Updated: 2026-08-24 (NKN shared ChainDB cache canary closeout)
+Updated: 2026-08-24 (NKN v1.6.2 release and host-helper closeout)
 
 ## Current repository state
 
-- Canonical source branch: `main` at merge commit `ce93239`. The original
+- Canonical source branch: `main` at merge commit `bb52dea`. The original
   direct-runtime and Docker canary history is retained for traceability. The LXD
   runtime landed through PR #17, guarded canary adoption through PR #18, the
   adoption timeout fix through PR #19, and the optional ChainDB acceleration
@@ -18,11 +18,15 @@ Updated: 2026-08-24 (NKN shared ChainDB cache canary closeout)
   (post-merge baseline), PR #9 (`v1.2.0` canary context), PR #10 (NKN direct
   runtime), PRs #11-#13 (NKN canary fixes), PRs #14-#16 (NKN context history),
   PRs #17-#19 (LXD runtime, adoption and timeout fix), and PRs #21-#23 (ChainDB
-  acceleration and release/runtime fixes) are merged.
-- Both fork GHCR images were built and verified by the `v1.6.1` Auto Release
-  workflow. The earlier deployed UI/worker evidence remains recorded in the NKN
-  runtime closeout below; the dedicated publisher deployment does not authorize
-  a bulk server or worker redeploy.
+  acceleration and release/runtime fixes), and PR #24 (shared ChainDB cache)
+  are merged.
+- Release `v1.6.2` is published from merge commit `bb52dea`; Auto Release run
+  `32717313245` completed successfully and built both fork GHCR images. The UI
+  digest is
+  `sha256:7993a5a519c4a42e21a32c78836057658b052af33bb803587d1ae9c51d74ac9e`
+  and the worker digest is
+  `sha256:4909468c68b1d5c7b186b0596e966f3f28db4325588725e2162ee0f09db90f03`.
+  This release evidence does not authorize a bulk server or worker redeploy.
 - The source branch remains `main`; release/deploy state is operational
   evidence and does not change the protected provider catalog.
 - Proxy lease rotation is server-authoritative with worker-local probe/ACK,
@@ -180,9 +184,12 @@ Updated: 2026-08-24 (NKN shared ChainDB cache canary closeout)
   shared-cache persistence. The node returned to `PERSIST_FINISHED` at height
   `9689812` with the same Node ID, wallet/config hashes and cache inode; observed
   egress remained `104.211.53.252`.
-- This shared-cache/DNS follow-up is still local to branch
-  `fix/nkn-chaindb-python310` pending commit, PR, CI, merge and release. No server,
-  publisher, `test-sing` or bulk worker redeploy is authorized by this evidence.
+- PR #24 merged the shared-cache/DNS implementation as `bb52dea` and release
+  `v1.6.2` published both images. The isolated `test-us` worker still runs the
+  earlier `v1.6.1` image digest
+  `sha256:58b8a452e4566a578de224df20d621bc18d1b2739d1eb43d69e9099f02416974`;
+  the host helper was installed directly from the reviewed source for the
+  canary. This is an explicit mixed deployment state, not a failed release.
 
 ## Proxy ACK rotation baseline
 

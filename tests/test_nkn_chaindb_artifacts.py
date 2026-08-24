@@ -46,6 +46,18 @@ def test_worker_bootstrap_installs_snapshot_dependencies_without_credentials():
     assert "secret_access_key" not in text
 
 
+def test_nkn_helper_update_assets_ship_with_the_release_source():
+    assets = (
+        ROOT / "scripts" / "install-nkn-host-helper.sh",
+        ROOT / "scripts" / "cashpilot-nkn-agent.service",
+    )
+    for asset in assets:
+        assert asset.is_file()
+
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    assert "      - 'scripts/**'" in workflow
+
+
 def test_lxd_inner_runtime_installs_zstd_before_snapshot_restore():
     text = (ROOT / "scripts" / "cashpilot-nkn-agent.py").read_text(encoding="utf-8")
     assert "apt-get install -y zstd" in text

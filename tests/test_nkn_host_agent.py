@@ -114,7 +114,7 @@ def test_helper_generates_the_exact_tested_nkn_config():
 
 def test_helper_inner_runtime_is_official_docker_with_outer_lxd_limits():
     agent = _module()
-    command = agent.inner_docker_run_command("cashpilot-nkn")
+    command = agent.inner_docker_run_command("cashpilot-nkn", dns_servers=["168.63.129.16"])
     assert command == [
         "docker",
         "run",
@@ -126,22 +126,98 @@ def test_helper_inner_runtime_is_official_docker_with_outer_lxd_limits():
         "--network",
         "host",
         "--dns",
-        "1.1.1.1",
-        "--dns",
-        "8.8.8.8",
+        "168.63.129.16",
         "-v",
         "/opt/nkn:/nkn/data",
         "nknorg/nkn:latest",
     ]
 
 
-def test_helper_inner_runtime_does_not_inherit_the_lxd_stub_resolver():
+def test_helper_filters_stub_loopback_and_duplicate_dns_servers():
     agent = _module()
 
-    command = agent.inner_docker_run_command()
+    assert agent.usable_dns_servers(["127.0.0.53", "168.63.129.16", "168.63.129.16", "::1", "not-an-ip"]) == [
+        "168.63.129.16"
+    ]
 
-    dns_values = [command[index + 1] for index, value in enumerate(command) if value == "--dns"]
-    assert dns_values == ["1.1.1.1", "8.8.8.8"]
+
+def test_helper_discovers_platform_dns_inside_the_lxd_instance(monkeypatch):
+    agent = _module()
+    controller = agent.Controller()
+    commands = []
+
+    def fake_run(args, **kwargs):
+        commands.append((args, kwargs))
+        return subprocess.CompletedProcess(
+            args,
+            0,
+            b"nameserver 127.0.0.53\nnameserver 168.63.129.16\nnameserver 168.63.129.16\n",
+            b"",
+        )
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+
+    assert controller._inner_dns_servers("cashpilot-nkn-ipv4-001") == ["168.63.129.16"]
+    assert commands[0][0][:6] == ["lxc", "exec", "cashpilot-nkn-ipv4-001", "--", "sh", "-lc"]
+    assert "/run/systemd/resolve/resolv.conf" in commands[0][0][6]
+
+
+def test_helper_uses_public_dns_only_when_the_platform_has_no_usable_resolver(monkeypatch):
+    agent = _module()
+    controller = agent.Controller()
+    monkeypatch.setattr(
+        agent,
+        "_run",
+        lambda args, **kwargs: subprocess.CompletedProcess(args, 0, b"nameserver 127.0.0.53\n", b""),
+    )
+
+    assert controller._inner_dns_servers("cashpilot-nkn-ipv4-001") == ["1.1.1.1", "8.8.8.8"]
+
+
+def test_helper_does_not_recreate_an_existing_node_to_migrate_dns(monkeypatch):
+    agent = _module()
+    controller = agent.Controller()
+    payload = agent.validate_deploy("ipv4-001", _payload())
+    commands = []
+    controller._install_docker = lambda _name: None
+    controller._inner_exists = lambda _name: True
+    monkeypatch.setattr(
+        agent,
+        "_run",
+        lambda args, **kwargs: commands.append(args) or subprocess.CompletedProcess(args, 0, b"", b""),
+    )
+
+    assert controller._provision_inner("cashpilot-nkn-ipv4-001", payload) == "skipped"
+    assert not any(
+        command[:3] == ["lxc", "exec", "cashpilot-nkn-ipv4-001"] and "run" in command for command in commands
+    )
+    assert not any("rm" in command for command in commands)
+
+
+def test_helper_new_node_uses_the_discovered_platform_dns(monkeypatch):
+    agent = _module()
+    controller = agent.Controller()
+    payload = agent.validate_deploy("ipv4-001", _payload())
+    commands = []
+    controller._install_docker = lambda _name: None
+    controller._inner_exists = lambda _name: False
+    controller._inner_dns_servers = lambda _name: ["168.63.129.16"]
+    controller._write_inner_file = lambda *_args: None
+    monkeypatch.setattr(
+        agent,
+        "_run",
+        lambda args, **kwargs: commands.append(args) or subprocess.CompletedProcess(args, 0, b"", b""),
+    )
+
+    controller._provision_inner("cashpilot-nkn-ipv4-001", payload)
+
+    docker_run = next(
+        command
+        for command in commands
+        if command[:6] == ["lxc", "exec", "cashpilot-nkn-ipv4-001", "--", "docker", "run"]
+    )
+    dns_values = [docker_run[index + 1] for index, value in enumerate(docker_run) if value == "--dns"]
+    assert dns_values == ["168.63.129.16"]
 
 
 def test_helper_launches_lxd_from_the_canonical_ubuntu_remote(monkeypatch):
