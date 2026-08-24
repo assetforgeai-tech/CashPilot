@@ -700,8 +700,11 @@ async def run_proxy_pool_recheck(*, proxy_ids: list[int] | None = None, concurre
             probe_version="generic-v1",
             evidence={"protocol": str(result.get("protocol") or "")},
         )
-        if result.get("exit_ip"):
-            intelligence_jobs.append((proxy_id, str(result["exit_ip"])))
+        intelligence_exit_ip = str(
+            result.get("exit_ip") or (row.get("exit_ip") if result.get("status") == "alive" else "") or ""
+        ).strip()
+        if intelligence_exit_ip:
+            intelligence_jobs.append((proxy_id, intelligence_exit_ip))
     await _refresh_exit_ip_intelligence(intelligence_jobs)
     duplicate_count = await database.reconcile_proxy_duplicates()
 
