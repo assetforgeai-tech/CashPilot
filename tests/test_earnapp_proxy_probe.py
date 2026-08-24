@@ -1,6 +1,10 @@
 import asyncio
 import json
 import ssl
+from unittest.mock import patch
+
+import httpx
+import pytest
 
 from app import proxy_intelligence
 from app.proxy_probe_profiles import earnapp
@@ -102,3 +106,76 @@ def test_ip_intelligence_marks_an_unflagged_public_ip_as_residential_inference()
 
     assert merged["ip_type"] == "residential"
     assert merged["ip_type_confidence"] == "inferred"
+
+
+@pytest.mark.asyncio
+async def test_ip_intelligence_falls_back_to_reachable_regional_quality_endpoint():
+    class Response:
+        def __init__(self, status_code, payload):
+            self.status_code = status_code
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, url):
+            if "ipwho.is" in url:
+                return Response(200, {"success": True, "country": "Viet Nam", "country_code": "VN"})
+            if "api.ipapi.is" in url:
+                raise httpx.ConnectError("primary unreachable")
+            return Response(
+                200,
+                {
+                    "cc": "VN",
+                    "is_datacenter": False,
+                    "is_proxy": False,
+                    "is_vpn": False,
+                    "is_tor": False,
+                },
+            )
+
+    with patch("app.proxy_intelligence.httpx.AsyncClient", return_value=Client()):
+        result = await proxy_intelligence.lookup_ip_intelligence("8.8.8.8")
+
+    assert result["country_code"] == "VN"
+    assert result["ip_type"] == "residential"
+    assert result["ip_type_source"] == "us.ipapi.is"
+
+
+@pytest.mark.asyncio
+async def test_ip_intelligence_does_not_bypass_a_quality_rate_limit_with_other_regions():
+    calls = []
+
+    class Response:
+        def __init__(self, status_code, payload):
+            self.status_code = status_code
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, url):
+            calls.append(url)
+            if "ipwho.is" in url:
+                return Response(200, {"success": True, "country": "Viet Nam", "country_code": "VN"})
+            return Response(429, {})
+
+    with patch("app.proxy_intelligence.httpx.AsyncClient", return_value=Client()):
+        result = await proxy_intelligence.lookup_ip_intelligence("8.8.8.8")
+
+    assert result["ip_type"] == "unknown"
+    assert sum("ipapi.is" in url for url in calls) == 1

@@ -70,6 +70,25 @@ def test_proxy_provider_list_does_not_expose_secret(client):
     assert '"api_key":' not in resp.text
 
 
+def test_proxy_pool_list_does_not_expose_proxy_credentials(client):
+    rows = [
+        {
+            "id": 1,
+            "endpoint": "proxy.example:1080",
+            "username": "proxy-user",
+            "password_set": True,
+        }
+    ]
+    with (
+        patch("app.main.auth.get_current_user", return_value=_owner_user()),
+        patch("app.routers.proxies.database.list_proxy_pool", new_callable=AsyncMock, return_value=rows),
+    ):
+        resp = client.get("/api/proxy-pool")
+
+    assert resp.status_code == 200
+    assert resp.json() == [{"id": 1, "endpoint": "proxy.example:1080", "password_set": True}]
+
+
 def test_proxy_provider_sync_is_owner_only(client):
     with patch("app.main.auth.get_current_user", return_value=_viewer_user()):
         resp = client.post("/api/proxy-providers/1/sync")
@@ -251,10 +270,13 @@ def test_proxy_pool_export_and_recheck_are_owner_only_and_wired(client):
             return_value={"checked": 3, "alive": 2, "dead": 1, "rotated": 1},
         ) as mark,
     ):
-        recheck = client.post("/api/proxy-pool/recheck", json={"proxy_ids": [1, 2, 3], "concurrency": 4})
+        recheck = client.post(
+            "/api/proxy-pool/recheck",
+            json={"proxy_ids": [1, 2, 3], "concurrency": 4, "rotate_dead": False},
+        )
     assert recheck.status_code == 200
     assert recheck.json()["checked"] == 3
-    mark.assert_awaited_once_with(proxy_ids=[1, 2, 3], concurrency=4)
+    mark.assert_awaited_once_with(proxy_ids=[1, 2, 3], concurrency=4, rotate_dead=False)
 
 
 @pytest.mark.asyncio
@@ -336,10 +358,17 @@ def test_proxy_pool_import_rechecks_only_imported_proxies(client):
             new_callable=AsyncMock,
             return_value={"checked": 2, "alive": 2, "dead": 0, "rotated": 0},
         ) as recheck,
+        patch(
+            "app.routers.proxies.run_earnapp_proxy_recheck",
+            new_callable=AsyncMock,
+            return_value={"checked": 2, "eligible": 1, "blocked": 1, "unknown": 0},
+        ) as earnapp_recheck,
     ):
         resp = client.post("/api/proxy-pool/import", json={"text": payload, "provider_name": "manual", "recheck": True})
     assert resp.status_code == 200
-    recheck.assert_awaited_once_with(proxy_ids=[3, 4], concurrency=8)
+    recheck.assert_awaited_once_with(proxy_ids=[3, 4], concurrency=8, rotate_dead=False)
+    earnapp_recheck.assert_awaited_once_with(proxy_ids=[3, 4], concurrency=8)
+    assert resp.json()["earnapp_recheck"]["checked"] == 2
 
 
 def test_proxy_pool_import_supports_paste_payloads(client):
@@ -363,12 +392,18 @@ socks5://user:pass@4.4.4.4:4000
             new_callable=AsyncMock,
             return_value={"checked": 4, "alive": 4, "dead": 0, "rotated": 0},
         ) as recheck,
+        patch(
+            "app.routers.proxies.run_earnapp_proxy_recheck",
+            new_callable=AsyncMock,
+            return_value={"checked": 4, "eligible": 2, "blocked": 2, "unknown": 0},
+        ) as earnapp_recheck,
     ):
         resp = client.post("/api/proxy-pool/import", json={"text": payload, "provider_name": "manual", "recheck": True})
     assert resp.status_code == 200
     assert resp.json()["imported"] == 4
     upsert.assert_awaited_once()
-    recheck.assert_awaited_once()
+    recheck.assert_awaited_once_with(proxy_ids=[1, 2, 3, 4], concurrency=8, rotate_dead=False)
+    earnapp_recheck.assert_awaited_once()
 
 
 def test_proxy_import_parser_retains_each_raw_line_only_for_encrypted_audit_storage():
@@ -387,6 +422,40 @@ def test_proxy_import_parser_retains_each_raw_line_only_for_encrypted_audit_stor
     ]
 
 
+def test_reimport_does_not_erase_verified_proxy_state(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            original = {
+                "provider_proxy_id": "socks5:proxy.example:1080:user",
+                "host": "proxy.example",
+                "port": 1080,
+                "username": "user",
+                "password": "secret",
+                "location": "United States",
+                "status": "alive",
+                "exit_ip": "8.8.8.8",
+                "udp_ok": True,
+                "latency_ms": 42,
+            }
+            (proxy_id,) = await database.upsert_proxy_endpoints_returning_ids(provider_id, [original])
+
+            reimported = dict(
+                original, password="", location="", status="unknown", exit_ip=None, udp_ok=None, latency_ms=None
+            )
+            await database.upsert_proxy_endpoints_returning_ids(provider_id, [reimported])
+
+            row = next(item for item in await database.list_proxy_pool() if int(item["id"]) == proxy_id)
+            assert row["location"] == "United States"
+            assert row["status"] == "alive"
+            assert row["exit_ip"] == "8.8.8.8"
+            assert row["udp_ok"] is True
+            assert row["latency_ms"] == 42
+
+    asyncio.run(run())
+
+
 def test_proxy_pool_import_reports_inserted_count_not_parse_count(client):
     with (
         patch("app.main.auth.get_current_user", return_value=_owner_user()),
@@ -403,6 +472,7 @@ def test_proxy_pool_import_reports_inserted_count_not_parse_count(client):
             new_callable=AsyncMock,
             return_value={"checked": 2, "alive": 2, "dead": 0, "rotated": 0},
         ),
+        patch("app.routers.proxies.run_earnapp_proxy_recheck", new_callable=AsyncMock),
     ):
         resp = client.post(
             "/api/proxy-pool/import",
@@ -410,6 +480,139 @@ def test_proxy_pool_import_reports_inserted_count_not_parse_count(client):
         )
     assert resp.status_code == 200
     assert resp.json()["imported"] == 2
+
+
+def test_large_proxy_import_schedules_full_enrichment_without_blocking_request(client):
+    proxy_ids = list(range(1, 31))
+    with (
+        patch("app.main.auth.get_current_user", return_value=_owner_user()),
+        patch("app.routers.proxies.database.upsert_proxy_provider", new_callable=AsyncMock, return_value=9),
+        patch(
+            "app.routers.proxies.database.upsert_proxy_endpoints_returning_ids",
+            new_callable=AsyncMock,
+            return_value=proxy_ids,
+        ),
+        patch("app.routers.proxies.database.create_proxy_import_batch", new_callable=AsyncMock),
+        patch("app.routers.proxies.database.get_config", new_callable=AsyncMock, return_value={}),
+        patch("app.routers.proxies.run_proxy_pool_recheck", new_callable=AsyncMock) as direct_generic,
+        patch(
+            "app.routers.proxies._schedule_proxy_import_recheck",
+            create=True,
+            return_value={"status": "scheduled", "stage": "scheduled", "job_id": "job-1", "total": 30},
+        ) as schedule,
+        patch("app.routers.proxies.run_earnapp_proxy_recheck", new_callable=AsyncMock) as direct_earnapp,
+    ):
+        resp = client.post(
+            "/api/proxy-pool/import",
+            json={"text": "\n".join(f"1.1.1.{i}:1000" for i in range(30)), "provider_name": "manual"},
+        )
+
+    assert resp.status_code == 200
+    schedule.assert_called_once_with(proxy_ids, 8)
+    direct_generic.assert_not_awaited()
+    direct_earnapp.assert_not_awaited()
+    assert resp.json()["recheck_job"]["job_id"] == "job-1"
+
+
+@pytest.mark.asyncio
+async def test_scheduled_proxy_import_recheck_runs_generic_before_earnapp():
+    proxy_routes._proxy_recheck_jobs.clear()
+    proxy_routes._proxy_recheck_tasks.clear()
+    order = []
+
+    async def generic(**_kwargs):
+        order.append("generic")
+        return {"status": "ok", "checked": 3, "alive": 2, "dead": 1}
+
+    async def earnapp(**_kwargs):
+        order.append("earnapp")
+        return {"status": "ok", "checked": 2, "eligible": 1, "blocked": 1}
+
+    with (
+        patch(
+            "app.routers.proxies.run_proxy_pool_recheck", new_callable=AsyncMock, side_effect=generic
+        ) as generic_mock,
+        patch("app.routers.proxies.run_earnapp_proxy_recheck", new_callable=AsyncMock, side_effect=earnapp),
+    ):
+        scheduled = proxy_routes._schedule_proxy_import_recheck([1, 2, 3], 4)
+        await asyncio.gather(*tuple(proxy_routes._proxy_recheck_tasks))
+
+    job = proxy_routes._proxy_recheck_jobs[scheduled["job_id"]]
+    assert order == ["generic", "earnapp"]
+    assert job["status"] == "completed"
+    assert job["stage"] == "completed"
+    assert job["result"]["generic"]["checked"] == 3
+    assert job["result"]["earnapp"]["checked"] == 2
+    generic_mock.assert_awaited_once_with(proxy_ids=[1, 2, 3], concurrency=4, rotate_dead=False, probe_retries=1)
+    proxy_routes._proxy_recheck_jobs.clear()
+    proxy_routes._proxy_recheck_tasks.clear()
+
+
+@pytest.mark.asyncio
+async def test_scheduled_proxy_import_recheck_prunes_job_after_completion():
+    proxy_routes._proxy_recheck_jobs.clear()
+    proxy_routes._proxy_recheck_tasks.clear()
+
+    with (
+        patch(
+            "app.routers.proxies.run_proxy_pool_recheck",
+            new_callable=AsyncMock,
+            return_value={"status": "ok", "checked": 1},
+        ),
+        patch(
+            "app.routers.proxies.run_earnapp_proxy_recheck",
+            new_callable=AsyncMock,
+            return_value={"status": "ok", "checked": 1},
+        ),
+        patch("app.routers.proxies._prune_proxy_recheck_jobs") as prune,
+    ):
+        proxy_routes._schedule_proxy_import_recheck([1], 1)
+        await asyncio.gather(*tuple(proxy_routes._proxy_recheck_tasks))
+
+    assert prune.call_count == 2
+    proxy_routes._proxy_recheck_jobs.clear()
+    proxy_routes._proxy_recheck_tasks.clear()
+
+
+def test_proxy_recheck_job_history_is_bounded_without_dropping_active_jobs():
+    proxy_routes._proxy_recheck_jobs.clear()
+    proxy_routes._proxy_recheck_jobs["active"] = {"status": "running"}
+    for index in range(proxy_routes._MAX_PROXY_RECHECK_JOBS + 5):
+        proxy_routes._proxy_recheck_jobs[f"done-{index}"] = {"status": "completed"}
+
+    proxy_routes._prune_proxy_recheck_jobs()
+
+    assert "active" in proxy_routes._proxy_recheck_jobs
+    assert len(proxy_routes._proxy_recheck_jobs) <= proxy_routes._MAX_PROXY_RECHECK_JOBS
+    assert "done-0" not in proxy_routes._proxy_recheck_jobs
+    proxy_routes._proxy_recheck_jobs.clear()
+
+
+@pytest.mark.asyncio
+async def test_earnapp_recheck_skips_generic_dead_proxies():
+    rows = [
+        {"id": 7, "host": "alive.example", "port": 1080, "status": "alive"},
+        {"id": 8, "host": "dead.example", "port": 1080, "status": "dead"},
+    ]
+    proxy = {"id": 7, "host": "alive.example", "port": 1080, "protocol": "socks5"}
+
+    with (
+        patch("app.routers.proxies.database.list_proxy_pool", new_callable=AsyncMock, return_value=rows),
+        patch("app.routers.proxies.database.get_proxy_endpoint", new_callable=AsyncMock, return_value=proxy),
+        patch(
+            "app.routers.proxies.probe_earnapp_proxy",
+            new_callable=AsyncMock,
+            return_value={"verdict": "CID_SET", "eligibility": "eligible", "exit_ip": "8.8.8.8"},
+        ) as probe,
+        patch("app.routers.proxies.database.save_proxy_probe_result", new_callable=AsyncMock),
+        patch("app.routers.proxies._refresh_exit_ip_intelligence", new_callable=AsyncMock, return_value={}),
+        patch("app.routers.proxies.database.reconcile_proxy_duplicates", new_callable=AsyncMock, return_value=0),
+    ):
+        result = await proxy_routes.run_earnapp_proxy_recheck(proxy_ids=[7, 8], concurrency=1)
+
+    assert result["checked"] == 1
+    assert result["skipped_dead"] == 1
+    probe.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -578,6 +781,57 @@ async def test_generic_recheck_looks_up_shared_egress_intelligence_once():
 
     lookup.assert_awaited_once_with("8.8.8.8")
     assert save_geo.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_exit_ip_intelligence_refresh_uses_bounded_concurrency():
+    active = 0
+    peak = 0
+
+    async def lookup(_exit_ip):
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        await asyncio.sleep(0.01)
+        active -= 1
+        return {"country_code": "US", "geo_source": "test"}
+
+    with (
+        patch("app.routers.proxies.database.get_cached_proxy_intelligence", new_callable=AsyncMock, return_value=None),
+        patch("app.routers.proxies.lookup_ip_intelligence", new_callable=AsyncMock, side_effect=lookup),
+        patch(
+            "app.routers.proxies.database.update_proxy_endpoint_intelligence",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+    ):
+        result = await proxy_routes._refresh_exit_ip_intelligence(
+            [(index, f"8.8.8.{index}") for index in range(1, 9)],
+            concurrency=3,
+        )
+
+    assert peak == 3
+    assert result == {"requested": 8, "unique": 8, "enriched": 8, "unresolved": 0}
+
+
+@pytest.mark.asyncio
+async def test_exit_ip_intelligence_refresh_reports_unresolved_metadata_truthfully():
+    with (
+        patch("app.routers.proxies.database.get_cached_proxy_intelligence", new_callable=AsyncMock, return_value=None),
+        patch(
+            "app.routers.proxies.lookup_ip_intelligence",
+            new_callable=AsyncMock,
+            return_value={"exit_ip": "8.8.8.8", "location": "Unknown", "ip_type": "unknown"},
+        ),
+        patch(
+            "app.routers.proxies.database.update_proxy_endpoint_intelligence",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
+    ):
+        result = await proxy_routes._refresh_exit_ip_intelligence([(1, "8.8.8.8"), (2, "8.8.8.8")])
+
+    assert result == {"requested": 2, "unique": 1, "enriched": 0, "unresolved": 2}
 
 
 @pytest.mark.asyncio
@@ -1503,6 +1757,34 @@ async def test_proxy_exit_ip_uses_raw_proxy_tunnel():
 
 
 @pytest.mark.asyncio
+async def test_proxy_exit_ip_falls_back_after_an_unusable_service_response():
+    with patch(
+        "app.routers.proxies._http_get_via_socks5_proxy",
+        new_callable=AsyncMock,
+        side_effect=[
+            b"HTTP/1.1 503 Service Unavailable\r\n\r\n",
+            b"HTTP/1.1 200 OK\r\nContent-Length: 7\r\n\r\n8.8.8.8",
+        ],
+    ) as fetch:
+        exit_ip = await proxy_routes._probe_proxy_exit_ip("proxy.example.com", 1080, protocol="socks5")
+
+    assert exit_ip == "8.8.8.8"
+    assert fetch.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_proxy_exit_ip_rejects_redirect_even_when_its_body_looks_like_an_ip():
+    with patch(
+        "app.routers.proxies._http_get_via_socks5_proxy",
+        new_callable=AsyncMock,
+        return_value=b"HTTP/1.1 302 Found\r\nLocation: https://renew.example\r\n\r\n8.8.8.8",
+    ):
+        exit_ip = await proxy_routes._probe_proxy_exit_ip("proxy.example.com", 1080, protocol="socks5")
+
+    assert exit_ip is None
+
+
+@pytest.mark.asyncio
 async def test_generic_proxy_probe_reports_elapsed_latency():
     with (
         patch("app.routers.proxies._probe_socks5_proxy", new_callable=AsyncMock, return_value=True),
@@ -1513,6 +1795,93 @@ async def test_generic_proxy_probe_reports_elapsed_latency():
 
     assert result["status"] == "alive"
     assert result["latency_ms"] == 12
+
+
+@pytest.mark.asyncio
+async def test_generic_proxy_probe_requires_an_authoritative_egress_ip():
+    with (
+        patch("app.routers.proxies._probe_socks5_proxy", new_callable=AsyncMock, return_value=True),
+        patch("app.routers.proxies._probe_proxy_exit_ip", new_callable=AsyncMock, return_value=None),
+        patch("app.routers.proxies._probe_http_proxy", new_callable=AsyncMock, return_value=False),
+    ):
+        result = await proxy_routes._probe_proxy("proxy.example.com", 1080)
+
+    assert result["status"] == "dead"
+    assert not result.get("exit_ip")
+
+
+@pytest.mark.asyncio
+async def test_socks_proxy_probe_rejects_captive_portal_redirects():
+    class Reader:
+        def __init__(self):
+            self.exact_reads = iter(
+                [
+                    b"\x05\x00",
+                    b"\x05\x00\x00\x01",
+                    b"\x00\x00\x00\x00\x00\x00",
+                ]
+            )
+
+        async def readexactly(self, _n):
+            return next(self.exact_reads)
+
+        async def read(self, _n):
+            return b"HTTP/1.1 302 Moved Temporarily\r\nLocation: https://renew.example/\r\n\r\n"
+
+    class Writer:
+        def write(self, _data):
+            return None
+
+        async def drain(self):
+            return None
+
+        def close(self):
+            return None
+
+        async def wait_closed(self):
+            return None
+
+    with patch(
+        "app.routers.proxies.asyncio.open_connection", new_callable=AsyncMock, return_value=(Reader(), Writer())
+    ):
+        result = await proxy_routes._probe_socks5_proxy("proxy.example", 1080)
+
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_http_proxy_probe_rejects_captive_portal_redirects():
+    class Reader:
+        def __init__(self):
+            self.reads = iter(
+                [
+                    b"HTTP/1.1 200 Connection established\r\n\r\n",
+                    b"HTTP/1.1 302 Moved Temporarily\r\nLocation: https://renew.example/\r\n\r\n",
+                ]
+            )
+
+        async def read(self, _n):
+            return next(self.reads)
+
+    class Writer:
+        def write(self, _data):
+            return None
+
+        async def drain(self):
+            return None
+
+        def close(self):
+            return None
+
+        async def wait_closed(self):
+            return None
+
+    with patch(
+        "app.routers.proxies.asyncio.open_connection", new_callable=AsyncMock, return_value=(Reader(), Writer())
+    ):
+        result = await proxy_routes._probe_http_proxy("proxy.example", 8080)
+
+    assert result is False
 
 
 def test_manual_proxy_import_persists_multiple_rows(tmp_path):
@@ -1934,6 +2303,80 @@ def test_proxy_intelligence_cache_preserves_verified_fields_on_unknown_refresh(t
     asyncio.run(run())
 
 
+def test_generic_dead_check_clears_the_previous_egress_ip(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            (proxy_id,) = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id,
+                [
+                    {
+                        "provider_proxy_id": "one",
+                        "host": "1.1.1.1",
+                        "port": 1000,
+                        "status": "alive",
+                        "exit_ip": "8.8.8.8",
+                    }
+                ],
+            )
+
+            await database.update_proxy_pool_check_results({proxy_id: "dead"}, exit_ips={proxy_id: ""})
+
+            row = next(item for item in await database.list_proxy_pool() if int(item["id"]) == proxy_id)
+            assert row["status"] == "dead"
+            assert not row["exit_ip"]
+            assert not row["location"]
+            assert not row["country_code"]
+            assert row["ip_type"] == "unknown"
+
+    asyncio.run(run())
+
+
+def test_generic_egress_change_clears_stale_intelligence_until_refresh(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            (proxy_id,) = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id,
+                [
+                    {
+                        "provider_proxy_id": "one",
+                        "host": "1.1.1.1",
+                        "port": 1000,
+                        "status": "alive",
+                        "exit_ip": "8.8.8.8",
+                    }
+                ],
+            )
+            await database.update_proxy_endpoint_intelligence(
+                proxy_id,
+                {
+                    "location": "United States",
+                    "country_code": "US",
+                    "country_name": "United States",
+                    "geo_source": "ipwho.is",
+                    "geo_confidence": "verified",
+                    "ip_type": "datacenter",
+                    "ip_type_source": "ipapi.is",
+                    "ip_type_confidence": "verified",
+                },
+            )
+
+            await database.update_proxy_pool_check_results(
+                {proxy_id: "alive"}, protocols={proxy_id: "socks5"}, exit_ips={proxy_id: "9.9.9.9"}
+            )
+
+            row = next(item for item in await database.list_proxy_pool() if int(item["id"]) == proxy_id)
+            assert row["exit_ip"] == "9.9.9.9"
+            assert not row["location"]
+            assert not row["country_code"]
+            assert row["ip_type"] == "unknown"
+
+    asyncio.run(run())
+
+
 def test_proxy_intelligence_cache_retries_when_only_one_source_is_fresh(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
@@ -2046,6 +2489,58 @@ def test_duplicate_export_masks_credentials_by_default_and_can_restore_raw_impor
             assert len(masked) == len(raw) == 1
             assert "pass-two" not in str(masked)
             assert raw[0]["raw_proxy"] == "two.example:2000:user-two:pass-two"
+
+    asyncio.run(run())
+
+
+def test_earnapp_egress_change_clears_stale_intelligence_until_refresh(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            (proxy_id,) = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id,
+                [
+                    {
+                        "provider_proxy_id": "one",
+                        "host": "1.1.1.1",
+                        "port": 1000,
+                        "status": "alive",
+                        "exit_ip": "8.8.8.8",
+                    }
+                ],
+            )
+            await database.update_proxy_endpoint_intelligence(
+                proxy_id,
+                {
+                    "location": "United States",
+                    "country_code": "US",
+                    "country_name": "United States",
+                    "geo_source": "ipwho.is",
+                    "geo_confidence": "verified",
+                    "ip_type": "datacenter",
+                    "ip_type_source": "ipapi.is",
+                    "ip_type_confidence": "verified",
+                },
+            )
+
+            await database.save_proxy_probe_result(
+                proxy_id,
+                profile="earnapp_wss",
+                probe_status="alive",
+                verdict="CID_SET",
+                eligibility="eligible",
+                reason="cid-1",
+                exit_ip="9.9.9.9",
+                latency_ms=99,
+                probe_version="earnapp-test",
+            )
+
+            row = next(item for item in await database.list_proxy_pool() if int(item["id"]) == proxy_id)
+            assert row["exit_ip"] == "9.9.9.9"
+            assert not row["location"]
+            assert not row["country_code"]
+            assert row["ip_type"] == "unknown"
 
     asyncio.run(run())
 

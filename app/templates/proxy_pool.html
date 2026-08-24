@@ -13,7 +13,19 @@
   .pool-status-blocked, .pool-status-quality-rejected { color:var(--danger-color, #d65a5a); font-weight:600; }
   .pool-duplicate { color:var(--warning-color, #c1872b); font-weight:600; }
   .pool-danger-zone { border:1px solid color-mix(in srgb, var(--danger-color, #d65a5a) 50%, var(--border-color)); border-radius:var(--radius); padding:12px; margin:12px 0; background:color-mix(in srgb, var(--danger-color, #d65a5a) 6%, transparent); }
-  @media (max-width:900px) { .proxy-pool-table { min-width:1500px; } }
+  .pool-table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .pool-table-wrap:focus { outline:2px solid var(--accent); outline-offset:2px; }
+  .proxy-pool-table { min-width:1180px; }
+  .proxy-pool-table th[data-sort] { cursor:pointer; }
+  .proxy-pool-table th[data-sort]:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+  .pool-action { min-height:44px; }
+  .pool-status-not-checked { color:var(--text-muted); }
+  .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+  @media (max-width:900px) {
+    .pool-command-bar { align-items:stretch; }
+    .pool-command-bar > * { min-height:44px; }
+    .pool-filter, #pool-search { max-width:none !important; flex:1 1 220px; }
+  }
 </style>
 <section class="content-section">
   <div class="section-header">
@@ -34,20 +46,20 @@
       <label class="form-label" for="pool-scheduler-concurrency">Parallel checks</label>
       <input class="form-input" id="pool-scheduler-concurrency" type="number" min="1" max="64" step="1" value="8">
     </div>
-    <button class="btn btn-secondary btn-sm" id="pool-scheduler-save">Save scheduler</button>
-    <span id="pool-scheduler-result" style="font-size:0.8rem;color:var(--text-muted);"></span>
+    <button class="btn btn-secondary btn-sm pool-action" id="pool-scheduler-save">Save scheduler</button>
+    <span id="pool-scheduler-result" role="status" aria-live="polite" style="font-size:0.8rem;color:var(--text-muted);"></span>
   </div>
-  <div class="pool-command-bar">
+  <div class="pool-command-bar" role="region" aria-label="Proxy pool controls">
     <input class="form-input" id="pool-search" type="search" placeholder="Search endpoint, egress, country, type, verdict or reason" style="max-width:420px;">
     <select class="form-select pool-filter" id="pool-provider-filter"><option value="">All providers</option></select>
     <select class="form-select pool-filter" id="pool-location-filter"><option value="">All locations</option></select>
     <select class="form-select pool-filter" id="pool-ip-type-filter"><option value="">All IP types</option></select>
     <select class="form-select pool-filter" id="pool-earnapp-filter"><option value="">All EarnApp states</option></select>
     <select class="form-select pool-filter" id="pool-duplicate-filter"><option value="">All egress groups</option><option value="canonical">Canonical only</option><option value="duplicate">Duplicates only</option></select>
-    <button class="btn btn-secondary btn-sm" id="pool-recheck-selected">Recheck selected</button>
-    <button class="btn btn-secondary btn-sm" id="pool-recheck-all">Recheck all</button>
-    <button class="btn btn-secondary btn-sm" id="pool-earnapp-selected">EarnApp check selected</button>
-    <button class="btn btn-secondary btn-sm" id="pool-earnapp-all">EarnApp check all</button>
+    <button class="btn btn-secondary btn-sm pool-action" id="pool-recheck-selected">Recheck selected</button>
+    <button class="btn btn-secondary btn-sm pool-action" id="pool-recheck-all">Recheck all</button>
+    <button class="btn btn-secondary btn-sm pool-action" id="pool-earnapp-selected">EarnApp check selected</button>
+    <button class="btn btn-secondary btn-sm pool-action" id="pool-earnapp-all">EarnApp check all</button>
     <button class="btn btn-ghost btn-sm" id="pool-export-filtered">Export filtered</button>
     <button class="btn btn-ghost btn-sm" id="pool-export-provider">Export provider</button>
     <button class="btn btn-ghost btn-sm" id="pool-export-location">Export location</button>
@@ -57,7 +69,7 @@
     <button class="btn btn-ghost btn-sm" id="pool-export-duplicates-raw">Export duplicate raw</button>
     <button class="btn btn-danger btn-sm" id="pool-delete-selected">Delete selected</button>
     <button class="btn btn-danger btn-sm" id="pool-delete-dead">Delete dead</button>
-    <span id="pool-result" style="font-size:0.8rem;color:var(--text-muted);"></span>
+    <span id="pool-result" role="status" aria-live="polite" style="font-size:0.8rem;color:var(--text-muted);"></span>
   </div>
   <div class="pool-danger-zone">
     <strong>Danger zone</strong>
@@ -76,11 +88,12 @@
     <input class="form-input" id="pool-import-file" type="file" accept=".txt,.csv,.json,.jsonl">
     <button class="btn btn-primary btn-sm" id="pool-import-submit">Import proxies</button>
   </div>
-  <div class="table-wrap">
+  <div class="table-wrap pool-table-wrap" tabindex="0" aria-label="Proxy pool table. Scroll horizontally on small screens.">
     <table class="data-table operator-table proxy-pool-table">
+      <caption class="sr-only">Proxy inventory with live status, egress, location, IP type, EarnApp qualification and assignments.</caption>
       <thead>
         <tr>
-          <th><input type="checkbox" id="pool-select-all" aria-label="Select visible proxies"></th><th data-sort="provider_name">Provider</th><th data-sort="endpoint">Endpoint</th><th data-sort="protocol">Protocol</th><th data-sort="location">Location</th><th data-sort="ip_type">IP type</th><th data-sort="exit_ip">Egress IP</th><th data-sort="status">Live</th><th data-sort="latency_ms">Latency</th><th data-sort="earnapp_eligibility">EarnApp</th><th data-sort="duplicate_egress">Egress group</th><th data-sort="assigned_worker_id">Assigned</th><th data-sort="last_checked_at">Last check</th>
+          <th scope="col"><input type="checkbox" id="pool-select-all" aria-label="Select visible proxies"></th><th scope="col" data-sort="provider_name" tabindex="0" aria-sort="none">Provider</th><th scope="col" data-sort="endpoint" tabindex="0" aria-sort="none">Endpoint</th><th scope="col" data-sort="protocol" tabindex="0" aria-sort="none">Protocol</th><th scope="col" data-sort="location" tabindex="0" aria-sort="none">Location</th><th scope="col" data-sort="ip_type" tabindex="0" aria-sort="none">IP type</th><th scope="col" data-sort="exit_ip" tabindex="0" aria-sort="none">Egress IP</th><th scope="col" data-sort="status" tabindex="0" aria-sort="none">Live</th><th scope="col" data-sort="latency_ms" tabindex="0" aria-sort="none">Latency</th><th scope="col" data-sort="earnapp_eligibility" tabindex="0" aria-sort="none">EarnApp</th><th scope="col" data-sort="duplicate_egress" tabindex="0" aria-sort="none">Egress group</th><th scope="col" data-sort="assigned_worker_id" tabindex="0" aria-sort="none">Assigned</th><th scope="col" data-sort="last_checked_at" tabindex="0" aria-sort="none">Last check</th>
         </tr>
       </thead>
       <tbody id="pool-rows"></tbody>
@@ -94,14 +107,92 @@
 function esc(value) {
   return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
+async function proxyPoolJson(url, options = {}) {
+  const response = await fetch(url, options);
+  let body = null;
+  try { body = await response.json(); } catch (_) { body = {}; }
+  if (!response.ok) throw new Error(body.detail || `Request failed (${response.status})`);
+  return body;
+}
 async function loadPool() {
-  const [rows, scheduler] = await Promise.all([
-    fetch('/api/proxy-pool').then(r => r.json()),
-    fetch('/api/proxy-pool/scheduler').then(r => r.json()).catch(() => null),
-  ]);
-  poolRows = rows;
-  if (scheduler) renderScheduler(scheduler);
-  renderPool();
+  const result = document.getElementById('pool-result');
+  try {
+    const [rows, scheduler] = await Promise.all([
+      proxyPoolJson('/api/proxy-pool'),
+      proxyPoolJson('/api/proxy-pool/scheduler').catch(() => null),
+    ]);
+    poolRows = Array.isArray(rows) ? rows : [];
+    if (scheduler) renderScheduler(scheduler);
+    renderPool();
+  } catch (error) {
+    result.textContent = `Proxy pool load failed: ${error.message}`;
+  }
+}
+function proxyLocationLabel(proxy) {
+  const status = String(proxy.status || '').toLowerCase();
+  if (!proxy.exit_ip) return status === 'dead' ? 'Generic check failed' : 'Egress unresolved';
+  return proxy.country_name || proxy.country_code || 'Metadata pending';
+}
+function proxyIpTypeLabel(proxy) {
+  const status = String(proxy.status || '').toLowerCase();
+  if (!proxy.exit_ip) return status === 'dead' ? 'Generic check failed' : 'Egress unresolved';
+  return proxy.ip_type && proxy.ip_type !== 'unknown' ? proxy.ip_type : 'Metadata pending';
+}
+function proxyEgressLabel(proxy) {
+  return proxy.exit_ip || 'Egress unresolved';
+}
+function proxyEarnappState(p) {
+  const status = String(p.status || '').toLowerCase();
+  if (status === 'dead') return {label: 'skipped', css: 'unknown', detail: 'Generic check failed; EarnApp skipped'};
+  const verdict = String(p.earnapp_verdict || '').trim();
+  if (!verdict) return {label: 'not checked', css: 'unknown', detail: 'EarnApp check pending'};
+  const label = String(p.earnapp_eligibility || 'unknown').trim() || 'unknown';
+  const normalizedCss = label.replaceAll('_', '-');
+  const css = ['eligible', 'blocked', 'quality-rejected'].includes(normalizedCss) ? normalizedCss : 'unknown';
+  const detail = [verdict, p.earnapp_latency_ms == null ? '' : `${p.earnapp_latency_ms} ms`, p.earnapp_probe_reason || ''].filter(Boolean).join(' · ');
+  return {label, css, detail};
+}
+function proxyDisplayValue(proxy, key) {
+  if (key === 'location') return proxyLocationLabel(proxy);
+  if (key === 'ip_type') return proxyIpTypeLabel(proxy);
+  if (key === 'exit_ip') return proxyEgressLabel(proxy);
+  if (key === 'earnapp_eligibility') return proxyEarnappState(proxy).label;
+  return proxy[key] ?? '';
+}
+function genericUsable(proxy) {
+  return String(proxy.status || '').toLowerCase() === 'alive'
+    && Boolean(String(proxy.exit_ip || '').trim())
+    && !proxy.duplicate_egress;
+}
+async function watchProxyPoolJob(job) {
+  const result = document.getElementById('pool-result');
+  result.textContent = `Proxy enrichment scheduled (${job.total || 0} proxies)`;
+  for (let attempt = 0; attempt < 450; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    let state;
+    try {
+      state = await proxyPoolJson(`/api/proxy-pool/jobs/${encodeURIComponent(job.job_id)}`);
+    } catch (error) {
+      result.textContent = `Proxy enrichment status unavailable: ${error.message}`;
+      return;
+    }
+    if (state.status === 'completed') {
+      const generic = (state.result || {}).generic || {};
+      const earnapp = (state.result || {}).earnapp || {};
+      result.textContent = `Generic checked ${generic.checked || 0}; live ${generic.alive || 0}; dead ${generic.dead || 0}; EarnApp checked ${earnapp.checked || 0}; eligible ${earnapp.eligible || 0}; blocked ${earnapp.blocked || 0}; unknown ${earnapp.unknown || 0}`;
+      loadPool();
+      return;
+    }
+    if (state.status === 'failed') {
+      result.textContent = `Proxy enrichment failed (${state.error || 'unknown error'})`;
+      return;
+    }
+    const stage = state.stage === 'generic_recheck'
+      ? 'live and egress check'
+      : state.stage === 'earnapp_recheck' ? 'EarnApp qualification' : 'proxy enrichment';
+    result.textContent = `${stage} ${state.status || 'running'} (${state.total || 0} proxies)`;
+  }
+  result.textContent = 'Proxy enrichment is still running; refresh later for the final result';
 }
 let poolRows = [];
 let poolPage = 1;
@@ -114,28 +205,39 @@ function filteredPool() {
   const ipType = document.getElementById('pool-ip-type-filter').value;
   const earnapp = document.getElementById('pool-earnapp-filter').value;
   const duplicate = document.getElementById('pool-duplicate-filter').value;
-  return poolRows.filter(p => (!q || ['provider_name','endpoint','protocol','location','country_code','country_name','ip_type','exit_ip','status','earnapp_verdict','earnapp_eligibility','earnapp_probe_reason','duplicate_reason','expiry_date','assigned_worker_id'].some(k => String(p[k] ?? '').toLowerCase().includes(q)))
+  return poolRows.filter(p => (!q || ['provider_name','endpoint','protocol','country_code','country_name','status','earnapp_verdict','earnapp_probe_reason','duplicate_reason','expiry_date','assigned_worker_id'].some(k => String(p[k] ?? '').toLowerCase().includes(q)) || [proxyLocationLabel(p), proxyIpTypeLabel(p), proxyEgressLabel(p), proxyEarnappState(p).label, proxyEarnappState(p).detail].some(value => String(value).toLowerCase().includes(q)))
       && (!provider || String(p.provider_name || '') === provider)
-      && (!location || String(p.location || '') === location)
-      && (!ipType || String(p.ip_type || 'unknown') === ipType)
-      && (!earnapp || String(p.earnapp_eligibility || 'unknown') === earnapp)
+      && (!location || proxyLocationLabel(p) === location)
+      && (!ipType || proxyIpTypeLabel(p) === ipType)
+      && (!earnapp || proxyEarnappState(p).label === earnapp)
       && (!duplicate || (duplicate === 'duplicate' ? !!p.duplicate_egress : !p.duplicate_egress)))
-    .sort((a, b) => String(a[poolSort.key] ?? '').localeCompare(String(b[poolSort.key] ?? '')) * poolSort.dir);
+    .sort((a, b) => String(proxyDisplayValue(a, poolSort.key)).localeCompare(String(proxyDisplayValue(b, poolSort.key))) * poolSort.dir);
 }
 function countBadge(label, value) {
-  return `<span class="badge badge-category">${esc(label)}: ${value}</span>`;
+  return `<span class="badge badge-category">${esc(label.replaceAll('_', ' '))}: ${value}</span>`;
 }
 function renderPool() {
   const rows = filteredPool();
+  const earnappStates = poolRows.map(proxyEarnappState);
   const counts = {
-    total: poolRows.length,
-    alive: poolRows.filter(p => String(p.status || '').toLowerCase() === 'alive').length,
-    dead: poolRows.filter(p => String(p.status || '').toLowerCase() === 'dead').length,
-    leased: poolRows.filter(p => p.assigned_worker_id).length,
+    inventory: poolRows.length,
+    generic_live: poolRows.filter(p => String(p.status || '').toLowerCase() === 'alive').length,
+    generic_dead: poolRows.filter(p => String(p.status || '').toLowerCase() === 'dead').length,
+    legacy_leased: poolRows.filter(p => p.assigned_worker_id).length,
     scoped_leased: poolRows.filter(p => p.scoped_provider_slug).length,
-    available: poolRows.filter(p => !p.assigned_worker_id && !p.scoped_provider_slug).length,
+    unassigned_inventory: poolRows.filter(p => !p.assigned_worker_id && !p.scoped_provider_slug).length,
     duplicates: poolRows.filter(p => p.duplicate_egress).length,
-    earnapp_eligible: poolRows.filter(p => p.earnapp_eligibility === 'eligible').length,
+    earnapp_eligible: earnappStates.filter(state => state.label === 'eligible').length,
+    earnapp_checked: earnappStates.filter(state => !['not checked', 'skipped'].includes(state.label)).length,
+    earnapp_unknown: earnappStates.filter(state => state.label === 'unknown').length,
+    earnapp_not_checked: earnappStates.filter(state => state.label === 'not checked').length,
+    earnapp_skipped: earnappStates.filter(state => state.label === 'skipped').length,
+    egress_known: poolRows.filter(p => String(p.exit_ip || '').trim()).length,
+    egress_unresolved: poolRows.filter(p => !String(p.exit_ip || '').trim()).length,
+    metadata_pending: poolRows.filter(p => proxyLocationLabel(p) === 'Metadata pending' || proxyIpTypeLabel(p) === 'Metadata pending').length,
+    generic_usable: poolRows.filter(genericUsable).length,
+    canonical_available: poolRows.filter(p => genericUsable(p) && !p.assigned_worker_id && !p.scoped_provider_slug).length,
+    earnapp_leaseable: poolRows.filter(p => genericUsable(p) && proxyEarnappState(p).label === 'eligible' && !p.assigned_worker_id && !p.scoped_provider_slug).length,
     selected: document.querySelectorAll('.pool-select:checked').length,
   };
   document.getElementById('pool-counts').innerHTML = Object.entries(counts).map(([k,v]) => countBadge(k, v)).join('');
@@ -150,6 +252,7 @@ function renderPool() {
   };
   document.getElementById('pool-type-counts').innerHTML = Object.entries(types).map(([k,v]) => countBadge(k, v)).join('');
   renderPoolFilters();
+  updatePoolSortIndicators();
   const pages = Math.max(1, Math.ceil(rows.length / poolPageSize));
   if (poolPage > pages) poolPage = pages;
   const visible = rows.slice((poolPage - 1) * poolPageSize, poolPage * poolPageSize);
@@ -159,12 +262,12 @@ function renderPool() {
       <td>${esc(p.provider_name || '-')}</td>
       <td class="mono-cell endpoint-cell" title="${esc(p.endpoint)}">${esc(p.endpoint)}</td>
       <td>${esc(p.protocol)}</td>
-      <td><span title="${esc([p.country_code, p.geo_source, p.geo_confidence].filter(Boolean).join(' · '))}">${esc(p.country_name || p.country_code || p.location || 'Unknown')}</span></td>
-      <td><span title="${esc([p.ip_type_source, p.ip_type_confidence].filter(Boolean).join(' · '))}">${esc(p.ip_type || 'unknown')}</span></td>
-      <td class="mono-cell">${esc(p.exit_ip || '-')}</td>
+      <td><span title="${esc(p.exit_ip ? [p.country_code, p.geo_source, p.geo_confidence].filter(Boolean).join(' · ') : 'No authoritative egress IP')}">${esc(proxyLocationLabel(p))}</span></td>
+      <td><span title="${esc(p.exit_ip ? [p.ip_type_source, p.ip_type_confidence].filter(Boolean).join(' · ') : 'No authoritative egress IP')}">${esc(proxyIpTypeLabel(p))}</span></td>
+      <td class="mono-cell" title="${esc(p.exit_ip ? '' : 'The proxy tunnel did not return a public egress IP.')}">${esc(proxyEgressLabel(p))}</td>
       <td><span class="${String(p.status || '').toLowerCase() === 'alive' ? 'pool-status-alive' : String(p.status || '').toLowerCase() === 'unknown' ? 'pool-status-unknown' : 'pool-status-dead'}">${esc(p.status || '-')}</span><small style="display:block;color:var(--text-muted);">UDP ${p.udp_ok === true ? 'yes' : p.udp_ok === false ? 'no' : '-'}</small></td>
       <td>${p.latency_ms == null ? '-' : `${esc(p.latency_ms)} ms`}</td>
-      <td><span class="pool-status-${esc(p.earnapp_eligibility || 'unknown') }" title="${esc(p.earnapp_probe_reason || '')}">${esc(p.earnapp_eligibility || 'unknown')}</span><small style="display:block;color:var(--text-muted);">${esc(p.earnapp_verdict || '')}${p.earnapp_latency_ms == null ? '' : ` · ${esc(p.earnapp_latency_ms)} ms`}</small></td>
+      <td><span class="pool-status-${esc(proxyEarnappState(p).css)}" title="${esc(p.earnapp_probe_reason || '')}">${esc(proxyEarnappState(p).label)}</span><small style="display:block;color:var(--text-muted);">${esc(proxyEarnappState(p).detail)}</small></td>
       <td>${p.duplicate_egress ? `<span class="pool-duplicate" title="${esc(p.duplicate_reason || '')}">duplicate → #${esc(p.canonical_proxy_id || '-')}</span>` : '<span>canonical</span>'}</td>
       <td>${p.scoped_provider_slug ? `<span title="worker ${esc(p.scoped_worker_id || '-')} · ${esc(p.scoped_instance_id || '-')}">${esc(p.scoped_provider_slug)} · #${esc(p.scoped_worker_id || '-')}</span>` : esc(p.assigned_worker_id || '-')}</td>
       <td>${esc(p.last_checked_at || '-')}</td>
@@ -178,7 +281,7 @@ function renderPoolFilters() {
   for (const [id, key, label] of [['pool-provider-filter','provider_name','All providers'], ['pool-location-filter','location','All locations'], ['pool-ip-type-filter','ip_type','All IP types'], ['pool-earnapp-filter','earnapp_eligibility','All EarnApp states']]) {
     const el = document.getElementById(id);
     const current = el.value;
-    const values = [...new Set(poolRows.map(p => String(p[key] || '').trim()).filter(Boolean))].sort();
+    const values = [...new Set(poolRows.map(p => String(proxyDisplayValue(p, key)).trim()).filter(Boolean))].sort();
     el.innerHTML = `<option value="">${label}</option>` + values.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
     el.value = values.includes(current) ? current : '';
   }
@@ -193,6 +296,15 @@ function updatePoolSelectionCount() {
   const badge = [...counts.querySelectorAll('.badge')].find(x => x.textContent.trim().startsWith('selected:'));
   if (badge) badge.textContent = `selected: ${selected}`;
 }
+function updatePoolSortIndicators() {
+  document.querySelectorAll('.proxy-pool-table th[data-sort]').forEach(th => {
+    th.setAttribute('aria-sort', th.dataset.sort === poolSort.key ? (poolSort.dir === 1 ? 'ascending' : 'descending') : 'none');
+  });
+}
+function togglePoolSort(key) {
+  poolSort = {key, dir: poolSort.key === key ? -poolSort.dir : 1};
+  renderPool();
+}
 function renderScheduler(settings) {
   document.getElementById('pool-scheduler-enabled').checked = !!settings.enabled;
   document.getElementById('pool-scheduler-interval').value = settings.interval_minutes || 15;
@@ -206,23 +318,39 @@ function schedulerBody() {
   };
 }
 async function saveScheduler() {
-  const res = await fetch('/api/proxy-pool/scheduler', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(schedulerBody())}).then(r => r.json());
-  renderScheduler(res);
-  document.getElementById('pool-scheduler-result').textContent = 'Saved';
+  const button = document.getElementById('pool-scheduler-save');
+  button.disabled = true;
+  try {
+    const res = await proxyPoolJson('/api/proxy-pool/scheduler', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(schedulerBody())});
+    renderScheduler(res);
+    document.getElementById('pool-scheduler-result').textContent = 'Saved';
+  } catch (error) {
+    document.getElementById('pool-scheduler-result').textContent = `Save failed: ${error.message}`;
+  } finally { button.disabled = false; }
 }
 async function recheckPool(ids) {
   const label = ids && ids.length ? `${ids.length} selected proxies` : 'all proxies';
   if (!confirm(`Recheck ${label}?`)) return;
-  const res = await fetch('/api/proxy-pool/recheck', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({proxy_ids: ids && ids.length ? ids : null, concurrency: schedulerBody().concurrency})}).then(r => r.json());
-  document.getElementById('pool-result').textContent = `Checked ${res.checked || 0}; rotated ${res.rotated || 0}`;
-  loadPool();
+  const button = ids && ids.length ? document.getElementById('pool-recheck-selected') : document.getElementById('pool-recheck-all');
+  button.disabled = true;
+  try {
+    const res = await proxyPoolJson('/api/proxy-pool/recheck', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({proxy_ids: ids && ids.length ? ids : null, concurrency: schedulerBody().concurrency, rotate_dead:false})});
+    document.getElementById('pool-result').textContent = `Checked ${res.checked || 0}; generic usable ${res.alive || 0}; dead ${res.dead || 0}; rotated ${res.rotated || 0}`;
+    loadPool();
+  } catch (error) { document.getElementById('pool-result').textContent = `Recheck failed: ${error.message}`; }
+  finally { button.disabled = false; }
 }
 async function recheckEarnapp(ids) {
   const label = ids && ids.length ? `${ids.length} selected proxies` : 'all proxies';
   if (!confirm(`Run EarnApp qualification for ${label}? Only CID_SET becomes eligible.`)) return;
-  const res = await fetch('/api/proxy-pool/earnapp-recheck', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({proxy_ids: ids && ids.length ? ids : null, concurrency: schedulerBody().concurrency})}).then(r => r.json());
-  document.getElementById('pool-result').textContent = `EarnApp checked ${res.checked || 0}; eligible ${res.eligible || 0}; blocked ${res.blocked || 0}; rejected ${res.quality_rejected || 0}`;
-  loadPool();
+  const button = ids && ids.length ? document.getElementById('pool-earnapp-selected') : document.getElementById('pool-earnapp-all');
+  button.disabled = true;
+  try {
+    const res = await proxyPoolJson('/api/proxy-pool/earnapp-recheck', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({proxy_ids: ids && ids.length ? ids : null, concurrency: schedulerBody().concurrency})});
+    document.getElementById('pool-result').textContent = `EarnApp checked ${res.checked || 0}; eligible ${res.eligible || 0}; blocked ${res.blocked || 0}; rejected ${res.quality_rejected || 0}`;
+    loadPool();
+  } catch (error) { document.getElementById('pool-result').textContent = `EarnApp check failed: ${error.message}`; }
+  finally { button.disabled = false; }
 }
 function exportPool(status) {
   const params = new URLSearchParams();
@@ -235,6 +363,10 @@ function exportPoolScope(kind) {
   const params = new URLSearchParams();
   const value = document.getElementById(kind === 'provider' ? 'pool-provider-filter' : 'pool-location-filter').value;
   if (!value) { alert(`Choose a ${kind} first`); return; }
+  if (kind === 'location' && ['Egress unresolved', 'Metadata pending', 'Generic check failed'].includes(value)) {
+    exportFilteredPool();
+    return;
+  }
   params.set(kind, value);
   window.location.href = `/api/proxy-pool/export?${params.toString()}`;
 }
@@ -260,7 +392,11 @@ document.getElementById('pool-earnapp-filter').addEventListener('change', () => 
 document.getElementById('pool-duplicate-filter').addEventListener('change', () => { poolPage = 1; renderPool(); });
 document.getElementById('pool-select-all').addEventListener('change', ev => { document.querySelectorAll('.pool-select').forEach(x => x.checked = ev.target.checked); updatePoolSelectionCount(); });
 document.getElementById('pool-rows').addEventListener('change', ev => { if (ev.target.classList.contains('pool-select')) updatePoolSelectionCount(); });
-document.getElementById('pool-recheck-selected').addEventListener('click', () => recheckPool(selectedPoolIds()));
+document.getElementById('pool-recheck-selected').addEventListener('click', () => {
+  const ids = selectedPoolIds();
+  if (!ids.length) { alert('Select proxies first'); return; }
+  recheckPool(ids);
+});
 document.getElementById('pool-recheck-all').addEventListener('click', () => recheckPool(null));
 document.getElementById('pool-earnapp-selected').addEventListener('click', () => {
   const ids = selectedPoolIds();
@@ -281,9 +417,11 @@ document.getElementById('pool-export-duplicates-raw').addEventListener('click', 
 });
 async function deletePool(body, label) {
   if (!confirm(`Delete ${label}? This removes proxy rows from the pool.`)) return;
-  const res = await fetch('/api/proxy-pool', {method:'DELETE', headers:{'content-type':'application/json'}, body: JSON.stringify(body)}).then(r => r.json());
-  document.getElementById('pool-result').textContent = `Deleted ${res.deleted || 0}`;
-  loadPool();
+  try {
+    const res = await proxyPoolJson('/api/proxy-pool', {method:'DELETE', headers:{'content-type':'application/json'}, body: JSON.stringify(body)});
+    document.getElementById('pool-result').textContent = `Deleted ${res.deleted || 0}`;
+    loadPool();
+  } catch (error) { document.getElementById('pool-result').textContent = `Delete failed: ${error.message}`; }
 }
 document.getElementById('pool-delete-selected').addEventListener('click', () => {
   const ids = selectedPoolIds();
@@ -308,18 +446,29 @@ async function deleteAllPool() {
 }
 document.getElementById('pool-delete-all').addEventListener('click', deleteAllPool);
 document.getElementById('pool-import-submit').addEventListener('click', async () => {
+  const button = document.getElementById('pool-import-submit');
   const file = document.getElementById('pool-import-file').files[0];
   const text = (document.getElementById('pool-import-text').value || '') + (file ? `\n${await file.text()}` : '');
   if (!text.trim()) { alert('Paste proxies or choose a file first'); return; }
   if (!confirm('Import proxies into pool?')) return;
-  const res = await fetch('/api/proxy-pool/import', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({text, provider_name: document.getElementById('pool-import-provider').value || 'manual', recheck: true, concurrency: schedulerBody().concurrency})}).then(r => r.json());
-  document.getElementById('pool-result').textContent = `Imported ${res.imported || 0}`;
-  document.getElementById('pool-import-text').value = '';
-  document.getElementById('pool-import-file').value = '';
-  loadPool();
+  button.disabled = true;
+  try {
+    const res = await proxyPoolJson('/api/proxy-pool/import', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({text, provider_name: document.getElementById('pool-import-provider').value || 'manual', recheck: true, concurrency: schedulerBody().concurrency})});
+    const earnapp = res.earnapp_recheck || {};
+    const recheckJob = res.recheck_job || {};
+    document.getElementById('pool-result').textContent = recheckJob.job_id
+      ? `Imported ${res.imported || 0}; live, egress, metadata and EarnApp checks scheduled`
+      : `Imported ${res.imported || 0}; EarnApp checked ${earnapp.checked || 0}`;
+    document.getElementById('pool-import-text').value = '';
+    document.getElementById('pool-import-file').value = '';
+    loadPool();
+    if (recheckJob.status === 'scheduled' && recheckJob.job_id) watchProxyPoolJob(recheckJob);
+  } catch (error) { document.getElementById('pool-result').textContent = `Import failed: ${error.message}`; }
+  finally { button.disabled = false; }
 });
 document.getElementById('pool-pager').addEventListener('click', ev => { if (ev.target.id === 'pool-prev') poolPage--; if (ev.target.id === 'pool-next') poolPage++; renderPool(); });
-document.querySelector('thead').addEventListener('click', ev => { const key = ev.target.dataset.sort; if (!key) return; poolSort = {key, dir: poolSort.key === key ? -poolSort.dir : 1}; renderPool(); });
+document.querySelector('.proxy-pool-table thead').addEventListener('click', ev => { const key = ev.target.dataset.sort; if (key) togglePoolSort(key); });
+document.querySelector('.proxy-pool-table thead').addEventListener('keydown', ev => { if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.dataset.sort) { ev.preventDefault(); togglePoolSort(ev.target.dataset.sort); } });
 loadPool();
 </script>
 {% endblock %}

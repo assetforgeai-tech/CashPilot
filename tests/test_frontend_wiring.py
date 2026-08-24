@@ -831,6 +831,57 @@ class TestInventoryTablesHaveOperatorControls:
         assert delete_all.count("confirm(") >= 2
         assert "Every proxy, assignment, scoped lease, probe result and import record" in delete_all
 
+    def test_proxy_pool_import_surfaces_background_earnapp_job_status(self):
+        page = (ROOT / "app" / "templates" / "proxy_pool.html").read_text(encoding="utf-8")
+
+        assert "/api/proxy-pool/jobs/" in page
+        assert "recheck_job" in page
+        assert "generic_recheck" in page
+        assert "Proxy enrichment scheduled" in page
+
+    def test_proxy_pool_explains_unresolved_metadata_and_earnapp_unknown(self):
+        page = (ROOT / "app" / "templates" / "proxy_pool.html").read_text(encoding="utf-8")
+
+        assert "egress_known" in page
+        assert "egress_unresolved" in page
+        assert "Egress unresolved" in page
+        assert "Metadata pending" in page
+        assert "EarnApp skipped" in page
+        assert "Generic check failed" in page
+        assert "proxyLocationLabel" in page
+        assert "esc(p.earnapp_probe_reason || '')" in page
+
+    def test_proxy_pool_uses_displayed_earnapp_state_and_exports_pseudo_locations_locally(self):
+        page = (ROOT / "app" / "templates" / "proxy_pool.html").read_text(encoding="utf-8")
+
+        assert "label.replaceAll('_', '-')" in page
+        assert "earnapp_eligible: earnappStates.filter(state => state.label === 'eligible').length" in page
+        assert "kind === 'location'" in page
+        assert "['Egress unresolved', 'Metadata pending', 'Generic check failed'].includes(value)" in page
+        assert "exportFilteredPool();" in page
+
+    def test_proxy_pool_has_bounded_jobs_error_feedback_and_accessible_sorting(self):
+        page = (ROOT / "app" / "templates" / "proxy_pool.html").read_text(encoding="utf-8")
+
+        assert "async function proxyPoolJson" in page
+        assert "if (!response.ok)" in page
+        assert "for (let attempt = 0; attempt < 450; attempt++)" in page
+        assert 'aria-live="polite"' in page
+        assert 'aria-sort="none"' in page
+        assert "updatePoolSortIndicators" in page
+        assert "keydown" in page
+        assert "Proxy inventory with live status" in page
+
+    def test_proxy_pool_counts_only_truthful_usable_and_leaseable_inventory(self):
+        page = (ROOT / "app" / "templates" / "proxy_pool.html").read_text(encoding="utf-8")
+
+        assert "generic_usable" in page
+        assert "canonical_available" in page
+        assert "earnapp_leaseable" in page
+        assert "genericUsable" in page
+        assert "unassigned_inventory" in page
+        assert "rotate_dead:false" in page
+
     def test_myst_wallet_has_counts_search_sort_export_confirm_and_pagination(self):
         page = (ROOT / "app" / "templates" / "myst_wallet.html").read_text(encoding="utf-8")
         app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
