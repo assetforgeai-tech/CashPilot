@@ -1,10 +1,10 @@
 # CashPilot Active Context
 
-Updated: 2026-08-24 (NKN v1.6.2 release and host-helper closeout)
+Updated: 2026-08-24 (NKN v1.6.3 release and live host-helper closeout)
 
 ## Current repository state
 
-- Canonical source branch: `main` at merge commit `bb52dea`. The original
+- Canonical source branch: `main` at merge commit `f5ee981`. The original
   direct-runtime and Docker canary history is retained for traceability. The LXD
   runtime landed through PR #17, guarded canary adoption through PR #18, the
   adoption timeout fix through PR #19, and the optional ChainDB acceleration
@@ -18,14 +18,16 @@ Updated: 2026-08-24 (NKN v1.6.2 release and host-helper closeout)
   (post-merge baseline), PR #9 (`v1.2.0` canary context), PR #10 (NKN direct
   runtime), PRs #11-#13 (NKN canary fixes), PRs #14-#16 (NKN context history),
   PRs #17-#19 (LXD runtime, adoption and timeout fix), and PRs #21-#23 (ChainDB
-  acceleration and release/runtime fixes), and PR #24 (shared ChainDB cache)
-  are merged.
-- Release `v1.6.2` is published from merge commit `bb52dea`; Auto Release run
-  `32717313245` completed successfully and built both fork GHCR images. The UI
+  acceleration and release/runtime fixes), PR #24 (shared ChainDB cache), and
+  PR #25 (bootstrap and standalone NKN host-helper closeout) are merged.
+- Release `v1.6.3` is published from merge commit `f5ee981`; Auto Release run
+  `32720862355` completed successfully and built both fork GHCR images. The UI
   digest is
-  `sha256:7993a5a519c4a42e21a32c78836057658b052af33bb803587d1ae9c51d74ac9e`
+  `sha256:7434350e08a622789ff67efb52d73bf5b88866510cf61c04603471201e9c86aa`
   and the worker digest is
-  `sha256:4909468c68b1d5c7b186b0596e966f3f28db4325588725e2162ee0f09db90f03`.
+  `sha256:69e02f99b16a6ec82590859f6b26596b6e7c26a3931788a531843e2c4777f249`.
+  Tests, Ruff, CodeQL, Documentation, Catalog Check and Auto Release all passed
+  on the same merge SHA.
   This release evidence does not authorize a bulk server or worker redeploy.
 - The source branch remains `main`; release/deploy state is operational
   evidence and does not change the protected provider catalog.
@@ -110,9 +112,10 @@ Updated: 2026-08-24 (NKN v1.6.2 release and host-helper closeout)
   unacknowledged node at 14 minutes without deleting identity, ahead of the
   server's 15-minute reclaim; a valid ACK resumes it, while a rejected stale
   token removes only its label-matched NKN container/volume.
-- Current source status: PRs #17-#19 and release `v1.5.1` are green. The patch
-  keeps normal deploy timeout at 60 seconds and gives only guarded LXD adoption
-  900 seconds. The fresh full suite passed `1515 passed, 7 skipped`. Runtime,
+- Current source status: PRs #17-#19, #21-#25 and releases through `v1.6.3`
+  are green. The guarded LXD adoption timeout remains 900 seconds while normal
+  deploy timeout remains 60 seconds. The latest full suite passed `1642 passed,
+  8 skipped`; NKN-focused tests passed `305 passed, 1 skipped`. Runtime,
   heartbeat, Fleet, wallet, RPC and lease-guard snapshots keep NKN
   `PROTECTED_DONE`.
 
@@ -188,8 +191,55 @@ Updated: 2026-08-24 (NKN v1.6.2 release and host-helper closeout)
   `v1.6.2` published both images. The isolated `test-us` worker still runs the
   earlier `v1.6.1` image digest
   `sha256:58b8a452e4566a578de224df20d621bc18d1b2739d1eb43d69e9099f02416974`;
-  the host helper was installed directly from the reviewed source for the
-  canary. This is an explicit mixed deployment state, not a failed release.
+  the `v1.6.2` release image digests were UI
+  `sha256:7993a5a519c4a42e21a32c78836057658b052af33bb803587d1ae9c51d74ac9e`
+  and worker
+  `sha256:4909468c68b1d5c7b186b0596e966f3f28db4325588725e2162ee0f09db90f03`.
+  The host helper was installed directly from reviewed source for the canary.
+  The `v1.6.3` closeout below supersedes only that helper installation. The
+  worker image remains an explicit mixed deployment state, not a failed release.
+
+## v1.6.3 NKN host-helper live closeout (2026-08-24)
+
+- PR #25 merged as `f5ee981` and release `v1.6.3` completed on the same SHA.
+  The live deployment downloaded the official GitHub tag archive and verified
+  every installed helper input by SHA-256 before running
+  `scripts/install-nkn-host-helper.sh`.
+- The installer updated only the restricted NKN helper files and restarted only
+  `cashpilot-nkn-agent.service`. It did not restart or recreate the CashPilot
+  worker, the LXD instance, the inner NKN container, a wallet lease or a data
+  volume. The helper is enabled and active, has `NRestarts=0`, and its Unix
+  socket responds according to the restricted endpoint contract.
+- The `test-us` worker container remained
+  `308579e2618da1be5e804c4aa8a47e0edc51ee7a38a13ae83242734edee1d0a9`
+  on the existing `v1.6.1` worker digest with restart count `0` and unchanged
+  start time. No worker image redeploy was required for this host-only change.
+- The NKN LXD instance remained running with the same PID, `1 CPU / 1024 MiB`
+  hard limits, `boot.autostart=true`, per-slot TCP/UDP forwarding and read-only
+  shared-cache device. Inner container ID
+  `a3087def4b899c710ef00a5c286b4eff546c7117d0dd55db549dcd60c86840ff`
+  remained unchanged with restart count `0` and `restart: always`.
+- The post-deploy RPC returned `PERSIST_FINISHED` at height `9690031` with the
+  same Node ID
+  `c36ecaa9abdcec725d889ec222834f5a1705065ede7f5857cfb56f1d5ee293d7`.
+  Wallet, password and config hashes remained unchanged; the wallet and config
+  hashes are respectively
+  `035cfdd43ee4c6bbf5f0d460b7eb5b8f3985ca05e1ee5bab2c36043dc6e076ca`
+  and
+  `f75113b8edcf4c4382968c2fac963b3b1f86bb72fc1234c584c921b407b4c965`.
+- The shared archive retained inode `325123`, size `5,795,325,602`, mtime and
+  SHA-256
+  `9c8d29068fd741dab315d17d3c9f3fcdcfe0c389a29fefede7ba06cfd18e10e5`;
+  no `.partial` file appeared. Public egress remained `104.211.53.252`.
+- Authenticated, read-only `GET /api/workers` and `GET /api/fleet/summary`
+  snapshots returned HTTP 200 without rendering credentials. Worker `3098` was
+  online with confirmed enrollment and reported the same NKN Node ID as
+  `running=true`, `online=true`, `rpc_reachable=true`, backend `lxd` and
+  `PERSIST_FINISHED`. Fleet reported two NKN nodes, two online and zero offline.
+- This closeout did not mutate `test-sing`, the publisher, R2, either NKN wallet
+  lease or any other provider. NKN remains `PROTECTED_DONE`; future work must
+  treat its runtime, identities, leases, volumes and ChainDB flow as protected
+  baseline unless an explicitly approved defect requires a scoped change.
 
 ## Proxy ACK rotation baseline
 
