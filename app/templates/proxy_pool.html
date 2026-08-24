@@ -3,6 +3,18 @@
 {% block page %}proxy-pool{% endblock %}
 {% block topbar_title %}Proxy pool{% endblock %}
 {% block content %}
+<style nonce="{{ csp_nonce(request) }}">
+  .pool-command-bar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:12px; }
+  .pool-filter { max-width:180px; }
+  .pool-signal { display:flex; flex-direction:column; gap:2px; min-width:120px; }
+  .pool-signal small { color:var(--text-muted); max-width:220px; white-space:normal; }
+  .pool-status-unknown { color:var(--text-muted); }
+  .pool-status-eligible { color:var(--success-color, #2ca56c); font-weight:600; }
+  .pool-status-blocked, .pool-status-quality-rejected { color:var(--danger-color, #d65a5a); font-weight:600; }
+  .pool-duplicate { color:var(--warning-color, #c1872b); font-weight:600; }
+  .pool-danger-zone { border:1px solid color-mix(in srgb, var(--danger-color, #d65a5a) 50%, var(--border-color)); border-radius:var(--radius); padding:12px; margin:12px 0; background:color-mix(in srgb, var(--danger-color, #d65a5a) 6%, transparent); }
+  @media (max-width:900px) { .proxy-pool-table { min-width:1500px; } }
+</style>
 <section class="content-section">
   <div class="section-header">
     <h2>Proxy pool</h2>
@@ -25,20 +37,32 @@
     <button class="btn btn-secondary btn-sm" id="pool-scheduler-save">Save scheduler</button>
     <span id="pool-scheduler-result" style="font-size:0.8rem;color:var(--text-muted);"></span>
   </div>
-  <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;">
-    <input class="form-input" id="pool-search" type="search" placeholder="Search provider, endpoint, location, status" style="max-width:360px;">
-    <select class="form-select" id="pool-provider-filter" style="max-width:180px;"><option value="">All providers</option></select>
-    <select class="form-select" id="pool-location-filter" style="max-width:180px;"><option value="">All locations</option></select>
+  <div class="pool-command-bar">
+    <input class="form-input" id="pool-search" type="search" placeholder="Search endpoint, egress, country, type, verdict or reason" style="max-width:420px;">
+    <select class="form-select pool-filter" id="pool-provider-filter"><option value="">All providers</option></select>
+    <select class="form-select pool-filter" id="pool-location-filter"><option value="">All locations</option></select>
+    <select class="form-select pool-filter" id="pool-ip-type-filter"><option value="">All IP types</option></select>
+    <select class="form-select pool-filter" id="pool-earnapp-filter"><option value="">All EarnApp states</option></select>
+    <select class="form-select pool-filter" id="pool-duplicate-filter"><option value="">All egress groups</option><option value="canonical">Canonical only</option><option value="duplicate">Duplicates only</option></select>
     <button class="btn btn-secondary btn-sm" id="pool-recheck-selected">Recheck selected</button>
     <button class="btn btn-secondary btn-sm" id="pool-recheck-all">Recheck all</button>
+    <button class="btn btn-secondary btn-sm" id="pool-earnapp-selected">EarnApp check selected</button>
+    <button class="btn btn-secondary btn-sm" id="pool-earnapp-all">EarnApp check all</button>
     <button class="btn btn-ghost btn-sm" id="pool-export-filtered">Export filtered</button>
     <button class="btn btn-ghost btn-sm" id="pool-export-provider">Export provider</button>
     <button class="btn btn-ghost btn-sm" id="pool-export-location">Export location</button>
     <button class="btn btn-ghost btn-sm" id="pool-export-http">Export http</button>
     <button class="btn btn-ghost btn-sm" id="pool-export-socks5">Export socks5</button>
+    <button class="btn btn-ghost btn-sm" id="pool-export-duplicates">Export duplicates</button>
+    <button class="btn btn-ghost btn-sm" id="pool-export-duplicates-raw">Export duplicate raw</button>
     <button class="btn btn-danger btn-sm" id="pool-delete-selected">Delete selected</button>
     <button class="btn btn-danger btn-sm" id="pool-delete-dead">Delete dead</button>
     <span id="pool-result" style="font-size:0.8rem;color:var(--text-muted);"></span>
+  </div>
+  <div class="pool-danger-zone">
+    <strong>Danger zone</strong>
+    <span style="display:block;color:var(--text-secondary);font-size:0.82rem;margin:4px 0 10px;">Delete all removes the entire proxy inventory and every pool binding/evidence record. Proxy provider configuration remains available for a future sync/import.</span>
+    <button class="btn btn-danger btn-sm" id="pool-delete-all">Delete all proxy pool</button>
   </div>
   <div style="display:grid;grid-template-columns:minmax(240px,1fr) minmax(160px,220px) auto auto;gap:8px;align-items:end;margin-bottom:12px;">
     <div>
@@ -56,7 +80,7 @@
     <table class="data-table operator-table proxy-pool-table">
       <thead>
         <tr>
-          <th><input type="checkbox" id="pool-select-all"></th><th data-sort="provider_name">Provider</th><th data-sort="endpoint">Endpoint</th><th data-sort="protocol">Protocol</th><th data-sort="location">Location</th><th data-sort="exit_ip">Egress IP</th><th data-sort="status">Status</th><th data-sort="pawns_mask_reason">Pawns</th><th data-sort="expiry_date">Expiry</th><th data-sort="assigned_worker_id">Assigned</th>
+          <th><input type="checkbox" id="pool-select-all" aria-label="Select visible proxies"></th><th data-sort="provider_name">Provider</th><th data-sort="endpoint">Endpoint</th><th data-sort="protocol">Protocol</th><th data-sort="location">Location</th><th data-sort="ip_type">IP type</th><th data-sort="exit_ip">Egress IP</th><th data-sort="status">Live</th><th data-sort="latency_ms">Latency</th><th data-sort="earnapp_eligibility">EarnApp</th><th data-sort="duplicate_egress">Egress group</th><th data-sort="assigned_worker_id">Assigned</th><th data-sort="last_checked_at">Last check</th>
         </tr>
       </thead>
       <tbody id="pool-rows"></tbody>
@@ -87,9 +111,15 @@ function filteredPool() {
   const q = (document.getElementById('pool-search').value || '').toLowerCase();
   const provider = document.getElementById('pool-provider-filter').value;
   const location = document.getElementById('pool-location-filter').value;
-  return poolRows.filter(p => (!q || ['provider_name','endpoint','protocol','location','exit_ip','status','pawns_mask_reason','expiry_date','assigned_worker_id'].some(k => String(p[k] ?? '').toLowerCase().includes(q)))
+  const ipType = document.getElementById('pool-ip-type-filter').value;
+  const earnapp = document.getElementById('pool-earnapp-filter').value;
+  const duplicate = document.getElementById('pool-duplicate-filter').value;
+  return poolRows.filter(p => (!q || ['provider_name','endpoint','protocol','location','country_code','country_name','ip_type','exit_ip','status','earnapp_verdict','earnapp_eligibility','earnapp_probe_reason','duplicate_reason','expiry_date','assigned_worker_id'].some(k => String(p[k] ?? '').toLowerCase().includes(q)))
       && (!provider || String(p.provider_name || '') === provider)
-      && (!location || String(p.location || '') === location))
+      && (!location || String(p.location || '') === location)
+      && (!ipType || String(p.ip_type || 'unknown') === ipType)
+      && (!earnapp || String(p.earnapp_eligibility || 'unknown') === earnapp)
+      && (!duplicate || (duplicate === 'duplicate' ? !!p.duplicate_egress : !p.duplicate_egress)))
     .sort((a, b) => String(a[poolSort.key] ?? '').localeCompare(String(b[poolSort.key] ?? '')) * poolSort.dir);
 }
 function countBadge(label, value) {
@@ -102,13 +132,21 @@ function renderPool() {
     alive: poolRows.filter(p => String(p.status || '').toLowerCase() === 'alive').length,
     dead: poolRows.filter(p => String(p.status || '').toLowerCase() === 'dead').length,
     leased: poolRows.filter(p => p.assigned_worker_id).length,
-    available: poolRows.filter(p => !p.assigned_worker_id).length,
+    scoped_leased: poolRows.filter(p => p.scoped_provider_slug).length,
+    available: poolRows.filter(p => !p.assigned_worker_id && !p.scoped_provider_slug).length,
+    duplicates: poolRows.filter(p => p.duplicate_egress).length,
+    earnapp_eligible: poolRows.filter(p => p.earnapp_eligibility === 'eligible').length,
     selected: document.querySelectorAll('.pool-select:checked').length,
   };
   document.getElementById('pool-counts').innerHTML = Object.entries(counts).map(([k,v]) => countBadge(k, v)).join('');
   const types = {
     http: poolRows.filter(p => String(p.protocol || '').toLowerCase() === 'http').length,
     socks5: poolRows.filter(p => String(p.protocol || '').toLowerCase() === 'socks5').length,
+    residential: poolRows.filter(p => p.ip_type === 'residential').length,
+    datacenter: poolRows.filter(p => p.ip_type === 'datacenter').length,
+    vpn: poolRows.filter(p => p.ip_type === 'vpn').length,
+    proxy: poolRows.filter(p => p.ip_type === 'proxy').length,
+    unknown: poolRows.filter(p => !p.ip_type || p.ip_type === 'unknown').length,
   };
   document.getElementById('pool-type-counts').innerHTML = Object.entries(types).map(([k,v]) => countBadge(k, v)).join('');
   renderPoolFilters();
@@ -116,17 +154,20 @@ function renderPool() {
   if (poolPage > pages) poolPage = pages;
   const visible = rows.slice((poolPage - 1) * poolPageSize, poolPage * poolPageSize);
   document.getElementById('pool-rows').innerHTML = visible.map(p => `
-    <tr>
+    <tr class="${p.duplicate_egress ? 'pool-row-duplicate' : ''}">
       <td><input class="pool-select" type="checkbox" value="${esc(p.id)}"></td>
       <td>${esc(p.provider_name || '-')}</td>
       <td class="mono-cell endpoint-cell" title="${esc(p.endpoint)}">${esc(p.endpoint)}</td>
       <td>${esc(p.protocol)}</td>
-      <td>${esc(p.location || '-')}</td>
+      <td><span title="${esc([p.country_code, p.geo_source, p.geo_confidence].filter(Boolean).join(' · '))}">${esc(p.country_name || p.country_code || p.location || 'Unknown')}</span></td>
+      <td><span title="${esc([p.ip_type_source, p.ip_type_confidence].filter(Boolean).join(' · '))}">${esc(p.ip_type || 'unknown')}</span></td>
       <td class="mono-cell">${esc(p.exit_ip || '-')}</td>
-      <td><span class="${String(p.status || '').toLowerCase() === 'alive' ? 'pool-status-alive' : 'pool-status-dead'}">${esc(p.status || '-')}</span></td>
-      <td>${esc(p.pawns_mask_reason || '-')}</td>
-      <td>${esc(p.expiry_date || (p.days_left != null ? `${p.days_left}d` : '-'))}</td>
-      <td>${esc(p.assigned_worker_id || '-')}</td>
+      <td><span class="${String(p.status || '').toLowerCase() === 'alive' ? 'pool-status-alive' : String(p.status || '').toLowerCase() === 'unknown' ? 'pool-status-unknown' : 'pool-status-dead'}">${esc(p.status || '-')}</span><small style="display:block;color:var(--text-muted);">UDP ${p.udp_ok === true ? 'yes' : p.udp_ok === false ? 'no' : '-'}</small></td>
+      <td>${p.latency_ms == null ? '-' : `${esc(p.latency_ms)} ms`}</td>
+      <td><span class="pool-status-${esc(p.earnapp_eligibility || 'unknown') }" title="${esc(p.earnapp_probe_reason || '')}">${esc(p.earnapp_eligibility || 'unknown')}</span><small style="display:block;color:var(--text-muted);">${esc(p.earnapp_verdict || '')}${p.earnapp_latency_ms == null ? '' : ` · ${esc(p.earnapp_latency_ms)} ms`}</small></td>
+      <td>${p.duplicate_egress ? `<span class="pool-duplicate" title="${esc(p.duplicate_reason || '')}">duplicate → #${esc(p.canonical_proxy_id || '-')}</span>` : '<span>canonical</span>'}</td>
+      <td>${p.scoped_provider_slug ? `<span title="worker ${esc(p.scoped_worker_id || '-')} · ${esc(p.scoped_instance_id || '-')}">${esc(p.scoped_provider_slug)} · #${esc(p.scoped_worker_id || '-')}</span>` : esc(p.assigned_worker_id || '-')}</td>
+      <td>${esc(p.last_checked_at || '-')}</td>
     </tr>`).join('');
   document.getElementById('pool-pager').innerHTML = `
     <button class="btn btn-ghost btn-sm" id="pool-prev" ${poolPage <= 1 ? 'disabled' : ''}>Prev</button>
@@ -134,7 +175,7 @@ function renderPool() {
     <button class="btn btn-ghost btn-sm" id="pool-next" ${poolPage >= pages ? 'disabled' : ''}>Next</button>`;
 }
 function renderPoolFilters() {
-  for (const [id, key, label] of [['pool-provider-filter','provider_name','All providers'], ['pool-location-filter','location','All locations']]) {
+  for (const [id, key, label] of [['pool-provider-filter','provider_name','All providers'], ['pool-location-filter','location','All locations'], ['pool-ip-type-filter','ip_type','All IP types'], ['pool-earnapp-filter','earnapp_eligibility','All EarnApp states']]) {
     const el = document.getElementById(id);
     const current = el.value;
     const values = [...new Set(poolRows.map(p => String(p[key] || '').trim()).filter(Boolean))].sort();
@@ -176,6 +217,13 @@ async function recheckPool(ids) {
   document.getElementById('pool-result').textContent = `Checked ${res.checked || 0}; rotated ${res.rotated || 0}`;
   loadPool();
 }
+async function recheckEarnapp(ids) {
+  const label = ids && ids.length ? `${ids.length} selected proxies` : 'all proxies';
+  if (!confirm(`Run EarnApp qualification for ${label}? Only CID_SET becomes eligible.`)) return;
+  const res = await fetch('/api/proxy-pool/earnapp-recheck', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({proxy_ids: ids && ids.length ? ids : null, concurrency: schedulerBody().concurrency})}).then(r => r.json());
+  document.getElementById('pool-result').textContent = `EarnApp checked ${res.checked || 0}; eligible ${res.eligible || 0}; blocked ${res.blocked || 0}; rejected ${res.quality_rejected || 0}`;
+  loadPool();
+}
 function exportPool(status) {
   const params = new URLSearchParams();
   if (status === 'http' || status === 'socks5') params.set('protocol', status);
@@ -194,7 +242,7 @@ function csvCell(value) {
   return `"${String(value ?? '').replaceAll('"', '""')}"`;
 }
 function exportFilteredPool() {
-  const headers = ['id','provider_name','endpoint','protocol','location','exit_ip','status','pawns_mask_reason','expiry_date','assigned_worker_id','last_checked_at'];
+  const headers = ['id','provider_name','endpoint','protocol','location','country_code','country_name','geo_source','geo_confidence','ip_type','ip_type_source','ip_type_confidence','exit_ip','status','udp_ok','latency_ms','earnapp_verdict','earnapp_eligibility','earnapp_probe_reason','earnapp_latency_ms','duplicate_egress','canonical_proxy_id','duplicate_reason','assigned_worker_id','scoped_provider_slug','scoped_worker_id','scoped_instance_id','last_checked_at'];
   const csv = [headers.join(','), ...filteredPool().map(row => headers.map(key => csvCell(row[key])).join(','))].join('\n');
   const blob = new Blob([csv], {type: 'text/csv'});
   const url = URL.createObjectURL(blob);
@@ -207,16 +255,30 @@ function exportFilteredPool() {
 document.getElementById('pool-search').addEventListener('input', () => { poolPage = 1; renderPool(); });
 document.getElementById('pool-provider-filter').addEventListener('change', () => { poolPage = 1; renderPool(); });
 document.getElementById('pool-location-filter').addEventListener('change', () => { poolPage = 1; renderPool(); });
+document.getElementById('pool-ip-type-filter').addEventListener('change', () => { poolPage = 1; renderPool(); });
+document.getElementById('pool-earnapp-filter').addEventListener('change', () => { poolPage = 1; renderPool(); });
+document.getElementById('pool-duplicate-filter').addEventListener('change', () => { poolPage = 1; renderPool(); });
 document.getElementById('pool-select-all').addEventListener('change', ev => { document.querySelectorAll('.pool-select').forEach(x => x.checked = ev.target.checked); updatePoolSelectionCount(); });
 document.getElementById('pool-rows').addEventListener('change', ev => { if (ev.target.classList.contains('pool-select')) updatePoolSelectionCount(); });
 document.getElementById('pool-recheck-selected').addEventListener('click', () => recheckPool(selectedPoolIds()));
 document.getElementById('pool-recheck-all').addEventListener('click', () => recheckPool(null));
+document.getElementById('pool-earnapp-selected').addEventListener('click', () => {
+  const ids = selectedPoolIds();
+  if (!ids.length) { alert('Select proxies first'); return; }
+  recheckEarnapp(ids);
+});
+document.getElementById('pool-earnapp-all').addEventListener('click', () => recheckEarnapp(null));
 document.getElementById('pool-scheduler-save').addEventListener('click', saveScheduler);
 document.getElementById('pool-export-filtered').addEventListener('click', exportFilteredPool);
 document.getElementById('pool-export-provider').addEventListener('click', () => exportPoolScope('provider'));
 document.getElementById('pool-export-location').addEventListener('click', () => exportPoolScope('location'));
 document.getElementById('pool-export-http').addEventListener('click', () => exportPool('http'));
 document.getElementById('pool-export-socks5').addEventListener('click', () => exportPool('socks5'));
+document.getElementById('pool-export-duplicates').addEventListener('click', () => { window.location.href = '/api/proxy-pool/duplicates/export'; });
+document.getElementById('pool-export-duplicates-raw').addEventListener('click', () => {
+  if (!confirm('Export raw duplicate proxy credentials? Treat this file as a secret.')) return;
+  window.location.href = '/api/proxy-pool/duplicates/export?raw=true';
+});
 async function deletePool(body, label) {
   if (!confirm(`Delete ${label}? This removes proxy rows from the pool.`)) return;
   const res = await fetch('/api/proxy-pool', {method:'DELETE', headers:{'content-type':'application/json'}, body: JSON.stringify(body)}).then(r => r.json());
@@ -229,6 +291,22 @@ document.getElementById('pool-delete-selected').addEventListener('click', () => 
   deletePool({proxy_ids: ids}, `${ids.length} selected proxies`);
 });
 document.getElementById('pool-delete-dead').addEventListener('click', () => deletePool({status: 'dead'}, 'all dead proxies'));
+async function deleteAllPool() {
+  const first = confirm('Delete ALL proxy pool data? Every proxy, assignment, scoped lease, probe result and import record will be removed.');
+  if (!first) return;
+  const second = confirm('Final confirmation: this deletes the entire proxy pool. Continue?');
+  if (!second) return;
+  const phrase = 'DELETE ALL PROXY POOL';
+  const res = await fetch('/api/proxy-pool', {
+    method:'DELETE',
+    headers:{'content-type':'application/json'},
+    body: JSON.stringify({delete_all:true, confirmation:phrase, confirmation_again:phrase}),
+  }).then(async response => ({ok:response.ok, body:await response.json()}));
+  if (!res.ok) { document.getElementById('pool-result').textContent = res.body.detail || 'Delete all failed'; return; }
+  document.getElementById('pool-result').textContent = `Deleted entire pool (${res.body.deleted || 0} proxies)`;
+  loadPool();
+}
+document.getElementById('pool-delete-all').addEventListener('click', deleteAllPool);
 document.getElementById('pool-import-submit').addEventListener('click', async () => {
   const file = document.getElementById('pool-import-file').files[0];
   const text = (document.getElementById('pool-import-text').value || '') + (file ? `\n${await file.text()}` : '');

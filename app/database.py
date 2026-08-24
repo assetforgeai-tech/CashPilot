@@ -542,8 +542,21 @@ CREATE TABLE IF NOT EXISTS proxy_endpoints (
     latency_ms        INTEGER,
     last_synced_at    TEXT,
     last_checked_at   TEXT,
+    country_code      TEXT    NOT NULL DEFAULT '',
+    country_name      TEXT    NOT NULL DEFAULT '',
+    geo_source        TEXT    NOT NULL DEFAULT '',
+    geo_confidence    TEXT    NOT NULL DEFAULT 'unknown',
+    geo_checked_at    TEXT,
+    ip_type           TEXT    NOT NULL DEFAULT 'unknown',
+    ip_type_source    TEXT    NOT NULL DEFAULT '',
+    ip_type_confidence TEXT   NOT NULL DEFAULT 'unknown',
+    ip_type_checked_at TEXT,
+    duplicate_egress  INTEGER NOT NULL DEFAULT 0,
+    canonical_proxy_id INTEGER,
+    duplicate_reason TEXT    NOT NULL DEFAULT '',
     created_at        TEXT    NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY(provider_id) REFERENCES proxy_providers(id) ON DELETE SET NULL,
+    FOREIGN KEY(canonical_proxy_id) REFERENCES proxy_endpoints(id) ON DELETE SET NULL,
     UNIQUE(provider_id, provider_proxy_id)
 );
 
@@ -566,6 +579,59 @@ CREATE TABLE IF NOT EXISTS proxy_provider_masks (
     masked_at     TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_at    TEXT    NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY(proxy_id, provider_slug),
+    FOREIGN KEY(proxy_id) REFERENCES proxy_endpoints(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS proxy_probe_results (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    proxy_id       INTEGER NOT NULL,
+    profile        TEXT    NOT NULL,
+    probe_status   TEXT    NOT NULL DEFAULT 'unknown',
+    verdict        TEXT    NOT NULL DEFAULT '',
+    eligibility    TEXT    NOT NULL DEFAULT 'unknown',
+    reason         TEXT    NOT NULL DEFAULT '',
+    exit_ip        TEXT    NOT NULL DEFAULT '',
+    latency_ms     INTEGER,
+    probe_version  TEXT    NOT NULL DEFAULT '',
+    evidence_json  TEXT    NOT NULL DEFAULT '{}',
+    checked_at     TEXT    NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY(proxy_id) REFERENCES proxy_endpoints(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS proxy_import_batches (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider_id    INTEGER,
+    source_name    TEXT    NOT NULL DEFAULT 'manual',
+    raw_input_enc  TEXT    NOT NULL DEFAULT '',
+    parsed_count   INTEGER NOT NULL DEFAULT 0,
+    imported_count INTEGER NOT NULL DEFAULT 0,
+    created_at     TEXT    NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY(provider_id) REFERENCES proxy_providers(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS proxy_import_rows (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    batch_id       INTEGER NOT NULL,
+    row_number     INTEGER NOT NULL,
+    proxy_id       INTEGER,
+    raw_line_enc   TEXT    NOT NULL DEFAULT '',
+    created_at     TEXT    NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY(batch_id) REFERENCES proxy_import_batches(id) ON DELETE CASCADE,
+    FOREIGN KEY(proxy_id) REFERENCES proxy_endpoints(id) ON DELETE SET NULL,
+    UNIQUE(batch_id, row_number)
+);
+
+CREATE TABLE IF NOT EXISTS provider_proxy_leases (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider_slug  TEXT    NOT NULL,
+    worker_id      INTEGER NOT NULL,
+    instance_id    TEXT    NOT NULL,
+    proxy_id       INTEGER NOT NULL,
+    exit_ip        TEXT    NOT NULL DEFAULT '',
+    leased_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+    released_at    TEXT,
+    release_reason TEXT    NOT NULL DEFAULT '',
+    FOREIGN KEY(worker_id) REFERENCES workers(id) ON DELETE CASCADE,
     FOREIGN KEY(proxy_id) REFERENCES proxy_endpoints(id) ON DELETE CASCADE
 );
 
@@ -708,6 +774,27 @@ CREATE INDEX IF NOT EXISTS idx_provider_instances_slug
 
 CREATE INDEX IF NOT EXISTS idx_proxy_provider_masks_provider
     ON proxy_provider_masks(provider_slug, proxy_id);
+
+CREATE INDEX IF NOT EXISTS idx_proxy_endpoints_exit_ip
+    ON proxy_endpoints(exit_ip);
+
+CREATE INDEX IF NOT EXISTS idx_proxy_probe_results_latest
+    ON proxy_probe_results(proxy_id, profile, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_proxy_import_rows_proxy
+    ON proxy_import_rows(proxy_id, batch_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_proxy_leases_active_instance
+    ON provider_proxy_leases(provider_slug, worker_id, instance_id)
+    WHERE released_at IS NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_proxy_leases_active_proxy
+    ON provider_proxy_leases(proxy_id)
+    WHERE released_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_provider_proxy_leases_active_exit
+    ON provider_proxy_leases(exit_ip)
+    WHERE released_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_health_events_slug
     ON health_events (slug, created_at);
@@ -976,7 +1063,7 @@ async def _encrypt_legacy_plaintext_credentials(db: Any) -> int:
 #: missing a column -- an interrupted upgrade, a restored backup, a hand-edited
 #: file -- could never be repaired, because the gate would say there was nothing
 #: to do. The guards are idempotent and cheap; the version is for the operator.
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 18
 
 
 async def init_db() -> None:
@@ -1129,6 +1216,96 @@ async def init_db() -> None:
         )
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_proxy_provider_masks_provider ON proxy_provider_masks(provider_slug, proxy_id)"
+        )
+        cursor = await db.execute("PRAGMA table_info(proxy_endpoints)")
+        proxy_endpoint_cols = {row["name"] for row in await cursor.fetchall()}
+        proxy_endpoint_migrations = {
+            "country_code": "TEXT NOT NULL DEFAULT ''",
+            "country_name": "TEXT NOT NULL DEFAULT ''",
+            "geo_source": "TEXT NOT NULL DEFAULT ''",
+            "geo_confidence": "TEXT NOT NULL DEFAULT 'unknown'",
+            "geo_checked_at": "TEXT",
+            "ip_type": "TEXT NOT NULL DEFAULT 'unknown'",
+            "ip_type_source": "TEXT NOT NULL DEFAULT ''",
+            "ip_type_confidence": "TEXT NOT NULL DEFAULT 'unknown'",
+            "ip_type_checked_at": "TEXT",
+            "duplicate_egress": "INTEGER NOT NULL DEFAULT 0",
+            "canonical_proxy_id": "INTEGER REFERENCES proxy_endpoints(id) ON DELETE SET NULL",
+            "duplicate_reason": "TEXT NOT NULL DEFAULT ''",
+        }
+        for column, declaration in proxy_endpoint_migrations.items():
+            if column not in proxy_endpoint_cols:
+                applied.append(f"proxy_endpoints.{column}")
+                await db.execute(f"ALTER TABLE proxy_endpoints ADD COLUMN {column} {declaration}")
+        await db.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS proxy_probe_results (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                proxy_id       INTEGER NOT NULL,
+                profile        TEXT    NOT NULL,
+                probe_status   TEXT    NOT NULL DEFAULT 'unknown',
+                verdict        TEXT    NOT NULL DEFAULT '',
+                eligibility    TEXT    NOT NULL DEFAULT 'unknown',
+                reason         TEXT    NOT NULL DEFAULT '',
+                exit_ip        TEXT    NOT NULL DEFAULT '',
+                latency_ms     INTEGER,
+                probe_version  TEXT    NOT NULL DEFAULT '',
+                evidence_json  TEXT    NOT NULL DEFAULT '{}',
+                checked_at     TEXT    NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY(proxy_id) REFERENCES proxy_endpoints(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_proxy_probe_results_latest
+                ON proxy_probe_results(proxy_id, profile, id DESC);
+            CREATE INDEX IF NOT EXISTS idx_proxy_endpoints_exit_ip
+                ON proxy_endpoints(exit_ip);
+
+            CREATE TABLE IF NOT EXISTS proxy_import_batches (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                provider_id    INTEGER,
+                source_name    TEXT    NOT NULL DEFAULT 'manual',
+                raw_input_enc  TEXT    NOT NULL DEFAULT '',
+                parsed_count   INTEGER NOT NULL DEFAULT 0,
+                imported_count INTEGER NOT NULL DEFAULT 0,
+                created_at     TEXT    NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY(provider_id) REFERENCES proxy_providers(id) ON DELETE SET NULL
+            );
+            CREATE TABLE IF NOT EXISTS proxy_import_rows (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                batch_id       INTEGER NOT NULL,
+                row_number     INTEGER NOT NULL,
+                proxy_id       INTEGER,
+                raw_line_enc   TEXT    NOT NULL DEFAULT '',
+                created_at     TEXT    NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY(batch_id) REFERENCES proxy_import_batches(id) ON DELETE CASCADE,
+                FOREIGN KEY(proxy_id) REFERENCES proxy_endpoints(id) ON DELETE SET NULL,
+                UNIQUE(batch_id, row_number)
+            );
+            CREATE INDEX IF NOT EXISTS idx_proxy_import_rows_proxy
+                ON proxy_import_rows(proxy_id, batch_id);
+
+            CREATE TABLE IF NOT EXISTS provider_proxy_leases (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                provider_slug  TEXT    NOT NULL,
+                worker_id      INTEGER NOT NULL,
+                instance_id    TEXT    NOT NULL,
+                proxy_id       INTEGER NOT NULL,
+                exit_ip        TEXT    NOT NULL DEFAULT '',
+                leased_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+                released_at    TEXT,
+                release_reason TEXT    NOT NULL DEFAULT '',
+                FOREIGN KEY(worker_id) REFERENCES workers(id) ON DELETE CASCADE,
+                FOREIGN KEY(proxy_id) REFERENCES proxy_endpoints(id) ON DELETE CASCADE
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_proxy_leases_active_instance
+                ON provider_proxy_leases(provider_slug, worker_id, instance_id)
+                WHERE released_at IS NULL;
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_proxy_leases_active_proxy
+                ON provider_proxy_leases(proxy_id)
+                WHERE released_at IS NULL;
+            CREATE INDEX IF NOT EXISTS idx_provider_proxy_leases_active_exit
+                ON provider_proxy_leases(exit_ip)
+                WHERE released_at IS NULL;
+            """
         )
         cursor = await db.execute("PRAGMA table_info(proxy_assignments)")
         proxy_assignment_cols = {row["name"] for row in await cursor.fetchall()}
@@ -2452,9 +2629,11 @@ async def get_proxy_provider(provider_id: int, *, include_secret: bool = False) 
         await db.close()
 
 
-async def upsert_proxy_endpoints(provider_id: int, proxies: Sequence[Mapping[str, Any]]) -> int:
+async def upsert_proxy_endpoints_returning_ids(provider_id: int, proxies: Sequence[Mapping[str, Any]]) -> list[int]:
+    """Upsert endpoints and return the exact row id for each accepted input row."""
     db = await _get_db()
     try:
+        proxy_ids: list[int] = []
         for proxy in proxies:
             protocol = str(proxy.get("protocol") or "socks5").lower()
             if protocol not in {"http", "socks5"}:
@@ -2511,13 +2690,63 @@ async def upsert_proxy_endpoints(provider_id: int, proxies: Sequence[Mapping[str
                     proxy.get("latency_ms"),
                 ),
             )
+            cursor = await db.execute(
+                "SELECT id FROM proxy_endpoints WHERE provider_id = ? AND provider_proxy_id = ?",
+                (provider_id, provider_proxy_id),
+            )
+            row = await cursor.fetchone()
+            if row:
+                proxy_ids.append(int(row["id"]))
         await db.execute("UPDATE proxy_providers SET last_synced_at = datetime('now') WHERE id = ?", (provider_id,))
         await db.commit()
-        cur = await db.execute(
-            "SELECT id FROM proxy_endpoints WHERE provider_id = ? ORDER BY id DESC LIMIT 1", (provider_id,)
+        return proxy_ids
+    finally:
+        await db.close()
+
+
+async def upsert_proxy_endpoints(provider_id: int, proxies: Sequence[Mapping[str, Any]]) -> int:
+    """Backward-compatible endpoint upsert returning the largest touched id."""
+    proxy_ids = await upsert_proxy_endpoints_returning_ids(provider_id, proxies)
+    return max(proxy_ids, default=0)
+
+
+async def create_proxy_import_batch(
+    provider_id: int,
+    *,
+    source_name: str,
+    raw_input: str,
+    parsed_rows: Sequence[Mapping[str, Any]],
+    proxy_ids: Sequence[int],
+) -> int:
+    """Persist encrypted raw import evidence without exposing it in pool JSON."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            """
+            INSERT INTO proxy_import_batches
+                (provider_id, source_name, raw_input_enc, parsed_count, imported_count)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                int(provider_id),
+                str(source_name or "manual"),
+                encrypt_value(str(raw_input or "")) if raw_input else "",
+                len(parsed_rows),
+                len(proxy_ids),
+            ),
         )
-        row = await cur.fetchone()
-        return int(row["id"]) if row else 0
+        batch_id = int(cursor.lastrowid or 0)
+        for row_number, (parsed, proxy_id) in enumerate(zip(parsed_rows, proxy_ids, strict=False), start=1):
+            raw_line = str(parsed.get("_raw_line") or "").strip()
+            await db.execute(
+                """
+                INSERT INTO proxy_import_rows (batch_id, row_number, proxy_id, raw_line_enc)
+                VALUES (?, ?, ?, ?)
+                """,
+                (batch_id, row_number, int(proxy_id), encrypt_value(raw_line) if raw_line else ""),
+            )
+        await db.commit()
+        return batch_id
     finally:
         await db.close()
 
@@ -2532,13 +2761,30 @@ async def list_proxy_pool() -> list[dict[str, Any]]:
                    pe.username, pe.location, pe.status, pe.expiry_date, pe.days_left,
                    pe.hours_left, pe.exit_ip, pe.udp_ok, pe.latency_ms,
                    pe.last_synced_at, pe.last_checked_at,
+                   pe.country_code, pe.country_name, pe.geo_source, pe.geo_confidence, pe.geo_checked_at,
+                   pe.ip_type, pe.ip_type_source, pe.ip_type_confidence, pe.ip_type_checked_at,
+                   pe.duplicate_egress, pe.canonical_proxy_id, pe.duplicate_reason,
                    CASE WHEN pe.password_enc IS NOT NULL AND pe.password_enc != '' THEN 1 ELSE 0 END AS password_set,
                    pa.worker_id AS assigned_worker_id,
-                   pawns.reason AS pawns_mask_reason
+                   pawns.reason AS pawns_mask_reason,
+                   earnapp.probe_status AS earnapp_probe_status,
+                   earnapp.verdict AS earnapp_verdict,
+                   earnapp.eligibility AS earnapp_eligibility,
+                   earnapp.reason AS earnapp_probe_reason,
+                   earnapp.latency_ms AS earnapp_latency_ms,
+                   earnapp.checked_at AS earnapp_checked_at,
+                   scoped.provider_slug AS scoped_provider_slug,
+                   scoped.worker_id AS scoped_worker_id,
+                   scoped.instance_id AS scoped_instance_id
             FROM proxy_endpoints pe
             LEFT JOIN proxy_providers pp ON pp.id = pe.provider_id
             LEFT JOIN proxy_assignments pa ON pa.proxy_id = pe.id
             LEFT JOIN proxy_provider_masks pawns ON pawns.proxy_id = pe.id AND pawns.provider_slug = 'iproyal'
+            LEFT JOIN proxy_probe_results earnapp ON earnapp.id = (
+                SELECT MAX(pr.id) FROM proxy_probe_results pr
+                WHERE pr.proxy_id = pe.id AND pr.profile = 'earnapp_wss'
+            )
+            LEFT JOIN provider_proxy_leases scoped ON scoped.proxy_id = pe.id AND scoped.released_at IS NULL
             ORDER BY pp.name, pe.endpoint
             """
         )
@@ -2546,6 +2792,7 @@ async def list_proxy_pool() -> list[dict[str, Any]]:
         for row in await cur.fetchall():
             item = dict(row)
             item["password_set"] = bool(item["password_set"])
+            item["duplicate_egress"] = bool(item.get("duplicate_egress"))
             if item.get("udp_ok") is not None:
                 item["udp_ok"] = bool(item["udp_ok"])
             rows.append(item)
@@ -3472,8 +3719,11 @@ async def set_worker_proxy_assignment(
                 await db.rollback()
                 return False
             if proxy_id is not None:
-                cur = await db.execute("SELECT id FROM proxy_endpoints WHERE id = ?", (proxy_id,))
-                if not await cur.fetchone():
+                cur = await db.execute(
+                    "SELECT id, exit_ip, duplicate_egress FROM proxy_endpoints WHERE id = ?", (proxy_id,)
+                )
+                endpoint = await cur.fetchone()
+                if not endpoint or bool(endpoint["duplicate_egress"]):
                     await db.rollback()
                     return False
                 cur = await db.execute(
@@ -3483,6 +3733,33 @@ async def set_worker_proxy_assignment(
                 if await cur.fetchone():
                     await db.rollback()
                     return False
+                exit_ip = str(endpoint["exit_ip"] or "").strip()
+                if exit_ip:
+                    cur = await db.execute(
+                        """
+                        SELECT 1
+                        FROM provider_proxy_leases scoped
+                        WHERE scoped.released_at IS NULL AND scoped.exit_ip = ?
+                        LIMIT 1
+                        """,
+                        (exit_ip,),
+                    )
+                    if await cur.fetchone():
+                        await db.rollback()
+                        return False
+                    cur = await db.execute(
+                        """
+                        SELECT 1
+                        FROM proxy_assignments legacy
+                        JOIN proxy_endpoints used ON used.id = legacy.proxy_id
+                        WHERE legacy.worker_id != ? AND used.exit_ip = ?
+                        LIMIT 1
+                        """,
+                        (worker_id, exit_ip),
+                    )
+                    if await cur.fetchone():
+                        await db.rollback()
+                        return False
             await db.execute(
                 """
                 INSERT INTO proxy_assignments (worker_id, proxy_id, mode, fallback, assignment_version, applied_at)
@@ -3540,7 +3817,8 @@ async def get_worker_proxy_assignment(worker_id: int) -> dict[str, Any] | None:
             SELECT pa.worker_id, pa.proxy_id, pa.mode, pa.fallback, pa.assignment_version,
                    pa.applied_at, pa.created_at,
                    pe.endpoint, pe.host, pe.port, pe.protocol, pe.username, pe.location,
-                   pe.password_enc, pe.status, pe.udp_ok, pp.name AS provider_name
+                    pe.password_enc, pe.status, pe.udp_ok, pe.exit_ip, pe.ip_type,
+                    pe.country_code, pe.country_name, pp.name AS provider_name
             FROM proxy_assignments pa
             LEFT JOIN proxy_endpoints pe ON pe.id = pa.proxy_id
             LEFT JOIN proxy_providers pp ON pp.id = pe.provider_id
@@ -3578,8 +3856,11 @@ async def commit_proxy_rotation(
         db = await _open_transaction_connection()
         try:
             await db.execute("BEGIN IMMEDIATE")
-            cursor = await db.execute("SELECT id FROM proxy_endpoints WHERE id = ?", (new_proxy_id,))
-            if not await cursor.fetchone():
+            cursor = await db.execute(
+                "SELECT id, exit_ip, duplicate_egress FROM proxy_endpoints WHERE id = ?", (new_proxy_id,)
+            )
+            candidate = await cursor.fetchone()
+            if not candidate or bool(candidate["duplicate_egress"]):
                 await db.rollback()
                 return False
             cursor = await db.execute(
@@ -3596,6 +3877,28 @@ async def commit_proxy_rotation(
                 # Do not create duplicate active leases during the CAS commit.
                 await db.rollback()
                 return False
+            exit_ip = str(candidate["exit_ip"] or "").strip()
+            if exit_ip:
+                cursor = await db.execute(
+                    "SELECT 1 FROM provider_proxy_leases WHERE released_at IS NULL AND exit_ip = ? LIMIT 1",
+                    (exit_ip,),
+                )
+                if await cursor.fetchone():
+                    await db.rollback()
+                    return False
+                cursor = await db.execute(
+                    """
+                    SELECT 1
+                    FROM proxy_assignments legacy
+                    JOIN proxy_endpoints used ON used.id = legacy.proxy_id
+                    WHERE legacy.worker_id != ? AND used.exit_ip = ?
+                    LIMIT 1
+                    """,
+                    (worker_id, exit_ip),
+                )
+                if await cursor.fetchone():
+                    await db.rollback()
+                    return False
             cursor = await db.execute(
                 """
                 UPDATE proxy_assignments
@@ -3688,6 +3991,41 @@ async def export_proxy_pool(
     return rows
 
 
+async def export_duplicate_proxy_rows(*, raw: bool = False) -> list[dict[str, Any]]:
+    """Export duplicate evidence; raw mode is explicit and owner-gated by the route."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            """
+            SELECT pe.id, pe.endpoint, pe.host, pe.port, pe.protocol, pe.username, pe.password_enc,
+                   pe.exit_ip, pe.canonical_proxy_id, pe.duplicate_reason, pp.name AS provider_name,
+                   (
+                       SELECT latest.raw_line_enc
+                       FROM proxy_import_rows latest
+                       WHERE latest.proxy_id = pe.id
+                       ORDER BY latest.id DESC
+                       LIMIT 1
+                   ) AS raw_line_enc
+            FROM proxy_endpoints pe
+            LEFT JOIN proxy_providers pp ON pp.id = pe.provider_id
+            WHERE pe.duplicate_egress = 1
+            ORDER BY pe.id
+            """
+        )
+        rows: list[dict[str, Any]] = []
+        for row in await cursor.fetchall():
+            data = dict(row)
+            raw_line = decrypt_value(data.pop("raw_line_enc", "") or "")
+            enc = data.pop("password_enc", "") or ""
+            data["password"] = decrypt_value(enc) if raw else ""
+            data["username"] = data.get("username", "") if raw else ""
+            data["raw_proxy"] = raw_line if raw else ""
+            rows.append(data)
+        return rows
+    finally:
+        await db.close()
+
+
 async def update_proxy_pool_check_results(
     results: Mapping[int, str], *, protocols: Mapping[int, str] | None = None, exit_ips: Mapping[int, str] | None = None
 ) -> int:
@@ -3717,6 +4055,385 @@ async def update_proxy_pool_check_results(
         await db.close()
 
 
+async def update_proxy_endpoint_intelligence(proxy_id: int, intelligence: Mapping[str, Any]) -> bool:
+    country_code = str(intelligence.get("country_code") or "").strip().upper()
+    country_name = str(intelligence.get("country_name") or "").strip()
+    geo_source = str(intelligence.get("geo_source") or "").strip()
+    ip_type = str(intelligence.get("ip_type") or "unknown").strip().lower()
+    ip_type_source = str(intelligence.get("ip_type_source") or "").strip()
+    has_geo = bool(geo_source and (country_code or country_name))
+    has_type = bool(ip_type_source and ip_type != "unknown")
+    if not has_geo and not has_type:
+        return False
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            """
+            UPDATE proxy_endpoints
+            SET location = CASE WHEN ? THEN ? ELSE location END,
+                country_code = CASE WHEN ? THEN ? ELSE country_code END,
+                country_name = CASE WHEN ? THEN ? ELSE country_name END,
+                geo_source = CASE WHEN ? THEN ? ELSE geo_source END,
+                geo_confidence = CASE WHEN ? THEN ? ELSE geo_confidence END,
+                geo_checked_at = CASE WHEN ? THEN datetime('now') ELSE geo_checked_at END,
+                ip_type = CASE WHEN ? THEN ? ELSE ip_type END,
+                ip_type_source = CASE WHEN ? THEN ? ELSE ip_type_source END,
+                ip_type_confidence = CASE WHEN ? THEN ? ELSE ip_type_confidence END,
+                ip_type_checked_at = CASE WHEN ? THEN datetime('now') ELSE ip_type_checked_at END
+            WHERE id = ?
+            """,
+            (
+                has_geo,
+                str(intelligence.get("location") or country_name or country_code),
+                has_geo,
+                country_code,
+                has_geo,
+                country_name,
+                has_geo,
+                geo_source,
+                has_geo,
+                str(intelligence.get("geo_confidence") or "unknown"),
+                has_geo,
+                has_type,
+                ip_type,
+                has_type,
+                ip_type_source,
+                has_type,
+                str(intelligence.get("ip_type_confidence") or "unknown"),
+                has_type,
+                int(proxy_id),
+            ),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+    finally:
+        await db.close()
+
+
+async def get_cached_proxy_intelligence(exit_ip: str, *, max_age_hours: int = 168) -> dict[str, Any] | None:
+    value = str(exit_ip or "").strip()
+    if not value:
+        return None
+    age = f"-{max(1, int(max_age_hours))} hours"
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            """
+            SELECT location, country_code, country_name, geo_source, geo_confidence,
+                   ip_type, ip_type_source, ip_type_confidence
+            FROM proxy_endpoints
+            WHERE exit_ip = ?
+              AND geo_source != ''
+              AND geo_checked_at >= datetime('now', ?)
+              AND ip_type_source != ''
+              AND ip_type_checked_at >= datetime('now', ?)
+            ORDER BY CASE WHEN geo_source != '' AND ip_type_source != '' THEN 0 ELSE 1 END,
+                     max(coalesce(geo_checked_at, ''), coalesce(ip_type_checked_at, '')) DESC,
+                     id DESC
+            LIMIT 1
+            """,
+            (value, age, age),
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        await db.close()
+
+
+async def save_proxy_probe_result(
+    proxy_id: int,
+    *,
+    profile: str,
+    probe_status: str,
+    verdict: str,
+    eligibility: str,
+    reason: str,
+    exit_ip: str,
+    latency_ms: int | None,
+    probe_version: str,
+    evidence: Mapping[str, Any] | None = None,
+) -> int:
+    """Append probe evidence and refresh only the endpoint fields it proves."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            """
+            INSERT INTO proxy_probe_results
+                (proxy_id, profile, probe_status, verdict, eligibility, reason, exit_ip,
+                 latency_ms, probe_version, evidence_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                int(proxy_id),
+                str(profile or "generic"),
+                str(probe_status or "unknown"),
+                str(verdict or ""),
+                str(eligibility or "unknown"),
+                str(reason or "")[:500],
+                str(exit_ip or ""),
+                int(latency_ms) if latency_ms is not None else None,
+                str(probe_version or ""),
+                json.dumps(dict(evidence or {}), separators=(",", ":"), sort_keys=True),
+            ),
+        )
+        is_generic = str(profile or "") == "generic"
+        update_status = str(probe_status or "unknown").lower() if is_generic else ""
+        await db.execute(
+            """
+            UPDATE proxy_endpoints
+            SET exit_ip = CASE WHEN ? != '' THEN ? ELSE exit_ip END,
+                latency_ms = CASE WHEN ? AND ? IS NOT NULL THEN ? ELSE latency_ms END,
+                status = CASE WHEN ? IN ('alive', 'dead') THEN ? ELSE status END,
+                last_checked_at = CASE WHEN ? = 'generic' THEN datetime('now') ELSE last_checked_at END
+            WHERE id = ?
+            """,
+            (
+                str(exit_ip or ""),
+                str(exit_ip or ""),
+                is_generic,
+                latency_ms,
+                latency_ms,
+                update_status,
+                update_status,
+                str(profile or ""),
+                int(proxy_id),
+            ),
+        )
+        await db.commit()
+        return int(cursor.lastrowid or 0)
+    finally:
+        await db.close()
+
+
+async def reconcile_proxy_duplicates() -> int:
+    """Choose one canonical endpoint per egress while retaining every raw row.
+
+    Existing assignments are never removed. A bound non-canonical row may still
+    be labelled duplicate, but the lease guards prevent every new assignment
+    from reusing its egress.
+    """
+    db = await _get_db()
+    try:
+        await db.execute(
+            "UPDATE proxy_endpoints SET duplicate_egress = 0, canonical_proxy_id = id, duplicate_reason = ''"
+        )
+        cursor = await db.execute(
+            """
+            SELECT exit_ip
+            FROM proxy_endpoints
+            WHERE trim(coalesce(exit_ip, '')) != ''
+            GROUP BY exit_ip
+            HAVING COUNT(*) > 1
+            """
+        )
+        changed = 0
+        for group in await cursor.fetchall():
+            exit_ip = str(group["exit_ip"])
+            candidates = await (
+                await db.execute(
+                    """
+                    SELECT pe.id, pe.status, pe.latency_ms,
+                           CASE WHEN pa.proxy_id IS NOT NULL OR scoped.proxy_id IS NOT NULL THEN 1 ELSE 0 END AS is_bound,
+                           CASE WHEN EXISTS (
+                               SELECT 1 FROM proxy_probe_results pr
+                               WHERE pr.proxy_id = pe.id
+                                 AND pr.profile = 'earnapp_wss'
+                                 AND pr.verdict = 'CID_SET'
+                                 AND pr.eligibility = 'eligible'
+                                 AND pr.id = (
+                                     SELECT MAX(latest.id)
+                                     FROM proxy_probe_results latest
+                                     WHERE latest.proxy_id = pe.id
+                                       AND latest.profile = 'earnapp_wss'
+                                 )
+                           ) THEN 1 ELSE 0 END AS has_earnapp_eligible
+                    FROM proxy_endpoints pe
+                    LEFT JOIN proxy_assignments pa ON pa.proxy_id = pe.id
+                    LEFT JOIN provider_proxy_leases scoped ON scoped.proxy_id = pe.id AND scoped.released_at IS NULL
+                    WHERE pe.exit_ip = ?
+                    ORDER BY is_bound DESC,
+                             has_earnapp_eligible DESC,
+                             CASE WHEN lower(pe.status) = 'alive' THEN 0 ELSE 1 END,
+                             CASE WHEN pe.latency_ms IS NULL THEN 1 ELSE 0 END,
+                             pe.latency_ms,
+                             pe.id
+                    """,
+                    (exit_ip,),
+                )
+            ).fetchall()
+            if not candidates:
+                continue
+            canonical_id = int(candidates[0]["id"])
+            await db.execute(
+                "UPDATE proxy_endpoints SET canonical_proxy_id = ? WHERE exit_ip = ?",
+                (canonical_id, exit_ip),
+            )
+            duplicate_ids = [int(row["id"]) for row in candidates[1:]]
+            if duplicate_ids:
+                placeholders = ",".join("?" for _ in duplicate_ids)
+                result = await db.execute(
+                    f"""
+                    UPDATE proxy_endpoints
+                    SET duplicate_egress = 1,
+                        canonical_proxy_id = ?,
+                        duplicate_reason = 'duplicate egress ' || ?
+                    WHERE id IN ({placeholders})
+                    """,
+                    (canonical_id, exit_ip, *duplicate_ids),
+                )
+                changed += int(result.rowcount or 0)
+        await db.commit()
+        return changed
+    finally:
+        await db.close()
+
+
+async def lease_proxy_for_provider_instance(
+    provider_slug: str, worker_id: int, instance_id: str
+) -> dict[str, Any] | None:
+    """Lease one canonical egress to a provider instance without touching legacy assignments."""
+    slug = str(provider_slug or "").strip().lower()
+    instance = str(instance_id or "").strip()
+    if not slug or int(worker_id or 0) <= 0 or not instance:
+        return None
+    async with _proxy_assignment_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            cursor = await db.execute(
+                """
+                SELECT leases.proxy_id, leases.exit_ip, pe.endpoint, pe.host, pe.port, pe.protocol,
+                       pe.username, pe.password_enc, pe.location, pe.ip_type, pe.country_code, pe.country_name
+                FROM provider_proxy_leases leases
+                JOIN proxy_endpoints pe ON pe.id = leases.proxy_id
+                WHERE leases.provider_slug = ? AND leases.worker_id = ? AND leases.instance_id = ?
+                  AND leases.released_at IS NULL
+                LIMIT 1
+                """,
+                (slug, int(worker_id), instance),
+            )
+            current = await cursor.fetchone()
+            if current:
+                await db.commit()
+                data = dict(current)
+                encrypted = data.pop("password_enc", "") or ""
+                if encrypted:
+                    data["password"] = decrypt_value(encrypted)
+                data.update(provider_slug=slug, worker_id=int(worker_id), instance_id=instance)
+                return data
+            cursor = await db.execute(
+                """
+                SELECT pe.id AS proxy_id, pe.endpoint, pe.host, pe.port, pe.protocol, pe.username,
+                       pe.password_enc, pe.location, pe.exit_ip, pe.ip_type, pe.country_code, pe.country_name
+                FROM proxy_endpoints pe
+                LEFT JOIN proxy_assignments pa ON pa.proxy_id = pe.id
+                LEFT JOIN provider_proxy_leases own ON own.proxy_id = pe.id AND own.released_at IS NULL
+                WHERE lower(coalesce(pe.status, 'unknown')) = 'alive'
+                  AND trim(coalesce(pe.exit_ip, '')) != ''
+                  AND coalesce(pe.duplicate_egress, 0) = 0
+                  AND pa.proxy_id IS NULL
+                  AND own.proxy_id IS NULL
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM proxy_assignments legacy
+                      JOIN proxy_endpoints used ON used.id = legacy.proxy_id
+                      WHERE trim(coalesce(pe.exit_ip, '')) != '' AND used.exit_ip = pe.exit_ip
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1 FROM provider_proxy_leases used
+                      WHERE used.released_at IS NULL AND used.exit_ip = pe.exit_ip
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1 FROM proxy_provider_masks ppm
+                      WHERE ppm.proxy_id = pe.id AND ppm.provider_slug = ?
+                  )
+                  AND (
+                      ? != 'earnapp'
+                      OR EXISTS (
+                          SELECT 1 FROM proxy_probe_results earnapp
+                          WHERE earnapp.proxy_id = pe.id
+                            AND earnapp.profile = 'earnapp_wss'
+                            AND earnapp.verdict = 'CID_SET'
+                            AND earnapp.eligibility = 'eligible'
+                            AND earnapp.id = (
+                                SELECT MAX(latest.id) FROM proxy_probe_results latest
+                                WHERE latest.proxy_id = pe.id AND latest.profile = 'earnapp_wss'
+                            )
+                      )
+                  )
+                ORDER BY pe.id
+                LIMIT 1
+                """,
+                (slug, slug),
+            )
+            row = await cursor.fetchone()
+            if not row:
+                await db.rollback()
+                return None
+            data = dict(row)
+            await db.execute(
+                """
+                INSERT INTO provider_proxy_leases
+                    (provider_slug, worker_id, instance_id, proxy_id, exit_ip)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (slug, int(worker_id), instance, int(data["proxy_id"]), str(data.get("exit_ip") or "")),
+            )
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
+    encrypted = data.pop("password_enc", "") or ""
+    if encrypted:
+        data["password"] = decrypt_value(encrypted)
+    data.update(provider_slug=slug, worker_id=int(worker_id), instance_id=instance)
+    return data
+
+
+async def release_proxy_for_provider_instance(
+    provider_slug: str, worker_id: int, instance_id: str, *, reason: str = "released"
+) -> bool:
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            """
+            UPDATE provider_proxy_leases
+            SET released_at = datetime('now'), release_reason = ?
+            WHERE provider_slug = ? AND worker_id = ? AND instance_id = ? AND released_at IS NULL
+            """,
+            (
+                str(reason or "released")[:300],
+                str(provider_slug or "").strip().lower(),
+                int(worker_id),
+                str(instance_id or "").strip(),
+            ),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+    finally:
+        await db.close()
+
+
+async def delete_all_proxy_pool() -> int:
+    """Delete every endpoint and every assignment owned by the Proxy Pool."""
+    async with _proxy_assignment_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            await db.execute("DELETE FROM proxy_assignments")
+            cursor = await db.execute("DELETE FROM proxy_endpoints")
+            await db.execute("DELETE FROM proxy_import_batches")
+            await db.commit()
+            return int(cursor.rowcount or 0)
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
+
+
 async def lease_proxy_for_worker(worker_id: int, *, provider_slug: str | None = None) -> dict[str, Any] | None:
     provider_slug = str(provider_slug or "").strip()
     mask_clause = ""
@@ -3742,6 +4459,26 @@ async def lease_proxy_for_worker(worker_id: int, *, provider_slug: str | None = 
                 LEFT JOIN proxy_assignments pa ON pa.proxy_id = pe.id
                 WHERE pa.proxy_id IS NULL
                   AND lower(coalesce(pe.status, 'alive')) != 'dead'
+                  AND coalesce(pe.duplicate_egress, 0) = 0
+                  AND NOT EXISTS (
+                      SELECT 1 FROM provider_proxy_leases scoped
+                      WHERE scoped.released_at IS NULL AND scoped.proxy_id = pe.id
+                  )
+                  AND (
+                      trim(coalesce(pe.exit_ip, '')) = ''
+                      OR NOT EXISTS (
+                          SELECT 1 FROM proxy_assignments legacy
+                          JOIN proxy_endpoints used ON used.id = legacy.proxy_id
+                          WHERE used.exit_ip = pe.exit_ip
+                      )
+                  )
+                  AND (
+                      trim(coalesce(pe.exit_ip, '')) = ''
+                      OR NOT EXISTS (
+                          SELECT 1 FROM provider_proxy_leases scoped
+                          WHERE scoped.released_at IS NULL AND scoped.exit_ip = pe.exit_ip
+                      )
+                  )
                 {mask_clause}
                 ORDER BY pe.id
                 LIMIT 1
@@ -3781,6 +4518,10 @@ async def find_available_proxy_for_worker(worker_id: int, *, provider_slug: str 
     clauses = [
         "pa.proxy_id IS NULL",
         "lower(coalesce(pe.status, 'alive')) != 'dead'",
+        "coalesce(pe.duplicate_egress, 0) = 0",
+        "NOT EXISTS (SELECT 1 FROM provider_proxy_leases scoped WHERE scoped.released_at IS NULL AND scoped.proxy_id = pe.id)",
+        "(trim(coalesce(pe.exit_ip, '')) = '' OR NOT EXISTS (SELECT 1 FROM proxy_assignments legacy JOIN proxy_endpoints used ON used.id = legacy.proxy_id WHERE used.exit_ip = pe.exit_ip))",
+        "(trim(coalesce(pe.exit_ip, '')) = '' OR NOT EXISTS (SELECT 1 FROM provider_proxy_leases scoped WHERE scoped.released_at IS NULL AND scoped.exit_ip = pe.exit_ip))",
     ]
     params: list[Any] = []
     if provider_slug:
@@ -3794,6 +4535,7 @@ async def find_available_proxy_for_worker(worker_id: int, *, provider_slug: str 
             f"""
             SELECT pe.id AS proxy_id, pe.endpoint, pe.host, pe.port, pe.protocol,
                    pe.username, pe.location, pe.password_enc, pe.status, pe.udp_ok,
+                   pe.exit_ip, pe.ip_type, pe.country_code, pe.country_name,
                    pp.name AS provider_name
             FROM proxy_endpoints pe
             LEFT JOIN proxy_assignments pa ON pa.proxy_id = pe.id

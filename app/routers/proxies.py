@@ -11,6 +11,7 @@ import json
 import logging
 import re
 import secrets
+import time
 from typing import Any
 from urllib.parse import urlparse
 
@@ -19,6 +20,8 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 from app import database, deps, egress, proxy_egress
+from app.proxy_intelligence import lookup_ip_intelligence
+from app.proxy_probe_profiles.earnapp import probe_earnapp_proxy
 from app.proxy_providers.vtproxy import sync_vtproxy_provider
 
 router = APIRouter()
@@ -62,6 +65,7 @@ class ProxyAssignmentIn(BaseModel):
 class ProxyRecheckIn(BaseModel):
     proxy_ids: list[int] | None = None
     concurrency: int | None = None
+    profile: str = "generic"
 
 
 class ProxySchedulerIn(BaseModel):
@@ -80,6 +84,15 @@ class ProxyImportIn(BaseModel):
 class ProxyDeleteIn(BaseModel):
     proxy_ids: list[int] | None = None
     status: str | None = None
+    delete_all: bool = False
+    confirmation: str = ""
+    confirmation_again: str = ""
+
+
+class ProviderProxyLeaseIn(BaseModel):
+    provider_slug: str
+    worker_id: int
+    instance_id: str
 
 
 def _normalize_proxy_record(parts: list[str], *, location: str = "", protocol: str = "") -> dict[str, Any] | None:
@@ -163,28 +176,21 @@ def _parse_proxy_import(text: str) -> list[dict[str, Any]]:
             continue
         if line.startswith("#"):
             continue
+        parsed: dict[str, Any] | None = None
         if line.startswith("{") and line.endswith("}"):
             parsed = _normalize_proxy_record([line])
-            if parsed:
-                rows.append(parsed)
-            continue
-        if "\t" in line or "," in line:
+        elif "\t" in line or "," in line:
             delimiter = "\t" if "\t" in line else ","
             parts = [part.strip() for part in line.split(delimiter)]
             parsed = _normalize_proxy_record(parts)
-            if parsed:
-                rows.append(parsed)
-            continue
-        if "@" in line or "://" in line:
+        elif "@" in line or "://" in line:
             parsed = _normalize_proxy_record([line])
-            if parsed:
-                rows.append(parsed)
-            continue
-        if ":" in line:
+        elif ":" in line:
             parts = [part.strip() for part in line.split(":")]
             parsed = _normalize_proxy_record(parts)
-            if parsed:
-                rows.append(parsed)
+        if parsed:
+            parsed["_raw_line"] = line
+            rows.append(parsed)
     return rows
 
 
@@ -413,20 +419,35 @@ async def _probe_proxy(
 ) -> dict[str, str]:
     host = host.strip()
     if not host or port <= 0:
-        return {"status": "dead", "protocol": ""}
+        return {"status": "dead", "protocol": "", "latency_ms": 0}
+    started = time.perf_counter()
+
+    def elapsed_ms() -> int:
+        return max(0, int((time.perf_counter() - started) * 1000))
+
     try:
         if await _probe_socks5_proxy(host, port, username=username, password=password, timeout=timeout):
             exit_ip = await _probe_proxy_exit_ip(host, port, protocol="socks5", username=username, password=password)
-            return {"status": "alive", "protocol": "socks5", "exit_ip": exit_ip or ""}
+            return {
+                "status": "alive",
+                "protocol": "socks5",
+                "exit_ip": exit_ip or "",
+                "latency_ms": elapsed_ms(),
+            }
     except Exception:
         pass
     try:
         if await _probe_http_proxy(host, port, username=username, password=password, timeout=timeout):
             exit_ip = await _probe_proxy_exit_ip(host, port, protocol="http", username=username, password=password)
-            return {"status": "alive", "protocol": "http", "exit_ip": exit_ip or ""}
+            return {
+                "status": "alive",
+                "protocol": "http",
+                "exit_ip": exit_ip or "",
+                "latency_ms": elapsed_ms(),
+            }
     except Exception:
         pass
-    return {"status": "dead", "protocol": ""}
+    return {"status": "dead", "protocol": "", "latency_ms": elapsed_ms()}
 
 
 async def _probe_proxy_exit_ip(
@@ -463,7 +484,7 @@ async def _probe_proxy_confirmed(
             return result
         if attempt < retries - 1:
             await asyncio.sleep(retry_delay)
-    return {"status": "dead", "protocol": ""}
+    return {"status": "dead", "protocol": "", "latency_ms": None}
 
 
 def _proxy_scheduler_settings(config: dict[str, Any]) -> dict[str, Any]:
@@ -629,6 +650,19 @@ async def _rotate_worker_proxy_after_ack_locked(
     return True
 
 
+async def _refresh_exit_ip_intelligence(proxy_exit_pairs: list[tuple[int, str]]) -> None:
+    intelligence_by_ip: dict[str, dict[str, Any]] = {}
+    for _proxy_id, exit_ip in proxy_exit_pairs:
+        if exit_ip in intelligence_by_ip:
+            continue
+        cached = await database.get_cached_proxy_intelligence(exit_ip)
+        intelligence_by_ip[exit_ip] = cached or await lookup_ip_intelligence(exit_ip)
+    for proxy_id, exit_ip in proxy_exit_pairs:
+        intelligence = intelligence_by_ip.get(exit_ip) or {}
+        if intelligence:
+            await database.update_proxy_endpoint_intelligence(proxy_id, intelligence)
+
+
 async def run_proxy_pool_recheck(*, proxy_ids: list[int] | None = None, concurrency: int = 8) -> dict[str, Any]:
     wanted = {int(x) for x in (proxy_ids or []) if int(x) > 0}
     rows = await database.list_proxy_pool()
@@ -651,34 +685,41 @@ async def run_proxy_pool_recheck(*, proxy_ids: list[int] | None = None, concurre
     protocols = {int(row["id"]): str(result.get("protocol") or "") for row, result in checks}
     exit_ips = {int(row["id"]): str(result.get("exit_ip") or "") for row, result in checks}
     checked = await database.update_proxy_pool_check_results(results, protocols=protocols, exit_ips=exit_ips)
+    intelligence_jobs: list[tuple[int, str]] = []
+    for row, result in checks:
+        proxy_id = int(row["id"])
+        await database.save_proxy_probe_result(
+            proxy_id,
+            profile="generic",
+            probe_status=str(result.get("status") or "unknown"),
+            verdict=str(result.get("status") or "unknown").upper(),
+            eligibility="eligible" if result.get("status") == "alive" else "unknown",
+            reason="",
+            exit_ip=str(result.get("exit_ip") or ""),
+            latency_ms=result.get("latency_ms"),
+            probe_version="generic-v1",
+            evidence={"protocol": str(result.get("protocol") or "")},
+        )
+        if result.get("exit_ip"):
+            intelligence_jobs.append((proxy_id, str(result["exit_ip"])))
+    await _refresh_exit_ip_intelligence(intelligence_jobs)
+    duplicate_count = await database.reconcile_proxy_duplicates()
 
-    alive_rows = [row for row, result in checks if result.get("status") == "alive"]
     rotated = 0
     rotate_errors = 0
     for row, result in checks:
         if result.get("status") != "dead" or not row.get("assigned_worker_id"):
             continue
-        replacement = next(
-            (
-                candidate
-                for candidate in alive_rows
-                if not candidate.get("assigned_worker_id") and int(candidate["id"]) != int(row["id"])
-            ),
-            None,
-        )
+        worker_id = int(row["assigned_worker_id"])
+        replacement = await database.find_available_proxy_for_worker(worker_id)
         if not replacement:
             continue
-        proxy = await database.get_proxy_endpoint(int(replacement["id"]))
-        if not proxy:
-            continue
-        worker_id = int(row["assigned_worker_id"])
         try:
-            candidate = dict(proxy)
-            candidate["proxy_id"] = int(replacement["id"])
+            candidate = dict(replacement)
+            candidate["proxy_id"] = int(replacement.get("proxy_id") or replacement.get("id") or 0)
             if not await _rotate_worker_proxy_after_ack(worker_id, candidate):
                 rotate_errors += 1
                 continue
-            replacement["assigned_worker_id"] = worker_id
             rotated += 1
         except Exception:
             rotate_errors += 1
@@ -689,6 +730,56 @@ async def run_proxy_pool_recheck(*, proxy_ids: list[int] | None = None, concurre
         "dead": sum(1 for v in results.values() if v == "dead"),
         "rotated": rotated,
         "rotate_errors": rotate_errors,
+        "duplicates_marked": duplicate_count,
+    }
+
+
+async def run_earnapp_proxy_recheck(*, proxy_ids: list[int] | None = None, concurrency: int = 8) -> dict[str, Any]:
+    wanted = {int(x) for x in (proxy_ids or []) if int(x) > 0}
+    rows = await database.list_proxy_pool()
+    targets = [row for row in rows if not wanted or int(row["id"]) in wanted]
+    semaphore = asyncio.Semaphore(min(32, max(1, int(concurrency or 8))))
+
+    async def check(row: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+        async with semaphore:
+            proxy = await database.get_proxy_endpoint(int(row.get("id") or 0)) or row
+            result = await probe_earnapp_proxy(
+                str(proxy.get("host") or ""),
+                int(proxy.get("port") or 0),
+                protocol=str(proxy.get("protocol") or "socks5"),
+                username=str(proxy.get("username") or ""),
+                password=str(proxy.get("password") or ""),
+            )
+            return int(row["id"]), result
+
+    checked_rows = await asyncio.gather(*(check(row) for row in targets))
+    intelligence_jobs = []
+    for proxy_id, result in checked_rows:
+        await database.save_proxy_probe_result(
+            proxy_id,
+            profile="earnapp_wss",
+            probe_status="alive" if result.get("verdict") in {"CID_SET", "BLACKLIST", "DECLINE"} else "unknown",
+            verdict=str(result.get("verdict") or "UNKNOWN"),
+            eligibility=str(result.get("eligibility") or "unknown"),
+            reason=str(result.get("reason") or ""),
+            exit_ip=str(result.get("exit_ip") or ""),
+            latency_ms=result.get("latency_ms"),
+            probe_version=str(result.get("probe_version") or ""),
+            evidence={"profile": "earnapp_wss"},
+        )
+        if result.get("exit_ip"):
+            intelligence_jobs.append((proxy_id, str(result["exit_ip"])))
+    await _refresh_exit_ip_intelligence(intelligence_jobs)
+    duplicate_count = await database.reconcile_proxy_duplicates()
+    return {
+        "status": "ok",
+        "profile": "earnapp_wss",
+        "checked": len(checked_rows),
+        "eligible": sum(1 for _, result in checked_rows if result.get("eligibility") == "eligible"),
+        "blocked": sum(1 for _, result in checked_rows if result.get("eligibility") == "blocked"),
+        "quality_rejected": sum(1 for _, result in checked_rows if result.get("eligibility") == "quality_rejected"),
+        "unknown": sum(1 for _, result in checked_rows if result.get("eligibility") == "unknown"),
+        "duplicates_marked": duplicate_count,
     }
 
 
@@ -783,7 +874,16 @@ async def api_proxy_pool_export(
             "protocol",
             "location",
             "exit_ip",
+            "country_code",
+            "country_name",
+            "ip_type",
             "status",
+            "earnapp_verdict",
+            "earnapp_eligibility",
+            "earnapp_probe_reason",
+            "duplicate_egress",
+            "canonical_proxy_id",
+            "duplicate_reason",
             "pawns_mask_reason",
             "expiry_date",
             "assigned_worker_id",
@@ -806,12 +906,28 @@ async def api_proxy_pool_import(request: Request, body: ProxyImportIn) -> dict[s
     proxies = _parse_proxy_import(body.text)
     if not proxies:
         raise HTTPException(status_code=400, detail="No valid proxies found")
-    last_id = await database.upsert_proxy_endpoints(provider_id, proxies)
-    result: dict[str, Any] = {"status": "ok", "imported": len(proxies), "provider_id": provider_id}
+    proxies = [proxy for proxy in proxies if str(proxy.get("protocol") or "").lower() in {"http", "socks5"}]
+    if not proxies:
+        raise HTTPException(status_code=400, detail="No supported http or socks5 proxies found")
+    proxy_ids = await database.upsert_proxy_endpoints_returning_ids(provider_id, proxies)
+    await database.create_proxy_import_batch(
+        provider_id,
+        source_name=provider_name,
+        raw_input=body.text,
+        parsed_rows=proxies,
+        proxy_ids=proxy_ids,
+    )
+    result: dict[str, Any] = {
+        "status": "ok",
+        "imported": len(proxy_ids),
+        "parsed": len(proxies),
+        "provider_id": provider_id,
+        "proxy_ids": proxy_ids,
+    }
     if body.recheck:
         config = await database.get_config() or {}
         settings = _proxy_scheduler_settings(config if isinstance(config, dict) else {})
-        recent_ids = list(range(max(1, int(last_id or 0) - len(proxies) + 1), int(last_id or 0) + 1)) if last_id else []
+        recent_ids = proxy_ids
         result["recheck"] = await run_proxy_pool_recheck(
             proxy_ids=recent_ids or None, concurrency=body.concurrency or settings["concurrency"]
         )
@@ -821,6 +937,15 @@ async def api_proxy_pool_import(request: Request, body: ProxyImportIn) -> dict[s
 @router.delete("/api/proxy-pool")
 async def api_proxy_pool_delete(request: Request, body: ProxyDeleteIn) -> dict[str, Any]:
     deps._require_owner(request)
+    if body.delete_all:
+        phrase = "DELETE ALL PROXY POOL"
+        if body.confirmation != phrase or body.confirmation_again != phrase:
+            raise HTTPException(
+                status_code=400,
+                detail="Delete all requires the exact phrase twice: DELETE ALL PROXY POOL",
+            )
+        deleted = await database.delete_all_proxy_pool()
+        return {"status": "ok", "deleted": deleted, "delete_all": True}
     status = str(body.status or "").strip().lower()
     if status and status != "dead":
         raise HTTPException(status_code=400, detail="Only status=dead bulk delete is allowed")
@@ -833,9 +958,58 @@ async def api_proxy_pool_recheck(request: Request, body: ProxyRecheckIn) -> dict
     deps._require_owner(request)
     config = await database.get_config() or {}
     settings = _proxy_scheduler_settings(config if isinstance(config, dict) else {})
+    if str(body.profile or "generic").strip().lower() == "earnapp_wss":
+        return await run_earnapp_proxy_recheck(
+            proxy_ids=body.proxy_ids, concurrency=body.concurrency or settings["concurrency"]
+        )
     return await run_proxy_pool_recheck(
         proxy_ids=body.proxy_ids, concurrency=body.concurrency or settings["concurrency"]
     )
+
+
+@router.post("/api/proxy-pool/provider-lease")
+async def api_proxy_pool_provider_lease(request: Request, body: ProviderProxyLeaseIn) -> dict[str, Any]:
+    deps._require_owner(request)
+    slug = body.provider_slug.strip().lower()
+    if not slug or not body.instance_id.strip():
+        raise HTTPException(status_code=400, detail="Provider and instance are required")
+    lease = await database.lease_proxy_for_provider_instance(slug, body.worker_id, body.instance_id)
+    if not lease:
+        raise HTTPException(status_code=404, detail="No eligible proxy available")
+    return {"status": "ok", "lease": lease}
+
+
+@router.post("/api/proxy-pool/provider-release")
+async def api_proxy_pool_provider_release(request: Request, body: ProviderProxyLeaseIn) -> dict[str, Any]:
+    deps._require_owner(request)
+    released = await database.release_proxy_for_provider_instance(
+        body.provider_slug, body.worker_id, body.instance_id, reason="manual release"
+    )
+    return {"status": "ok", "released": released}
+
+
+@router.post("/api/proxy-pool/earnapp-recheck")
+async def api_proxy_pool_earnapp_recheck(request: Request, body: ProxyRecheckIn) -> dict[str, Any]:
+    deps._require_owner(request)
+    config = await database.get_config() or {}
+    settings = _proxy_scheduler_settings(config if isinstance(config, dict) else {})
+    return await run_earnapp_proxy_recheck(
+        proxy_ids=body.proxy_ids, concurrency=body.concurrency or settings["concurrency"]
+    )
+
+
+@router.get("/api/proxy-pool/duplicates/export")
+async def api_proxy_pool_duplicate_export(request: Request, raw: bool = False) -> PlainTextResponse:
+    deps._require_owner(request)
+    rows = await database.export_duplicate_proxy_rows(raw=raw)
+    buf = io.StringIO()
+    fields = ["id", "endpoint", "exit_ip", "canonical_proxy_id", "duplicate_reason", "provider_name", "raw_proxy"]
+    if raw:
+        fields.extend(["username", "password"])
+    writer = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
+    writer.writeheader()
+    writer.writerows(rows)
+    return PlainTextResponse(buf.getvalue(), media_type="text/csv")
 
 
 @router.post("/api/workers/{worker_id}/proxy-assignment")
