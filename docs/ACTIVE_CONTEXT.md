@@ -1,25 +1,22 @@
 # CashPilot Active Context
 
-Updated: 2026-08-24 (EarnApp Proxy Pool qualification branch; not released or deployed)
+Updated: 2026-08-24 (Proxy Pool `v1.7.2` live closeout; EarnApp provider still pending)
 
 ## Current repository state
 
-- Active implementation worktree: `repo-earnapp-proxy-pool`, branch
-  `feat/earnapp-proxy-pool`, based on `origin/main` at `f9c78b8`. This is a
-  review branch only: it has not been released or deployed, and no live Proxy
-  Pool or VPS state has been changed. Merge, release and deploy remain separate
-  approval gates.
-- The branch upgrades the reported SQLite schema from 17 to 18 through
+- Canonical source is `main` at PR #29 merge commit `bd8d957`; release
+  `v1.7.2` is published and the server UI is deployed at its exact GHCR digest.
+  The current docs-only closeout branch contains no product-code, catalog,
+  runtime or collector changes.
+- PR #27 upgrades the reported SQLite schema from 17 to 18 through
   idempotent guards. A migration regression starts from a populated v17 proxy
   schema and verifies that endpoints, worker assignments and provider masks are
   retained while the new intelligence, evidence, import and scoped-lease
   structures are added.
-- Canonical source branch: `main` at merge commit `f9c78b8`; release `v1.6.3`
-  remains tagged at its product merge commit `f5ee981`. The original
-  direct-runtime and Docker canary history is retained for traceability. The LXD
-  runtime landed through PR #17, guarded canary adoption through PR #18, the
-  adoption timeout fix through PR #19, and the optional ChainDB acceleration
-  through PRs #21-#23.
+- The original direct-runtime and Docker canary history is retained for
+  traceability. The LXD runtime landed through PR #17, guarded canary adoption
+  through PR #18, the adoption timeout fix through PR #19, and the optional
+  ChainDB acceleration through PRs #21-#24.
 - Release `v1.6.1` is published and verified. PR #21 added the snapshot
   publisher/consumer contract, PR #22 fixed the release image build context, and
   PR #23 added publisher compatibility with the VPS's Python 3.10 runtime.
@@ -30,7 +27,10 @@ Updated: 2026-08-24 (EarnApp Proxy Pool qualification branch; not released or de
   runtime), PRs #11-#13 (NKN canary fixes), PRs #14-#16 (NKN context history),
   PRs #17-#19 (LXD runtime, adoption and timeout fix), and PRs #21-#23 (ChainDB
   acceleration and release/runtime fixes), PR #24 (shared ChainDB cache), and
-  PR #25 (bootstrap and standalone NKN host-helper closeout) are merged.
+  PR #25 (bootstrap and standalone NKN host-helper closeout), PR #26 (NKN
+  `v1.6.3` live context), PR #27 (Proxy Pool qualification), PR #28
+  (persisted-egress intelligence fix), and PR #29 (EarnApp probe TLS contract)
+  are merged.
 - Release `v1.6.3` is published from merge commit `f5ee981`; Auto Release run
   `32720862355` completed successfully and built both fork GHCR images. The UI
   digest is
@@ -64,11 +64,12 @@ Updated: 2026-08-24 (EarnApp Proxy Pool qualification branch; not released or de
 - Mysterium remains direct-only. Its wallet inventory, lease, identity,
   WireGuard/TUN and runtime contracts are not altered by this branch.
 
-## EarnApp Proxy Pool qualification branch
+## EarnApp Proxy Pool qualification baseline
 
-- EarnApp runtime/provider/collector/catalog implementation remains out of
-  scope. This branch adds only the isolated Proxy Pool qualification and lease
-  contract required before EarnApp is designed as a provider.
+- EarnApp runtime/provider/collector/catalog implementation remains pending and
+  out of scope. The merged baseline adds only the isolated Proxy Pool
+  qualification and lease contract required before EarnApp is designed as a
+  provider.
 - Only the latest EarnApp WSS verdict `CID_SET` is eligible. `BLACKLIST` is
   blocked, `DECLINE` is quality-rejected, and timeout/transport failures remain
   unknown. WSS ping payloads are returned as binary pong frames without UTF-8
@@ -93,18 +94,56 @@ Updated: 2026-08-24 (EarnApp Proxy Pool qualification branch; not released or de
   assignment rows, scoped leases, masks, probe evidence and import records.
   Provider configuration and provider-instance rows remain, with their proxy
   references cleared by foreign keys.
-- Protected provider catalog/runtime/collector files are outside this branch's
-  diff. No provider marked `PROTECTED_DONE` is redesigned, redeployed or used as
-  a canary by this work.
+- Protected provider catalog/runtime/collector files are outside PRs #27-#29.
+  No provider marked `PROTECTED_DONE` was redesigned, redeployed or used as a
+  canary by this work.
 - The final pre-PR audit corrected two isolated Proxy Pool edge cases: duplicate
   canonicalization now prefers the latest EarnApp `CID_SET` evidence rather
   than any historical/generic eligible probe, and partial geo/type metadata is
   retried instead of being treated as a complete seven-day cache hit.
-- Fresh verification after those audit fixes: `1677 passed, 8 skipped` for the
-  full non-live suite and `180 passed` for the focused proxy/UI suite. Ruff
-  check, changed-file format check, Python compileall, `mkdocs build --strict`,
+- Final PR #29 verification passed `1679 passed, 8 skipped` for the full
+  non-live suite and `182 passed` for the focused proxy/UI suite. Ruff check,
+  changed-file format check, Python compileall, `mkdocs build --strict`,
   `git diff --check`, protected-path comparison and added-line secret-pattern
-  checks all pass.
+  checks all passed.
+
+## v1.7.2 Proxy Pool live closeout (2026-08-24)
+
+- PR #27 merged as `94a68a0` and released the qualification baseline as
+  `v1.7.0`. PR #28 merged as `2440322` and released the persisted-egress
+  intelligence fix as `v1.7.1`. PR #29 merged as `bd8d957` and Auto Release run
+  `32748192052` published `v1.7.2` after CI, both image builds, tag resolution
+  and embedded-version verification passed.
+- Release `v1.7.2` UI digest is
+  `sha256:f05069653b725347b3ab115308a2e9a83094c4d8649cb09360ffdea464c44838`;
+  worker digest is
+  `sha256:c27eb4e98ebee30d5bd4fae27656365f47573958703de4fe139f3b5a022d2ce3`.
+  Only the UI image was deployed. The live worker was not pulled, recreated or
+  restarted.
+- Live `cashpilot-ui` container `101fb16648f1` is healthy on the exact UI
+  digest and reports `CASHPILOT_VERSION=1.7.2`. SQLite remains schema `18` with
+  `integrity_check=ok`; authenticated `GET /api/proxy-pool`, `GET
+  /api/proxy-pool/scheduler`, `GET /api/workers` and `GET /api/fleet/summary`
+  all returned HTTP 200.
+- `cashpilot-worker` remained container `60b180133540`, local image
+  `cashpilot-worker-local:proxy-egress`, image ID `sha256:3eb671780df3`, start
+  time `2026-08-20T09:04:41Z`, restart count `0`, and healthy state before and
+  after the UI-only deployment.
+- Generic Proxy Pool evidence remains authoritative: endpoint `8931` is alive
+  at egress `14.180.201.10`, country `Viet Nam`, IP type `residential`, and is
+  the canonical row for its egress. Duplicate reconciliation remains `417`;
+  scheduler policy remains `enabled=true`, interval `60` minutes, concurrency
+  `64`.
+- The isolated EarnApp WSS canary rechecked only endpoint `8931` at concurrency
+  `1`. Certificate verification no longer failed after PR #29; the authoritative
+  result was `WSS_FAIL`, eligibility `unknown`, reason `WSS handshake rejected:
+  HTTP/1.1 302 Moved Temporarily`, latency `528 ms`. Because it was not
+  `CID_SET`/eligible, no provider-scoped lease or EarnApp container was created.
+- Post-canary invariants show zero active and zero historical provider-scoped
+  leases, worker `3113` still assigned to proxy `5810`, all three workers online,
+  unchanged provider-instance and MYST/NKN wallet-state counts, and zero Grass
+  instances. No protected provider, credential, wallet, worker assignment or
+  provider runtime was mutated.
 
 ## Retired-provider compatibility
 
@@ -426,6 +465,14 @@ canary and explicit user approval.
 
 ## Verification status
 
+- PRs #27-#29 are merged. Auto Release run `32748192052` completed successfully
+  and published `v1.7.2`; both release image manifests resolved and reported
+  embedded version `1.7.2` before the tag and GitHub Release were created.
+- Fresh live evidence proves the `v1.7.2` UI-only deployment boundary, schema
+  `18` integrity, all four authenticated read endpoints, Location/IP Type
+  metadata, duplicate reconciliation, scheduler policy, EarnApp WSS result and
+  zero scoped-lease residue. The worker ID/image/start time/restart count and
+  worker-level assignment `3113 -> 5810` remained unchanged.
 - PR #23's fresh source suite passed `1618 passed, 2 skipped`; its release gate,
   Ruff, Tests, CodeQL, Catalog Check and Auto Release jobs all completed
   successfully.
