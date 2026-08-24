@@ -11,6 +11,7 @@ DISCOVERY="${INSTALL_ROOT}/public_ip_slots.py"
 NKN_AGENT="${INSTALL_ROOT}/cashpilot-nkn-agent.py"
 NKN_CHAINDb_CONTRACT="${INSTALL_ROOT}/nkn_chaindb.py"
 NKN_CHAINDb_RESTORE="${INSTALL_ROOT}/nkn_chaindb_restore.py"
+NKN_CHAINDb_CACHE="${INSTALL_ROOT}/nkn_chaindb_cache.py"
 NKN_AGENT_SOCKET="/run/cashpilot-nkn-agent/agent.sock"
 
 publish_slots_volume() {
@@ -114,7 +115,7 @@ if ! command -v lxc >/dev/null 2>&1; then
   fi
 fi
 lxd waitready
-if [ -z "$(lxc storage list --format csv -c n 2>/dev/null)" ]; then
+if [ -z "$(lxc storage list --format csv 2>/dev/null)" ]; then
   lxd init --auto
 fi
 
@@ -129,6 +130,7 @@ ufw allow 32768:65535/udp
 ufw --force enable
 
 install -d -m 0755 /etc/cashpilot /etc/systemd/system/docker.service.d "${INSTALL_ROOT}"
+install -d -m 0755 /var/lib/cashpilot/nkn-chaindb-cache
 install -m 0755 "${BASH_SOURCE[0]}" "${INSTALLED_SCRIPT}"
 # The installed bootstrap must remain self-contained; the source checkout is
 # not present on a freshly provisioned VPS.
@@ -136,6 +138,7 @@ install -m 0644 "${REPO_ROOT}/app/public_ip_slots.py" "${DISCOVERY}"
 install -m 0755 "${REPO_ROOT}/scripts/cashpilot-nkn-agent.py" "${NKN_AGENT}"
 install -m 0644 "${REPO_ROOT}/app/nkn_chaindb.py" "${NKN_CHAINDb_CONTRACT}"
 install -m 0755 "${REPO_ROOT}/scripts/nkn_chaindb_restore.py" "${NKN_CHAINDb_RESTORE}"
+install -m 0644 "${REPO_ROOT}/scripts/nkn_chaindb_cache.py" "${NKN_CHAINDb_CACHE}"
 
 task_tmp="$(mktemp -d)"
 trap 'rm -rf -- "${task_tmp}"' EXIT

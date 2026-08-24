@@ -57,6 +57,8 @@ Each node uses:
 - the tested `config.json` keys `BeneficiaryAddr`, `beneficiaryAddr`,
   `SyncMode: light` and `PasswordFile`;
 - `restart: always` for the inner Docker node;
+- explicit public DNS servers for the inner Docker runtime, avoiding dependence
+  on the LXD systemd-resolved stub during a disk-intensive cold restore;
 - hard LXD limits from **Settings -> NKN** (`nkn_lxd_cpu` and
   `nkn_lxd_memory_mib`, default `1 CPU / 1024 MiB`), with swap disabled;
 - one public IPv4 slot, bridge network and wallet assignment.
@@ -94,8 +96,11 @@ ChainDB snapshots are an optional acceleration path for **new NKN nodes**. The
 publisher on the dedicated publisher VPS performs a clean stop/archive/start
 cycle, uploads an immutable `ChainDB/`-only `tar.zst` object to a private R2
 prefix, verifies its digest and size, and publishes `latest.json` last. The
-worker receives only a short-lived presigned URL and validates the manifest,
-age, archive paths and SHA-256 before restoring into staging.
+worker sends the short-lived presigned URL only to its restricted host helper.
+The helper validates the manifest, downloads each digest once into the host
+cache with a `.partial` file and atomic rename, then mounts that cache
+read-only into each NKN LXD instance. The LXD restore receives only the local
+digest-named path, never the presigned URL.
 
 The restore never replaces `config.json`, `wallet.json`, `wallet.pswd`,
 `ChainDB.config`, the LXD instance identity or the wallet lease. It atomically
@@ -103,18 +108,64 @@ swaps only `ChainDB/` after the node is stopped and keeps a timestamped backup
 for rollback. If R2, download, checksum, extraction or post-restore evidence
 fails, the worker reports a redacted `fallback`/`failed` status and starts the
 ordinary NKN ChainDB sync; snapshot failure must not block another provider or
-the worker heartbeat. Existing nodes and the approved `test-sing` canary never
-consume a snapshot restore path.
+the worker heartbeat. A cache archive is never used as a live ChainDB: every
+node restores into its own staging directory and keeps its own database. The
+cache is an optimization for sequential new-slot creation, not a shared data
+volume. Existing nodes do not consume a snapshot restore path automatically.
 
 The publisher keeps only the configured number of immutable snapshots and
 removes its temporary local archive after a successful publication. R2
 credentials, SSH credentials, wallet material and presigned URLs are not put
-in logs, manifests, worker state or documentation. Before enabling the
+in logs, manifests, worker state or documentation. Cache files contain only
+verified `ChainDB/` archives and are retained by digest count; they contain no
+wallet or identity files. Before enabling the
 publisher, verify the private bucket/prefix, disk headroom, pinned SSH host-key
 fingerprint and a dedicated publisher wallet reservation. An abandoned
 reservation can be released only through the owner-only guarded action that
 requires explicit `RELEASE` confirmation and acknowledgement that remote state
 is unknown.
+
+Retention applies to immutable objects below `<prefix>/snapshots/`. Operator
+seed or diagnostic objects stored under another path such as `<prefix>/manual/`
+are never selected by `latest.json` and are not pruned by the daily publisher.
+
+## Current publisher evidence
+
+The first canonical `v1.6.1` publisher run completed on 2026-08-24 at block
+height `9689115`. It published a `5,795,325,602` byte immutable archive with
+SHA-256
+`9c8d29068fd741dab315d17d3c9f3fcdcfe0c389a29fefede7ba06cfd18e10e5`,
+then updated `cashpilot-nkn-chaindb/manifests/latest.json`. A complete stream of
+the R2 archive independently reproduced the manifest byte count and SHA-256;
+there were no unfinished multipart uploads and the temporary local archive was
+removed.
+
+The publisher kept the same Docker container, NKN Node ID, wallet/config hashes
+and restart count, and returned to `PERSIST_FINISHED`. Its daily systemd timer is
+enabled and waiting. This validates publication and integrity only; consumers
+still retain the normal-sync fallback for any unavailable, stale or invalid
+snapshot.
+
+## Current shared-cache consumer evidence
+
+The isolated consumer canary ran on `test-us` worker `3098`, public-IP slot
+`104.211.53.252`, while keeping wallet `3` at assignment version `1`. The host
+downloaded the canonical publisher digest once into
+`/var/lib/cashpilot/nkn-chaindb-cache`; the LXD node saw only a read-only local
+archive path. A first post-swap verification failed because the LXD
+`systemd-resolved` stub had stopped responding during the cold restore. Atomic
+rollback restored the previous `ChainDB` and kept the wallet, config and lease.
+
+The official inner Docker runtime was then given explicit DNS servers so NKN
+does not inherit the LXD `127.0.0.53` stub. The second restore reused the same
+archive without another download (same inode, size and mtime; no `.partial`
+file), reached `PERSIST_FINISHED` above height `9689780`, and preserved Node ID
+`c36ecaa9abdcec725d889ec222834f5a1705065ede7f5857cfb56f1d5ee293d7`.
+Worker heartbeat reports `running=true`, `online=true`, and Fleet includes the
+node online. A controlled restart of only this LXD instance returned to
+`PERSIST_FINISHED` at height `9689812` with the same Node ID, wallet/config
+hashes, cache inode and public egress IP. Publisher and `test-sing` were not
+modified by this canary.
 
 ## Current canary evidence
 

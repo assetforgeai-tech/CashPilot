@@ -1,25 +1,28 @@
 # CashPilot Active Context
 
-Updated: 2026-08-23 (NKN ChainDB snapshot branch; no live mutation yet)
+Updated: 2026-08-24 (NKN shared ChainDB cache canary closeout)
 
 ## Current repository state
 
-- Canonical source branch: `main`. The original direct-runtime and Docker canary
-  history is retained for traceability. The LXD runtime landed through PR #17,
-  guarded canary adoption through PR #18, and the adoption timeout fix through
-  PR #19 (`7df2fdd`).
-- Release `v1.5.1` is published and verified. The server-only timeout fix is in
-  the UI image; `test-sing` intentionally remains on the already-verified
-  worker image `v1.5.0`.
+- Canonical source branch: `main` at merge commit `ce93239`. The original
+  direct-runtime and Docker canary history is retained for traceability. The LXD
+  runtime landed through PR #17, guarded canary adoption through PR #18, the
+  adoption timeout fix through PR #19, and the optional ChainDB acceleration
+  through PRs #21-#23.
+- Release `v1.6.1` is published and verified. PR #21 added the snapshot
+  publisher/consumer contract, PR #22 fixed the release image build context, and
+  PR #23 added publisher compatibility with the VPS's Python 3.10 runtime.
 - PR #1 (Grass retirement), PR #2 (fork GHCR images), PR #3 (fork install
   surfaces), PR #4 (redacted historical evidence), PR #5 (current context),
   PR #6 (read-only baseline refresh), PR #7 (proxy worker ACK rotation), PR #8
   (post-merge baseline), PR #9 (`v1.2.0` canary context), PR #10 (NKN direct
   runtime), PRs #11-#13 (NKN canary fixes), PRs #14-#16 (NKN context history),
-  and PRs #17-#19 (LXD runtime, adoption and timeout fix) are merged.
-- Both fork GHCR images were built and verified by the `v1.5.1` Auto Release
-  workflow. The deployed UI digest and the intentionally unchanged worker
-  digest are recorded in the current NKN closeout below.
+  PRs #17-#19 (LXD runtime, adoption and timeout fix), and PRs #21-#23 (ChainDB
+  acceleration and release/runtime fixes) are merged.
+- Both fork GHCR images were built and verified by the `v1.6.1` Auto Release
+  workflow. The earlier deployed UI/worker evidence remains recorded in the NKN
+  runtime closeout below; the dedicated publisher deployment does not authorize
+  a bulk server or worker redeploy.
 - The source branch remains `main`; release/deploy state is operational
   evidence and does not change the protected provider catalog.
 - Proxy lease rotation is server-authoritative with worker-local probe/ACK,
@@ -109,27 +112,77 @@ Updated: 2026-08-23 (NKN ChainDB snapshot branch; no live mutation yet)
   heartbeat, Fleet, wallet, RPC and lease-guard snapshots keep NKN
   `PROTECTED_DONE`.
 
-## NKN ChainDB snapshot branch (pre-PR)
+## v1.6.1 NKN ChainDB snapshot closeout (2026-08-24)
 
-- Branch `feat/nkn-chaindb-snapshot` is not committed, pushed, merged, released
-  or deployed. It adds an optional private-R2 publisher/restore path scoped to
-  NKN only; the successful `test-sing` node, identity, volume, wallet lease and
-  worker remain unchanged.
-- The archive contract contains `ChainDB/` only. Manifests are immutable,
-  digest/size/height/age checked, and published `latest.json` is written last.
-  Restore is staged and atomic with rollback; identity/config/wallet files are
-  preserved. Snapshot errors fall back to normal sync and cannot block another
-  provider.
-- Publisher settings are masked/encrypted; SSH uses a pinned host-key
-  fingerprint and `StrictHostKeyChecking=yes`. Publisher wallet reservations
-  are separate `RESERVED` records from worker leases and have an owner-only
-  guarded release action for abandoned/unknown remote state.
-- Focused snapshot/NKN tests are green. Before any PR or live action, run the
-  full suite, lint/format/compile/shell/JS checks, compare changed paths with
-  the protected-provider matrix, and verify the dedicated publisher VPS has
-  enough disk headroom for the measured ChainDB peak. No R2 object, VPS,
-  container, volume, database, credential, proxy or wallet has been changed by
-  this branch so far.
+- The optional private-R2 publisher/restore path is merged through PRs #21-#23,
+  released as `v1.6.1`, and deployed only to the dedicated NKN publisher VPS.
+  The archive contract contains `ChainDB/` only; wallet, password, config,
+  `ChainDB.config`, node identity and lease material remain outside the archive.
+- A controlled cold snapshot from `test-sing` produced the manual seed object
+  `cashpilot-nkn-chaindb/manual/test-sing-20260824T043345Z.tar.zst` with
+  `5,783,795,401` bytes and SHA-256
+  `d70d8ae06cf67266e06702894ceafd31190352f238bc6b1b77e86c4c3af14928`.
+  Restoring that `ChainDB/` into the stopped publisher node preserved the
+  publisher wallet/config hashes and Node ID, and both nodes returned to
+  `PERSIST_FINISHED`.
+- The first canonical publisher run completed successfully from block height
+  `9689115`. It published
+  `cashpilot-nkn-chaindb/snapshots/9689115-20260824T054653Z-9c8d29068fd741dab315d17d3c9f3fcdcfe0c389a29fefede7ba06cfd18e10e5.tar.zst`
+  and then `cashpilot-nkn-chaindb/manifests/latest.json`. The archive is
+  `5,795,325,602` bytes with SHA-256
+  `9c8d29068fd741dab315d17d3c9f3fcdcfe0c389a29fefede7ba06cfd18e10e5`.
+- Verification streamed the complete canonical object back from R2 without a
+  local copy; byte count and SHA-256 matched `latest.json` and object metadata,
+  and no multipart upload remained unfinished. The publisher removed its local
+  archive after publication.
+- Publisher container ID
+  `c13a32936b8f698309a07ddb428b06fdfcae0e575da8ad89b33a71773795dffe`
+  and Node ID
+  `38a798d0f7de12b7064eddae9befee319e69c1b013799cdbcf954d1353cb935a`
+  remained unchanged with restart count `0`. Fresh RPC evidence returned
+  `PERSIST_FINISHED` at height `9689178`; identity/config hashes matched the
+  pre-run baseline.
+- `cashpilot-nkn-chaindb-publisher.timer` is enabled and `active (waiting)`.
+  Its first verified next trigger was `2026-08-25 00:08:11 UTC`; enabling it did
+  not immediately launch a second snapshot. The manual seed object lives outside
+  the automated `snapshots/` retention scope and is not referenced by
+  `latest.json`.
+- The approved consumer optimization is implemented in the NKN host helper only:
+  one verified archive per digest is cached under
+  `/var/lib/cashpilot/nkn-chaindb-cache`, protected by a lock and `.partial` to
+  final atomic rename, then exposed to each LXD node through a read-only disk
+  device. The restore staging/atomic swap contract and publisher are unchanged;
+  each node still owns a separate live `ChainDB`.
+- The isolated shared-cache canary completed on `test-us` worker `3098`, slot
+  `ipv4-001`, public IP `104.211.53.252`, using the existing exclusive wallet
+  lease (`wallet_id=3`, assignment version `1`). The cache populated the canonical
+  `5,795,325,602` byte archive once, retained SHA-256
+  `9c8d29068fd741dab315d17d3c9f3fcdcfe0c389a29fefede7ba06cfd18e10e5`,
+  and exposed it to the LXD instance through the read-only
+  `nkn-chaindb-cache` disk device.
+- A failed first restore exercised the unchanged atomic rollback path after the
+  LXD stub resolver stopped responding under the cold-restore I/O load. The node
+  returned to its previous `ChainDB`; the wallet, config and lease were unchanged.
+  The inner official Docker runtime now receives explicit public DNS servers so
+  it does not inherit a dead LXD `127.0.0.53` stub. The second restore reused the
+  same cache archive without a network download: inode `325123`, size and mtime
+  were unchanged and no `.partial` file remained.
+- The successful second restore swapped only `ChainDB/`, preserved wallet hash
+  `035cfdd43ee4c6bbf5f0d460b7eb5b8f3985ca05e1ee5bab2c36043dc6e076ca`,
+  config hash
+  `f75113b8edcf4c4382968c2fac963b3b1f86bb72fc1234c584c921b407b4c965`
+  and Node ID
+  `c36ecaa9abdcec725d889ec222834f5a1705065ede7f5857cfb56f1d5ee293d7`.
+  Fresh RPC reached `PERSIST_FINISHED` above height `9689780`; worker heartbeat
+  and Fleet report this node online. Publisher and `test-sing` were not changed.
+- A controlled restart of only the `test-us` NKN LXD instance then proved
+  `boot.autostart`, inner `restart: always`, DNS recovery, route/SNAT recovery and
+  shared-cache persistence. The node returned to `PERSIST_FINISHED` at height
+  `9689812` with the same Node ID, wallet/config hashes and cache inode; observed
+  egress remained `104.211.53.252`.
+- This shared-cache/DNS follow-up is still local to branch
+  `fix/nkn-chaindb-python310` pending commit, PR, CI, merge and release. No server,
+  publisher, `test-sing` or bulk worker redeploy is authorized by this evidence.
 
 ## Proxy ACK rotation baseline
 
@@ -263,8 +316,9 @@ canary and explicit user approval.
 
 ## Verification status
 
-- Fresh source suite: `1515 passed, 7 skipped`; targeted NKN/LXD suite:
-  `80 passed`.
+- PR #23's fresh source suite passed `1618 passed, 2 skipped`; its release gate,
+  Ruff, Tests, CodeQL, Catalog Check and Auto Release jobs all completed
+  successfully.
 - PR #19 passed Analyze, CodeQL, Ruff and Tests. Merge commit `7df2fdd`
   triggered Auto Release run `32631080399`; both `v1.5.1` image manifests and
   embedded versions were verified before the tag and GitHub Release were
@@ -272,6 +326,9 @@ canary and explicit user approval.
 - Fresh live evidence proves the LXD runtime, exact CAS lease-guard
   suspend/resume, UI-only upgrade isolation, Fleet `1/1/0`, wallet continuity,
   Node ID continuity and legacy Docker stopped state.
+- Fresh publisher evidence proves the cold stop/archive/start sequence, full R2
+  stream checksum, immutable archive plus manifest-last publication, local
+  cleanup, preserved publisher identity and a daily timer in waiting state.
 - Ruff lint, Python compileall and browser-free behavior checks pass;
   README/catalog and documentation-nav checks pass.
 - `mkdocs build --strict` passes with a temporary docs-only environment. The

@@ -423,6 +423,61 @@ def test_restore_request_honors_explicit_manifest_age(tmp_path, monkeypatch):
     assert result["status"] == "restored"
 
 
+def test_restore_request_uses_a_read_only_shared_cache_archive_without_downloading_or_unlinking_it(
+    tmp_path, monkeypatch
+):
+    from datetime import UTC, datetime
+
+    payload = b"shared-cache-archive"
+    digest = __import__("hashlib").sha256(payload).hexdigest()
+    cache_root = tmp_path / "cache"
+    cache_root.mkdir()
+    archive = cache_root / f"{digest}.tar.zst"
+    archive.write_bytes(payload)
+    manifest = nkn_chaindb.build_manifest(
+        prefix="nkn/chaindb",
+        sha256=digest,
+        size_bytes=len(payload),
+        block_height=1,
+        created_at=datetime.now(UTC),
+        image="nknorg/nkn:latest",
+    )
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "manifest": manifest,
+                "archive_path": str(archive),
+                "data_dir": "/opt/nkn",
+                "container": "cashpilot-nkn",
+                "prefix": "nkn/chaindb",
+                "max_age_seconds": 48 * 60 * 60,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(nkn_chaindb_restore, "CACHE_MOUNT_ROOT", cache_root)
+    monkeypatch.setattr(
+        nkn_chaindb_restore,
+        "download_archive",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("local cache must not download")),
+    )
+    observed = []
+    monkeypatch.setattr(
+        nkn_chaindb_restore,
+        "restore_archive",
+        lambda _data, archive_path, **_kwargs: (
+            observed.append(Path(archive_path)) or {"status": "restored", "backup": "/opt/nkn/backup"}
+        ),
+    )
+
+    result = nkn_chaindb_restore.restore_request(request_path)
+
+    assert result["status"] == "restored"
+    assert observed == [archive]
+    assert archive.read_bytes() == payload
+
+
 def test_wait_for_node_requires_persist_finished(monkeypatch):
     states = [{}, {"syncState": "SYNC_STARTED"}, {"syncState": "PERSIST_FINISHED", "height": 42}]
     monkeypatch.setattr(nkn_chaindb_restore, "_node_state", lambda container: states.pop(0))
