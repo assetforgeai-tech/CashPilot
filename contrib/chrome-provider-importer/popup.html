@@ -4,11 +4,12 @@
     <meta charset="utf-8">
     <title>CashPilot Importer</title>
     <style>
-      body { font: 13px system-ui, sans-serif; margin: 0; width: 360px; background: #0b0b13; color: #f5f5ff; }
+      body { font: 13px system-ui, sans-serif; margin: 0; width: 380px; background: #0b0b13; color: #f5f5ff; }
       main { padding: 14px; }
       h1 { font-size: 15px; margin: 0 0 10px; }
+      h2 { font-size: 13px; margin: 16px 0 6px; }
       label { display: block; font-size: 12px; color: #b7b7c8; margin: 10px 0 4px; }
-      input { box-sizing: border-box; width: 100%; padding: 8px; border: 1px solid #2b2b3d; border-radius: 6px; background: #10101a; color: #fff; }
+      input, select { box-sizing: border-box; width: 100%; padding: 8px; border: 1px solid #2b2b3d; border-radius: 6px; background: #10101a; color: #fff; }
       button { border: 0; border-radius: 6px; padding: 8px 10px; cursor: pointer; color: #fff; background: #e11d64; }
       button.secondary { background: #242436; }
       button:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -19,6 +20,7 @@
       .keys { margin: 8px 0 0; padding-left: 18px; }
       .warn { color: #f5c542; }
       .ok { color: #7ee787; }
+      .divider { border-top: 1px solid #252536; margin-top: 16px; }
       code { color: #c6d0ff; }
     </style>
   </head>
@@ -26,12 +28,30 @@
     <main>
       <h1>CashPilot Provider Importer</h1>
       <label for="server-url">CashPilot server</label>
-      <input id="server-url" placeholder="http://42.96.13.215:8080">
+      <input id="server-url" placeholder="https://cashpilot.4gmt.com">
+      <h2>Provider settings</h2>
       <div class="row">
         <button id="scan">Scan current tab</button>
         <button class="secondary" id="save" disabled>Save to CashPilot</button>
       </div>
       <div id="status" class="box muted">Open a logged-in provider tab, then scan.</div>
+
+      <div class="divider"></div>
+      <h2>EarnApp account</h2>
+      <div class="muted">One Chrome profile binds to one EarnApp account. Values stay hidden.</div>
+      <label for="earnapp-account-name">Account name</label>
+      <input id="earnapp-account-name" autocomplete="off" placeholder="owner@example.com">
+      <label for="earnapp-email">Email (optional)</label>
+      <input id="earnapp-email" type="email" autocomplete="off" placeholder="owner@example.com">
+      <label for="earnapp-auth-method">Login method</label>
+      <select id="earnapp-auth-method">
+        <option value="google">Google</option>
+        <option value="apple">Apple</option>
+      </select>
+      <div class="row">
+        <button id="import-earnapp">Import and bind account</button>
+      </div>
+      <div id="earnapp-status" class="box muted">Sign in at earnapp.com, keep CashPilot Settings open, then import once.</div>
     </main>
     <script src="popup.js"></script>
   </body>

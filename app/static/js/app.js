@@ -3353,6 +3353,7 @@ const CP = (() => {
       renderSettingsConfig(config);
       renderCollectors(collectorsMeta, config);
       loadCredentialHealth();
+      loadEarnAppAccounts();
     } catch (err) {
       // Say what happened. /api/env-info and /api/collectors/meta each carry
       // their own .catch, so the only call that can reject is /api/config —
@@ -3365,6 +3366,220 @@ const CP = (() => {
       // Every other loader here writes a reason into its own container; this
       // one was the outlier.
       settingsPanelsFailed(err);
+    }
+  }
+
+  function earnAppTokenLabel(account) {
+    const warning = String(account.token_warning || 'expiry_unknown');
+    const labels = {
+      healthy: { label: 'Healthy', css: 'good' },
+      expires_within_7d: { label: 'Expires within 7 days', css: 'warning' },
+      expires_within_24h: { label: 'Expires within 24 hours', css: 'danger' },
+      expired: { label: 'Expired', css: 'danger' },
+      expiry_unknown: { label: 'Expiry unknown', css: 'warning' },
+    };
+    return labels[warning] || labels.expiry_unknown;
+  }
+
+  function earnAppHoldCountdown(seconds) {
+    const remaining = Math.max(0, Number(seconds) || 0);
+    if (!remaining) return 'Ready for recovery';
+    const hours = Math.floor(remaining / 3600);
+    const minutes = Math.floor((remaining % 3600) / 60);
+    const secs = Math.floor(remaining % 60);
+    return `${hours ? `${hours}h ` : ''}${String(minutes).padStart(2, '0')}m ${String(secs).padStart(2, '0')}s remaining`;
+  }
+
+  function renderEarnAppTokenAlerts(accounts) {
+    const container = document.getElementById('earnapp-token-alerts');
+    if (!container) return;
+    const urgent = accounts.filter(account => account.token_warning !== 'healthy');
+    if (!urgent.length) {
+      container.innerHTML = '<div class="earnapp-token-alert healthy"><strong>Token health is clear.</strong><span>Every imported account has a known healthy expiry window.</span></div>';
+      return;
+    }
+    container.innerHTML = urgent.map(account => {
+      const token = earnAppTokenLabel(account);
+      const expiry = account.token_expires_at ? fmtTimestamp(account.token_expires_at).text : 'not provided';
+      return `<div class="earnapp-token-alert ${escapeHtml(token.css)}">
+        <strong>${escapeHtml(account.account_name || account.email || `Account ${account.id}`)}: ${escapeHtml(token.label)}</strong>
+        <span>Token expiry: ${escapeHtml(expiry)}. Refresh this Chrome profile before collection stops.</span>
+      </div>`;
+    }).join('');
+  }
+
+  function renderEarnAppCapacity(capacity) {
+    const container = document.getElementById('earnapp-proxy-capacity');
+    if (!container) return;
+    const values = [
+      capacity.eligible || 0,
+      capacity.leaseable || 0,
+      capacity.active_nodes || 0,
+      capacity.recovery_hold_nodes || 0,
+    ];
+    container.querySelectorAll('strong').forEach((node, index) => {
+      node.textContent = String(values[index] ?? 0);
+    });
+  }
+
+  function renderEarnAppAccounts(payload) {
+    const accounts = payload.accounts || [];
+    const rows = document.getElementById('earnapp-account-rows');
+    const count = document.getElementById('earnapp-account-count');
+    if (count) count.textContent = `${accounts.length} account${accounts.length === 1 ? '' : 's'}`;
+    renderEarnAppTokenAlerts(accounts);
+    renderEarnAppCapacity(payload.proxy_capacity || {});
+    if (!rows) return;
+    if (!accounts.length) {
+      rows.innerHTML = '<tr><td colspan="5"><div class="empty-state-text">No EarnApp account has been imported.</div></td></tr>';
+      return;
+    }
+    rows.innerHTML = accounts.map(account => {
+      const token = earnAppTokenLabel(account);
+      const collector = account.collector || {};
+      const balance = collector.money_balance == null ? '&mdash;' : `${Number(collector.money_balance).toFixed(2)} USD`;
+      const nodes = collector.online_nodes == null
+        ? `${Number(account.assigned_nodes) || 0} assigned`
+        : `${Number(collector.online_nodes) || 0} online / ${Number(collector.offline_nodes) || 0} offline`;
+      const canDelete = account.state === 'ACCOUNT_LOCKED';
+      return `<tr>
+        <td><strong>${escapeHtml(account.account_name || account.email || `Account ${account.id}`)}</strong><small>${escapeHtml(account.auth_method || '')} · ${escapeHtml(account.profile_key || '')}</small><span class="badge badge-category">${escapeHtml(account.state || '')}</span></td>
+        <td><span class="earnapp-token-state ${escapeHtml(token.css)}">${escapeHtml(token.label)}</span><small>${account.token_expires_at ? escapeHtml(fmtTimestamp(account.token_expires_at).text) : 'No expiry metadata'}</small></td>
+        <td><strong>${balance}</strong><small>${collector.money_total == null ? 'Lifetime unavailable' : `${Number(collector.money_total).toFixed(2)} USD lifetime`}</small></td>
+        <td>${escapeHtml(nodes)}</td>
+        <td><div class="earnapp-row-actions">
+          <button class="btn btn-ghost btn-sm" data-action="collectEarnAppAccount" data-a1="${escapeHtml(account.id)}">Collect now</button>
+          ${canDelete ? `<button class="btn btn-ghost btn-sm danger-action" data-action="deleteEarnAppAccount" data-a1="${escapeHtml(account.id)}" data-a2="${escapeHtml(account.account_name)}">Delete local account</button>` : ''}
+        </div></td>
+      </tr>`;
+    }).join('');
+  }
+
+  function renderEarnAppRecovery(payload) {
+    const rows = document.getElementById('earnapp-recovery-rows');
+    if (!rows) return;
+    const accounts = new Map((payload.accounts || []).map(account => [Number(account.id), account]));
+    const nodes = (payload.nodes || []).filter(node => node.state !== 'RETIRED');
+    if (!nodes.length) {
+      rows.innerHTML = '<tr><td colspan="7"><div class="empty-state-text">No logical EarnApp node has been assigned.</div></td></tr>';
+      return;
+    }
+    rows.innerHTML = nodes.map(node => {
+      const account = accounts.get(Number(node.account_id)) || {};
+      const recoverable = ['RECOVERY_HOLD', 'RECOVERABLE'].includes(node.state);
+      const recovery = node.state === 'RECOVERY_HOLD'
+        ? earnAppHoldCountdown(node.recovery_hold_remaining_seconds)
+        : (node.state === 'RECOVERABLE' ? 'Proxy released; affinity retained' : 'Not in recovery');
+      return `<tr>
+        <td><strong>${escapeHtml(node.logical_node_id)}</strong><small>${escapeHtml(node.device_id || 'Device identity pending')}</small></td>
+        <td>${escapeHtml(account.account_name || `Account ${node.account_id}`)}</td>
+        <td><span class="badge badge-category">${escapeHtml(node.state)}</span></td>
+        <td>${node.assigned_worker_id == null ? '&mdash;' : escapeHtml(node.assigned_worker_id)}</td>
+        <td>${node.current_proxy_id == null ? '&mdash;' : `#${escapeHtml(node.current_proxy_id)}`}<small>preferred #${escapeHtml(node.preferred_proxy_id || '—')}</small></td>
+        <td>v${escapeHtml(node.generation)}</td>
+        <td><span>${escapeHtml(recovery)}</span>${recoverable ? `<button class="btn btn-ghost btn-sm" data-action="issueEarnAppReplacementTicket" data-a1="${escapeHtml(node.logical_node_id)}">Issue ticket</button>` : ''}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  async function loadEarnAppAccounts() {
+    const rows = document.getElementById('earnapp-account-rows');
+    if (!rows) return;
+    try {
+      const payload = await api('/api/admin/earnapp/accounts');
+      renderEarnAppAccounts(payload);
+      renderEarnAppRecovery(payload);
+    } catch (err) {
+      rows.innerHTML = `<tr><td colspan="5" style="color:var(--error);">Could not load EarnApp accounts: ${escapeHtml(err.message)}</td></tr>`;
+      const recovery = document.getElementById('earnapp-recovery-rows');
+      if (recovery) recovery.innerHTML = '<tr><td colspan="7" style="color:var(--error);">Recovery state unavailable.</td></tr>';
+    }
+  }
+
+  async function importEarnAppAccount() {
+    const profileKey = document.getElementById('earnapp-profile-key')?.value.trim() || '';
+    const accountName = document.getElementById('earnapp-account-name')?.value.trim() || '';
+    const authMethod = document.getElementById('earnapp-auth-method')?.value || 'google';
+    const refreshToken = document.getElementById('earnapp-oauth-refresh-token')?.value.trim() || '';
+    const xsrfToken = document.getElementById('earnapp-xsrf-token')?.value.trim() || '';
+    if (!profileKey || !accountName || !refreshToken || !xsrfToken) {
+      toast('Profile key, account name, oauth-refresh-token and xsrf-token are required', 'warning');
+      return;
+    }
+    try {
+      await api('/api/admin/earnapp/accounts/import', {
+        method: 'POST',
+        body: {
+          profile_key: profileKey,
+          account_name: accountName,
+          email: accountName,
+          auth_method: authMethod,
+          cookies: {
+            auth: { value: '1' },
+            'auth-method': { value: authMethod },
+            'oauth-refresh-token': { value: refreshToken },
+            'xsrf-token': { value: xsrfToken },
+          },
+        },
+      });
+      document.getElementById('earnapp-oauth-refresh-token').value = '';
+      document.getElementById('earnapp-xsrf-token').value = '';
+      toast('EarnApp account credentials imported', 'success');
+      await loadEarnAppAccounts();
+    } catch (err) {
+      toast(`EarnApp import failed: ${err.message}`, 'error');
+    }
+  }
+
+  async function collectEarnAppAccount(accountId) {
+    try {
+      await api(`/api/admin/earnapp/accounts/${encodeURIComponent(accountId)}/collect`, { method: 'POST' });
+      toast('EarnApp account snapshot refreshed', 'success');
+      await loadEarnAppAccounts();
+    } catch (err) {
+      toast(`EarnApp collection failed: ${err.message}`, 'error');
+    }
+  }
+
+  async function deleteEarnAppAccount(accountId, accountName) {
+    const name = window.prompt(`First confirmation: type the locked account name exactly:\n${accountName}`);
+    if (name !== accountName) {
+      if (name !== null) toast('Account name did not match; nothing was deleted', 'warning');
+      return;
+    }
+    const phrase = window.prompt('Second confirmation: type DELETE ACCOUNT exactly. This removes only CashPilot credentials and bindings; it does not delete the remote EarnApp account or device.');
+    if (phrase !== 'DELETE ACCOUNT') {
+      if (phrase !== null) toast('Confirmation phrase did not match; nothing was deleted', 'warning');
+      return;
+    }
+    try {
+      await api(`/api/admin/earnapp/accounts/${encodeURIComponent(accountId)}`, {
+        method: 'DELETE',
+        body: { confirm_account_name: name, confirm_phrase: phrase },
+      });
+      toast('Locked EarnApp account removed from CashPilot', 'success');
+      await loadEarnAppAccounts();
+    } catch (err) {
+      toast(`EarnApp delete failed: ${err.message}`, 'error');
+    }
+  }
+
+  async function issueEarnAppReplacementTicket(logicalNodeId) {
+    const rawWorkerId = window.prompt('Target CashPilot worker ID for this one-time replacement ticket:');
+    if (rawWorkerId === null) return;
+    const workerId = Number(rawWorkerId);
+    if (!Number.isInteger(workerId) || workerId <= 0) {
+      toast('Enter a valid positive worker ID', 'warning');
+      return;
+    }
+    try {
+      const result = await api(`/api/admin/earnapp/nodes/${encodeURIComponent(logicalNodeId)}/replacement-ticket`, {
+        method: 'POST',
+        body: { target_worker_id: workerId },
+      });
+      window.prompt('Copy this ticket now. It is shown once and expires in 15 minutes:', result.replacement_ticket);
+    } catch (err) {
+      toast(`Could not issue replacement ticket: ${err.message}`, 'error');
     }
   }
 
@@ -4239,6 +4454,11 @@ const CP = (() => {
     testCollectors,
     saveEnvSettings,
     deployNknChaindbPublisher,
+    loadEarnAppAccounts,
+    importEarnAppAccount,
+    collectEarnAppAccount,
+    deleteEarnAppAccount,
+    issueEarnAppReplacementTicket,
     toggleEnvSecret,
     importMystWalletFile,
     importNknWalletZip,

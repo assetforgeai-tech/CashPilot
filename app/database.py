@@ -414,6 +414,91 @@ CREATE TABLE IF NOT EXISTS nkn_wallets (
 );
 """
 
+_EARNAPP_ACCOUNTS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS earnapp_accounts (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_key          TEXT    NOT NULL UNIQUE,
+    account_name         TEXT    NOT NULL,
+    email                TEXT    NOT NULL DEFAULT '',
+    auth_method          TEXT    NOT NULL CHECK(auth_method IN ('google', 'apple')),
+    credentials_enc      TEXT    NOT NULL,
+    credential_keys_json TEXT    NOT NULL DEFAULT '[]',
+    token_expires_at     TEXT,
+    cookie_expires_at    TEXT,
+    state                TEXT    NOT NULL DEFAULT 'ACTIVE',
+    created_at           TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at           TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS earnapp_logical_nodes (
+    logical_node_id    TEXT    PRIMARY KEY,
+    account_id         INTEGER NOT NULL,
+    state              TEXT    NOT NULL DEFAULT 'PLANNED',
+    generation         INTEGER NOT NULL DEFAULT 1,
+    assigned_worker_id INTEGER,
+    last_worker_id     INTEGER,
+    device_id          TEXT    NOT NULL DEFAULT '',
+    current_proxy_id   INTEGER,
+    preferred_proxy_id INTEGER,
+    last_heartbeat_at  TEXT,
+    recovery_started_at TEXT,
+    recovery_hold_until TEXT,
+    created_at         TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at         TEXT    NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY(account_id) REFERENCES earnapp_accounts(id) ON DELETE RESTRICT,
+    FOREIGN KEY(assigned_worker_id) REFERENCES workers(id) ON DELETE SET NULL,
+    FOREIGN KEY(current_proxy_id) REFERENCES proxy_endpoints(id) ON DELETE SET NULL,
+    FOREIGN KEY(preferred_proxy_id) REFERENCES proxy_endpoints(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_earnapp_logical_nodes_account_state
+    ON earnapp_logical_nodes(account_id, state);
+
+CREATE TABLE IF NOT EXISTS earnapp_replacement_tickets (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    logical_node_id  TEXT    NOT NULL,
+    target_worker_id INTEGER NOT NULL,
+    generation       INTEGER NOT NULL,
+    token_hash       TEXT    NOT NULL UNIQUE,
+    expires_at       TEXT    NOT NULL,
+    used_at          TEXT,
+    created_at       TEXT    NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY(logical_node_id) REFERENCES earnapp_logical_nodes(logical_node_id) ON DELETE CASCADE,
+    FOREIGN KEY(target_worker_id) REFERENCES workers(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_earnapp_replacement_tickets_target
+    ON earnapp_replacement_tickets(logical_node_id, target_worker_id, used_at, expires_at);
+
+CREATE TABLE IF NOT EXISTS earnapp_account_control_routes (
+    account_id               INTEGER PRIMARY KEY,
+    proxy_id                 INTEGER NOT NULL,
+    state                    TEXT    NOT NULL DEFAULT 'ACTIVE',
+    assigned_logical_node_id TEXT    NOT NULL DEFAULT '',
+    leased_at                TEXT    NOT NULL DEFAULT (datetime('now')),
+    released_at              TEXT,
+    release_reason           TEXT    NOT NULL DEFAULT '',
+    updated_at               TEXT    NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY(account_id) REFERENCES earnapp_accounts(id) ON DELETE CASCADE,
+    FOREIGN KEY(proxy_id) REFERENCES proxy_endpoints(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS earnapp_account_snapshots (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id     INTEGER NOT NULL,
+    money_balance  REAL    NOT NULL DEFAULT 0,
+    money_total    REAL    NOT NULL DEFAULT 0,
+    online_nodes   INTEGER NOT NULL DEFAULT 0,
+    offline_nodes  INTEGER NOT NULL DEFAULT 0,
+    devices_json   TEXT    NOT NULL DEFAULT '[]',
+    collected_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY(account_id) REFERENCES earnapp_accounts(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_earnapp_account_snapshots_latest
+    ON earnapp_account_snapshots(account_id, id DESC);
+"""
+
 
 def encrypt_value(value: str) -> str:
     """Encrypt a string value, returning an 'enc:' prefixed token."""
@@ -881,6 +966,7 @@ CREATE INDEX IF NOT EXISTS idx_alerts_created
 _shared_conns: dict[int, aiosqlite.Connection] = {}
 _proxy_assignment_locks: dict[int, asyncio.Lock] = {}
 _nkn_wallet_locks: dict[int, asyncio.Lock] = {}
+_earnapp_locks: dict[int, asyncio.Lock] = {}
 
 
 def _proxy_assignment_lock() -> asyncio.Lock:
@@ -900,6 +986,16 @@ def _nkn_wallet_lock() -> asyncio.Lock:
     if lock is None:
         lock = asyncio.Lock()
         _nkn_wallet_locks[loop_key] = lock
+    return lock
+
+
+def _earnapp_lock() -> asyncio.Lock:
+    """Serialize EarnApp account/node assignments per event loop."""
+    loop_key = id(asyncio.get_running_loop())
+    lock = _earnapp_locks.get(loop_key)
+    if lock is None:
+        lock = asyncio.Lock()
+        _earnapp_locks[loop_key] = lock
     return lock
 
 
@@ -1119,7 +1215,7 @@ async def _encrypt_legacy_plaintext_credentials(db: Any) -> int:
 #: missing a column -- an interrupted upgrade, a restored backup, a hand-edited
 #: file -- could never be repaired, because the gate would say there was nothing
 #: to do. The guards are idempotent and cheap; the version is for the operator.
-SCHEMA_VERSION = 18
+SCHEMA_VERSION = 19
 
 
 async def init_db() -> None:
@@ -1132,6 +1228,14 @@ async def init_db() -> None:
     try:
         await _dedupe_earnings_before_indexing(db)
         await db.executescript(_SCHEMA)
+        await db.executescript(_EARNAPP_ACCOUNTS_SCHEMA)
+        # Recovery releases the live assignment but keeps its prior owner so
+        # another worker still needs a one-time replacement ticket.
+        cursor = await db.execute("PRAGMA table_info(earnapp_logical_nodes)")
+        earnapp_node_cols = {row["name"] for row in await cursor.fetchall()}
+        if "last_worker_id" not in earnapp_node_cols:
+            applied.append("earnapp_logical_nodes.last_worker_id")
+            await db.execute("ALTER TABLE earnapp_logical_nodes ADD COLUMN last_worker_id INTEGER")
         # Migrate workers table: add client_id (UNIQUE) and apps columns
         cursor = await db.execute("PRAGMA table_info(workers)")
         cols = {row["name"] for row in await cursor.fetchall()}
@@ -1982,6 +2086,1179 @@ async def delete_config_keys(keys: list[str]) -> None:
         placeholders = ",".join("?" for _ in keys)
         await db.execute(f"DELETE FROM config WHERE key IN ({placeholders})", keys)
         await db.commit()
+    finally:
+        await db.close()
+
+
+# --- EarnApp accounts and logical nodes ---
+
+
+async def upsert_earnapp_account(
+    *,
+    profile_key: str,
+    account_name: str,
+    email: str,
+    auth_method: str,
+    credentials: Mapping[str, Any],
+    credential_keys: Sequence[str],
+    token_expires_at: str | None,
+    cookie_expires_at: str | None,
+) -> int:
+    """Insert or refresh one profile-bound EarnApp account."""
+    profile = str(profile_key or "").strip()
+    name = str(account_name or "").strip()
+    method = str(auth_method or "").strip().lower()
+    if not profile or not name:
+        raise ValueError("profile_key and account_name are required")
+    if method not in {"google", "apple"}:
+        raise ValueError("auth_method must be Google or Apple")
+
+    async with _earnapp_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.executescript(_EARNAPP_ACCOUNTS_SCHEMA)
+            await db.execute("BEGIN IMMEDIATE")
+            existing = await (
+                await db.execute(
+                    "SELECT id, account_name, auth_method, state FROM earnapp_accounts WHERE profile_key = ?",
+                    (profile,),
+                )
+            ).fetchone()
+            if existing and (str(existing["account_name"]) != name or str(existing["auth_method"]) != method):
+                raise ValueError("Chrome profile is already bound to a different EarnApp account")
+            if existing and str(existing["state"]) == "DELETED":
+                raise ValueError("EarnApp account is deleted")
+            cursor = await db.execute(
+                """
+                INSERT INTO earnapp_accounts
+                    (profile_key, account_name, email, auth_method, credentials_enc,
+                     credential_keys_json, token_expires_at, cookie_expires_at, state, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', datetime('now'))
+                ON CONFLICT(profile_key) DO UPDATE SET
+                    email = excluded.email,
+                    credentials_enc = excluded.credentials_enc,
+                    credential_keys_json = excluded.credential_keys_json,
+                    token_expires_at = excluded.token_expires_at,
+                    cookie_expires_at = excluded.cookie_expires_at,
+                    state = CASE WHEN earnapp_accounts.state = 'ACCOUNT_LOCKED' THEN 'ACCOUNT_LOCKED' ELSE 'ACTIVE' END,
+                    updated_at = datetime('now')
+                RETURNING id
+                """,
+                (
+                    profile,
+                    name,
+                    str(email or "").strip(),
+                    method,
+                    encrypt_value(json.dumps(dict(credentials), sort_keys=True, separators=(",", ":"))),
+                    json.dumps(sorted({str(key) for key in credential_keys if str(key)})),
+                    token_expires_at,
+                    cookie_expires_at,
+                ),
+            )
+            row = await cursor.fetchone()
+            await db.commit()
+            return int(row["id"])
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
+
+
+async def list_earnapp_accounts(*, include_deleted: bool = False) -> list[dict[str, Any]]:
+    db = await _get_db()
+    try:
+        await db.executescript(_EARNAPP_ACCOUNTS_SCHEMA)
+        where = "" if include_deleted else "WHERE a.state != 'DELETED'"
+        cursor = await db.execute(
+            f"""
+            SELECT a.id, a.profile_key, a.account_name, a.email, a.auth_method, a.state,
+                   a.credential_keys_json, a.token_expires_at, a.cookie_expires_at,
+                   a.created_at, a.updated_at,
+                   COUNT(n.logical_node_id) AS assigned_nodes
+            FROM earnapp_accounts a
+            LEFT JOIN earnapp_logical_nodes n
+              ON n.account_id = a.id AND n.state != 'RETIRED'
+            {where}
+            GROUP BY a.id
+            ORDER BY a.id
+            """
+        )
+        return [dict(row) for row in await cursor.fetchall()]
+    finally:
+        await db.close()
+
+
+async def get_earnapp_account_credentials(account_id: int) -> dict[str, Any] | None:
+    """Return decrypted credentials to internal callers only."""
+    db = await _get_db()
+    try:
+        await db.executescript(_EARNAPP_ACCOUNTS_SCHEMA)
+        row = await (
+            await db.execute(
+                """
+                SELECT id, profile_key, account_name, email, auth_method, state,
+                       credentials_enc, token_expires_at, cookie_expires_at
+                FROM earnapp_accounts
+                WHERE id = ? AND state != 'DELETED'
+                """,
+                (int(account_id),),
+            )
+        ).fetchone()
+        if not row:
+            return None
+        data = dict(row)
+        encrypted = str(data.pop("credentials_enc") or "")
+        try:
+            credentials = json.loads(decrypt_value(encrypted)) if encrypted else {}
+        except (TypeError, ValueError):
+            credentials = {}
+        data["credentials"] = credentials if isinstance(credentials, dict) else {}
+        return data
+    finally:
+        await db.close()
+
+
+async def assign_earnapp_account(logical_node_id: str) -> dict[str, Any]:
+    """Bind a stable logical node to the least-assigned active account."""
+    node_id = str(logical_node_id or "").strip()
+    if not node_id:
+        raise ValueError("logical_node_id required")
+    async with _earnapp_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.executescript(_EARNAPP_ACCOUNTS_SCHEMA)
+            await db.execute("BEGIN IMMEDIATE")
+            existing = await (
+                await db.execute(
+                    """
+                    SELECT a.*
+                    FROM earnapp_logical_nodes n
+                    JOIN earnapp_accounts a ON a.id = n.account_id
+                    WHERE n.logical_node_id = ? AND n.state != 'RETIRED' AND a.state != 'DELETED'
+                    """,
+                    (node_id,),
+                )
+            ).fetchone()
+            if existing:
+                await db.commit()
+                return dict(existing)
+
+            account = await (
+                await db.execute(
+                    """
+                    SELECT a.*, COUNT(n.logical_node_id) AS assigned_nodes
+                    FROM earnapp_accounts a
+                    LEFT JOIN earnapp_logical_nodes n
+                      ON n.account_id = a.id AND n.state != 'RETIRED'
+                    WHERE a.state = 'ACTIVE'
+                    GROUP BY a.id
+                    ORDER BY assigned_nodes ASC, a.id ASC
+                    LIMIT 1
+                    """
+                )
+            ).fetchone()
+            if not account:
+                raise ValueError("no active EarnApp account available")
+            await db.execute(
+                """
+                INSERT INTO earnapp_logical_nodes (logical_node_id, account_id, state)
+                VALUES (?, ?, 'PLANNED')
+                """,
+                (node_id, int(account["id"])),
+            )
+            await db.commit()
+            return dict(account)
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
+
+
+async def set_earnapp_logical_node_state(logical_node_id: str, state: str) -> bool:
+    allowed = {"PLANNED", "ACTIVE", "RECOVERY_HOLD", "RECOVERABLE", "RETIRED"}
+    normalized = str(state or "").strip().upper()
+    if normalized not in allowed:
+        raise ValueError("invalid EarnApp logical-node state")
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            """
+            UPDATE earnapp_logical_nodes
+            SET state = ?, updated_at = datetime('now')
+            WHERE logical_node_id = ?
+            """,
+            (normalized, str(logical_node_id or "").strip()),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+    finally:
+        await db.close()
+
+
+async def set_earnapp_account_state(account_id: int, state: str) -> bool:
+    allowed = {"ACTIVE", "EXPIRED", "AUTH_FAILED", "ACCOUNT_LOCKED", "DISABLED"}
+    normalized = str(state or "").strip().upper()
+    if normalized not in allowed:
+        raise ValueError("invalid EarnApp account state")
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "UPDATE earnapp_accounts SET state = ?, updated_at = datetime('now') WHERE id = ? AND state != 'DELETED'",
+            (normalized, int(account_id)),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+    finally:
+        await db.close()
+
+
+async def delete_locked_earnapp_account(account_id: int) -> str:
+    """Delete local secrets only after EarnApp has explicitly locked the account."""
+    async with _earnapp_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            row = await (
+                await db.execute("SELECT state FROM earnapp_accounts WHERE id = ?", (int(account_id),))
+            ).fetchone()
+            if not row:
+                await db.rollback()
+                return "NOT_FOUND"
+            if str(row["state"]) != "ACCOUNT_LOCKED":
+                await db.rollback()
+                return "NOT_LOCKED"
+            await db.execute(
+                """
+                UPDATE earnapp_logical_nodes
+                SET state = 'RETIRED', assigned_worker_id = NULL, last_worker_id = NULL,
+                    current_proxy_id = NULL, preferred_proxy_id = NULL,
+                    updated_at = datetime('now')
+                WHERE account_id = ? AND state != 'RETIRED'
+                """,
+                (int(account_id),),
+            )
+            await db.execute(
+                """
+                UPDATE provider_proxy_leases
+                SET released_at = datetime('now'), release_reason = 'EARNAPP_ACCOUNT_DELETED'
+                WHERE provider_slug = 'earnapp' AND released_at IS NULL
+                  AND instance_id IN (
+                      SELECT logical_node_id FROM earnapp_logical_nodes WHERE account_id = ?
+                  )
+                """,
+                (int(account_id),),
+            )
+            await db.execute(
+                """
+                UPDATE earnapp_account_control_routes
+                SET state = 'RELEASED', released_at = datetime('now'),
+                    release_reason = 'ACCOUNT_DELETED', updated_at = datetime('now')
+                WHERE account_id = ? AND state = 'ACTIVE'
+                """,
+                (int(account_id),),
+            )
+            await db.execute(
+                """
+                UPDATE earnapp_accounts
+                SET state = 'DELETED', credentials_enc = '', credential_keys_json = '[]',
+                    token_expires_at = NULL, cookie_expires_at = NULL, updated_at = datetime('now')
+                WHERE id = ?
+                """,
+                (int(account_id),),
+            )
+            await db.commit()
+            return "DELETED"
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
+
+
+def _earnapp_proxy_eligible_sql(alias: str = "pe") -> str:
+    return f"""
+        lower(coalesce({alias}.status, 'unknown')) = 'alive'
+        AND lower(trim(coalesce({alias}.ip_type, ''))) = 'residential'
+        AND trim(coalesce({alias}.exit_ip, '')) != ''
+        AND coalesce({alias}.duplicate_egress, 0) = 0
+        AND EXISTS (
+            SELECT 1 FROM proxy_probe_results earnapp
+            WHERE earnapp.proxy_id = {alias}.id
+              AND earnapp.profile = 'earnapp_wss'
+              AND earnapp.verdict = 'CID_SET'
+              AND earnapp.eligibility = 'eligible'
+              AND trim(coalesce(earnapp.exit_ip, '')) != ''
+              AND earnapp.exit_ip = {alias}.exit_ip
+              AND earnapp.id = (
+                  SELECT MAX(latest.id) FROM proxy_probe_results latest
+                  WHERE latest.proxy_id = {alias}.id AND latest.profile = 'earnapp_wss'
+              )
+        )
+    """
+
+
+async def get_earnapp_logical_node(logical_node_id: str) -> dict[str, Any] | None:
+    db = await _get_db()
+    try:
+        row = await (
+            await db.execute(
+                "SELECT * FROM earnapp_logical_nodes WHERE logical_node_id = ?",
+                (str(logical_node_id or "").strip(),),
+            )
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        await db.close()
+
+
+async def list_earnapp_logical_nodes() -> list[dict[str, Any]]:
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT * FROM earnapp_logical_nodes ORDER BY logical_node_id")
+        return [dict(row) for row in await cursor.fetchall()]
+    finally:
+        await db.close()
+
+
+async def get_active_provider_proxy_lease(
+    provider_slug: str, worker_id: int, instance_id: str
+) -> dict[str, Any] | None:
+    db = await _get_db()
+    try:
+        row = await (
+            await db.execute(
+                """
+                SELECT * FROM provider_proxy_leases
+                WHERE provider_slug = ? AND worker_id = ? AND instance_id = ? AND released_at IS NULL
+                LIMIT 1
+                """,
+                (
+                    str(provider_slug or "").strip().lower(),
+                    int(worker_id),
+                    str(instance_id or "").strip(),
+                ),
+            )
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        await db.close()
+
+
+async def bind_earnapp_node_runtime(
+    logical_node_id: str,
+    worker_id: int,
+    *,
+    device_id: str,
+    proxy_id: int,
+) -> dict[str, Any]:
+    node_id = str(logical_node_id or "").strip()
+    async with _earnapp_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            node = await (
+                await db.execute("SELECT * FROM earnapp_logical_nodes WHERE logical_node_id = ?", (node_id,))
+            ).fetchone()
+            if not node:
+                raise ValueError("EarnApp logical node not found")
+            if node["assigned_worker_id"] is not None and int(node["assigned_worker_id"]) != int(worker_id):
+                raise ValueError("EarnApp logical node is already assigned to another worker")
+            proxy = await (
+                await db.execute(
+                    f"SELECT * FROM proxy_endpoints pe WHERE pe.id = ? AND {_earnapp_proxy_eligible_sql('pe')}",
+                    (int(proxy_id),),
+                )
+            ).fetchone()
+            if not proxy:
+                raise ValueError("EarnApp proxy is not eligible")
+            conflict = await (
+                await db.execute(
+                    """
+                    SELECT 1 FROM provider_proxy_leases
+                    WHERE released_at IS NULL
+                      AND NOT (provider_slug = 'earnapp' AND worker_id = ? AND instance_id = ?)
+                      AND (proxy_id = ? OR (exit_ip != '' AND exit_ip = ?))
+                    LIMIT 1
+                    """,
+                    (int(worker_id), node_id, int(proxy_id), str(proxy["exit_ip"] or "")),
+                )
+            ).fetchone()
+            if conflict:
+                raise ValueError("EarnApp proxy is already leased")
+            own_lease = await (
+                await db.execute(
+                    """
+                    SELECT 1 FROM provider_proxy_leases
+                    WHERE provider_slug = 'earnapp' AND worker_id = ? AND instance_id = ?
+                      AND proxy_id = ? AND released_at IS NULL
+                    LIMIT 1
+                    """,
+                    (int(worker_id), node_id, int(proxy_id)),
+                )
+            ).fetchone()
+            if not own_lease:
+                await db.execute(
+                    """
+                    INSERT INTO provider_proxy_leases
+                        (provider_slug, worker_id, instance_id, proxy_id, exit_ip)
+                    VALUES ('earnapp', ?, ?, ?, ?)
+                    """,
+                    (int(worker_id), node_id, int(proxy_id), str(proxy["exit_ip"] or "")),
+                )
+            await db.execute(
+                """
+                UPDATE earnapp_logical_nodes
+                SET assigned_worker_id = ?, last_worker_id = ?, device_id = ?, current_proxy_id = ?, preferred_proxy_id = ?,
+                    state = 'ACTIVE', last_heartbeat_at = datetime('now'), recovery_started_at = NULL,
+                    recovery_hold_until = NULL, updated_at = datetime('now')
+                WHERE logical_node_id = ?
+                """,
+                (int(worker_id), int(worker_id), str(device_id or ""), int(proxy_id), int(proxy_id), node_id),
+            )
+            updated = await (
+                await db.execute("SELECT * FROM earnapp_logical_nodes WHERE logical_node_id = ?", (node_id,))
+            ).fetchone()
+            await db.commit()
+            return dict(updated)
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
+
+
+async def begin_earnapp_recovery_hold(logical_node_id: str, *, hold_seconds: int) -> dict[str, Any] | None:
+    node_id = str(logical_node_id or "").strip()
+    seconds = max(1, int(hold_seconds))
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            """
+            UPDATE earnapp_logical_nodes
+            SET state = 'RECOVERY_HOLD', recovery_started_at = datetime('now'),
+                recovery_hold_until = datetime('now', ?), updated_at = datetime('now')
+            WHERE logical_node_id = ? AND state = 'ACTIVE'
+            """,
+            (f"+{seconds} seconds", node_id),
+        )
+        await db.commit()
+        if not cursor.rowcount:
+            return None
+        return await get_earnapp_logical_node(node_id)
+    finally:
+        await db.close()
+
+
+async def sweep_stale_earnapp_nodes(*, stale_after_seconds: int, hold_seconds: int) -> dict[str, list[dict[str, Any]]]:
+    held: list[dict[str, Any]] = []
+    released: list[dict[str, Any]] = []
+    async with _earnapp_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            cutoff = f"-{max(1, int(stale_after_seconds))} seconds"
+            stale = await (
+                await db.execute(
+                    """
+                    SELECT n.*
+                    FROM earnapp_logical_nodes n
+                    JOIN workers w ON w.id = n.assigned_worker_id
+                    WHERE n.state = 'ACTIVE'
+                      AND w.last_heartbeat IS NOT NULL
+                      AND w.last_heartbeat < datetime('now', ?)
+                    ORDER BY n.logical_node_id
+                    """,
+                    (cutoff,),
+                )
+            ).fetchall()
+            for row in stale:
+                await db.execute(
+                    """
+                    UPDATE earnapp_logical_nodes
+                    SET state = 'RECOVERY_HOLD', recovery_started_at = datetime('now'),
+                        recovery_hold_until = datetime('now', ?), updated_at = datetime('now')
+                    WHERE logical_node_id = ? AND state = 'ACTIVE'
+                    """,
+                    (f"+{max(1, int(hold_seconds))} seconds", str(row["logical_node_id"])),
+                )
+                held.append({"logical_node_id": str(row["logical_node_id"])})
+
+            expired = await (
+                await db.execute(
+                    """
+                    SELECT * FROM earnapp_logical_nodes
+                    WHERE state = 'RECOVERY_HOLD'
+                      AND recovery_hold_until IS NOT NULL
+                      AND recovery_hold_until <= datetime('now')
+                    ORDER BY logical_node_id
+                    """
+                )
+            ).fetchall()
+            for row in expired:
+                node_id = str(row["logical_node_id"])
+                await db.execute(
+                    """
+                    UPDATE provider_proxy_leases
+                    SET released_at = datetime('now'), release_reason = 'EARNAPP_RECOVERY_HOLD_EXPIRED'
+                    WHERE provider_slug = 'earnapp' AND instance_id = ? AND released_at IS NULL
+                    """,
+                    (node_id,),
+                )
+                await db.execute(
+                    """
+                    UPDATE earnapp_logical_nodes
+                    SET state = 'RECOVERABLE', assigned_worker_id = NULL, current_proxy_id = NULL,
+                        updated_at = datetime('now')
+                    WHERE logical_node_id = ? AND state = 'RECOVERY_HOLD'
+                    """,
+                    (node_id,),
+                )
+                released.append({"logical_node_id": node_id})
+            await db.commit()
+            return {"held": held, "released": released}
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
+
+
+async def create_earnapp_replacement_ticket(
+    logical_node_id: str,
+    target_worker_id: int,
+    *,
+    generation: int,
+    token_hash: str,
+    expires_seconds: int,
+) -> str:
+    """Create a ticket only while the requested recovery generation is current."""
+    node_id = str(logical_node_id or "").strip()
+    async with _earnapp_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            worker = await (
+                await db.execute("SELECT id FROM workers WHERE id = ?", (int(target_worker_id),))
+            ).fetchone()
+            if not worker:
+                await db.rollback()
+                return "target_worker_not_found"
+
+            node = await (
+                await db.execute(
+                    "SELECT generation, state FROM earnapp_logical_nodes WHERE logical_node_id = ?",
+                    (node_id,),
+                )
+            ).fetchone()
+            if not node:
+                await db.rollback()
+                return "node_not_found"
+            if int(node["generation"]) != int(generation):
+                await db.rollback()
+                return "generation_mismatch"
+            if str(node["state"] or "") not in {"RECOVERY_HOLD", "RECOVERABLE"}:
+                await db.rollback()
+                return "node_not_recoverable"
+
+            await db.execute(
+                """
+                INSERT INTO earnapp_replacement_tickets
+                    (logical_node_id, target_worker_id, generation, token_hash, expires_at)
+                VALUES (?, ?, ?, ?, datetime('now', ?))
+                """,
+                (
+                    node_id,
+                    int(target_worker_id),
+                    int(generation),
+                    str(token_hash),
+                    f"+{max(1, int(expires_seconds))} seconds",
+                ),
+            )
+            await db.commit()
+            return "created"
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
+
+
+async def claim_earnapp_node(
+    logical_node_id: str,
+    worker_id: int,
+    *,
+    expected_generation: int,
+    ticket_hash: str = "",
+) -> dict[str, Any] | None:
+    node_id = str(logical_node_id or "").strip()
+    async with _earnapp_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            node = await (
+                await db.execute("SELECT * FROM earnapp_logical_nodes WHERE logical_node_id = ?", (node_id,))
+            ).fetchone()
+            if not node or int(node["generation"]) != int(expected_generation):
+                await db.rollback()
+                return None
+            if str(node["state"] or "") not in {"RECOVERY_HOLD", "RECOVERABLE"}:
+                await db.rollback()
+                return None
+            assigned_worker_id = int(node["assigned_worker_id"] or 0)
+            last_worker_id = int(node["last_worker_id"] or assigned_worker_id or 0)
+            replacing = bool(
+                (assigned_worker_id and assigned_worker_id != int(worker_id))
+                or (not assigned_worker_id and last_worker_id and last_worker_id != int(worker_id))
+            )
+            ticket = None
+            if replacing:
+                ticket = await (
+                    await db.execute(
+                        """
+                        SELECT id FROM earnapp_replacement_tickets
+                        WHERE logical_node_id = ? AND target_worker_id = ? AND generation = ?
+                          AND token_hash = ? AND used_at IS NULL AND expires_at > datetime('now')
+                        LIMIT 1
+                        """,
+                        (node_id, int(worker_id), int(expected_generation), str(ticket_hash)),
+                    )
+                ).fetchone()
+                if not ticket:
+                    await db.rollback()
+                    return None
+
+            proxy_id = int(node["current_proxy_id"] or node["preferred_proxy_id"] or 0)
+            preferred = None
+            if proxy_id:
+                preferred = await (
+                    await db.execute(
+                        f"""
+                        SELECT pe.* FROM proxy_endpoints pe
+                        LEFT JOIN proxy_assignments legacy ON legacy.proxy_id = pe.id
+                        LEFT JOIN provider_proxy_leases occupied
+                          ON occupied.proxy_id = pe.id AND occupied.released_at IS NULL
+                         AND NOT (occupied.provider_slug = 'earnapp' AND occupied.instance_id = ?)
+                        LEFT JOIN earnapp_account_control_routes control
+                          ON control.proxy_id = pe.id AND control.state = 'ACTIVE'
+                        WHERE pe.id = ? AND legacy.proxy_id IS NULL AND occupied.id IS NULL
+                          AND control.proxy_id IS NULL AND {_earnapp_proxy_eligible_sql("pe")}
+                          AND NOT EXISTS (
+                              SELECT 1 FROM proxy_assignments used_legacy
+                              JOIN proxy_endpoints used_proxy ON used_proxy.id = used_legacy.proxy_id
+                              WHERE used_proxy.exit_ip = pe.exit_ip
+                          )
+                          AND NOT EXISTS (
+                              SELECT 1 FROM provider_proxy_leases used
+                              WHERE used.released_at IS NULL
+                                AND NOT (used.provider_slug = 'earnapp' AND used.instance_id = ?)
+                                AND used.exit_ip = pe.exit_ip
+                          )
+                          AND NOT EXISTS (
+                              SELECT 1 FROM earnapp_account_control_routes used_control
+                              JOIN proxy_endpoints control_proxy ON control_proxy.id = used_control.proxy_id
+                              WHERE used_control.state = 'ACTIVE' AND control_proxy.exit_ip = pe.exit_ip
+                          )
+                        LIMIT 1
+                        """,
+                        (node_id, proxy_id, node_id),
+                    )
+                ).fetchone()
+            if not preferred:
+                preferred = await (
+                    await db.execute(
+                        f"""
+                        SELECT pe.* FROM proxy_endpoints pe
+                        LEFT JOIN proxy_assignments pa ON pa.proxy_id = pe.id
+                        LEFT JOIN provider_proxy_leases occupied ON occupied.proxy_id = pe.id AND occupied.released_at IS NULL
+                        WHERE pa.proxy_id IS NULL AND occupied.id IS NULL
+                          AND {_earnapp_proxy_eligible_sql("pe")}
+                          AND NOT EXISTS (
+                              SELECT 1 FROM proxy_assignments used_legacy
+                              JOIN proxy_endpoints used_proxy ON used_proxy.id = used_legacy.proxy_id
+                              WHERE used_proxy.exit_ip = pe.exit_ip
+                          )
+                          AND NOT EXISTS (
+                              SELECT 1 FROM provider_proxy_leases used
+                              WHERE used.released_at IS NULL AND used.exit_ip = pe.exit_ip
+                          )
+                          AND NOT EXISTS (
+                              SELECT 1 FROM earnapp_account_control_routes used_control
+                              JOIN proxy_endpoints control_proxy ON control_proxy.id = used_control.proxy_id
+                              WHERE used_control.state = 'ACTIVE' AND control_proxy.exit_ip = pe.exit_ip
+                          )
+                          AND NOT EXISTS (
+                              SELECT 1 FROM proxy_provider_masks ppm
+                              WHERE ppm.proxy_id = pe.id AND ppm.provider_slug = 'earnapp'
+                          )
+                        ORDER BY CASE WHEN pe.id = ? THEN 0 ELSE 1 END, pe.id
+                        LIMIT 1
+                        """,
+                        (int(node["preferred_proxy_id"] or 0),),
+                    )
+                ).fetchone()
+            if not preferred:
+                await db.rollback()
+                return None
+
+            await db.execute(
+                """
+                UPDATE provider_proxy_leases
+                SET released_at = datetime('now'), release_reason = 'EARNAPP_RECOVERED'
+                WHERE provider_slug = 'earnapp' AND instance_id = ? AND released_at IS NULL
+                """,
+                (node_id,),
+            )
+            await db.execute(
+                """
+                INSERT INTO provider_proxy_leases
+                    (provider_slug, worker_id, instance_id, proxy_id, exit_ip)
+                VALUES ('earnapp', ?, ?, ?, ?)
+                """,
+                (int(worker_id), node_id, int(preferred["id"]), str(preferred["exit_ip"] or "")),
+            )
+            new_generation = int(expected_generation) + (1 if replacing else 0)
+            await db.execute(
+                """
+                UPDATE earnapp_logical_nodes
+                SET assigned_worker_id = ?, last_worker_id = ?, current_proxy_id = ?, preferred_proxy_id = ?,
+                    state = 'ACTIVE', generation = ?, last_heartbeat_at = datetime('now'),
+                    recovery_started_at = NULL, recovery_hold_until = NULL, updated_at = datetime('now')
+                WHERE logical_node_id = ? AND generation = ?
+                """,
+                (
+                    int(worker_id),
+                    int(worker_id),
+                    int(preferred["id"]),
+                    int(preferred["id"]),
+                    new_generation,
+                    node_id,
+                    int(expected_generation),
+                ),
+            )
+            if ticket:
+                await db.execute(
+                    "UPDATE earnapp_replacement_tickets SET used_at = datetime('now') WHERE id = ?",
+                    (int(ticket["id"]),),
+                )
+            updated = await (
+                await db.execute("SELECT * FROM earnapp_logical_nodes WHERE logical_node_id = ?", (node_id,))
+            ).fetchone()
+            await db.commit()
+            return dict(updated)
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
+
+
+async def heartbeat_earnapp_node(
+    logical_node_id: str,
+    worker_id: int,
+    *,
+    generation: int,
+) -> bool:
+    node_id = str(logical_node_id or "").strip()
+    async with _earnapp_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            cursor = await db.execute(
+                """
+                UPDATE earnapp_logical_nodes
+                SET state = 'ACTIVE', last_heartbeat_at = datetime('now'), recovery_started_at = NULL,
+                    recovery_hold_until = NULL, updated_at = datetime('now')
+                WHERE logical_node_id = ? AND assigned_worker_id = ? AND generation = ?
+                  AND state IN ('ACTIVE', 'RECOVERY_HOLD')
+                """,
+                (node_id, int(worker_id), int(generation)),
+            )
+            if not cursor.rowcount:
+                await db.rollback()
+                return False
+            await db.execute(
+                """
+                UPDATE earnapp_replacement_tickets
+                SET used_at = datetime('now')
+                WHERE logical_node_id = ? AND generation = ? AND used_at IS NULL
+                """,
+                (node_id, int(generation)),
+            )
+            await db.commit()
+            return True
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
+
+
+async def get_earnapp_account_control_route(
+    account_id: int, *, include_released: bool = False, healthy_only: bool = False
+) -> dict[str, Any] | None:
+    db = await _get_db()
+    try:
+        active = "" if include_released else "AND r.state = 'ACTIVE'"
+        eligibility = f"AND {_earnapp_proxy_eligible_sql('pe')}" if healthy_only else ""
+        row = await (
+            await db.execute(
+                f"""
+                SELECT r.*, pe.endpoint, pe.host, pe.port, pe.protocol, pe.username,
+                       pe.password_enc, pe.exit_ip, pe.status, pe.ip_type
+                FROM earnapp_account_control_routes r
+                JOIN proxy_endpoints pe ON pe.id = r.proxy_id
+                WHERE r.account_id = ? {active} {eligibility}
+                LIMIT 1
+                """,
+                (int(account_id),),
+            )
+        ).fetchone()
+        if not row:
+            return None
+        data = dict(row)
+        encrypted = str(data.pop("password_enc", "") or "")
+        if encrypted:
+            data["password"] = decrypt_value(encrypted)
+        return data
+    finally:
+        await db.close()
+
+
+async def release_earnapp_account_control_route(
+    account_id: int,
+    *,
+    expected_proxy_id: int,
+    reason: str,
+) -> bool:
+    """CAS-release an unhealthy pre-node collector route."""
+    async with _earnapp_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            cursor = await db.execute(
+                """
+                UPDATE earnapp_account_control_routes
+                SET state = 'RELEASED', released_at = datetime('now'), release_reason = ?,
+                    updated_at = datetime('now')
+                WHERE account_id = ? AND proxy_id = ? AND state = 'ACTIVE'
+                """,
+                (str(reason or "EARNAPP_CONTROL_ROUTE_RELEASED")[:300], int(account_id), int(expected_proxy_id)),
+            )
+            await db.commit()
+            return bool(cursor.rowcount)
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
+
+
+async def get_earnapp_account_node_routes(account_id: int, *, healthy_only: bool = True) -> list[dict[str, Any]]:
+    db = await _get_db()
+    try:
+        eligibility = f"AND {_earnapp_proxy_eligible_sql('pe')}" if healthy_only else ""
+        cursor = await db.execute(
+            f"""
+            SELECT n.logical_node_id, n.state, n.current_proxy_id AS proxy_id,
+                   pe.endpoint, pe.host, pe.port, pe.protocol, pe.username, pe.password_enc,
+                   pe.exit_ip, pe.status, pe.ip_type
+            FROM earnapp_logical_nodes n
+            JOIN proxy_endpoints pe ON pe.id = n.current_proxy_id
+            WHERE n.account_id = ? AND n.state IN ('ACTIVE', 'RECOVERY_HOLD') {eligibility}
+            ORDER BY CASE n.state WHEN 'ACTIVE' THEN 0 ELSE 1 END, n.logical_node_id
+            """,
+            (int(account_id),),
+        )
+        rows: list[dict[str, Any]] = []
+        for row in await cursor.fetchall():
+            data = dict(row)
+            encrypted = str(data.pop("password_enc", "") or "")
+            if encrypted:
+                data["password"] = decrypt_value(encrypted)
+            rows.append(data)
+        return rows
+    finally:
+        await db.close()
+
+
+async def lease_earnapp_account_control_proxy(account_id: int) -> dict[str, Any] | None:
+    async with _earnapp_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            existing = await (
+                await db.execute(
+                    """
+                    SELECT r.*, pe.endpoint, pe.host, pe.port, pe.protocol, pe.username,
+                           pe.password_enc, pe.exit_ip, pe.status, pe.ip_type
+                    FROM earnapp_account_control_routes r
+                    JOIN proxy_endpoints pe ON pe.id = r.proxy_id
+                    WHERE r.account_id = ? AND r.state = 'ACTIVE'
+                    LIMIT 1
+                    """,
+                    (int(account_id),),
+                )
+            ).fetchone()
+            if existing:
+                await db.commit()
+                data = dict(existing)
+                encrypted = str(data.pop("password_enc", "") or "")
+                if encrypted:
+                    data["password"] = decrypt_value(encrypted)
+                return data
+
+            has_nodes = await (
+                await db.execute(
+                    """
+                    SELECT 1 FROM earnapp_logical_nodes
+                    WHERE account_id = ? AND state != 'RETIRED'
+                    LIMIT 1
+                    """,
+                    (int(account_id),),
+                )
+            ).fetchone()
+            if has_nodes:
+                await db.rollback()
+                return None
+            candidate = await (
+                await db.execute(
+                    f"""
+                    SELECT pe.* FROM proxy_endpoints pe
+                    WHERE {_earnapp_proxy_eligible_sql("pe")}
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM proxy_assignments legacy
+                          JOIN proxy_endpoints legacy_proxy ON legacy_proxy.id = legacy.proxy_id
+                          WHERE legacy.proxy_id = pe.id
+                            OR (trim(coalesce(pe.exit_ip, '')) != '' AND legacy_proxy.exit_ip = pe.exit_ip)
+                      )
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM provider_proxy_leases occupied
+                          LEFT JOIN proxy_endpoints occupied_proxy ON occupied_proxy.id = occupied.proxy_id
+                          WHERE occupied.released_at IS NULL
+                            AND (occupied.proxy_id = pe.id
+                                 OR (trim(coalesce(pe.exit_ip, '')) != ''
+                                     AND (occupied.exit_ip = pe.exit_ip OR occupied_proxy.exit_ip = pe.exit_ip)))
+                      )
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM earnapp_account_control_routes control
+                          JOIN proxy_endpoints control_proxy ON control_proxy.id = control.proxy_id
+                          WHERE control.state = 'ACTIVE'
+                            AND (control.proxy_id = pe.id
+                                 OR (trim(coalesce(pe.exit_ip, '')) != '' AND control_proxy.exit_ip = pe.exit_ip))
+                      )
+                    ORDER BY pe.id
+                    LIMIT 1
+                    """
+                )
+            ).fetchone()
+            if not candidate:
+                await db.rollback()
+                return None
+            await db.execute(
+                """
+                INSERT INTO earnapp_account_control_routes (account_id, proxy_id, state)
+                VALUES (?, ?, 'ACTIVE')
+                ON CONFLICT(account_id) DO UPDATE SET
+                    proxy_id = excluded.proxy_id, state = 'ACTIVE', assigned_logical_node_id = '',
+                    leased_at = datetime('now'), released_at = NULL, release_reason = '', updated_at = datetime('now')
+                """,
+                (int(account_id), int(candidate["id"])),
+            )
+            await db.commit()
+            data = dict(candidate)
+            data["account_id"] = int(account_id)
+            data["proxy_id"] = int(data["id"])
+            encrypted = str(data.pop("password_enc", "") or "")
+            if encrypted:
+                data["password"] = decrypt_value(encrypted)
+            return data
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
+
+
+async def transfer_earnapp_control_route_to_node(
+    account_id: int, logical_node_id: str, *, worker_id: int
+) -> dict[str, Any] | None:
+    """Atomically turn an account-control route into the first node's provider lease."""
+    node_id = str(logical_node_id or "").strip()
+    async with _earnapp_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            control = await (
+                await db.execute(
+                    """
+                    SELECT r.*, pe.exit_ip
+                    FROM earnapp_account_control_routes r
+                    JOIN proxy_endpoints pe ON pe.id = r.proxy_id
+                    WHERE r.account_id = ? AND r.state = 'ACTIVE'
+                    LIMIT 1
+                    """,
+                    (int(account_id),),
+                )
+            ).fetchone()
+            if not control:
+                await db.rollback()
+                return None
+            await db.execute(
+                """
+                INSERT INTO provider_proxy_leases
+                    (provider_slug, worker_id, instance_id, proxy_id, exit_ip)
+                VALUES ('earnapp', ?, ?, ?, ?)
+                """,
+                (int(worker_id), node_id, int(control["proxy_id"]), str(control["exit_ip"] or "")),
+            )
+            await db.execute(
+                """
+                UPDATE earnapp_account_control_routes
+                SET state = 'TRANSFERRED', assigned_logical_node_id = ?, released_at = datetime('now'),
+                    release_reason = 'FIRST_NODE_CREATED', updated_at = datetime('now')
+                WHERE account_id = ? AND state = 'ACTIVE'
+                """,
+                (node_id, int(account_id)),
+            )
+            await db.commit()
+            return {"proxy_id": int(control["proxy_id"]), "exit_ip": str(control["exit_ip"] or "")}
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
+
+
+async def save_earnapp_snapshot(account_id: int, snapshot: Mapping[str, Any]) -> int:
+    devices = snapshot.get("devices") if isinstance(snapshot, Mapping) else []
+    sanitized_devices = list(devices) if isinstance(devices, list) else []
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            """
+            INSERT INTO earnapp_account_snapshots
+                (account_id, money_balance, money_total, online_nodes, offline_nodes, devices_json)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                int(account_id),
+                float(snapshot.get("money_balance") or 0),
+                float(snapshot.get("money_total") or 0),
+                int(snapshot.get("online_nodes") or 0),
+                int(snapshot.get("offline_nodes") or 0),
+                json.dumps(sanitized_devices, sort_keys=True, separators=(",", ":")),
+            ),
+        )
+        await db.commit()
+        return int(cursor.lastrowid or 0)
+    finally:
+        await db.close()
+
+
+async def get_latest_earnapp_snapshot(account_id: int) -> dict[str, Any] | None:
+    db = await _get_db()
+    try:
+        row = await (
+            await db.execute(
+                """
+                SELECT * FROM earnapp_account_snapshots
+                WHERE account_id = ? ORDER BY id DESC LIMIT 1
+                """,
+                (int(account_id),),
+            )
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        await db.close()
+
+
+async def get_earnapp_proxy_capacity() -> dict[str, int]:
+    """Return residential, canonical, currently free EarnApp capacity."""
+    db = await _get_db()
+    try:
+        eligible_sql = _earnapp_proxy_eligible_sql("pe")
+        row = await (
+            await db.execute(
+                f"""
+                SELECT
+                    COUNT(DISTINCT pe.exit_ip) AS eligible,
+                    COUNT(DISTINCT CASE WHEN NOT EXISTS (
+                                  SELECT 1
+                                  FROM proxy_assignments legacy
+                                  JOIN proxy_endpoints legacy_proxy ON legacy_proxy.id = legacy.proxy_id
+                                  WHERE legacy.proxy_id = pe.id
+                                    OR (trim(coalesce(pe.exit_ip, '')) != ''
+                                        AND legacy_proxy.exit_ip = pe.exit_ip)
+                              )
+                              AND NOT EXISTS (
+                                  SELECT 1
+                                  FROM provider_proxy_leases occupied
+                                  LEFT JOIN proxy_endpoints occupied_proxy ON occupied_proxy.id = occupied.proxy_id
+                                  WHERE occupied.released_at IS NULL
+                                    AND (occupied.proxy_id = pe.id
+                                         OR (trim(coalesce(pe.exit_ip, '')) != ''
+                                             AND (occupied.exit_ip = pe.exit_ip
+                                                  OR occupied_proxy.exit_ip = pe.exit_ip)))
+                              )
+                              AND NOT EXISTS (
+                                  SELECT 1
+                                  FROM earnapp_account_control_routes control
+                                  JOIN proxy_endpoints control_proxy ON control_proxy.id = control.proxy_id
+                                  WHERE control.state = 'ACTIVE'
+                                    AND (control.proxy_id = pe.id
+                                         OR (trim(coalesce(pe.exit_ip, '')) != ''
+                                             AND control_proxy.exit_ip = pe.exit_ip))
+                              )
+                         THEN pe.exit_ip END) AS leaseable,
+                    COUNT(DISTINCT CASE WHEN EXISTS (
+                                  SELECT 1
+                                  FROM provider_proxy_leases occupied
+                                  LEFT JOIN proxy_endpoints occupied_proxy ON occupied_proxy.id = occupied.proxy_id
+                                  WHERE occupied.released_at IS NULL
+                                    AND (occupied.proxy_id = pe.id
+                                         OR (trim(coalesce(pe.exit_ip, '')) != ''
+                                             AND (occupied.exit_ip = pe.exit_ip
+                                                  OR occupied_proxy.exit_ip = pe.exit_ip)))
+                              ) THEN pe.exit_ip END) AS occupied,
+                    COUNT(DISTINCT CASE WHEN EXISTS (
+                                  SELECT 1
+                                  FROM earnapp_account_control_routes control
+                                  JOIN proxy_endpoints control_proxy ON control_proxy.id = control.proxy_id
+                                  WHERE control.state = 'ACTIVE'
+                                    AND (control.proxy_id = pe.id
+                                         OR (trim(coalesce(pe.exit_ip, '')) != ''
+                                             AND control_proxy.exit_ip = pe.exit_ip))
+                              ) THEN pe.exit_ip END) AS control_routes
+                FROM proxy_endpoints pe
+                WHERE {eligible_sql}
+                """
+            )
+        ).fetchone()
+        nodes = await (
+            await db.execute(
+                """
+                SELECT
+                    SUM(state = 'ACTIVE') AS active_nodes,
+                    SUM(state = 'RECOVERY_HOLD') AS recovery_hold_nodes
+                FROM earnapp_logical_nodes
+                WHERE state != 'RETIRED'
+                """
+            )
+        ).fetchone()
+        return {
+            "eligible": int(row["eligible"] or 0),
+            "leaseable": int(row["leaseable"] or 0),
+            "occupied": int(row["occupied"] or 0),
+            "control_routes": int(row["control_routes"] or 0),
+            "active_nodes": int(nodes["active_nodes"] or 0),
+            "recovery_hold_nodes": int(nodes["recovery_hold_nodes"] or 0),
+            "recovery_hold_seconds": 3600,
+        }
     finally:
         await db.close()
 
@@ -3153,17 +4430,35 @@ async def delete_proxy_endpoints(proxy_ids: Sequence[int] | None = None, *, stat
     status = str(status or "").strip().lower()
     if not ids and not status:
         return 0
-    db = await _get_db()
-    try:
-        if ids:
-            placeholders = ",".join("?" for _ in ids)
-            cursor = await db.execute(f"DELETE FROM proxy_endpoints WHERE id IN ({placeholders})", ids)
-        else:
-            cursor = await db.execute("DELETE FROM proxy_endpoints WHERE lower(status) = ?", (status,))
-        await db.commit()
-        return int(cursor.rowcount or 0)
-    finally:
-        await db.close()
+    async with _proxy_assignment_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            if ids:
+                placeholders = ",".join("?" for _ in ids)
+                await db.execute(
+                    f"DELETE FROM earnapp_account_control_routes WHERE proxy_id IN ({placeholders})",
+                    ids,
+                )
+                cursor = await db.execute(f"DELETE FROM proxy_endpoints WHERE id IN ({placeholders})", ids)
+            else:
+                await db.execute(
+                    """
+                    DELETE FROM earnapp_account_control_routes
+                    WHERE proxy_id IN (
+                        SELECT id FROM proxy_endpoints WHERE lower(status) = ?
+                    )
+                    """,
+                    (status,),
+                )
+                cursor = await db.execute("DELETE FROM proxy_endpoints WHERE lower(status) = ?", (status,))
+            await db.commit()
+            return int(cursor.rowcount or 0)
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
 
 
 async def _ensure_myst_wallets_table(db: Any) -> None:
@@ -4019,6 +5314,20 @@ async def set_worker_proxy_assignment(
                     await db.rollback()
                     return False
                 exit_ip = str(endpoint["exit_ip"] or "").strip()
+                cur = await db.execute(
+                    """
+                    SELECT 1
+                    FROM earnapp_account_control_routes control
+                    JOIN proxy_endpoints control_proxy ON control_proxy.id = control.proxy_id
+                    WHERE control.state = 'ACTIVE'
+                      AND (control.proxy_id = ? OR (control_proxy.exit_ip != '' AND control_proxy.exit_ip = ?))
+                    LIMIT 1
+                    """,
+                    (int(proxy_id), exit_ip),
+                )
+                if await cur.fetchone():
+                    await db.rollback()
+                    return False
                 if exit_ip:
                     cur = await db.execute(
                         """
@@ -4163,6 +5472,20 @@ async def commit_proxy_rotation(
                 await db.rollback()
                 return False
             exit_ip = str(candidate["exit_ip"] or "").strip()
+            cursor = await db.execute(
+                """
+                SELECT 1
+                FROM earnapp_account_control_routes control
+                JOIN proxy_endpoints control_proxy ON control_proxy.id = control.proxy_id
+                WHERE control.state = 'ACTIVE'
+                  AND (control.proxy_id = ? OR (control_proxy.exit_ip != '' AND control_proxy.exit_ip = ?))
+                LIMIT 1
+                """,
+                (int(new_proxy_id), exit_ip),
+            )
+            if await cursor.fetchone():
+                await db.rollback()
+                return False
             if exit_ip:
                 cursor = await db.execute(
                     "SELECT 1 FROM provider_proxy_leases WHERE released_at IS NULL AND exit_ip = ? LIMIT 1",
@@ -4689,6 +6012,12 @@ async def lease_proxy_for_provider_instance(
                       WHERE used.released_at IS NULL AND used.exit_ip = pe.exit_ip
                   )
                   AND NOT EXISTS (
+                      SELECT 1 FROM earnapp_account_control_routes control
+                      JOIN proxy_endpoints control_proxy ON control_proxy.id = control.proxy_id
+                      WHERE control.state = 'ACTIVE'
+                        AND (control.proxy_id = pe.id OR control_proxy.exit_ip = pe.exit_ip)
+                  )
+                  AND NOT EXISTS (
                       SELECT 1 FROM proxy_provider_masks ppm
                       WHERE ppm.proxy_id = pe.id AND ppm.provider_slug = ?
                   )
@@ -4705,13 +6034,14 @@ async def lease_proxy_for_provider_instance(
                               AND earnapp.id = (
                                 SELECT MAX(latest.id) FROM proxy_probe_results latest
                                 WHERE latest.proxy_id = pe.id AND latest.profile = 'earnapp_wss'
-                            )
+                          )
                       )
                   )
+                  AND (? != 'earnapp' OR lower(trim(coalesce(pe.ip_type, ''))) = 'residential')
                 ORDER BY pe.id
                 LIMIT 1
                 """,
-                (slug, slug),
+                (slug, slug, slug),
             )
             row = await cursor.fetchone()
             if not row:
@@ -4770,6 +6100,7 @@ async def delete_all_proxy_pool() -> int:
         try:
             await db.execute("BEGIN IMMEDIATE")
             await db.execute("DELETE FROM proxy_assignments")
+            await db.execute("DELETE FROM earnapp_account_control_routes")
             cursor = await db.execute("DELETE FROM proxy_endpoints")
             await db.execute("DELETE FROM proxy_import_batches")
             await db.commit()
@@ -4808,10 +6139,17 @@ async def lease_proxy_for_worker(worker_id: int, *, provider_slug: str | None = 
                   AND lower(coalesce(pe.status, 'unknown')) = 'alive'
                   AND trim(coalesce(pe.exit_ip, '')) != ''
                   AND coalesce(pe.duplicate_egress, 0) = 0
-                  AND NOT EXISTS (
-                      SELECT 1 FROM provider_proxy_leases scoped
-                      WHERE scoped.released_at IS NULL AND scoped.proxy_id = pe.id
-                  )
+                   AND NOT EXISTS (
+                       SELECT 1 FROM provider_proxy_leases scoped
+                       WHERE scoped.released_at IS NULL AND scoped.proxy_id = pe.id
+                   )
+                   AND NOT EXISTS (
+                       SELECT 1
+                       FROM earnapp_account_control_routes control
+                       JOIN proxy_endpoints control_proxy ON control_proxy.id = control.proxy_id
+                       WHERE control.state = 'ACTIVE'
+                         AND (control.proxy_id = pe.id OR (control_proxy.exit_ip != '' AND control_proxy.exit_ip = pe.exit_ip))
+                   )
                   AND (
                       trim(coalesce(pe.exit_ip, '')) = ''
                       OR NOT EXISTS (
@@ -4869,6 +6207,7 @@ async def find_available_proxy_for_worker(worker_id: int, *, provider_slug: str 
         "trim(coalesce(pe.exit_ip, '')) != ''",
         "coalesce(pe.duplicate_egress, 0) = 0",
         "NOT EXISTS (SELECT 1 FROM provider_proxy_leases scoped WHERE scoped.released_at IS NULL AND scoped.proxy_id = pe.id)",
+        "NOT EXISTS (SELECT 1 FROM earnapp_account_control_routes control JOIN proxy_endpoints control_proxy ON control_proxy.id = control.proxy_id WHERE control.state = 'ACTIVE' AND (control.proxy_id = pe.id OR (control_proxy.exit_ip != '' AND control_proxy.exit_ip = pe.exit_ip)))",
         "(trim(coalesce(pe.exit_ip, '')) = '' OR NOT EXISTS (SELECT 1 FROM proxy_assignments legacy JOIN proxy_endpoints used ON used.id = legacy.proxy_id WHERE used.exit_ip = pe.exit_ip))",
         "(trim(coalesce(pe.exit_ip, '')) = '' OR NOT EXISTS (SELECT 1 FROM provider_proxy_leases scoped WHERE scoped.released_at IS NULL AND scoped.exit_ip = pe.exit_ip))",
     ]

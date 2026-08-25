@@ -231,6 +231,49 @@ class TestNknWalletPoolIsReachable:
         assert "loadNknWallets" in exported
 
 
+class TestEarnAppAccountPoolIsReachable:
+    def test_settings_has_prominent_token_warning_import_and_account_tables(self):
+        page = (ROOT / "app" / "templates" / "settings.html").read_text(encoding="utf-8")
+
+        assert 'id="earnapp-account-pool"' in page
+        assert 'id="earnapp-token-alerts"' in page
+        assert 'aria-live="assertive"' in page
+        assert 'id="earnapp-profile-key"' in page
+        assert 'id="earnapp-auth-method"' in page
+        assert 'id="earnapp-oauth-refresh-token"' in page
+        assert 'id="earnapp-xsrf-token"' in page
+        assert 'id="earnapp-account-rows"' in page
+        assert 'id="earnapp-recovery-rows"' in page
+        assert "Credentials are encrypted" in page
+        assert "1-hour recovery hold" in page
+
+    def test_settings_loader_and_actions_are_exported(self):
+        app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+        exported = set(re.findall(r"^\s{4}([A-Za-z_][A-Za-z0-9_]*),\s*$", app_js, re.M))
+
+        assert "loadEarnAppAccounts" in exported
+        assert "importEarnAppAccount" in exported
+        assert "collectEarnAppAccount" in exported
+        assert "deleteEarnAppAccount" in exported
+        assert "issueEarnAppReplacementTicket" in exported
+        assert "loadEarnAppAccounts();" in app_js
+        assert "/api/admin/earnapp/accounts" in app_js
+        assert "DELETE ACCOUNT" in app_js
+        assert "recovery_hold_remaining_seconds" in app_js
+        assert "token_warning" in app_js
+
+    def test_earnapp_dashboard_styles_are_responsive_and_do_not_inline_secrets(self):
+        css = (ROOT / "app" / "static" / "css" / "style.css").read_text(encoding="utf-8")
+        page = (ROOT / "app" / "templates" / "settings.html").read_text(encoding="utf-8")
+
+        assert ".earnapp-account-grid" in css
+        assert ".earnapp-token-alert" in css
+        assert "@media (max-width: 768px)" in css
+        assert "grid-template-columns: 1fr" in css
+        assert 'type="password" id="earnapp-oauth-refresh-token"' in page
+        assert 'type="password" id="earnapp-xsrf-token"' in page
+
+
 class TestTheAmountShownIsTheOneTheProviderPaid:
     """Caught in a real browser, not by a string test.
 

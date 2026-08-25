@@ -1,6 +1,60 @@
 # CashPilot Active Context
 
-Updated: 2026-08-25 (Proxy Pool `v1.10.0` metadata/location live closeout; EarnApp provider still pending)
+Updated: 2026-08-26 (EarnApp account/recovery control plane implemented locally; PR preparation in progress)
+
+## EarnApp account/recovery implementation (local branch, 2026-08-25)
+
+- Branch `feat/earnapp-account-recovery` is based on verified `origin/main`
+  commit `ff25e7bb1dc36b2f1ca5b7210680ce19eebe250d`. This work is still local and
+  uncommitted: there is no PR, merge, release, deployment, DNS change, Chrome
+  profile operation or VPS mutation from this phase.
+- The server now has an isolated EarnApp Account Pool: Google/Apple metadata,
+  Fernet-encrypted allowlisted cookies, masked owner APIs, token/cookie expiry
+  warnings, least-assigned account allocation, account-scoped read-only
+  collection, proxy capacity and logical-node recovery state. Schema is `19`.
+- Recovery starts only after the existing `900s` stale-worker threshold.
+  `RECOVERY_HOLD` is exactly `3600s` (one hour): the original proxy remains
+  exclusive during the hold; after expiry its lease is released but
+  `preferred_proxy_id`, account binding, device identity and logical node are
+  retained. A different worker requires a one-time ticket plus generation/CAS;
+  CashPilot never automatically unlinks or deletes the remote EarnApp device.
+- EarnApp routes require a generic-live, canonical residential proxy whose
+  latest matching-egress EarnApp WSS evidence is `CID_SET` and `eligible`.
+  Collection uses a proxy belonging to that account; before node one, a
+  dedicated account-control route is leased and then transferred atomically.
+  Proxy Pool selected/status/all deletion removes transient control-route rows
+  in the same transaction while preserving EarnApp accounts and credentials.
+- The Chrome Manifest V3 importer reads only `auth`, `auth-method`,
+  `oauth-refresh-token`, `oauth-token`, `xsrf-token`, `brd_sess_id` and
+  `cg_uuid` from EarnApp. First import is explicit; subsequent cookie/startup/
+  15-minute synchronization applies only to the bound account. Both ordinary
+  provider imports and EarnApp sync now use one authenticated HTTPS CashPilot
+  origin under `4gmt.com`; the legacy plaintext HTTP/IP destination is removed.
+  Provider collectors still use their official upstream APIs. Google and Apple
+  cookies are never read, displayed or logged.
+- EarnApp capacity and account-control allocation exclude legacy assignments,
+  active scoped leases and active control routes by both endpoint ID and
+  canonical egress IP, including duplicate rows that have not yet been marked.
+- Final pre-PR hardening makes replacement-ticket creation a transactional
+  compare-and-swap: the node must still be in `RECOVERY_HOLD`/`RECOVERABLE`,
+  generation must match, and the target worker must exist. A heartbeat from the
+  original worker atomically cancels recovery metadata and revokes outstanding
+  same-generation tickets. Claims are rejected after the node is active again.
+- EarnApp capacity is reported as distinct eligible/leaseable egress IPs, not
+  endpoint rows. The Chrome importer catches invalid CashPilot URLs inside its
+  visible error path, and cookie-change debounce uses a separate one-shot alarm
+  so it cannot overwrite the recurring 15-minute token-sync schedule.
+- Verification on the local branch: focused EarnApp/Proxy/UI suite
+  `283 passed`; full non-live suite `1812 passed, 8 skipped`; Ruff lint,
+  changed-file Ruff format, Python compileall, JavaScript parse checks,
+  deploy-baseline check and `git diff --check` pass. The repository-wide Ruff
+  format command still reports only the pre-existing unchanged file
+  `docs/superpowers/plans/2026-08-25-proxy-import-protocol.md`.
+- Still not implemented or claimed complete: official EarnApp catalog/runtime,
+  MacOS/iOS emulation, Ubuntu LXD deployment, worker provision/follow/link
+  automation, DNS/reverse proxy provisioning for the chosen `4gmt.com`
+  hostname, Chrome profile validation and live EarnApp canary. EarnApp is not
+  `PROTECTED_DONE`.
 
 ## v1.10.0 Proxy Pool metadata/location live closeout (2026-08-25)
 

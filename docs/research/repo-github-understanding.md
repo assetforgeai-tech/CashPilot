@@ -1,8 +1,72 @@
 # CashPilot: Repo và GitHub Understanding
 
-Ngày chụp trạng thái: 2026-08-23
+Ngày chụp trạng thái nền: 2026-08-23; cập nhật EarnApp local: 2026-08-25
 
-Commit được phân tích: `4c55eac762dc375d1381cab42a902ec21796793f`
+Commit nền hiện tại: `ff25e7bb1dc36b2f1ca5b7210680ce19eebe250d`
+
+## Cập nhật EarnApp account/recovery local (2026-08-25)
+
+Nhánh `feat/earnapp-account-recovery` bổ sung control plane cô lập cho EarnApp
+trên nền `origin/main` `ff25e7b`. Thay đổi chưa commit/PR/merge/release/deploy;
+không có thao tác VPS, DNS, Chrome profile, credential live hoặc provider
+`PROTECTED_DONE`.
+
+Domain model mới gồm `earnapp_accounts`, `earnapp_logical_nodes`,
+`earnapp_replacement_tickets`, `earnapp_account_control_routes` và
+`earnapp_account_snapshots`; schema được nâng lên `19`. Credentials được mã hóa
+Fernet và API/dashboard chỉ trả metadata đã mask. Account được phân bổ theo số
+logical node chưa retired thấp nhất; delete chỉ cho phép khi
+`ACCOUNT_LOCKED`, yêu cầu xác nhận kép và không xóa remote device/account.
+
+Recovery contract đã chốt là `900s` stale threshold rồi `3600s`
+`RECOVERY_HOLD`. Trong một giờ hold, proxy cũ vẫn độc quyền. Hết hold, scoped
+lease được release nhưng account, logical node, device ID và
+`preferred_proxy_id` còn nguyên. Same-worker có thể recovery theo generation;
+worker khác bắt buộc dùng one-time replacement ticket và generation/CAS để
+chặn split-brain. Heartbeat cũ bị từ chối sau khi generation tăng.
+
+Audit cuối trước PR siết thêm race boundary: ticket chỉ được tạo trong cùng
+transaction khi node vẫn `RECOVERY_HOLD`/`RECOVERABLE`, generation chưa đổi và
+target worker tồn tại. Heartbeat hợp lệ của worker gốc đưa node về `ACTIVE`, xóa
+recovery timestamps và revoke mọi ticket chưa dùng của generation đó trong một
+transaction; vì vậy ticket đã phát hành không thể claim sau khi worker gốc quay
+lại. Claim cũng fail closed nếu node không còn ở recovery state.
+
+EarnApp proxy eligibility là canonical generic-live residential egress với
+latest matching-egress WSS result `CID_SET`/`eligible`. Collector luôn đi qua
+route thuộc đúng account; account chưa có node dùng một control proxy riêng và
+route này được transfer atomically sang node đầu tiên. Delete selected/status/
+all của Proxy Pool dọn transient control-route trong cùng transaction nhưng giữ
+nguyên account và encrypted credentials, tránh foreign-key failure hoặc xóa
+nhầm provider state.
+
+Manifest V3 importer dùng allowlist chính xác `auth`, `auth-method`,
+`oauth-refresh-token`, `oauth-token`, `xsrf-token`, `brd_sess_id`, `cg_uuid`.
+Một Chrome profile chỉ bind một EarnApp account; lần đầu phải import thủ công,
+sau đó cookie change/startup/alarm 15 phút mới sync account đã bind. Sync chỉ
+được gửi qua authenticated HTTPS hostname thuộc `4gmt.com`; luồng import cấu
+hình của các provider khác cũng dùng cùng CashPilot origin này và không còn
+quyền HTTP/IP cũ. Các collector vẫn gọi API chính chủ của provider. Importer
+không đọc cookie Google/Apple và không log/hiển thị token.
+
+Capacity và account-control allocator loại legacy assignment, active scoped
+lease và active control route theo cả endpoint ID lẫn egress IP. Vì vậy một
+duplicate egress chưa được đánh dấu cũng không thể bị cấp lại cho EarnApp.
+Capacity dashboard đếm `DISTINCT exit_ip`, nên eligible/leaseable phản ánh số
+canonical egress thật thay vì số endpoint row. Importer bắt lỗi URL CashPilot
+trong UI và dùng alarm debounce riêng cho cookie change, không ghi đè alarm
+đồng bộ định kỳ 15 phút.
+
+Verification local đạt focused suite `283 passed`, full non-live suite
+`1812 passed, 8 skipped`, Ruff lint, changed-file Ruff format, compileall,
+JavaScript parse, deploy-baseline và `git diff --check`. Repository-wide format
+check còn một lỗi baseline ở file kế hoạch cũ không đổi
+`docs/superpowers/plans/2026-08-25-proxy-import-protocol.md`.
+
+Phạm vi còn mở là catalog/runtime EarnApp chính thức, worker provision/follow/
+link, MacOS/iOS emulation, Ubuntu LXD, DNS/reverse proxy cho hostname
+`4gmt.com`, validation bằng Chrome profile thật và live canary. Vì vậy EarnApp
+chưa được phân loại `PROTECTED_DONE`.
 
 ## Phạm vi và nguyên tắc
 
@@ -19,16 +83,16 @@ do refactor hoặc redeploy khi chưa có phê duyệt rõ ràng.
 | Hạng mục | Trạng thái đã kiểm chứng |
 |---|---|
 | Canonical base branch | `main`, theo dõi `origin/main` |
-| Audited base HEAD | `4c55eac`, merge PR #13, khớp `origin/main` |
+| Audited base HEAD | `ff25e7b`, merge PR #39, khớp `origin/main` |
 | Fork | `assetforgeai-tech/CashPilot` |
 | Upstream | `GeiserX/CashPilot` |
 | Divergence | Fork ahead 343, behind 26; histories diverged |
-| Fork release mới nhất | `v1.3.2` |
-| Upstream release quan sát | `v1.36.2` |
-| Fork CI/release hiện tại | PR #13 pass Analyze/CodeQL, Ruff và Tests; commit `4c55eac` pass CodeQL, Lint, Catalog Check, Tests và Auto Release |
-| Merge/release state | PRs #10-#13 đã merge; `v1.3.2` có UI/worker image manifests và Auto Release thành công |
+| Fork release mới nhất | `v1.10.0` (Auto Release run `32837209953`) |
+| Upstream release quan sát | `v1.36.4` |
+| Fork CI/release hiện tại | Commit `ff25e7b` pass CodeQL, Catalog Check, Lint, Documentation và Tests; PR #39 đã merge |
+| Merge/release state | PRs #27-#39 đã merge theo chuỗi Proxy Pool; `v1.10.0` có Auto Release thành công |
 | Tag namespace | Fork tags được giữ ở `refs/fork-tags/*`; không lấy local `refs/tags/*` làm bằng chứng vì upstream dùng trùng version names |
-| Audit worktree | Branch `docs/nkn-live-canary`; chỉ cập nhật tài liệu/evidence, `site/` untracked có trước và được giữ nguyên |
+| Audit worktree | Branch `feat/earnapp-account-recovery`; đang dirty có chủ đích với thay đổi EarnApp local chưa commit; không stage `site/` |
 
 Upstream mới hơn không đồng nghĩa fork phải merge. Fork-only history chứa nhiều contract quan trọng về provider/runtime hardening, Grass identity/auth, MYST wallet lease/runtime, proxy lease rotation và CI/release. Mọi merge hoặc cherry-pick phải được đánh giá riêng và nằm ngoài giai đoạn này.
 

@@ -1514,6 +1514,61 @@ img { max-width: 100%; }
   margin-bottom: 16px;
 }
 
+/* EarnApp account control plane. Keep warnings visually prominent without
+   exposing credential values or turning the settings page into a dense form. */
+.earnapp-section-heading, .earnapp-panel-title {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+}
+.earnapp-eyebrow {
+  margin: 0 0 4px; color: var(--accent); font-size: 0.7rem; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase;
+}
+.earnapp-token-alerts { display: grid; gap: 8px; margin: 12px 0 16px; }
+.earnapp-token-alert {
+  display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap;
+  padding: 10px 12px; border-left: 4px solid var(--warning);
+  background: color-mix(in srgb, var(--warning) 12%, transparent); border-radius: 6px;
+  font-size: 0.82rem;
+}
+.earnapp-token-alert.danger { border-left-color: var(--error); background: color-mix(in srgb, var(--error) 12%, transparent); }
+.earnapp-token-alert.good, .earnapp-token-alert.healthy { border-left-color: var(--success); background: color-mix(in srgb, var(--success) 10%, transparent); }
+.earnapp-token-alert span { color: var(--text-secondary); }
+.earnapp-capacity-strip {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px;
+  margin-bottom: 18px;
+}
+.earnapp-capacity-strip > div {
+  padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px;
+  background: var(--bg-tertiary); display: flex; flex-direction: column; gap: 3px;
+}
+.earnapp-capacity-strip span { color: var(--text-muted); font-size: 0.72rem; }
+.earnapp-capacity-strip strong { font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.earnapp-account-grid { display: grid; grid-template-columns: minmax(240px, 0.75fr) minmax(0, 1.5fr); gap: 22px; }
+.earnapp-import-panel, .earnapp-inventory-panel, .earnapp-recovery-panel {
+  border-top: 1px solid var(--border-color); padding-top: 16px;
+}
+.earnapp-import-panel h4, .earnapp-inventory-panel h4, .earnapp-recovery-panel h4 { margin: 0 0 5px; }
+.earnapp-import-panel p, .earnapp-inventory-panel p, .earnapp-recovery-panel p {
+  margin: 0 0 12px; color: var(--text-muted); font-size: 0.78rem; line-height: 1.45;
+}
+.earnapp-secret-note { margin-top: 10px !important; font-size: 0.72rem !important; }
+.earnapp-table-scroll { overflow-x: auto; }
+.earnapp-account-table, .earnapp-recovery-table { min-width: 720px; }
+.earnapp-account-table td small, .earnapp-recovery-table td small {
+  display: block; color: var(--text-muted); font-size: 0.7rem; margin-top: 3px;
+}
+.earnapp-account-table td:first-child strong, .earnapp-recovery-table td:first-child strong { display: block; }
+.earnapp-account-table td:first-child .badge { margin-top: 5px; display: inline-block; }
+.earnapp-row-actions { display: flex; gap: 5px; flex-wrap: wrap; }
+.earnapp-token-state { font-size: 0.76rem; font-weight: 700; }
+.earnapp-token-state.good { color: var(--success); }
+.earnapp-token-state.warning { color: var(--warning); }
+.earnapp-token-state.danger { color: var(--error); }
+.danger-action { color: var(--error) !important; }
+.earnapp-recovery-panel { margin-top: 22px; }
+.earnapp-recovery-table td:last-child { white-space: nowrap; }
+.earnapp-recovery-table td:last-child .btn { display: block; margin-top: 6px; }
+
 .credential-row {
   display: flex;
   align-items: center;
@@ -1627,6 +1682,11 @@ img { max-width: 100%; }
 
 /* ----- Responsive ----- */
 @media (max-width: 768px) {
+  .earnapp-account-grid { grid-template-columns: 1fr; }
+  .earnapp-capacity-strip { grid-template-columns: 1fr 1fr; }
+  .earnapp-section-heading, .earnapp-panel-title { align-items: stretch; flex-direction: column; gap: 8px; }
+  .earnapp-section-heading > .btn { align-self: flex-start; }
+
   .sidebar {
     transform: translateX(-100%);
   }
