@@ -22,7 +22,7 @@ name: cashpilot
 
 services:
   cashpilot-ui:
-    image: ghcr.io/assetforgeai-tech/cashpilot:1.8
+    image: ghcr.io/assetforgeai-tech/cashpilot:1.9
     pull_policy: always
     container_name: cashpilot-ui
     # Published on loopback by default: the dashboard can command the Docker-socket
@@ -63,7 +63,7 @@ services:
       - /tmp:size=64M
 
   cashpilot-worker:
-    image: ghcr.io/assetforgeai-tech/cashpilot-worker:1.8
+    image: ghcr.io/assetforgeai-tech/cashpilot-worker:1.9
     pull_policy: always
     container_name: cashpilot-worker
     expose:
