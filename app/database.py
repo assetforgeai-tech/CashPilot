@@ -23,6 +23,59 @@ from cryptography.fernet import Fernet, InvalidToken
 
 _logger = logging.getLogger(__name__)
 
+# ISO alpha-2 code is the stable location/filter key. Raw country names remain
+# stored as evidence and the browser derives a readable label from the code.
+_COUNTRY_CODE_ALIASES = {
+    "australia": "AU",
+    "canada": "CA",
+    "france": "FR",
+    "germany": "DE",
+    "india": "IN",
+    "japan": "JP",
+    "netherlands": "NL",
+    "singapore": "SG",
+    "south korea": "KR",
+    "taiwan": "TW",
+    "thailand": "TH",
+    "uk": "GB",
+    "united kingdom": "GB",
+    "united states": "US",
+    "usa": "US",
+    "viet nam": "VN",
+    "vietnam": "VN",
+}
+
+
+def canonical_proxy_country_code(value: Any) -> str:
+    text = str(value or "").strip().upper()
+    if text == "UK":
+        return "GB"
+    return text if len(text) == 2 and text.isalpha() else ""
+
+
+def canonical_proxy_location(country_code: Any, country_name: Any = "") -> str:
+    code = canonical_proxy_country_code(country_code)
+    if code:
+        return code
+    alias = str(country_name or "").strip().lower()
+    return _COUNTRY_CODE_ALIASES.get(alias, "")
+
+
+def _proxy_location_sql() -> str:
+    name_cases = " ".join(
+        f"WHEN '{name.replace(chr(39), chr(39) + chr(39))}' THEN '{code}'"
+        for name, code in _COUNTRY_CODE_ALIASES.items()
+    )
+    return f"""CASE
+        WHEN trim(coalesce(pe.exit_ip, '')) = '' AND lower(coalesce(pe.status, '')) = 'dead' THEN 'Generic check failed'
+        WHEN trim(coalesce(pe.exit_ip, '')) = '' THEN 'Egress unresolved'
+        WHEN length(trim(coalesce(pe.country_code, ''))) = 2
+             AND upper(trim(pe.country_code)) GLOB '[A-Z][A-Z]'
+          THEN CASE upper(trim(pe.country_code)) WHEN 'UK' THEN 'GB' ELSE upper(trim(pe.country_code)) END
+        WHEN trim(coalesce(pe.country_name, '')) != '' THEN CASE lower(pe.country_name) {name_cases} ELSE pe.country_name END
+        ELSE 'Metadata pending'
+    END"""
+
 
 class MystWalletPublicIpInUse(RuntimeError):
     pass
@@ -2822,11 +2875,7 @@ async def list_proxy_pool_page(
     """Return one operator page while keeping aggregate inventory context."""
     size = min(100_000, max(1, int(page_size or 20)))
     requested_page = max(1, int(page or 1))
-    location_expr = """CASE
-        WHEN trim(coalesce(pe.exit_ip, '')) = '' AND lower(coalesce(pe.status, '')) = 'dead' THEN 'Generic check failed'
-        WHEN trim(coalesce(pe.exit_ip, '')) = '' THEN 'Egress unresolved'
-        ELSE coalesce(nullif(pe.country_name, ''), nullif(pe.country_code, ''), 'Metadata pending')
-    END"""
+    location_expr = _proxy_location_sql()
     ip_type_expr = """CASE
         WHEN trim(coalesce(pe.exit_ip, '')) = '' AND lower(coalesce(pe.status, '')) = 'dead' THEN 'Generic check failed'
         WHEN trim(coalesce(pe.exit_ip, '')) = '' THEN 'Egress unresolved'
@@ -2895,9 +2944,25 @@ async def list_proxy_pool_page(
     if str(provider or "").strip():
         clauses.append("pp.name = ?")
         params.append(str(provider).strip())
-    if str(location or "").strip():
-        clauses.append(f"{location_expr} = ?")
-        params.append(str(location).strip())
+    location_value = str(location or "").strip()
+    if location_value:
+        location_code = canonical_proxy_country_code(location_value)
+        location_code = location_code or _COUNTRY_CODE_ALIASES.get(location_value.lower(), "")
+        if location_code:
+            # The code predicate is authoritative; the alias branch preserves
+            # compatibility with older rows that have only country_name.
+            alias_names = [name for name, code in _COUNTRY_CODE_ALIASES.items() if code == location_code]
+            code_names = [location_code]
+            if location_code == "GB":
+                code_names.append("UK")
+            clauses.append(
+                "(upper(trim(coalesce(pe.country_code, ''))) IN (" + ",".join("?" for _ in code_names) + ") OR "
+                "lower(trim(coalesce(pe.country_name, ''))) IN (" + ",".join("?" for _ in alias_names) + "))"
+            )
+            params.extend([*code_names, *alias_names])
+        else:
+            clauses.append(f"{location_expr} = ?")
+            params.append(location_value)
     if str(ip_type or "").strip():
         clauses.append(f"{ip_type_expr} = ?")
         params.append(str(ip_type).strip())
@@ -2941,6 +3006,7 @@ async def list_proxy_pool_page(
         items: list[dict[str, Any]] = []
         for row in await item_cursor.fetchall():
             item = dict(row)
+            item["location"] = item["display_location"]
             item.pop("display_location", None)
             item.pop("display_ip_type", None)
             item.pop("display_earnapp", None)
@@ -2967,6 +3033,8 @@ async def list_proxy_pool_page(
                         SUM(display_earnapp = 'skipped') AS earnapp_skipped,
                         SUM(trim(coalesce(exit_ip, '')) != '') AS egress_known,
                         SUM(trim(coalesce(exit_ip, '')) = '') AS egress_unresolved,
+                        SUM(display_location = 'Metadata pending') AS location_pending,
+                        SUM(display_ip_type = 'Metadata pending') AS ip_type_pending,
                         SUM(display_location = 'Metadata pending' OR display_ip_type = 'Metadata pending') AS metadata_pending,
                         SUM(lower(coalesce(status, '')) = 'alive' AND trim(coalesce(exit_ip, '')) != '' AND coalesce(duplicate_egress, 0) = 0) AS generic_usable,
                         SUM(lower(coalesce(status, '')) = 'alive' AND trim(coalesce(exit_ip, '')) != '' AND coalesce(duplicate_egress, 0) = 0 AND assigned_worker_id IS NULL AND scoped_provider_slug IS NULL) AS canonical_available,
@@ -2983,6 +3051,7 @@ async def list_proxy_pool_page(
                         SUM(lower(coalesce(protocol, '')) = 'socks5') AS socks5,
                         SUM(ip_type = 'residential') AS residential,
                         SUM(ip_type = 'datacenter') AS datacenter,
+                        SUM(ip_type = 'hosting') AS hosting,
                         SUM(ip_type = 'vpn') AS vpn,
                         SUM(ip_type = 'proxy') AS proxy,
                         SUM(coalesce(ip_type, 'unknown') IN ('', 'unknown')) AS unknown
@@ -4204,7 +4273,21 @@ async def export_proxy_pool(
         rows = [row for row in rows if str(row.get("location") or "").strip().lower() == wanted_location]
     if wanted_protocol:
         rows = [row for row in rows if str(row.get("protocol") or "").strip().lower() == wanted_protocol]
-    return rows
+    normalized_rows: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        if not str(item.get("exit_ip") or "").strip():
+            item["location"] = (
+                "Generic check failed"
+                if str(item.get("status") or "").strip().lower() == "dead"
+                else "Egress unresolved"
+            )
+        else:
+            item["location"] = (
+                canonical_proxy_location(item.get("country_code"), item.get("country_name")) or "Metadata pending"
+            )
+        normalized_rows.append(item)
+    return normalized_rows
 
 
 async def export_duplicate_proxy_rows(*, raw: bool = False) -> list[dict[str, Any]]:
@@ -4297,7 +4380,7 @@ async def update_proxy_pool_check_results(
 
 
 async def update_proxy_endpoint_intelligence(proxy_id: int, intelligence: Mapping[str, Any]) -> bool:
-    country_code = str(intelligence.get("country_code") or "").strip().upper()
+    country_code = canonical_proxy_country_code(intelligence.get("country_code"))
     country_name = str(intelligence.get("country_name") or "").strip()
     geo_source = str(intelligence.get("geo_source") or "").strip()
     ip_type = str(intelligence.get("ip_type") or "unknown").strip().lower()

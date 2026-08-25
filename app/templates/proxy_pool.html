@@ -20,15 +20,27 @@
   .proxy-pool-table th[data-sort]:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
   .pool-action { min-height:44px; }
   .pool-status-not-checked { color:var(--text-muted); }
+  .pool-summary-grid { display:grid; grid-template-columns:repeat(5,minmax(180px,1fr)); gap:10px; margin-bottom:16px; }
+  .pool-summary-group { min-width:0; padding:12px; border:1px solid var(--border-color); border-radius:var(--radius); background:var(--bg-secondary); }
+  .pool-summary-group h3 { margin:0 0 10px; font-size:0.78rem; line-height:1.25; letter-spacing:0.04em; text-transform:uppercase; color:var(--text-muted); }
+  .pool-summary-list { display:grid; gap:8px; margin:0; }
+  .pool-summary-item { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; align-items:baseline; }
+  .pool-summary-item dt { min-width:0; color:var(--text-secondary); font-size:0.78rem; line-height:1.25; }
+  .pool-summary-item dd { margin:0; color:var(--text-primary); font-size:0.95rem; font-weight:700; font-variant-numeric:tabular-nums; }
+  .pool-summary-item[data-tone="good"] dd { color:var(--success-color, #2ca56c); }
+  .pool-summary-item[data-tone="warning"] dd { color:var(--warning-color, #c1872b); }
+  .pool-summary-item[data-tone="danger"] dd { color:var(--danger-color, #d65a5a); }
   .pool-import-grid { display:grid; grid-template-columns:minmax(240px,1fr) minmax(150px,200px) minmax(140px,180px) auto auto; gap:8px; align-items:end; margin-bottom:12px; }
   .pool-import-help { display:block; margin-top:4px; color:var(--text-muted); font-size:0.78rem; line-height:1.35; }
   .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
   @media (max-width:900px) {
+    .pool-summary-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
     .pool-command-bar { align-items:stretch; }
     .pool-command-bar > * { min-height:44px; }
     .pool-filter, #pool-search { max-width:none !important; flex:1 1 220px; }
   }
   @media (max-width:640px) {
+    .pool-summary-grid { grid-template-columns:1fr; }
     .pool-import-grid { grid-template-columns:1fr; }
     .pool-import-grid > * { width:100%; }
   }
@@ -37,8 +49,9 @@
   <div class="section-header">
     <h2>Proxy pool</h2>
   </div>
-  <div id="pool-counts" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;"></div>
-  <div id="pool-type-counts" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;"></div>
+  <div id="pool-summary" class="pool-summary-grid" aria-label="Proxy pool summary"></div>
+  <div id="pool-counts" class="sr-only" aria-live="polite"></div>
+  <div id="pool-type-counts" class="sr-only"></div>
   <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:12px;padding:12px;border:1px solid var(--border-color);border-radius:var(--radius);">
     <label style="display:flex;gap:8px;align-items:center;font-size:0.85rem;color:var(--text-secondary);">
       <input type="checkbox" id="pool-scheduler-enabled">
@@ -65,6 +78,7 @@
     <select class="form-select pool-filter" id="pool-duplicate-filter"><option value="">All egress groups</option><option value="canonical">Canonical only</option><option value="duplicate">Duplicates only</option></select>
     <button class="btn btn-secondary btn-sm pool-action" id="pool-recheck-selected">Recheck selected</button>
     <button class="btn btn-secondary btn-sm pool-action" id="pool-recheck-all">Recheck all</button>
+    <button class="btn btn-secondary btn-sm pool-action" id="pool-metadata-selected">Refresh metadata selected</button>
     <button class="btn btn-secondary btn-sm pool-action" id="pool-earnapp-selected">EarnApp check selected</button>
     <button class="btn btn-secondary btn-sm pool-action" id="pool-earnapp-all">EarnApp check all</button>
     <button class="btn btn-ghost btn-sm" id="pool-export-filtered">Export filtered</button>
@@ -181,7 +195,15 @@ async function loadPool() {
 function proxyLocationLabel(proxy) {
   const status = String(proxy.status || '').toLowerCase();
   if (!proxy.exit_ip) return status === 'dead' ? 'Generic check failed' : 'Egress unresolved';
-  return proxy.country_name || proxy.country_code || 'Metadata pending';
+  return countryDisplayName(proxy.country_code || proxy.location, proxy.country_name) || 'Metadata pending';
+}
+function countryDisplayName(code, fallback = '') {
+  const raw = String(code || '').trim();
+  const value = raw.toUpperCase();
+  if (value.length === 2 && /^[A-Z]{2}$/.test(value) && typeof Intl !== 'undefined' && Intl.DisplayNames) {
+    try { return new Intl.DisplayNames([navigator.language || 'en', 'en'], {type: 'region'}).of(value) || value; } catch (_) { return fallback || value; }
+  }
+  return fallback || raw;
 }
 function proxyIpTypeLabel(proxy) {
   const status = String(proxy.status || '').toLowerCase();
@@ -250,16 +272,79 @@ let poolRequestController = null;
 let poolSchedulerLoaded = false;
 let poolSearchTimer = null;
 let poolIgnoreSortClickUntil = 0;
-function countBadge(label, value) {
-  return `<span class="badge badge-category">${esc(label.replaceAll('_', ' '))}: ${value}</span>`;
+const summaryGroups = [
+  {
+    title: 'Inventory & health',
+    metrics: [
+      ['Total proxies', 'inventory'],
+      ['Alive', 'generic_live', 'good'],
+      ['Dead', 'generic_dead', 'danger'],
+      ['Duplicates', 'duplicates', 'warning'],
+    ],
+  },
+  {
+    title: 'Assignment & availability',
+    metrics: [
+      ['Unassigned', 'unassigned_inventory'],
+      ['Legacy leased', 'legacy_leased'],
+      ['Scoped leased', 'scoped_leased'],
+      ['Canonical available', 'canonical_available', 'good'],
+      ['Generic usable', 'generic_usable', 'good'],
+    ],
+  },
+  {
+    title: 'Egress & metadata',
+    metrics: [
+      ['Egress known', 'egress_known', 'good'],
+      ['Egress unresolved', 'egress_unresolved', 'warning'],
+      ['Location pending', 'location_pending', 'warning'],
+      ['IP type pending', 'ip_type_pending', 'warning'],
+      ['Any metadata pending', 'metadata_pending', 'warning'],
+      ['Selected', 'selected'],
+    ],
+  },
+  {
+    title: 'EarnApp qualification',
+    metrics: [
+      ['Eligible', 'earnapp_eligible', 'good'],
+      ['Checked', 'earnapp_checked'],
+      ['Unknown', 'earnapp_unknown', 'warning'],
+      ['Not checked', 'earnapp_not_checked', 'warning'],
+      ['Skipped', 'earnapp_skipped'],
+      ['Leaseable', 'earnapp_leaseable', 'good'],
+    ],
+  },
+  {
+    title: 'Protocol & IP type',
+    typeMetrics: [
+      ['HTTP', 'http'],
+      ['SOCKS5', 'socks5'],
+      ['Residential', 'residential', 'good'],
+      ['Datacenter', 'datacenter'],
+      ['Hosting', 'hosting'],
+      ['VPN', 'vpn'],
+      ['Proxy', 'proxy'],
+      ['IP type unknown', 'unknown', 'warning'],
+    ],
+  },
+];
+function renderPoolSummary(counts) {
+  document.getElementById('pool-summary').innerHTML = summaryGroups.map(group => {
+    const source = group.typeMetrics ? poolTypeCounts : counts;
+    const metrics = group.typeMetrics || group.metrics;
+    return `<section class="pool-summary-group"><h3>${esc(group.title)}</h3><dl class="pool-summary-list">${metrics.map(([label,key,tone]) => `
+      <div class="pool-summary-item"${tone ? ` data-tone="${esc(tone)}"` : ''}>
+        <dt>${esc(label)}</dt><dd>${Number(source[key] || 0).toLocaleString()}</dd>
+      </div>`).join('')}</dl></section>`;
+  }).join('');
 }
 function renderPool() {
   const counts = {
     ...poolCounts,
     selected: document.querySelectorAll('.pool-select:checked').length,
   };
-  document.getElementById('pool-counts').innerHTML = Object.entries(counts).map(([k,v]) => countBadge(k, v)).join('');
-  document.getElementById('pool-type-counts').innerHTML = Object.entries(poolTypeCounts).map(([k,v]) => countBadge(k, v)).join('');
+  renderPoolSummary(counts);
+  document.getElementById('pool-counts').textContent = `Selected: ${counts.selected || 0}`;
   renderPoolFilters();
   updatePoolSortIndicators();
   document.getElementById('pool-rows').innerHTML = poolRows.map(p => `
@@ -268,7 +353,7 @@ function renderPool() {
       <td>${esc(p.provider_name || '-')}</td>
       <td class="mono-cell endpoint-cell" title="${esc(p.endpoint)}">${esc(p.endpoint)}</td>
       <td>${esc(p.protocol)}</td>
-      <td><span title="${esc(p.exit_ip ? [p.country_code, p.geo_source, p.geo_confidence].filter(Boolean).join(' · ') : 'No authoritative egress IP')}">${esc(proxyLocationLabel(p))}</span></td>
+      <td><span title="${esc(p.exit_ip ? [p.country_code, p.country_name, p.geo_source, p.geo_confidence].filter(Boolean).join(' · ') : 'No authoritative egress IP')}">${esc(proxyLocationLabel(p))}</span></td>
       <td><span title="${esc(p.exit_ip ? [p.ip_type_source, p.ip_type_confidence].filter(Boolean).join(' · ') : 'No authoritative egress IP')}">${esc(proxyIpTypeLabel(p))}</span></td>
       <td class="mono-cell" title="${esc(p.exit_ip ? '' : 'The proxy tunnel did not return a public egress IP.')}">${esc(proxyEgressLabel(p))}</td>
       <td><span class="${String(p.status || '').toLowerCase() === 'alive' ? 'pool-status-alive' : String(p.status || '').toLowerCase() === 'unknown' ? 'pool-status-unknown' : 'pool-status-dead'}">${esc(p.status || '-')}</span><small style="display:block;color:var(--text-muted);">UDP ${p.udp_ok === true ? 'yes' : p.udp_ok === false ? 'no' : '-'}</small></td>
@@ -288,7 +373,7 @@ function renderPoolFilters() {
     const el = document.getElementById(id);
     const current = el.value;
     const values = Array.isArray(poolFilterOptions[optionKey]) ? poolFilterOptions[optionKey] : [];
-    el.innerHTML = `<option value="">${label}</option>` + values.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+    el.innerHTML = `<option value="">${label}</option>` + values.map(v => `<option value="${esc(v)}">${esc(optionKey === 'locations' ? countryDisplayName(v) : v)}</option>`).join('');
     el.value = values.includes(current) ? current : '';
   }
 }
@@ -297,10 +382,9 @@ function selectedPoolIds() {
 }
 function updatePoolSelectionCount() {
   const selected = document.querySelectorAll('.pool-select:checked').length;
-  const counts = document.getElementById('pool-counts');
-  if (!counts) return;
-  const badge = [...counts.querySelectorAll('.badge')].find(x => x.textContent.trim().startsWith('selected:'));
-  if (badge) badge.textContent = `selected: ${selected}`;
+  const counts = {...poolCounts, selected};
+  renderPoolSummary(counts);
+  document.getElementById('pool-counts').textContent = `Selected: ${selected}`;
 }
 function updatePoolSortIndicators() {
   document.querySelectorAll('.proxy-pool-table th[data-sort]').forEach(th => {
@@ -381,6 +465,25 @@ function exportFilteredPool() {
   const params = currentPoolParams({includePage:false});
   window.location.href = `/api/proxy-pool/export?${params.toString()}`;
 }
+async function refreshPoolMetadata(ids) {
+  if (!ids || !ids.length) { alert('Select proxies first'); return; }
+  if (!confirm(`Refresh metadata for ${ids.length} selected proxies?`)) return;
+  const button = document.getElementById('pool-metadata-selected');
+  button.disabled = true;
+  try {
+    const result = await proxyPoolJson('/api/proxy-pool/metadata-refresh', {
+      method: 'POST',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify({proxy_ids: ids, concurrency: 2}),
+    });
+    const failures = Object.values(result.failure_counts || {}).reduce((total, value) => total + Number(value || 0), 0);
+    document.getElementById('pool-result').textContent =
+      `Metadata enriched ${result.enriched || 0}; location ${result.geo_enriched || 0}; IP type ${result.type_enriched || 0}; unresolved ${result.unresolved || 0}; source failures ${failures}`;
+    loadPool();
+  } catch (error) {
+    document.getElementById('pool-result').textContent = `Metadata refresh failed: ${error.message}`;
+  } finally { button.disabled = false; }
+}
 document.getElementById('pool-search').addEventListener('input', () => {
   poolPage = 1;
   clearTimeout(poolSearchTimer);
@@ -403,6 +506,7 @@ document.getElementById('pool-earnapp-selected').addEventListener('click', () =>
   recheckEarnapp(ids);
 });
 document.getElementById('pool-earnapp-all').addEventListener('click', () => recheckEarnapp(null));
+document.getElementById('pool-metadata-selected').addEventListener('click', () => refreshPoolMetadata(selectedPoolIds()));
 document.getElementById('pool-scheduler-save').addEventListener('click', saveScheduler);
 document.getElementById('pool-export-filtered').addEventListener('click', exportFilteredPool);
 document.getElementById('pool-export-provider').addEventListener('click', () => exportPoolScope('provider'));

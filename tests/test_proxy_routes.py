@@ -981,7 +981,7 @@ async def test_generic_recheck_refreshes_ip_intelligence_and_duplicate_groups():
     ):
         result = await proxy_routes.run_proxy_pool_recheck(proxy_ids=[7], concurrency=1)
 
-    lookup.assert_awaited_once_with("8.8.8.8")
+    lookup.assert_awaited_once_with("8.8.8.8", timeout=12.0, proxy=proxy)
     save_geo.assert_awaited_once_with(7, intelligence)
     save_evidence.assert_awaited_once()
     dedupe.assert_awaited_once_with()
@@ -1025,7 +1025,7 @@ async def test_generic_recheck_refreshes_intelligence_from_existing_egress_when_
     ):
         await proxy_routes.run_proxy_pool_recheck(proxy_ids=[7], concurrency=1)
 
-    lookup.assert_awaited_once_with("8.8.8.8")
+    lookup.assert_awaited_once_with("8.8.8.8", timeout=12.0, proxy=rows[0])
     save_geo.assert_awaited_once_with(7, intelligence)
 
 
@@ -1058,7 +1058,7 @@ async def test_generic_recheck_looks_up_shared_egress_intelligence_once():
     ):
         await proxy_routes.run_proxy_pool_recheck(concurrency=2)
 
-    lookup.assert_awaited_once_with("8.8.8.8")
+    lookup.assert_awaited_once_with("8.8.8.8", timeout=12.0, proxy={**rows[1], "protocol": "socks5"})
     assert save_geo.await_count == 2
 
 
@@ -1094,6 +1094,64 @@ async def test_exit_ip_intelligence_refresh_uses_bounded_concurrency():
 
 
 @pytest.mark.asyncio
+async def test_exit_ip_intelligence_refresh_routes_each_lookup_through_the_proxy():
+    proxy = {
+        "id": 7,
+        "host": "proxy.example",
+        "port": 1000,
+        "protocol": "http",
+        "username": "user",
+        "password": "secret",
+    }
+    intelligence = {
+        "country_code": "VN",
+        "geo_source": "ipwho.is",
+        "ip_type": "residential",
+        "ip_type_source": "api.ipapi.is",
+    }
+    with (
+        patch("app.routers.proxies.database.get_cached_proxy_intelligence", new_callable=AsyncMock, return_value=None),
+        patch("app.routers.proxies.database.get_proxy_endpoint", new_callable=AsyncMock, return_value=proxy),
+        patch(
+            "app.routers.proxies.lookup_ip_intelligence",
+            new_callable=AsyncMock,
+            return_value={"lookup_status": {"ipwho.is": "rate_limited"}},
+        ),
+        patch(
+            "app.routers.proxies._lookup_proxy_ip_intelligence",
+            new_callable=AsyncMock,
+            return_value=intelligence,
+        ) as lookup,
+        patch(
+            "app.routers.proxies.database.update_proxy_endpoint_intelligence",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+    ):
+        result = await proxy_routes._refresh_exit_ip_intelligence(
+            [(7, "8.8.8.8")], concurrency=64, route_via_proxy=True
+        )
+
+    lookup.assert_awaited_once_with("8.8.8.8", proxy=proxy)
+    assert result == {"requested": 1, "unique": 1, "enriched": 1, "unresolved": 0}
+
+
+@pytest.mark.asyncio
+async def test_routed_intelligence_refresh_never_falls_back_to_server_egress():
+    with (
+        patch("app.routers.proxies.database.get_cached_proxy_intelligence", new_callable=AsyncMock, return_value=None),
+        patch("app.routers.proxies.database.get_proxy_endpoint", new_callable=AsyncMock, return_value=None),
+        patch("app.routers.proxies.lookup_ip_intelligence", new_callable=AsyncMock) as direct_lookup,
+        patch("app.routers.proxies.database.update_proxy_endpoint_intelligence", new_callable=AsyncMock) as save,
+    ):
+        result = await proxy_routes._refresh_exit_ip_intelligence([(7, "8.8.8.8")], concurrency=1, route_via_proxy=True)
+
+    direct_lookup.assert_not_awaited()
+    save.assert_not_awaited()
+    assert result == {"requested": 1, "unique": 1, "enriched": 0, "unresolved": 1}
+
+
+@pytest.mark.asyncio
 async def test_exit_ip_intelligence_refresh_reports_unresolved_metadata_truthfully():
     with (
         patch("app.routers.proxies.database.get_cached_proxy_intelligence", new_callable=AsyncMock, return_value=None),
@@ -1111,6 +1169,137 @@ async def test_exit_ip_intelligence_refresh_reports_unresolved_metadata_truthful
         result = await proxy_routes._refresh_exit_ip_intelligence([(1, "8.8.8.8"), (2, "8.8.8.8")])
 
     assert result == {"requested": 2, "unique": 1, "enriched": 0, "unresolved": 2}
+
+
+@pytest.mark.asyncio
+async def test_metadata_refresh_routes_lookup_through_each_proxy_and_caps_concurrency():
+    rows = [
+        {"id": 7, "status": "alive", "exit_ip": "8.8.8.8"},
+        {"id": 8, "status": "alive", "exit_ip": "9.9.9.9"},
+        {"id": 9, "status": "dead", "exit_ip": ""},
+    ]
+    proxies = {
+        7: {**rows[0], "host": "one.example", "port": 1000, "protocol": "http", "username": "u", "password": "p"},
+        8: {**rows[1], "host": "two.example", "port": 2000, "protocol": "http", "username": "u", "password": "p"},
+    }
+    active = 0
+    peak = 0
+
+    async def lookup(exit_ip, *, proxy):
+        nonlocal active, peak
+        assert proxy["password"] == "p"
+        active += 1
+        peak = max(peak, active)
+        await asyncio.sleep(0.01)
+        active -= 1
+        return {
+            "exit_ip": exit_ip,
+            "country_code": "VN",
+            "country_name": "Viet Nam",
+            "location": "Viet Nam",
+            "geo_source": "ipwho.is",
+            "geo_confidence": "verified",
+            "ip_type": "residential",
+            "ip_type_source": "api.ipapi.is",
+            "ip_type_confidence": "inferred",
+            "lookup_status": {"ipwho.is": "ok", "api.ipapi.is": "ok"},
+        }
+
+    with (
+        patch("app.routers.proxies.database.list_proxy_pool", new_callable=AsyncMock, return_value=rows),
+        patch(
+            "app.routers.proxies.database.get_proxy_endpoint",
+            new_callable=AsyncMock,
+            side_effect=lambda proxy_id: proxies.get(proxy_id),
+        ),
+        patch("app.routers.proxies.database.get_cached_proxy_intelligence", new_callable=AsyncMock, return_value=None),
+        patch(
+            "app.routers.proxies._lookup_proxy_ip_intelligence", new_callable=AsyncMock, side_effect=lookup
+        ) as routed,
+        patch(
+            "app.routers.proxies.database.update_proxy_endpoint_intelligence",
+            new_callable=AsyncMock,
+            return_value=True,
+        ) as save,
+    ):
+        result = await proxy_routes.run_proxy_metadata_refresh(proxy_ids=[7, 8, 9], concurrency=64)
+
+    assert peak <= 2
+    assert routed.await_count == 2
+    assert save.await_count == 2
+    assert result["requested"] == 3
+    assert result["lookups"] == 2
+    assert result["enriched"] == 2
+    assert result["unresolved"] == 1
+    assert result["source_counts"] == {"api.ipapi.is": 2, "ipwho.is": 2}
+
+
+@pytest.mark.asyncio
+async def test_metadata_refresh_reports_geo_and_type_enrichment_counters():
+    rows = [{"id": 7, "status": "alive", "exit_ip": "8.8.8.8"}]
+    proxy = {**rows[0], "host": "proxy.example", "port": 1000, "protocol": "http"}
+    intelligence = {
+        "country_code": "VN",
+        "country_name": "Viet Nam",
+        "geo_source": "ipwho.is",
+        "ip_type": "residential",
+        "ip_type_source": "api.ipapi.is",
+        "lookup_status": {"ipwho.is": "ok", "api.ipapi.is": "ok"},
+    }
+    with (
+        patch("app.routers.proxies.database.list_proxy_pool", new_callable=AsyncMock, return_value=rows),
+        patch("app.routers.proxies.database.get_proxy_endpoint", new_callable=AsyncMock, return_value=proxy),
+        patch("app.routers.proxies.database.get_cached_proxy_intelligence", new_callable=AsyncMock, return_value=None),
+        patch("app.routers.proxies._lookup_proxy_ip_intelligence", new_callable=AsyncMock, return_value=intelligence),
+        patch(
+            "app.routers.proxies.database.update_proxy_endpoint_intelligence", new_callable=AsyncMock, return_value=True
+        ),
+    ):
+        result = await proxy_routes.run_proxy_metadata_refresh(proxy_ids=[7])
+
+    assert result["geo_enriched"] == 1
+    assert result["type_enriched"] == 1
+
+
+def test_metadata_refresh_api_is_owner_only_bounded_and_metadata_only(client):
+    with patch("app.main.auth.get_current_user", return_value=_viewer_user()):
+        denied = client.post("/api/proxy-pool/metadata-refresh", json={"proxy_ids": [7]})
+    assert denied.status_code == 403
+
+    with patch("app.main.auth.get_current_user", return_value=_owner_user()):
+        too_large = client.post(
+            "/api/proxy-pool/metadata-refresh",
+            json={"proxy_ids": list(range(1, 102))},
+        )
+    assert too_large.status_code == 422
+
+    result = {
+        "status": "ok",
+        "requested": 1,
+        "unique": 1,
+        "cache_hits": 0,
+        "lookups": 1,
+        "enriched": 1,
+        "unresolved": 0,
+        "source_counts": {"ipwho.is": 1},
+        "failure_counts": {},
+    }
+    with (
+        patch("app.main.auth.get_current_user", return_value=_owner_user()),
+        patch("app.routers.proxies.run_proxy_metadata_refresh", new_callable=AsyncMock, return_value=result) as refresh,
+        patch("app.routers.proxies.run_proxy_pool_recheck", new_callable=AsyncMock) as generic,
+        patch("app.routers.proxies.run_earnapp_proxy_recheck", new_callable=AsyncMock) as earnapp,
+    ):
+        response = client.post(
+            "/api/proxy-pool/metadata-refresh",
+            json={"proxy_ids": [7], "concurrency": 64},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == result
+    refresh.assert_awaited_once_with(proxy_ids=[7], concurrency=2)
+    generic.assert_not_awaited()
+    earnapp.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -2457,9 +2646,21 @@ def test_proxy_pool_page_filters_and_sorts_before_pagination_with_global_counts(
             assert result["type_counts"]["residential"] == 2
             assert result["type_counts"]["datacenter"] == 1
             assert result["filters"]["providers"] == ["alpha", "beta"]
-            assert "United States" in result["filters"]["locations"]
+            assert "US" in result["filters"]["locations"]
+            assert "VN" in result["filters"]["locations"]
+            assert "United States" not in result["filters"]["locations"]
+            assert "Viet Nam" not in result["filters"]["locations"]
             assert "eligible" in result["filters"]["earnapp_states"]
             assert all("username" not in row and "password" not in row for row in result["items"])
+
+            vietnam = await database.list_proxy_pool_page(page=1, page_size=20, location="VN")
+            assert vietnam["total"] == 1
+            assert vietnam["items"][0]["location"] == "VN"
+            assert vietnam["items"][0]["country_name"] == "Viet Nam"
+
+            vietnam_alias = await database.list_proxy_pool_page(page=1, page_size=20, location="Viet Nam")
+            assert vietnam_alias["total"] == 1
+            assert vietnam_alias["items"][0]["country_code"] == "VN"
 
             safe_sort = await database.list_proxy_pool_page(
                 page=1, page_size=2, sort="DROP TABLE", direction="sideways"
@@ -2495,6 +2696,38 @@ def test_proxy_pool_page_reads_only_the_requested_rows_from_sqlite(tmp_path):
             full_inventory.assert_not_awaited()
             assert result["total"] == 5
             assert len(result["items"]) == 2
+
+    asyncio.run(run())
+
+
+def test_proxy_pool_location_filter_maps_legacy_uk_code_to_gb(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            (proxy_id,) = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id,
+                [
+                    {
+                        "provider_proxy_id": "legacy-uk",
+                        "host": "one.example",
+                        "port": 1000,
+                        "status": "alive",
+                        "exit_ip": "8.8.8.8",
+                    }
+                ],
+            )
+            db = await database._get_db()
+            await db.execute(
+                "UPDATE proxy_endpoints SET country_code = 'UK', country_name = 'United Kingdom', geo_source = 'legacy' WHERE id = ?",
+                (proxy_id,),
+            )
+            await db.commit()
+
+            result = await database.list_proxy_pool_page(location="GB")
+
+            assert result["total"] == 1
+            assert result["items"][0]["location"] == "GB"
 
     asyncio.run(run())
 
@@ -2821,6 +3054,44 @@ def test_proxy_intelligence_cache_preserves_verified_fields_on_unknown_refresh(t
             assert cached["ip_type"] == "datacenter"
             assert row["location"] == "United States"
             assert row["geo_source"] == "ipwho.is"
+
+    asyncio.run(run())
+
+
+def test_proxy_intelligence_rejects_non_iso_country_codes_at_database_boundary(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            (proxy_id,) = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id,
+                [
+                    {
+                        "provider_proxy_id": "one",
+                        "host": "1.1.1.1",
+                        "port": 1000,
+                        "status": "alive",
+                        "exit_ip": "8.8.8.8",
+                    }
+                ],
+            )
+
+            assert await database.update_proxy_endpoint_intelligence(
+                proxy_id,
+                {
+                    "country_code": "USA",
+                    "country_name": "United States",
+                    "geo_source": "test",
+                    "geo_confidence": "verified",
+                    "ip_type": "residential",
+                    "ip_type_source": "test",
+                    "ip_type_confidence": "inferred",
+                },
+            )
+
+            row = (await database.list_proxy_pool())[0]
+            assert row["country_code"] == ""
+            assert row["country_name"] == "United States"
 
     asyncio.run(run())
 

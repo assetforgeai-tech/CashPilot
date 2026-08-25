@@ -923,6 +923,34 @@ class TestInventoryTablesHaveOperatorControls:
         assert "genericUsable" in page
         assert "rotate_dead:false" in page
 
+    def test_proxy_pool_summary_is_grouped_readable_and_mobile_responsive(self):
+        page = (ROOT / "app" / "templates" / "proxy_pool.html").read_text(encoding="utf-8")
+
+        for needle in (
+            'id="pool-summary"',
+            "Inventory & health",
+            "Assignment & availability",
+            "Egress & metadata",
+            "EarnApp qualification",
+            "Protocol & IP type",
+            "Total proxies",
+            "Metadata pending",
+            "Not checked",
+            "IP type unknown",
+            "countryDisplayName",
+            "return fallback || raw",
+            "summaryGroups",
+            'id="pool-metadata-selected"',
+            "/api/proxy-pool/metadata-refresh",
+            "Metadata enriched",
+            "@media (max-width:640px)",
+            ".pool-summary-grid { grid-template-columns:1fr; }",
+        ):
+            assert needle in page
+
+        assert "Object.entries(counts).map" not in page
+        assert "Object.entries(poolTypeCounts).map" not in page
+
     def test_myst_wallet_has_counts_search_sort_export_confirm_and_pagination(self):
         page = (ROOT / "app" / "templates" / "myst_wallet.html").read_text(encoding="utf-8")
         app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")

@@ -12,6 +12,7 @@ import logging
 import re
 import secrets
 import time
+from collections import Counter
 from datetime import UTC, datetime
 from typing import Any, Literal
 from urllib.parse import urlparse
@@ -78,6 +79,11 @@ class ProxyRecheckIn(BaseModel):
     concurrency: int | None = None
     profile: str = "generic"
     rotate_dead: bool = True
+
+
+class ProxyMetadataRefreshIn(BaseModel):
+    proxy_ids: list[int]
+    concurrency: int = 2
 
 
 class ProxySchedulerIn(BaseModel):
@@ -755,16 +761,30 @@ async def _rotate_worker_proxy_after_ack_locked(
 
 
 async def _refresh_exit_ip_intelligence(
-    proxy_exit_pairs: list[tuple[int, str]], *, concurrency: int = 8
+    proxy_exit_pairs: list[tuple[int, str]], *, concurrency: int = 8, route_via_proxy: bool = False
 ) -> dict[str, int]:
     unique_exit_ips = list(dict.fromkeys(exit_ip for _proxy_id, exit_ip in proxy_exit_pairs if exit_ip))
     semaphore = asyncio.Semaphore(min(16, max(1, int(concurrency or 8))))
+
+    first_proxy_id_by_ip = {exit_ip: proxy_id for proxy_id, exit_ip in proxy_exit_pairs if exit_ip}
 
     async def lookup(exit_ip: str) -> tuple[str, dict[str, Any]]:
         async with semaphore:
             try:
                 cached = await database.get_cached_proxy_intelligence(exit_ip)
-                return exit_ip, cached or await lookup_ip_intelligence(exit_ip)
+                if cached:
+                    return exit_ip, cached
+                if route_via_proxy:
+                    proxy = await database.get_proxy_endpoint(first_proxy_id_by_ip[exit_ip])
+                    if not proxy:
+                        return exit_ip, {}
+                    routed = await _lookup_proxy_ip_intelligence(exit_ip, proxy=proxy)
+                    # Never fall back to the server egress after a routed
+                    # lookup. That would reintroduce the rate-limit and
+                    # source-attribution failure this path is designed to
+                    # avoid.
+                    return exit_ip, routed
+                return exit_ip, await lookup_ip_intelligence(exit_ip)
             except Exception as exc:
                 logger.warning("Proxy intelligence lookup failed for %s: %s", exit_ip, type(exc).__name__)
                 return exit_ip, {}
@@ -780,6 +800,89 @@ async def _refresh_exit_ip_intelligence(
         "unique": len(unique_exit_ips),
         "enriched": enriched,
         "unresolved": max(0, len(proxy_exit_pairs) - enriched),
+    }
+
+
+async def _lookup_proxy_ip_intelligence(exit_ip: str, *, proxy: dict[str, Any]) -> dict[str, Any]:
+    return await lookup_ip_intelligence(exit_ip, timeout=12.0, proxy=proxy)
+
+
+async def run_proxy_metadata_refresh(*, proxy_ids: list[int], concurrency: int = 2) -> dict[str, Any]:
+    wanted = {int(value) for value in proxy_ids if int(value) > 0}
+    rows = [row for row in await database.list_proxy_pool() if int(row.get("id") or 0) in wanted]
+    rows_by_exit_ip: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        if str(row.get("status") or "").lower() == "alive" and str(row.get("exit_ip") or "").strip():
+            rows_by_exit_ip.setdefault(str(row["exit_ip"]).strip(), []).append(row)
+    semaphore = asyncio.Semaphore(min(2, max(1, int(concurrency or 2))))
+    source_counts: Counter[str] = Counter()
+    failure_counts: Counter[str] = Counter()
+    cache_hits = 0
+    lookups = 0
+    geo_enriched = 0
+    type_enriched = 0
+
+    async def refresh(exit_ip: str, row: dict[str, Any]) -> tuple[str, dict[str, Any], bool]:
+        proxy_id = int(row.get("id") or 0)
+        cached = await database.get_cached_proxy_intelligence(exit_ip)
+        if cached:
+            return exit_ip, cached, True
+        proxy = await database.get_proxy_endpoint(proxy_id)
+        if not proxy:
+            return exit_ip, {}, False
+        async with semaphore:
+            try:
+                return exit_ip, await _lookup_proxy_ip_intelligence(exit_ip, proxy=proxy), False
+            except Exception as exc:
+                logger.warning("Proxy-routed intelligence lookup failed for proxy %s: %s", proxy_id, type(exc).__name__)
+                return exit_ip, {"lookup_status": {"proxy_route": type(exc).__name__}}, False
+
+    outcomes = await asyncio.gather(*(refresh(exit_ip, group[0]) for exit_ip, group in rows_by_exit_ip.items()))
+    outcome_by_ip = {exit_ip: (intelligence, cached) for exit_ip, intelligence, cached in outcomes}
+    enriched = 0
+    actionable_rows = sum(len(group) for group in rows_by_exit_ip.values())
+    unresolved = max(0, len(wanted) - actionable_rows)
+    for exit_ip, group in rows_by_exit_ip.items():
+        intelligence, cached = outcome_by_ip.get(exit_ip, ({}, False))
+        cache_hits += int(cached)
+        lookups += int(bool(intelligence) and not cached)
+        for source, status in dict(intelligence.get("lookup_status") or {}).items():
+            if status == "ok":
+                source_counts[str(source)] += 1
+            else:
+                failure_counts[f"{source}:{status}"] += 1
+        for row in group:
+            if intelligence and await database.update_proxy_endpoint_intelligence(int(row["id"]), intelligence):
+                enriched += 1
+                geo_enriched += int(
+                    bool(
+                        str(intelligence.get("geo_source") or "").strip()
+                        and (
+                            str(intelligence.get("country_code") or "").strip()
+                            or str(intelligence.get("country_name") or "").strip()
+                        )
+                    )
+                )
+                type_enriched += int(
+                    bool(
+                        str(intelligence.get("ip_type_source") or "").strip()
+                        and str(intelligence.get("ip_type") or "unknown").strip().lower() not in {"", "unknown"}
+                    )
+                )
+            else:
+                unresolved += 1
+    return {
+        "status": "ok",
+        "requested": len(wanted),
+        "unique": len(rows_by_exit_ip),
+        "cache_hits": cache_hits,
+        "lookups": lookups,
+        "enriched": enriched,
+        "geo_enriched": geo_enriched,
+        "type_enriched": type_enriched,
+        "unresolved": unresolved,
+        "source_counts": dict(sorted(source_counts.items())),
+        "failure_counts": dict(sorted(failure_counts.items())),
     }
 
 
@@ -840,7 +943,11 @@ async def run_proxy_pool_recheck(
         ).strip()
         if intelligence_exit_ip:
             intelligence_jobs.append((proxy_id, intelligence_exit_ip))
-    intelligence = await _refresh_exit_ip_intelligence(intelligence_jobs, concurrency=concurrency)
+    intelligence = await _refresh_exit_ip_intelligence(
+        intelligence_jobs,
+        concurrency=concurrency,
+        route_via_proxy=True,
+    )
     duplicate_count = await database.reconcile_proxy_duplicates()
 
     rotated = 0
@@ -910,7 +1017,11 @@ async def run_earnapp_proxy_recheck(*, proxy_ids: list[int] | None = None, concu
         if result.get("exit_ip"):
             value = str(result["exit_ip"]).strip()
             intelligence_jobs.append((proxy_id, value))
-    intelligence = await _refresh_exit_ip_intelligence(intelligence_jobs, concurrency=concurrency)
+    intelligence = await _refresh_exit_ip_intelligence(
+        intelligence_jobs,
+        concurrency=concurrency,
+        route_via_proxy=True,
+    )
     duplicate_count = await database.reconcile_proxy_duplicates()
     return {
         "status": "ok",
@@ -1207,6 +1318,20 @@ async def api_proxy_pool_recheck(request: Request, body: ProxyRecheckIn) -> dict
         proxy_ids=body.proxy_ids,
         concurrency=body.concurrency or settings["concurrency"],
         rotate_dead=body.rotate_dead,
+    )
+
+
+@router.post("/api/proxy-pool/metadata-refresh")
+async def api_proxy_pool_metadata_refresh(request: Request, body: ProxyMetadataRefreshIn) -> dict[str, Any]:
+    deps._require_owner(request)
+    proxy_ids = list(dict.fromkeys(int(value) for value in body.proxy_ids if int(value) > 0))
+    if not proxy_ids:
+        raise HTTPException(status_code=400, detail="Select at least one proxy for metadata refresh")
+    if len(proxy_ids) > 100:
+        raise HTTPException(status_code=422, detail="Metadata refresh is limited to 100 proxies per request")
+    return await run_proxy_metadata_refresh(
+        proxy_ids=proxy_ids,
+        concurrency=min(2, max(1, int(body.concurrency or 2))),
     )
 
 
