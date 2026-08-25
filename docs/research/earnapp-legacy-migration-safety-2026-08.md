@@ -1,7 +1,9 @@
 # EarnApp legacy migration safety audit
 
-Ngày kiểm tra: 2026-08-26  
-Nhánh: `fix/earnapp-legacy-migration-safe`  
+Ngày kiểm tra: 2026-08-26
+
+Nhánh: `fix/earnapp-legacy-migration-safe`
+
 Base: `origin/main` / `4e336cb` (PR #41 đã merge)
 
 ## Phạm vi
