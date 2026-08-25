@@ -83,56 +83,172 @@ def test_import_encrypts_credentials_and_lists_only_masked_metadata(tmp_path):
     asyncio.run(run())
 
 
+async def _seed_legacy_earnapp_schema(
+    db,
+    accounts: list[dict[str, object]],
+    leases: list[dict[str, object]] | None = None,
+    *,
+    include_current_children: bool = False,
+) -> None:
+    await db.executescript(
+        """
+        CREATE TABLE earnapp_accounts (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_name TEXT NOT NULL UNIQUE,
+            cookies_enc  TEXT NOT NULL,
+            state        TEXT NOT NULL DEFAULT 'VALID',
+            created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE earnapp_account_leases (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id        INTEGER NOT NULL,
+            worker_id         INTEGER NOT NULL,
+            instance_id       TEXT NOT NULL,
+            state             TEXT NOT NULL DEFAULT 'ACTIVE',
+            leased_at         TEXT NOT NULL DEFAULT (datetime('now')),
+            last_heartbeat_at TEXT,
+            released_at       TEXT,
+            release_reason    TEXT NOT NULL DEFAULT '',
+            UNIQUE(worker_id, instance_id),
+            FOREIGN KEY(account_id) REFERENCES earnapp_accounts(id) ON DELETE CASCADE
+        );
+        """
+    )
+    if include_current_children:
+        await db.executescript(
+            """
+            CREATE TABLE workers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL DEFAULT '',
+                url TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'online',
+                containers TEXT NOT NULL DEFAULT '[]',
+                apps TEXT NOT NULL DEFAULT '[]',
+                system_info TEXT NOT NULL DEFAULT '{}',
+                last_heartbeat TEXT,
+                api_key_enc TEXT,
+                key_confirmed INTEGER NOT NULL DEFAULT 0,
+                key_issued_at TEXT,
+                registered_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE TABLE earnapp_logical_nodes (
+                logical_node_id    TEXT PRIMARY KEY,
+                account_id         INTEGER NOT NULL,
+                state              TEXT NOT NULL DEFAULT 'PLANNED',
+                generation         INTEGER NOT NULL DEFAULT 1,
+                assigned_worker_id INTEGER,
+                last_worker_id     INTEGER,
+                device_id          TEXT NOT NULL DEFAULT '',
+                current_proxy_id   INTEGER,
+                preferred_proxy_id INTEGER,
+                last_heartbeat_at  TEXT,
+                recovery_started_at TEXT,
+                recovery_hold_until TEXT,
+                created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at         TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY(account_id) REFERENCES earnapp_accounts(id) ON DELETE RESTRICT
+            );
+            CREATE TABLE earnapp_account_control_routes (
+                account_id INTEGER PRIMARY KEY,
+                proxy_id INTEGER NOT NULL,
+                state TEXT NOT NULL DEFAULT 'ACTIVE',
+                assigned_logical_node_id TEXT NOT NULL DEFAULT '',
+                leased_at TEXT NOT NULL DEFAULT (datetime('now')),
+                released_at TEXT,
+                release_reason TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY(account_id) REFERENCES earnapp_accounts(id) ON DELETE CASCADE
+            );
+            CREATE TABLE earnapp_account_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id INTEGER NOT NULL,
+                money_balance REAL NOT NULL DEFAULT 0,
+                money_total REAL NOT NULL DEFAULT 0,
+                online_nodes INTEGER NOT NULL DEFAULT 0,
+                offline_nodes INTEGER NOT NULL DEFAULT 0,
+                devices_json TEXT NOT NULL DEFAULT '[]',
+                collected_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY(account_id) REFERENCES earnapp_accounts(id) ON DELETE CASCADE
+            );
+            CREATE TABLE earnapp_replacement_tickets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                logical_node_id TEXT NOT NULL,
+                target_worker_id INTEGER NOT NULL,
+                generation INTEGER NOT NULL,
+                token_hash TEXT NOT NULL UNIQUE,
+                expires_at TEXT NOT NULL,
+                used_at TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY(logical_node_id) REFERENCES earnapp_logical_nodes(logical_node_id) ON DELETE CASCADE
+            );
+            """
+        )
+        await db.execute("INSERT INTO workers (id, client_id, name) VALUES (99, 'worker-99', 'worker-99')")
+    for account in accounts:
+        await db.execute(
+            """
+            INSERT INTO earnapp_accounts
+                (id, account_name, cookies_enc, state, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                account["id"],
+                account["account_name"],
+                account["cookies_enc"],
+                account.get("state", "VALID"),
+                account.get("created_at", "2026-08-18 08:13:08"),
+                account.get("updated_at", "2026-08-18 08:13:17"),
+            ),
+        )
+    for lease in leases or []:
+        await db.execute(
+            """
+            INSERT INTO earnapp_account_leases
+                (id, account_id, worker_id, instance_id, state, leased_at,
+                 last_heartbeat_at, released_at, release_reason)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                lease["id"],
+                lease["account_id"],
+                lease["worker_id"],
+                lease["instance_id"],
+                lease.get("state", "ACTIVE"),
+                lease.get("leased_at", "2026-08-18 08:29:27"),
+                lease.get("last_heartbeat_at", "2026-08-18 08:29:27"),
+                lease.get("released_at"),
+                lease.get("release_reason", ""),
+            ),
+        )
+    await db.commit()
+
+
+def _valid_legacy_credentials(email: str = "owner@example.com") -> dict[str, str]:
+    return {
+        "email": email,
+        "oauth_refresh_token": "legacy-refresh-secret",
+        "xsrf_token": "legacy-xsrf-secret",
+    }
+
+
 def test_init_db_migrates_legacy_earnapp_accounts_without_exposing_or_losing_credentials(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
             db = await database._get_db()
             await db.execute("PRAGMA foreign_keys=ON")
-            legacy_credentials = {
-                "email": "owner@example.com",
-                "oauth_refresh_token": "legacy-refresh-secret",
-                "xsrf_token": "legacy-xsrf-secret",
-            }
-            await db.executescript(
-                """
-                CREATE TABLE earnapp_accounts (
-                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                    account_name TEXT NOT NULL UNIQUE,
-                    cookies_enc  TEXT NOT NULL,
-                    state        TEXT NOT NULL DEFAULT 'VALID',
-                    created_at   TEXT NOT NULL DEFAULT (datetime('now')),
-                    updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
-                );
-                CREATE TABLE earnapp_account_leases (
-                    id                INTEGER PRIMARY KEY AUTOINCREMENT,
-                    account_id        INTEGER NOT NULL,
-                    worker_id         INTEGER NOT NULL,
-                    instance_id       TEXT NOT NULL,
-                    state             TEXT NOT NULL DEFAULT 'ACTIVE',
-                    leased_at         TEXT NOT NULL DEFAULT (datetime('now')),
-                    last_heartbeat_at TEXT,
-                    released_at       TEXT,
-                    release_reason    TEXT NOT NULL DEFAULT '',
-                    FOREIGN KEY(account_id) REFERENCES earnapp_accounts(id) ON DELETE CASCADE
-                );
-                """
+            await _seed_legacy_earnapp_schema(
+                db,
+                [
+                    {
+                        "id": 1,
+                        "account_name": "owner@example.com",
+                        "cookies_enc": database.encrypt_value(json.dumps(_valid_legacy_credentials(), sort_keys=True)),
+                    }
+                ],
+                [{"id": 1, "account_id": 1, "worker_id": 25883, "instance_id": "earnapp-proxy"}],
             )
-            await db.execute(
-                """
-                INSERT INTO earnapp_accounts
-                    (id, account_name, cookies_enc, state, created_at, updated_at)
-                VALUES (1, 'owner@example.com', ?, 'VALID', '2026-08-18 08:13:08', '2026-08-18 08:13:17')
-                """,
-                (database.encrypt_value(json.dumps(legacy_credentials, sort_keys=True)),),
-            )
-            await db.execute(
-                """
-                INSERT INTO earnapp_account_leases
-                    (account_id, worker_id, instance_id, state, leased_at, last_heartbeat_at)
-                VALUES (1, 25883, 'earnapp-proxy', 'ACTIVE', '2026-08-18 08:29:27', '2026-08-18 08:29:27')
-                """
-            )
-            await db.commit()
 
             await database.init_db()
 
@@ -157,10 +273,10 @@ def test_init_db_migrates_legacy_earnapp_accounts_without_exposing_or_losing_cre
                     "account_name": "owner@example.com",
                     "email": "owner@example.com",
                     "auth_method": "google",
-                    "state": "ACTIVE",
+                    "state": "DISABLED",
                     "token_expires_at": None,
                     "cookie_expires_at": None,
-                    "assigned_nodes": 0,
+                    "assigned_nodes": 1,
                     "credentials_present": {
                         "oauth-refresh-token": True,
                         "xsrf-token": True,
@@ -175,13 +291,1402 @@ def test_init_db_migrates_legacy_earnapp_accounts_without_exposing_or_losing_cre
                 "oauth-refresh-token": "legacy-refresh-secret",
                 "xsrf-token": "legacy-xsrf-secret",
             }
-            assert (await (await db.execute("SELECT COUNT(*) AS count FROM earnapp_account_leases")).fetchone())[
-                "count"
-            ] == 1
+            archived_account = await (
+                await db.execute(
+                    "SELECT account_name, cookies_enc, state FROM earnapp_accounts_legacy_v18 WHERE id = 1"
+                )
+            ).fetchone()
+            assert archived_account["account_name"] == "owner@example.com"
+            assert archived_account["cookies_enc"].startswith("enc:")
+            assert json.loads(database.decrypt_value(archived_account["cookies_enc"])) == _valid_legacy_credentials()
+            assert archived_account["state"] == "VALID"
+            archived_lease = await (
+                await db.execute("SELECT * FROM earnapp_account_leases_legacy_v18 WHERE id = 1")
+            ).fetchone()
+            assert archived_lease["account_id"] == 1
+            assert archived_lease["worker_id"] == 25883
+            assert archived_lease["instance_id"] == "earnapp-proxy"
+
+            node = await (
+                await db.execute("SELECT * FROM earnapp_logical_nodes WHERE logical_node_id = 'legacy-earnapp-lease-1'")
+            ).fetchone()
+            assert node["account_id"] == 1
+            assert node["state"] == "RECOVERABLE"
+            assert node["assigned_worker_id"] is None
+            assert node["last_worker_id"] == 25883
+            assert node["last_heartbeat_at"] == "2026-08-18 08:29:27"
+            assert await (await db.execute("PRAGMA foreign_key_check")).fetchall() == []
+            assert (await (await db.execute("PRAGMA foreign_keys")).fetchone())[0] == 1
 
             await database.init_db()
             assert await earnapp_accounts.list_accounts() == public
             assert (await (await db.execute("SELECT COUNT(*) AS count FROM earnapp_accounts")).fetchone())["count"] == 1
+            assert (await (await db.execute("SELECT COUNT(*) AS count FROM earnapp_logical_nodes")).fetchone())[
+                "count"
+            ] == 1
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    ("legacy_state", "expected_state"),
+    [
+        ("VALID", "DISABLED"),
+        ("DISABLED", "DISABLED"),
+        ("EXPIRED", "EXPIRED"),
+        ("AUTH_FAILED", "AUTH_FAILED"),
+        ("DELETED", "DELETED"),
+    ],
+)
+def test_legacy_earnapp_account_state_is_never_reactivated(tmp_path, legacy_state, expected_state):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await _seed_legacy_earnapp_schema(
+                db,
+                [
+                    {
+                        "id": 1,
+                        "account_name": "owner@example.com",
+                        "cookies_enc": database.encrypt_value(json.dumps(_valid_legacy_credentials(), sort_keys=True)),
+                        "state": legacy_state,
+                    }
+                ],
+            )
+
+            await database.init_db()
+
+            row = await (
+                await db.execute("SELECT state, credential_keys_json FROM earnapp_accounts WHERE id = 1")
+            ).fetchone()
+            assert row["state"] == expected_state
+            assert json.loads(row["credential_keys_json"]) == ["oauth-refresh-token", "xsrf-token"]
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("broken_ciphertext", ["enc:not-a-fernet-token", "not-json"])
+def test_legacy_earnapp_credentials_fail_closed_and_archive_original_ciphertext(tmp_path, broken_ciphertext):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await _seed_legacy_earnapp_schema(
+                db,
+                [{"id": 1, "account_name": "broken@example.com", "cookies_enc": broken_ciphertext}],
+            )
+
+            await database.init_db()
+
+            archived = await (
+                await db.execute("SELECT cookies_enc FROM earnapp_accounts_legacy_v18 WHERE id = 1")
+            ).fetchone()
+            migrated = await (
+                await db.execute(
+                    "SELECT state, credentials_enc, credential_keys_json FROM earnapp_accounts WHERE id = 1"
+                )
+            ).fetchone()
+            assert archived["cookies_enc"] == broken_ciphertext
+            assert migrated["state"] == "DISABLED"
+            assert migrated["credentials_enc"] == ""
+            assert json.loads(migrated["credential_keys_json"]) == []
+            assert await earnapp_accounts.get_account_credentials(1) == {
+                "id": 1,
+                "profile_key": "legacy-account-1",
+                "account_name": "broken@example.com",
+                "email": "broken@example.com",
+                "auth_method": "google",
+                "state": "DISABLED",
+                "token_expires_at": None,
+                "cookie_expires_at": None,
+                "cookies": {},
+            }
+
+    asyncio.run(run())
+
+
+def test_legacy_earnapp_migration_resumes_from_archived_tables_idempotently(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await _seed_legacy_earnapp_schema(
+                db,
+                [
+                    {
+                        "id": 7,
+                        "account_name": "resume@example.com",
+                        "cookies_enc": database.encrypt_value(
+                            json.dumps(_valid_legacy_credentials("resume@example.com"), sort_keys=True)
+                        ),
+                    }
+                ],
+                [{"id": 9, "account_id": 7, "worker_id": 99, "instance_id": "earnapp-direct"}],
+            )
+            await db.execute("ALTER TABLE earnapp_accounts RENAME TO earnapp_accounts_legacy_v18")
+            await db.execute("ALTER TABLE earnapp_account_leases RENAME TO earnapp_account_leases_legacy_v18")
+            await db.commit()
+
+            await database.init_db()
+            await database.init_db()
+
+            account = await (await db.execute("SELECT * FROM earnapp_accounts WHERE id = 7")).fetchone()
+            node = await (
+                await db.execute("SELECT * FROM earnapp_logical_nodes WHERE logical_node_id = 'legacy-earnapp-lease-9'")
+            ).fetchone()
+            assert account["state"] == "DISABLED"
+            assert node["account_id"] == 7
+            assert node["last_worker_id"] == 99
+            assert (await (await db.execute("SELECT COUNT(*) AS count FROM earnapp_accounts_legacy_v18")).fetchone())[
+                "count"
+            ] == 1
+            assert (
+                await (await db.execute("SELECT COUNT(*) AS count FROM earnapp_account_leases_legacy_v18")).fetchone()
+            )["count"] == 1
+            assert await (await db.execute("PRAGMA foreign_key_check")).fetchall() == []
+
+    asyncio.run(run())
+
+
+def test_legacy_earnapp_migration_rehearses_live_shape_with_three_orphan_leases(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await _seed_legacy_earnapp_schema(
+                db,
+                [{"id": 1, "account_name": "live@example.com", "cookies_enc": "not-json"}],
+                [
+                    {"id": 11, "account_id": 1, "worker_id": 101, "instance_id": "earnapp-1"},
+                    {"id": 12, "account_id": 1, "worker_id": 102, "instance_id": "earnapp-2"},
+                    {"id": 13, "account_id": 1, "worker_id": 103, "instance_id": "earnapp-3"},
+                ],
+            )
+
+            await database.init_db()
+            await database.init_db()
+
+            counts = {}
+            for table in (
+                "earnapp_accounts",
+                "earnapp_accounts_legacy_v18",
+                "earnapp_account_leases_legacy_v18",
+                "earnapp_logical_nodes",
+            ):
+                row = await (await db.execute(f"SELECT COUNT(*) AS count FROM {table}")).fetchone()
+                counts[table] = row["count"]
+            assert counts == {
+                "earnapp_accounts": 1,
+                "earnapp_accounts_legacy_v18": 1,
+                "earnapp_account_leases_legacy_v18": 3,
+                "earnapp_logical_nodes": 3,
+            }
+            states = await (
+                await db.execute("SELECT state, assigned_worker_id FROM earnapp_logical_nodes ORDER BY logical_node_id")
+            ).fetchall()
+            assert [(row["state"], row["assigned_worker_id"]) for row in states] == [
+                ("RECOVERABLE", None),
+                ("RECOVERABLE", None),
+                ("RECOVERABLE", None),
+            ]
+            assert await database._earnapp_migration_marker(db) == "complete"
+            assert await (await db.execute("PRAGMA foreign_key_check")).fetchall() == []
+
+    asyncio.run(run())
+
+
+def test_legacy_earnapp_migration_rebinds_live_shape_foreign_keys_to_current_accounts(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await _seed_legacy_earnapp_schema(
+                db,
+                [
+                    {
+                        "id": 1,
+                        "account_name": "owner@example.com",
+                        "cookies_enc": database.encrypt_value(json.dumps(_valid_legacy_credentials(), sort_keys=True)),
+                    }
+                ],
+                [{"id": 1, "account_id": 1, "worker_id": 25883, "instance_id": "earnapp-proxy"}],
+                include_current_children=True,
+            )
+            await db.execute(
+                "INSERT INTO earnapp_logical_nodes (logical_node_id, account_id, state) VALUES ('existing-node', 1, 'PLANNED')"
+            )
+            await db.execute("INSERT INTO earnapp_account_snapshots (account_id, money_balance) VALUES (1, 10.5)")
+            await db.execute(
+                """
+                INSERT INTO earnapp_replacement_tickets
+                    (logical_node_id, target_worker_id, generation, token_hash, expires_at)
+                VALUES ('existing-node', 99, 1, 'hash-existing', '2099-01-01')
+                """
+            )
+            await db.commit()
+
+            await database.init_db()
+
+            for table in (
+                "earnapp_logical_nodes",
+                "earnapp_account_control_routes",
+                "earnapp_account_snapshots",
+            ):
+                foreign_keys = await (await db.execute(f"PRAGMA foreign_key_list({table})")).fetchall()
+                account_targets = [row["table"] for row in foreign_keys if row["from"] == "account_id"]
+                assert account_targets == ["earnapp_accounts"]
+            ticket_targets = await (await db.execute("PRAGMA foreign_key_list(earnapp_replacement_tickets)")).fetchall()
+            assert [row["table"] for row in ticket_targets if row["from"] == "logical_node_id"] == [
+                "earnapp_logical_nodes"
+            ]
+            lease_targets = await (
+                await db.execute("PRAGMA foreign_key_list(earnapp_account_leases_legacy_v18)")
+            ).fetchall()
+            assert [row["table"] for row in lease_targets if row["from"] == "account_id"] == [
+                "earnapp_accounts_legacy_v18"
+            ]
+            assert await (await db.execute("PRAGMA foreign_key_check")).fetchall() == []
+            assert (await (await db.execute("SELECT COUNT(*) AS count FROM earnapp_logical_nodes")).fetchone())[
+                "count"
+            ] == 2
+            assert (await (await db.execute("SELECT COUNT(*) AS count FROM earnapp_account_snapshots")).fetchone())[
+                "count"
+            ] == 1
+            assert (await (await db.execute("SELECT COUNT(*) AS count FROM earnapp_replacement_tickets")).fetchone())[
+                "count"
+            ] == 1
+
+    asyncio.run(run())
+
+
+def test_legacy_earnapp_migration_preserves_child_indexes_and_triggers(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await _seed_legacy_earnapp_schema(
+                db,
+                [{"id": 1, "account_name": "legacy@example.com", "cookies_enc": "not-json"}],
+                include_current_children=True,
+            )
+            await db.executescript(
+                """
+                CREATE TABLE earnapp_snapshot_audit (
+                    snapshot_id INTEGER NOT NULL,
+                    account_id INTEGER NOT NULL
+                );
+                CREATE INDEX idx_earnapp_snapshots_balance
+                    ON earnapp_account_snapshots(account_id, money_balance);
+                CREATE TRIGGER trg_earnapp_snapshot_audit
+                    AFTER INSERT ON earnapp_account_snapshots
+                    BEGIN
+                        INSERT INTO earnapp_snapshot_audit (snapshot_id, account_id)
+                        VALUES (NEW.id, NEW.account_id);
+                    END;
+                """
+            )
+            await db.execute("INSERT INTO earnapp_account_snapshots (account_id, money_balance) VALUES (1, 10.5)")
+            await db.commit()
+
+            await database.init_db()
+
+            objects = await (
+                await db.execute(
+                    """
+                    SELECT type, name
+                    FROM sqlite_master
+                    WHERE tbl_name = 'earnapp_account_snapshots'
+                      AND name IN ('idx_earnapp_snapshots_balance', 'trg_earnapp_snapshot_audit')
+                    ORDER BY type, name
+                    """
+                )
+            ).fetchall()
+            assert [tuple(row) for row in objects] == [
+                ("index", "idx_earnapp_snapshots_balance"),
+                ("trigger", "trg_earnapp_snapshot_audit"),
+            ]
+            index_names = [
+                row["name"]
+                for row in await (await db.execute("PRAGMA index_list(earnapp_account_snapshots)")).fetchall()
+            ]
+            assert "idx_earnapp_account_snapshots_latest" in index_names
+
+            await db.execute("INSERT INTO earnapp_account_snapshots (account_id, money_balance) VALUES (1, 20.5)")
+            await db.commit()
+            audit_rows = await (
+                await db.execute("SELECT account_id FROM earnapp_snapshot_audit ORDER BY snapshot_id")
+            ).fetchall()
+            assert [row["account_id"] for row in audit_rows] == [1, 1]
+
+    asyncio.run(run())
+
+
+def test_legacy_migration_fails_closed_for_unknown_account_child_table(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await _seed_legacy_earnapp_schema(
+                db,
+                [{"id": 1, "account_name": "legacy@example.com", "cookies_enc": "not-json"}],
+            )
+            await db.executescript(
+                """
+                CREATE TABLE earnapp_unknown_child (
+                    id INTEGER PRIMARY KEY,
+                    account_id INTEGER NOT NULL,
+                    payload TEXT NOT NULL,
+                    FOREIGN KEY(account_id) REFERENCES earnapp_accounts(id) ON DELETE CASCADE
+                );
+                INSERT INTO earnapp_unknown_child (id, account_id, payload)
+                VALUES (1, 1, 'must-preserve');
+                """
+            )
+            await db.commit()
+
+            with pytest.raises(RuntimeError, match="unknown EarnApp account child"):
+                await database.init_db()
+
+            row = await (await db.execute("SELECT payload FROM earnapp_unknown_child WHERE id = 1")).fetchone()
+            assert row["payload"] == "must-preserve"
+            assert await database._table_exists(db, "earnapp_accounts")
+            assert not await database._table_exists(db, "earnapp_accounts_legacy_v18")
+
+    asyncio.run(run())
+
+
+def test_legacy_migration_fails_closed_for_external_trigger_referencing_legacy_account_table(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await _seed_legacy_earnapp_schema(
+                db,
+                [{"id": 1, "account_name": "legacy@example.com", "cookies_enc": "not-json"}],
+            )
+            await db.executescript(
+                """
+                CREATE TABLE earnapp_account_audit (account_id INTEGER NOT NULL);
+                CREATE TRIGGER trg_external_account_audit
+                    AFTER INSERT ON earnapp_account_audit
+                    BEGIN
+                        UPDATE earnapp_accounts SET state = 'DISABLED' WHERE id = NEW.account_id;
+                    END;
+                """
+            )
+            await db.commit()
+
+            with pytest.raises(RuntimeError, match="external trigger references EarnApp child table"):
+                await database.init_db()
+
+            assert await database._table_exists(db, "earnapp_accounts")
+            assert not await database._table_exists(db, "earnapp_accounts_legacy_v18")
+
+    asyncio.run(run())
+
+
+def test_legacy_migration_fails_closed_for_unknown_logical_node_child(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await _seed_legacy_earnapp_schema(
+                db,
+                [{"id": 1, "account_name": "legacy@example.com", "cookies_enc": "not-json"}],
+                include_current_children=True,
+            )
+            await db.executescript(
+                """
+                INSERT INTO earnapp_logical_nodes (logical_node_id, account_id)
+                VALUES ('existing-node', 1);
+                CREATE TABLE earnapp_unknown_logical_child (
+                    id INTEGER PRIMARY KEY,
+                    logical_node_id TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    FOREIGN KEY(logical_node_id) REFERENCES earnapp_logical_nodes(logical_node_id) ON DELETE CASCADE
+                );
+                INSERT INTO earnapp_unknown_logical_child (id, logical_node_id, payload)
+                VALUES (1, 'existing-node', 'must-preserve');
+                """
+            )
+            await db.commit()
+
+            with pytest.raises(RuntimeError, match="unknown EarnApp logical-node child"):
+                await database.init_db()
+
+            row = await (await db.execute("SELECT payload FROM earnapp_unknown_logical_child WHERE id = 1")).fetchone()
+            assert row["payload"] == "must-preserve"
+            assert await database._table_exists(db, "earnapp_accounts")
+            assert not await database._table_exists(db, "earnapp_accounts_legacy_v18")
+            assert not await database._table_exists(db, "earnapp_logical_nodes_legacy_fk_v19")
+
+    asyncio.run(run())
+
+
+def test_legacy_migration_fails_closed_for_external_trigger_referencing_rebuilt_child(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await _seed_legacy_earnapp_schema(
+                db,
+                [{"id": 1, "account_name": "legacy@example.com", "cookies_enc": "not-json"}],
+                include_current_children=True,
+            )
+            await db.executescript(
+                """
+                CREATE TABLE earnapp_snapshot_audit (snapshot_id INTEGER NOT NULL);
+                CREATE TRIGGER trg_external_snapshot_audit
+                    AFTER INSERT ON earnapp_snapshot_audit
+                    BEGIN
+                        INSERT INTO earnapp_account_snapshots (account_id, money_balance)
+                        VALUES (1, 99);
+                    END;
+                """
+            )
+            await db.commit()
+
+            with pytest.raises(RuntimeError, match="external trigger references EarnApp child table"):
+                await database.init_db()
+
+            assert await database._table_exists(db, "earnapp_accounts")
+            assert not await database._table_exists(db, "earnapp_accounts_legacy_v18")
+            trigger = await (
+                await db.execute(
+                    "SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'trg_external_snapshot_audit'"
+                )
+            ).fetchone()
+            assert "INSERT INTO earnapp_account_snapshots" in trigger["sql"]
+
+    asyncio.run(run())
+
+
+def test_legacy_earnapp_migration_recovers_stranded_pr41_v19_rows(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await db.executescript(
+                """
+                CREATE TABLE earnapp_accounts_v19 (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    profile_key TEXT NOT NULL UNIQUE,
+                    account_name TEXT NOT NULL,
+                    email TEXT NOT NULL DEFAULT '',
+                    auth_method TEXT NOT NULL,
+                    credentials_enc TEXT NOT NULL,
+                    credential_keys_json TEXT NOT NULL DEFAULT '[]',
+                    token_expires_at TEXT,
+                    cookie_expires_at TEXT,
+                    state TEXT NOT NULL DEFAULT 'ACTIVE',
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                );
+                """
+            )
+            credentials_enc = database.encrypt_value(
+                json.dumps(
+                    {
+                        "cookies": {
+                            "oauth-refresh-token": "stranded-refresh",
+                            "xsrf-token": "stranded-xsrf",
+                        }
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            )
+            await db.execute(
+                """
+                INSERT INTO earnapp_accounts_v19
+                    (id, profile_key, account_name, email, auth_method, credentials_enc,
+                     credential_keys_json, state, created_at, updated_at)
+                VALUES (3, 'legacy-account-3', 'stranded@example.com', 'stranded@example.com',
+                        'google', ?, '["oauth-refresh-token","xsrf-token"]', 'ACTIVE',
+                        '2026-08-18 08:13:08', '2026-08-18 08:13:17')
+                """,
+                (credentials_enc,),
+            )
+            await db.commit()
+
+            await database.init_db()
+
+            row = await (await db.execute("SELECT * FROM earnapp_accounts WHERE id = 3")).fetchone()
+            assert row["profile_key"] == "legacy-account-3"
+            assert row["state"] == "DISABLED"
+            assert row["credentials_enc"] == credentials_enc
+            assert not await database._table_exists(db, "earnapp_accounts_v19")
+            assert await database._table_exists(db, "earnapp_accounts_v19_legacy")
+
+    asyncio.run(run())
+
+
+def test_stranded_v19_recovery_accepts_equivalent_fernet_plaintext(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await db.executescript(database._SCHEMA)
+            await database._create_earnapp_current_schema(db)
+            plaintext = json.dumps(
+                {"cookies": {"oauth-refresh-token": "refresh", "xsrf-token": "xsrf"}},
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            current_ciphertext = database.encrypt_value(plaintext)
+            source_ciphertext = database.encrypt_value(plaintext)
+            assert current_ciphertext != source_ciphertext
+            await db.execute(
+                """
+                INSERT INTO earnapp_accounts
+                    (id, profile_key, account_name, email, auth_method, credentials_enc,
+                     credential_keys_json, state, created_at, updated_at)
+                VALUES (3, 'legacy-account-3', 'stranded@example.com', 'stranded@example.com',
+                        'google', ?, '["oauth-refresh-token","xsrf-token"]', 'DISABLED',
+                        '2026-08-18 08:13:08', '2026-08-18 08:13:17')
+                """,
+                (current_ciphertext,),
+            )
+            await db.executescript(
+                """
+                CREATE TABLE earnapp_accounts_v19 (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    profile_key TEXT NOT NULL UNIQUE,
+                    account_name TEXT NOT NULL,
+                    email TEXT NOT NULL DEFAULT '',
+                    auth_method TEXT NOT NULL CHECK(auth_method IN ('google', 'apple')),
+                    credentials_enc TEXT NOT NULL,
+                    credential_keys_json TEXT NOT NULL DEFAULT '[]',
+                    token_expires_at TEXT,
+                    cookie_expires_at TEXT,
+                    state TEXT NOT NULL DEFAULT 'ACTIVE',
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                );
+                """
+            )
+            await db.execute(
+                """
+                INSERT INTO earnapp_accounts_v19
+                    (id, profile_key, account_name, email, auth_method, credentials_enc,
+                     credential_keys_json, state, created_at, updated_at)
+                VALUES (3, 'legacy-account-3', 'stranded@example.com', 'stranded@example.com',
+                        'google', ?, '["oauth-refresh-token","xsrf-token"]', 'ACTIVE',
+                        '2026-08-18 08:13:08', '2026-08-18 08:13:17')
+                """,
+                (source_ciphertext,),
+            )
+            await db.commit()
+
+            await database.init_db()
+
+            row = await (
+                await db.execute("SELECT credentials_enc, state FROM earnapp_accounts WHERE id = 3")
+            ).fetchone()
+            assert row["credentials_enc"] == current_ciphertext
+            assert row["state"] == "DISABLED"
+            assert await database._table_exists(db, "earnapp_accounts_v19_legacy")
+
+    asyncio.run(run())
+
+
+def test_stranded_v19_recovery_rejects_malformed_ciphertext_against_valid_source(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await db.executescript(database._SCHEMA)
+            await database._create_earnapp_current_schema(db)
+            await db.execute(
+                """
+                INSERT INTO earnapp_accounts
+                    (id, profile_key, account_name, email, auth_method, credentials_enc,
+                     credential_keys_json, state, created_at, updated_at)
+                VALUES (3, 'legacy-account-3', 'stranded@example.com', 'stranded@example.com',
+                        'google', 'enc:malformed', '["oauth-refresh-token","xsrf-token"]', 'DISABLED',
+                        '2026-08-18 08:13:08', '2026-08-18 08:13:17')
+                """
+            )
+            await db.executescript(
+                """
+                CREATE TABLE earnapp_accounts_v19 (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    profile_key TEXT NOT NULL UNIQUE,
+                    account_name TEXT NOT NULL,
+                    email TEXT NOT NULL DEFAULT '',
+                    auth_method TEXT NOT NULL CHECK(auth_method IN ('google', 'apple')),
+                    credentials_enc TEXT NOT NULL,
+                    credential_keys_json TEXT NOT NULL DEFAULT '[]',
+                    token_expires_at TEXT,
+                    cookie_expires_at TEXT,
+                    state TEXT NOT NULL DEFAULT 'ACTIVE',
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                );
+                """
+            )
+            source_ciphertext = database.encrypt_value(
+                json.dumps({"cookies": {"oauth-refresh-token": "refresh", "xsrf-token": "xsrf"}})
+            )
+            await db.execute(
+                """
+                INSERT INTO earnapp_accounts_v19
+                    (id, profile_key, account_name, email, auth_method, credentials_enc,
+                     credential_keys_json, state, created_at, updated_at)
+                VALUES (3, 'legacy-account-3', 'stranded@example.com', 'stranded@example.com',
+                        'google', ?, '["oauth-refresh-token","xsrf-token"]', 'ACTIVE',
+                        '2026-08-18 08:13:08', '2026-08-18 08:13:17')
+                """,
+                (source_ciphertext,),
+            )
+            await db.commit()
+
+            with pytest.raises(RuntimeError, match="Conflicting partial EarnApp account row 3"):
+                await database.init_db()
+
+            assert not await database._table_exists(db, "earnapp_accounts_v19_legacy")
+
+    asyncio.run(run())
+
+
+def test_stranded_v19_recovery_fails_closed_for_unknown_child_table(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await db.executescript(database._SCHEMA)
+            await db.executescript(
+                """
+                CREATE TABLE earnapp_accounts_v19 (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    profile_key TEXT NOT NULL UNIQUE,
+                    account_name TEXT NOT NULL,
+                    email TEXT NOT NULL DEFAULT '',
+                    auth_method TEXT NOT NULL,
+                    credentials_enc TEXT NOT NULL,
+                    credential_keys_json TEXT NOT NULL DEFAULT '[]',
+                    token_expires_at TEXT,
+                    cookie_expires_at TEXT,
+                    state TEXT NOT NULL DEFAULT 'ACTIVE',
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                );
+                CREATE TABLE earnapp_unknown_v19_child (
+                    id INTEGER PRIMARY KEY,
+                    account_id INTEGER NOT NULL,
+                    payload TEXT NOT NULL,
+                    FOREIGN KEY(account_id) REFERENCES earnapp_accounts_v19(id) ON DELETE CASCADE
+                );
+                INSERT INTO earnapp_accounts_v19
+                    (id, profile_key, account_name, email, auth_method, credentials_enc)
+                VALUES (1, 'legacy-account-1', 'legacy@example.com', 'legacy@example.com', 'google', '');
+                INSERT INTO earnapp_unknown_v19_child (id, account_id, payload)
+                VALUES (1, 1, 'must-preserve');
+                """
+            )
+
+            with pytest.raises(RuntimeError, match="unknown EarnApp account child"):
+                await database.init_db()
+
+            row = await (await db.execute("SELECT payload FROM earnapp_unknown_v19_child WHERE id = 1")).fetchone()
+            assert row["payload"] == "must-preserve"
+            assert await database._table_exists(db, "earnapp_accounts_v19")
+            assert not await database._table_exists(db, "earnapp_accounts_v19_legacy")
+
+    asyncio.run(run())
+
+
+def test_legacy_migration_rejects_overlapping_v18_and_stranded_v19_archives(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            credentials = _valid_legacy_credentials("overlap@example.com")
+            await _seed_legacy_earnapp_schema(
+                db,
+                [
+                    {
+                        "id": 1,
+                        "account_name": "overlap@example.com",
+                        "cookies_enc": database.encrypt_value(json.dumps(credentials, sort_keys=True)),
+                    }
+                ],
+            )
+            await db.execute("ALTER TABLE earnapp_accounts RENAME TO earnapp_accounts_legacy_v18")
+            await db.execute("ALTER TABLE earnapp_account_leases RENAME TO earnapp_account_leases_legacy_v18")
+            await db.executescript(
+                """
+                CREATE TABLE earnapp_accounts_v19 (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    profile_key TEXT NOT NULL UNIQUE,
+                    account_name TEXT NOT NULL,
+                    email TEXT NOT NULL DEFAULT '',
+                    auth_method TEXT NOT NULL,
+                    credentials_enc TEXT NOT NULL,
+                    credential_keys_json TEXT NOT NULL DEFAULT '[]',
+                    token_expires_at TEXT,
+                    cookie_expires_at TEXT,
+                    state TEXT NOT NULL DEFAULT 'ACTIVE',
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                );
+                """
+            )
+            normalized = {
+                "cookies": {
+                    "oauth-refresh-token": "legacy-refresh-secret",
+                    "xsrf-token": "legacy-xsrf-secret",
+                }
+            }
+            await db.execute(
+                """
+                INSERT INTO earnapp_accounts_v19
+                    (id, profile_key, account_name, email, auth_method, credentials_enc,
+                     credential_keys_json, state, created_at, updated_at)
+                VALUES (1, 'legacy-account-1', 'overlap@example.com', 'overlap@example.com',
+                        'google', ?, '["oauth-refresh-token","xsrf-token"]', 'ACTIVE',
+                        '2026-08-18 08:13:08', '2026-08-18 08:13:17')
+                """,
+                (database.encrypt_value(json.dumps(normalized, sort_keys=True, separators=(",", ":"))),),
+            )
+            await db.commit()
+
+            with pytest.raises(RuntimeError, match="duplicate account IDs"):
+                await database.init_db()
+
+            assert await database._table_exists(db, "earnapp_accounts_legacy_v18")
+            assert await database._table_exists(db, "earnapp_accounts_v19")
+            assert not await database._table_exists(db, "earnapp_accounts_v19_legacy")
+
+    asyncio.run(run())
+
+
+def test_legacy_earnapp_migration_rejects_conflicting_canonical_account_and_rolls_back(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await _seed_legacy_earnapp_schema(
+                db,
+                [{"id": 1, "account_name": "legacy@example.com", "cookies_enc": "not-json"}],
+            )
+            await db.execute("ALTER TABLE earnapp_accounts RENAME TO earnapp_accounts_legacy_v18")
+            await db.execute("ALTER TABLE earnapp_account_leases RENAME TO earnapp_account_leases_legacy_v18")
+            await db.executescript(database._SCHEMA)
+            await database._create_earnapp_current_schema(db)
+            await db.execute(
+                """
+                INSERT INTO earnapp_accounts
+                    (id, profile_key, account_name, email, auth_method, credentials_enc,
+                     credential_keys_json, state, created_at, updated_at)
+                VALUES (1, 'canonical-profile', 'canonical@example.com', 'canonical@example.com',
+                        'google', '', '[]', 'DISABLED', '2026-08-18 08:13:08', '2026-08-18 08:13:17')
+                """
+            )
+            await db.commit()
+
+            with pytest.raises(RuntimeError, match="Conflicting canonical EarnApp account row 1"):
+                await database.init_db()
+
+            row = await (
+                await db.execute("SELECT profile_key, account_name FROM earnapp_accounts WHERE id = 1")
+            ).fetchone()
+            assert dict(row) == {"profile_key": "canonical-profile", "account_name": "canonical@example.com"}
+            assert await database._table_exists(db, "earnapp_accounts_legacy_v18")
+
+    asyncio.run(run())
+
+
+def test_legacy_earnapp_migration_does_not_equate_failed_decryption_with_empty_credentials(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await _seed_legacy_earnapp_schema(
+                db,
+                [
+                    {
+                        "id": 1,
+                        "account_name": "same@example.com",
+                        "cookies_enc": "not-json",
+                    }
+                ],
+            )
+            await db.execute("ALTER TABLE earnapp_accounts RENAME TO earnapp_accounts_legacy_v18")
+            await db.execute("ALTER TABLE earnapp_account_leases RENAME TO earnapp_account_leases_legacy_v18")
+            await db.executescript(database._SCHEMA)
+            await database._create_earnapp_current_schema(db)
+            await db.execute(
+                """
+                INSERT INTO earnapp_accounts
+                    (id, profile_key, account_name, email, auth_method, credentials_enc,
+                     credential_keys_json, state, created_at, updated_at)
+                VALUES (1, 'legacy-account-1', 'same@example.com', 'same@example.com',
+                        'google', 'enc:wrong-key-ciphertext', '[]', 'DISABLED',
+                        '2026-08-18 08:13:08', '2026-08-18 08:13:17')
+                """
+            )
+            await db.commit()
+
+            with pytest.raises(RuntimeError, match="Conflicting canonical EarnApp account row 1"):
+                await database.init_db()
+
+    asyncio.run(run())
+
+
+def test_legacy_earnapp_migration_writes_marker_on_old_config_schema(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await db.executescript(
+                """
+                CREATE TABLE config (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                """
+            )
+            await _seed_legacy_earnapp_schema(
+                db,
+                [{"id": 1, "account_name": "old-config@example.com", "cookies_enc": "not-json"}],
+            )
+
+            await database.init_db()
+
+            assert await database._earnapp_migration_marker(db) == "complete"
+            config_columns = await database._table_columns(db, "config")
+            assert "updated_at" in config_columns
+
+    asyncio.run(run())
+
+
+def test_legacy_earnapp_migration_rejects_conflicting_logical_node_and_rolls_back(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await _seed_legacy_earnapp_schema(
+                db,
+                [
+                    {
+                        "id": 1,
+                        "account_name": "legacy@example.com",
+                        "cookies_enc": "not-json",
+                    }
+                ],
+                [{"id": 9, "account_id": 1, "worker_id": 99, "instance_id": "earnapp-proxy"}],
+            )
+            await db.execute("ALTER TABLE earnapp_accounts RENAME TO earnapp_accounts_legacy_v18")
+            await db.execute("ALTER TABLE earnapp_account_leases RENAME TO earnapp_account_leases_legacy_v18")
+            await db.executescript(database._SCHEMA)
+            await database._create_earnapp_current_schema(db)
+            await db.execute(
+                """
+                INSERT INTO earnapp_accounts
+                    (id, profile_key, account_name, email, auth_method, credentials_enc,
+                     credential_keys_json, state, created_at, updated_at)
+                VALUES (1, 'legacy-account-1', 'legacy@example.com', 'legacy@example.com',
+                        'google', '', '[]', 'DISABLED', '2026-08-18 08:13:08', '2026-08-18 08:13:17')
+                """
+            )
+            await db.execute(
+                """
+                INSERT INTO earnapp_logical_nodes
+                    (logical_node_id, account_id, state, assigned_worker_id, last_worker_id,
+                     last_heartbeat_at, created_at, updated_at)
+                VALUES ('legacy-earnapp-lease-9', 1, 'PLANNED', NULL, 123,
+                        '2026-08-18 08:29:27', '2026-08-18 08:29:27', '2026-08-18 08:29:27')
+                """
+            )
+            await db.commit()
+
+            with pytest.raises(RuntimeError, match="Conflicting logical EarnApp node legacy-earnapp-lease-9"):
+                await database.init_db()
+
+            row = await (
+                await db.execute(
+                    "SELECT state, last_worker_id FROM earnapp_logical_nodes WHERE logical_node_id = ?",
+                    ("legacy-earnapp-lease-9",),
+                )
+            ).fetchone()
+            assert dict(row) == {"state": "PLANNED", "last_worker_id": 123}
+            assert await database._table_exists(db, "earnapp_account_leases_legacy_v18")
+
+    asyncio.run(run())
+
+
+def test_legacy_earnapp_migration_rejects_archive_name_collision_without_dropping_rows(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await _seed_legacy_earnapp_schema(
+                db,
+                [{"id": 1, "account_name": "live@example.com", "cookies_enc": "not-json"}],
+            )
+            await db.execute("ALTER TABLE earnapp_accounts RENAME TO earnapp_accounts_legacy_v18")
+            await db.execute(
+                """
+                CREATE TABLE earnapp_accounts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_name TEXT NOT NULL UNIQUE,
+                    cookies_enc TEXT NOT NULL,
+                    state TEXT NOT NULL DEFAULT 'VALID',
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                )
+                """
+            )
+            await db.execute(
+                "INSERT INTO earnapp_accounts (id, account_name, cookies_enc) VALUES (2, 'second@example.com', 'not-json')"
+            )
+            await db.commit()
+
+            with pytest.raises(RuntimeError, match="Both live and archived legacy earnapp_accounts tables exist"):
+                await database.init_db()
+
+            assert (await (await db.execute("SELECT COUNT(*) AS count FROM earnapp_accounts_legacy_v18")).fetchone())[
+                "count"
+            ] == 1
+            assert (await (await db.execute("SELECT COUNT(*) AS count FROM earnapp_accounts")).fetchone())["count"] == 1
+
+    asyncio.run(run())
+
+
+def test_archived_stranded_v19_without_marker_fails_closed(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await db.executescript(database._SCHEMA)
+            await db.executescript(
+                """
+                CREATE TABLE earnapp_accounts_v19 (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    profile_key TEXT NOT NULL UNIQUE,
+                    account_name TEXT NOT NULL,
+                    email TEXT NOT NULL DEFAULT '',
+                    auth_method TEXT NOT NULL,
+                    credentials_enc TEXT NOT NULL,
+                    credential_keys_json TEXT NOT NULL DEFAULT '[]',
+                    token_expires_at TEXT,
+                    cookie_expires_at TEXT,
+                    state TEXT NOT NULL DEFAULT 'ACTIVE',
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                );
+                """
+            )
+            await db.execute(
+                """
+                INSERT INTO earnapp_accounts_v19
+                    (id, profile_key, account_name, email, auth_method, credentials_enc, state)
+                VALUES (8, 'legacy-account-8', 'archived@example.com', 'archived@example.com',
+                        'google', '', 'ACTIVE')
+                """
+            )
+            await db.execute("ALTER TABLE earnapp_accounts_v19 RENAME TO earnapp_accounts_v19_legacy")
+            await db.commit()
+
+            with pytest.raises(RuntimeError, match="archived EarnApp v19 source requires recovery review"):
+                await database.init_db()
+
+            assert await database._earnapp_migration_marker(db) == ""
+            assert await database._table_exists(db, "earnapp_accounts_v19_legacy")
+            assert not await database._table_exists(db, "earnapp_accounts")
+
+    asyncio.run(run())
+
+
+def test_completed_marker_rejects_canonical_schema_without_required_constraints(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await db.executescript(database._SCHEMA)
+            await db.executescript(
+                """
+                CREATE TABLE earnapp_accounts (
+                    id INTEGER,
+                    profile_key TEXT,
+                    account_name TEXT,
+                    email TEXT,
+                    auth_method TEXT,
+                    credentials_enc TEXT,
+                    credential_keys_json TEXT,
+                    token_expires_at TEXT,
+                    cookie_expires_at TEXT,
+                    state TEXT,
+                    created_at TEXT,
+                    updated_at TEXT
+                );
+                CREATE TABLE earnapp_accounts_legacy_v18 (
+                    id INTEGER PRIMARY KEY,
+                    account_name TEXT NOT NULL,
+                    cookies_enc TEXT NOT NULL,
+                    state TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                INSERT INTO earnapp_accounts_legacy_v18
+                    (id, account_name, cookies_enc, state, created_at, updated_at)
+                VALUES (1, 'legacy@example.com', '', 'DISABLED', '2026-08-18', '2026-08-18');
+                INSERT INTO earnapp_accounts
+                    (id, profile_key, account_name, email, auth_method, credentials_enc,
+                     credential_keys_json, state, created_at, updated_at)
+                VALUES (1, 'profile-1', 'legacy@example.com', 'legacy@example.com',
+                        'google', '', '[]', 'DISABLED', '2026-08-18', '2026-08-18');
+                INSERT INTO config (key, value)
+                VALUES ('migration.earnapp_accounts.legacy_v19', 'complete');
+                """
+            )
+            await db.commit()
+
+            with pytest.raises(RuntimeError, match="canonical schema constraints"):
+                await database.init_db()
+
+            assert await database._earnapp_migration_marker(db) == "complete"
+
+    asyncio.run(run())
+
+
+def test_completed_marker_rejects_child_schema_with_wrong_foreign_key(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await db.executescript(database._SCHEMA)
+            await database._create_earnapp_current_schema(db)
+            await db.execute(
+                """
+                INSERT INTO earnapp_accounts
+                    (profile_key, account_name, email, auth_method, credentials_enc, credential_keys_json, state)
+                VALUES ('profile-1', 'legacy@example.com', 'legacy@example.com', 'google', '', '[]', 'DISABLED')
+                """
+            )
+            await db.execute(
+                """
+                CREATE TABLE earnapp_accounts_legacy_v18 (
+                    id INTEGER PRIMARY KEY,
+                    account_name TEXT NOT NULL,
+                    cookies_enc TEXT NOT NULL,
+                    state TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            await db.execute(
+                """
+                INSERT INTO earnapp_accounts_legacy_v18
+                    (id, account_name, cookies_enc, state, created_at, updated_at)
+                VALUES (1, 'legacy@example.com', '', 'DISABLED', '2026-08-18', '2026-08-18')
+                """
+            )
+            await db.execute("DROP TABLE earnapp_logical_nodes")
+            await db.execute(
+                """
+                CREATE TABLE earnapp_logical_nodes (
+                    logical_node_id TEXT PRIMARY KEY,
+                    account_id INTEGER NOT NULL,
+                    state TEXT NOT NULL,
+                    generation INTEGER NOT NULL,
+                    assigned_worker_id INTEGER,
+                    last_worker_id INTEGER,
+                    device_id TEXT NOT NULL,
+                    current_proxy_id INTEGER,
+                    preferred_proxy_id INTEGER,
+                    last_heartbeat_at TEXT,
+                    recovery_started_at TEXT,
+                    recovery_hold_until TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(account_id) REFERENCES earnapp_accounts_legacy_v18(id)
+                )
+                """
+            )
+            await db.execute(
+                "INSERT INTO config (key, value) VALUES (?, 'complete')",
+                (database._EARNAPP_LEGACY_MIGRATION_KEY,),
+            )
+            await db.commit()
+
+            with pytest.raises(RuntimeError, match="canonical child schema"):
+                await database.init_db()
+
+            assert await database._earnapp_migration_marker(db) == "complete"
+
+    asyncio.run(run())
+
+
+def test_completed_marker_rejects_missing_canonical_schema(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await db.executescript(database._SCHEMA)
+            await db.execute(
+                "INSERT INTO config (key, value) VALUES (?, 'complete')",
+                (database._EARNAPP_LEGACY_MIGRATION_KEY,),
+            )
+            await db.execute(
+                """
+                CREATE TABLE earnapp_accounts_legacy_v18 (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_name TEXT NOT NULL UNIQUE,
+                    cookies_enc TEXT NOT NULL,
+                    state TEXT NOT NULL DEFAULT 'VALID',
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                )
+                """
+            )
+            await db.commit()
+
+            with pytest.raises(RuntimeError, match="completion marker requires canonical schema"):
+                await database.init_db()
+
+            assert await database._table_exists(db, "earnapp_accounts_legacy_v18")
+            assert not await database._table_exists(db, "earnapp_accounts")
+
+    asyncio.run(run())
+
+
+def test_completed_marker_rejects_missing_canonical_without_archive(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await db.executescript(database._SCHEMA)
+            await db.execute(
+                "INSERT INTO config (key, value) VALUES (?, 'complete')",
+                (database._EARNAPP_LEGACY_MIGRATION_KEY,),
+            )
+            await db.commit()
+
+            with pytest.raises(RuntimeError, match="completion marker requires canonical schema"):
+                await database.init_db()
+
+            assert not await database._table_exists(db, "earnapp_accounts")
+
+    asyncio.run(run())
+
+
+def test_completed_marker_rejects_partial_canonical_schema(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await db.executescript(database._SCHEMA)
+            await db.execute(
+                "INSERT INTO config (key, value) VALUES (?, 'complete')",
+                (database._EARNAPP_LEGACY_MIGRATION_KEY,),
+            )
+            await db.execute("CREATE TABLE earnapp_accounts (id INTEGER PRIMARY KEY, profile_key TEXT NOT NULL UNIQUE)")
+            await db.commit()
+
+            with pytest.raises(RuntimeError, match="canonical schema missing columns"):
+                await database.init_db()
+
+            assert await database._table_columns(db, "earnapp_accounts") == {"id", "profile_key"}
+
+    asyncio.run(run())
+
+
+def test_partial_canonical_schema_without_marker_fails_closed(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await db.executescript(database._SCHEMA)
+            await db.execute("CREATE TABLE earnapp_accounts (id INTEGER PRIMARY KEY, profile_key TEXT NOT NULL UNIQUE)")
+            await db.commit()
+
+            with pytest.raises(RuntimeError, match="canonical schema missing columns"):
+                await database.init_db()
+
+            assert await database._earnapp_migration_marker(db) == ""
+            assert await database._table_columns(db, "earnapp_accounts") == {"id", "profile_key"}
+
+    asyncio.run(run())
+
+
+def test_completed_marker_rejects_missing_canonical_archive_row(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await _seed_legacy_earnapp_schema(
+                db,
+                [
+                    {
+                        "id": 1,
+                        "account_name": "archived@example.com",
+                        "cookies_enc": database.encrypt_value(
+                            json.dumps(_valid_legacy_credentials("archived@example.com"), sort_keys=True)
+                        ),
+                    }
+                ],
+            )
+            await db.execute("ALTER TABLE earnapp_accounts RENAME TO earnapp_accounts_legacy_v18")
+            await db.executescript(database._SCHEMA)
+            await database._create_earnapp_current_schema(db)
+            await db.execute(
+                """
+                INSERT INTO earnapp_accounts
+                    (id, profile_key, account_name, email, auth_method, credentials_enc,
+                     credential_keys_json, state, created_at, updated_at)
+                VALUES (1, 'legacy-account-1', 'tampered@example.com', 'tampered@example.com',
+                        'google', '', '[]', 'DISABLED', '2026-08-18 08:13:08', '2026-08-18 08:13:17')
+                """
+            )
+            await db.execute("DELETE FROM earnapp_accounts WHERE id = 1")
+            await db.execute(
+                "INSERT INTO config (key, value) VALUES (?, 'complete')",
+                (database._EARNAPP_LEGACY_MIGRATION_KEY,),
+            )
+            await db.commit()
+
+            with pytest.raises(RuntimeError, match="canonical/archive parity"):
+                await database.init_db()
+
+            assert await (await db.execute("SELECT id FROM earnapp_accounts WHERE id = 1")).fetchone() is None
+
+    asyncio.run(run())
+
+
+def test_completed_marker_allows_post_migration_account_refresh(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await _seed_legacy_earnapp_schema(
+                db,
+                [
+                    {
+                        "id": 1,
+                        "account_name": "legacy@example.com",
+                        "cookies_enc": database.encrypt_value(
+                            json.dumps(_valid_legacy_credentials("legacy@example.com"), sort_keys=True)
+                        ),
+                    }
+                ],
+            )
+            await database.init_db()
+            await earnapp_accounts.import_account(_payload("profile-new", "legacy@example.com"))
+
+            await database.init_db()
+
+            row = await (await db.execute("SELECT id, account_name FROM earnapp_accounts WHERE id = 1")).fetchone()
+            assert dict(row) == {"id": 1, "account_name": "legacy@example.com"}
+
+    asyncio.run(run())
+
+
+def test_completed_marker_allows_empty_legacy_archive_and_new_canonical_accounts(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await _seed_legacy_earnapp_schema(db, [])
+            await database.init_db()
+            await earnapp_accounts.import_account(_payload("new-profile", "new@example.com"))
+
+            await database.init_db()
+
+            assert await database._earnapp_migration_marker(db) == "complete"
+            assert await database._table_exists(db, "earnapp_accounts_legacy_v18")
+            assert (await (await db.execute("SELECT COUNT(*) AS count FROM earnapp_accounts_legacy_v18")).fetchone())[
+                "count"
+            ] == 0
+            assert (await (await db.execute("SELECT COUNT(*) AS count FROM earnapp_accounts")).fetchone())["count"] == 1
+
+    asyncio.run(run())
+
+
+def test_legacy_earnapp_migration_rolls_back_marker_and_schema_on_failure_then_retries(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await _seed_legacy_earnapp_schema(
+                db,
+                [{"id": 1, "account_name": "retry@example.com", "cookies_enc": "not-json"}],
+            )
+            original = database._mark_earnapp_migration_complete
+
+            async def fail_before_marker(_db):
+                raise RuntimeError("simulated migration interruption")
+
+            with (
+                patch.object(database, "_mark_earnapp_migration_complete", side_effect=fail_before_marker),
+                pytest.raises(RuntimeError, match="simulated migration interruption"),
+            ):
+                await database.init_db()
+
+            assert await database._earnapp_migration_marker(db) == ""
+            assert "profile_key" not in await database._table_columns(db, "earnapp_accounts")
+            assert not await database._table_exists(db, "earnapp_accounts_legacy_v18")
+            assert not await database._table_exists(db, "earnapp_logical_nodes")
+
+            with patch.object(database, "_mark_earnapp_migration_complete", side_effect=original):
+                await database.init_db()
+
+            assert await database._earnapp_migration_marker(db) == "complete"
+            row = await (await db.execute("SELECT profile_key, state FROM earnapp_accounts WHERE id = 1")).fetchone()
+            assert dict(row) == {"profile_key": "legacy-account-1", "state": "DISABLED"}
+
+    asyncio.run(run())
+
+
+def test_chrome_import_adopts_matching_legacy_account_without_creating_duplicate(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await _seed_legacy_earnapp_schema(
+                db,
+                [
+                    {
+                        "id": 1,
+                        "account_name": "owner@example.com",
+                        "cookies_enc": database.encrypt_value(json.dumps(_valid_legacy_credentials(), sort_keys=True)),
+                    }
+                ],
+            )
+            await database.init_db()
+
+            account_id = await earnapp_accounts.import_account(_payload("profile-40", "owner@example.com"))
+
+            assert account_id == 1
+            assert (await (await db.execute("SELECT COUNT(*) AS count FROM earnapp_accounts")).fetchone())["count"] == 1
+            row = await (await db.execute("SELECT profile_key, state FROM earnapp_accounts WHERE id = 1")).fetchone()
+            assert dict(row) == {"profile_key": "profile-40", "state": "ACTIVE"}
+
+    asyncio.run(run())
+
+
+def test_chrome_import_adopts_synthetic_legacy_account_with_authoritative_apple_method(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await _seed_legacy_earnapp_schema(
+                db,
+                [
+                    {
+                        "id": 1,
+                        "account_name": "apple@example.com",
+                        "cookies_enc": database.encrypt_value(
+                            json.dumps(_valid_legacy_credentials("apple@example.com"), sort_keys=True)
+                        ),
+                    }
+                ],
+            )
+            await database.init_db()
+
+            account_id = await earnapp_accounts.import_account(
+                _payload("profile-apple-40", "apple@example.com", auth_method="apple")
+            )
+
+            assert account_id == 1
+            row = await (
+                await db.execute("SELECT profile_key, auth_method, state FROM earnapp_accounts WHERE id = 1")
+            ).fetchone()
+            assert dict(row) == {"profile_key": "profile-apple-40", "auth_method": "apple", "state": "ACTIVE"}
+
+    asyncio.run(run())
+
+
+def test_completed_unsafe_migration_quarantines_synthetic_active_account(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await db.executescript(database._SCHEMA)
+            await db.executescript(database._EARNAPP_ACCOUNTS_SCHEMA)
+            await db.execute(
+                """
+                INSERT INTO earnapp_accounts
+                    (profile_key, account_name, email, auth_method, credentials_enc,
+                     credential_keys_json, state)
+                VALUES ('legacy-account-77', 'legacy@example.com', 'legacy@example.com',
+                        'google', '', '[]', 'ACTIVE')
+                """
+            )
+            await db.commit()
+
+            await database.init_db()
+
+            row = await (
+                await db.execute("SELECT state FROM earnapp_accounts WHERE profile_key = 'legacy-account-77'")
+            ).fetchone()
+            assert row["state"] == "DISABLED"
 
     asyncio.run(run())
 

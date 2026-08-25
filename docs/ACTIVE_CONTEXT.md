@@ -1,14 +1,50 @@
 # CashPilot Active Context
 
-Updated: 2026-08-26 (EarnApp account/recovery control plane implemented locally; PR preparation in progress)
+Updated: 2026-08-26 (EarnApp legacy migration safety patch under review; no live deployment)
 
-## EarnApp account/recovery implementation (local branch, 2026-08-25)
+## EarnApp legacy migration safety patch (local branch, 2026-08-26)
 
-- Branch `feat/earnapp-account-recovery` is based on verified `origin/main`
-  commit `ff25e7bb1dc36b2f1ca5b7210680ce19eebe250d`. Implementation commit
-  `9968a853ba5523c4bd96fa61e98473583c6a7e46` is pushed in open PR #40 for
-  review. It is not merged, released or deployed; there was no DNS change,
-  Chrome profile operation or VPS mutation from this phase.
+- Branch `fix/earnapp-legacy-migration-safe` is based on merged `origin/main`
+  commit `4e336cb` (PR #41). The current patch hardens the
+  already-merged v18 -> v19 migration; it is not yet released or deployed.
+- Migration runs in one `BEGIN IMMEDIATE` transaction and rolls back on any
+  schema, archive, conflict or `foreign_key_check` failure. Legacy account and
+  lease data remain in `earnapp_accounts_legacy_v18` and
+  `earnapp_account_leases_legacy_v18`; interrupted v19 sources remain in
+  `earnapp_accounts_v19_legacy` rather than being discarded.
+- Completion is fail-closed: the marker
+  `migration.earnapp_accounts.legacy_v19=complete` is accepted only when the
+  canonical account schema, child tables, primary keys, indexes, unique keys,
+  foreign keys, archive parity and row identities still match the contract.
+  Unknown child tables, external trigger references, duplicate archive IDs and
+  conflicting partial rows abort without committing.
+- Legacy accounts are never silently activated. Legacy active leases become
+  deterministic `RECOVERABLE` logical nodes, while account credentials remain
+  encrypted and are adoptable only through an explicit Chrome import. Fernet
+  values are compared by decrypted plaintext during interrupted-copy recovery,
+  so normal token re-encryption does not create a false conflict.
+- Regression coverage now includes transaction rollback, archive preservation,
+  canonical/child schema validation, FK/index/trigger preservation, marker
+  validation, duplicate/conflicting archive detection, synthetic-account
+  quarantine and Fernet-equivalence checks. No provider catalog, runtime,
+  worker, proxy lease, wallet lease, identity, volume or VPS state is changed.
+- Fresh local verification: focused EarnApp/Chrome/proxy/UI suite `369 passed`;
+  full non-live suite `1854 passed, 8 skipped` after fetching the fork tag
+  refspec used by CI. Ruff lint, compileall, JavaScript parse, deploy-baseline
+  and `git diff --check` pass. Repository-wide Ruff format still reports only
+  the unchanged historical plan file
+  `docs/superpowers/plans/2026-08-25-proxy-import-protocol.md`.
+- GitHub state checked on 2026-08-26: PR #40 and PR #41 are merged; the latest
+  published release is `v1.11.1`. This safety patch is intended for a separate
+  patch release `v1.11.2`, followed by UI-only deployment after release gates;
+  worker/provider runtime redeploy remains forbidden.
+
+## EarnApp account/recovery implementation (merged baseline, 2026-08-25)
+
+- PR #40 merged as `102fa9e1e163a9cb0ebd7715da19a19a33e17b51`; its implementation
+  commit is `9968a853ba5523c4bd96fa61e98473583c6a7e46`. The control plane is
+  merged source, but official EarnApp runtime/live canary work remains open;
+  no DNS, Chrome profile or VPS mutation was performed by that implementation.
 - The server now has an isolated EarnApp Account Pool: Google/Apple metadata,
   Fernet-encrypted allowlisted cookies, masked owner APIs, token/cookie expiry
   warnings, least-assigned account allocation, account-scoped read-only
@@ -45,12 +81,9 @@ Updated: 2026-08-26 (EarnApp account/recovery control plane implemented locally;
   endpoint rows. The Chrome importer catches invalid CashPilot URLs inside its
   visible error path, and cookie-change debounce uses a separate one-shot alarm
   so it cannot overwrite the recurring 15-minute token-sync schedule.
-- Verification on the local branch: focused EarnApp/Proxy/UI suite
-  `283 passed`; full non-live suite `1812 passed, 8 skipped`; Ruff lint,
-  changed-file Ruff format, Python compileall, JavaScript parse checks,
-  deploy-baseline check and `git diff --check` pass. The repository-wide Ruff
-  format command still reports only the pre-existing unchanged file
-  `docs/superpowers/plans/2026-08-25-proxy-import-protocol.md`.
+- The merged baseline's earlier verification was `283 passed` focused and
+  `1812 passed, 8 skipped` full; the current migration-safety branch's fresh
+  verification is recorded in the section above.
 - Still not implemented or claimed complete: official EarnApp catalog/runtime,
   MacOS/iOS emulation, Ubuntu LXD deployment, worker provision/follow/link
   automation, DNS/reverse proxy provisioning for the chosen `4gmt.com`
@@ -168,11 +201,11 @@ Updated: 2026-08-26 (EarnApp account/recovery control plane implemented locally;
 
 ## Current repository state
 
-- Canonical source is `main` at the `v1.10.0` release line (`a8a8955`, including
-  the automated compose-pin commit); release `v1.10.0` is published and the
-  server UI is deployed at its exact GHCR digest. PR #38 is the metadata and
-  location clarity change; this branch is documentation-only and does not
-  require another product release or worker deploy.
+- Canonical source is `origin/main` at `4e336cb` after merged PR #41; release
+  `v1.11.1` is published. Live UI state is intentionally not inferred from the
+  release alone and must be checked before any deployment. The current branch
+  is an EarnApp migration-safety patch targeting `v1.11.2`; only the UI may be
+  redeployed after review/release, never the worker or provider runtimes.
 - PR #27 upgrades the reported SQLite schema from 17 to 18 through
   idempotent guards. A migration regression starts from a populated v17 proxy
   schema and verifies that endpoints, worker assignments and provider masks are

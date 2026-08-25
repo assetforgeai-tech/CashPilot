@@ -13,6 +13,7 @@ import json
 import logging
 import math
 import os
+import re
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -498,6 +499,157 @@ CREATE TABLE IF NOT EXISTS earnapp_account_snapshots (
 CREATE INDEX IF NOT EXISTS idx_earnapp_account_snapshots_latest
     ON earnapp_account_snapshots(account_id, id DESC);
 """
+
+_EARNAPP_ACCOUNTS_TABLE_SQL = """
+CREATE TABLE earnapp_accounts (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_key          TEXT    NOT NULL UNIQUE,
+    account_name         TEXT    NOT NULL,
+    email                TEXT    NOT NULL DEFAULT '',
+    auth_method          TEXT    NOT NULL CHECK(auth_method IN ('google', 'apple')),
+    credentials_enc      TEXT    NOT NULL,
+    credential_keys_json TEXT    NOT NULL DEFAULT '[]',
+    token_expires_at     TEXT,
+    cookie_expires_at    TEXT,
+    state                TEXT    NOT NULL DEFAULT 'ACTIVE',
+    created_at           TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at           TEXT    NOT NULL DEFAULT (datetime('now'))
+)
+"""
+
+_EARNAPP_LEGACY_MIGRATION_KEY = "migration.earnapp_accounts.legacy_v19"
+
+_EARNAPP_ACCOUNT_REQUIRED_COLUMNS = {
+    "id",
+    "profile_key",
+    "account_name",
+    "email",
+    "auth_method",
+    "credentials_enc",
+    "credential_keys_json",
+    "token_expires_at",
+    "cookie_expires_at",
+    "state",
+    "created_at",
+    "updated_at",
+}
+
+_EARNAPP_LEGACY_ACCOUNT_REQUIRED_COLUMNS = {
+    "id",
+    "account_name",
+    "cookies_enc",
+    "state",
+    "created_at",
+    "updated_at",
+}
+
+_EARNAPP_V19_ACCOUNT_REQUIRED_COLUMNS = _EARNAPP_ACCOUNT_REQUIRED_COLUMNS
+
+_EARNAPP_CHILD_COLUMNS = {
+    "earnapp_logical_nodes": {
+        "logical_node_id",
+        "account_id",
+        "state",
+        "generation",
+        "assigned_worker_id",
+        "last_worker_id",
+        "device_id",
+        "current_proxy_id",
+        "preferred_proxy_id",
+        "last_heartbeat_at",
+        "recovery_started_at",
+        "recovery_hold_until",
+        "created_at",
+        "updated_at",
+    },
+    "earnapp_account_control_routes": {
+        "account_id",
+        "proxy_id",
+        "state",
+        "assigned_logical_node_id",
+        "leased_at",
+        "released_at",
+        "release_reason",
+        "updated_at",
+    },
+    "earnapp_account_snapshots": {
+        "id",
+        "account_id",
+        "money_balance",
+        "money_total",
+        "online_nodes",
+        "offline_nodes",
+        "devices_json",
+        "collected_at",
+    },
+    "earnapp_replacement_tickets": {
+        "id",
+        "logical_node_id",
+        "target_worker_id",
+        "generation",
+        "token_hash",
+        "expires_at",
+        "used_at",
+        "created_at",
+    },
+}
+
+_EARNAPP_CHILD_FOREIGN_KEYS = {
+    "earnapp_logical_nodes": {
+        "account_id": ("earnapp_accounts", "id", "RESTRICT"),
+        "assigned_worker_id": ("workers", "id", "SET NULL"),
+        "current_proxy_id": ("proxy_endpoints", "id", "SET NULL"),
+        "preferred_proxy_id": ("proxy_endpoints", "id", "SET NULL"),
+    },
+    "earnapp_account_control_routes": {
+        "account_id": ("earnapp_accounts", "id", "CASCADE"),
+        "proxy_id": ("proxy_endpoints", "id", "RESTRICT"),
+    },
+    "earnapp_account_snapshots": {
+        "account_id": ("earnapp_accounts", "id", "CASCADE"),
+    },
+    "earnapp_replacement_tickets": {
+        "logical_node_id": ("earnapp_logical_nodes", "logical_node_id", "CASCADE"),
+        "target_worker_id": ("workers", "id", "CASCADE"),
+    },
+}
+
+_EARNAPP_CHILD_PRIMARY_KEYS = {
+    "earnapp_logical_nodes": ("logical_node_id",),
+    "earnapp_account_control_routes": ("account_id",),
+    "earnapp_account_snapshots": ("id",),
+    "earnapp_replacement_tickets": ("id",),
+}
+
+_EARNAPP_CHILD_INDEXES = {
+    "earnapp_logical_nodes": {"idx_earnapp_logical_nodes_account_state"},
+    "earnapp_account_control_routes": set(),
+    "earnapp_account_snapshots": {"idx_earnapp_account_snapshots_latest"},
+    "earnapp_replacement_tickets": {"idx_earnapp_replacement_tickets_target"},
+}
+
+_EARNAPP_CHILD_UNIQUE_COLUMNS = {
+    "earnapp_replacement_tickets": {"token_hash"},
+}
+
+_EARNAPP_ACCOUNT_COLUMN_TYPES = {column: "TEXT" for column in _EARNAPP_ACCOUNT_REQUIRED_COLUMNS - {"id"}} | {
+    "id": "INTEGER"
+}
+
+_EARNAPP_ACCOUNT_DEFAULTS = {
+    "id": None,
+    "profile_key": None,
+    "account_name": None,
+    "email": "''",
+    "auth_method": None,
+    "credentials_enc": None,
+    "credential_keys_json": "'[]'",
+    "token_expires_at": None,
+    "cookie_expires_at": None,
+    "state": "'ACTIVE'",
+    "created_at": "datetime('now')",
+    "updated_at": "datetime('now')",
+}
 
 
 def encrypt_value(value: str) -> str:
@@ -1231,84 +1383,857 @@ def _normalise_legacy_earnapp_credentials(raw: Mapping[str, Any]) -> dict[str, s
     return cookies
 
 
-async def _migrate_legacy_earnapp_accounts(db: Any, applied: list[str]) -> None:
-    """Replace the retired EarnApp account table while preserving encrypted rows."""
-    cursor = await db.execute("PRAGMA table_info(earnapp_accounts)")
-    columns = {row["name"] for row in await cursor.fetchall()}
-    if not columns or "profile_key" in columns:
-        return
-    if not {"id", "account_name", "cookies_enc", "state"} <= columns:
-        raise RuntimeError("Unsupported legacy earnapp_accounts schema")
-
+async def _table_exists(db: Any, table_name: str) -> bool:
     cursor = await db.execute(
-        "SELECT id, account_name, cookies_enc, state, created_at, updated_at FROM earnapp_accounts ORDER BY id"
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (str(table_name),),
     )
-    rows = await cursor.fetchall()
-    migrated: list[tuple[Any, ...]] = []
+    return await cursor.fetchone() is not None
+
+
+async def _table_columns(db: Any, table_name: str) -> set[str]:
+    cursor = await db.execute(f"PRAGMA table_info({table_name})")
+    return {row["name"] for row in await cursor.fetchall()}
+
+
+async def _table_sql(db: Any, table_name: str) -> str:
+    row = await (
+        await db.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", (str(table_name),))
+    ).fetchone()
+    return str(row["sql"] or "") if row else ""
+
+
+async def _table_index_names(db: Any, table_name: str) -> set[str]:
+    rows = await (await db.execute(f"PRAGMA index_list({table_name})")).fetchall()
+    return {str(row["name"]) for row in rows}
+
+
+async def _table_primary_key_columns(db: Any, table_name: str) -> tuple[str, ...]:
+    rows = await (await db.execute(f"PRAGMA table_info({table_name})")).fetchall()
+    return tuple(str(row["name"]) for row in sorted(rows, key=lambda row: int(row["pk"] or 0)) if row["pk"])
+
+
+def _normalise_sql_default(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    while text.startswith("(") and text.endswith(")"):
+        text = text[1:-1].strip()
+    return re.sub(r"\s+", "", text)
+
+
+async def _table_has_unique_column(db: Any, table_name: str, column_name: str) -> bool:
+    for index in await (await db.execute(f"PRAGMA index_list({table_name})")).fetchall():
+        if not int(index["unique"] or 0):
+            continue
+        columns = [
+            str(row["name"]) for row in await (await db.execute(f"PRAGMA index_info({str(index['name'])})")).fetchall()
+        ]
+        if columns == [column_name]:
+            return True
+    return False
+
+
+async def _account_fk_target(db: Any, table_name: str) -> str:
+    cursor = await db.execute(f"PRAGMA foreign_key_list({table_name})")
+    for row in await cursor.fetchall():
+        if row["from"] == "account_id":
+            return str(row["table"] or "")
+    return ""
+
+
+async def _logical_node_fk_target(db: Any, table_name: str) -> str:
+    cursor = await db.execute(f"PRAGMA foreign_key_list({table_name})")
+    for row in await cursor.fetchall():
+        if row["from"] == "logical_node_id":
+            return str(row["table"] or "")
+    return ""
+
+
+async def _tables_referencing(db: Any, parent_table: str) -> set[str]:
+    """Return user tables with a foreign key to ``parent_table``."""
+    rows = await (
+        await db.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+    ).fetchall()
+    references: set[str] = set()
     for row in rows:
-        encrypted = str(row["cookies_enc"] or "")
-        try:
-            decoded = json.loads(decrypt_value(encrypted)) if encrypted else {}
-        except (TypeError, ValueError, json.JSONDecodeError):
-            decoded = {}
-        decoded = decoded if isinstance(decoded, Mapping) else {}
-        cookies = _normalise_legacy_earnapp_credentials(decoded)
-        email = str(decoded.get("email") or row["account_name"] or "").strip()
-        state = "DELETED" if str(row["state"] or "").upper() == "DELETED" else "ACTIVE"
-        migrated.append(
-            (
-                int(row["id"]),
-                f"legacy-account-{int(row['id'])}",
-                str(row["account_name"] or ""),
-                email,
-                "google",
-                encrypt_value(json.dumps({"cookies": cookies}, sort_keys=True, separators=(",", ":"))),
-                json.dumps(sorted(cookies)),
-                state,
-                row["created_at"],
-                row["updated_at"],
-            )
+        table_name = str(row["name"])
+        foreign_keys = await (await db.execute(f"PRAGMA foreign_key_list({table_name})")).fetchall()
+        if any(str(key["table"] or "") == parent_table for key in foreign_keys):
+            references.add(table_name)
+    return references
+
+
+async def _table_schema_objects(db: Any, table_name: str) -> list[str]:
+    """Capture explicit indexes and triggers so an FK rebuild cannot drop them."""
+    rows = await (
+        await db.execute(
+            """
+            SELECT sql
+            FROM sqlite_master
+            WHERE tbl_name = ?
+              AND type IN ('index', 'trigger')
+              AND sql IS NOT NULL
+            ORDER BY CASE type WHEN 'index' THEN 0 ELSE 1 END, name
+            """,
+            (str(table_name),),
+        )
+    ).fetchall()
+    return [str(row["sql"]) for row in rows]
+
+
+async def _restore_table_schema_objects(db: Any, statements: list[str]) -> None:
+    for statement in statements:
+        await db.execute(statement)
+
+
+async def _assert_no_external_trigger_references(db: Any, table_name: str) -> None:
+    """Do not rename a table while another trigger still names it.
+
+    SQLite rewrites those trigger bodies to the temporary backup name during
+    ``ALTER TABLE ... RENAME``.  Dropping the backup would then leave a live
+    trigger pointing at a table that no longer exists.
+    """
+    rows = await (
+        await db.execute(
+            """
+            SELECT name, tbl_name, sql
+            FROM sqlite_master
+            WHERE type = 'trigger' AND sql IS NOT NULL
+            """
+        )
+    ).fetchall()
+    quoted = re.compile(
+        rf"(?<![A-Za-z0-9_])(?:{re.escape(table_name)}|\"{re.escape(table_name)}\"|`{re.escape(table_name)}`|\[{re.escape(table_name)}\])(?![A-Za-z0-9_])",
+        re.IGNORECASE,
+    )
+    for row in rows:
+        if str(row["tbl_name"] or "") != table_name and quoted.search(str(row["sql"] or "")):
+            raise RuntimeError(f"external trigger references EarnApp child table {table_name}: {row['name']}")
+
+
+async def _assert_known_earnapp_account_children(db: Any, parent_table: str) -> None:
+    allowed = {
+        "earnapp_account_leases",
+        "earnapp_account_leases_legacy_v18",
+        "earnapp_logical_nodes",
+        "earnapp_account_control_routes",
+        "earnapp_account_snapshots",
+    }
+    unknown = sorted(await _tables_referencing(db, parent_table) - allowed)
+    if unknown:
+        raise RuntimeError(f"unknown EarnApp account child tables: {', '.join(unknown)}")
+
+
+async def _assert_known_earnapp_logical_node_children(db: Any, parent_table: str) -> None:
+    allowed = {"earnapp_replacement_tickets"}
+    unknown = sorted(await _tables_referencing(db, parent_table) - allowed)
+    if unknown:
+        raise RuntimeError(f"unknown EarnApp logical-node child tables: {', '.join(unknown)}")
+
+
+def _legacy_earnapp_state(value: Any, *, credentials_valid: bool) -> str:
+    state = str(value or "").strip().upper()
+    if state == "DELETED":
+        return "DELETED"
+    if state in {"DISABLED", "EXPIRED", "AUTH_FAILED"}:
+        return state
+    # Legacy rows do not carry an authoritative auth-method binding.  Even
+    # decryptable credentials therefore require an explicit Chrome re-import
+    # before they may be activated.
+    return "DISABLED"
+
+
+def _credential_values_equal(left: Any, right: Any) -> bool:
+    """Compare Fernet values without equating two failed decryptions."""
+    left_raw = str(left or "")
+    right_raw = str(right or "")
+    if left_raw == right_raw:
+        return True
+    if not left_raw or not right_raw:
+        return False
+    left_plain = decrypt_value(left_raw)
+    right_plain = decrypt_value(right_raw)
+    if not left_plain or not right_plain:
+        return False
+    return left_plain == right_plain
+
+
+async def _earnapp_migration_marker(db: Any) -> str:
+    if not await _table_exists(db, "config"):
+        return ""
+    row = await (
+        await db.execute("SELECT value FROM config WHERE key = ?", (_EARNAPP_LEGACY_MIGRATION_KEY,))
+    ).fetchone()
+    return str(row["value"] or "") if row else ""
+
+
+async def _mark_earnapp_migration_complete(db: Any) -> None:
+    row = await (
+        await db.execute("SELECT value FROM config WHERE key = ?", (_EARNAPP_LEGACY_MIGRATION_KEY,))
+    ).fetchone()
+    if row and str(row["value"] or "") != "complete":
+        raise RuntimeError("Conflicting EarnApp migration marker")
+    if not row:
+        await db.execute(
+            # Old volumes may not have received config.updated_at yet; the
+            # regular init migration adds that column later in the same boot.
+            "INSERT INTO config (key, value) VALUES (?, 'complete')",
+            (_EARNAPP_LEGACY_MIGRATION_KEY,),
         )
 
-    await db.execute("PRAGMA foreign_keys=OFF")
-    try:
-        await db.executescript(
-            """
-            DROP TABLE IF EXISTS earnapp_accounts_v19;
-            CREATE TABLE earnapp_accounts_v19 (
-                id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-                profile_key          TEXT    NOT NULL UNIQUE,
-                account_name         TEXT    NOT NULL,
-                email                TEXT    NOT NULL DEFAULT '',
-                auth_method          TEXT    NOT NULL CHECK(auth_method IN ('google', 'apple')),
-                credentials_enc      TEXT    NOT NULL,
-                credential_keys_json TEXT    NOT NULL DEFAULT '[]',
-                token_expires_at     TEXT,
-                cookie_expires_at    TEXT,
-                state                TEXT    NOT NULL DEFAULT 'ACTIVE',
-                created_at           TEXT    NOT NULL DEFAULT (datetime('now')),
-                updated_at           TEXT    NOT NULL DEFAULT (datetime('now'))
-            );
-            """
+
+async def _validate_earnapp_archive_schema(db: Any, table_name: str, required: set[str]) -> set[int] | None:
+    """Validate an immutable migration archive and return its source IDs."""
+    if not await _table_exists(db, table_name):
+        return None
+    columns = await _table_columns(db, table_name)
+    missing = required - columns
+    if missing:
+        raise RuntimeError(f"EarnApp archive {table_name} missing columns: {', '.join(sorted(missing))}")
+    rows = await (await db.execute(f"SELECT id FROM {table_name} ORDER BY id")).fetchall()
+    return {int(row["id"]) for row in rows}
+
+
+async def _validate_completed_earnapp_migration(db: Any) -> None:
+    """Fail closed if a completion marker no longer describes a safe schema."""
+    if not await _table_exists(db, "earnapp_accounts"):
+        raise RuntimeError("EarnApp migration completion marker requires canonical schema")
+    canonical_columns = await _table_columns(db, "earnapp_accounts")
+    missing = _EARNAPP_ACCOUNT_REQUIRED_COLUMNS - canonical_columns
+    if missing:
+        raise RuntimeError(f"EarnApp canonical schema missing columns: {', '.join(sorted(missing))}")
+    canonical_info = {
+        str(row["name"]): row for row in await (await db.execute("PRAGMA table_info(earnapp_accounts)")).fetchall()
+    }
+    profile_indexes = await (await db.execute("PRAGMA index_list(earnapp_accounts)")).fetchall()
+    has_unique_profile_key = False
+    for index in profile_indexes:
+        if not int(index["unique"] or 0):
+            continue
+        names = [
+            str(row["name"]) for row in await (await db.execute(f"PRAGMA index_info({str(index['name'])})")).fetchall()
+        ]
+        if names == ["profile_key"]:
+            has_unique_profile_key = True
+            break
+    canonical_sql = (await _table_sql(db, "earnapp_accounts")).lower()
+    canonical_sql_compact = re.sub(r"\s+", "", canonical_sql)
+    if (
+        int(canonical_info["id"]["pk"] or 0) != 1
+        or any(
+            str(canonical_info[name]["type"] or "").upper() != expected
+            for name, expected in _EARNAPP_ACCOUNT_COLUMN_TYPES.items()
         )
-        if migrated:
-            await db.executemany(
-                """
-                INSERT INTO earnapp_accounts_v19
-                    (id, profile_key, account_name, email, auth_method, credentials_enc,
-                     credential_keys_json, state, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                migrated,
+        or any(
+            not int(canonical_info[name]["notnull"] or 0)
+            for name in _EARNAPP_ACCOUNT_REQUIRED_COLUMNS - {"id", "token_expires_at", "cookie_expires_at"}
+        )
+        or any(
+            _normalise_sql_default(canonical_info[name]["dflt_value"]) != _normalise_sql_default(expected)
+            for name, expected in _EARNAPP_ACCOUNT_DEFAULTS.items()
+        )
+        or not has_unique_profile_key
+        or "autoincrement" not in canonical_sql_compact
+        or "check(auth_methodin('google','apple'))" not in canonical_sql_compact
+    ):
+        raise RuntimeError("EarnApp canonical schema constraints do not match the current contract")
+
+    for table_name, required_columns in _EARNAPP_CHILD_COLUMNS.items():
+        if not await _table_exists(db, table_name):
+            raise RuntimeError(f"EarnApp canonical child schema missing table: {table_name}")
+        child_columns = await _table_columns(db, table_name)
+        if child_columns != required_columns:
+            raise RuntimeError(f"EarnApp canonical child schema mismatch: {table_name}")
+        if await _table_primary_key_columns(db, table_name) != _EARNAPP_CHILD_PRIMARY_KEYS[table_name]:
+            raise RuntimeError(f"EarnApp canonical child schema primary-key mismatch: {table_name}")
+        missing_indexes = _EARNAPP_CHILD_INDEXES[table_name] - await _table_index_names(db, table_name)
+        if missing_indexes:
+            raise RuntimeError(
+                f"EarnApp canonical child schema index mismatch: {table_name}: {', '.join(sorted(missing_indexes))}"
             )
-        await db.executescript(
+        missing_unique = {
+            column
+            for column in _EARNAPP_CHILD_UNIQUE_COLUMNS.get(table_name, set())
+            if not await _table_has_unique_column(db, table_name, column)
+        }
+        if missing_unique:
+            raise RuntimeError(
+                "EarnApp canonical child schema unique-constraint mismatch: "
+                f"{table_name}: {', '.join(sorted(missing_unique))}"
+            )
+        foreign_keys = {
+            str(row["from"]): (str(row["table"]), str(row["to"]), str(row["on_delete"]).upper())
+            for row in await (await db.execute(f"PRAGMA foreign_key_list({table_name})")).fetchall()
+        }
+        if foreign_keys != _EARNAPP_CHILD_FOREIGN_KEYS[table_name]:
+            raise RuntimeError(f"EarnApp canonical child schema foreign-key mismatch: {table_name}")
+
+    v18_rows = await _validate_earnapp_archive_schema(
+        db, "earnapp_accounts_legacy_v18", _EARNAPP_LEGACY_ACCOUNT_REQUIRED_COLUMNS
+    )
+    v19_rows = await _validate_earnapp_archive_schema(
+        db, "earnapp_accounts_v19_legacy", _EARNAPP_V19_ACCOUNT_REQUIRED_COLUMNS
+    )
+    if v18_rows is None and v19_rows is None:
+        raise RuntimeError("EarnApp migration completion marker requires an archive")
+    v18_rows = v18_rows or set()
+    v19_rows = v19_rows or set()
+    if v18_rows & v19_rows:
+        raise RuntimeError("EarnApp migration archives contain duplicate account IDs")
+    archive_ids = v18_rows | v19_rows
+
+    # Account metadata and credentials can be intentionally refreshed after
+    # migration; only the archived primary-key set is immutable.
+    placeholders = ", ".join("?" for _ in archive_ids)
+    if archive_ids:
+        rows = await (
+            await db.execute(
+                f"SELECT id FROM earnapp_accounts WHERE id IN ({placeholders}) ORDER BY id",
+                tuple(sorted(archive_ids)),
+            )
+        ).fetchall()
+        canonical_ids = {int(row["id"]) for row in rows}
+        missing_ids = sorted(archive_ids - canonical_ids)
+        if missing_ids:
+            raise RuntimeError(f"EarnApp canonical/archive parity mismatch for account IDs: {missing_ids}")
+
+
+async def _quarantine_synthetic_legacy_accounts(db: Any, applied: list[str]) -> None:
+    """Disable accounts left ACTIVE by the unsafe v1.11.1 migration."""
+    if not await _table_exists(db, "earnapp_accounts"):
+        return
+    columns = await _table_columns(db, "earnapp_accounts")
+    if not {"profile_key", "state"} <= columns:
+        return
+    cursor = await db.execute(
+        """
+        UPDATE earnapp_accounts
+        SET state = 'DISABLED', updated_at = datetime('now')
+        WHERE profile_key LIKE 'legacy-account-%' AND state = 'ACTIVE'
+        """
+    )
+    if cursor.rowcount:
+        applied.append("earnapp_accounts.legacy_active_quarantine")
+
+
+def _decode_legacy_earnapp_credentials(encrypted: str) -> tuple[dict[str, str], str, bool]:
+    if not encrypted:
+        return {}, "", False
+    decrypted = decrypt_value(encrypted)
+    if not decrypted:
+        return {}, "", False
+    try:
+        decoded = json.loads(decrypted)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}, "", False
+    if not isinstance(decoded, Mapping):
+        return {}, "", False
+    cookies = _normalise_legacy_earnapp_credentials(decoded)
+    valid = bool(cookies.get("oauth-refresh-token") and cookies.get("xsrf-token"))
+    email = str(decoded.get("email") or "").strip()
+    return cookies if valid else {}, email, valid
+
+
+async def _create_earnapp_current_schema(db: Any) -> None:
+    if not await _table_exists(db, "earnapp_accounts"):
+        await db.execute(_EARNAPP_ACCOUNTS_TABLE_SQL)
+    await db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS earnapp_logical_nodes (
+            logical_node_id    TEXT    PRIMARY KEY,
+            account_id         INTEGER NOT NULL,
+            state              TEXT    NOT NULL DEFAULT 'PLANNED',
+            generation         INTEGER NOT NULL DEFAULT 1,
+            assigned_worker_id INTEGER,
+            last_worker_id     INTEGER,
+            device_id          TEXT    NOT NULL DEFAULT '',
+            current_proxy_id   INTEGER,
+            preferred_proxy_id INTEGER,
+            last_heartbeat_at  TEXT,
+            recovery_started_at TEXT,
+            recovery_hold_until TEXT,
+            created_at         TEXT    NOT NULL DEFAULT (datetime('now')),
+            updated_at         TEXT    NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY(account_id) REFERENCES earnapp_accounts(id) ON DELETE RESTRICT,
+            FOREIGN KEY(assigned_worker_id) REFERENCES workers(id) ON DELETE SET NULL,
+            FOREIGN KEY(current_proxy_id) REFERENCES proxy_endpoints(id) ON DELETE SET NULL,
+            FOREIGN KEY(preferred_proxy_id) REFERENCES proxy_endpoints(id) ON DELETE SET NULL
+        )
+        """
+    )
+    await db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS earnapp_replacement_tickets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            logical_node_id TEXT NOT NULL,
+            target_worker_id INTEGER NOT NULL,
+            generation INTEGER NOT NULL,
+            token_hash TEXT NOT NULL UNIQUE,
+            expires_at TEXT NOT NULL,
+            used_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY(logical_node_id) REFERENCES earnapp_logical_nodes(logical_node_id) ON DELETE CASCADE,
+            FOREIGN KEY(target_worker_id) REFERENCES workers(id) ON DELETE CASCADE
+        )
+        """
+    )
+    await db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS earnapp_account_control_routes (
+            account_id INTEGER PRIMARY KEY,
+            proxy_id INTEGER NOT NULL,
+            state TEXT NOT NULL DEFAULT 'ACTIVE',
+            assigned_logical_node_id TEXT NOT NULL DEFAULT '',
+            leased_at TEXT NOT NULL DEFAULT (datetime('now')),
+            released_at TEXT,
+            release_reason TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY(account_id) REFERENCES earnapp_accounts(id) ON DELETE CASCADE,
+            FOREIGN KEY(proxy_id) REFERENCES proxy_endpoints(id) ON DELETE RESTRICT
+        )
+        """
+    )
+    await db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS earnapp_account_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id INTEGER NOT NULL,
+            money_balance REAL NOT NULL DEFAULT 0,
+            money_total REAL NOT NULL DEFAULT 0,
+            online_nodes INTEGER NOT NULL DEFAULT 0,
+            offline_nodes INTEGER NOT NULL DEFAULT 0,
+            devices_json TEXT NOT NULL DEFAULT '[]',
+            collected_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY(account_id) REFERENCES earnapp_accounts(id) ON DELETE CASCADE
+        )
+        """
+    )
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_earnapp_logical_nodes_account_state ON earnapp_logical_nodes(account_id, state)"
+    )
+    await db.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_earnapp_replacement_tickets_target
+        ON earnapp_replacement_tickets(logical_node_id, target_worker_id, used_at, expires_at)
+        """
+    )
+    await db.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_earnapp_account_snapshots_latest
+        ON earnapp_account_snapshots(account_id, id DESC)
+        """
+    )
+
+
+async def _rebuild_earnapp_child_table(db: Any, table_name: str) -> None:
+    if not await _table_exists(db, table_name):
+        return
+    if await _account_fk_target(db, table_name) not in {"earnapp_accounts_legacy_v18", "earnapp_accounts_v19"}:
+        return
+    backup = f"{table_name}_legacy_fk_v19"
+    if await _table_exists(db, backup):
+        raise RuntimeError(f"Interrupted EarnApp FK repair left {backup}")
+    if table_name == "earnapp_logical_nodes":
+        await _assert_known_earnapp_logical_node_children(db, table_name)
+    await _assert_no_external_trigger_references(db, table_name)
+    schema_objects = await _table_schema_objects(db, table_name)
+    await db.execute(f"ALTER TABLE {table_name} RENAME TO {backup}")
+    if table_name == "earnapp_logical_nodes":
+        await db.execute(
             """
-            DROP TABLE earnapp_accounts;
-            ALTER TABLE earnapp_accounts_v19 RENAME TO earnapp_accounts;
+            CREATE TABLE earnapp_logical_nodes (
+                logical_node_id TEXT PRIMARY KEY, account_id INTEGER NOT NULL,
+                state TEXT NOT NULL DEFAULT 'PLANNED', generation INTEGER NOT NULL DEFAULT 1,
+                assigned_worker_id INTEGER, last_worker_id INTEGER, device_id TEXT NOT NULL DEFAULT '',
+                current_proxy_id INTEGER, preferred_proxy_id INTEGER, last_heartbeat_at TEXT,
+                recovery_started_at TEXT, recovery_hold_until TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY(account_id) REFERENCES earnapp_accounts(id) ON DELETE RESTRICT,
+                FOREIGN KEY(assigned_worker_id) REFERENCES workers(id) ON DELETE SET NULL,
+                FOREIGN KEY(current_proxy_id) REFERENCES proxy_endpoints(id) ON DELETE SET NULL,
+                FOREIGN KEY(preferred_proxy_id) REFERENCES proxy_endpoints(id) ON DELETE SET NULL
+            )
             """
         )
-    finally:
-        await db.execute("PRAGMA foreign_keys=ON")
+    elif table_name == "earnapp_account_control_routes":
+        await db.execute(
+            """
+            CREATE TABLE earnapp_account_control_routes (
+                account_id INTEGER PRIMARY KEY, proxy_id INTEGER NOT NULL,
+                state TEXT NOT NULL DEFAULT 'ACTIVE', assigned_logical_node_id TEXT NOT NULL DEFAULT '',
+                leased_at TEXT NOT NULL DEFAULT (datetime('now')), released_at TEXT,
+                release_reason TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY(account_id) REFERENCES earnapp_accounts(id) ON DELETE CASCADE,
+                FOREIGN KEY(proxy_id) REFERENCES proxy_endpoints(id) ON DELETE RESTRICT
+            )
+            """
+        )
+    elif table_name == "earnapp_account_snapshots":
+        await db.execute(
+            """
+            CREATE TABLE earnapp_account_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, account_id INTEGER NOT NULL,
+                money_balance REAL NOT NULL DEFAULT 0, money_total REAL NOT NULL DEFAULT 0,
+                online_nodes INTEGER NOT NULL DEFAULT 0, offline_nodes INTEGER NOT NULL DEFAULT 0,
+                devices_json TEXT NOT NULL DEFAULT '[]',
+                collected_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY(account_id) REFERENCES earnapp_accounts(id) ON DELETE CASCADE
+            )
+            """
+        )
+    columns = await _table_columns(db, table_name)
+    backup_columns = await _table_columns(db, backup)
+    expected_columns = _EARNAPP_CHILD_COLUMNS[table_name]
+    unexpected_columns = backup_columns - expected_columns
+    if unexpected_columns:
+        raise RuntimeError(
+            f"Unsupported {table_name} columns during EarnApp FK repair: {', '.join(sorted(unexpected_columns))}"
+        )
+    common = sorted(columns & backup_columns)
+    names = ", ".join(common)
+    await db.execute(f"INSERT INTO {table_name} ({names}) SELECT {names} FROM {backup}")
+    if table_name == "earnapp_logical_nodes":
+        # Rebind cascading children while the renamed parent still exists;
+        # dropping it first would delete those rows through ON DELETE CASCADE.
+        await _rebuild_earnapp_logical_child_table(db, "earnapp_replacement_tickets")
+    await db.execute(f"DROP TABLE {backup}")
+    await _restore_table_schema_objects(db, schema_objects)
+
+
+async def _rebuild_earnapp_logical_child_table(db: Any, table_name: str) -> None:
+    """Rebind a table that references logical nodes after their safe rebuild."""
+    if not await _table_exists(db, table_name):
+        return
+    if await _logical_node_fk_target(db, table_name) not in {
+        "earnapp_logical_nodes_legacy_fk_v19",
+        "earnapp_logical_nodes_v19",
+    }:
+        return
+    await _assert_no_external_trigger_references(db, table_name)
+    backup = f"{table_name}_legacy_fk_v19"
+    if await _table_exists(db, backup):
+        raise RuntimeError(f"Interrupted EarnApp logical-node FK repair left {backup}")
+    schema_objects = await _table_schema_objects(db, table_name)
+    await db.execute(f"ALTER TABLE {table_name} RENAME TO {backup}")
+    await db.execute(
+        """
+        CREATE TABLE earnapp_replacement_tickets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            logical_node_id TEXT NOT NULL,
+            target_worker_id INTEGER NOT NULL,
+            generation INTEGER NOT NULL,
+            token_hash TEXT NOT NULL UNIQUE,
+            expires_at TEXT NOT NULL,
+            used_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY(logical_node_id) REFERENCES earnapp_logical_nodes(logical_node_id) ON DELETE CASCADE,
+            FOREIGN KEY(target_worker_id) REFERENCES workers(id) ON DELETE CASCADE
+        )
+        """
+    )
+    columns = await _table_columns(db, table_name)
+    backup_columns = await _table_columns(db, backup)
+    expected_columns = _EARNAPP_CHILD_COLUMNS[table_name]
+    unexpected_columns = backup_columns - expected_columns
+    if unexpected_columns:
+        raise RuntimeError(
+            f"Unsupported {table_name} columns during EarnApp FK repair: {', '.join(sorted(unexpected_columns))}"
+        )
+    common = sorted(columns & backup_columns)
+    names = ", ".join(common)
+    await db.execute(f"INSERT INTO {table_name} ({names}) SELECT {names} FROM {backup}")
+    await db.execute(f"DROP TABLE {backup}")
+    await _restore_table_schema_objects(db, schema_objects)
+
+
+async def _archive_legacy_earnapp_tables(db: Any) -> None:
+    if not await _table_exists(db, "earnapp_accounts"):
+        return
+    columns = await _table_columns(db, "earnapp_accounts")
+    if "profile_key" in columns:
+        return
+    if await _table_exists(db, "earnapp_accounts_legacy_v18"):
+        raise RuntimeError("Both live and archived legacy earnapp_accounts tables exist")
+    await _assert_known_earnapp_account_children(db, "earnapp_accounts")
+    await _assert_no_external_trigger_references(db, "earnapp_accounts")
+    if await _table_exists(db, "earnapp_account_leases"):
+        if await _table_exists(db, "earnapp_account_leases_legacy_v18"):
+            raise RuntimeError("Both live and archived legacy EarnApp lease tables exist")
+        await db.execute("ALTER TABLE earnapp_account_leases RENAME TO earnapp_account_leases_legacy_v18")
+    await db.execute("ALTER TABLE earnapp_accounts RENAME TO earnapp_accounts_legacy_v18")
+
+
+async def _recover_stranded_earnapp_v19(db: Any) -> None:
+    if not await _table_exists(db, "earnapp_accounts_v19"):
+        return
+    if await _table_exists(db, "earnapp_accounts_v19_legacy"):
+        raise RuntimeError("Both live and archived earnapp_accounts_v19 tables exist")
+    columns = await _table_columns(db, "earnapp_accounts_v19")
+    missing = _EARNAPP_V19_ACCOUNT_REQUIRED_COLUMNS - columns
+    if missing:
+        raise RuntimeError(
+            f"Unsupported interrupted earnapp_accounts_v19 schema; missing columns: {', '.join(sorted(missing))}"
+        )
+    await _assert_known_earnapp_account_children(db, "earnapp_accounts_v19")
+    await _create_earnapp_current_schema(db)
+    for source in await (await db.execute("SELECT * FROM earnapp_accounts_v19 ORDER BY id")).fetchall():
+        current = await (
+            await db.execute("SELECT * FROM earnapp_accounts WHERE id = ?", (int(source["id"]),))
+        ).fetchone()
+        state = str(source["state"] or "").upper()
+        expected_state = (
+            "DELETED"
+            if state == "DELETED"
+            else (state if state in {"DISABLED", "EXPIRED", "AUTH_FAILED"} else "DISABLED")
+        )
+        expected = {
+            "profile_key": str(source["profile_key"] or ""),
+            "account_name": str(source["account_name"] or ""),
+            "email": str(source["email"] or ""),
+            "auth_method": str(source["auth_method"] or "").lower(),
+            "credentials_enc": str(source["credentials_enc"] or ""),
+            "credential_keys_json": str(source["credential_keys_json"] or "[]"),
+            "token_expires_at": source["token_expires_at"],
+            "cookie_expires_at": source["cookie_expires_at"],
+            "state": expected_state,
+            "created_at": source["created_at"],
+            "updated_at": source["updated_at"],
+        }
+        if current:
+            equal = all(
+                (
+                    _credential_values_equal(current["credentials_enc"], expected["credentials_enc"])
+                    if key == "credentials_enc"
+                    else current[key] == value
+                )
+                for key, value in expected.items()
+            )
+            if not equal:
+                raise RuntimeError(f"Conflicting partial EarnApp account row {source['id']}")
+            continue
+        await db.execute(
+            """
+            INSERT INTO earnapp_accounts
+                (id, profile_key, account_name, email, auth_method, credentials_enc,
+                 credential_keys_json, token_expires_at, cookie_expires_at, state, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                int(source["id"]),
+                expected["profile_key"],
+                expected["account_name"],
+                expected["email"],
+                expected["auth_method"],
+                expected["credentials_enc"],
+                expected["credential_keys_json"],
+                expected["token_expires_at"],
+                expected["cookie_expires_at"],
+                expected["state"],
+                expected["created_at"],
+                expected["updated_at"],
+            ),
+        )
+    for table_name in (
+        "earnapp_logical_nodes",
+        "earnapp_account_control_routes",
+        "earnapp_account_snapshots",
+    ):
+        await _rebuild_earnapp_child_table(db, table_name)
+    # Keep the stranded source as an audit/recovery archive; never discard the
+    # only copy of credentials after an interrupted DDL sequence.
+    await db.execute("ALTER TABLE earnapp_accounts_v19 RENAME TO earnapp_accounts_v19_legacy")
+
+
+async def _migrate_legacy_earnapp_accounts(db: Any, applied: list[str]) -> None:
+    """Archive the retired pool and materialize safe, non-assignable records."""
+    marker = await _earnapp_migration_marker(db)
+    accounts_exists = await _table_exists(db, "earnapp_accounts")
+    account_columns = await _table_columns(db, "earnapp_accounts") if accounts_exists else set()
+    legacy_accounts_exists = accounts_exists and "profile_key" not in account_columns
+    if accounts_exists and "profile_key" in account_columns:
+        missing = _EARNAPP_ACCOUNT_REQUIRED_COLUMNS - account_columns
+        if missing:
+            raise RuntimeError(f"EarnApp canonical schema missing columns: {', '.join(sorted(missing))}")
+    if marker == "complete":
+        # A completed migration may retain its immutable archive, but a live
+        # legacy table or a second stranded source indicates corruption and
+        # must not be silently ignored.
+        if legacy_accounts_exists or await _table_exists(db, "earnapp_accounts_v19"):
+            raise RuntimeError("EarnApp migration marker conflicts with live legacy tables")
+        await _validate_completed_earnapp_migration(db)
+        return
+    if await _table_exists(db, "earnapp_accounts_v19_legacy") and not await _table_exists(db, "earnapp_accounts_v19"):
+        # An archive without its completion marker is ambiguous: it may be the
+        # only surviving source after a crash, or a source already copied and
+        # later edited. Never mark that state complete without an operator-led
+        # comparison of every row.
+        raise RuntimeError("archived EarnApp v19 source requires recovery review")
+    needs_migration = any(
+        [
+            await _table_exists(db, "earnapp_accounts_legacy_v18"),
+            await _table_exists(db, "earnapp_accounts_v19"),
+            await _table_exists(db, "earnapp_accounts_v19_legacy"),
+            legacy_accounts_exists,
+        ]
+    )
+    if not needs_migration:
+        return
+    await db.execute("BEGIN IMMEDIATE")
+    try:
+        await db.execute("PRAGMA defer_foreign_keys=ON")
+        await _archive_legacy_earnapp_tables(db)
+        await _recover_stranded_earnapp_v19(db)
+        await _create_earnapp_current_schema(db)
+
+        # A crash can leave both the v18 archive and a copied v19 source.  The
+        # same account ID in both is ambiguous; never choose one silently.
+        if await _table_exists(db, "earnapp_accounts_legacy_v18") and await _table_exists(
+            db, "earnapp_accounts_v19_legacy"
+        ):
+            v18_ids = {
+                int(row["id"])
+                for row in await (await db.execute("SELECT id FROM earnapp_accounts_legacy_v18")).fetchall()
+            }
+            v19_ids = {
+                int(row["id"])
+                for row in await (await db.execute("SELECT id FROM earnapp_accounts_v19_legacy")).fetchall()
+            }
+            overlap = sorted(v18_ids & v19_ids)
+            if overlap:
+                raise RuntimeError(f"EarnApp migration archives contain duplicate account IDs: {overlap}")
+
+        if await _table_exists(db, "earnapp_accounts_legacy_v18"):
+            columns = await _table_columns(db, "earnapp_accounts_legacy_v18")
+            if not {"id", "account_name", "cookies_enc", "state"} <= columns:
+                raise RuntimeError("Unsupported legacy earnapp_accounts schema")
+            cursor = await db.execute(
+                """
+                SELECT id, account_name, cookies_enc, state, created_at, updated_at
+                FROM earnapp_accounts_legacy_v18 ORDER BY id
+                """
+            )
+            for row in await cursor.fetchall():
+                encrypted = str(row["cookies_enc"] or "")
+                cookies, stored_email, credentials_valid = _decode_legacy_earnapp_credentials(encrypted)
+                email = stored_email or str(row["account_name"] or "").strip()
+                credentials_enc = (
+                    encrypt_value(json.dumps({"cookies": cookies}, sort_keys=True, separators=(",", ":")))
+                    if credentials_valid
+                    else ""
+                )
+                expected = {
+                    "profile_key": f"legacy-account-{int(row['id'])}",
+                    "account_name": str(row["account_name"] or ""),
+                    "email": email,
+                    "auth_method": "google",
+                    "credentials_enc": credentials_enc,
+                    "credential_keys_json": json.dumps(sorted(cookies)),
+                    "state": _legacy_earnapp_state(row["state"], credentials_valid=credentials_valid),
+                    "created_at": row["created_at"],
+                    "updated_at": row["updated_at"],
+                }
+                existing = await (
+                    await db.execute("SELECT * FROM earnapp_accounts WHERE id = ?", (int(row["id"]),))
+                ).fetchone()
+                if existing:
+                    equal = all(
+                        (
+                            _credential_values_equal(existing["credentials_enc"], expected["credentials_enc"])
+                            if key == "credentials_enc"
+                            else existing[key] == value
+                        )
+                        for key, value in expected.items()
+                    )
+                    if not equal:
+                        raise RuntimeError(f"Conflicting canonical EarnApp account row {row['id']}")
+                else:
+                    await db.execute(
+                        """
+                        INSERT INTO earnapp_accounts
+                            (id, profile_key, account_name, email, auth_method, credentials_enc,
+                             credential_keys_json, state, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            int(row["id"]),
+                            expected["profile_key"],
+                            expected["account_name"],
+                            expected["email"],
+                            expected["auth_method"],
+                            expected["credentials_enc"],
+                            expected["credential_keys_json"],
+                            expected["state"],
+                            expected["created_at"],
+                            expected["updated_at"],
+                        ),
+                    )
+
+        for table_name in (
+            "earnapp_logical_nodes",
+            "earnapp_account_control_routes",
+            "earnapp_account_snapshots",
+        ):
+            await _rebuild_earnapp_child_table(db, table_name)
+        await _rebuild_earnapp_logical_child_table(db, "earnapp_replacement_tickets")
+
+        if await _table_exists(db, "earnapp_account_leases_legacy_v18"):
+            cursor = await db.execute(
+                """
+            SELECT id, account_id, worker_id, instance_id, state, leased_at,
+                   last_heartbeat_at, released_at
+            FROM earnapp_account_leases_legacy_v18
+            ORDER BY id
+            """
+            )
+            for lease in await cursor.fetchall():
+                lease_state = str(lease["state"] or "").strip().upper()
+                node_state = "RECOVERABLE" if lease_state == "ACTIVE" and not lease["released_at"] else "RETIRED"
+                logical_node_id = f"legacy-earnapp-lease-{int(lease['id'])}"
+                expected = {
+                    "account_id": int(lease["account_id"]),
+                    "state": node_state,
+                    "assigned_worker_id": None,
+                    "last_worker_id": int(lease["worker_id"]),
+                    "last_heartbeat_at": lease["last_heartbeat_at"],
+                    "created_at": lease["leased_at"],
+                    "updated_at": lease["released_at"] or lease["last_heartbeat_at"] or lease["leased_at"],
+                }
+                existing = await (
+                    await db.execute(
+                        "SELECT account_id, state, assigned_worker_id, last_worker_id, last_heartbeat_at, created_at, updated_at "
+                        "FROM earnapp_logical_nodes WHERE logical_node_id = ?",
+                        (logical_node_id,),
+                    )
+                ).fetchone()
+                if existing:
+                    if any(existing[key] != value for key, value in expected.items()):
+                        raise RuntimeError(f"Conflicting logical EarnApp node {logical_node_id}")
+                else:
+                    await db.execute(
+                        """
+                        INSERT INTO earnapp_logical_nodes
+                            (logical_node_id, account_id, state, assigned_worker_id, last_worker_id,
+                             last_heartbeat_at, created_at, updated_at)
+                        VALUES (?, ?, ?, NULL, ?, ?, ?, ?)
+                        """,
+                        (
+                            logical_node_id,
+                            expected["account_id"],
+                            expected["state"],
+                            expected["last_worker_id"],
+                            expected["last_heartbeat_at"],
+                            expected["created_at"],
+                            expected["updated_at"],
+                        ),
+                    )
+        violations = await (await db.execute("PRAGMA foreign_key_check")).fetchall()
+        if violations:
+            raise RuntimeError("EarnApp migration failed foreign-key validation")
+        await _mark_earnapp_migration_complete(db)
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
     applied.append("earnapp_accounts.legacy_v19")
 
 
@@ -1335,6 +2260,7 @@ async def init_db() -> None:
         await db.executescript(_SCHEMA)
         await _migrate_legacy_earnapp_accounts(db, applied)
         await db.executescript(_EARNAPP_ACCOUNTS_SCHEMA)
+        await _quarantine_synthetic_legacy_accounts(db, applied)
         # Recovery releases the live assignment but keeps its prior owner so
         # another worker still needs a one-time replacement ticket.
         cursor = await db.execute("PRAGMA table_info(earnapp_logical_nodes)")
@@ -2226,11 +3152,36 @@ async def upsert_earnapp_account(
             await db.execute("BEGIN IMMEDIATE")
             existing = await (
                 await db.execute(
-                    "SELECT id, account_name, auth_method, state FROM earnapp_accounts WHERE profile_key = ?",
+                    "SELECT id, profile_key, account_name, auth_method, state FROM earnapp_accounts WHERE profile_key = ?",
                     (profile,),
                 )
             ).fetchone()
-            if existing and (str(existing["account_name"]) != name or str(existing["auth_method"]) != method):
+            legacy_adoption = bool(existing and str(existing["profile_key"]).startswith("legacy-account-"))
+            if not existing:
+                existing = await (
+                    await db.execute(
+                        """
+                        SELECT id, profile_key, account_name, auth_method, state
+                        FROM earnapp_accounts
+                        WHERE profile_key LIKE 'legacy-account-%'
+                          AND lower(trim(account_name)) = lower(trim(?))
+                          AND state != 'DELETED'
+                        ORDER BY id
+                        LIMIT 1
+                        """,
+                        (name,),
+                    )
+                ).fetchone()
+                if existing:
+                    await db.execute(
+                        "UPDATE earnapp_accounts SET profile_key = ? WHERE id = ?",
+                        (profile, int(existing["id"])),
+                    )
+                    legacy_adoption = True
+            if existing and (
+                str(existing["account_name"]) != name
+                or (not legacy_adoption and str(existing["auth_method"]) != method)
+            ):
                 raise ValueError("Chrome profile is already bound to a different EarnApp account")
             if existing and str(existing["state"]) == "DELETED":
                 raise ValueError("EarnApp account is deleted")
@@ -2241,6 +3192,8 @@ async def upsert_earnapp_account(
                      credential_keys_json, token_expires_at, cookie_expires_at, state, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', datetime('now'))
                 ON CONFLICT(profile_key) DO UPDATE SET
+                    account_name = excluded.account_name,
+                    auth_method = excluded.auth_method,
                     email = excluded.email,
                     credentials_enc = excluded.credentials_enc,
                     credential_keys_json = excluded.credential_keys_json,
