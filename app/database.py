@@ -2784,6 +2784,8 @@ async def list_proxy_pool() -> list[dict[str, Any]]:
                 SELECT MAX(pr.id) FROM proxy_probe_results pr
                 WHERE pr.proxy_id = pe.id AND pr.profile = 'earnapp_wss'
             )
+                AND trim(coalesce(earnapp.exit_ip, '')) != ''
+                AND earnapp.exit_ip = pe.exit_ip
             LEFT JOIN provider_proxy_leases scoped ON scoped.proxy_id = pe.id AND scoped.released_at IS NULL
             ORDER BY pp.name, pe.endpoint
             """
@@ -4280,11 +4282,13 @@ async def reconcile_proxy_duplicates() -> int:
                            CASE WHEN pa.proxy_id IS NOT NULL OR scoped.proxy_id IS NOT NULL THEN 1 ELSE 0 END AS is_bound,
                            CASE WHEN EXISTS (
                                SELECT 1 FROM proxy_probe_results pr
-                               WHERE pr.proxy_id = pe.id
-                                 AND pr.profile = 'earnapp_wss'
-                                 AND pr.verdict = 'CID_SET'
-                                 AND pr.eligibility = 'eligible'
-                                 AND pr.id = (
+                                WHERE pr.proxy_id = pe.id
+                                  AND pr.profile = 'earnapp_wss'
+                                  AND pr.verdict = 'CID_SET'
+                                  AND pr.eligibility = 'eligible'
+                                  AND trim(coalesce(pr.exit_ip, '')) != ''
+                                  AND pr.exit_ip = pe.exit_ip
+                                  AND pr.id = (
                                      SELECT MAX(latest.id)
                                      FROM proxy_probe_results latest
                                      WHERE latest.proxy_id = pe.id
@@ -4395,11 +4399,13 @@ async def lease_proxy_for_provider_instance(
                       ? != 'earnapp'
                       OR EXISTS (
                           SELECT 1 FROM proxy_probe_results earnapp
-                          WHERE earnapp.proxy_id = pe.id
-                            AND earnapp.profile = 'earnapp_wss'
-                            AND earnapp.verdict = 'CID_SET'
-                            AND earnapp.eligibility = 'eligible'
-                            AND earnapp.id = (
+                            WHERE earnapp.proxy_id = pe.id
+                              AND earnapp.profile = 'earnapp_wss'
+                              AND earnapp.verdict = 'CID_SET'
+                              AND earnapp.eligibility = 'eligible'
+                              AND trim(coalesce(earnapp.exit_ip, '')) != ''
+                              AND earnapp.exit_ip = pe.exit_ip
+                              AND earnapp.id = (
                                 SELECT MAX(latest.id) FROM proxy_probe_results latest
                                 WHERE latest.proxy_id = pe.id AND latest.profile = 'earnapp_wss'
                             )
@@ -4502,7 +4508,8 @@ async def lease_proxy_for_worker(worker_id: int, *, provider_slug: str | None = 
                 FROM proxy_endpoints pe
                 LEFT JOIN proxy_assignments pa ON pa.proxy_id = pe.id
                 WHERE pa.proxy_id IS NULL
-                  AND lower(coalesce(pe.status, 'alive')) != 'dead'
+                  AND lower(coalesce(pe.status, 'unknown')) = 'alive'
+                  AND trim(coalesce(pe.exit_ip, '')) != ''
                   AND coalesce(pe.duplicate_egress, 0) = 0
                   AND NOT EXISTS (
                       SELECT 1 FROM provider_proxy_leases scoped
@@ -4561,7 +4568,8 @@ async def find_available_proxy_for_worker(worker_id: int, *, provider_slug: str 
     provider_slug = str(provider_slug or "").strip()
     clauses = [
         "pa.proxy_id IS NULL",
-        "lower(coalesce(pe.status, 'alive')) != 'dead'",
+        "lower(coalesce(pe.status, 'unknown')) = 'alive'",
+        "trim(coalesce(pe.exit_ip, '')) != ''",
         "coalesce(pe.duplicate_egress, 0) = 0",
         "NOT EXISTS (SELECT 1 FROM provider_proxy_leases scoped WHERE scoped.released_at IS NULL AND scoped.proxy_id = pe.id)",
         "(trim(coalesce(pe.exit_ip, '')) = '' OR NOT EXISTS (SELECT 1 FROM proxy_assignments legacy JOIN proxy_endpoints used ON used.id = legacy.proxy_id WHERE used.exit_ip = pe.exit_ip))",

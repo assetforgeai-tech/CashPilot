@@ -1557,8 +1557,22 @@ def test_find_available_proxy_is_read_only_for_current_assignment(tmp_path):
             await database.upsert_proxy_endpoints(
                 provider_id,
                 [
-                    {"provider_proxy_id": "a", "endpoint": "1.1.1.1:1000", "host": "1.1.1.1", "port": 1000},
-                    {"provider_proxy_id": "b", "endpoint": "2.2.2.2:1000", "host": "2.2.2.2", "port": 1000},
+                    {
+                        "provider_proxy_id": "a",
+                        "endpoint": "1.1.1.1:1000",
+                        "host": "1.1.1.1",
+                        "port": 1000,
+                        "status": "alive",
+                        "exit_ip": "8.8.8.8",
+                    },
+                    {
+                        "provider_proxy_id": "b",
+                        "endpoint": "2.2.2.2:1000",
+                        "host": "2.2.2.2",
+                        "port": 1000,
+                        "status": "alive",
+                        "exit_ip": "9.9.9.9",
+                    },
                 ],
             )
             worker = await database.upsert_worker("worker-a", "a", "http://a")
@@ -1585,8 +1599,22 @@ def test_proxy_rotation_commit_rejects_candidate_held_by_another_worker(tmp_path
             await database.upsert_proxy_endpoints(
                 provider_id,
                 [
-                    {"provider_proxy_id": "a", "endpoint": "1.1.1.1:1000", "host": "1.1.1.1", "port": 1000},
-                    {"provider_proxy_id": "b", "endpoint": "2.2.2.2:1000", "host": "2.2.2.2", "port": 1000},
+                    {
+                        "provider_proxy_id": "a",
+                        "endpoint": "1.1.1.1:1000",
+                        "host": "1.1.1.1",
+                        "port": 1000,
+                        "status": "alive",
+                        "exit_ip": "8.8.8.8",
+                    },
+                    {
+                        "provider_proxy_id": "b",
+                        "endpoint": "2.2.2.2:1000",
+                        "host": "2.2.2.2",
+                        "port": 1000,
+                        "status": "alive",
+                        "exit_ip": "9.9.9.9",
+                    },
                 ],
             )
             worker_a = await database.upsert_worker("worker-a", "a", "http://a")
@@ -2603,6 +2631,154 @@ def test_earnapp_scoped_lease_requires_cid_set_and_never_mutates_worker_assignme
     asyncio.run(run())
 
 
+def test_earnapp_lease_rejects_stale_egress_until_current_egress_is_qualified(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            (proxy_id,) = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id, [{"provider_proxy_id": "one", "host": "1.1.1.1", "port": 1000}]
+            )
+            worker_id = await database.upsert_worker("worker-a", "a", "http://a")
+
+            await database.save_proxy_probe_result(
+                proxy_id,
+                profile="generic",
+                probe_status="alive",
+                verdict="ALIVE",
+                eligibility="eligible",
+                reason="",
+                exit_ip="8.8.8.8",
+                latency_ms=10,
+                probe_version="test",
+            )
+            await database.save_proxy_probe_result(
+                proxy_id,
+                profile="earnapp_wss",
+                probe_status="alive",
+                verdict="CID_SET",
+                eligibility="eligible",
+                reason="cid-old",
+                exit_ip="8.8.8.8",
+                latency_ms=10,
+                probe_version="test",
+            )
+            await database.save_proxy_probe_result(
+                proxy_id,
+                profile="generic",
+                probe_status="alive",
+                verdict="ALIVE",
+                eligibility="eligible",
+                reason="",
+                exit_ip="9.9.9.9",
+                latency_ms=11,
+                probe_version="test",
+            )
+
+            stale_row = next(item for item in await database.list_proxy_pool() if int(item["id"]) == proxy_id)
+            stale_lease = await database.lease_proxy_for_provider_instance("earnapp", worker_id, "earnapp-1")
+
+            assert stale_row["earnapp_eligibility"] is None
+            assert stale_lease is None
+
+            await database.save_proxy_probe_result(
+                proxy_id,
+                profile="earnapp_wss",
+                probe_status="alive",
+                verdict="CID_SET",
+                eligibility="eligible",
+                reason="cid-current",
+                exit_ip="9.9.9.9",
+                latency_ms=12,
+                probe_version="test",
+            )
+
+            current_lease = await database.lease_proxy_for_provider_instance("earnapp", worker_id, "earnapp-1")
+            assert current_lease and current_lease["proxy_id"] == proxy_id
+            assert current_lease["exit_ip"] == "9.9.9.9"
+
+    asyncio.run(run())
+
+
+def test_duplicate_reconciliation_prefers_current_earnapp_evidence_over_stale_evidence(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            stale_proxy, current_proxy = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id,
+                [
+                    {"provider_proxy_id": "stale", "host": "1.1.1.1", "port": 1000},
+                    {"provider_proxy_id": "current", "host": "2.2.2.2", "port": 2000},
+                ],
+            )
+            await database.save_proxy_probe_result(
+                stale_proxy,
+                profile="generic",
+                probe_status="alive",
+                verdict="ALIVE",
+                eligibility="eligible",
+                reason="",
+                exit_ip="8.8.8.8",
+                latency_ms=5,
+                probe_version="test",
+            )
+            await database.save_proxy_probe_result(
+                stale_proxy,
+                profile="earnapp_wss",
+                probe_status="alive",
+                verdict="CID_SET",
+                eligibility="eligible",
+                reason="cid-old",
+                exit_ip="8.8.8.8",
+                latency_ms=5,
+                probe_version="test",
+            )
+            await database.save_proxy_probe_result(
+                stale_proxy,
+                profile="generic",
+                probe_status="alive",
+                verdict="ALIVE",
+                eligibility="eligible",
+                reason="",
+                exit_ip="9.9.9.9",
+                latency_ms=5,
+                probe_version="test",
+            )
+            await database.save_proxy_probe_result(
+                current_proxy,
+                profile="generic",
+                probe_status="alive",
+                verdict="ALIVE",
+                eligibility="eligible",
+                reason="",
+                exit_ip="9.9.9.9",
+                latency_ms=20,
+                probe_version="test",
+            )
+            await database.save_proxy_probe_result(
+                current_proxy,
+                profile="earnapp_wss",
+                probe_status="alive",
+                verdict="CID_SET",
+                eligibility="eligible",
+                reason="cid-current",
+                exit_ip="9.9.9.9",
+                latency_ms=20,
+                probe_version="test",
+            )
+
+            await database.reconcile_proxy_duplicates()
+            rows = {int(item["id"]): item for item in await database.list_proxy_pool()}
+
+            assert rows[current_proxy]["duplicate_egress"] is False
+            assert rows[current_proxy]["canonical_proxy_id"] == current_proxy
+            assert rows[stale_proxy]["duplicate_egress"] is True
+            assert rows[stale_proxy]["canonical_proxy_id"] == current_proxy
+
+    asyncio.run(run())
+
+
 def test_provider_scoped_lease_is_idempotent_for_the_same_instance(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
@@ -3027,8 +3203,22 @@ def test_proxy_lease_picks_one_unassigned_proxy_per_worker(tmp_path):
             await database.upsert_proxy_endpoints(
                 provider_id,
                 [
-                    {"provider_proxy_id": "a", "endpoint": "1.1.1.1:1000", "host": "1.1.1.1", "port": 1000},
-                    {"provider_proxy_id": "b", "endpoint": "2.2.2.2:1000", "host": "2.2.2.2", "port": 1000},
+                    {
+                        "provider_proxy_id": "a",
+                        "endpoint": "1.1.1.1:1000",
+                        "host": "1.1.1.1",
+                        "port": 1000,
+                        "status": "alive",
+                        "exit_ip": "8.8.8.8",
+                    },
+                    {
+                        "provider_proxy_id": "b",
+                        "endpoint": "2.2.2.2:1000",
+                        "host": "2.2.2.2",
+                        "port": 1000,
+                        "status": "alive",
+                        "exit_ip": "9.9.9.9",
+                    },
                 ],
             )
             worker_a = await database.upsert_worker("worker-a", "a", "http://a")
@@ -3071,6 +3261,7 @@ def test_proxy_lease_skips_dead_proxies(tmp_path):
                         "host": "2.2.2.2",
                         "port": 1000,
                         "status": "alive",
+                        "exit_ip": "9.9.9.9",
                     },
                 ],
             )
@@ -3082,6 +3273,112 @@ def test_proxy_lease_skips_dead_proxies(tmp_path):
             assert lease["endpoint"] == "2.2.2.2:1000"
 
     import asyncio
+
+    asyncio.run(run())
+
+
+def test_legacy_lease_requires_authoritative_probe_status_and_egress(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("vtproxy", "vtproxy")
+            proxy_ids = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id,
+                [
+                    {
+                        "provider_proxy_id": "unknown-with-egress",
+                        "endpoint": "1.1.1.1:1000",
+                        "host": "1.1.1.1",
+                        "port": 1000,
+                        "status": "unknown",
+                        "exit_ip": "8.8.8.8",
+                    },
+                    {
+                        "provider_proxy_id": "alive-without-egress",
+                        "endpoint": "2.2.2.2:2000",
+                        "host": "2.2.2.2",
+                        "port": 2000,
+                        "status": "alive",
+                        "exit_ip": "",
+                    },
+                    {
+                        "provider_proxy_id": "verified",
+                        "endpoint": "3.3.3.3:3000",
+                        "host": "3.3.3.3",
+                        "port": 3000,
+                    },
+                ],
+            )
+            await database.save_proxy_probe_result(
+                proxy_ids[2],
+                profile="generic",
+                probe_status="alive",
+                verdict="ALIVE",
+                eligibility="eligible",
+                reason="",
+                exit_ip="9.9.9.9",
+                latency_ms=10,
+                probe_version="test",
+            )
+            worker = await database.upsert_worker("worker-a", "a", "http://a")
+
+            lease = await database.lease_proxy_for_worker(worker)
+
+            assert lease and lease["proxy_id"] == proxy_ids[2]
+            assert lease["exit_ip"] == "9.9.9.9"
+
+    asyncio.run(run())
+
+
+def test_legacy_candidate_requires_authoritative_probe_status_and_egress(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("vtproxy", "vtproxy")
+            proxy_ids = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id,
+                [
+                    {
+                        "provider_proxy_id": "unknown-with-egress",
+                        "endpoint": "1.1.1.1:1000",
+                        "host": "1.1.1.1",
+                        "port": 1000,
+                        "status": "unknown",
+                        "exit_ip": "8.8.8.8",
+                    },
+                    {
+                        "provider_proxy_id": "alive-without-egress",
+                        "endpoint": "2.2.2.2:2000",
+                        "host": "2.2.2.2",
+                        "port": 2000,
+                        "status": "alive",
+                        "exit_ip": "",
+                    },
+                    {
+                        "provider_proxy_id": "verified",
+                        "endpoint": "3.3.3.3:3000",
+                        "host": "3.3.3.3",
+                        "port": 3000,
+                    },
+                ],
+            )
+            await database.save_proxy_probe_result(
+                proxy_ids[2],
+                profile="generic",
+                probe_status="alive",
+                verdict="ALIVE",
+                eligibility="eligible",
+                reason="",
+                exit_ip="9.9.9.9",
+                latency_ms=10,
+                probe_version="test",
+            )
+            worker = await database.upsert_worker("worker-a", "a", "http://a")
+
+            candidate = await database.find_available_proxy_for_worker(worker)
+
+            assert candidate and candidate["proxy_id"] == proxy_ids[2]
+            assert candidate["exit_ip"] == "9.9.9.9"
 
     asyncio.run(run())
 
@@ -3207,8 +3504,22 @@ def test_proxy_mask_is_provider_specific_for_pawns(tmp_path):
             await database.upsert_proxy_endpoints(
                 provider_id,
                 [
-                    {"provider_proxy_id": "a", "endpoint": "1.1.1.1:1000", "host": "1.1.1.1", "port": 1000},
-                    {"provider_proxy_id": "b", "endpoint": "2.2.2.2:1000", "host": "2.2.2.2", "port": 1000},
+                    {
+                        "provider_proxy_id": "a",
+                        "endpoint": "1.1.1.1:1000",
+                        "host": "1.1.1.1",
+                        "port": 1000,
+                        "status": "alive",
+                        "exit_ip": "8.8.8.8",
+                    },
+                    {
+                        "provider_proxy_id": "b",
+                        "endpoint": "2.2.2.2:1000",
+                        "host": "2.2.2.2",
+                        "port": 1000,
+                        "status": "alive",
+                        "exit_ip": "9.9.9.9",
+                    },
                 ],
             )
             worker_a = await database.upsert_worker("worker-a", "a", "http://a")
