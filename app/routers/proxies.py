@@ -949,6 +949,40 @@ async def api_proxy_pool(request: Request) -> list[dict[str, Any]]:
     return [{key: value for key, value in row.items() if key not in {"username", "password"}} for row in rows]
 
 
+@router.get("/api/proxy-pool/page")
+async def api_proxy_pool_page(
+    request: Request,
+    page: int = 1,
+    page_size: int = 20,
+    search: str = "",
+    provider: str = "",
+    location: str = "",
+    ip_type: str = "",
+    earnapp: str = "",
+    duplicate: str = "",
+    sort: str = "provider_name",
+    direction: str = "asc",
+) -> dict[str, Any]:
+    deps._require_owner(request)
+    result = await database.list_proxy_pool_page(
+        page=page,
+        page_size=min(100, max(1, page_size)),
+        search=search,
+        provider=provider,
+        location=location,
+        ip_type=ip_type,
+        earnapp=earnapp,
+        duplicate=duplicate,
+        sort=sort,
+        direction=direction,
+    )
+    result["items"] = [
+        {key: value for key, value in row.items() if key not in {"username", "password"}}
+        for row in result.get("items", [])
+    ]
+    return result
+
+
 @router.get("/api/proxy-pool/scheduler")
 async def api_proxy_pool_scheduler(request: Request) -> dict[str, Any]:
     deps._require_owner(request)
@@ -994,9 +1028,42 @@ async def api_proxy_pool_export(
     provider: str | None = None,
     location: str | None = None,
     protocol: str | None = None,
+    search: str = "",
+    ip_type: str = "",
+    earnapp: str = "",
+    duplicate: str = "",
+    sort: str = "provider_name",
+    direction: str = "asc",
 ) -> PlainTextResponse:
     deps._require_owner(request)
-    rows = await database.export_proxy_pool(status=status, provider=provider, location=location, protocol=protocol)
+    # Location values in the UI are normalized display labels (country/metadata),
+    # so route them through the paginated read model instead of the legacy raw field.
+    advanced_filter = bool(
+        search or location or ip_type or earnapp or duplicate or sort != "provider_name" or direction != "asc"
+    )
+    if advanced_filter:
+        page = await database.list_proxy_pool_page(
+            page=1,
+            page_size=100_000,
+            search=search,
+            provider=provider or "",
+            location=location or "",
+            ip_type=ip_type,
+            earnapp=earnapp,
+            duplicate=duplicate,
+            sort=sort,
+            direction=direction,
+        )
+    else:
+        rows = await database.export_proxy_pool(status=status, provider=provider, location=location, protocol=protocol)
+    if advanced_filter:
+        rows = page["items"]
+        if status:
+            wanted_status = status.strip().lower()
+            rows = [row for row in rows if str(row.get("status") or "").strip().lower() == wanted_status]
+        if protocol:
+            wanted_protocol = protocol.strip().lower()
+            rows = [row for row in rows if str(row.get("protocol") or "").strip().lower() == wanted_protocol]
     buf = io.StringIO()
     writer = csv.DictWriter(
         buf,

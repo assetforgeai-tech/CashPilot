@@ -839,11 +839,39 @@ class TestInventoryTablesHaveOperatorControls:
         assert "generic_recheck" in page
         assert "Proxy enrichment scheduled" in page
 
+    def test_proxy_pool_uses_server_pagination_and_accessible_mobile_import_controls(self):
+        page = (ROOT / "app" / "templates" / "proxy_pool.html").read_text(encoding="utf-8")
+
+        for needle in (
+            'class="pool-import-grid"',
+            '<label class="sr-only" for="pool-search">',
+            '<label class="form-label" for="pool-import-file">',
+            'aria-label="Select proxy ${esc(p.endpoint || p.id)}"',
+            "'/api/proxy-pool/page?'",
+            "params.set('page', String(poolPage))",
+            "params.set('page_size', String(poolPageSize))",
+            "let poolTotal = 0",
+            "let poolPages = 1",
+            "let poolRequestController = null",
+            "function currentPoolParams",
+            "window.location.href = `/api/proxy-pool/export?${params.toString()}`",
+            "let poolIgnoreSortClickUntil = 0",
+            "if (Date.now() < poolIgnoreSortClickUntil) return;",
+            "poolIgnoreSortClickUntil = Date.now() + 500",
+        ):
+            assert needle in page
+
+        assert "rows.slice((poolPage - 1) * poolPageSize" not in page
+        assert "poolRows.filter(" not in page
+        assert "filterPoolRows(poolRows)" not in page
+        assert "@media (max-width:640px)" in page
+        assert ".pool-import-grid { grid-template-columns:1fr; }" in page
+
     def test_proxy_pool_explains_unresolved_metadata_and_earnapp_unknown(self):
         page = (ROOT / "app" / "templates" / "proxy_pool.html").read_text(encoding="utf-8")
 
-        assert "egress_known" in page
-        assert "egress_unresolved" in page
+        assert "poolCounts" in page
+        assert "poolTypeCounts" in page
         assert "Egress unresolved" in page
         assert "Metadata pending" in page
         assert "EarnApp skipped" in page
@@ -855,7 +883,7 @@ class TestInventoryTablesHaveOperatorControls:
         page = (ROOT / "app" / "templates" / "proxy_pool.html").read_text(encoding="utf-8")
 
         assert "label.replaceAll('_', '-')" in page
-        assert "earnapp_eligible: earnappStates.filter(state => state.label === 'eligible').length" in page
+        assert "poolCounts = page.counts || {}" in page
         assert "kind === 'location'" in page
         assert "['Egress unresolved', 'Metadata pending', 'Generic check failed'].includes(value)" in page
         assert "exportFilteredPool();" in page
@@ -875,11 +903,10 @@ class TestInventoryTablesHaveOperatorControls:
     def test_proxy_pool_counts_only_truthful_usable_and_leaseable_inventory(self):
         page = (ROOT / "app" / "templates" / "proxy_pool.html").read_text(encoding="utf-8")
 
-        assert "generic_usable" in page
-        assert "canonical_available" in page
-        assert "earnapp_leaseable" in page
+        assert "poolCounts = page.counts || {}" in page
+        assert "poolTypeCounts = page.type_counts || {}" in page
+        assert "poolFilterOptions = page.filters || {}" in page
         assert "genericUsable" in page
-        assert "unassigned_inventory" in page
         assert "rotate_dead:false" in page
 
     def test_myst_wallet_has_counts_search_sort_export_confirm_and_pagination(self):

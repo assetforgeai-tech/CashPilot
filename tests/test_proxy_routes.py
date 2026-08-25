@@ -89,6 +89,59 @@ def test_proxy_pool_list_does_not_expose_proxy_credentials(client):
     assert resp.json() == [{"id": 1, "endpoint": "proxy.example:1080", "password_set": True}]
 
 
+def test_proxy_pool_page_endpoint_is_bounded_and_does_not_expose_credentials(client):
+    page = {
+        "items": [
+            {
+                "id": 21,
+                "endpoint": "proxy.example:1080",
+                "username": "proxy-user",
+                "password": "proxy-secret",
+                "password_set": True,
+            }
+        ],
+        "page": 2,
+        "page_size": 20,
+        "total": 41,
+        "pages": 3,
+        "counts": {"inventory": 41},
+        "type_counts": {"socks5": 41},
+        "filters": {"providers": ["manual"], "locations": [], "ip_types": [], "earnapp_states": []},
+    }
+    with (
+        patch("app.main.auth.get_current_user", return_value=_owner_user()),
+        patch("app.routers.proxies.database.list_proxy_pool_page", new_callable=AsyncMock, return_value=page) as load,
+    ):
+        resp = client.get(
+            "/api/proxy-pool/page?page=2&page_size=20&search=US&provider=manual&location=United%20States"
+            "&ip_type=residential&earnapp=eligible&duplicate=canonical&sort=endpoint&direction=desc"
+        )
+
+    assert resp.status_code == 200
+    assert resp.json()["items"] == [{"id": 21, "endpoint": "proxy.example:1080", "password_set": True}]
+    load.assert_awaited_once_with(
+        page=2,
+        page_size=20,
+        search="US",
+        provider="manual",
+        location="United States",
+        ip_type="residential",
+        earnapp="eligible",
+        duplicate="canonical",
+        sort="endpoint",
+        direction="desc",
+    )
+
+    with (
+        patch("app.main.auth.get_current_user", return_value=_owner_user()),
+        patch("app.routers.proxies.database.list_proxy_pool_page", new_callable=AsyncMock, return_value=page) as load,
+    ):
+        resp = client.get("/api/proxy-pool/page?page_size=1000")
+
+    assert resp.status_code == 200
+    assert load.await_args.kwargs["page_size"] == 100
+
+
 def test_proxy_provider_sync_is_owner_only(client):
     with patch("app.main.auth.get_current_user", return_value=_viewer_user()):
         resp = client.post("/api/proxy-providers/1/sync")
@@ -260,6 +313,57 @@ def test_proxy_pool_export_and_recheck_are_owner_only_and_wired(client):
     assert export.status_code == 200
     assert "provider_name" in export.text
     assert "vtproxy" in export.text
+
+    with (
+        patch("app.main.auth.get_current_user", return_value=_owner_user()),
+        patch(
+            "app.routers.proxies.database.list_proxy_pool_page",
+            new_callable=AsyncMock,
+            return_value={"items": rows, "total": 1},
+        ) as filtered,
+    ):
+        export = client.get("/api/proxy-pool/export?search=sg&earnapp=eligible&sort=endpoint&direction=desc")
+    assert export.status_code == 200
+    assert "vtproxy" in export.text
+    filtered.assert_awaited_once_with(
+        page=1,
+        page_size=100_000,
+        search="sg",
+        provider="",
+        location="",
+        ip_type="",
+        earnapp="eligible",
+        duplicate="",
+        sort="endpoint",
+        direction="desc",
+    )
+
+    with (
+        patch("app.main.auth.get_current_user", return_value=_owner_user()),
+        patch(
+            "app.routers.proxies.database.list_proxy_pool_page",
+            new_callable=AsyncMock,
+            return_value={"items": rows, "total": 1},
+        ) as filtered,
+        patch("app.routers.proxies.database.export_proxy_pool", new_callable=AsyncMock) as legacy_export,
+    ):
+        export = client.get("/api/proxy-pool/export?location=United%20States")
+
+    assert export.status_code == 200
+    assert "vtproxy" in export.text
+    filtered.assert_awaited_once_with(
+        page=1,
+        page_size=100_000,
+        search="",
+        provider="",
+        location="United States",
+        ip_type="",
+        earnapp="",
+        duplicate="",
+        sort="provider_name",
+        direction="asc",
+    )
+    legacy_export.assert_not_awaited()
 
     with (
         patch("app.main.auth.get_current_user", return_value=_owner_user()),
@@ -2001,6 +2105,171 @@ def test_proxy_pool_schema_adds_intelligence_evidence_imports_and_scoped_leases(
                 "proxy_import_rows",
                 "provider_proxy_leases",
             } <= tables
+
+    asyncio.run(run())
+
+
+def test_proxy_pool_page_filters_and_sorts_before_pagination_with_global_counts(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            alpha = await database.upsert_proxy_provider("alpha", "manual")
+            beta = await database.upsert_proxy_provider("beta", "manual")
+            alpha_ids = await database.upsert_proxy_endpoints_returning_ids(
+                alpha,
+                [
+                    {
+                        "provider_proxy_id": "alpha-a",
+                        "endpoint": "a.example:1000",
+                        "host": "a.example",
+                        "port": 1000,
+                        "status": "alive",
+                        "exit_ip": "8.8.8.8",
+                    },
+                    {
+                        "provider_proxy_id": "alpha-b",
+                        "endpoint": "b.example:2000",
+                        "host": "b.example",
+                        "port": 2000,
+                        "status": "alive",
+                        "exit_ip": "9.9.9.9",
+                    },
+                    {
+                        "provider_proxy_id": "alpha-dead",
+                        "endpoint": "dead.example:3000",
+                        "host": "dead.example",
+                        "port": 3000,
+                        "status": "dead",
+                    },
+                ],
+            )
+            (beta_id,) = await database.upsert_proxy_endpoints_returning_ids(
+                beta,
+                [
+                    {
+                        "provider_proxy_id": "beta-vn",
+                        "endpoint": "vn.example:4000",
+                        "host": "vn.example",
+                        "port": 4000,
+                        "protocol": "http",
+                        "status": "alive",
+                        "exit_ip": "1.1.1.1",
+                    }
+                ],
+            )
+            for proxy_id, exit_ip in zip(alpha_ids[:2], ("8.8.8.8", "9.9.9.9"), strict=True):
+                await database.update_proxy_endpoint_intelligence(
+                    proxy_id,
+                    {
+                        "location": "United States",
+                        "country_code": "US",
+                        "country_name": "United States",
+                        "geo_source": "test",
+                        "geo_confidence": "verified",
+                        "ip_type": "residential",
+                        "ip_type_source": "test",
+                        "ip_type_confidence": "verified",
+                    },
+                )
+                await database.save_proxy_probe_result(
+                    proxy_id,
+                    profile="earnapp_wss",
+                    probe_status="alive",
+                    verdict="CID_SET",
+                    eligibility="eligible",
+                    reason="US CID",
+                    exit_ip=exit_ip,
+                    latency_ms=10,
+                    probe_version="test",
+                )
+            await database.update_proxy_endpoint_intelligence(
+                beta_id,
+                {
+                    "location": "Viet Nam",
+                    "country_code": "VN",
+                    "country_name": "Viet Nam",
+                    "geo_source": "test",
+                    "geo_confidence": "verified",
+                    "ip_type": "datacenter",
+                    "ip_type_source": "test",
+                    "ip_type_confidence": "verified",
+                },
+            )
+            await database.save_proxy_probe_result(
+                beta_id,
+                profile="earnapp_wss",
+                probe_status="alive",
+                verdict="BLACKLIST",
+                eligibility="blocked",
+                reason="blocked",
+                exit_ip="1.1.1.1",
+                latency_ms=20,
+                probe_version="test",
+            )
+
+            result = await database.list_proxy_pool_page(
+                page=2,
+                page_size=1,
+                search="united",
+                provider="alpha",
+                location="United States",
+                ip_type="residential",
+                earnapp="eligible",
+                duplicate="canonical",
+                sort="endpoint",
+                direction="desc",
+            )
+
+            assert result["page"] == 2
+            assert result["page_size"] == 1
+            assert result["total"] == 2
+            assert result["pages"] == 2
+            assert [row["endpoint"] for row in result["items"]] == ["a.example:1000"]
+            assert result["counts"]["inventory"] == 4
+            assert result["counts"]["generic_live"] == 3
+            assert result["counts"]["generic_dead"] == 1
+            assert result["counts"]["earnapp_eligible"] == 2
+            assert result["type_counts"]["residential"] == 2
+            assert result["type_counts"]["datacenter"] == 1
+            assert result["filters"]["providers"] == ["alpha", "beta"]
+            assert "United States" in result["filters"]["locations"]
+            assert "eligible" in result["filters"]["earnapp_states"]
+            assert all("username" not in row and "password" not in row for row in result["items"])
+
+            safe_sort = await database.list_proxy_pool_page(
+                page=1, page_size=2, sort="DROP TABLE", direction="sideways"
+            )
+            assert len(safe_sort["items"]) == 2
+
+    asyncio.run(run())
+
+
+def test_proxy_pool_page_reads_only_the_requested_rows_from_sqlite(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            await database.upsert_proxy_endpoints_returning_ids(
+                provider_id,
+                [
+                    {
+                        "provider_proxy_id": f"proxy-{index}",
+                        "endpoint": f"10.0.0.{index}:1000",
+                        "host": f"10.0.0.{index}",
+                        "port": 1000,
+                        "status": "alive",
+                        "exit_ip": f"8.8.8.{index}",
+                    }
+                    for index in range(1, 6)
+                ],
+            )
+
+            with patch.object(database, "list_proxy_pool", new_callable=AsyncMock) as full_inventory:
+                result = await database.list_proxy_pool_page(page=2, page_size=2, sort="endpoint", direction="asc")
+
+            full_inventory.assert_not_awaited()
+            assert result["total"] == 5
+            assert len(result["items"]) == 2
 
     asyncio.run(run())
 

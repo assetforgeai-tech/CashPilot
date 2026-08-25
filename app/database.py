@@ -2803,6 +2803,217 @@ async def list_proxy_pool() -> list[dict[str, Any]]:
         await db.close()
 
 
+async def list_proxy_pool_page(
+    *,
+    page: int = 1,
+    page_size: int = 20,
+    search: str = "",
+    provider: str = "",
+    location: str = "",
+    ip_type: str = "",
+    earnapp: str = "",
+    duplicate: str = "",
+    sort: str = "provider_name",
+    direction: str = "asc",
+) -> dict[str, Any]:
+    """Return one operator page while keeping aggregate inventory context."""
+    size = min(100_000, max(1, int(page_size or 20)))
+    requested_page = max(1, int(page or 1))
+    location_expr = """CASE
+        WHEN trim(coalesce(pe.exit_ip, '')) = '' AND lower(coalesce(pe.status, '')) = 'dead' THEN 'Generic check failed'
+        WHEN trim(coalesce(pe.exit_ip, '')) = '' THEN 'Egress unresolved'
+        ELSE coalesce(nullif(pe.country_name, ''), nullif(pe.country_code, ''), 'Metadata pending')
+    END"""
+    ip_type_expr = """CASE
+        WHEN trim(coalesce(pe.exit_ip, '')) = '' AND lower(coalesce(pe.status, '')) = 'dead' THEN 'Generic check failed'
+        WHEN trim(coalesce(pe.exit_ip, '')) = '' THEN 'Egress unresolved'
+        WHEN trim(coalesce(pe.ip_type, 'unknown')) IN ('', 'unknown') THEN 'Metadata pending'
+        ELSE pe.ip_type
+    END"""
+    earnapp_expr = """CASE
+        WHEN lower(coalesce(pe.status, '')) = 'dead' THEN 'skipped'
+        WHEN trim(coalesce(earnapp.verdict, '')) = '' THEN 'not checked'
+        ELSE coalesce(nullif(trim(earnapp.eligibility), ''), 'unknown')
+    END"""
+    select_sql = f"""
+        SELECT pe.id, pe.provider_id, pp.name AS provider_name, pp.type AS provider_type,
+               pe.provider_proxy_id, pe.endpoint, pe.host, pe.port, pe.protocol,
+               pe.location, pe.status, pe.expiry_date, pe.days_left,
+               pe.hours_left, pe.exit_ip, pe.udp_ok, pe.latency_ms,
+               pe.last_synced_at, pe.last_checked_at,
+               pe.country_code, pe.country_name, pe.geo_source, pe.geo_confidence, pe.geo_checked_at,
+               pe.ip_type, pe.ip_type_source, pe.ip_type_confidence, pe.ip_type_checked_at,
+               pe.duplicate_egress, pe.canonical_proxy_id, pe.duplicate_reason,
+               CASE WHEN pe.password_enc IS NOT NULL AND pe.password_enc != '' THEN 1 ELSE 0 END AS password_set,
+               pa.worker_id AS assigned_worker_id,
+               pawns.reason AS pawns_mask_reason,
+               earnapp.probe_status AS earnapp_probe_status,
+               earnapp.verdict AS earnapp_verdict,
+               earnapp.eligibility AS earnapp_eligibility,
+               earnapp.reason AS earnapp_probe_reason,
+               earnapp.latency_ms AS earnapp_latency_ms,
+               earnapp.checked_at AS earnapp_checked_at,
+               scoped.provider_slug AS scoped_provider_slug,
+               scoped.worker_id AS scoped_worker_id,
+               scoped.instance_id AS scoped_instance_id,
+               {location_expr} AS display_location,
+               {ip_type_expr} AS display_ip_type,
+               {earnapp_expr} AS display_earnapp
+        FROM proxy_endpoints pe
+        LEFT JOIN proxy_providers pp ON pp.id = pe.provider_id
+        LEFT JOIN proxy_assignments pa ON pa.proxy_id = pe.id
+        LEFT JOIN proxy_provider_masks pawns ON pawns.proxy_id = pe.id AND pawns.provider_slug = 'iproyal'
+        LEFT JOIN proxy_probe_results earnapp ON earnapp.id = (
+            SELECT MAX(pr.id) FROM proxy_probe_results pr
+            WHERE pr.proxy_id = pe.id AND pr.profile = 'earnapp_wss'
+        )
+            AND trim(coalesce(earnapp.exit_ip, '')) != ''
+            AND earnapp.exit_ip = pe.exit_ip
+        LEFT JOIN provider_proxy_leases scoped ON scoped.proxy_id = pe.id AND scoped.released_at IS NULL
+    """
+    clauses: list[str] = []
+    params: list[Any] = []
+    query = str(search or "").strip().lower()
+    if query:
+        pattern = f"%{query}%"
+        clauses.append(
+            f"""(
+                lower(coalesce(pp.name, '')) LIKE ? OR lower(coalesce(pe.endpoint, '')) LIKE ? OR
+                lower(coalesce(pe.protocol, '')) LIKE ? OR lower(coalesce(pe.country_code, '')) LIKE ? OR
+                lower(coalesce(pe.country_name, '')) LIKE ? OR lower(coalesce(pe.status, '')) LIKE ? OR
+                lower(coalesce(earnapp.verdict, '')) LIKE ? OR lower(coalesce(earnapp.reason, '')) LIKE ? OR
+                lower(coalesce(pe.duplicate_reason, '')) LIKE ? OR lower(coalesce(pe.expiry_date, '')) LIKE ? OR
+                lower(coalesce(CAST(pa.worker_id AS TEXT), '')) LIKE ? OR lower({location_expr}) LIKE ? OR
+                lower({ip_type_expr}) LIKE ? OR lower(coalesce(pe.exit_ip, 'Egress unresolved')) LIKE ? OR
+                lower({earnapp_expr}) LIKE ?
+            )"""
+        )
+        params.extend([pattern] * 15)
+    if str(provider or "").strip():
+        clauses.append("pp.name = ?")
+        params.append(str(provider).strip())
+    if str(location or "").strip():
+        clauses.append(f"{location_expr} = ?")
+        params.append(str(location).strip())
+    if str(ip_type or "").strip():
+        clauses.append(f"{ip_type_expr} = ?")
+        params.append(str(ip_type).strip())
+    if str(earnapp or "").strip():
+        clauses.append(f"{earnapp_expr} = ?")
+        params.append(str(earnapp).strip())
+    duplicate_value = str(duplicate or "").strip().lower()
+    if duplicate_value == "duplicate":
+        clauses.append("coalesce(pe.duplicate_egress, 0) = 1")
+    elif duplicate_value == "canonical":
+        clauses.append("coalesce(pe.duplicate_egress, 0) = 0")
+    where_sql = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+    sort_expressions = {
+        "provider_name": "lower(coalesce(pp.name, ''))",
+        "endpoint": "lower(coalesce(pe.endpoint, ''))",
+        "protocol": "lower(coalesce(pe.protocol, ''))",
+        "location": f"lower({location_expr})",
+        "ip_type": f"lower({ip_type_expr})",
+        "exit_ip": "lower(coalesce(pe.exit_ip, ''))",
+        "status": "lower(coalesce(pe.status, ''))",
+        "latency_ms": "coalesce(pe.latency_ms, 2147483647)",
+        "earnapp_eligibility": f"lower({earnapp_expr})",
+        "duplicate_egress": "coalesce(pe.duplicate_egress, 0)",
+        "assigned_worker_id": "coalesce(pa.worker_id, scoped.worker_id, 0)",
+        "last_checked_at": "coalesce(pe.last_checked_at, '')",
+    }
+    order_by = sort_expressions.get(str(sort or "").strip(), sort_expressions["provider_name"])
+    order_direction = "DESC" if str(direction or "").strip().lower() == "desc" else "ASC"
+    db = await _get_db()
+    try:
+        total = int(
+            (await (await db.execute(f"SELECT COUNT(*) AS n FROM ({select_sql}{where_sql})", params)).fetchone())["n"]
+        )
+        pages = max(1, math.ceil(total / size))
+        current_page = min(pages, requested_page)
+        offset = (current_page - 1) * size
+        item_cursor = await db.execute(
+            f"{select_sql}{where_sql} ORDER BY {order_by} {order_direction}, pe.id {order_direction} LIMIT ? OFFSET ?",
+            (*params, size, offset),
+        )
+        items: list[dict[str, Any]] = []
+        for row in await item_cursor.fetchall():
+            item = dict(row)
+            item.pop("display_location", None)
+            item.pop("display_ip_type", None)
+            item.pop("display_earnapp", None)
+            item["password_set"] = bool(item.get("password_set"))
+            item["duplicate_egress"] = bool(item.get("duplicate_egress"))
+            if item.get("udp_ok") is not None:
+                item["udp_ok"] = bool(item["udp_ok"])
+            items.append(item)
+        aggregate = dict(
+            await (
+                await db.execute(
+                    f"""SELECT
+                        COUNT(*) AS inventory,
+                        SUM(lower(coalesce(status, '')) = 'alive') AS generic_live,
+                        SUM(lower(coalesce(status, '')) = 'dead') AS generic_dead,
+                        SUM(assigned_worker_id IS NOT NULL) AS legacy_leased,
+                        SUM(scoped_provider_slug IS NOT NULL) AS scoped_leased,
+                        SUM(assigned_worker_id IS NULL AND scoped_provider_slug IS NULL) AS unassigned_inventory,
+                        SUM(coalesce(duplicate_egress, 0) = 1) AS duplicates,
+                        SUM(display_earnapp = 'eligible') AS earnapp_eligible,
+                        SUM(display_earnapp NOT IN ('not checked', 'skipped')) AS earnapp_checked,
+                        SUM(display_earnapp = 'unknown') AS earnapp_unknown,
+                        SUM(display_earnapp = 'not checked') AS earnapp_not_checked,
+                        SUM(display_earnapp = 'skipped') AS earnapp_skipped,
+                        SUM(trim(coalesce(exit_ip, '')) != '') AS egress_known,
+                        SUM(trim(coalesce(exit_ip, '')) = '') AS egress_unresolved,
+                        SUM(display_location = 'Metadata pending' OR display_ip_type = 'Metadata pending') AS metadata_pending,
+                        SUM(lower(coalesce(status, '')) = 'alive' AND trim(coalesce(exit_ip, '')) != '' AND coalesce(duplicate_egress, 0) = 0) AS generic_usable,
+                        SUM(lower(coalesce(status, '')) = 'alive' AND trim(coalesce(exit_ip, '')) != '' AND coalesce(duplicate_egress, 0) = 0 AND assigned_worker_id IS NULL AND scoped_provider_slug IS NULL) AS canonical_available,
+                        SUM(lower(coalesce(status, '')) = 'alive' AND trim(coalesce(exit_ip, '')) != '' AND coalesce(duplicate_egress, 0) = 0 AND display_earnapp = 'eligible' AND assigned_worker_id IS NULL AND scoped_provider_slug IS NULL) AS earnapp_leaseable
+                    FROM ({select_sql})"""
+                )
+            ).fetchone()
+        )
+        type_counts = dict(
+            await (
+                await db.execute(
+                    f"""SELECT
+                        SUM(lower(coalesce(protocol, '')) = 'http') AS http,
+                        SUM(lower(coalesce(protocol, '')) = 'socks5') AS socks5,
+                        SUM(ip_type = 'residential') AS residential,
+                        SUM(ip_type = 'datacenter') AS datacenter,
+                        SUM(ip_type = 'vpn') AS vpn,
+                        SUM(ip_type = 'proxy') AS proxy,
+                        SUM(coalesce(ip_type, 'unknown') IN ('', 'unknown')) AS unknown
+                    FROM ({select_sql})"""
+                )
+            ).fetchone()
+        )
+
+        async def distinct_values(expression: str) -> list[str]:
+            cursor = await db.execute(
+                f"SELECT DISTINCT value FROM (SELECT {expression} AS value FROM ({select_sql})) WHERE trim(coalesce(value, '')) != '' ORDER BY value"
+            )
+            return [str(row["value"]) for row in await cursor.fetchall()]
+
+        filters = {
+            "providers": await distinct_values("provider_name"),
+            "locations": await distinct_values("display_location"),
+            "ip_types": await distinct_values("display_ip_type"),
+            "earnapp_states": await distinct_values("display_earnapp"),
+        }
+        return {
+            "items": items,
+            "page": current_page,
+            "page_size": size,
+            "total": total,
+            "pages": pages,
+            "counts": {key: int(value or 0) for key, value in aggregate.items()},
+            "type_counts": {key: int(value or 0) for key, value in type_counts.items()},
+            "filters": filters,
+        }
+    finally:
+        await db.close()
+
+
 async def mask_proxy_for_provider(proxy_id: int, provider_slug: str, reason: str = "") -> bool:
     provider_slug = str(provider_slug or "").strip()
     if int(proxy_id or 0) <= 0 or not provider_slug:
