@@ -5,9 +5,10 @@ Updated: 2026-08-26 (EarnApp account/recovery control plane implemented locally;
 ## EarnApp account/recovery implementation (local branch, 2026-08-25)
 
 - Branch `feat/earnapp-account-recovery` is based on verified `origin/main`
-  commit `ff25e7bb1dc36b2f1ca5b7210680ce19eebe250d`. This work is still local and
-  uncommitted: there is no PR, merge, release, deployment, DNS change, Chrome
-  profile operation or VPS mutation from this phase.
+  commit `ff25e7bb1dc36b2f1ca5b7210680ce19eebe250d`. Implementation commit
+  `9968a853ba5523c4bd96fa61e98473583c6a7e46` is pushed in open PR #40 for
+  review. It is not merged, released or deployed; there was no DNS change,
+  Chrome profile operation or VPS mutation from this phase.
 - The server now has an isolated EarnApp Account Pool: Google/Apple metadata,
   Fernet-encrypted allowlisted cookies, masked owner APIs, token/cookie expiry
   warnings, least-assigned account allocation, account-scoped read-only

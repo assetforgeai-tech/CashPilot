@@ -7,9 +7,9 @@ Commit nền hiện tại: `ff25e7bb1dc36b2f1ca5b7210680ce19eebe250d`
 ## Cập nhật EarnApp account/recovery local (2026-08-25)
 
 Nhánh `feat/earnapp-account-recovery` bổ sung control plane cô lập cho EarnApp
-trên nền `origin/main` `ff25e7b`. Thay đổi chưa commit/PR/merge/release/deploy;
-không có thao tác VPS, DNS, Chrome profile, credential live hoặc provider
-`PROTECTED_DONE`.
+trên nền `origin/main` `ff25e7b`. Implementation commit `9968a85` đã push và
+PR #40 đang mở để review; chưa merge/release/deploy. Không có thao tác VPS,
+DNS, Chrome profile, credential live hoặc provider `PROTECTED_DONE`.
 
 Domain model mới gồm `earnapp_accounts`, `earnapp_logical_nodes`,
 `earnapp_replacement_tickets`, `earnapp_account_control_routes` và
@@ -92,7 +92,7 @@ do refactor hoặc redeploy khi chưa có phê duyệt rõ ràng.
 | Fork CI/release hiện tại | Commit `ff25e7b` pass CodeQL, Catalog Check, Lint, Documentation và Tests; PR #39 đã merge |
 | Merge/release state | PRs #27-#39 đã merge theo chuỗi Proxy Pool; `v1.10.0` có Auto Release thành công |
 | Tag namespace | Fork tags được giữ ở `refs/fork-tags/*`; không lấy local `refs/tags/*` làm bằng chứng vì upstream dùng trùng version names |
-| Audit worktree | Branch `feat/earnapp-account-recovery`; đang dirty có chủ đích với thay đổi EarnApp local chưa commit; không stage `site/` |
+| Audit worktree | Branch `feat/earnapp-account-recovery`; commit `9968a85` đã push trong PR #40, worktree sạch; không stage `site/` |
 
 Upstream mới hơn không đồng nghĩa fork phải merge. Fork-only history chứa nhiều contract quan trọng về provider/runtime hardening, Grass identity/auth, MYST wallet lease/runtime, proxy lease rotation và CI/release. Mọi merge hoặc cherry-pick phải được đánh giá riêng và nằm ngoài giai đoạn này.
 
