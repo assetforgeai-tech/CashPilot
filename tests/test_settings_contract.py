@@ -75,6 +75,27 @@ def test_config_save_normalizes_legacy_importer_keys():
     }
 
 
+def test_dashboard_session_is_masked_but_remains_readable_to_runtime(tmp_path):
+    async def run():
+        with (
+            patch.object(database, "DB_DIR", tmp_path),
+            patch.object(database, "DB_PATH", tmp_path / "settings.db"),
+        ):
+            await database.init_db()
+            session = "eyJhbGciOiJFUzI1NiJ9.secret-session-value.signature"
+            await database.set_config("dawn_dashboard_session", session)
+
+            masked = await database.get_config_masked()
+            assert "dawn_dashboard_session" not in masked
+            assert masked["_secrets"]["dawn_dashboard_session"] is True
+
+            # Existing plaintext rows remain backward-compatible while future
+            # writes are encrypted by the widened secret-key classifier.
+            assert (await database.get_config("dawn_dashboard_session")) == session
+
+    asyncio.run(run())
+
+
 def test_credential_health_reports_age_without_values(tmp_path):
     async def run():
         with (

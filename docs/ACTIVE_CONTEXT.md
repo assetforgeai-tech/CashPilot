@@ -1,6 +1,41 @@
 # CashPilot Active Context
 
-Updated: 2026-08-24 (Proxy Pool `v1.7.2` live closeout; EarnApp provider still pending)
+Updated: 2026-08-25 (Proxy Pool `v1.8.0` live audit; EarnApp provider still pending)
+
+## v1.8.0 Proxy Pool live audit (2026-08-25)
+
+- PR #33 is merged at `098ac2b3eee1a77b09ec7855c328485f9ce7ef0a`; Auto Release
+  run `32813965539` succeeded and published `v1.8.0`. `origin/main` is now
+  `76f740e1c7fd1920cae887d6af5ead60f48ff357`.
+- The server `cashpilot-ui` is healthy on the verified UI digest
+  `sha256:3b2ab3c4217e35dc0223d72ace025f8fac26f37eef42ba851f517df4e00ccb62`;
+  `CASHPILOT_VERSION=1.8.0`, restart count `0`. The worker container/image,
+  start time and restart count were unchanged. DB integrity is `ok`, schema
+  `18`.
+- A fresh authenticated read-only sweep retrieved all `3,223` proxy rows over
+  `33` bounded pages (maximum `100` items; maximum payload `117,918` bytes).
+  Generic alive/dead is `1,932 / 1,291`; egress known/unresolved is
+  `1,932 / 1,291`; country known `1,922`; IP type known `1,109`; metadata
+  pending `823`; duplicate egress rows `844`; canonical usable `1,088`.
+- EarnApp evidence counts are eligible `924`, leaseable `337`, blocked `661`,
+  quality-rejected `209`, not checked `138`, skipped `1,291`; latest evidence
+  is stale against current egress for `1,429` rows. Active legacy and scoped
+  leases are both `0`. Scheduler remains enabled at `60` minutes/concurrency
+  `64`. No import, delete, recheck, rotation, lease, release or assignment was
+  performed.
+- Authenticated Playwright checks passed on desktop `1440px` and mobile
+  `375px`: no page overflow, bounded server pagination, search/filter/sort and
+  pagination requests, correct ARIA sort transitions, and no console/page
+  errors. The mobile table's inner horizontal scroll is intentional.
+- Endpoint map and redacted evidence are recorded in
+  `docs/research/proxy-pool-v1.8.0-live-audit.md`. The pre-fix audit found one
+  security gap: `dawn_dashboard_session` was populated in `/api/config` but was
+  not classified into `_secrets`; its value was not copied into docs. The
+  narrowly scoped masking fix and regression test are included in this UI-only
+  follow-up, with post-release proof still required.
+- Two data-quality follow-ups remain design-only: canonicalize `VN`/`Viet Nam`
+  labels and plan freshness-aware EarnApp re-probe for stale rows. Do not bulk
+  mutate either until an impact map and explicit approval exist.
 
 ## Current repository state
 

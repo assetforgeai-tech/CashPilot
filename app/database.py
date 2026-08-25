@@ -51,6 +51,9 @@ SECRET_CONFIG_KEYS = {
     "api_key",
     "secret_key",
     "session_cookie",
+    # Dashboard sessions are bearer credentials even when a provider names the
+    # field differently from the generic cookie/token conventions above.
+    "dashboard_session",
     "auth_cookie",
     "oauth_token",
     "brd_sess_id",
