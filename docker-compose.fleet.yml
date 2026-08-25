@@ -11,7 +11,7 @@ name: cashpilot
 # === Deploy on main server (e.g., server-a) ===
 services:
   cashpilot-ui:
-    image: ghcr.io/assetforgeai-tech/cashpilot:1.9
+    image: ghcr.io/assetforgeai-tech/cashpilot:1.10
     pull_policy: always
     container_name: cashpilot-ui
     # Loopback by default (the UI commands the Docker-socket worker). Set
@@ -50,7 +50,7 @@ services:
       - /tmp:size=64M
 
   cashpilot-worker:
-    image: ghcr.io/assetforgeai-tech/cashpilot-worker:1.9
+    image: ghcr.io/assetforgeai-tech/cashpilot-worker:1.10
     pull_policy: always
     container_name: cashpilot-worker
     # The worker exposes a Docker-socket-backed API (deploy/stop/remove any
@@ -132,7 +132,7 @@ services:
 #
 #  services:
 #    cashpilot-worker:
-#      image: ghcr.io/assetforgeai-tech/cashpilot-worker:1.9
+#      image: ghcr.io/assetforgeai-tech/cashpilot-worker:1.10
 #      pull_policy: always
 #      container_name: cashpilot-worker
 #      # Docker-socket-backed API = full host control. Bind a PRIVATE/VPN interface
