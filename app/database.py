@@ -2925,7 +2925,9 @@ async def list_proxy_pool_page(
     order_direction = "DESC" if str(direction or "").strip().lower() == "desc" else "ASC"
     db = await _get_db()
     try:
-        total = int((await (await db.execute(f"SELECT COUNT(*) AS n FROM ({select_sql}{where_sql})", params)).fetchone())["n"])
+        total = int(
+            (await (await db.execute(f"SELECT COUNT(*) AS n FROM ({select_sql}{where_sql})", params)).fetchone())["n"]
+        )
         pages = max(1, math.ceil(total / size))
         current_page = min(pages, requested_page)
         offset = (current_page - 1) * size

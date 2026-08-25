@@ -1039,13 +1039,7 @@ async def api_proxy_pool_export(
     # Location values in the UI are normalized display labels (country/metadata),
     # so route them through the paginated read model instead of the legacy raw field.
     advanced_filter = bool(
-        search
-        or location
-        or ip_type
-        or earnapp
-        or duplicate
-        or sort != "provider_name"
-        or direction != "asc"
+        search or location or ip_type or earnapp or duplicate or sort != "provider_name" or direction != "asc"
     )
     if advanced_filter:
         page = await database.list_proxy_pool_page(

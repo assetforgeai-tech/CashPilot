@@ -2236,7 +2236,9 @@ def test_proxy_pool_page_filters_and_sorts_before_pagination_with_global_counts(
             assert "eligible" in result["filters"]["earnapp_states"]
             assert all("username" not in row and "password" not in row for row in result["items"])
 
-            safe_sort = await database.list_proxy_pool_page(page=1, page_size=2, sort="DROP TABLE", direction="sideways")
+            safe_sort = await database.list_proxy_pool_page(
+                page=1, page_size=2, sort="DROP TABLE", direction="sideways"
+            )
             assert len(safe_sort["items"]) == 2
 
     asyncio.run(run())
