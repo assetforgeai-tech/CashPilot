@@ -526,6 +526,150 @@ def test_proxy_import_parser_retains_each_raw_line_only_for_encrypted_audit_stor
     ]
 
 
+def test_proxy_import_parser_applies_operator_protocol_mode():
+    http_row = proxy_routes._parse_proxy_import("proxy.example:1000", protocol_mode="http")[0]
+    socks_row = proxy_routes._parse_proxy_import("http://proxy.example:1000", protocol_mode="socks5")[0]
+
+    assert http_row["protocol"] == "http"
+    assert socks_row["protocol"] == "socks5"
+
+
+def test_proxy_import_parser_auto_preserves_explicit_scheme_and_legacy_default():
+    rows = proxy_routes._parse_proxy_import(
+        "http://one.example:1000\ntwo.example:2000",
+        protocol_mode="auto",
+    )
+
+    assert [row["protocol"] for row in rows] == ["http", "socks5"]
+
+
+def test_proxy_pool_import_rejects_invalid_protocol_mode(client):
+    with (
+        patch("app.main.auth.get_current_user", return_value=_owner_user()),
+        patch("app.routers.proxies.database.upsert_proxy_provider", new_callable=AsyncMock, return_value=9),
+        patch(
+            "app.routers.proxies.database.upsert_proxy_endpoints_returning_ids",
+            new_callable=AsyncMock,
+            return_value=[1],
+        ),
+        patch("app.routers.proxies.database.create_proxy_import_batch", new_callable=AsyncMock),
+    ):
+        response = client.post(
+            "/api/proxy-pool/import",
+            json={
+                "text": "proxy.example:1000",
+                "provider_name": "manual",
+                "protocol_mode": "ftp",
+                "recheck": False,
+            },
+        )
+
+    assert response.status_code == 422
+
+
+def test_proxy_pool_import_applies_forced_protocol_to_initial_recheck(client):
+    with (
+        patch("app.main.auth.get_current_user", return_value=_owner_user()),
+        patch("app.routers.proxies.database.upsert_proxy_provider", new_callable=AsyncMock, return_value=9),
+        patch(
+            "app.routers.proxies.database.upsert_proxy_endpoints_returning_ids",
+            new_callable=AsyncMock,
+            return_value=[3],
+        ) as upsert,
+        patch("app.routers.proxies.database.create_proxy_import_batch", new_callable=AsyncMock),
+        patch("app.routers.proxies.database.get_config", new_callable=AsyncMock, return_value={}),
+        patch(
+            "app.routers.proxies.run_proxy_pool_recheck",
+            new_callable=AsyncMock,
+            return_value={"checked": 1, "alive": 1, "dead": 0, "rotated": 0},
+        ) as recheck,
+        patch(
+            "app.routers.proxies.run_earnapp_proxy_recheck",
+            new_callable=AsyncMock,
+            return_value={"checked": 1, "eligible": 1, "blocked": 0, "unknown": 0},
+        ),
+    ):
+        response = client.post(
+            "/api/proxy-pool/import",
+            json={
+                "text": "proxy.example:1000",
+                "provider_name": "manual",
+                "protocol_mode": "http",
+                "recheck": True,
+            },
+        )
+
+    assert response.status_code == 200
+    assert upsert.await_args.args[1][0]["protocol"] == "http"
+    recheck.assert_awaited_once_with(
+        proxy_ids=[3],
+        concurrency=8,
+        rotate_dead=False,
+        protocol_mode="http",
+    )
+
+
+def test_proxy_pool_import_auto_keeps_existing_recheck_call_contract(client):
+    with (
+        patch("app.main.auth.get_current_user", return_value=_owner_user()),
+        patch("app.routers.proxies.database.upsert_proxy_provider", new_callable=AsyncMock, return_value=9),
+        patch(
+            "app.routers.proxies.database.upsert_proxy_endpoints_returning_ids",
+            new_callable=AsyncMock,
+            return_value=[3],
+        ),
+        patch("app.routers.proxies.database.create_proxy_import_batch", new_callable=AsyncMock),
+        patch("app.routers.proxies.database.get_config", new_callable=AsyncMock, return_value={}),
+        patch(
+            "app.routers.proxies.run_proxy_pool_recheck",
+            new_callable=AsyncMock,
+            return_value={"checked": 1, "alive": 1, "dead": 0, "rotated": 0},
+        ) as recheck,
+        patch(
+            "app.routers.proxies.run_earnapp_proxy_recheck",
+            new_callable=AsyncMock,
+            return_value={"checked": 1, "eligible": 0, "blocked": 0, "unknown": 1},
+        ),
+    ):
+        response = client.post(
+            "/api/proxy-pool/import",
+            json={"text": "proxy.example:1000", "provider_name": "manual", "recheck": True},
+        )
+
+    assert response.status_code == 200
+    recheck.assert_awaited_once_with(proxy_ids=[3], concurrency=8, rotate_dead=False)
+
+
+def test_large_proxy_import_schedules_forced_protocol_mode(client):
+    proxy_ids = list(range(1, 31))
+    with (
+        patch("app.main.auth.get_current_user", return_value=_owner_user()),
+        patch("app.routers.proxies.database.upsert_proxy_provider", new_callable=AsyncMock, return_value=9),
+        patch(
+            "app.routers.proxies.database.upsert_proxy_endpoints_returning_ids",
+            new_callable=AsyncMock,
+            return_value=proxy_ids,
+        ),
+        patch("app.routers.proxies.database.create_proxy_import_batch", new_callable=AsyncMock),
+        patch("app.routers.proxies.database.get_config", new_callable=AsyncMock, return_value={}),
+        patch(
+            "app.routers.proxies._schedule_proxy_import_recheck",
+            return_value={"status": "scheduled", "stage": "scheduled", "job_id": "job-1", "total": 30},
+        ) as schedule,
+    ):
+        response = client.post(
+            "/api/proxy-pool/import",
+            json={
+                "text": "\n".join(f"1.1.1.{index}:1000" for index in range(30)),
+                "provider_name": "manual",
+                "protocol_mode": "socks5",
+            },
+        )
+
+    assert response.status_code == 200
+    schedule.assert_called_once_with(proxy_ids, 8, protocol_mode="socks5")
+
+
 def test_reimport_does_not_erase_verified_proxy_state(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
@@ -648,6 +792,37 @@ async def test_scheduled_proxy_import_recheck_runs_generic_before_earnapp():
     assert job["result"]["generic"]["checked"] == 3
     assert job["result"]["earnapp"]["checked"] == 2
     generic_mock.assert_awaited_once_with(proxy_ids=[1, 2, 3], concurrency=4, rotate_dead=False, probe_retries=1)
+    proxy_routes._proxy_recheck_jobs.clear()
+    proxy_routes._proxy_recheck_tasks.clear()
+
+
+@pytest.mark.asyncio
+async def test_scheduled_proxy_import_recheck_propagates_forced_protocol_mode():
+    proxy_routes._proxy_recheck_jobs.clear()
+    proxy_routes._proxy_recheck_tasks.clear()
+
+    with (
+        patch(
+            "app.routers.proxies.run_proxy_pool_recheck",
+            new_callable=AsyncMock,
+            return_value={"status": "ok", "checked": 1},
+        ) as generic,
+        patch(
+            "app.routers.proxies.run_earnapp_proxy_recheck",
+            new_callable=AsyncMock,
+            return_value={"status": "ok", "checked": 1},
+        ),
+    ):
+        proxy_routes._schedule_proxy_import_recheck([1], 1, protocol_mode="http")
+        await asyncio.gather(*tuple(proxy_routes._proxy_recheck_tasks))
+
+    generic.assert_awaited_once_with(
+        proxy_ids=[1],
+        concurrency=1,
+        rotate_dead=False,
+        probe_retries=1,
+        protocol_mode="http",
+    )
     proxy_routes._proxy_recheck_jobs.clear()
     proxy_routes._proxy_recheck_tasks.clear()
 
@@ -1940,6 +2115,56 @@ async def test_generic_proxy_probe_requires_an_authoritative_egress_ip():
 
     assert result["status"] == "dead"
     assert not result.get("exit_ip")
+
+
+@pytest.mark.asyncio
+async def test_generic_proxy_probe_honors_forced_http_protocol_mode():
+    with (
+        patch("app.routers.proxies._probe_socks5_proxy", new_callable=AsyncMock) as socks_probe,
+        patch("app.routers.proxies._probe_http_proxy", new_callable=AsyncMock, return_value=True) as http_probe,
+        patch(
+            "app.routers.proxies._probe_proxy_exit_ip",
+            new_callable=AsyncMock,
+            return_value="8.8.8.8",
+        ) as exit_probe,
+    ):
+        result = await proxy_routes._probe_proxy("proxy.example.com", 8080, protocol_mode="http")
+
+    assert result["status"] == "alive"
+    assert result["protocol"] == "http"
+    socks_probe.assert_not_awaited()
+    http_probe.assert_awaited_once()
+    exit_probe.assert_awaited_once_with(
+        "proxy.example.com",
+        8080,
+        protocol="http",
+        username="",
+        password="",
+    )
+
+
+@pytest.mark.asyncio
+async def test_generic_proxy_probe_auto_falls_back_from_socks5_to_http():
+    order = []
+
+    async def socks_probe(*_args, **_kwargs):
+        order.append("socks5")
+        return False
+
+    async def http_probe(*_args, **_kwargs):
+        order.append("http")
+        return True
+
+    with (
+        patch("app.routers.proxies._probe_socks5_proxy", side_effect=socks_probe),
+        patch("app.routers.proxies._probe_http_proxy", side_effect=http_probe),
+        patch("app.routers.proxies._probe_proxy_exit_ip", new_callable=AsyncMock, return_value="8.8.8.8"),
+    ):
+        result = await proxy_routes._probe_proxy("proxy.example.com", 8080, protocol_mode="auto")
+
+    assert result["status"] == "alive"
+    assert result["protocol"] == "http"
+    assert order == ["socks5", "http"]
 
 
 @pytest.mark.asyncio

@@ -20,7 +20,8 @@
   .proxy-pool-table th[data-sort]:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
   .pool-action { min-height:44px; }
   .pool-status-not-checked { color:var(--text-muted); }
-  .pool-import-grid { display:grid; grid-template-columns:minmax(240px,1fr) minmax(160px,220px) auto auto; gap:8px; align-items:end; margin-bottom:12px; }
+  .pool-import-grid { display:grid; grid-template-columns:minmax(240px,1fr) minmax(150px,200px) minmax(140px,180px) auto auto; gap:8px; align-items:end; margin-bottom:12px; }
+  .pool-import-help { display:block; margin-top:4px; color:var(--text-muted); font-size:0.78rem; line-height:1.35; }
   .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
   @media (max-width:900px) {
     .pool-command-bar { align-items:stretch; }
@@ -90,6 +91,15 @@
     <div>
       <label class="form-label" for="pool-import-provider">Provider</label>
       <input class="form-input" id="pool-import-provider" value="manual">
+    </div>
+    <div>
+      <label class="form-label" for="pool-import-protocol">Protocol</label>
+      <select class="form-select pool-action" id="pool-import-protocol">
+        <option value="auto" selected>Auto</option>
+        <option value="http">HTTP</option>
+        <option value="socks5">SOCKS5</option>
+      </select>
+      <small class="pool-import-help">Auto detects SOCKS5 or HTTP during the first check.</small>
     </div>
     <div>
       <label class="form-label" for="pool-import-file">Proxy file</label>
@@ -442,7 +452,7 @@ document.getElementById('pool-import-submit').addEventListener('click', async ()
   if (!confirm('Import proxies into pool?')) return;
   button.disabled = true;
   try {
-    const res = await proxyPoolJson('/api/proxy-pool/import', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({text, provider_name: document.getElementById('pool-import-provider').value || 'manual', recheck: true, concurrency: schedulerBody().concurrency})});
+    const res = await proxyPoolJson('/api/proxy-pool/import', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({text, provider_name: document.getElementById('pool-import-provider').value || 'manual', protocol_mode: document.getElementById('pool-import-protocol').value, recheck: true, concurrency: schedulerBody().concurrency})});
     const earnapp = res.earnapp_recheck || {};
     const recheckJob = res.recheck_job || {};
     document.getElementById('pool-result').textContent = recheckJob.job_id
