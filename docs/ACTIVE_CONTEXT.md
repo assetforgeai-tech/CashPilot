@@ -1,28 +1,34 @@
 # CashPilot Active Context
 
-Updated: 2026-08-25 (Proxy Pool `v1.8.0` live audit; EarnApp provider still pending)
+Updated: 2026-08-25 (Proxy Pool `v1.8.1` live closeout; EarnApp provider still pending)
 
-## v1.8.0 Proxy Pool live audit (2026-08-25)
+## v1.8.1 Proxy Pool live closeout (2026-08-25)
 
-- PR #33 is merged at `098ac2b3eee1a77b09ec7855c328485f9ce7ef0a`; Auto Release
-  run `32813965539` succeeded and published `v1.8.0`. `origin/main` is now
-  `76f740e1c7fd1920cae887d6af5ead60f48ff357`.
+- PR #33 merged at `098ac2b3eee1a77b09ec7855c328485f9ce7ef0a` and published
+  `v1.8.0`. The audit then found the `dawn_dashboard_session` masking gap. PR
+  #34 merged the isolated fix at `a3d2dce4bef66fdc1053fefda38cdbde3b422ed7`;
+  Auto Release run `32817037347` completed successfully and published `v1.8.1`.
 - The server `cashpilot-ui` is healthy on the verified UI digest
-  `sha256:3b2ab3c4217e35dc0223d72ace025f8fac26f37eef42ba851f517df4e00ccb62`;
-  `CASHPILOT_VERSION=1.8.0`, restart count `0`. The worker container/image,
-  start time and restart count were unchanged. DB integrity is `ok`, schema
-  `18`.
+  `sha256:3ba1e9b4ba1cfb7e24eb9e8df47257953d4474f2dcdc29799c3a40ebeb22244d`;
+  container `0e67b499ff69`, `CASHPILOT_VERSION=1.8.1`, restart count `0`.
+  UI override `/opt/cashpilot/docker-compose.ui-v1.8.1.override.yml` has SHA-256
+  `fab6b15055a05a682a0571da8830d2f607767f34cc4c03b9e1d92cc0b830da25`.
+- `cashpilot-worker` remained container `60b180133540`, image
+  `cashpilot-worker-local:proxy-egress`, start time
+  `2026-08-20T09:04:41.088040401Z`, restart count `0`, and healthy. The
+  worker was not pulled, recreated, restarted or redeployed. DB integrity is
+  `ok`, schema `18`.
 - A fresh authenticated read-only sweep retrieved all `3,223` proxy rows over
-  `33` bounded pages (maximum `100` items; maximum payload `117,918` bytes).
-  Generic alive/dead is `1,932 / 1,291`; egress known/unresolved is
-  `1,932 / 1,291`; country known `1,922`; IP type known `1,109`; metadata
-  pending `823`; duplicate egress rows `844`; canonical usable `1,088`.
-- EarnApp evidence counts are eligible `924`, leaseable `337`, blocked `661`,
-  quality-rejected `209`, not checked `138`, skipped `1,291`; latest evidence
-  is stale against current egress for `1,429` rows. Active legacy and scoped
-  leases are both `0`. Scheduler remains enabled at `60` minutes/concurrency
-  `64`. No import, delete, recheck, rotation, lease, release or assignment was
-  performed.
+  `33` bounded pages (maximum `100` items; maximum payload `117,744` bytes).
+  Generic alive/dead is `1,844 / 1,379`; egress known/unresolved is
+  `1,844 / 1,379`; country known `1,831`; IP type known `1,020`; metadata
+  pending aggregate `824`; duplicate egress rows `755`; canonical usable and
+  available are both `1,089`.
+- EarnApp evidence counts are eligible `922`, leaseable `338`, checked `1,793`,
+  not checked `51`, and skipped because the generic check failed `1,379`.
+  Active legacy and scoped leases are both `0`. Scheduler remains enabled at
+  `60` minutes/concurrency `64`. No import, delete, recheck, rotation, lease,
+  release or assignment was performed.
 - Authenticated Playwright checks passed on desktop `1440px` and mobile
   `375px`: no page overflow, bounded server pagination, search/filter/sort and
   pagination requests, correct ARIA sort transitions, and no console/page
@@ -31,18 +37,20 @@ Updated: 2026-08-25 (Proxy Pool `v1.8.0` live audit; EarnApp provider still pend
   `docs/research/proxy-pool-v1.8.0-live-audit.md`. The pre-fix audit found one
   security gap: `dawn_dashboard_session` was populated in `/api/config` but was
   not classified into `_secrets`; its value was not copied into docs. The
-  narrowly scoped masking fix and regression test are included in this UI-only
-  follow-up, with post-release proof still required.
+  `v1.8.1` authenticated proof confirms that the key is absent from the
+  ordinary config map and present only as `_secrets.dawn_dashboard_session =
+  true`. No credential was rotated or deleted.
 - Two data-quality follow-ups remain design-only: canonicalize `VN`/`Viet Nam`
-  labels and plan freshness-aware EarnApp re-probe for stale rows. Do not bulk
-  mutate either until an impact map and explicit approval exist.
+  labels (`39 / 1,542` rows in the closeout snapshot) and plan a
+  freshness-aware EarnApp re-probe. Do not bulk mutate either until an impact
+  map and explicit approval exist.
 
 ## Current repository state
 
-- Canonical source is `main` at PR #29 merge commit `bd8d957`; release
-  `v1.7.2` is published and the server UI is deployed at its exact GHCR digest.
+- Canonical source is `main` at PR #34 merge commit `a3d2dce`; release
+  `v1.8.1` is published and the server UI is deployed at its exact GHCR digest.
   The current docs-only closeout branch contains no product-code, catalog,
-  runtime or collector changes.
+  runtime or collector changes and does not require another release or deploy.
 - PR #27 upgrades the reported SQLite schema from 17 to 18 through
   idempotent guards. A migration regression starts from a populated v17 proxy
   schema and verifies that endpoints, worker assignments and provider masks are
@@ -64,8 +72,10 @@ Updated: 2026-08-25 (Proxy Pool `v1.8.0` live audit; EarnApp provider still pend
   acceleration and release/runtime fixes), PR #24 (shared ChainDB cache), and
   PR #25 (bootstrap and standalone NKN host-helper closeout), PR #26 (NKN
   `v1.6.3` live context), PR #27 (Proxy Pool qualification), PR #28
-  (persisted-egress intelligence fix), and PR #29 (EarnApp probe TLS contract)
-  are merged.
+  (persisted-egress intelligence fix), PR #29 (EarnApp probe TLS contract), PR
+  #30 (v1.7.2 live closeout), PR #31 (import enrichment), PR #32 (lease safety),
+  PR #33 (server-side pagination/UI hardening), and PR #34 (dashboard-session
+  masking) are merged.
 - Release `v1.6.3` is published from merge commit `f5ee981`; Auto Release run
   `32720862355` completed successfully and built both fork GHCR images. The UI
   digest is
@@ -500,6 +510,11 @@ canary and explicit user approval.
 
 ## Verification status
 
+- PR #34 is merged at `a3d2dce`; Auto Release run `32817037347` completed
+  successfully and published `v1.8.1`. Fresh authenticated proof confirms the
+  dashboard session is masked, the UI-only deployment boundary is intact, DB
+  integrity/schema is `ok / 18`, and the full 3,223-row Proxy Pool read model is
+  available over 33 bounded pages with zero active leases.
 - PRs #27-#29 are merged. Auto Release run `32748192052` completed successfully
   and published `v1.7.2`; both release image manifests resolved and reported
   embedded version `1.7.2` before the tag and GitHub Release were created.

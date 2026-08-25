@@ -1,4 +1,4 @@
-# Proxy Pool v1.8.0 Live Audit
+# Proxy Pool v1.8.0 Audit and v1.8.1 Closeout
 
 Date: 2026-08-25
 
@@ -11,40 +11,47 @@ provider container, wallet, credential, database row, or scheduler setting.
 
 - PR #33 is merged at `098ac2b3eee1a77b09ec7855c328485f9ce7ef0a`.
 - Auto Release run `32813965539` completed successfully and published `v1.8.0`.
-- `origin/main` is `76f740e1c7fd1920cae887d6af5ead60f48ff357` (the release compose-pin follow-up).
-- The live UI reports `CASHPILOT_VERSION=1.8.0`, uses the verified UI digest
-  `sha256:3b2ab3c4217e35dc0223d72ace025f8fac26f37eef42ba851f517df4e00ccb62`,
-  and is Docker-healthy with restart count `0`.
-- `cashpilot-worker` remained on its existing image/container, with its prior
-  start time and restart count unchanged. No worker redeploy was used.
-- Pre-deploy DB integrity was `ok`; the live post-deploy read-only check also
-  reports schema `18` and integrity `ok`.
+- PR #34 merged the isolated dashboard-session masking fix at
+  `a3d2dce4bef66fdc1053fefda38cdbde3b422ed7`. Auto Release run `32817037347`
+  completed successfully and published `v1.8.1`.
+- The live UI reports `CASHPILOT_VERSION=1.8.1`, uses the verified UI digest
+  `sha256:3ba1e9b4ba1cfb7e24eb9e8df47257953d4474f2dcdc29799c3a40ebeb22244d`,
+  and is Docker-healthy with restart count `0`. Its container ID begins
+  `0e67b499ff69`.
+- The UI-only override is
+  `/opt/cashpilot/docker-compose.ui-v1.8.1.override.yml`, SHA-256
+  `fab6b15055a05a682a0571da8830d2f607767f34cc4c03b9e1d92cc0b830da25`.
+- `cashpilot-worker` remained container `60b180133540` on
+  `cashpilot-worker-local:proxy-egress`, start time
+  `2026-08-20T09:04:41.088040401Z`, restart count `0`, and healthy. No worker
+  pull, restart, recreate or redeploy was used.
+- The fresh post-release read-only check reports schema `18` and DB integrity
+  `ok`.
 
 ## Full inventory sweep
 
-The authenticated sweep paged through all `3,223` rows using
+The closeout sweep paged through all `3,223` rows using
 `GET /api/proxy-pool/page`. It retrieved `33` pages, with a maximum of `100`
-items and `117,918` bytes in any response. No credential fields were returned
+items and `117,744` bytes in any response. No credential fields were returned
 by the endpoint.
 
 | Measure | Live count |
 | --- | ---: |
 | Inventory | 3,223 |
-| Generic alive | 1,932 |
-| Generic dead/failed | 1,291 |
-| Egress known | 1,932 |
-| Egress unresolved | 1,291 |
-| Country known | 1,922 |
-| IP type known | 1,109 |
-| Metadata pending | 823 |
-| Duplicate egress rows | 844 |
-| Canonical available / generic usable | 1,088 |
-| EarnApp eligible | 924 |
-| EarnApp leaseable | 337 |
-| EarnApp blocked | 661 |
-| EarnApp quality-rejected | 209 |
-| EarnApp not checked | 138 |
-| EarnApp skipped because generic check failed | 1,291 |
+| Generic alive | 1,844 |
+| Generic dead/failed | 1,379 |
+| Egress known | 1,844 |
+| Egress unresolved | 1,379 |
+| Country known | 1,831 |
+| IP type known | 1,020 |
+| Metadata pending aggregate | 824 |
+| Duplicate egress rows | 755 |
+| Canonical available / generic usable | 1,089 |
+| EarnApp eligible | 922 |
+| EarnApp leaseable | 338 |
+| EarnApp checked | 1,793 |
+| EarnApp not checked | 51 |
+| EarnApp skipped because generic check failed | 1,379 |
 | Active legacy leases | 0 |
 | Active scoped leases | 0 |
 
@@ -52,18 +59,21 @@ Scheduler state is enabled with a `60` minute interval and concurrency `64`.
 
 ### Label and metadata observations
 
-- Country values contain both `VN` and `Viet Nam` (`40` and `1,632` rows), so
+- Country values contain both `VN` and `Viet Nam` (`39` and `1,542` rows), so
   the current filter/export surface has two labels for the same country. This
   is a normalization gap, not evidence that the proxies are in different
   countries.
-- `1,291` rows have no authoritative egress because the generic probe failed;
+- The same sweep reports `US` on `250` rows. It does not invent a country for
+  failed or unresolved egress.
+- `1,379` rows have no authoritative egress because the generic probe failed;
   their UI location and IP type correctly render as failed/unresolved rather
   than inventing metadata.
-- `823` rows still have pending location or IP-type metadata. The audit did not
-  trigger a bulk enrichment run.
-- The current latest EarnApp evidence is stale for `1,429` rows when compared
-  with the current egress. Stale evidence is not treated as lease authority;
-  no leases were created or revoked during this audit.
+- `13` rows render location as `Metadata pending`; the aggregate pending count
+  is `824` because it includes rows missing either location or IP type. The
+  audit did not trigger a bulk enrichment run.
+- EarnApp evidence is checked for `1,793` rows, not checked for `51`, and
+  skipped for the `1,379` generic failures. The closeout did not infer freshness
+  from historical evidence or trigger a re-probe.
 
 ## UI verification
 
@@ -126,7 +136,13 @@ The fix is intentionally isolated to the `dashboard_session` secret suffix and
 its regression test. The impact map is recorded in
 `docs/research/proxy-pool-session-mask-impact-map.md`. No live credential was
 rotated or deleted, and the patch is not bundled with proxy rechecks or provider
-changes. Post-release proof is required before declaring the contract closed.
+changes.
+
+The authenticated `v1.8.1` proof closes the contract: the ordinary `/api/config`
+map does not contain `dawn_dashboard_session`, while
+`_secrets.dawn_dashboard_session` is `true`. The value was not printed, copied
+to docs, rotated or deleted. The internal runtime read path remains covered by
+the regression test added in PR #34.
 
 ## Protected-state confirmation
 
@@ -139,11 +155,9 @@ changes. Post-release proof is required before declaring the contract closed.
 
 ## Follow-up candidates (not executed)
 
-1. Patch and test the exact `dawn_dashboard_session` masking gap after approval.
-2. Prepare a read-only impact map for canonical country-label normalization
+1. Prepare a read-only impact map for canonical country-label normalization
    (`VN` versus `Viet Nam`) and bounded metadata refresh.
-3. Design a scoped, freshness-aware EarnApp evidence re-probe for the `1,429`
-   stale rows; do not bulk recheck or revoke existing state as part of that
-   design step.
-4. Consider server-side pagination for the MYST/NKN owner inventory endpoints
-   after the masking issue is closed.
+2. Design a scoped, freshness-aware EarnApp evidence re-probe; do not bulk
+   recheck or revoke existing state as part of that design step.
+3. Consider server-side pagination for the MYST/NKN owner inventory endpoints
+   as a separate operability improvement.
