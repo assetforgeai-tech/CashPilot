@@ -1207,6 +1207,111 @@ async def _encrypt_legacy_plaintext_credentials(db: Any) -> int:
     return len(stale)
 
 
+def _normalise_legacy_earnapp_credentials(raw: Mapping[str, Any]) -> dict[str, str]:
+    """Map the retired account-pool key names onto the Chrome importer contract."""
+    aliases = {
+        "auth": "auth",
+        "auth_method": "auth-method",
+        "auth-method": "auth-method",
+        "oauth_refresh_token": "oauth-refresh-token",
+        "oauth-refresh-token": "oauth-refresh-token",
+        "oauth_token": "oauth-token",
+        "oauth-token": "oauth-token",
+        "xsrf_token": "xsrf-token",
+        "xsrf-token": "xsrf-token",
+        "brd_sess_id": "brd_sess_id",
+        "cg_uuid": "cg_uuid",
+    }
+    cookies: dict[str, str] = {}
+    for key, value in raw.items():
+        target = aliases.get(str(key))
+        text = str(value or "").strip()
+        if target and text:
+            cookies[target] = text
+    return cookies
+
+
+async def _migrate_legacy_earnapp_accounts(db: Any, applied: list[str]) -> None:
+    """Replace the retired EarnApp account table while preserving encrypted rows."""
+    cursor = await db.execute("PRAGMA table_info(earnapp_accounts)")
+    columns = {row["name"] for row in await cursor.fetchall()}
+    if not columns or "profile_key" in columns:
+        return
+    if not {"id", "account_name", "cookies_enc", "state"} <= columns:
+        raise RuntimeError("Unsupported legacy earnapp_accounts schema")
+
+    cursor = await db.execute(
+        "SELECT id, account_name, cookies_enc, state, created_at, updated_at FROM earnapp_accounts ORDER BY id"
+    )
+    rows = await cursor.fetchall()
+    migrated: list[tuple[Any, ...]] = []
+    for row in rows:
+        encrypted = str(row["cookies_enc"] or "")
+        try:
+            decoded = json.loads(decrypt_value(encrypted)) if encrypted else {}
+        except (TypeError, ValueError, json.JSONDecodeError):
+            decoded = {}
+        decoded = decoded if isinstance(decoded, Mapping) else {}
+        cookies = _normalise_legacy_earnapp_credentials(decoded)
+        email = str(decoded.get("email") or row["account_name"] or "").strip()
+        state = "DELETED" if str(row["state"] or "").upper() == "DELETED" else "ACTIVE"
+        migrated.append(
+            (
+                int(row["id"]),
+                f"legacy-account-{int(row['id'])}",
+                str(row["account_name"] or ""),
+                email,
+                "google",
+                encrypt_value(json.dumps({"cookies": cookies}, sort_keys=True, separators=(",", ":"))),
+                json.dumps(sorted(cookies)),
+                state,
+                row["created_at"],
+                row["updated_at"],
+            )
+        )
+
+    await db.execute("PRAGMA foreign_keys=OFF")
+    try:
+        await db.executescript(
+            """
+            DROP TABLE IF EXISTS earnapp_accounts_v19;
+            CREATE TABLE earnapp_accounts_v19 (
+                id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+                profile_key          TEXT    NOT NULL UNIQUE,
+                account_name         TEXT    NOT NULL,
+                email                TEXT    NOT NULL DEFAULT '',
+                auth_method          TEXT    NOT NULL CHECK(auth_method IN ('google', 'apple')),
+                credentials_enc      TEXT    NOT NULL,
+                credential_keys_json TEXT    NOT NULL DEFAULT '[]',
+                token_expires_at     TEXT,
+                cookie_expires_at    TEXT,
+                state                TEXT    NOT NULL DEFAULT 'ACTIVE',
+                created_at           TEXT    NOT NULL DEFAULT (datetime('now')),
+                updated_at           TEXT    NOT NULL DEFAULT (datetime('now'))
+            );
+            """
+        )
+        if migrated:
+            await db.executemany(
+                """
+                INSERT INTO earnapp_accounts_v19
+                    (id, profile_key, account_name, email, auth_method, credentials_enc,
+                     credential_keys_json, state, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                migrated,
+            )
+        await db.executescript(
+            """
+            DROP TABLE earnapp_accounts;
+            ALTER TABLE earnapp_accounts_v19 RENAME TO earnapp_accounts;
+            """
+        )
+    finally:
+        await db.execute("PRAGMA foreign_keys=ON")
+    applied.append("earnapp_accounts.legacy_v19")
+
+
 #: What this build's schema looks like. Bumped by hand when a migration is added.
 #:
 #: REPORTED, NEVER USED AS A GATE. Every migration below is guarded by its own
@@ -1228,6 +1333,7 @@ async def init_db() -> None:
     try:
         await _dedupe_earnings_before_indexing(db)
         await db.executescript(_SCHEMA)
+        await _migrate_legacy_earnapp_accounts(db, applied)
         await db.executescript(_EARNAPP_ACCOUNTS_SCHEMA)
         # Recovery releases the live assignment but keeps its prior owner so
         # another worker still needs a one-time replacement ticket.

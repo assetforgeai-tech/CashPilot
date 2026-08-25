@@ -83,6 +83,109 @@ def test_import_encrypts_credentials_and_lists_only_masked_metadata(tmp_path):
     asyncio.run(run())
 
 
+def test_init_db_migrates_legacy_earnapp_accounts_without_exposing_or_losing_credentials(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await db.execute("PRAGMA foreign_keys=ON")
+            legacy_credentials = {
+                "email": "owner@example.com",
+                "oauth_refresh_token": "legacy-refresh-secret",
+                "xsrf_token": "legacy-xsrf-secret",
+            }
+            await db.executescript(
+                """
+                CREATE TABLE earnapp_accounts (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_name TEXT NOT NULL UNIQUE,
+                    cookies_enc  TEXT NOT NULL,
+                    state        TEXT NOT NULL DEFAULT 'VALID',
+                    created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+                    updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+                );
+                CREATE TABLE earnapp_account_leases (
+                    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_id        INTEGER NOT NULL,
+                    worker_id         INTEGER NOT NULL,
+                    instance_id       TEXT NOT NULL,
+                    state             TEXT NOT NULL DEFAULT 'ACTIVE',
+                    leased_at         TEXT NOT NULL DEFAULT (datetime('now')),
+                    last_heartbeat_at TEXT,
+                    released_at       TEXT,
+                    release_reason    TEXT NOT NULL DEFAULT '',
+                    FOREIGN KEY(account_id) REFERENCES earnapp_accounts(id) ON DELETE CASCADE
+                );
+                """
+            )
+            await db.execute(
+                """
+                INSERT INTO earnapp_accounts
+                    (id, account_name, cookies_enc, state, created_at, updated_at)
+                VALUES (1, 'owner@example.com', ?, 'VALID', '2026-08-18 08:13:08', '2026-08-18 08:13:17')
+                """,
+                (database.encrypt_value(json.dumps(legacy_credentials, sort_keys=True)),),
+            )
+            await db.execute(
+                """
+                INSERT INTO earnapp_account_leases
+                    (account_id, worker_id, instance_id, state, leased_at, last_heartbeat_at)
+                VALUES (1, 25883, 'earnapp-proxy', 'ACTIVE', '2026-08-18 08:29:27', '2026-08-18 08:29:27')
+                """
+            )
+            await db.commit()
+
+            await database.init_db()
+
+            columns = {
+                row["name"] for row in await (await db.execute("PRAGMA table_info(earnapp_accounts)")).fetchall()
+            }
+            assert {
+                "profile_key",
+                "account_name",
+                "email",
+                "auth_method",
+                "credentials_enc",
+                "credential_keys_json",
+                "token_expires_at",
+                "cookie_expires_at",
+            } <= columns
+            public = await earnapp_accounts.list_accounts()
+            assert public == [
+                {
+                    "id": 1,
+                    "profile_key": "legacy-account-1",
+                    "account_name": "owner@example.com",
+                    "email": "owner@example.com",
+                    "auth_method": "google",
+                    "state": "ACTIVE",
+                    "token_expires_at": None,
+                    "cookie_expires_at": None,
+                    "assigned_nodes": 0,
+                    "credentials_present": {
+                        "oauth-refresh-token": True,
+                        "xsrf-token": True,
+                    },
+                    "created_at": "2026-08-18 08:13:08",
+                    "updated_at": "2026-08-18 08:13:17",
+                }
+            ]
+            private = await earnapp_accounts.get_account_credentials(1)
+            assert private is not None
+            assert private["cookies"] == {
+                "oauth-refresh-token": "legacy-refresh-secret",
+                "xsrf-token": "legacy-xsrf-secret",
+            }
+            assert (await (await db.execute("SELECT COUNT(*) AS count FROM earnapp_account_leases")).fetchone())[
+                "count"
+            ] == 1
+
+            await database.init_db()
+            assert await earnapp_accounts.list_accounts() == public
+            assert (await (await db.execute("SELECT COUNT(*) AS count FROM earnapp_accounts")).fetchone())["count"] == 1
+
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize("auth_method", ["google", "apple", "Google", "APPLE"])
 def test_google_and_apple_auth_methods_are_supported(tmp_path, auth_method):
     async def run():
