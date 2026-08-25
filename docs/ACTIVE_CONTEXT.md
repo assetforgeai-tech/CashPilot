@@ -1,6 +1,41 @@
 # CashPilot Active Context
 
-Updated: 2026-08-25 (Proxy Pool `v1.8.1` live closeout; EarnApp provider still pending)
+Updated: 2026-08-25 (Proxy Pool `v1.9.0` import-protocol live closeout; EarnApp provider still pending)
+
+## v1.9.0 Proxy Pool import-protocol live closeout (2026-08-25)
+
+- PR #36 merged at `eb3da8b1663af352a6386fef1d170d7e36784db7`; Auto Release
+  published GitHub tag `v1.9.0` and registry image tags `1.9.0`/`1.9`.
+- The UI-only change adds a request-scoped import selector: `Auto`, `HTTP`, or
+  `SOCKS5`. Auto preserves SOCKS5-then-HTTP detection; a forced choice applies
+  only to the initial generic import check, while later scheduler/manual
+  rechecks remain automatic. No provider, worker, lease, wallet, identity,
+  migration, or live proxy-row code was changed.
+- Live `cashpilot-ui` is healthy at digest
+  `sha256:9fb1593d7bcd6378d0ab97be96afd598112ac13826983867a422b8750592d717`,
+  reports `CASHPILOT_VERSION=1.9.0`, and has restart count `0`. The UI was
+  recreated with `--no-deps` and the existing volumes/network/ports.
+- `cashpilot-worker` remains container `60b180133540`, image
+  `cashpilot-worker-local:proxy-egress`, start time `2026-08-20T09:04:41Z`,
+  restart count `0`, and healthy. It was not pulled, recreated, restarted, or
+  redeployed. Database integrity remains `ok`.
+- Read-only browser verification passed at desktop `1280px` and mobile `375px`:
+  no document overflow, selector default `auto`, options `Auto`/`HTTP`/`SOCKS5`,
+  visible label `Protocol`, and a `44px` control.
+- The full read-only Proxy Pool sweep found `1,004` rows over `11` stable
+  pages, `1,003 alive / 1 dead`, `0` duplicate row IDs, HTTP protocol only,
+  provider `zlproxy` only, and `0` active worker/instance bindings. Scheduler
+  is currently disabled at `60` minutes/concurrency `32`.
+- Live data-quality state is materially different from the older `v1.8.1`
+  snapshot: all `1,004` rows lack country/location and IP-type metadata;
+  `306` EarnApp rows are `CID_SET` eligible, `578` are `BLACKLIST` blocked,
+  and `120` have no EarnApp evidence. Duplicate reconciliation marks `164`
+  rows across `145` egress groups, with canonical IDs present for all marked
+  rows.
+- Full evidence and bounded recommendations are recorded in
+  `docs/research/proxy-pool-v1.9.0-live-audit.md`. No live import, recheck,
+  delete, rotation, lease, release, assignment, or metadata normalization was
+  performed during the audit.
 
 ## v1.8.1 Proxy Pool live closeout (2026-08-25)
 
@@ -47,10 +82,11 @@ Updated: 2026-08-25 (Proxy Pool `v1.8.1` live closeout; EarnApp provider still p
 
 ## Current repository state
 
-- Canonical source is `main` at PR #34 merge commit `a3d2dce`; release
-  `v1.8.1` is published and the server UI is deployed at its exact GHCR digest.
-  The current docs-only closeout branch contains no product-code, catalog,
-  runtime or collector changes and does not require another release or deploy.
+- Canonical source is `main` at the `v1.9.0` release line (`a94bd66`, including
+  the automated compose-pin commit); release `v1.9.0` is published and the
+  server UI is deployed at its exact GHCR digest. PR #36 is the import-protocol
+  change; this audit is documentation-only and does not require another product
+  release or worker deploy.
 - PR #27 upgrades the reported SQLite schema from 17 to 18 through
   idempotent guards. A migration regression starts from a populated v17 proxy
   schema and verifies that endpoints, worker assignments and provider masks are
