@@ -15,6 +15,7 @@ build/
 .coverage
 coverage.xml
 htmlcov/
+site/
 
 # Agent / tooling working dirs (not part of the project)
 #
@@ -29,6 +30,7 @@ htmlcov/
 .sddw/
 .superset/
 .tbd/
+.audit-temp/
 
 # Agent working files. These are scratch, not documentation, and they must never
 # be committed: they carried this project's internal planning verbatim, quoted

@@ -13,7 +13,7 @@ import re
 import secrets
 import time
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Request
@@ -32,6 +32,12 @@ _proxy_recheck_jobs: dict[str, dict[str, Any]] = {}
 _proxy_recheck_tasks: set[asyncio.Task] = set()
 _MAX_PROXY_RECHECK_JOBS = 100
 _SYNC_EARNAPP_IMPORT_LIMIT = 20
+_PROTOCOL_MODES = frozenset({"auto", "http", "socks5"})
+
+
+def _normalize_protocol_mode(protocol_mode: str | None) -> str:
+    mode = str(protocol_mode or "auto").strip().lower()
+    return mode if mode in _PROTOCOL_MODES else "auto"
 
 
 def _is_active_proxy_instance(row: dict[str, Any]) -> bool:
@@ -85,6 +91,7 @@ class ProxyImportIn(BaseModel):
     provider_name: str = "manual"
     recheck: bool = True
     concurrency: int | None = None
+    protocol_mode: Literal["auto", "http", "socks5"] = "auto"
 
 
 class ProxyDeleteIn(BaseModel):
@@ -118,7 +125,10 @@ def _prune_proxy_recheck_jobs() -> None:
         _proxy_recheck_jobs.pop(job_id, None)
 
 
-def _schedule_proxy_import_recheck(proxy_ids: list[int], concurrency: int) -> dict[str, Any]:
+def _schedule_proxy_import_recheck(
+    proxy_ids: list[int], concurrency: int, *, protocol_mode: str = "auto"
+) -> dict[str, Any]:
+    protocol_mode = _normalize_protocol_mode(protocol_mode)
     job_id = secrets.token_hex(12)
     job = {
         "job_id": job_id,
@@ -135,12 +145,15 @@ def _schedule_proxy_import_recheck(proxy_ids: list[int], concurrency: int) -> di
     async def run() -> None:
         job.update(status="running", stage="generic_recheck", updated_at=_utc_timestamp())
         try:
-            generic = await run_proxy_pool_recheck(
-                proxy_ids=proxy_ids,
-                concurrency=concurrency,
-                rotate_dead=False,
-                probe_retries=1,
-            )
+            generic_kwargs: dict[str, Any] = {
+                "proxy_ids": proxy_ids,
+                "concurrency": concurrency,
+                "rotate_dead": False,
+                "probe_retries": 1,
+            }
+            if protocol_mode != "auto":
+                generic_kwargs["protocol_mode"] = protocol_mode
+            generic = await run_proxy_pool_recheck(**generic_kwargs)
             job.update(stage="earnapp_recheck", updated_at=_utc_timestamp())
             earnapp = await run_earnapp_proxy_recheck(proxy_ids=proxy_ids, concurrency=concurrency)
             job.update(
@@ -234,7 +247,8 @@ def _normalize_proxy_record(parts: list[str], *, location: str = "", protocol: s
     return None
 
 
-def _parse_proxy_import(text: str) -> list[dict[str, Any]]:
+def _parse_proxy_import(text: str, *, protocol_mode: str = "auto") -> list[dict[str, Any]]:
+    protocol_mode = _normalize_protocol_mode(protocol_mode)
     rows: list[dict[str, Any]] = []
     for raw_line in str(text or "").splitlines():
         line = raw_line.strip()
@@ -255,6 +269,8 @@ def _parse_proxy_import(text: str) -> list[dict[str, Any]]:
             parts = [part.strip() for part in line.split(":")]
             parsed = _normalize_proxy_record(parts)
         if parsed:
+            if protocol_mode != "auto":
+                parsed["protocol"] = protocol_mode
             parsed["_raw_line"] = line
             rows.append(parsed)
     return rows
@@ -490,6 +506,7 @@ async def _probe_proxy(
     username: str = "",
     password: str = "",
     timeout: float = 5.0,
+    protocol_mode: str = "auto",
 ) -> dict[str, str]:
     host = host.strip()
     if not host or port <= 0:
@@ -499,30 +516,26 @@ async def _probe_proxy(
     def elapsed_ms() -> int:
         return max(0, int((time.perf_counter() - started) * 1000))
 
-    try:
-        if await _probe_socks5_proxy(host, port, username=username, password=password, timeout=timeout):
-            exit_ip = await _probe_proxy_exit_ip(host, port, protocol="socks5", username=username, password=password)
+    mode = _normalize_protocol_mode(protocol_mode)
+    probe_order = ("socks5", "http") if mode == "auto" else (mode,)
+    for protocol in probe_order:
+        try:
+            if protocol == "socks5":
+                reachable = await _probe_socks5_proxy(host, port, username=username, password=password, timeout=timeout)
+            else:
+                reachable = await _probe_http_proxy(host, port, username=username, password=password, timeout=timeout)
+            if not reachable:
+                continue
+            exit_ip = await _probe_proxy_exit_ip(host, port, protocol=protocol, username=username, password=password)
             if exit_ip:
                 return {
                     "status": "alive",
-                    "protocol": "socks5",
+                    "protocol": protocol,
                     "exit_ip": exit_ip,
                     "latency_ms": elapsed_ms(),
                 }
-    except Exception:
-        pass
-    try:
-        if await _probe_http_proxy(host, port, username=username, password=password, timeout=timeout):
-            exit_ip = await _probe_proxy_exit_ip(host, port, protocol="http", username=username, password=password)
-            if exit_ip:
-                return {
-                    "status": "alive",
-                    "protocol": "http",
-                    "exit_ip": exit_ip,
-                    "latency_ms": elapsed_ms(),
-                }
-    except Exception:
-        pass
+        except Exception:
+            continue
     return {"status": "dead", "protocol": "", "latency_ms": elapsed_ms()}
 
 
@@ -563,9 +576,14 @@ async def _probe_proxy_confirmed(
     password: str = "",
     retries: int = 3,
     retry_delay: float = 5.0,
+    protocol_mode: str = "auto",
 ) -> dict[str, str]:
+    protocol_mode = _normalize_protocol_mode(protocol_mode)
     for attempt in range(max(1, retries)):
-        result = await _probe_proxy(host, port, username=username, password=password)
+        probe_kwargs: dict[str, Any] = {"username": username, "password": password}
+        if protocol_mode != "auto":
+            probe_kwargs["protocol_mode"] = protocol_mode
+        result = await _probe_proxy(host, port, **probe_kwargs)
         if result.get("status") == "alive":
             return result
         if attempt < retries - 1:
@@ -771,7 +789,9 @@ async def run_proxy_pool_recheck(
     concurrency: int = 8,
     rotate_dead: bool = True,
     probe_retries: int = 3,
+    protocol_mode: str = "auto",
 ) -> dict[str, Any]:
+    protocol_mode = _normalize_protocol_mode(protocol_mode)
     wanted = {int(x) for x in (proxy_ids or []) if int(x) > 0}
     rows = await database.list_proxy_pool()
     targets = [row for row in rows if not wanted or int(row["id"]) in wanted]
@@ -786,6 +806,8 @@ async def run_proxy_pool_recheck(
             }
             if int(probe_retries or 3) != 3:
                 probe_kwargs["retries"] = min(3, max(1, int(probe_retries or 1)))
+            if protocol_mode != "auto":
+                probe_kwargs["protocol_mode"] = protocol_mode
             result = await _probe_proxy_confirmed(
                 str(proxy.get("host") or "").strip(),
                 int(proxy.get("port") or 0),
@@ -1103,7 +1125,7 @@ async def api_proxy_pool_import(request: Request, body: ProxyImportIn) -> dict[s
         raise HTTPException(status_code=400, detail="Proxy input is required")
     provider_name = body.provider_name.strip() or "manual"
     provider_id = await database.upsert_proxy_provider(provider_name, "manual", enabled=True)
-    proxies = _parse_proxy_import(body.text)
+    proxies = _parse_proxy_import(body.text, protocol_mode=body.protocol_mode)
     if not proxies:
         raise HTTPException(status_code=400, detail="No valid proxies found")
     proxies = [proxy for proxy in proxies if str(proxy.get("protocol") or "").lower() in {"http", "socks5"}]
@@ -1130,13 +1152,23 @@ async def api_proxy_pool_import(request: Request, body: ProxyImportIn) -> dict[s
         recent_ids = proxy_ids
         concurrency = body.concurrency or settings["concurrency"]
         if len(recent_ids) > _SYNC_EARNAPP_IMPORT_LIMIT:
-            result["recheck_job"] = _schedule_proxy_import_recheck(recent_ids, concurrency)
+            if body.protocol_mode == "auto":
+                result["recheck_job"] = _schedule_proxy_import_recheck(recent_ids, concurrency)
+            else:
+                result["recheck_job"] = _schedule_proxy_import_recheck(
+                    recent_ids,
+                    concurrency,
+                    protocol_mode=body.protocol_mode,
+                )
         else:
-            result["recheck"] = await run_proxy_pool_recheck(
-                proxy_ids=recent_ids or None,
-                concurrency=concurrency,
-                rotate_dead=False,
-            )
+            recheck_kwargs: dict[str, Any] = {
+                "proxy_ids": recent_ids or None,
+                "concurrency": concurrency,
+                "rotate_dead": False,
+            }
+            if body.protocol_mode != "auto":
+                recheck_kwargs["protocol_mode"] = body.protocol_mode
+            result["recheck"] = await run_proxy_pool_recheck(**recheck_kwargs)
             result["earnapp_recheck"] = await run_earnapp_proxy_recheck(
                 proxy_ids=recent_ids or None, concurrency=concurrency
             )

@@ -839,6 +839,20 @@ class TestInventoryTablesHaveOperatorControls:
         assert "generic_recheck" in page
         assert "Proxy enrichment scheduled" in page
 
+    def test_proxy_pool_import_protocol_selector_is_labeled_and_wired(self):
+        page = (ROOT / "app" / "templates" / "proxy_pool.html").read_text(encoding="utf-8")
+
+        for needle in (
+            '<label class="form-label" for="pool-import-protocol">Protocol</label>',
+            '<select class="form-select pool-action" id="pool-import-protocol">',
+            '<option value="auto" selected>Auto</option>',
+            '<option value="http">HTTP</option>',
+            '<option value="socks5">SOCKS5</option>',
+            "Auto detects SOCKS5 or HTTP during the first check.",
+            "protocol_mode: document.getElementById('pool-import-protocol').value",
+        ):
+            assert needle in page
+
     def test_proxy_pool_uses_server_pagination_and_accessible_mobile_import_controls(self):
         page = (ROOT / "app" / "templates" / "proxy_pool.html").read_text(encoding="utf-8")
 
