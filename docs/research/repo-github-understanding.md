@@ -2,17 +2,16 @@
 
 Ngày chụp trạng thái nền: 2026-08-23; cập nhật EarnApp migration safety: 2026-08-26
 
-Commit nền hiện tại: `4e336cb4e0188bf3fc75eeb64e1f226fa50a012c`
+Commit nền hiện tại: `a6c6e4c18a7e4fdfca7b00396bbb51f6f6f2e849`
 
 ## EarnApp migration safety patch (2026-08-26)
 
-PR #40 (account/recovery control plane) và PR #41 (v18 -> v19 migration) đã
-được merge. Nhánh `fix/earnapp-legacy-migration-safe` bổ sung một patch cục bộ
-cho migration đã merge: transaction/rollback, immutable archives, canonical và
-child-schema validation, FK/index/trigger preservation, duplicate/conflict
-detection và plaintext-equivalent Fernet comparison. Patch chưa release/deploy;
-không đụng provider `PROTECTED_DONE`, worker, lease, wallet, identity, volume
-hoặc VPS. Mục tiêu release được chốt riêng là `v1.11.2`, UI-only sau CI.
+PR #42 đã merge patch migration safety tại `a6c6e4c`; Auto Release
+`32902222108` publish `v1.11.2` trỏ đúng SHA. UI-only deployment dùng digest
+`sha256:31d17ca6ba17a55ae6f15686bc945a1ed12dfad29ce87f1ed71fa2ef8605086d`.
+Migration/archive/marker và boot idempotency đều được xác minh live; worker và
+mọi non-UI container giữ nguyên. Provider `PROTECTED_DONE`, proxy/wallet lease,
+identity và volume không bị redeploy hoặc chỉnh sửa.
 
 ## EarnApp account/recovery baseline (merged 2026-08-25)
 
@@ -92,16 +91,16 @@ do refactor hoặc redeploy khi chưa có phê duyệt rõ ràng.
 | Hạng mục | Trạng thái đã kiểm chứng |
 |---|---|
 | Canonical base branch | `main`, theo dõi `origin/main` |
-| Audited base HEAD | `4e336cb`, merge PR #41, khớp `origin/main` |
+| Audited base HEAD | `a6c6e4c`, merge PR #42, khớp `origin/main` và tag `v1.11.2` |
 | Fork | `assetforgeai-tech/CashPilot` |
 | Upstream | `GeiserX/CashPilot` |
 | Divergence | Fork ahead 343, behind 26; histories diverged |
-| Fork release mới nhất | `v1.11.1` (Auto Release run `32885970932`) |
+| Fork release mới nhất | `v1.11.2` (Auto Release run `32902222108`) |
 | Upstream release quan sát | `v1.36.4` |
-| Fork CI/release hiện tại | Commit `4e336cb` pass CodeQL, Catalog Check, Lint, Documentation, Tests và Auto Release; PR #41 đã merge |
-| Merge/release state | PRs #27-#41 đã merge; `v1.11.1` là release mới nhất tại thời điểm audit |
+| Fork CI/release hiện tại | Commit `a6c6e4c` pass CodeQL, Catalog Check, Lint, Documentation, Tests và Auto Release; PR #42 đã merge |
+| Merge/release state | PRs #27-#42 đã merge; `v1.11.2` đã live-closeout UI-only |
 | Tag namespace | Fork tags được giữ ở `refs/fork-tags/*`; không lấy local `refs/tags/*` làm bằng chứng vì upstream dùng trùng version names |
-| Audit worktree | Branch `fix/earnapp-legacy-migration-safe`; patch chỉ gồm migration/tests/docs; không stage `site/` |
+| Audit worktree | Branch `docs/earnapp-v1112-migration-closeout`; chỉ cập nhật tài liệu closeout |
 
 Upstream mới hơn không đồng nghĩa fork phải merge. Fork-only history chứa nhiều contract quan trọng về provider/runtime hardening, Grass identity/auth, MYST wallet lease/runtime, proxy lease rotation và CI/release. Mọi merge hoặc cherry-pick phải được đánh giá riêng và nằm ngoài giai đoạn này.
 

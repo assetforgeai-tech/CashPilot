@@ -4,7 +4,9 @@ Ngày kiểm tra: 2026-08-26
 
 Nhánh: `fix/earnapp-legacy-migration-safe`
 
-Base: `origin/main` / `4e336cb` (PR #41 đã merge)
+Base ban đầu: `origin/main` / `4e336cb` (PR #41)
+
+Closeout: PR #42 / `a6c6e4c`, release `v1.11.2`
 
 ## Phạm vi
 
@@ -50,12 +52,28 @@ live. Không chỉnh compose pin trong patch này.
 - `ruff format --check .`: chỉ báo file kế hoạch lịch sử không đổi
   `docs/superpowers/plans/2026-08-25-proxy-import-protocol.md`.
 
-## Release/deploy boundary
+## Live closeout v1.11.2
 
-- Chỉ tạo patch release `v1.11.2` sau khi PR review và CI của patch xanh.
-- Nếu deploy được phê duyệt, backup database trước, triển khai đúng UI image
-  digest duy nhất và chỉ recreate `cashpilot-ui`.
-- Không redeploy/recreate `cashpilot-worker`, provider container, NKN/MYST,
-  proxy sidecar, wallet/identity volume; không thao tác VPS live thủ công.
-- Sau deploy chỉ thực hiện snapshot read-only: integrity/schema/marker/archive,
-  account/lease/logical-node counts và provider invariants.
+- PR #42 merge tại `a6c6e4c`; Auto Release `32902222108` publish tag
+  `v1.11.2` trỏ đúng merge SHA. UI digest được deploy là
+  `sha256:31d17ca6ba17a55ae6f15686bc945a1ed12dfad29ce87f1ed71fa2ef8605086d`.
+- Backup trước deploy:
+  `/opt/cashpilot/backups/v1.11.2-earnapp-migration-20260825T214804Z`.
+  SQLite backup API tạo snapshot nhất quán; snapshot có `integrity=ok`, zero FK
+  violation, `1` legacy account, `3` legacy leases, `3` workers, `29` provider
+  instances, `6266` MYST wallets và `26021` NKN wallets.
+- Chỉ `cashpilot-ui` được recreate. Container healthy, version `1.11.2`,
+  restart count `0`; root HTTP trả redirect `303`. `cashpilot-worker` giữ nguyên
+  ID/image/start time/restart count và toàn bộ non-UI container fingerprint
+  không đổi.
+- Migration live tạo archive `earnapp_accounts_legacy_v18=1` và
+  `earnapp_account_leases_legacy_v18=3`; canonical account là `DISABLED`; ba
+  lease cũ trở thành logical node `RECOVERABLE` có ID deterministic và giữ
+  `last_worker_id`. Marker `migration.earnapp_accounts.legacy_v19=complete` đã
+  được ghi; integrity/FK vẫn `ok/0`.
+- Restart kiểm soát riêng UI xác minh idempotency: boot thứ hai không chạy lại
+  migration và log `Schema at version 19; no migration needed this boot.`
+- Worker/provider runtime, proxy/wallet lease, MYST/NKN identity/volume không bị
+  redeploy hoặc thay đổi. Cảnh báo Traffmonetizer `405` trong collector log là
+  trạng thái provider có sẵn, nằm ngoài migration và không được sửa trong lần
+  này.

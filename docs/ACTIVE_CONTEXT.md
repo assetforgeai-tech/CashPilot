@@ -1,12 +1,13 @@
 # CashPilot Active Context
 
-Updated: 2026-08-26 (EarnApp legacy migration safety patch under review; no live deployment)
+Updated: 2026-08-26 (EarnApp v1.11.2 legacy migration live closeout complete)
 
-## EarnApp legacy migration safety patch (local branch, 2026-08-26)
+## EarnApp v1.11.2 legacy migration live closeout (2026-08-26)
 
-- Branch `fix/earnapp-legacy-migration-safe` is based on merged `origin/main`
-  commit `4e336cb` (PR #41). The current patch hardens the
-  already-merged v18 -> v19 migration; it is not yet released or deployed.
+- PR #42 merged as `a6c6e4c18a7e4fdfca7b00396bbb51f6f6f2e849`. Auto Release run
+  `32902222108` passed and published `v1.11.2`; the tag resolves to the same
+  merge commit. All post-merge Catalog, CodeQL, Documentation, Lint and Tests
+  workflows also passed.
 - Migration runs in one `BEGIN IMMEDIATE` transaction and rolls back on any
   schema, archive, conflict or `foreign_key_check` failure. Legacy account and
   lease data remain in `earnapp_accounts_legacy_v18` and
@@ -23,21 +24,37 @@ Updated: 2026-08-26 (EarnApp legacy migration safety patch under review; no live
   encrypted and are adoptable only through an explicit Chrome import. Fernet
   values are compared by decrypted plaintext during interrupted-copy recovery,
   so normal token re-encryption does not create a false conflict.
-- Regression coverage now includes transaction rollback, archive preservation,
+- Regression coverage includes transaction rollback, archive preservation,
   canonical/child schema validation, FK/index/trigger preservation, marker
   validation, duplicate/conflicting archive detection, synthetic-account
-  quarantine and Fernet-equivalence checks. No provider catalog, runtime,
-  worker, proxy lease, wallet lease, identity, volume or VPS state is changed.
+  quarantine and Fernet-equivalence checks. No provider catalog/runtime source,
+  proxy lease, wallet lease, identity or provider volume changed.
 - Fresh local verification: focused EarnApp/Chrome/proxy/UI suite `369 passed`;
   full non-live suite `1854 passed, 8 skipped` after fetching the fork tag
   refspec used by CI. Ruff lint, compileall, JavaScript parse, deploy-baseline
   and `git diff --check` pass. Repository-wide Ruff format still reports only
   the unchanged historical plan file
   `docs/superpowers/plans/2026-08-25-proxy-import-protocol.md`.
-- GitHub state checked on 2026-08-26: PR #40 and PR #41 are merged; the latest
-  published release is `v1.11.1`. This safety patch is intended for a separate
-  patch release `v1.11.2`, followed by UI-only deployment after release gates;
-  worker/provider runtime redeploy remains forbidden.
+- A consistent SQLite backup plus encryption/session keys and compose evidence
+  was created at
+  `/opt/cashpilot/backups/v1.11.2-earnapp-migration-20260825T214804Z` before
+  deploy. Pre-migration DB evidence was `integrity=ok`, zero FK violations, one
+  legacy `VALID` account and three legacy `ACTIVE` leases.
+- Only `cashpilot-ui` was recreated, using UI digest
+  `sha256:31d17ca6ba17a55ae6f15686bc945a1ed12dfad29ce87f1ed71fa2ef8605086d`.
+  It is healthy, reports `CASHPILOT_VERSION=1.11.2`, restart count `0`, and
+  serves the normal root redirect. The v1.11.2 worker image was published by
+  the release contract but was not deployed.
+- Live migration retained the immutable v18 archives (`1` account, `3`
+  leases), materialized one canonical account as `DISABLED`, created three
+  deterministic `RECOVERABLE` logical nodes, and wrote marker
+  `migration.earnapp_accounts.legacy_v19=complete`. Integrity remains `ok`, FK
+  violations remain `0`, and the second controlled UI boot logged
+  `Schema at version 19; no migration needed this boot.`
+- Worker `60b180133540` kept its custom image, start time and restart count `0`;
+  the fingerprint of every non-UI container stayed unchanged. Counts for
+  workers/provider instances/MYST wallets/NKN wallets remained
+  `3 / 29 / 6266 / 26021`. No worker/provider runtime was redeployed.
 
 ## EarnApp account/recovery implementation (merged baseline, 2026-08-25)
 
@@ -201,11 +218,9 @@ Updated: 2026-08-26 (EarnApp legacy migration safety patch under review; no live
 
 ## Current repository state
 
-- Canonical source is `origin/main` at `4e336cb` after merged PR #41; release
-  `v1.11.1` is published. Live UI state is intentionally not inferred from the
-  release alone and must be checked before any deployment. The current branch
-  is an EarnApp migration-safety patch targeting `v1.11.2`; only the UI may be
-  redeployed after review/release, never the worker or provider runtimes.
+- Canonical source and tag `v1.11.2` both resolve to merge `a6c6e4c`. The live
+  server UI is verified on the exact v1.11.2 digest; worker and provider
+  runtimes retain their pre-deploy state.
 - PR #27 upgrades the reported SQLite schema from 17 to 18 through
   idempotent guards. A migration regression starts from a populated v17 proxy
   schema and verifies that endpoints, worker assignments and provider masks are
