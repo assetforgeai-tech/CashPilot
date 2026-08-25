@@ -1,6 +1,37 @@
 # CashPilot Active Context
 
-Updated: 2026-08-25 (Proxy Pool `v1.9.0` import-protocol live closeout; EarnApp provider still pending)
+Updated: 2026-08-25 (Proxy Pool `v1.10.0` metadata/location live closeout; EarnApp provider still pending)
+
+## v1.10.0 Proxy Pool metadata/location live closeout (2026-08-25)
+
+- PR #38 merged at `30ab8a2b4e4915deba9ed216e1b6fa7c47ea91ad`; Auto Release run
+  `32837209953` completed successfully and published `v1.10.0`.
+- Only `cashpilot-ui` was redeployed. It is healthy at digest
+  `sha256:f62032cc8e0cac986c02ed2b1760b1f175942a4a0a2b4a9309d1c6f6828798c0`;
+  restart count is `0`. `cashpilot-worker` kept its existing container,
+  image, start time, health, and restart count; no worker/provider runtime was
+  changed.
+- The final authenticated read-only snapshot contains `1,004` rows:
+  `1,000` generic-live and `4` generic-dead; `1,000` known egress and `4`
+  unresolved; `0` location pending, `0` IP-type pending, and `0` aggregate
+  metadata pending. Duplicate egress rows are `161`; canonical available is
+  `839`; active assignments and scoped leases are both `0`.
+- All `1,000` known egress rows have `country_code=VN` and `ip_type=residential`.
+  The API/filter machine key is ISO alpha-2 `VN`; the UI derives the readable
+  label `Vietnam`. The four dead rows stay `Generic check failed`/unknown
+  because no authoritative egress exists.
+- EarnApp evidence is independent of Location: `306` eligible, `273`
+  leaseable, `881` checked, `119` not checked, and `4` skipped due to generic
+  failure. Lease selection still requires canonical egress, no assignment or
+  lease, and latest `CID_SET` evidence.
+- The one-IP canary and bounded metadata-only refresh persisted geo/IP-type
+  evidence without generic/EarnApp rechecks, rotation, lease/release,
+  assignment, duplicate cleanup, credential changes, wallet operations, or
+  provider actions. Full evidence is in
+  `docs/research/proxy-pool-metadata-location-live-closeout.md`.
+- The old screenshot with many `Metadata pending`/`unknown` chips is a
+  pre-closeout capture; it is not current live state. The remaining safe data
+  quality item is limited to the four generic-dead rows.
 
 ## v1.9.0 Proxy Pool import-protocol live closeout (2026-08-25)
 
@@ -82,11 +113,11 @@ Updated: 2026-08-25 (Proxy Pool `v1.9.0` import-protocol live closeout; EarnApp 
 
 ## Current repository state
 
-- Canonical source is `main` at the `v1.9.0` release line (`a94bd66`, including
-  the automated compose-pin commit); release `v1.9.0` is published and the
-  server UI is deployed at its exact GHCR digest. PR #36 is the import-protocol
-  change; this audit is documentation-only and does not require another product
-  release or worker deploy.
+- Canonical source is `main` at the `v1.10.0` release line (`a8a8955`, including
+  the automated compose-pin commit); release `v1.10.0` is published and the
+  server UI is deployed at its exact GHCR digest. PR #38 is the metadata and
+  location clarity change; this branch is documentation-only and does not
+  require another product release or worker deploy.
 - PR #27 upgrades the reported SQLite schema from 17 to 18 through
   idempotent guards. A migration regression starts from a populated v17 proxy
   schema and verifies that endpoints, worker assignments and provider masks are
