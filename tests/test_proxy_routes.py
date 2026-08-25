@@ -2836,7 +2836,7 @@ def test_proxy_pool_schema_migrates_a_v17_database_without_losing_existing_rows(
                 for row in await (await db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")).fetchall()
             }
 
-            assert version == 18
+            assert version == 19
             assert {
                 "country_code",
                 "country_name",
@@ -3346,10 +3346,14 @@ def test_earnapp_scoped_lease_requires_cid_set_and_never_mutates_worker_assignme
             proxy_ids = await database.upsert_proxy_endpoints_returning_ids(
                 provider_id,
                 [
-                    {"provider_proxy_id": "blocked", "host": "1.1.1.1", "port": 1000},
-                    {"provider_proxy_id": "good", "host": "2.2.2.2", "port": 2000},
+                    {"provider_proxy_id": "blocked", "host": "1.1.1.1", "port": 1000, "ip_type": "residential"},
+                    {"provider_proxy_id": "good", "host": "2.2.2.2", "port": 2000, "ip_type": "residential"},
                 ],
             )
+            for proxy_id in proxy_ids:
+                await database.update_proxy_endpoint_intelligence(
+                    proxy_id, {"ip_type": "residential", "ip_type_source": "test", "ip_type_confidence": "high"}
+                )
             worker_id = await database.upsert_worker("worker-a", "a", "http://a")
             for proxy_id, exit_ip in zip(proxy_ids, ("8.8.8.8", "9.9.9.9"), strict=True):
                 await database.save_proxy_probe_result(
@@ -3402,7 +3406,10 @@ def test_earnapp_lease_rejects_stale_egress_until_current_egress_is_qualified(tm
             await database.init_db()
             provider_id = await database.upsert_proxy_provider("manual", "manual")
             (proxy_id,) = await database.upsert_proxy_endpoints_returning_ids(
-                provider_id, [{"provider_proxy_id": "one", "host": "1.1.1.1", "port": 1000}]
+                provider_id, [{"provider_proxy_id": "one", "host": "1.1.1.1", "port": 1000, "ip_type": "residential"}]
+            )
+            await database.update_proxy_endpoint_intelligence(
+                proxy_id, {"ip_type": "residential", "ip_type_source": "test", "ip_type_confidence": "high"}
             )
             worker_id = await database.upsert_worker("worker-a", "a", "http://a")
 
@@ -3438,6 +3445,9 @@ def test_earnapp_lease_rejects_stale_egress_until_current_egress_is_qualified(tm
                 exit_ip="9.9.9.9",
                 latency_ms=11,
                 probe_version="test",
+            )
+            await database.update_proxy_endpoint_intelligence(
+                proxy_id, {"ip_type": "residential", "ip_type_source": "test", "ip_type_confidence": "high"}
             )
 
             stale_row = next(item for item in await database.list_proxy_pool() if int(item["id"]) == proxy_id)
@@ -3582,11 +3592,15 @@ def test_new_scoped_leases_never_share_an_egress_ip_across_providers(tmp_path):
             proxy_ids = await database.upsert_proxy_endpoints_returning_ids(
                 provider_id,
                 [
-                    {"provider_proxy_id": "first", "host": "1.1.1.1", "port": 1000},
-                    {"provider_proxy_id": "same-egress", "host": "2.2.2.2", "port": 2000},
-                    {"provider_proxy_id": "other-egress", "host": "3.3.3.3", "port": 3000},
+                    {"provider_proxy_id": "first", "host": "1.1.1.1", "port": 1000, "ip_type": "residential"},
+                    {"provider_proxy_id": "same-egress", "host": "2.2.2.2", "port": 2000, "ip_type": "residential"},
+                    {"provider_proxy_id": "other-egress", "host": "3.3.3.3", "port": 3000, "ip_type": "residential"},
                 ],
             )
+            for proxy_id in proxy_ids:
+                await database.update_proxy_endpoint_intelligence(
+                    proxy_id, {"ip_type": "residential", "ip_type_source": "test", "ip_type_confidence": "high"}
+                )
             for proxy_id, exit_ip in zip(proxy_ids, ("8.8.8.8", "8.8.8.8", "9.9.9.9"), strict=True):
                 await database.save_proxy_probe_result(
                     proxy_id,
@@ -3668,10 +3682,14 @@ def test_delete_all_proxy_pool_cascades_pool_state_and_preserves_provider_config
             proxy_ids = await database.upsert_proxy_endpoints_returning_ids(
                 provider_id,
                 [
-                    {"provider_proxy_id": "legacy", "host": "1.1.1.1", "port": 1000},
-                    {"provider_proxy_id": "scoped", "host": "2.2.2.2", "port": 2000},
+                    {"provider_proxy_id": "legacy", "host": "1.1.1.1", "port": 1000, "ip_type": "residential"},
+                    {"provider_proxy_id": "scoped", "host": "2.2.2.2", "port": 2000, "ip_type": "residential"},
                 ],
             )
+            for proxy_id in proxy_ids:
+                await database.update_proxy_endpoint_intelligence(
+                    proxy_id, {"ip_type": "residential", "ip_type_source": "test", "ip_type_confidence": "high"}
+                )
             await database.create_proxy_import_batch(
                 provider_id,
                 source_name="manual",
@@ -3745,6 +3763,129 @@ def test_delete_all_proxy_pool_cascades_pool_state_and_preserves_provider_config
             assert provider_instance is not None
             assert provider_instance["proxy_id"] is None
             assert await database.get_proxy_provider(provider_id) is not None
+
+    asyncio.run(run())
+
+
+def test_delete_all_proxy_pool_removes_earnapp_control_route_but_preserves_account(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            account_id = await database.upsert_earnapp_account(
+                profile_key="profile-a",
+                account_name="earnapp@example.com",
+                email="earnapp@example.com",
+                auth_method="google",
+                credentials={"cookies": {"oauth-refresh-token": "refresh", "xsrf-token": "xsrf"}},
+                credential_keys=["oauth-refresh-token", "xsrf-token"],
+                token_expires_at=None,
+                cookie_expires_at=None,
+            )
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            (proxy_id,) = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id,
+                [
+                    {
+                        "provider_proxy_id": "earnapp-control",
+                        "host": "1.1.1.1",
+                        "port": 1000,
+                        "status": "alive",
+                        "exit_ip": "8.8.8.8",
+                        "ip_type": "residential",
+                    }
+                ],
+            )
+            await database.update_proxy_endpoint_intelligence(
+                proxy_id,
+                {"ip_type": "residential", "ip_type_source": "test", "ip_type_confidence": "high"},
+            )
+            await database.save_proxy_probe_result(
+                proxy_id,
+                profile="earnapp_wss",
+                probe_status="alive",
+                verdict="CID_SET",
+                eligibility="eligible",
+                reason="cid",
+                exit_ip="8.8.8.8",
+                latency_ms=10,
+                probe_version="test",
+            )
+            route = await database.lease_earnapp_account_control_proxy(account_id)
+            assert route is not None and route["proxy_id"] == proxy_id
+
+            deleted = await database.delete_all_proxy_pool()
+
+            assert deleted == 1
+            assert await database.get_earnapp_account_control_route(account_id, include_released=True) is None
+            accounts = await database.list_earnapp_accounts()
+            assert [(row["id"], row["state"]) for row in accounts] == [(account_id, "ACTIVE")]
+
+    asyncio.run(run())
+
+
+def test_delete_selected_proxy_removes_earnapp_control_route_but_preserves_account(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            account_id = await database.upsert_earnapp_account(
+                profile_key="profile-a",
+                account_name="earnapp@example.com",
+                email="earnapp@example.com",
+                auth_method="apple",
+                credentials={"cookies": {"oauth-refresh-token": "refresh", "xsrf-token": "xsrf"}},
+                credential_keys=["oauth-refresh-token", "xsrf-token"],
+                token_expires_at=None,
+                cookie_expires_at=None,
+            )
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            proxy_ids = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id,
+                [
+                    {
+                        "provider_proxy_id": "earnapp-control",
+                        "host": "1.1.1.1",
+                        "port": 1000,
+                        "status": "alive",
+                        "exit_ip": "8.8.8.8",
+                        "ip_type": "residential",
+                    },
+                    {
+                        "provider_proxy_id": "keep",
+                        "host": "2.2.2.2",
+                        "port": 2000,
+                        "status": "alive",
+                        "exit_ip": "9.9.9.9",
+                        "ip_type": "residential",
+                    },
+                ],
+            )
+            for proxy_id, exit_ip in zip(proxy_ids, ("8.8.8.8", "9.9.9.9"), strict=True):
+                await database.update_proxy_endpoint_intelligence(
+                    proxy_id,
+                    {"ip_type": "residential", "ip_type_source": "test", "ip_type_confidence": "high"},
+                )
+                await database.save_proxy_probe_result(
+                    proxy_id,
+                    profile="earnapp_wss",
+                    probe_status="alive",
+                    verdict="CID_SET",
+                    eligibility="eligible",
+                    reason="cid",
+                    exit_ip=exit_ip,
+                    latency_ms=10,
+                    probe_version="test",
+                )
+            route = await database.lease_earnapp_account_control_proxy(account_id)
+            assert route is not None and route["proxy_id"] == proxy_ids[0]
+
+            deleted = await database.delete_proxy_endpoints([proxy_ids[0]])
+
+            assert deleted == 1
+            assert await database.get_earnapp_account_control_route(account_id, include_released=True) is None
+            remaining = await database.list_proxy_pool()
+            assert [row["id"] for row in remaining] == [proxy_ids[1]]
+            accounts = await database.list_earnapp_accounts()
+            assert [(row["id"], row["state"]) for row in accounts] == [(account_id, "ACTIVE")]
 
     asyncio.run(run())
 

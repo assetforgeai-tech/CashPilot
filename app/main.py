@@ -43,6 +43,7 @@ from app import (
     credential_test,
     database,
     disclosure,
+    earnapp_recovery,
     egress,
     exchange_rates,
     fleet_key,
@@ -1568,6 +1569,14 @@ async def _check_stale_workers() -> None:
             )
     except Exception as exc:
         logger.warning("NKN stale wallet reclaim error: %s", exc)
+    try:
+        recovered = await earnapp_recovery.sweep_stale_nodes(stale_after_seconds=EARNAPP_NODE_STALE_SECONDS)
+        if recovered["held"]:
+            logger.warning("Put %d EarnApp node(s) into recovery hold", len(recovered["held"]))
+        if recovered["released"]:
+            logger.warning("Released %d expired EarnApp recovery proxy lease(s)", len(recovered["released"]))
+    except Exception as exc:
+        logger.warning("EarnApp stale node recovery error: %s", exc)
 
 
 FLEET_API_KEY = fleet_key.resolve_fleet_key()
@@ -1576,6 +1585,7 @@ MYST_PROXY_UDP_PORTS = range(56000, 56021)
 COLLECT_INTERVAL_MIN = int(os.getenv("CASHPILOT_COLLECT_INTERVAL", "60"))
 STALE_WORKER_SECONDS = 180  # Mark worker offline after 3 missed heartbeats
 NKN_WALLET_STALE_SECONDS = 900
+EARNAPP_NODE_STALE_SECONDS = 900
 
 
 async def _warm_session_epochs() -> None:
@@ -6147,6 +6157,26 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
                     "lease_client_id": lease_client_id,
                 }
             )
+    earnapp = body.provider_states.get("earnapp") or {}
+    earnapp_assignment_acks: list[dict[str, Any]] = []
+    earnapp_assignment_rejections: list[dict[str, Any]] = []
+    for instance in earnapp.get("instances") or []:
+        if not isinstance(instance, dict):
+            continue
+        logical_node_id = str(instance.get("logical_node_id") or "").strip()
+        generation = int(instance.get("generation") or 0)
+        if not logical_node_id or generation <= 0:
+            continue
+        synced = await earnapp_recovery.heartbeat_node(
+            logical_node_id,
+            worker_id,
+            generation=generation,
+        )
+        item = {"logical_node_id": logical_node_id, "generation": generation}
+        if synced:
+            earnapp_assignment_acks.append(item)
+        else:
+            earnapp_assignment_rejections.append(item)
     metrics.record_heartbeat(body.name)
     resp: dict[str, Any] = {"status": "ok", "worker_id": worker_id}
     if state == "enroll":
@@ -6180,6 +6210,10 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         resp["nkn_assignment_rejections"] = nkn_assignment_rejections
     if nkn_assignment_acks:
         resp["nkn_assignment_acks"] = nkn_assignment_acks
+    if earnapp_assignment_rejections:
+        resp["earnapp_assignment_rejections"] = earnapp_assignment_rejections
+    if earnapp_assignment_acks:
+        resp["earnapp_assignment_acks"] = earnapp_assignment_acks
     _spawn(_maybe_auto_deploy_after_heartbeat(worker_id))
     return resp
 
@@ -6531,6 +6565,7 @@ async def api_fleet_api_key_reveal(request: Request) -> dict[str, str]:
 # splitting the low-regression route groups into app.routers.
 # ---------------------------------------------------------------------------
 from app.routers import auth as auth_router  # noqa: E402
+from app.routers import earnapp_accounts as earnapp_accounts_router  # noqa: E402
 from app.routers import myst_wallets as myst_wallets_router  # noqa: E402
 from app.routers import nkn_wallets as nkn_wallets_router  # noqa: E402
 from app.routers import pages as pages_router  # noqa: E402
@@ -6538,6 +6573,7 @@ from app.routers import proxies as proxies_router  # noqa: E402
 from app.routers import users as users_router  # noqa: E402
 
 app.include_router(auth_router.router)
+app.include_router(earnapp_accounts_router.router)
 app.include_router(pages_router.router)
 app.include_router(nkn_wallets_router.router)
 app.include_router(myst_wallets_router.router)

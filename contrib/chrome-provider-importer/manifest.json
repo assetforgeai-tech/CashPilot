@@ -1,12 +1,20 @@
 {
   "manifest_version": 3,
   "name": "CashPilot Provider Importer",
-  "version": "0.1.0",
-  "description": "Import provider session/config values from the logged-in current tab into CashPilot Settings.",
+  "version": "0.2.0",
+  "description": "Import provider settings and keep one explicitly bound EarnApp account synchronized with CashPilot.",
   "action": {
     "default_popup": "popup.html",
     "default_title": "Import to CashPilot"
   },
-  "permissions": ["activeTab", "scripting", "storage", "tabs"],
-  "host_permissions": ["<all_urls>"]
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": ["activeTab", "alarms", "cookies", "scripting", "storage", "tabs"],
+  "host_permissions": [
+    "https://earnapp.com/*",
+    "https://*.earnapp.com/*",
+    "https://4gmt.com/*",
+    "https://*.4gmt.com/*"
+  ]
 }

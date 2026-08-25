@@ -1,9 +1,13 @@
-const DEFAULT_SERVER = "http://42.96.13.215:8080";
+const DEFAULT_SERVER = "https://cashpilot.4gmt.com";
 
 let lastImport = null;
 
 function setStatus(html) {
   document.getElementById("status").innerHTML = html;
+}
+
+function setEarnAppStatus(html) {
+  document.getElementById("earnapp-status").innerHTML = html;
 }
 
 function chromeCall(fn, ...args) {
@@ -51,9 +55,9 @@ async function scan() {
 
 async function save() {
   if (!lastImport) return;
-  const server = normalizeServer(document.getElementById("server-url").value || DEFAULT_SERVER);
-  await chrome.storage.local.set({ server });
   try {
+    const server = normalizeServer(document.getElementById("server-url").value || DEFAULT_SERVER);
+    await chrome.storage.local.set({ server });
     const tabs = await chromeCall(chrome.tabs.query, { url: [`${server}/*`] });
     if (!tabs.length) {
       throw new Error(`Open ${server}/settings and sign in first`);
@@ -88,7 +92,22 @@ async function save() {
 }
 
 function normalizeServer(value) {
-  return String(value || DEFAULT_SERVER).trim().replace(/\/+$/, "");
+  let url;
+  try {
+    url = new URL(String(value || DEFAULT_SERVER).trim());
+  } catch (_error) {
+    throw new Error("CashPilot URL is invalid");
+  }
+  const hostname = url.hostname.toLowerCase();
+  if (
+    url.protocol !== "https:" ||
+    !(hostname === "4gmt.com" || hostname.endsWith(".4gmt.com")) ||
+    url.username ||
+    url.password
+  ) {
+    throw new Error("CashPilot must use an HTTPS 4gmt.com hostname");
+  }
+  return url.origin;
 }
 
 function escapeHtml(value) {
@@ -98,6 +117,65 @@ function escapeHtml(value) {
 document.getElementById("scan").addEventListener("click", scan);
 document.getElementById("save").addEventListener("click", save);
 
+function formatExpiry(seconds) {
+  if (!seconds) return "expiry unknown";
+  return `expires ${new Date(seconds * 1000).toLocaleString()}`;
+}
+
+function applyEarnAppBinding(binding) {
+  if (!binding) return;
+  document.getElementById("server-url").value = binding.server || DEFAULT_SERVER;
+  document.getElementById("earnapp-account-name").value = binding.accountName || "";
+  document.getElementById("earnapp-email").value = binding.email || "";
+  document.getElementById("earnapp-auth-method").value = binding.authMethod || "google";
+  for (const id of ["server-url", "earnapp-account-name", "earnapp-email", "earnapp-auth-method"]) {
+    document.getElementById(id).disabled = true;
+  }
+  document.getElementById("import-earnapp").textContent = "Sync bound account now";
+  const synced = binding.lastSyncedAt ? new Date(binding.lastSyncedAt).toLocaleString() : "not yet";
+  const warning = binding.lastError ? `<div class="warn">${escapeHtml(binding.lastError)}</div>` : "";
+  setEarnAppStatus(`
+    <div class="ok">Bound to <b>${escapeHtml(binding.accountName)}</b> via ${escapeHtml(binding.authMethod)}.</div>
+    <div class="muted">Last sync: ${escapeHtml(synced)}; token ${escapeHtml(formatExpiry(binding.tokenExpiresAt))}.</div>
+    ${warning}
+  `);
+}
+
+async function importEarnApp() {
+  const button = document.getElementById("import-earnapp");
+  button.disabled = true;
+  setEarnAppStatus('<div class="muted">Reading allowlisted EarnApp cookies and syncing...</div>');
+  try {
+    const response = await chromeCall(chrome.runtime.sendMessage, {
+      type: "IMPORT_EARNAPP_ACCOUNT",
+      server: normalizeServer(document.getElementById("server-url").value || DEFAULT_SERVER),
+      accountName: document.getElementById("earnapp-account-name").value.trim(),
+      email: document.getElementById("earnapp-email").value.trim(),
+      authMethod: document.getElementById("earnapp-auth-method").value,
+    });
+    if (!response?.ok) throw new Error(response?.error || "EarnApp import failed");
+    applyEarnAppBinding(response.binding);
+  } catch (error) {
+    setEarnAppStatus(`<div class="warn">Import failed: ${escapeHtml(error.message)}</div>`);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+document.getElementById("import-earnapp").addEventListener("click", importEarnApp);
+
+chrome.runtime.onMessage.addListener(message => {
+  if (message?.type !== "EARNAPP_SYNC_STATUS") return;
+  if (message.binding) applyEarnAppBinding(message.binding);
+  if (message.status === "error") {
+    setEarnAppStatus(`<div class="warn">Automatic sync failed: ${escapeHtml(message.error || "Unknown error")}</div>`);
+  }
+});
+
 chrome.storage.local.get({ server: DEFAULT_SERVER }, stored => {
   document.getElementById("server-url").value = stored.server || DEFAULT_SERVER;
+});
+
+chrome.runtime.sendMessage({ type: "GET_EARNAPP_BINDING" }, response => {
+  if (response?.ok && response.binding) applyEarnAppBinding(response.binding);
 });

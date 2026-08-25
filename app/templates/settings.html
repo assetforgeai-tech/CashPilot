@@ -36,6 +36,93 @@
   </div>
 </div>
 
+<section class="card settings-section earnapp-account-pool" id="earnapp-account-pool" aria-labelledby="earnapp-account-title">
+  <div class="earnapp-section-heading">
+    <div>
+      <p class="earnapp-eyebrow">Account control plane</p>
+      <h3 class="settings-section-title" id="earnapp-account-title">EarnApp Account Pool</h3>
+      <p class="settings-section-desc">
+        One Chrome profile maps to one EarnApp account. Credentials are encrypted at rest and never shown again;
+        collectors use a proxy already owned by that account. Worker recovery keeps the original route in a
+        <strong>1-hour recovery hold</strong> before it can return to the pool.
+      </p>
+    </div>
+    <button class="btn btn-ghost btn-sm" data-action="loadEarnAppAccounts">Refresh</button>
+  </div>
+
+  <div id="earnapp-token-alerts" class="earnapp-token-alerts" aria-live="assertive"></div>
+
+  <div class="earnapp-capacity-strip" id="earnapp-proxy-capacity">
+    <div><span>Eligible residential</span><strong>&mdash;</strong></div>
+    <div><span>Leaseable now</span><strong>&mdash;</strong></div>
+    <div><span>Active nodes</span><strong>&mdash;</strong></div>
+    <div><span>Recovery hold</span><strong>&mdash;</strong></div>
+  </div>
+
+  <div class="earnapp-account-grid">
+    <div class="earnapp-import-panel">
+      <h4>Import or refresh one account</h4>
+      <p>Use the stable key of the Chrome profile that owns this login. Reusing the same key refreshes that account.</p>
+      <div class="form-group">
+        <label class="form-label" for="earnapp-profile-key">Chrome profile key</label>
+        <input class="form-input" type="text" id="earnapp-profile-key" autocomplete="off" placeholder="profile-40">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="earnapp-account-name">Account name or email</label>
+        <input class="form-input" type="text" id="earnapp-account-name" autocomplete="off" placeholder="owner@example.com">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="earnapp-auth-method">Sign-in method</label>
+        <select class="form-input" id="earnapp-auth-method">
+          <option value="google">Google</option>
+          <option value="apple">Apple</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="earnapp-oauth-refresh-token">oauth-refresh-token</label>
+        <input class="form-input" type="password" id="earnapp-oauth-refresh-token" autocomplete="new-password" placeholder="Required; never shown after import">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="earnapp-xsrf-token">xsrf-token</label>
+        <input class="form-input" type="password" id="earnapp-xsrf-token" autocomplete="new-password" placeholder="Required; never shown after import">
+      </div>
+      <button class="btn btn-primary" data-action="importEarnAppAccount">Import encrypted credentials</button>
+      <p class="earnapp-secret-note">CashPilot never reads Google or Apple cookies, passwords, MFA, OTP, or CAPTCHA data.</p>
+    </div>
+
+    <div class="earnapp-inventory-panel">
+      <div class="earnapp-panel-title">
+        <div>
+          <h4>Accounts</h4>
+          <p>Balance and node counts are the latest read-only collector snapshot.</p>
+        </div>
+        <span id="earnapp-account-count" class="badge badge-category">0 accounts</span>
+      </div>
+      <div class="earnapp-table-scroll">
+        <table class="breakdown-table earnapp-account-table">
+          <thead><tr><th>Account</th><th>Token</th><th>Balance</th><th>Nodes</th><th>Actions</th></tr></thead>
+          <tbody id="earnapp-account-rows"><tr><td colspan="5">Loading...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="earnapp-recovery-panel">
+    <div class="earnapp-panel-title">
+      <div>
+        <h4>Logical node recovery</h4>
+        <p>A replacement worker needs a one-time ticket. Generation checks prevent the old and new workers running the same device.</p>
+      </div>
+    </div>
+    <div class="earnapp-table-scroll">
+      <table class="breakdown-table earnapp-recovery-table">
+        <thead><tr><th>Logical node</th><th>Account</th><th>State</th><th>Worker</th><th>Proxy affinity</th><th>Generation</th><th>Recovery</th></tr></thead>
+        <tbody id="earnapp-recovery-rows"><tr><td colspan="7">Loading...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
 <div class="card settings-section">
   <h3 class="settings-section-title">NKN</h3>
   <p class="settings-section-desc">
