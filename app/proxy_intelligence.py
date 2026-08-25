@@ -5,6 +5,7 @@ from __future__ import annotations
 import ipaddress
 from collections.abc import Mapping
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -17,12 +18,19 @@ _IPAPI_URLS = (
 _KNOWN_IP_TYPES = {"residential", "datacenter", "proxy", "vpn", "hosting", "unknown"}
 
 
+def _normalize_country_code(value: Any) -> str:
+    code = str(value or "").strip().upper()
+    if code == "UK":
+        return "GB"
+    return code if len(code) == 2 and code.isalpha() else ""
+
+
 def normalize_ipwho_payload(payload: Mapping[str, Any] | None) -> dict[str, Any]:
     data = dict(payload or {})
     if data.get("success") is not True:
         return {}
     return {
-        "country_code": str(data.get("country_code") or "").strip().upper(),
+        "country_code": _normalize_country_code(data.get("country_code")),
         "country_name": str(data.get("country") or "").strip(),
         "geo_source": "ipwho.is",
         "geo_confidence": "verified",
@@ -33,15 +41,14 @@ def normalize_ipapi_payload(payload: Mapping[str, Any] | None, *, source: str = 
     data = dict(payload or {})
     if not data or data.get("is_bogon") is True:
         return {}
-    return {
-        "country_code": str(data.get("cc") or "").strip().upper(),
-        "is_datacenter": bool(data.get("is_datacenter")),
-        "is_proxy": bool(data.get("is_proxy")),
-        "is_vpn": bool(data.get("is_vpn")),
-        "is_tor": bool(data.get("is_tor")),
-        "is_hosting": bool(data.get("is_hosting")),
+    result: dict[str, Any] = {
+        "country_code": _normalize_country_code(data.get("cc")),
         "ip_type_source": source,
     }
+    for key in ("is_datacenter", "is_proxy", "is_vpn", "is_tor", "is_hosting"):
+        if key in data:
+            result[key] = bool(data.get(key))
+    return result
 
 
 def _classify_ip_type(quality: Mapping[str, Any]) -> tuple[str, str]:
@@ -70,22 +77,99 @@ def merge_intelligence(
     if ip_type not in _KNOWN_IP_TYPES:
         ip_type = "unknown"
         confidence = "unknown"
-    country_code = str(country_data.get("country_code") or quality_data.get("country_code") or "").upper()
+    country_code = _normalize_country_code(country_data.get("country_code") or quality_data.get("country_code"))
     country_name = str(country_data.get("country_name") or "").strip()
     return {
         "exit_ip": str(exit_ip or "").strip(),
         "country_code": country_code,
         "country_name": country_name,
         "location": country_name or country_code or "Unknown",
-        "geo_source": str(country_data.get("geo_source") or ("ipapi.is" if country_code else "")),
+        "geo_source": str(
+            country_data.get("geo_source") or (quality_data.get("ip_type_source") if country_code else "")
+        ),
         "geo_confidence": str(country_data.get("geo_confidence") or ("inferred" if country_code else "unknown")),
         "ip_type": ip_type,
         "ip_type_source": str(quality_data.get("ip_type_source") or ""),
         "ip_type_confidence": confidence,
+        "lookup_status": {},
     }
 
 
-async def lookup_ip_intelligence(exit_ip: str, *, timeout: float = 8.0) -> dict[str, Any]:
+def _source_name(url: str) -> str:
+    return str(urlparse(url).hostname or "unknown")
+
+
+def _response_status(response: Any) -> str:
+    status_code = int(getattr(response, "status_code", 0) or 0)
+    if status_code == 429:
+        return "rate_limited"
+    if status_code in {401, 403}:
+        return "denied"
+    return f"http_{status_code}" if status_code else "invalid_response"
+
+
+def _retry_after_seconds(response: Any) -> int | None:
+    value = str(getattr(response, "headers", {}).get("retry-after") or "").strip()
+    try:
+        return max(0, int(value)) if value else None
+    except ValueError:
+        return None
+
+
+async def _lookup_with_client(value: str, client: Any) -> dict[str, Any]:
+    lookup_status: dict[str, str] = {}
+    retry_after_seconds: int | None = None
+    country_payload: dict[str, Any] = {}
+    quality_payload: dict[str, Any] = {}
+
+    country_source = _source_name(_IPWHO_URL)
+    try:
+        response = await client.get(_IPWHO_URL.format(ip=value))
+        if response.status_code == 200:
+            country_payload = normalize_ipwho_payload(response.json())
+            lookup_status[country_source] = "ok" if country_payload else "invalid_payload"
+        else:
+            lookup_status[country_source] = _response_status(response)
+            retry_after_seconds = _retry_after_seconds(response)
+    except httpx.HTTPError as exc:
+        lookup_status[country_source] = "connect_error" if isinstance(exc, httpx.ConnectError) else "http_error"
+    except (ValueError, TypeError):
+        lookup_status[country_source] = "invalid_payload"
+
+    for quality_url in _IPAPI_URLS:
+        source = _source_name(quality_url)
+        try:
+            response = await client.get(quality_url.format(ip=value))
+            if response.status_code == 200:
+                quality_payload = normalize_ipapi_payload(response.json(), source=source)
+                lookup_status[source] = "ok" if quality_payload else "invalid_payload"
+                if quality_payload:
+                    break
+            else:
+                lookup_status[source] = _response_status(response)
+                retry_after_seconds = retry_after_seconds or _retry_after_seconds(response)
+                if response.status_code in {401, 403, 429}:
+                    break
+        except httpx.HTTPError as exc:
+            lookup_status[source] = "connect_error" if isinstance(exc, httpx.ConnectError) else "http_error"
+            continue
+        except (ValueError, TypeError):
+            lookup_status[source] = "invalid_payload"
+
+    result = merge_intelligence(value, country=country_payload, quality=quality_payload)
+    result["lookup_status"] = lookup_status
+    if retry_after_seconds is not None:
+        result["retry_after_seconds"] = retry_after_seconds
+    return result
+
+
+async def lookup_ip_intelligence(
+    exit_ip: str,
+    *,
+    timeout: float = 8.0,
+    client: Any | None = None,
+    proxy: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     value = str(exit_ip or "").strip()
     try:
         address = ipaddress.ip_address(value)
@@ -94,27 +178,26 @@ async def lookup_ip_intelligence(exit_ip: str, *, timeout: float = 8.0) -> dict[
     if not address.is_global:
         return merge_intelligence(value)
 
-    country_payload: dict[str, Any] = {}
-    quality_payload: dict[str, Any] = {}
+    if client is not None:
+        return await _lookup_with_client(value, client)
+
     limits = httpx.Limits(max_connections=2, max_keepalive_connections=0)
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, trust_env=False, limits=limits) as client:
-        try:
-            response = await client.get(_IPWHO_URL.format(ip=value))
-            if response.status_code == 200:
-                country_payload = normalize_ipwho_payload(response.json())
-        except (httpx.HTTPError, ValueError, TypeError):
-            pass
-        for quality_url in _IPAPI_URLS:
-            try:
-                response = await client.get(quality_url.format(ip=value))
-                if response.status_code == 200:
-                    source = quality_url.split("//", 1)[-1].split("/", 1)[0]
-                    quality_payload = normalize_ipapi_payload(response.json(), source=source)
-                    if quality_payload:
-                        break
-                elif response.status_code in {401, 403, 429}:
-                    # Do not fan out after an explicit provider limit or denial.
-                    break
-            except (httpx.HTTPError, ValueError, TypeError):
-                continue
-    return merge_intelligence(value, country=country_payload, quality=quality_payload)
+    client_kwargs: dict[str, Any] = {
+        "timeout": timeout,
+        "follow_redirects": False,
+        "trust_env": False,
+        "limits": limits,
+    }
+    if proxy:
+        protocol = str(proxy.get("protocol") or "http").strip().lower()
+        if protocol not in {"http", "socks5"}:
+            return merge_intelligence(value)
+        proxy_url = httpx.URL(
+            f"{protocol}://{str(proxy.get('host') or '').strip()}:{int(proxy.get('port') or 0)}"
+        ).copy_with(
+            username=str(proxy.get("username") or "") or None,
+            password=str(proxy.get("password") or "") or None,
+        )
+        client_kwargs["proxy"] = proxy_url
+    async with httpx.AsyncClient(**client_kwargs) as client:
+        return await _lookup_with_client(value, client)

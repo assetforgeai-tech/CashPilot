@@ -108,6 +108,24 @@ def test_ip_intelligence_marks_an_unflagged_public_ip_as_residential_inference()
     assert merged["ip_type_confidence"] == "inferred"
 
 
+def test_ip_intelligence_keeps_only_iso_alpha_two_country_codes():
+    invalid = proxy_intelligence.normalize_ipwho_payload(
+        {"success": True, "country": "United States", "country_code": "USA"}
+    )
+    british = proxy_intelligence.normalize_ipapi_payload({"cc": "uk", "is_proxy": False})
+
+    assert invalid["country_code"] == ""
+    assert british["country_code"] == "GB"
+
+
+def test_ip_intelligence_does_not_infer_residential_when_quality_flags_are_missing():
+    quality = proxy_intelligence.normalize_ipapi_payload({"cc": "VN"})
+    merged = proxy_intelligence.merge_intelligence("8.8.8.8", quality=quality)
+
+    assert merged["country_code"] == "VN"
+    assert merged["ip_type"] == "unknown"
+
+
 @pytest.mark.asyncio
 async def test_ip_intelligence_falls_back_to_reachable_regional_quality_endpoint():
     class Response:
@@ -179,3 +197,112 @@ async def test_ip_intelligence_does_not_bypass_a_quality_rate_limit_with_other_r
 
     assert result["ip_type"] == "unknown"
     assert sum("ipapi.is" in url for url in calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_ip_intelligence_uses_the_proxy_egress_and_reports_source_statuses():
+    calls = []
+
+    class Response:
+        def __init__(self, status_code, payload, headers=None):
+            self.status_code = status_code
+            self._payload = payload
+            self.headers = headers or {}
+
+        def json(self):
+            return self._payload
+
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, url):
+            calls.append(url)
+            if "ipwho.is" in url:
+                return Response(200, {"success": True, "country": "Viet Nam", "country_code": "VN"})
+            return Response(
+                200,
+                {
+                    "cc": "VN",
+                    "is_datacenter": False,
+                    "is_proxy": False,
+                    "is_vpn": False,
+                    "is_tor": False,
+                },
+            )
+
+    client = Client()
+    result = await proxy_intelligence.lookup_ip_intelligence("8.8.8.8", client=client)
+
+    assert result["country_code"] == "VN"
+    assert result["ip_type"] == "residential"
+    assert result["lookup_status"]["ipwho.is"] == "ok"
+    assert result["lookup_status"]["api.ipapi.is"] == "ok"
+    assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_ip_intelligence_reports_rate_limit_and_connection_failure_without_inventing_metadata():
+    class Response:
+        status_code = 429
+        headers = {"retry-after": "60"}
+
+        @staticmethod
+        def json():
+            return {}
+
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, url):
+            if "ipwho.is" in url:
+                return Response()
+            raise httpx.ConnectError("quality source unavailable")
+
+    result = await proxy_intelligence.lookup_ip_intelligence("8.8.8.8", client=Client())
+
+    assert result["country_code"] == ""
+    assert result["ip_type"] == "unknown"
+    assert result["lookup_status"]["ipwho.is"] == "rate_limited"
+    assert result["lookup_status"]["api.ipapi.is"] == "connect_error"
+    assert result["retry_after_seconds"] == 60
+
+
+@pytest.mark.asyncio
+async def test_ip_intelligence_uses_exact_quality_source_for_country_fallback():
+    class Response:
+        def __init__(self, status_code, payload):
+            self.status_code = status_code
+            self._payload = payload
+            self.headers = {}
+
+        def json(self):
+            return self._payload
+
+    class Client:
+        async def get(self, url):
+            if "ipwho.is" in url:
+                return Response(429, {})
+            return Response(
+                200,
+                {
+                    "cc": "VN",
+                    "is_datacenter": False,
+                    "is_proxy": False,
+                    "is_vpn": False,
+                    "is_tor": False,
+                },
+            )
+
+    result = await proxy_intelligence.lookup_ip_intelligence("8.8.8.8", client=Client())
+
+    assert result["country_code"] == "VN"
+    assert result["country_name"] == ""
+    assert result["geo_source"] == "api.ipapi.is"
