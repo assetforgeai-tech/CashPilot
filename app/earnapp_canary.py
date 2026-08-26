@@ -19,6 +19,7 @@ WorkerRemove = Callable[[int, str], Awaitable[Any]]
 
 LINK_VERIFY_ATTEMPTS = 10
 LINK_VERIFY_INTERVAL_SECONDS = 15
+MAC_PROXY_TUN_IP = "172.31.255.1"
 
 
 def _safe_node_id(value: str) -> str:
@@ -65,7 +66,7 @@ def _identity_value(node_id: str) -> dict[str, Any]:
         "is_swift": True,
         "status_send": True,
         "idle": False,
-        "lan_ip": "192.168.64.2",
+        "lan_ip": MAC_PROXY_TUN_IP,
         "skip_local_addr": True,
         "mobile_connected": False,
         "roaming": False,
@@ -93,7 +94,12 @@ async def get_or_create_mac_identity_profile(logical_node_id: str) -> dict[str, 
         )
         if device_id != existing["device_id"]:
             raise ValueError("EarnApp Mac profile device identity changed")
-        return {"asset_id": node_id, "device_id": device_id, "value": existing["value"]}
+        value = existing["value"]
+        if identity.get("lan_ip") != MAC_PROXY_TUN_IP:
+            identity["lan_ip"] = MAC_PROXY_TUN_IP
+            value = earnapp_runtime.encrypt_mac_profile(identity)
+            await database.save_earnapp_mac_profile(node_id, device_id=device_id, value=value)
+        return {"asset_id": node_id, "device_id": device_id, "value": value}
 
     identity = _identity_value(node_id)
     device_id = (

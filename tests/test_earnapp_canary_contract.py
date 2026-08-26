@@ -12,7 +12,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from fastapi import HTTPException
 from starlette.requests import Request
 
-from app import catalog, database, earnapp_canary, earnapp_runtime, main, provider_runtime, worker_api
+from app import catalog, database, earnapp_canary, earnapp_runtime, main, provider_runtime, singbox_config, worker_api
 from scripts import build_earnapp_canary_image
 
 
@@ -164,6 +164,49 @@ def test_server_profile_is_stable_per_logical_node_and_unique_between_nodes(tmp_
         assert other["value"] != first["value"]
         assert first["value"].startswith("RVNQRg")  # base64("ESPF")
         assert first["asset_id"] == "earnapp-canary-1"
+
+    asyncio.run(run())
+
+
+def test_server_profile_routes_mac_lan_ip_through_sidecar_tun(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            await database.init_db()
+            profile = await earnapp_canary.get_or_create_mac_identity_profile("earnapp-canary-1")
+
+        identity = earnapp_runtime.decrypt_mac_profile(profile["value"])
+        config = singbox_config.render_tun_proxy_config(
+            {"host": "proxy.example", "port": 1080, "protocol": "socks5"},
+            worker_name="earnapp-canary-1",
+        )
+        tun_ip = config["inbounds"][0]["address"][0].split("/", 1)[0]
+        assert identity["lan_ip"] == tun_ip
+
+    asyncio.run(run())
+
+
+def test_existing_profile_updates_tun_lan_ip_without_changing_device_id(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            await database.init_db()
+            original = earnapp_canary._identity_value("earnapp-canary-1")
+            original["lan_ip"] = "192.168.64.2"
+            device_id = (
+                earnapp_runtime.MAC_DEVICE_PREFIX
+                + hashlib.sha256((str(original["id"]) + str(original["serial"])).encode("utf-8")).hexdigest()[:32]
+            )
+            await database.save_earnapp_mac_profile(
+                "earnapp-canary-1",
+                device_id=device_id,
+                value=earnapp_runtime.encrypt_mac_profile(original),
+            )
+            updated = await earnapp_canary.get_or_create_mac_identity_profile("earnapp-canary-1")
+
+        identity = earnapp_runtime.decrypt_mac_profile(updated["value"])
+        assert updated["device_id"] == device_id
+        assert identity["id"] == original["id"]
+        assert identity["serial"] == original["serial"]
+        assert identity["lan_ip"] == "172.31.255.1"
 
     asyncio.run(run())
 
