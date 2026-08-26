@@ -274,7 +274,8 @@ def test_collectors_meta_carries_runtime_contract_for_all_providers():
         with patch.object(main, "_require_owner", lambda request: {"uid": 1}):
             rows = await main.api_collectors_meta(object())
             by_slug = {row["slug"]: row for row in rows}
-            assert len(by_slug) == 15
+            assert len(by_slug) == 16
+            assert by_slug["earnapp"]["supported_modes"] == ["proxy"]
             assert by_slug["nkn"]["supported_modes"] == ["direct"]
             assert by_slug["nkn"]["collector_kind"] == "dashboard_only"
             assert by_slug["proxybase"]["manual_only"] is True

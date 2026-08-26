@@ -1,0 +1,80 @@
+name: EarnApp
+slug: earnapp
+category: bandwidth
+status: active
+website: https://earnapp.com
+description: >
+  EarnApp proxy-only runtime with account-scoped identity and an explicit
+  Mac-emulation canary lane. Each node owns one exclusive residential proxy.
+short_description: Proxy-only EarnApp runtime with account-scoped canary provisioning
+
+docker:
+  image: cashpilot/earnapp-mac-canary:asset-4fbeed7fb3f2
+  platforms: [linux/amd64]
+  env: []
+  ports: []
+  volumes:
+    - "earnapp-${EARNAPP_LOGICAL_NODE_ID}-data:/etc/earnapp"
+  critical_volumes:
+    - target: "/etc/earnapp"
+      holds: >-
+        EarnApp device identity and registration state. Destroying it creates a
+        different device and must never happen during a normal redeploy.
+  command: ""
+  network_mode: ""
+  privileged: false
+  cap_add: []
+  devices: []
+  resources:
+    mem_limit: "1g"
+    oom_score_adj: 200
+
+deploy:
+  automation: earnapp_mac_canary
+  runtime_assets:
+    - provider: earnapp
+      asset_kind: mac_identity_profile
+      asset_id: "${EARNAPP_LOGICAL_NODE_ID}"
+      target: /etc/earnapp-spoof/profile.json.enc
+      encoding: base64
+  credentials: []
+
+egress:
+  mode: proxy
+  udp: none
+  reason: >-
+    EarnApp nodes use one account-scoped, exclusive residential proxy through
+    the existing CashPilot sing-box sidecar. The worker public IP is not used.
+
+requirements:
+  residential_ip: true
+  vps_ip: false
+  devices_per_ip: 1
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+
+platforms: [docker, linux, macos, ios]
+
+collector:
+  type: account_pool
+  per_node_earnings: false
+  credentials: []
+  notes: "Account-scoped collector uses the EarnApp Account Pool and one of that account's node proxies."
+
+payment:
+  methods: [paypal, crypto]
+  minimum_payout: "$2"
+  currency: USD
+  frequency: "On request"
+
+earnings:
+  monthly_low: 0
+  monthly_high: 0
+  currency: USD
+  per: device
+  notes: "Earnings are account-level; node status is verified separately from active devices."
+
+payout:
+  model: external
+  notes: "EarnApp pays the linked account directly."

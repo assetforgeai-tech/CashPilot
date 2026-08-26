@@ -4,7 +4,7 @@
 
 Setup and configuration for every service CashPilot supports.
 
-**15 providers** across 2 categories. The table is sortable — click a heading to reorder it.
+**16 providers** across 2 categories. The table is sortable — click a heading to reorder it.
 
 !!! tip "Choosing what to run"
 

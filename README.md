@@ -18,7 +18,7 @@ CashPilot is a self-hosted platform that lets you deploy, manage, and monitor pa
 
 It supports both **Docker-based services** (deployed and managed automatically) and **browser extension / desktop-only services** (tracked via the web UI with signup links, earning estimates, and balance monitoring). Whether a service runs in a container or in your browser, CashPilot aggregates all your earnings into a unified dashboard with historical tracking.
 
-The key differentiator: a browser-based setup wizard guides you through account creation and provider deployment, orchestrates containers through Docker workers, and collects earnings from 15 providers across bandwidth sharing and DePIN categories.
+The key differentiator: a browser-based setup wizard guides you through account creation and provider deployment, orchestrates containers through Docker workers, and tracks 16 providers across bandwidth sharing and DePIN categories.
 
 ![Dashboard](docs/screenshot-dashboard.png)
 

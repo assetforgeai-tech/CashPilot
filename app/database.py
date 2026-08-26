@@ -3356,6 +3356,33 @@ async def set_earnapp_logical_node_state(logical_node_id: str, state: str) -> bo
         await db.close()
 
 
+async def save_earnapp_mac_profile(logical_node_id: str, *, device_id: str, value: str) -> None:
+    """Persist one encrypted ESPF profile per logical node."""
+    node_id = str(logical_node_id or "").strip()
+    if not node_id or not str(device_id or "").strip() or not str(value or ""):
+        raise ValueError("EarnApp Mac profile identity is incomplete")
+    payload = json.dumps({"device_id": str(device_id), "value": str(value)}, sort_keys=True, separators=(",", ":"))
+    await set_config(f"runtime_asset::earnapp::mac_identity_profile::{node_id}::secret", payload)
+
+
+async def get_earnapp_mac_profile(logical_node_id: str) -> dict[str, str] | None:
+    node_id = str(logical_node_id or "").strip()
+    if not node_id:
+        return None
+    raw = await get_config(f"runtime_asset::earnapp::mac_identity_profile::{node_id}::secret")
+    if not raw:
+        return None
+    try:
+        value = json.loads(str(raw))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(value, dict):
+        return None
+    device_id = str(value.get("device_id") or "")
+    ciphertext = str(value.get("value") or "")
+    return {"device_id": device_id, "value": ciphertext} if device_id and ciphertext else None
+
+
 async def set_earnapp_account_state(account_id: int, state: str) -> bool:
     allowed = {"ACTIVE", "EXPIRED", "AUTH_FAILED", "ACCOUNT_LOCKED", "DISABLED"}
     normalized = str(state or "").strip().upper()
@@ -3581,6 +3608,65 @@ async def bind_earnapp_node_runtime(
             ).fetchone()
             await db.commit()
             return dict(updated)
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
+
+
+async def rollback_earnapp_canary_binding(
+    logical_node_id: str,
+    worker_id: int,
+    *,
+    generation: int,
+    proxy_id: int,
+    reason: str,
+) -> bool:
+    """CAS rollback for a failed first canary deploy without touching recovery nodes."""
+    node_id = str(logical_node_id or "").strip()
+    async with _earnapp_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            node = await (
+                await db.execute(
+                    """
+                    SELECT state, assigned_worker_id, generation, current_proxy_id
+                    FROM earnapp_logical_nodes WHERE logical_node_id = ?
+                    """,
+                    (node_id,),
+                )
+            ).fetchone()
+            if not node or (
+                str(node["state"] or "") != "ACTIVE"
+                or int(node["assigned_worker_id"] or 0) != int(worker_id)
+                or int(node["generation"] or 0) != int(generation)
+                or int(node["current_proxy_id"] or 0) != int(proxy_id)
+            ):
+                await db.rollback()
+                return False
+            await db.execute(
+                """
+                UPDATE provider_proxy_leases
+                SET released_at = datetime('now'), release_reason = ?
+                WHERE provider_slug = 'earnapp' AND worker_id = ? AND instance_id = ?
+                  AND proxy_id = ? AND released_at IS NULL
+                """,
+                (str(reason or "EARNAPP_CANARY_DEPLOY_FAILED")[:300], int(worker_id), node_id, int(proxy_id)),
+            )
+            await db.execute(
+                """
+                UPDATE earnapp_logical_nodes
+                SET state = 'PLANNED', assigned_worker_id = NULL, last_worker_id = NULL,
+                    current_proxy_id = NULL, preferred_proxy_id = NULL, device_id = '',
+                    last_heartbeat_at = NULL, updated_at = datetime('now')
+                WHERE logical_node_id = ? AND assigned_worker_id = ? AND generation = ? AND current_proxy_id = ?
+                """,
+                (node_id, int(worker_id), int(generation), int(proxy_id)),
+            )
+            await db.commit()
+            return True
         except Exception:
             await db.rollback()
             raise
@@ -3965,7 +4051,7 @@ async def get_earnapp_account_control_route(
             await db.execute(
                 f"""
                 SELECT r.*, pe.endpoint, pe.host, pe.port, pe.protocol, pe.username,
-                       pe.password_enc, pe.exit_ip, pe.status, pe.ip_type
+                       pe.password_enc, pe.exit_ip, pe.status, pe.ip_type, pe.country_code, pe.country_name
                 FROM earnapp_account_control_routes r
                 JOIN proxy_endpoints pe ON pe.id = r.proxy_id
                 WHERE r.account_id = ? {active} {eligibility}
@@ -4144,7 +4230,7 @@ async def lease_earnapp_account_control_proxy(account_id: int) -> dict[str, Any]
 
 
 async def transfer_earnapp_control_route_to_node(
-    account_id: int, logical_node_id: str, *, worker_id: int
+    account_id: int, logical_node_id: str, *, worker_id: int, country_code: str = ""
 ) -> dict[str, Any] | None:
     """Atomically turn an account-control route into the first node's provider lease."""
     node_id = str(logical_node_id or "").strip()
@@ -4152,10 +4238,11 @@ async def transfer_earnapp_control_route_to_node(
         db = await _open_transaction_connection()
         try:
             await db.execute("BEGIN IMMEDIATE")
+            requested_country = str(country_code or "").strip().upper()
             control = await (
                 await db.execute(
                     """
-                    SELECT r.*, pe.exit_ip
+                    SELECT r.*, pe.exit_ip, pe.country_code
                     FROM earnapp_account_control_routes r
                     JOIN proxy_endpoints pe ON pe.id = r.proxy_id
                     WHERE r.account_id = ? AND r.state = 'ACTIVE'
@@ -4165,6 +4252,9 @@ async def transfer_earnapp_control_route_to_node(
                 )
             ).fetchone()
             if not control:
+                await db.rollback()
+                return None
+            if requested_country and str(control["country_code"] or "").strip().upper() != requested_country:
                 await db.rollback()
                 return None
             await db.execute(
@@ -4880,6 +4970,19 @@ async def get_worker(worker_id: int) -> dict[str, Any] | None:
     try:
         cursor = await db.execute("SELECT * FROM workers WHERE id = ?", (worker_id,))
         row = await cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        await db.close()
+
+
+async def get_worker_by_client_id(client_id: str) -> dict[str, Any] | None:
+    """Return a worker by its durable client identity."""
+    value = str(client_id or "").strip()
+    if not value:
+        return None
+    db = await _get_db()
+    try:
+        row = await (await db.execute("SELECT * FROM workers WHERE client_id = ?", (value,))).fetchone()
         return dict(row) if row else None
     finally:
         await db.close()
@@ -7016,12 +7119,15 @@ async def reconcile_proxy_duplicates() -> int:
 
 
 async def lease_proxy_for_provider_instance(
-    provider_slug: str, worker_id: int, instance_id: str
+    provider_slug: str, worker_id: int, instance_id: str, *, country_code: str = ""
 ) -> dict[str, Any] | None:
     """Lease one canonical egress to a provider instance without touching legacy assignments."""
     slug = str(provider_slug or "").strip().lower()
     instance = str(instance_id or "").strip()
     if not slug or int(worker_id or 0) <= 0 or not instance:
+        return None
+    requested_country = str(country_code or "").strip().upper()
+    if requested_country and not re.fullmatch(r"[A-Z]{2}", requested_country):
         return None
     async with _proxy_assignment_lock():
         db = await _open_transaction_connection()
@@ -7041,6 +7147,19 @@ async def lease_proxy_for_provider_instance(
             )
             current = await cursor.fetchone()
             if current:
+                if slug == "earnapp":
+                    eligible = await (
+                        await db.execute(
+                            f"SELECT 1 FROM proxy_endpoints pe WHERE pe.id = ? AND {_earnapp_proxy_eligible_sql('pe')}",
+                            (int(current["proxy_id"]),),
+                        )
+                    ).fetchone()
+                    country_matches = (
+                        not requested_country or str(current["country_code"] or "").upper() == requested_country
+                    )
+                    if not eligible or not country_matches:
+                        await db.rollback()
+                        return None
                 await db.commit()
                 data = dict(current)
                 encrypted = data.pop("password_enc", "") or ""
@@ -7096,11 +7215,12 @@ async def lease_proxy_for_provider_instance(
                           )
                       )
                   )
-                  AND (? != 'earnapp' OR lower(trim(coalesce(pe.ip_type, ''))) = 'residential')
+                   AND (? != 'earnapp' OR lower(trim(coalesce(pe.ip_type, ''))) = 'residential')
+                   AND (? = '' OR upper(trim(coalesce(pe.country_code, ''))) = ?)
                 ORDER BY pe.id
                 LIMIT 1
                 """,
-                (slug, slug, slug),
+                (slug, slug, slug, requested_country, requested_country),
             )
             row = await cursor.fetchone()
             if not row:
