@@ -17,6 +17,8 @@ from scripts import build_earnapp_canary_image
 
 
 def test_mac_profile_blob_uses_the_official_boot_js_default_key():
+    assert hashlib.sha256(b"Earn-app-2movn-0951").hexdigest() == earnapp_runtime.MAC_PROFILE_KEY_HEX
+    assert bytes.fromhex(earnapp_runtime.MAC_PROFILE_KEY_HEX) == earnapp_runtime.MAC_PROFILE_KEY
     identity = {"platform": "darwin", "appid": "mac_com.earnapp", "id": "test", "serial": "serial"}
     encrypted = earnapp_runtime.encrypt_mac_profile(identity)
     blob = base64.b64decode(encrypted, validate=True)

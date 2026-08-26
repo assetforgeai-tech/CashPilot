@@ -54,12 +54,10 @@ MAC_RUNTIME_IMAGE = f"cashpilot/earnapp-mac-canary:asset-{MAC_RUNTIME_ASSET_MANI
 MAC_RUNTIME_HOST = "earnapp_mac_canary"
 MAC_PROFILE_MAGIC = b"ESPF"
 MAC_PROFILE_VERSION = 1
-# Keep this in lock-step with the official ``boot.js`` fallback key.  The
-# runtime bundle is intentionally external to Git, so this contract test is
-# what prevents a Python-generated profile from becoming undecryptable in the
-# container.
-MAC_PROFILE_PASSPHRASE = "Earn-app-2movn-0951"
-MAC_PROFILE_KEY = hashlib.sha256(MAC_PROFILE_PASSPHRASE.encode("utf-8")).digest()
+# Keep this precomputed key in lock-step with the official ``boot.js`` fallback
+# derivation. It is a protocol compatibility value, never a credential hash.
+MAC_PROFILE_KEY_HEX = "c0f6e9049acba2e1980b0dfd3dbe0fdbde5df4706235f814651722592bd6fa55"
+MAC_PROFILE_KEY = bytes.fromhex(MAC_PROFILE_KEY_HEX)
 
 
 def required_image_labels() -> dict[str, str]:
