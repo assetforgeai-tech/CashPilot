@@ -24,7 +24,7 @@ from urllib.request import Request, urlopen
 import docker
 from docker.errors import APIError, DockerException, NotFound
 
-from app import myst_runtime, provider_automation, provider_installers, singbox_config
+from app import earnapp_runtime, myst_runtime, provider_automation, provider_installers, singbox_config
 
 try:
     from app.catalog import critical_volume_targets, get_service, get_services
@@ -328,6 +328,10 @@ def deploy_raw(
         client.images.pull(image)
     except APIError as exc:
         logger.warning("Failed to pull image %s: %s (trying local)", image, exc)
+    if provider == "earnapp":
+        image_obj = client.images.get(image)
+        image_config = ((image_obj.attrs or {}).get("Config") or {}) if getattr(image_obj, "attrs", None) else {}
+        earnapp_runtime.validate_image_labels(image_config.get("Labels") or {})
 
     if provider == "urnetwork" and deploy_credentials:
         api_key = str(deploy_credentials.get("api_key") or "")
@@ -929,6 +933,26 @@ def _provider_evidence(slug: str, container: Any) -> dict[str, Any]:
         except Exception as exc:
             logger.debug("Wipter evidence unavailable for %s: %s", getattr(container, "short_id", "?"), exc)
             return {}
+    if slug == "earnapp":
+        try:
+            result = container.exec_run(
+                [
+                    "sh",
+                    "-lc",
+                    "u=$(cat /etc/earnapp/uuid 2>/dev/null || true); "
+                    'test -n "$u" || exit 1; '
+                    'printf \'{"device_id":"%s","running":true}\n\' "$u"',
+                ]
+            )
+            if getattr(result, "exit_code", 1) != 0:
+                return {"running": True, "online": False}
+            output = getattr(result, "output", b"") or b""
+            text = output.decode("utf-8", errors="replace") if isinstance(output, bytes) else str(output)
+            evidence = json.loads(text)
+            return earnapp_runtime.redacted_evidence(evidence if isinstance(evidence, dict) else {})
+        except Exception as exc:
+            logger.debug("EarnApp evidence unavailable for %s: %s", getattr(container, "short_id", "?"), exc)
+            return {"running": True, "online": False}
     if slug != "uprock":
         return {}
     try:

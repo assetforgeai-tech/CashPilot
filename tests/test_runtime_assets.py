@@ -243,3 +243,40 @@ class TestRuntimeAssets:
             assert source.stat().st_mode & stat.S_IROTH
 
         asyncio.run(run())
+
+    def test_worker_scopes_same_asset_kind_by_asset_id(self, tmp_path):
+        async def run():
+            specs = [
+                worker_api.DeploySpec(
+                    image="img",
+                    runtime_assets=[
+                        worker_api.RuntimeAssetSpec(
+                            provider="earnapp",
+                            asset_kind="mac_identity_profile",
+                            asset_id=node_id,
+                            target="/profile.json.enc",
+                            encoding="text",
+                        )
+                    ],
+                )
+                for node_id in ("earnapp-canary-a", "earnapp-canary-b")
+            ]
+            with (
+                patch.object(worker_api, "_RUNTIME_ASSET_DIR", tmp_path),
+                patch.object(
+                    worker_api,
+                    "_fetch_runtime_asset",
+                    side_effect=["profile-a", "profile-b"],
+                ),
+            ):
+                await worker_api._materialize_runtime_assets("earnapp-canary", specs[0])
+                await worker_api._materialize_runtime_assets("earnapp-canary", specs[1])
+
+            sources = [Path(next(iter(spec.volumes))) for spec in specs]
+            assert sources[0] != sources[1]
+            assert sources[0].read_text() == "profile-a"
+            assert sources[1].read_text() == "profile-b"
+            assert "earnapp-canary-a" in str(sources[0])
+            assert "earnapp-canary-b" in str(sources[1])
+
+        asyncio.run(run())

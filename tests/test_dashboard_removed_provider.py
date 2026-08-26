@@ -117,7 +117,7 @@ def test_provider_instances_group_under_canonical_provider_slug():
     assert resp.status_code == 200
     rows = resp.json()
     by_slug = {row["slug"]: row for row in rows}
-    assert len(rows) == 15
+    assert len(rows) == 16
     assert by_slug["earnfm"]["instances"] == 2
     assert {item["mode"] for item in by_slug["earnfm"]["instance_details"]} == {"direct", "proxy"}
 
@@ -137,7 +137,7 @@ def test_dashboard_lists_active_catalog_providers_even_before_deploy():
 
     assert resp.status_code == 200
     rows = resp.json()
-    assert len(rows) == 15
+    assert len(rows) == 16
     by_slug = {row["slug"]: row for row in rows}
     assert "nkn" in by_slug
     assert by_slug["proxybase-xyz"]["container_status"] == "not_deployed"

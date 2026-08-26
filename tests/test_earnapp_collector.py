@@ -317,8 +317,10 @@ class _Client:
     async def post(self, url, **kwargs):
         self.calls.append(("POST", url))
         assert kwargs["headers"]["xsrf-token"] == "rotated-xsrf"
-        assert kwargs["json"] == {"devices": ["device-a", "device-b"]}
-        return _Response(200, {"device-a": {"online": True}, "device-b": {"status": "offline"}})
+        assert kwargs["headers"]["Origin"] == "https://earnapp.com"
+        assert kwargs["headers"]["Referer"] == "https://earnapp.com/dashboard/"
+        assert kwargs["json"] == {"data": {"devices": ["device-a", "device-b"]}}
+        return _Response(200, {"device-a": [1787700000, 60], "device-b": [0, 0]})
 
     async def aclose(self):
         self.is_closed = True
@@ -385,6 +387,100 @@ def test_collector_rotates_xsrf_routes_every_request_through_account_proxy_and_n
     }
     assert "refresh-secret" not in json.dumps(snapshot)
     assert "old-xsrf-secret" not in json.dumps(snapshot)
+
+
+class _LinkClient:
+    is_closed = False
+
+    def __init__(self, calls: list[tuple[str, str]], **kwargs):
+        self.calls = calls
+        self.kwargs = kwargs
+        self.cookies = dict(kwargs.get("cookies") or {})
+        self.linked = False
+
+    async def get(self, url, **kwargs):
+        self.calls.append(("GET", url))
+        if url.endswith("/sec/rotate_xsrf"):
+            self.cookies["xsrf-token"] = "rotated-xsrf"
+            return _Response(200, {"ok": 1})
+        if url.endswith("/user_data"):
+            return _Response(200, {"email": "owner@example.com"})
+        if url.endswith("/devices"):
+            devices = [{"uuid": "sdk-mac-test", "banned": False}] if self.linked else []
+            return _Response(200, {"devices": devices})
+        raise AssertionError(url)
+
+    async def post(self, url, **kwargs):
+        self.calls.append(("POST", url))
+        assert kwargs["headers"]["xsrf-token"] == "rotated-xsrf"
+        assert kwargs["headers"]["Origin"] == "https://earnapp.com"
+        assert kwargs["headers"]["Referer"] == "https://earnapp.com/dashboard/"
+        if url.endswith("/link_device"):
+            assert kwargs["json"] == {
+                "uuid": "sdk-mac-test",
+                "platform": "macos",
+            }
+            self.linked = True
+            return _Response(200, {"status": "ok"})
+        if url.endswith("/device_statuses"):
+            assert kwargs["json"] == {"data": {"devices": ["sdk-mac-test"]}}
+            return _Response(200, {"sdk-mac-test": [1787700000, 120]})
+        raise AssertionError(url)
+
+    async def aclose(self):
+        self.is_closed = True
+
+
+def test_link_and_verify_device_uses_account_proxy_and_requires_dashboard_online_evidence():
+    calls: list[tuple[str, str]] = []
+    clients: list[_LinkClient] = []
+
+    def factory(**kwargs):
+        client = _LinkClient(calls, **kwargs)
+        clients.append(client)
+        return client
+
+    credentials = {
+        "cookies": {
+            "oauth-refresh-token": "refresh-secret",
+            "xsrf-token": "old-xsrf-secret",
+        }
+    }
+    proxy = {
+        "protocol": "socks5",
+        "host": "proxy.example",
+        "port": 1080,
+        "username": "user",
+        "password": "pass",
+    }
+    with patch("app.collectors.earnapp.httpx.AsyncClient", side_effect=factory):
+        result = asyncio.run(
+            EarnAppAccountCollector(credentials, proxy).link_and_verify_device(
+                "sdk-mac-test",
+                platform="macos",
+            )
+        )
+
+    assert clients[0].kwargs["proxy"] == "socks5://user:pass@proxy.example:1080"
+    assert calls == [
+        ("GET", "https://earnapp.com/dashboard/api/sec/rotate_xsrf"),
+        ("GET", "https://earnapp.com/dashboard/api/user_data"),
+        ("GET", "https://earnapp.com/dashboard/api/devices"),
+        ("POST", "https://earnapp.com/dashboard/api/link_device"),
+        ("GET", "https://earnapp.com/dashboard/api/devices"),
+        ("POST", "https://earnapp.com/dashboard/api/device_statuses"),
+    ]
+    assert result == {
+        "status": "online",
+        "device_id": "sdk-mac-test",
+        "authenticated": True,
+        "link_attempted": True,
+        "device_present": True,
+        "online": True,
+        "banned": False,
+    }
+    assert "refresh-secret" not in json.dumps(result)
+    assert "rotated-xsrf" not in json.dumps(result)
 
 
 def test_collection_persists_sanitized_snapshot_without_registering_legacy_singleton_collector(tmp_path):

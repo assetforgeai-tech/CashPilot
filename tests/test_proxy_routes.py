@@ -3475,6 +3475,91 @@ def test_earnapp_lease_rejects_stale_egress_until_current_egress_is_qualified(tm
     asyncio.run(run())
 
 
+def test_existing_earnapp_lease_must_still_match_requested_country_and_latest_qualification(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            (proxy_id,) = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id,
+                [
+                    {
+                        "provider_proxy_id": "one",
+                        "host": "1.1.1.1",
+                        "port": 1000,
+                        "ip_type": "residential",
+                        "country_code": "VN",
+                    }
+                ],
+            )
+            await database.update_proxy_endpoint_intelligence(
+                proxy_id,
+                {
+                    "ip_type": "residential",
+                    "ip_type_source": "test",
+                    "ip_type_confidence": "high",
+                    "country_code": "VN",
+                    "country_name": "Vietnam",
+                    "geo_source": "test",
+                    "geo_confidence": "high",
+                },
+            )
+            worker_id = await database.upsert_worker("worker-a", "a", "http://a")
+            await database.save_proxy_probe_result(
+                proxy_id,
+                profile="generic",
+                probe_status="alive",
+                verdict="ALIVE",
+                eligibility="eligible",
+                reason="",
+                exit_ip="9.9.9.9",
+                latency_ms=10,
+                probe_version="test",
+            )
+            await database.save_proxy_probe_result(
+                proxy_id,
+                profile="earnapp_wss",
+                probe_status="alive",
+                verdict="CID_SET",
+                eligibility="eligible",
+                reason="cid",
+                exit_ip="9.9.9.9",
+                latency_ms=10,
+                probe_version="test",
+            )
+            await database.update_proxy_endpoint_intelligence(
+                proxy_id,
+                {
+                    "ip_type": "residential",
+                    "ip_type_source": "test",
+                    "ip_type_confidence": "high",
+                    "country_code": "VN",
+                    "country_name": "Vietnam",
+                    "geo_source": "test",
+                    "geo_confidence": "high",
+                },
+            )
+
+            first = await database.lease_proxy_for_provider_instance(
+                "earnapp", worker_id, "earnapp-1", country_code="VN"
+            )
+            assert first and first["proxy_id"] == proxy_id
+
+            db = await database._get_db()
+            try:
+                await db.execute("UPDATE proxy_endpoints SET country_code = 'US' WHERE id = ?", (proxy_id,))
+                await db.commit()
+            finally:
+                await db.close()
+
+            assert (
+                await database.lease_proxy_for_provider_instance("earnapp", worker_id, "earnapp-1", country_code="VN")
+                is None
+            )
+
+    asyncio.run(run())
+
+
 def test_duplicate_reconciliation_prefers_current_earnapp_evidence_over_stale_evidence(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):

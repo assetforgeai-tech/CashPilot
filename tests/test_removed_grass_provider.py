@@ -11,6 +11,7 @@ from app.retired_providers import RETIRED_PROVIDER_SLUGS
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_PROVIDERS = {
+    "earnapp",
     "earnfm",
     "iproyal",
     "mysterium",

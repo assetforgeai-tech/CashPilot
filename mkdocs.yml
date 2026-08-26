@@ -134,6 +134,7 @@ nav:
     - Overview: guides/README.md
     - Bandwidth Sharing:
       - Earn.fm: guides/earnfm.md
+      - EarnApp: guides/earnapp.md
       - IPRoyal Pawns: guides/iproyal.md
       - MystNodes: guides/mysterium.md
       - NKN: guides/nkn.md

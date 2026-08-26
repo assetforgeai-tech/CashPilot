@@ -43,6 +43,7 @@ from app import (
     credential_test,
     database,
     disclosure,
+    earnapp_canary,
     earnapp_recovery,
     egress,
     exchange_rates,
@@ -221,6 +222,7 @@ def _auto_deploy_slugs(services: list[dict[str, Any]]) -> list[str]:
         for svc in services
         if svc.get("slug")
         and svc.get("slug") != "nkn"
+        and (svc.get("deploy") or {}).get("automation") != "earnapp_mac_canary"
         and svc.get("status") not in _UNDEPLOYABLE_STATUSES
         and (svc.get("docker") or {}).get("image")
     ]
@@ -2420,6 +2422,11 @@ class DeployRequest(BaseModel):
     mode: str | None = None
 
 
+class EarnAppCanaryDeployRequest(BaseModel):
+    logical_node_id: str = Field(min_length=3, max_length=128, pattern=r"^[a-z0-9][a-z0-9-]{2,120}$")
+    worker_id: int | None = Field(default=None, gt=0)
+
+
 def _resolve_deploy_credentials(
     slug: str,
     svc: dict[str, Any] | None,
@@ -2779,6 +2786,12 @@ async def api_deploy(
         result = await _deploy_nkn_slots(worker_id, **deploy_kwargs)
         return {"status": "deployed", "provider": "nkn", **result}
 
+    if slug == "earnapp":
+        raise HTTPException(
+            status_code=409,
+            detail="EarnApp uses the owner-only Mac canary endpoint, not generic provider deploy",
+        )
+
     docker_conf = svc.get("docker", {})
     deploy_conf = svc.get("deploy", {}) or {}
     deploy_surface = _service_deploy_surface(svc)
@@ -3028,6 +3041,62 @@ async def api_deploy(
     if divergence:
         response["kept_from_previous_deployment"] = divergence
     return response
+
+
+@app.post("/api/admin/earnapp/canary/deploy")
+async def api_deploy_earnapp_canary(
+    request: Request,
+    body: EarnAppCanaryDeployRequest,
+    _auth: dict[str, Any] = Depends(_require_owner),
+) -> dict[str, Any]:
+    """Deploy exactly one owner-authorized EarnApp Mac canary node."""
+    worker_id = await _resolve_worker_id(body.worker_id)
+
+    async def worker_deploy(target_worker_id: int, instance_slug: str, spec: dict[str, Any]) -> dict[str, Any]:
+        return await _proxy_worker_deploy(target_worker_id, instance_slug, spec)
+
+    async def worker_remove(target_worker_id: int, instance_slug: str) -> dict[str, Any]:
+        return await _proxy_worker_command(target_worker_id, "remove", instance_slug)
+
+    try:
+        result = await earnapp_canary.deploy_canary(
+            body.logical_node_id,
+            int(worker_id),
+            worker_deploy=worker_deploy,
+            worker_remove=worker_remove,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.warning("EarnApp canary deployment failed for %s: %s", body.logical_node_id, type(exc).__name__)
+        raise HTTPException(status_code=502, detail="EarnApp canary deployment failed") from exc
+    verification = await earnapp_canary.verify_canary(body.logical_node_id)
+    if verification.get("online") is not True:
+        await database.record_health_event(
+            "earnapp", "canary_pending", f"dashboard verification pending for {body.logical_node_id}"
+        )
+        raise HTTPException(
+            status_code=409, detail="EarnApp canary deployed but is not online on the account dashboard"
+        )
+    await database.record_health_event("earnapp", "canary_online", f"verified {body.logical_node_id}")
+    return {**verification, "deployment": result}
+
+
+@app.post("/api/admin/earnapp/canary/{logical_node_id}/verify")
+async def api_verify_earnapp_canary(
+    request: Request,
+    logical_node_id: str,
+    _auth: dict[str, Any] = Depends(_require_owner),
+) -> dict[str, Any]:
+    """Retry authenticated account-side verification without redeploying the node."""
+    try:
+        result = await earnapp_canary.verify_canary(logical_node_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if result.get("online") is not True:
+        raise HTTPException(status_code=409, detail="EarnApp canary is not online on the account dashboard")
+    await database.record_health_event("earnapp", "canary_online", f"verified {logical_node_id}")
+    return result
 
 
 async def _run_post_deploy_automation(slug: str, worker_id: int, hostname: str, modes: list[str] | None = None) -> None:
@@ -5959,6 +6028,7 @@ class RuntimeAssetRequest(BaseModel):
     client_id: str
     provider: str
     asset_kind: str
+    asset_id: str = ""
 
 
 @app.get("/api/admin/runtime-assets")
@@ -5997,7 +6067,15 @@ async def api_worker_runtime_asset(request: Request, body: RuntimeAssetRequest) 
     if _is_retired_provider(body.provider):
         raise HTTPException(status_code=404, detail="Runtime asset not found")
     try:
-        value = await database.get_runtime_asset(body.provider, body.asset_kind)
+        if body.provider == "earnapp" and body.asset_kind == "mac_identity_profile":
+            worker = await database.get_worker_by_client_id(body.client_id)
+            node = await database.get_earnapp_logical_node(body.asset_id)
+            if not worker or not node or int(node.get("assigned_worker_id") or 0) != int(worker.get("id") or 0):
+                raise HTTPException(status_code=403, detail="Runtime asset is not assigned to this worker")
+            profile = await database.get_earnapp_mac_profile(body.asset_id)
+            value = (profile or {}).get("value")
+        else:
+            value = await database.get_runtime_asset(body.provider, body.asset_kind)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if value is None:

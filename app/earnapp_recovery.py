@@ -21,7 +21,13 @@ def _ticket_hash(token: str) -> str:
     return hashlib.sha256(str(token or "").encode()).hexdigest()
 
 
-async def provision_node(logical_node_id: str, worker_id: int, *, device_id: str) -> dict[str, Any]:
+async def provision_node(
+    logical_node_id: str,
+    worker_id: int,
+    *,
+    device_id: str,
+    proxy_country_code: str = "",
+) -> dict[str, Any]:
     """Create the account binding and acquire an eligible residential route."""
     node_id = str(logical_node_id or "").strip()
     await earnapp_accounts.assign_account(node_id)
@@ -29,15 +35,28 @@ async def provision_node(logical_node_id: str, worker_id: int, *, device_id: str
     if not current:
         raise RecoveryClaimDenied("EarnApp logical node could not be created")
     if current.get("current_proxy_id"):
+        if int(current.get("assigned_worker_id") or 0) != int(worker_id):
+            raise RecoveryClaimDenied("EarnApp logical node is assigned to another worker")
         return _public_node(current)
 
+    country_code = str(proxy_country_code or "").strip().upper()
+    control = await database.get_earnapp_account_control_route(int(current["account_id"]), healthy_only=True)
+    if control and country_code and str(control.get("country_code") or "").strip().upper() != country_code:
+        await database.release_earnapp_account_control_route(
+            int(current["account_id"]),
+            expected_proxy_id=int(control["proxy_id"]),
+            reason=f"EARNAPP_NODE_REQUIRES_{country_code}",
+        )
+        control = None
     transferred = await database.transfer_earnapp_control_route_to_node(
-        int(current["account_id"]), node_id, worker_id=int(worker_id)
+        int(current["account_id"]), node_id, worker_id=int(worker_id), country_code=country_code
     )
     if transferred:
         proxy = {"proxy_id": int(transferred["proxy_id"])}
     else:
-        proxy = await database.lease_proxy_for_provider_instance("earnapp", int(worker_id), node_id)
+        proxy = await database.lease_proxy_for_provider_instance(
+            "earnapp", int(worker_id), node_id, country_code=country_code
+        )
         if not proxy:
             raise RecoveryClaimDenied("no eligible residential EarnApp proxy available")
     try:

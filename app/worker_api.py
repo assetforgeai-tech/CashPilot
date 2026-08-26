@@ -43,6 +43,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field, model_validator
 
 from app import (
+    earnapp_runtime,
     egress,
     fleet_key,
     myst_runtime,
@@ -388,6 +389,81 @@ def _load_nkn_states() -> list[dict[str, Any]]:
                 value.pop(secret, None)
             states.append(value)
     return states
+
+
+def _earnapp_state_dir() -> Path:
+    return Path(os.getenv("CASHPILOT_DATA_DIR", "/data")) / "earnapp-nodes"
+
+
+def _earnapp_state_path(logical_node_id: str) -> Path:
+    node_id = str(logical_node_id or "").strip()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{2,120}", node_id):
+        raise ValueError("invalid EarnApp logical node id")
+    root = os.path.realpath(os.fspath(_earnapp_state_dir()))
+    path = os.path.realpath(os.path.join(root, f"{node_id}.json"))
+    if not path.startswith(root + os.sep):
+        raise ValueError("invalid EarnApp state path")
+    return Path(path)
+
+
+def _save_earnapp_state(logical_node_id: str, state: dict[str, Any]) -> None:
+    """Persist only redacted lease/runtime identity for heartbeat recovery."""
+    payload = earnapp_runtime.redacted_evidence(dict(state))
+    payload["logical_node_id"] = str(logical_node_id or "").strip()
+    path = _earnapp_state_path(logical_node_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+    temporary.chmod(0o600)
+    temporary.replace(path)
+
+
+def _load_earnapp_states() -> list[dict[str, Any]]:
+    try:
+        paths = sorted(_earnapp_state_dir().glob("*.json"))
+    except OSError:
+        return []
+    states: list[dict[str, Any]] = []
+    for path in paths:
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(value, dict):
+            states.append(earnapp_runtime.redacted_evidence(value))
+    return states
+
+
+def _remove_earnapp_state(logical_node_id: str) -> None:
+    """Remove only one canary's local heartbeat marker after a confirmed remove."""
+    path = _earnapp_state_path(logical_node_id)
+    with contextlib.suppress(FileNotFoundError):
+        path.unlink()
+
+
+def _earnapp_provider_state(containers: list[dict[str, Any]]) -> dict[str, Any] | None:
+    states = _load_earnapp_states()
+    if not states:
+        return None
+    by_instance = {
+        str(item.get("instance_slug") or item.get("name") or ""): item for item in containers if isinstance(item, dict)
+    }
+    instances: list[dict[str, Any]] = []
+    for state in states:
+        logical_node_id = str(state.get("logical_node_id") or "")
+        runtime = by_instance.get(logical_node_id, {})
+        evidence = earnapp_runtime.redacted_evidence(runtime.get("provider_evidence") or state.get("evidence") or {})
+        instances.append(
+            {
+                "logical_node_id": logical_node_id,
+                "generation": int(state.get("generation") or 0),
+                "device_id": str(state.get("device_id") or ""),
+                "runtime_status": str(runtime.get("status") or state.get("runtime_status") or "unknown"),
+                "evidence": evidence,
+            }
+        )
+    online = sum(1 for item in instances if item["evidence"].get("online") is True)
+    return {"instances": instances, "online": online, "offline": len(instances) - online}
 
 
 def _nkn_assignment_identity(state: dict[str, Any]) -> tuple[str, int, int, str] | None:
@@ -1002,6 +1078,9 @@ async def _send_heartbeat() -> None:
     nkn_state = await _nkn_provider_state()
     if nkn_state:
         provider_states["nkn"] = nkn_state
+    earnapp_state = _earnapp_provider_state(containers)
+    if earnapp_state:
+        provider_states["earnapp"] = earnapp_state
     if provider_states:
         payload["provider_states"] = provider_states
 
@@ -1276,6 +1355,7 @@ class RuntimeAssetSpec(BaseModel):
     provider: str
     asset_kind: str
     target: str
+    asset_id: str = ""
     encoding: str = "text"
     url: str | None = None
     url_arg: str | None = None
@@ -1306,6 +1386,8 @@ class DeploySpec(BaseModel):
     deploy_credentials: dict[str, Any] = Field(default_factory=dict)
     provider_slug: str | None = None
     host_runtime: str | None = None
+    runtime_contract: dict[str, str] = Field(default_factory=dict)
+    image_contract_sha256: str = ""
     sysctls: dict[str, str] | None = None
     shm_size: str | None = None
     # Advanced and unsupported. Absent means Docker's default runtime, which is
@@ -1424,14 +1506,14 @@ async def _probe_proxy_targets(proxy: dict[str, Any], targets: list[str]) -> dic
     }
 
 
-async def _fetch_runtime_asset(provider: str, asset_kind: str) -> str:
+async def _fetch_runtime_asset(provider: str, asset_kind: str, *, asset_id: str = "") -> str:
     if not UI_URL:
         raise RuntimeError("CashPilot UI URL not configured")
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
             f"{UI_URL.rstrip('/')}/api/workers/runtime-asset",
             headers={"Authorization": f"Bearer {_active_key()}"},
-            json={"client_id": CLIENT_ID, "provider": provider, "asset_kind": asset_kind},
+            json={"client_id": CLIENT_ID, "provider": provider, "asset_kind": asset_kind, "asset_id": asset_id},
         )
     if resp.status_code == 404:
         raise FileNotFoundError(f"runtime asset {provider}:{asset_kind} not found")
@@ -1483,6 +1565,13 @@ def _runtime_asset_decrypt_key(asset: RuntimeAssetSpec, spec: DeploySpec, slug: 
     return ""
 
 
+def _runtime_asset_scope(value: str, *, label: str) -> str:
+    scope = str(value or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", scope):
+        raise HTTPException(status_code=400, detail=f"Invalid runtime asset {label}")
+    return scope
+
+
 async def _materialize_runtime_assets(slug: str, spec: DeploySpec) -> None:
     if not spec.runtime_assets:
         return
@@ -1496,7 +1585,13 @@ async def _materialize_runtime_assets(slug: str, spec: DeploySpec) -> None:
         if not provider or not asset_kind:
             raise HTTPException(status_code=400, detail=f"Invalid runtime asset ref for {slug}")
         encoding = str(asset.encoding or "").lower()
-        host_path = _RUNTIME_ASSET_DIR / slug / asset_kind
+        scope_slug = _runtime_asset_scope(slug, label="slug")
+        scope_asset = str(asset.asset_id or "").strip()
+        scope = _runtime_asset_scope(scope_asset, label="asset_id") if scope_asset else ""
+        asset_root = _RUNTIME_ASSET_DIR / scope_slug
+        if scope:
+            asset_root = asset_root / scope
+        host_path = asset_root / asset_kind
         host_path.parent.mkdir(parents=True, exist_ok=True)
         download_url = _runtime_asset_url(asset, spec, slug)
         if download_url:
@@ -1511,7 +1606,7 @@ async def _materialize_runtime_assets(slug: str, spec: DeploySpec) -> None:
                 _runtime_asset_decrypt_key(asset, spec, slug),
             )
         else:
-            payload = await _fetch_runtime_asset(provider, asset_kind)
+            payload = await _fetch_runtime_asset(provider, asset_kind, asset_id=str(asset.asset_id or ""))
             data = base64.b64decode(payload) if encoding in {"base64", "zip"} else payload.encode()
         if encoding == "zip":
             host_path = host_path.parent / f"{asset_kind}-{int(time.time())}-{uuid.uuid4().hex[:8]}"
@@ -1753,6 +1848,11 @@ def _validate_runtime(runtime: str | None) -> None:
 def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
     _validate_runtime(spec.runtime)
     provider_slug = spec.provider_slug or slug
+    if provider_slug == "earnapp":
+        try:
+            earnapp_runtime.validate_canary_spec(spec.model_dump())
+        except ValueError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
     if spec.privileged:
         raise HTTPException(status_code=403, detail="Privileged containers are not allowed")
     if spec.cap_add:
@@ -1996,6 +2096,18 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             sysctls=spec.sysctls,
             shm_size=spec.shm_size,
         )
+        if (spec.provider_slug or slug) == "earnapp":
+            _save_earnapp_state(
+                str(spec.labels.get("cashpilot.earnapp.logical_node_id") or slug),
+                {
+                    "logical_node_id": str(spec.labels.get("cashpilot.earnapp.logical_node_id") or slug),
+                    "generation": int(spec.labels.get("cashpilot.earnapp.generation") or 0),
+                    "device_id": str(spec.labels.get("cashpilot.earnapp.device_id") or ""),
+                    "runtime_status": "running",
+                    "container_id": container_id,
+                    "evidence": {"running": True, "online": False},
+                },
+            )
         if (spec.provider_slug or slug) == "mysterium":
             try:
                 await _sync_myst_wallet_after_deploy(spec.deploy_credentials, container_id)
@@ -2137,6 +2249,11 @@ async def api_remove_container(
             delete_volumes=delete_volumes,
             allow_delete_critical=allow_delete_critical,
         )
+        # The marker is worker-local heartbeat state, not provider identity. It
+        # is safe to remove only after Docker confirms this exact canary is gone.
+        if slug.startswith("earnapp-"):
+            with contextlib.suppress(ValueError):
+                _remove_earnapp_state(slug)
         return {"status": "removed", **result}
     except orchestrator.CriticalVolumeError as exc:
         # 409, not 400: the request is well-formed, the state is what refuses.

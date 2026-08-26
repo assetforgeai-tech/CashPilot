@@ -18,7 +18,7 @@ CashPilot is a self-hosted platform that lets you deploy, manage, and monitor pa
 
 It supports both **Docker-based services** (deployed and managed automatically) and **browser extension / desktop-only services** (tracked via the web UI with signup links, earning estimates, and balance monitoring). Whether a service runs in a container or in your browser, CashPilot aggregates all your earnings into a unified dashboard with historical tracking.
 
-The key differentiator: a browser-based setup wizard guides you through account creation and provider deployment, orchestrates containers through Docker workers, and collects earnings from 15 providers across bandwidth sharing and DePIN categories.
+The key differentiator: a browser-based setup wizard guides you through account creation and provider deployment, orchestrates containers through Docker workers, and tracks 16 providers across bandwidth sharing and DePIN categories.
 
 ![Dashboard](docs/screenshot-dashboard.png)
 
@@ -68,6 +68,7 @@ Services CashPilot can deploy and manage automatically via Docker.
 | Service | Guide | Residential IP required | VPS allowed | Devices / Acct | Devices / IP | Payout |
 |---------|-------|:-:|:-:|:-:|:-:|--------|
 | [Earn.fm](https://earn.fm/ref/GEISYB91) | [Guide](docs/guides/earnfm.md) | ✅ | ✅ | ? \*\*\* | 1 | Crypto |
+| [EarnApp](https://earnapp.com) | [Guide](docs/guides/earnapp.md) | ✅ | ❌ | ? \*\*\* | 1 | PayPal, Crypto |
 | [IPRoyal Pawns](https://pawns.app?r=19266874) | [Guide](docs/guides/iproyal.md) | ✅ | ❌ | ? \*\*\* | 1 | PayPal, Crypto, Bank Transfer |
 | [MystNodes](https://mystnodes.co/?referral_code=do7v7YOoBBpbOstKQovX2pUvZYKia4ZhH3QIdNtE) | [Guide](docs/guides/mysterium.md) | ❌ | ✅ | ? \*\*\* | Unlimited | Crypto |
 | [NKN](https://nkn.org) | [Guide](docs/guides/nkn.md) | ❌ | ✅ | ? \*\*\* | 1 | Crypto |

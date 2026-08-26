@@ -12,6 +12,7 @@ ALLOWED_KINDS = {
     "credentials_json",
     "main_db",
     "chrome_profile_zip",
+    "mac_identity_profile",
 }
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 

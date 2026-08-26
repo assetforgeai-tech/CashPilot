@@ -32,6 +32,7 @@ class ProviderRuntime:
 
 PROVIDERS: dict[str, ProviderRuntime] = {
     "earnfm": ProviderRuntime("earnfm", "earn.fm.py", "earn.fm.py", ("direct", "proxy"), "earnings"),
+    "earnapp": ProviderRuntime("earnapp", "earnapp.py", "earnapp.py", ("proxy",), "earnings"),
     "iproyal": ProviderRuntime("iproyal", "pawns.py", "pawns.py", ("proxy",), "earnings"),
     "mysterium": ProviderRuntime("mysterium", "MYST.py", "MYST.py", ("direct",), "earnings"),
     "nkn": ProviderRuntime("nkn", "nkn.py", "nkn.py", ("direct",), "dashboard_only"),
