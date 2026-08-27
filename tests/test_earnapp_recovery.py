@@ -550,12 +550,18 @@ def test_worker_heartbeat_cas_acknowledges_only_current_earnapp_generation():
                             "generation": 4,
                             "device_id": "sdk-mac-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                             "proxy_id": 11,
+                            "platform": "macos",
+                            "runtime_backend": "docker",
+                            "expected_egress_ip": "203.0.113.11",
                         },
                         {
                             "logical_node_id": "earnapp-node-stale",
                             "generation": 2,
                             "device_id": "sdk-mac-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
                             "proxy_id": 12,
+                            "platform": "macos",
+                            "runtime_backend": "docker",
+                            "expected_egress_ip": "203.0.113.12",
                         },
                     ]
                 }

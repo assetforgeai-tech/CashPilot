@@ -420,6 +420,26 @@ def _save_earnapp_state(logical_node_id: str, state: dict[str, Any]) -> None:
     temporary.replace(path)
 
 
+def _earnapp_hydration_state_token(value: dict[str, Any]) -> dict[str, Any]:
+    """Normalize the non-secret local fields used by the hydration CAS."""
+
+    def integer(field: str) -> int:
+        try:
+            return int(value.get(field) or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    return {
+        "proxy_id": integer("proxy_id"),
+        "platform": str(value.get("platform") or "unknown").strip().lower() or "unknown",
+        "runtime_backend": str(value.get("runtime_backend") or "docker").strip().lower() or "docker",
+        "expected_egress_ip": str(value.get("expected_egress_ip") or "").strip(),
+        "pending_binding_version": str(value.get("pending_binding_version") or "").strip(),
+        "pending_proxy_id": integer("pending_proxy_id"),
+        "pending_expected_egress_ip": str(value.get("pending_expected_egress_ip") or "").strip(),
+    }
+
+
 def _load_earnapp_states() -> list[dict[str, Any]]:
     try:
         paths = sorted(_earnapp_state_dir().glob("*.json"))
@@ -441,6 +461,57 @@ def _remove_earnapp_state(logical_node_id: str) -> None:
     path = _earnapp_state_path(logical_node_id)
     with contextlib.suppress(FileNotFoundError):
         path.unlink()
+
+
+def _hydrate_earnapp_state_from_assignment(assignment: dict[str, Any]) -> bool:
+    """Backfill durable fields for a legacy runtime without recreating it.
+
+    Older workers persisted only the container/device marker.  The server's
+    authenticated heartbeat response is authoritative for the missing lease
+    and platform fields, so hydrate only when identity and generation match.
+    """
+    if not isinstance(assignment, dict) or assignment.get("hydrate_state") is not True:
+        return False
+    logical_node_id = str(assignment.get("logical_node_id") or "").strip()
+    if not logical_node_id:
+        return False
+    try:
+        path = _earnapp_state_path(logical_node_id)
+        state = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return False
+    if not isinstance(state, dict):
+        return False
+    try:
+        state_generation = int(state.get("generation") or 0)
+        assignment_generation = int(assignment.get("generation") or 0)
+        proxy_id = int(assignment.get("proxy_id") or 0)
+    except (TypeError, ValueError):
+        return False
+    if state_generation != assignment_generation:
+        return False
+    if str(state.get("device_id") or "") != str(assignment.get("device_id") or ""):
+        return False
+    expected_token = assignment.get("hydrate_expected")
+    if not isinstance(expected_token, dict) or _earnapp_hydration_state_token(state) != _earnapp_hydration_state_token(
+        expected_token
+    ):
+        return False
+    platform = str(assignment.get("platform") or "").strip().lower()
+    expected = str(assignment.get("expected_egress_ip") or "").strip()
+    backend = str(assignment.get("runtime_backend") or "docker").strip().lower()
+    if proxy_id <= 0 or not expected or platform not in {"macos", "ios", "ubuntu"} or backend not in {"docker", "lxd"}:
+        return False
+    if (platform == "ubuntu") != (backend == "lxd"):
+        return False
+    state.update(
+        proxy_id=proxy_id,
+        platform=platform,
+        runtime_backend=backend,
+        expected_egress_ip=expected,
+    )
+    _save_earnapp_state(logical_node_id, state)
+    return True
 
 
 def _earnapp_provider_state(containers: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -1201,6 +1272,11 @@ async def _send_heartbeat() -> None:
             acknowledgements = response_payload.get("nkn_assignment_acks")
             if isinstance(acknowledgements, list) and acknowledgements:
                 await _reconcile_nkn_assignment_acks(acknowledgements)
+            earnapp_assignments = response_payload.get("earnapp_assignment_acks")
+            if isinstance(earnapp_assignments, list):
+                for assignment in earnapp_assignments:
+                    if isinstance(assignment, dict):
+                        _hydrate_earnapp_state_from_assignment(assignment)
             logger.debug("Heartbeat sent to %s", UI_URL)
     except httpx.HTTPStatusError as exc:
         _ui_connected = False
