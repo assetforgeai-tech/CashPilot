@@ -2,11 +2,23 @@ from __future__ import annotations
 
 import asyncio
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app import database, earnapp_accounts, main, worker_api
+from app import database, earnapp_accounts, main, orchestrator, worker_api
+
+
+def test_earnapp_egress_probe_decodes_docker_exec_bytes_before_ip_validation(monkeypatch):
+    container = MagicMock(status="running")
+    container.exec_run.return_value = MagicMock(exit_code=0, output=b"171.251.97.103")
+    monkeypatch.setattr(orchestrator, "_find_container", lambda _slug: container)
+
+    assert orchestrator.probe_service_egress("earnapp-canary-test-sing-1") == {
+        "running": True,
+        "observed_egress_ip": "171.251.97.103",
+        "probe_ok": True,
+    }
 
 
 def _account(profile: str = "profile-a") -> dict[str, object]:

@@ -238,7 +238,7 @@ def probe_service_egress(slug: str) -> dict[str, Any]:
         output = b"".join(part or b"" for part in output)
     if isinstance(output, str):
         output = output.encode()
-    observed = str(output or b"").strip().splitlines()[0] if output else ""
+    observed = output.decode("utf-8", errors="replace").strip().splitlines()[0] if output else ""
     try:
         observed = str(ipaddress.ip_address(observed))
     except ValueError:
