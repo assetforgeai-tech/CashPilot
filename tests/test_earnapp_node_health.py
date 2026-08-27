@@ -185,6 +185,181 @@ def test_earnapp_heartbeat_state_contains_scoped_proxy_evidence(tmp_path, monkey
     assert state["instances"][0]["observed_egress_ip"] == "198.51.100.77"
 
 
+@pytest.mark.parametrize(
+    ("platform", "runtime_backend", "device_id"),
+    (
+        ("macos", "docker", "sdk-mac-" + "c" * 32),
+        ("ios", "docker", "sdk-ios-" + "c" * 32),
+        ("ubuntu", "lxd", "sdk-ubuntu-" + "c" * 28),
+    ),
+)
+def test_legacy_state_is_hydrated_from_server_assignment(tmp_path, monkeypatch, platform, runtime_backend, device_id):
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    worker_api._save_earnapp_state(
+        "earnapp-canary-test-sing-1",
+        {
+            "logical_node_id": "earnapp-canary-test-sing-1",
+            "generation": 1,
+            "device_id": device_id,
+            "runtime_status": "running",
+        },
+    )
+    assert worker_api._hydrate_earnapp_state_from_assignment(
+        {
+            "logical_node_id": "earnapp-canary-test-sing-1",
+            "generation": 1,
+            "device_id": device_id,
+            "proxy_id": 12706,
+            "platform": platform,
+            "runtime_backend": runtime_backend,
+            "expected_egress_ip": "171.251.97.103",
+            "hydrate_state": True,
+            "hydrate_expected": {
+                "proxy_id": 0,
+                "platform": "unknown",
+                "runtime_backend": "docker",
+                "expected_egress_ip": "",
+                "pending_binding_version": "",
+                "pending_proxy_id": 0,
+                "pending_expected_egress_ip": "",
+            },
+        }
+    )
+
+    persisted = json.loads((tmp_path / "earnapp-nodes" / "earnapp-canary-test-sing-1.json").read_text(encoding="utf-8"))
+    assert persisted["platform"] == platform
+    assert persisted["runtime_backend"] == runtime_backend
+    assert persisted["proxy_id"] == 12706
+    assert persisted["expected_egress_ip"] == "171.251.97.103"
+
+
+def test_legacy_docker_state_rejects_assignment_for_different_identity(tmp_path, monkeypatch):
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    worker_api._save_earnapp_state(
+        "earnapp-canary-test-sing-1",
+        {
+            "logical_node_id": "earnapp-canary-test-sing-1",
+            "generation": 1,
+            "device_id": "sdk-mac-" + "c" * 32,
+        },
+    )
+    assert not worker_api._hydrate_earnapp_state_from_assignment(
+        {
+            "logical_node_id": "earnapp-canary-test-sing-1",
+            "generation": 1,
+            "device_id": "sdk-mac-" + "d" * 32,
+            "proxy_id": 12706,
+            "platform": "macos",
+            "runtime_backend": "docker",
+            "expected_egress_ip": "171.251.97.103",
+            "hydrate_state": True,
+        }
+    )
+
+    persisted = json.loads((tmp_path / "earnapp-nodes" / "earnapp-canary-test-sing-1.json").read_text(encoding="utf-8"))
+    assert persisted.get("proxy_id", 0) == 0
+    assert persisted.get("platform", "unknown") == "unknown"
+
+
+def test_legacy_state_rejects_delayed_ack_after_local_proxy_change(tmp_path, monkeypatch):
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    worker_api._save_earnapp_state(
+        "earnapp-canary-test-sing-1",
+        {
+            "logical_node_id": "earnapp-canary-test-sing-1",
+            "generation": 1,
+            "device_id": "sdk-mac-" + "c" * 32,
+            "proxy_id": 12707,
+            "platform": "macos",
+            "runtime_backend": "docker",
+            "expected_egress_ip": "171.251.97.104",
+        },
+    )
+    assert not worker_api._hydrate_earnapp_state_from_assignment(
+        {
+            "logical_node_id": "earnapp-canary-test-sing-1",
+            "generation": 1,
+            "device_id": "sdk-mac-" + "c" * 32,
+            "proxy_id": 12706,
+            "platform": "macos",
+            "runtime_backend": "docker",
+            "expected_egress_ip": "171.251.97.103",
+            "hydrate_state": True,
+            "hydrate_expected": {
+                "proxy_id": 0,
+                "platform": "unknown",
+                "runtime_backend": "docker",
+                "expected_egress_ip": "",
+                "pending_binding_version": "",
+                "pending_proxy_id": 0,
+                "pending_expected_egress_ip": "",
+            },
+        }
+    )
+
+    persisted = json.loads((tmp_path / "earnapp-nodes" / "earnapp-canary-test-sing-1.json").read_text(encoding="utf-8"))
+    assert persisted["proxy_id"] == 12707
+    assert persisted["expected_egress_ip"] == "171.251.97.104"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (("generation", "invalid"), ("proxy_id", "invalid")),
+)
+def test_legacy_docker_state_rejects_malformed_numeric_assignment(tmp_path, monkeypatch, field, value):
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    worker_api._save_earnapp_state(
+        "earnapp-canary-test-sing-1",
+        {
+            "logical_node_id": "earnapp-canary-test-sing-1",
+            "generation": 1,
+            "device_id": "sdk-mac-" + "c" * 32,
+        },
+    )
+    assignment = {
+        "logical_node_id": "earnapp-canary-test-sing-1",
+        "generation": 1,
+        "device_id": "sdk-mac-" + "c" * 32,
+        "proxy_id": 12706,
+        "platform": "macos",
+        "runtime_backend": "docker",
+        "expected_egress_ip": "171.251.97.103",
+        "hydrate_state": True,
+    }
+    assignment[field] = value
+
+    assert not worker_api._hydrate_earnapp_state_from_assignment(assignment)
+
+
+@pytest.mark.parametrize(
+    ("platform", "runtime_backend"),
+    (("macos", "lxd"), ("ios", "lxd"), ("ubuntu", "docker")),
+)
+def test_legacy_state_rejects_platform_backend_mismatch(tmp_path, monkeypatch, platform, runtime_backend):
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    worker_api._save_earnapp_state(
+        "earnapp-canary-test-sing-1",
+        {
+            "logical_node_id": "earnapp-canary-test-sing-1",
+            "generation": 1,
+            "device_id": "sdk-mac-" + "c" * 32,
+        },
+    )
+
+    assert not worker_api._hydrate_earnapp_state_from_assignment(
+        {
+            "logical_node_id": "earnapp-canary-test-sing-1",
+            "generation": 1,
+            "device_id": "sdk-mac-" + "c" * 32,
+            "proxy_id": 12706,
+            "platform": platform,
+            "runtime_backend": runtime_backend,
+            "expected_egress_ip": "171.251.97.103",
+            "hydrate_state": True,
+        }
+    )
+
+
 def test_earnapp_heartbeat_state_exposes_only_nonsecret_pending_binding_journal(tmp_path, monkeypatch):
     monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
     worker_api._save_earnapp_state(
@@ -557,7 +732,11 @@ def test_server_heartbeat_records_scoped_health_and_rotates_only_explicitly_unhe
                         {
                             "logical_node_id": "earnapp-node-unhealthy",
                             "generation": 4,
+                            "device_id": "sdk-mac-" + "a" * 32,
                             "proxy_id": 11,
+                            "platform": "macos",
+                            "runtime_backend": "docker",
+                            "expected_egress_ip": "203.0.113.11",
                             "proxy_health": "unhealthy",
                             "observed_egress_ip": "203.0.113.11",
                             "proxy_health_reason": "egress_mismatch",
@@ -565,19 +744,59 @@ def test_server_heartbeat_records_scoped_health_and_rotates_only_explicitly_unhe
                         {
                             "logical_node_id": "earnapp-node-unknown",
                             "generation": 2,
+                            "device_id": "sdk-ios-" + "b" * 32,
                             "proxy_id": 12,
+                            "platform": "ios",
+                            "runtime_backend": "docker",
+                            "expected_egress_ip": "203.0.113.12",
                             "proxy_health": "unknown",
                         },
                         {
                             "logical_node_id": "earnapp-canary-test-sing-1",
                             "generation": 1,
+                            "device_id": "sdk-mac-" + "c" * 32,
                             "proxy_id": 13,
+                            "platform": "macos",
+                            "runtime_backend": "docker",
+                            "expected_egress_ip": "203.0.113.13",
                             "proxy_health": "unhealthy",
                         },
                     ]
                 }
             },
         )
+        authoritative = [
+            {
+                "logical_node_id": "earnapp-node-unhealthy",
+                "assigned_worker_id": 11,
+                "generation": 4,
+                "device_id": "sdk-mac-" + "a" * 32,
+                "platform": "macos",
+                "current_proxy_id": 11,
+                "expected_egress_ip": "203.0.113.11",
+                "state": "ACTIVE",
+            },
+            {
+                "logical_node_id": "earnapp-node-unknown",
+                "assigned_worker_id": 11,
+                "generation": 2,
+                "device_id": "sdk-ios-" + "b" * 32,
+                "platform": "ios",
+                "current_proxy_id": 12,
+                "expected_egress_ip": "203.0.113.12",
+                "state": "ACTIVE",
+            },
+            {
+                "logical_node_id": "earnapp-canary-test-sing-1",
+                "assigned_worker_id": 11,
+                "generation": 1,
+                "device_id": "sdk-mac-" + "c" * 32,
+                "platform": "macos",
+                "current_proxy_id": 13,
+                "expected_egress_ip": "203.0.113.13",
+                "state": "ACTIVE",
+            },
+        ]
         spawned = []
 
         def capture(coro):
@@ -588,6 +807,7 @@ def test_server_heartbeat_records_scoped_health_and_rotates_only_explicitly_unhe
             patch.object(main, "_authenticate_worker_heartbeat", AsyncMock(return_value="ok")),
             patch.object(database, "upsert_worker", AsyncMock(return_value=11)),
             patch.object(main.earnapp_recovery, "heartbeat_node", AsyncMock(return_value=True)),
+            patch.object(database, "get_earnapp_logical_node", AsyncMock(side_effect=authoritative)),
             patch.object(database, "record_earnapp_proxy_health", AsyncMock(return_value=True)) as record,
             patch.object(main, "_rotate_unhealthy_earnapp_node", AsyncMock(return_value=True)) as rotate,
             patch.object(database, "confirm_worker_key", AsyncMock()),
@@ -601,6 +821,474 @@ def test_server_heartbeat_records_scoped_health_and_rotates_only_explicitly_unhe
 
         assert record.await_count == 3
         rotate.assert_awaited_once_with("earnapp-node-unhealthy", 11, generation=4, expected_proxy_id=11)
+
+    asyncio.run(run())
+
+
+def test_server_heartbeat_returns_authoritative_legacy_assignment():
+    async def run():
+        body = main.WorkerHeartbeat(
+            name="worker-a",
+            client_id="worker-a",
+            provider_states={
+                "earnapp": {
+                    "instances": [
+                        {
+                            "logical_node_id": "earnapp-canary-test-sing-1",
+                            "generation": 1,
+                            "device_id": "sdk-mac-" + "c" * 32,
+                            "proxy_id": 0,
+                            "proxy_health": "unhealthy",
+                            "observed_egress_ip": "171.251.97.103",
+                        }
+                    ]
+                }
+            },
+        )
+        authoritative = {
+            "logical_node_id": "earnapp-canary-test-sing-1",
+            "assigned_worker_id": 11,
+            "generation": 1,
+            "device_id": "sdk-mac-" + "c" * 32,
+            "platform": "macos",
+            "current_proxy_id": 12706,
+            "expected_egress_ip": "171.251.97.103",
+            "state": "ACTIVE",
+        }
+
+        def discard(coro):
+            coro.close()
+
+        with (
+            patch.object(main, "_authenticate_worker_heartbeat", AsyncMock(return_value="ok")),
+            patch.object(database, "upsert_worker", AsyncMock(return_value=11)),
+            patch.object(main.earnapp_recovery, "heartbeat_node", AsyncMock(return_value=True)) as heartbeat,
+            patch.object(database, "get_earnapp_logical_node", AsyncMock(return_value=authoritative)),
+            patch.object(database, "record_earnapp_proxy_health", AsyncMock(return_value=True)) as record,
+            patch.object(main, "_rotate_unhealthy_earnapp_node", AsyncMock()) as rotate,
+            patch.object(database, "confirm_worker_key", AsyncMock()),
+            patch.object(main, "_earnings_for_worker", AsyncMock(return_value=None)),
+            patch.object(main, "_maybe_auto_deploy_after_heartbeat", AsyncMock(return_value=None)),
+            patch.object(main, "_spawn", side_effect=discard),
+            patch.object(main.metrics, "record_heartbeat"),
+        ):
+            response = await main.api_worker_heartbeat(
+                type("Request", (), {"headers": {"authorization": "Bearer key"}})(), body
+            )
+
+        heartbeat.assert_awaited_once_with(
+            "earnapp-canary-test-sing-1",
+            11,
+            generation=1,
+            device_id="sdk-mac-" + "c" * 32,
+            proxy_id=12706,
+        )
+        record.assert_not_awaited()
+        rotate.assert_not_awaited()
+        assert response["earnapp_assignment_acks"] == [
+            {
+                "logical_node_id": "earnapp-canary-test-sing-1",
+                "generation": 1,
+                "device_id": "sdk-mac-" + "c" * 32,
+                "proxy_id": 12706,
+                "platform": "macos",
+                "runtime_backend": "docker",
+                "expected_egress_ip": "171.251.97.103",
+                "hydrate_state": True,
+                "hydrate_expected": {
+                    "proxy_id": 0,
+                    "platform": "unknown",
+                    "runtime_backend": "docker",
+                    "expected_egress_ip": "",
+                    "pending_binding_version": "",
+                    "pending_proxy_id": 0,
+                    "pending_expected_egress_ip": "",
+                },
+            }
+        ]
+        assert "earnapp_assignment_rejections" not in response
+
+    asyncio.run(run())
+
+
+def test_server_hydration_derives_backend_from_authoritative_ubuntu_platform():
+    async def run():
+        body = main.WorkerHeartbeat(
+            name="worker-a",
+            client_id="worker-a",
+            provider_states={
+                "earnapp": {
+                    "instances": [
+                        {
+                            "logical_node_id": "earnapp-ubuntu-legacy",
+                            "generation": 2,
+                            "device_id": "sdk-ubuntu-" + "d" * 28,
+                            "proxy_id": 12706,
+                            "platform": "unknown",
+                            "runtime_backend": "docker",
+                            "proxy_health": "healthy",
+                        }
+                    ]
+                }
+            },
+        )
+        authoritative = {
+            "logical_node_id": "earnapp-ubuntu-legacy",
+            "assigned_worker_id": 11,
+            "generation": 2,
+            "device_id": "sdk-ubuntu-" + "d" * 28,
+            "platform": "ubuntu",
+            "current_proxy_id": 12706,
+            "expected_egress_ip": "198.51.100.206",
+            "state": "ACTIVE",
+        }
+
+        def discard(coro):
+            coro.close()
+
+        with (
+            patch.object(main, "_authenticate_worker_heartbeat", AsyncMock(return_value="ok")),
+            patch.object(database, "upsert_worker", AsyncMock(return_value=11)),
+            patch.object(main.earnapp_recovery, "heartbeat_node", AsyncMock(return_value=True)) as heartbeat,
+            patch.object(database, "get_earnapp_logical_node", AsyncMock(return_value=authoritative)),
+            patch.object(database, "record_earnapp_proxy_health", AsyncMock()) as record,
+            patch.object(database, "confirm_worker_key", AsyncMock()),
+            patch.object(main, "_earnings_for_worker", AsyncMock(return_value=None)),
+            patch.object(main, "_maybe_auto_deploy_after_heartbeat", AsyncMock(return_value=None)),
+            patch.object(main, "_spawn", side_effect=discard),
+            patch.object(main.metrics, "record_heartbeat"),
+        ):
+            response = await main.api_worker_heartbeat(
+                type("Request", (), {"headers": {"authorization": "Bearer key"}})(), body
+            )
+
+        heartbeat.assert_awaited_once_with(
+            "earnapp-ubuntu-legacy",
+            11,
+            generation=2,
+            device_id="sdk-ubuntu-" + "d" * 28,
+            proxy_id=12706,
+        )
+        assert response["earnapp_assignment_acks"][0]["platform"] == "ubuntu"
+        assert response["earnapp_assignment_acks"][0]["runtime_backend"] == "lxd"
+        record.assert_not_awaited()
+
+    asyncio.run(run())
+
+
+def test_server_hydrates_state_with_existing_proxy_but_missing_runtime_fields():
+    async def run():
+        body = main.WorkerHeartbeat(
+            name="worker-a",
+            client_id="worker-a",
+            provider_states={
+                "earnapp": {
+                    "instances": [
+                        {
+                            "logical_node_id": "earnapp-macos-partial",
+                            "generation": 3,
+                            "device_id": "sdk-mac-" + "e" * 32,
+                            "proxy_id": 12706,
+                            "proxy_health": "unknown",
+                        }
+                    ]
+                }
+            },
+        )
+        authoritative = {
+            "logical_node_id": "earnapp-macos-partial",
+            "assigned_worker_id": 11,
+            "generation": 3,
+            "device_id": "sdk-mac-" + "e" * 32,
+            "platform": "macos",
+            "current_proxy_id": 12706,
+            "expected_egress_ip": "198.51.100.207",
+            "state": "ACTIVE",
+        }
+
+        def discard(coro):
+            coro.close()
+
+        with (
+            patch.object(main, "_authenticate_worker_heartbeat", AsyncMock(return_value="ok")),
+            patch.object(database, "upsert_worker", AsyncMock(return_value=11)),
+            patch.object(main.earnapp_recovery, "heartbeat_node", AsyncMock(return_value=True)),
+            patch.object(database, "get_earnapp_logical_node", AsyncMock(return_value=authoritative)),
+            patch.object(database, "record_earnapp_proxy_health", AsyncMock()) as record,
+            patch.object(database, "confirm_worker_key", AsyncMock()),
+            patch.object(main, "_earnings_for_worker", AsyncMock(return_value=None)),
+            patch.object(main, "_maybe_auto_deploy_after_heartbeat", AsyncMock(return_value=None)),
+            patch.object(main, "_spawn", side_effect=discard),
+            patch.object(main.metrics, "record_heartbeat"),
+        ):
+            response = await main.api_worker_heartbeat(
+                type("Request", (), {"headers": {"authorization": "Bearer key"}})(), body
+            )
+
+        ack = response["earnapp_assignment_acks"][0]
+        assert ack["proxy_id"] == 12706
+        assert ack["platform"] == "macos"
+        assert ack["runtime_backend"] == "docker"
+        record.assert_not_awaited()
+
+    asyncio.run(run())
+
+
+def test_server_hydrates_valid_but_stale_runtime_metadata_from_authority():
+    async def run():
+        body = main.WorkerHeartbeat(
+            name="worker-a",
+            client_id="worker-a",
+            provider_states={
+                "earnapp": {
+                    "instances": [
+                        {
+                            "logical_node_id": "earnapp-ubuntu-legacy",
+                            "generation": 2,
+                            "device_id": "sdk-ubuntu-" + "d" * 28,
+                            "proxy_id": 12706,
+                            "platform": "macos",
+                            "runtime_backend": "docker",
+                            "expected_egress_ip": "198.51.100.stale",
+                            "proxy_health": "healthy",
+                        }
+                    ]
+                }
+            },
+        )
+        authoritative = {
+            "logical_node_id": "earnapp-ubuntu-legacy",
+            "assigned_worker_id": 11,
+            "generation": 2,
+            "device_id": "sdk-ubuntu-" + "d" * 28,
+            "platform": "ubuntu",
+            "current_proxy_id": 12706,
+            "expected_egress_ip": "198.51.100.206",
+            "state": "ACTIVE",
+        }
+
+        def discard(coro):
+            coro.close()
+
+        with (
+            patch.object(main, "_authenticate_worker_heartbeat", AsyncMock(return_value="ok")),
+            patch.object(database, "upsert_worker", AsyncMock(return_value=11)),
+            patch.object(main.earnapp_recovery, "heartbeat_node", AsyncMock(return_value=True)) as heartbeat,
+            patch.object(database, "get_earnapp_logical_node", AsyncMock(return_value=authoritative)),
+            patch.object(database, "record_earnapp_proxy_health", AsyncMock()) as record,
+            patch.object(main, "_earnings_for_worker", AsyncMock(return_value=None)),
+            patch.object(main, "_maybe_auto_deploy_after_heartbeat", AsyncMock(return_value=None)),
+            patch.object(main, "_spawn", side_effect=discard),
+            patch.object(database, "confirm_worker_key", AsyncMock()),
+            patch.object(main.metrics, "record_heartbeat"),
+        ):
+            response = await main.api_worker_heartbeat(
+                type("Request", (), {"headers": {"authorization": "Bearer key"}})(), body
+            )
+
+        heartbeat.assert_awaited_once_with(
+            "earnapp-ubuntu-legacy",
+            11,
+            generation=2,
+            device_id="sdk-ubuntu-" + "d" * 28,
+            proxy_id=12706,
+        )
+        record.assert_not_awaited()
+        ack = response["earnapp_assignment_acks"][0]
+        assert ack["platform"] == "ubuntu"
+        assert ack["runtime_backend"] == "lxd"
+        assert ack["expected_egress_ip"] == "198.51.100.206"
+
+    asyncio.run(run())
+
+
+def test_server_heartbeat_cas_failure_does_not_ack_legacy_hydration():
+    async def run():
+        body = main.WorkerHeartbeat(
+            name="worker-a",
+            client_id="worker-a",
+            provider_states={
+                "earnapp": {
+                    "instances": [
+                        {
+                            "logical_node_id": "earnapp-canary-test-sing-1",
+                            "generation": 1,
+                            "device_id": "sdk-mac-" + "c" * 32,
+                            "proxy_id": 0,
+                            "proxy_health": "healthy",
+                            "observed_egress_ip": "171.251.97.103",
+                        }
+                    ]
+                }
+            },
+        )
+        authoritative = {
+            "logical_node_id": "earnapp-canary-test-sing-1",
+            "assigned_worker_id": 11,
+            "generation": 1,
+            "device_id": "sdk-mac-" + "c" * 32,
+            "platform": "macos",
+            "current_proxy_id": 12706,
+            "expected_egress_ip": "171.251.97.103",
+            "state": "ACTIVE",
+        }
+
+        def discard(coro):
+            coro.close()
+
+        with (
+            patch.object(main, "_authenticate_worker_heartbeat", AsyncMock(return_value="ok")),
+            patch.object(database, "upsert_worker", AsyncMock(return_value=11)),
+            patch.object(main.earnapp_recovery, "heartbeat_node", AsyncMock(return_value=False)) as heartbeat,
+            patch.object(database, "get_earnapp_logical_node", AsyncMock(return_value=authoritative)),
+            patch.object(database, "record_earnapp_proxy_health", AsyncMock(return_value=True)) as record,
+            patch.object(database, "confirm_worker_key", AsyncMock()),
+            patch.object(main, "_earnings_for_worker", AsyncMock(return_value=None)),
+            patch.object(main, "_maybe_auto_deploy_after_heartbeat", AsyncMock(return_value=None)),
+            patch.object(main, "_spawn", side_effect=discard),
+            patch.object(main.metrics, "record_heartbeat"),
+        ):
+            response = await main.api_worker_heartbeat(
+                type("Request", (), {"headers": {"authorization": "Bearer key"}})(), body
+            )
+
+        heartbeat.assert_awaited_once_with(
+            "earnapp-canary-test-sing-1",
+            11,
+            generation=1,
+            device_id="sdk-mac-" + "c" * 32,
+            proxy_id=12706,
+        )
+        assert "earnapp_assignment_acks" not in response
+        assert response["earnapp_assignment_rejections"] == [
+            {"logical_node_id": "earnapp-canary-test-sing-1", "generation": 1}
+        ]
+        record.assert_not_awaited()
+
+    asyncio.run(run())
+
+
+def test_server_heartbeat_cas_failure_does_not_record_or_rotate_complete_node():
+    async def run():
+        body = main.WorkerHeartbeat(
+            name="worker-a",
+            client_id="worker-a",
+            provider_states={
+                "earnapp": {
+                    "instances": [
+                        {
+                            "logical_node_id": "earnapp-node-cas-failure",
+                            "generation": 4,
+                            "device_id": "sdk-mac-" + "f" * 32,
+                            "proxy_id": 12706,
+                            "platform": "macos",
+                            "runtime_backend": "docker",
+                            "expected_egress_ip": "198.51.100.208",
+                            "proxy_health": "unhealthy",
+                            "observed_egress_ip": "203.0.113.208",
+                            "proxy_health_reason": "egress_mismatch",
+                        }
+                    ]
+                }
+            },
+        )
+        authoritative = {
+            "logical_node_id": "earnapp-node-cas-failure",
+            "assigned_worker_id": 11,
+            "generation": 4,
+            "device_id": "sdk-mac-" + "f" * 32,
+            "platform": "macos",
+            "current_proxy_id": 12706,
+            "expected_egress_ip": "198.51.100.208",
+            "state": "ACTIVE",
+        }
+
+        def discard(coro):
+            coro.close()
+
+        with (
+            patch.object(main, "_authenticate_worker_heartbeat", AsyncMock(return_value="ok")),
+            patch.object(database, "upsert_worker", AsyncMock(return_value=11)),
+            patch.object(main.earnapp_recovery, "heartbeat_node", AsyncMock(return_value=False)),
+            patch.object(database, "get_earnapp_logical_node", AsyncMock(return_value=authoritative)),
+            patch.object(database, "record_earnapp_proxy_health", AsyncMock()) as record,
+            patch.object(main, "_rotate_unhealthy_earnapp_node", AsyncMock()) as rotate,
+            patch.object(database, "confirm_worker_key", AsyncMock()),
+            patch.object(main, "_earnings_for_worker", AsyncMock(return_value=None)),
+            patch.object(main, "_maybe_auto_deploy_after_heartbeat", AsyncMock(return_value=None)),
+            patch.object(main, "_spawn", side_effect=discard),
+            patch.object(main.metrics, "record_heartbeat"),
+        ):
+            response = await main.api_worker_heartbeat(
+                type("Request", (), {"headers": {"authorization": "Bearer key"}})(), body
+            )
+
+        record.assert_not_awaited()
+        rotate.assert_not_awaited()
+        assert response["earnapp_assignment_rejections"] == [
+            {"logical_node_id": "earnapp-node-cas-failure", "generation": 4}
+        ]
+
+    asyncio.run(run())
+
+
+def test_server_heartbeat_skips_health_when_authority_lookup_fails():
+    async def run():
+        body = main.WorkerHeartbeat(
+            name="worker-a",
+            client_id="worker-a",
+            provider_states={
+                "earnapp": {
+                    "instances": [
+                        {
+                            "logical_node_id": "earnapp-node-authority-unavailable",
+                            "generation": 4,
+                            "device_id": "sdk-mac-" + "g" * 32,
+                            "proxy_id": 12706,
+                            "platform": "macos",
+                            "runtime_backend": "docker",
+                            "expected_egress_ip": "198.51.100.209",
+                            "proxy_health": "unhealthy",
+                            "observed_egress_ip": "203.0.113.209",
+                            "proxy_health_reason": "egress_mismatch",
+                        }
+                    ]
+                }
+            },
+        )
+
+        def discard(coro):
+            coro.close()
+
+        with (
+            patch.object(main, "_authenticate_worker_heartbeat", AsyncMock(return_value="ok")),
+            patch.object(database, "upsert_worker", AsyncMock(return_value=11)),
+            patch.object(main.earnapp_recovery, "heartbeat_node", AsyncMock(return_value=True)) as heartbeat,
+            patch.object(database, "get_earnapp_logical_node", AsyncMock(side_effect=RuntimeError("db unavailable"))),
+            patch.object(database, "record_earnapp_proxy_health", AsyncMock()) as record,
+            patch.object(main, "_rotate_unhealthy_earnapp_node", AsyncMock()) as rotate,
+            patch.object(database, "confirm_worker_key", AsyncMock()),
+            patch.object(main, "_earnings_for_worker", AsyncMock(return_value=None)),
+            patch.object(main, "_maybe_auto_deploy_after_heartbeat", AsyncMock(return_value=None)),
+            patch.object(main, "_spawn", side_effect=discard),
+            patch.object(main.metrics, "record_heartbeat"),
+        ):
+            response = await main.api_worker_heartbeat(
+                type("Request", (), {"headers": {"authorization": "Bearer key"}})(), body
+            )
+
+        heartbeat.assert_awaited_once_with(
+            "earnapp-node-authority-unavailable",
+            11,
+            generation=4,
+            device_id="sdk-mac-" + "g" * 32,
+            proxy_id=12706,
+        )
+        record.assert_not_awaited()
+        rotate.assert_not_awaited()
+        assert response["earnapp_assignment_acks"] == [
+            {"logical_node_id": "earnapp-node-authority-unavailable", "generation": 4}
+        ]
 
     asyncio.run(run())
 

@@ -6325,6 +6325,26 @@ class WorkerHeartbeat(BaseModel):
     provider_states: dict[str, dict[str, Any]] = {}
 
 
+def _earnapp_hydration_state_token(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Return the non-secret local fields used to guard a hydration ACK."""
+
+    def integer(field: str) -> int:
+        try:
+            return int(value.get(field) or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    return {
+        "proxy_id": integer("proxy_id"),
+        "platform": str(value.get("platform") or "unknown").strip().lower() or "unknown",
+        "runtime_backend": str(value.get("runtime_backend") or "docker").strip().lower() or "docker",
+        "expected_egress_ip": str(value.get("expected_egress_ip") or "").strip(),
+        "pending_binding_version": str(value.get("pending_binding_version") or "").strip(),
+        "pending_proxy_id": integer("pending_proxy_id"),
+        "pending_expected_egress_ip": str(value.get("pending_expected_egress_ip") or "").strip(),
+    }
+
+
 def _android_app_status(running: object) -> str:
     """How an Android app's three-valued ``running`` reads as a container status.
 
@@ -6713,17 +6733,84 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         pending_binding = bool(str(instance.get("pending_binding_version") or "").strip())
         if pending_binding:
             _spawn(_reconcile_earnapp_pending_proxy_binding(dict(instance), worker_id))
-        synced = await earnapp_recovery.heartbeat_node(
+        reported_token = _earnapp_hydration_state_token(instance)
+        proxy_id = int(reported_token["proxy_id"])
+        # Legacy workers may report a running canary before their local state
+        # file contains the lease fields.  Hydrate from the exact server-side
+        # assignment before performing the normal heartbeat CAS.
+        hydration: dict[str, Any] | None = None
+        authoritative_verified = False
+        if not pending_binding:
+            try:
+                authoritative = await database.get_earnapp_logical_node(logical_node_id)
+            except Exception as exc:  # noqa: BLE001 - assignment lookup must not break heartbeats
+                authoritative = None
+                logger.warning("Could not inspect EarnApp assignment for %s: %s", logical_node_id, type(exc).__name__)
+            authoritative_token = _earnapp_hydration_state_token(
+                {**(authoritative or {}), "proxy_id": (authoritative or {}).get("current_proxy_id")}
+            )
+            authoritative_proxy_id = int(authoritative_token["proxy_id"]) if authoritative else 0
+            authoritative_platform = str(authoritative_token["platform"] or "").strip().lower() if authoritative else ""
+            authoritative_expected = (
+                str(authoritative_token["expected_egress_ip"] or "").strip() if authoritative else ""
+            )
+            authoritative_backend = "lxd" if authoritative_platform == "ubuntu" else "docker"
+            authoritative_token = {
+                "proxy_id": authoritative_proxy_id,
+                "platform": authoritative_platform,
+                "runtime_backend": authoritative_backend,
+                "expected_egress_ip": authoritative_expected,
+                "pending_binding_version": "",
+                "pending_proxy_id": 0,
+                "pending_expected_egress_ip": "",
+            }
+            authoritative_valid = bool(
+                authoritative
+                and authoritative_platform in {"macos", "ios", "ubuntu"}
+                and int(authoritative.get("assigned_worker_id") or 0) == int(worker_id)
+                and int(authoritative.get("generation") or 0) == generation
+                and str(authoritative.get("device_id") or "") == str(instance.get("device_id") or "")
+                and str(authoritative.get("state") or "").upper() in {"ACTIVE", "RECOVERY_HOLD"}
+                and authoritative_proxy_id > 0
+                and authoritative_expected
+            )
+            if (
+                authoritative_valid
+                and reported_token != authoritative_token
+                and proxy_id in {0, authoritative_proxy_id}
+            ):
+                proxy_id = authoritative_proxy_id
+                hydration = {
+                    "device_id": str(authoritative.get("device_id") or ""),
+                    "proxy_id": proxy_id,
+                    "platform": authoritative_platform,
+                    "runtime_backend": authoritative_backend,
+                    "expected_egress_ip": authoritative_expected,
+                    "hydrate_state": True,
+                    "hydrate_expected": reported_token,
+                }
+            elif authoritative_valid and reported_token == authoritative_token:
+                authoritative_verified = True
+        heartbeat_synced = await earnapp_recovery.heartbeat_node(
             logical_node_id,
             worker_id,
             generation=generation,
             device_id=str(instance.get("device_id") or ""),
-            proxy_id=int(instance.get("proxy_id") or 0),
+            proxy_id=proxy_id,
         )
+        # Hydration only fills missing worker fields; the heartbeat CAS remains
+        # the sole authority for whether this worker receives an ACK.
+        synced = bool(heartbeat_synced)
         item = {"logical_node_id": logical_node_id, "generation": generation}
-        proxy_id = int(instance.get("proxy_id") or 0)
         proxy_health = str(instance.get("proxy_health") or "unknown").strip().lower()
-        if not pending_binding and proxy_id > 0 and proxy_health in {"healthy", "unhealthy", "unknown"}:
+        if (
+            not pending_binding
+            and synced
+            and authoritative_verified
+            and hydration is None
+            and proxy_id > 0
+            and proxy_health in {"healthy", "unhealthy", "unknown"}
+        ):
             recorded = await database.record_earnapp_proxy_health(
                 logical_node_id,
                 worker_id,
@@ -6743,9 +6830,12 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
                     )
                 )
         if synced:
+            if hydration:
+                item.update(hydration)
             earnapp_assignment_acks.append(item)
         else:
-            earnapp_assignment_rejections.append(item)
+            # Never echo a server-side assignment when its CAS was rejected.
+            earnapp_assignment_rejections.append({"logical_node_id": logical_node_id, "generation": generation})
     metrics.record_heartbeat(body.name)
     resp: dict[str, Any] = {"status": "ok", "worker_id": worker_id}
     if state == "enroll":
