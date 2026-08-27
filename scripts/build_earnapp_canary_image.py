@@ -25,6 +25,11 @@ if str(ROOT) not in sys.path:
 
 from app import earnapp_runtime  # noqa: E402
 
+_ENTRYPOINT_INSTALL_MARKERS = {
+    "macos": '[[ ! -s "$STATE_DIR/registered" || ! -x /usr/bin/earnapp ]]',
+    "ios": '[[ ! -f "$STATE_DIR/uuid" || ! -x /usr/bin/earnapp ]]',
+}
+
 
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -56,6 +61,9 @@ def validate_artifacts(
         actual = _sha256(path)
         if actual.lower() != str(expected_hash).lower():
             raise ValueError(f"EarnApp runtime artifact hash mismatch for {name}")
+    entrypoint = (source / "entrypoint.sh").read_text(encoding="utf-8")
+    if _ENTRYPOINT_INSTALL_MARKERS[selected] not in entrypoint:
+        raise ValueError(f"EarnApp {selected} entrypoint install marker is invalid")
     return earnapp_runtime.runtime_asset_manifest(expected, platform=selected)
 
 

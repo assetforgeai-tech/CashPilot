@@ -44,14 +44,6 @@ def test_image_builder_default_source_points_to_cashpilot_bundle():
     assert build_earnapp_canary_image.default_source_dir() == expected
 
 
-def test_mac_entrypoint_requires_official_registration_marker_before_skipping_install():
-    entrypoint = (
-        Path(__file__).resolve().parents[2] / "earnapp_new_update" / "earnapp-runtime-files" / "mac" / "entrypoint.sh"
-    ).read_text(encoding="utf-8")
-
-    assert '[[ ! -s "$STATE_DIR/registered" || ! -x /usr/bin/earnapp ]]' in entrypoint
-
-
 def _request(path: str) -> Request:
     return Request({"type": "http", "method": "POST", "path": path, "headers": []})
 
@@ -298,7 +290,8 @@ def test_canary_image_build_recipe_validates_artifacts_and_emits_pinned_labels(t
     source.mkdir()
     expected = {}
     for name in earnapp_runtime.MAC_RUNTIME_ARTIFACT_HASHES:
-        payload = (name + "\n").encode()
+        content = '[[ ! -s "$STATE_DIR/registered" || ! -x /usr/bin/earnapp ]]' if name == "entrypoint.sh" else name
+        payload = (content + "\n").encode()
         (source / name).write_bytes(payload)
         expected[name] = hashlib.sha256(payload).hexdigest()
 
@@ -308,6 +301,31 @@ def test_canary_image_build_recipe_validates_artifacts_and_emits_pinned_labels(t
     manifest_hash = earnapp_runtime.runtime_asset_manifest_sha256(expected)
     assert f"com.cashpilot.earnapp.assets-sha256={manifest_hash}" in recipe
     assert 'ENTRYPOINT ["/usr/local/bin/earn-supervisor"]' in recipe
+
+
+@pytest.mark.parametrize(
+    ("platform", "wrong_marker"),
+    [
+        ("macos", '[[ ! -f "$STATE_DIR/uuid" || ! -x /usr/bin/earnapp ]]'),
+        ("ios", '[[ ! -s "$STATE_DIR/registered" || ! -x /usr/bin/earnapp ]]'),
+    ],
+)
+def test_image_builder_rejects_entrypoint_with_the_other_platform_install_marker(tmp_path, platform, wrong_marker):
+    source = tmp_path / platform
+    source.mkdir()
+    artifact_names = (
+        earnapp_runtime.MAC_RUNTIME_ARTIFACT_HASHES
+        if platform == "macos"
+        else earnapp_runtime.IOS_RUNTIME_ARTIFACT_HASHES
+    )
+    expected = {}
+    for name in artifact_names:
+        payload = (wrong_marker if name == "entrypoint.sh" else name).encode()
+        (source / name).write_bytes(payload)
+        expected[name] = hashlib.sha256(payload).hexdigest()
+
+    with pytest.raises(ValueError, match="install marker"):
+        build_earnapp_canary_image.validate_artifacts(source, expected, platform=platform)
 
 
 def test_ios_runtime_manifest_is_content_addressed_from_the_forensic_bundle():
@@ -330,7 +348,8 @@ def test_ios_image_builder_uses_the_ios_bundle_and_verified_runtime_contract(tmp
     source.mkdir()
     expected = {}
     for name in ("boot.js", "earn-supervisor", "earnapp-bootstrap", "entrypoint.sh"):
-        payload = ("ios-" + name + "\n").encode()
+        content = '[[ ! -f "$STATE_DIR/uuid" || ! -x /usr/bin/earnapp ]]' if name == "entrypoint.sh" else "ios-" + name
+        payload = (content + "\n").encode()
         (source / name).write_bytes(payload)
         expected[name] = hashlib.sha256(payload).hexdigest()
 
