@@ -44,6 +44,8 @@ from app import (
     database,
     disclosure,
     earnapp_canary,
+    earnapp_collection,
+    earnapp_deploy,
     earnapp_recovery,
     egress,
     exchange_rates,
@@ -117,9 +119,14 @@ _AUTO_DEPLOY_LOCKS: dict[int, asyncio.Lock] = {}
 _AUTO_DEPLOY_ACTIVE: set[int] = set()
 _NKN_AUTO_DEPLOY_DONE: set[int] = set()
 _NKN_DEPLOY_LOCKS: dict[int, asyncio.Lock] = {}
+_EARNAPP_DEPLOY_LOCKS: dict[int, asyncio.Lock] = {}
+_EARNAPP_DEPLOY_ACTIVE: set[int] = set()
+_EARNAPP_AUTO_DEPLOY_DONE: set[int] = set()
+_EARNAPP_ROTATION_LOCKS: dict[str, asyncio.Lock] = {}
 _WORKER_HEARTBEAT_STREAKS: dict[int, int] = {}
 _proxy_pool_last_recheck: datetime | None = None
 _NKN_ADOPTABLE_CANARY = "cashpilot-nkn-lxd-canary"
+_EARNAPP_PROTECTED_CANARY = "earnapp-canary-test-sing-1"
 _NKN_NODE_ID_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 _NKN_PUBLISHER_KNOWN_HOSTS = Path("/data/nkn-chaindb-known-hosts")
 _SSH_SHA256_RE = re.compile(r"^SHA256:[A-Za-z0-9+/]{43}=?$")
@@ -222,6 +229,7 @@ def _auto_deploy_slugs(services: list[dict[str, Any]]) -> list[str]:
         for svc in services
         if svc.get("slug")
         and svc.get("slug") != "nkn"
+        and svc.get("slug") != "earnapp"
         and (svc.get("deploy") or {}).get("automation") != "earnapp_mac_canary"
         and svc.get("status") not in _UNDEPLOYABLE_STATUSES
         and (svc.get("docker") or {}).get("image")
@@ -591,6 +599,60 @@ async def _run_auto_deploy_batch(worker_id: int, slugs: list[str], *, delay_seco
         _AUTO_DEPLOY_ACTIVE.discard(worker_id)
 
 
+async def _run_auto_deploy_sequence(
+    worker_id: int,
+    config: Mapping[str, Any],
+    slugs: list[str],
+    *,
+    delay_seconds: int = 10,
+) -> None:
+    """Run every provider lane in order; a failed lane never blocks the next."""
+    if worker_id in _AUTO_DEPLOY_ACTIVE:
+        return
+    _AUTO_DEPLOY_ACTIVE.add(worker_id)
+    lock = _AUTO_DEPLOY_LOCKS.setdefault(worker_id, asyncio.Lock())
+    try:
+        async with lock:
+            if worker_id not in _NKN_AUTO_DEPLOY_DONE:
+                beneficiary = str(config.get("nkn_beneficiary_address") or "").strip()
+                if beneficiary:
+                    try:
+                        result = await _deploy_nkn_slots(
+                            worker_id,
+                            beneficiary_address=beneficiary,
+                            lxd_settings=config,
+                        )
+                        slots = result.get("slots")
+                        if (slots is None or int(slots) > 0) and not result.get("failed"):
+                            _NKN_AUTO_DEPLOY_DONE.add(worker_id)
+                    except Exception as exc:  # noqa: BLE001 - continue provider queue
+                        logger.warning("NKN auto deploy failed on worker %s: %s", worker_id, type(exc).__name__)
+                    if delay_seconds:
+                        await asyncio.sleep(delay_seconds)
+
+            for slug in slugs:
+                try:
+                    await _auto_deploy_one(worker_id, slug)
+                except Exception as exc:
+                    logger.warning("Auto deploy failed for %s on worker %s: %s", slug, worker_id, exc)
+                if delay_seconds:
+                    await asyncio.sleep(delay_seconds)
+
+            if worker_id not in _EARNAPP_AUTO_DEPLOY_DONE:
+                try:
+                    result = await _deploy_earnapp_nodes(worker_id, config=config)
+                    if (
+                        not result.get("failed")
+                        and not result.get("pending")
+                        and (result.get("deployed") or result.get("verified"))
+                    ):
+                        _EARNAPP_AUTO_DEPLOY_DONE.add(worker_id)
+                except Exception as exc:  # noqa: BLE001 - queue already isolated
+                    logger.warning("EarnApp auto deploy failed on worker %s: %s", worker_id, type(exc).__name__)
+    finally:
+        _AUTO_DEPLOY_ACTIVE.discard(worker_id)
+
+
 async def _maybe_auto_deploy_after_heartbeat(worker_id: int) -> None:
     config = await database.get_config() or {}
     settings = _auto_deploy_settings(config)
@@ -603,29 +665,19 @@ async def _maybe_auto_deploy_after_heartbeat(worker_id: int) -> None:
     _WORKER_HEARTBEAT_STREAKS[worker_id] = streak
     if streak < 3:
         return
-    # NKN is slot-based and must not enter the legacy one-row catalog batch.
-    # Run it once after a stable heartbeat streak; failed slots remain retryable
-    # on a later worker heartbeat, while a fully successful run is idempotently
-    # suppressed for the lifetime of this server process.
-    if worker_id not in _NKN_AUTO_DEPLOY_DONE:
-        beneficiary = str(config.get("nkn_beneficiary_address") or "").strip()
-        if beneficiary:
-
-            async def _deploy_nkn_once() -> None:
-                try:
-                    result = await _deploy_nkn_slots(worker_id, beneficiary_address=beneficiary, lxd_settings=config)
-                    slots = result.get("slots")
-                    if (slots is None or int(slots) > 0) and not result.get("failed"):
-                        _NKN_AUTO_DEPLOY_DONE.add(worker_id)
-                except Exception as exc:  # noqa: BLE001 - legacy batch must continue
-                    logger.warning("NKN auto deploy failed on worker %s: %s", worker_id, type(exc).__name__)
-
-            _spawn(_deploy_nkn_once())
     deployed = {d["slug"] for d in await database.get_deployments()}
     services = [svc for svc in catalog.get_services() if svc.get("slug") not in deployed]
     slugs = _auto_deploy_slugs(services)
-    if slugs:
-        _spawn(_run_auto_deploy_batch(worker_id, slugs, delay_seconds=settings["delay_seconds"]))
+    needs_sequence = bool(slugs or worker_id not in _NKN_AUTO_DEPLOY_DONE or worker_id not in _EARNAPP_AUTO_DEPLOY_DONE)
+    if needs_sequence:
+        _spawn(
+            _run_auto_deploy_sequence(
+                worker_id,
+                config,
+                slugs,
+                delay_seconds=settings["delay_seconds"],
+            )
+        )
 
 
 async def _run_proxy_pool_recheck_scheduler() -> None:
@@ -1326,6 +1378,61 @@ async def _run_collection() -> None:
             await _close_stale()
             results = await asyncio.gather(*(_collect_with_collector(c) for c in collectors), return_exceptions=True)
             alerts: list[dict[str, str]] = []
+            try:
+                earnapp_result = await earnapp_collection.collect_active_accounts()
+            except Exception as exc:  # noqa: BLE001 - one account subsystem must not discard peer results
+                logger.warning("EarnApp scheduled collection failed: %s", type(exc).__name__)
+                success = False
+                alerts.append(
+                    {
+                        "kind": "collector",
+                        "platform": "earnapp",
+                        "error": "EarnApp account collection failed — see server logs",
+                    }
+                )
+            else:
+                if earnapp_result["attempted"]:
+                    logger.info(
+                        "EarnApp account collection attempted=%s succeeded=%s failed=%s",
+                        earnapp_result["attempted"],
+                        earnapp_result["succeeded"],
+                        earnapp_result["failed"],
+                    )
+                    earnapp_was_alerting = any(
+                        alert.get("kind") == "collector" and alert.get("platform") == "earnapp"
+                        for alert in _collector_alerts
+                    )
+                    if earnapp_result["failed"]:
+                        success = False
+                        failed = int(earnapp_result["failed"])
+                        attempted = int(earnapp_result["attempted"])
+                        error_kinds = {
+                            str(item.get("error_kind") or "unknown")
+                            for item in earnapp_result.get("accounts") or []
+                            if item.get("status") == "error"
+                        }
+                        category = next(iter(error_kinds)) if len(error_kinds) == 1 else "mixed"
+                        safe_error = f"{failed} of {attempted} EarnApp account collections failed"
+                        alerts.append(
+                            {
+                                "kind": "collector",
+                                "platform": "earnapp",
+                                "error": safe_error,
+                                "category": category,
+                            }
+                        )
+                        metrics.record_collection_error("earnapp")
+                        if await database.record_alert("collector", "earnapp", safe_error, category=category):
+                            _spawn(
+                                notify.send(
+                                    "CashPilot: EarnApp account collection failed",
+                                    safe_error,
+                                    kind="collector",
+                                    subject="earnapp",
+                                )
+                            )
+                    elif earnapp_was_alerting:
+                        await database.clear_alerts("collector", "earnapp")
             # Platforms that were already failing before this run: used to detect a
             # recovery, so a service that breaks again later notifies again rather
             # than being deduped into silence forever.
@@ -3050,13 +3157,20 @@ async def api_deploy_earnapp_canary(
     _auth: dict[str, Any] = Depends(_require_owner),
 ) -> dict[str, Any]:
     """Deploy exactly one owner-authorized EarnApp Mac canary node."""
+    if body.logical_node_id == _EARNAPP_PROTECTED_CANARY:
+        raise HTTPException(status_code=409, detail="Protected EarnApp canary is inspect-only")
     worker_id = await _resolve_worker_id(body.worker_id)
 
     async def worker_deploy(target_worker_id: int, instance_slug: str, spec: dict[str, Any]) -> dict[str, Any]:
         return await _proxy_worker_deploy(target_worker_id, instance_slug, spec)
 
     async def worker_remove(target_worker_id: int, instance_slug: str) -> dict[str, Any]:
-        return await _proxy_worker_command(target_worker_id, "remove", instance_slug)
+        return await _proxy_to_worker(
+            target_worker_id,
+            "DELETE",
+            f"/api/earnapp/docker-nodes/{instance_slug}",
+            timeout=180,
+        )
 
     try:
         result = await earnapp_canary.deploy_canary(
@@ -3270,6 +3384,8 @@ def _merge_recorded_spec(
 # resolution, proxy, and bookkeeping live in exactly one place per action.
 async def _svc_stop(request: Request, slug: str, worker_id: int | None) -> dict[str, str]:
     _require_writer(request)
+    if slug == _EARNAPP_PROTECTED_CANARY:
+        raise HTTPException(status_code=409, detail="Protected EarnApp canary is inspect-only")
     if slug == "nkn" or str(slug).startswith("nkn-direct-"):
         raise HTTPException(status_code=409, detail="NKN nodes use deliberate remove, not stop")
     worker_id = await _resolve_worker_id(worker_id)
@@ -3332,6 +3448,8 @@ async def _remove_nkn_slot(request: Request, slot_id: str, *, worker_id: int | N
 
 async def _svc_restart(request: Request, slug: str, worker_id: int | None) -> dict[str, str]:
     _require_writer(request)
+    if slug == _EARNAPP_PROTECTED_CANARY:
+        raise HTTPException(status_code=409, detail="Protected EarnApp canary is inspect-only")
     worker_id = await _resolve_worker_id(worker_id)
     result = await _proxy_worker_command(worker_id, "restart", slug)
     await database.record_health_event(slug, "restart")
@@ -3346,6 +3464,8 @@ async def _svc_remove(
     delete_volumes: bool,
     allow_delete_critical: bool = False,
 ) -> dict[str, Any]:
+    if slug == _EARNAPP_PROTECTED_CANARY:
+        raise HTTPException(status_code=409, detail="Protected EarnApp canary is inspect-only")
     if str(slug).startswith("nkn-direct-"):
         suffix = str(slug).removeprefix("nkn-direct-")
         scoped = re.fullmatch(r"w(\d+)-(ipv4-\d{3,6})", suffix)
@@ -3551,6 +3671,333 @@ async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) 
     return await _proxy_to_worker(worker_id, "POST", f"/api/containers/{slug}/deploy", json=spec, timeout=60)
 
 
+async def _proxy_worker_earnapp_lxd_deploy(
+    worker_id: int, logical_node_id: str, spec: dict[str, Any]
+) -> dict[str, Any]:
+    """Dispatch one Ubuntu EarnApp node through the dedicated worker endpoint."""
+    return await _proxy_to_worker(
+        worker_id,
+        "POST",
+        f"/api/earnapp/nodes/{logical_node_id}/deploy",
+        json=spec,
+        timeout=60 * 60,
+    )
+
+
+async def _reconcile_earnapp_pending_proxy_binding(instance: Mapping[str, Any], worker_id: int) -> bool:
+    """Finish or roll back a proxy transaction whose final ACK was lost.
+
+    The worker keeps the old route in ``proxy_id`` while a candidate is staged.
+    The server database therefore decides whether the exact staged binding was
+    committed (candidate is current) or must be rolled back (old route is still
+    current). Any other state is left untouched for a later, operator-visible
+    repair rather than guessing.
+    """
+    node_id = str(instance.get("logical_node_id") or "").strip()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{2,120}", node_id) or node_id == _EARNAPP_PROTECTED_CANARY:
+        return False
+    try:
+        generation = int(instance.get("generation") or 0)
+        old_proxy_id = int(instance.get("proxy_id") or 0)
+        new_proxy_id = int(instance.get("pending_proxy_id") or 0)
+        device_id = str(instance.get("device_id") or "").strip()
+        binding_version = str(instance.get("pending_binding_version") or "").strip()
+        expected_egress_ip = str(instance.get("pending_expected_egress_ip") or "").strip()
+        observed_egress_ip = str(instance.get("pending_observed_egress_ip") or "").strip()
+    except (TypeError, ValueError):
+        return False
+    if (
+        generation <= 0
+        or old_proxy_id <= 0
+        or new_proxy_id <= 0
+        or old_proxy_id == new_proxy_id
+        or not device_id
+        or not re.fullmatch(r"[A-Za-z0-9._-]{8,128}", binding_version)
+        or not expected_egress_ip
+    ):
+        return False
+
+    try:
+        node = await database.get_earnapp_logical_node(node_id)
+        if not node:
+            return False
+        if (
+            int(node.get("assigned_worker_id") or 0) != int(worker_id)
+            or int(node.get("generation") or 0) != generation
+            or str(node.get("device_id") or "") != device_id
+            or str(node.get("state") or "").upper() != "ACTIVE"
+        ):
+            return False
+        current_proxy_id = int(node.get("current_proxy_id") or 0)
+        if current_proxy_id == new_proxy_id:
+            commit = True
+            if (
+                int(node.get("preferred_proxy_id") or 0) != old_proxy_id
+                or str(node.get("expected_egress_ip") or "").strip() != expected_egress_ip
+                or observed_egress_ip != expected_egress_ip
+            ):
+                return False
+        elif current_proxy_id == old_proxy_id:
+            commit = False
+        else:
+            return False
+
+        ack = await _proxy_to_worker(
+            int(worker_id),
+            "POST",
+            f"/api/earnapp/nodes/{node_id}/proxy/finalize",
+            json={
+                "generation": generation,
+                "device_id": device_id,
+                "expected_proxy_id": old_proxy_id,
+                "new_proxy_id": new_proxy_id,
+                "binding_version": binding_version,
+                "expected_egress_ip": expected_egress_ip if commit else "",
+                "observed_egress_ip": observed_egress_ip if commit else "",
+                "commit": commit,
+            },
+            timeout=90,
+        )
+        return bool(
+            isinstance(ack, dict)
+            and ack.get("ok") is True
+            and str(ack.get("binding_version") or "") == binding_version
+            and str(ack.get("action") or "") == ("confirmed" if commit else "rolled_back")
+            and int(ack.get("proxy_id") or 0) == (new_proxy_id if commit else old_proxy_id)
+        )
+    except Exception as exc:  # noqa: BLE001 - reconciliation is retryable
+        logger.warning(
+            "EarnApp node %s pending proxy reconciliation failed: %s",
+            node_id,
+            type(exc).__name__,
+        )
+        return False
+
+
+async def _rotate_unhealthy_earnapp_node(
+    logical_node_id: str,
+    worker_id: int,
+    *,
+    generation: int,
+    expected_proxy_id: int,
+) -> bool:
+    """Rotate one explicit EarnApp failure; the protected live canary is inspect-only."""
+    node_id = str(logical_node_id or "").strip()
+    if not node_id or node_id == _EARNAPP_PROTECTED_CANARY:
+        return False
+    lock = _EARNAPP_ROTATION_LOCKS.setdefault(node_id, asyncio.Lock())
+    if lock.locked():
+        return False
+    async with lock:
+        node = await database.get_earnapp_logical_node(node_id)
+        if not node:
+            return False
+        current = (
+            int(node.get("assigned_worker_id") or 0),
+            int(node.get("generation") or 0),
+            int(node.get("current_proxy_id") or 0),
+            str(node.get("state") or "").upper(),
+            str(node.get("proxy_health") or "").lower(),
+        )
+        expected = (
+            int(worker_id),
+            int(generation),
+            int(expected_proxy_id),
+            "ACTIVE",
+            "unhealthy",
+        )
+        device_id = str(node.get("device_id") or "")
+        if current != expected or not device_id:
+            return False
+        candidate = await database.find_available_earnapp_proxy_for_node(
+            node_id,
+            int(worker_id),
+            expected_proxy_id=int(expected_proxy_id),
+        )
+        if not candidate:
+            return False
+        candidate_id = int(candidate.get("proxy_id") or candidate.get("id") or 0)
+        expected_egress_ip = str(candidate.get("exit_ip") or "").strip()
+        if candidate_id <= 0 or not expected_egress_ip:
+            return False
+        binding_version = f"rotation_{secrets.token_hex(16)}"
+        reserved = await database.reserve_earnapp_proxy_candidate(
+            node_id,
+            int(worker_id),
+            generation=int(generation),
+            expected_proxy_id=int(expected_proxy_id),
+            candidate_proxy_id=candidate_id,
+            binding_version=binding_version,
+        )
+        if not reserved:
+            logger.info("EarnApp node %s rotation candidate is no longer available", node_id)
+            return False
+        # The reservation revalidates the row while holding the database lock;
+        # use its credential-bearing snapshot for worker staging.
+        candidate = reserved
+        expected_egress_ip = str(candidate.get("exit_ip") or "").strip()
+        if not expected_egress_ip:
+            await database.release_earnapp_proxy_reservation(
+                node_id, binding_version=binding_version, reason="EARNAPP_RESERVATION_NO_EGRESS"
+            )
+            return False
+        apply_payload = {
+            "generation": int(generation),
+            "device_id": device_id,
+            "expected_proxy_id": int(expected_proxy_id),
+            "binding_version": binding_version,
+            "proxy": {**candidate, "proxy_id": candidate_id},
+        }
+
+        async def finalize(*, commit: bool, observed_egress_ip: str = "") -> bool:
+            try:
+                ack = await _proxy_to_worker(
+                    int(worker_id),
+                    "POST",
+                    f"/api/earnapp/nodes/{node_id}/proxy/finalize",
+                    json={
+                        "generation": int(generation),
+                        "device_id": device_id,
+                        "expected_proxy_id": int(expected_proxy_id),
+                        "new_proxy_id": candidate_id,
+                        "binding_version": binding_version,
+                        "expected_egress_ip": expected_egress_ip if commit else "",
+                        "observed_egress_ip": observed_egress_ip if commit else "",
+                        "commit": commit,
+                    },
+                    timeout=90,
+                )
+            except Exception as exc:  # noqa: BLE001 - caller decides retry/authority
+                logger.warning(
+                    "EarnApp node %s proxy finalization failed (commit=%s): %s",
+                    node_id,
+                    commit,
+                    type(exc).__name__,
+                )
+                return False
+            return bool(
+                isinstance(ack, dict)
+                and ack.get("ok")
+                and str(ack.get("binding_version") or "") == binding_version
+                and str(ack.get("action") or "") == ("confirmed" if commit else "rolled_back")
+                and int(ack.get("proxy_id") or 0) == (candidate_id if commit else int(expected_proxy_id))
+            )
+
+        try:
+            ack = await _proxy_to_worker(
+                int(worker_id),
+                "POST",
+                f"/api/earnapp/nodes/{node_id}/proxy/apply",
+                json=apply_payload,
+                timeout=120,
+            )
+        except Exception:  # noqa: BLE001 - apply response loss is ambiguous
+            await finalize(commit=False)
+            with contextlib.suppress(Exception):
+                await database.release_earnapp_proxy_reservation(
+                    node_id, binding_version=binding_version, reason="EARNAPP_PROXY_APPLY_FAILED"
+                )
+            return False
+        observed_egress_ip = str((ack or {}).get("observed_egress_ip") or "").strip()
+        ack_matches = bool(
+            isinstance(ack, dict)
+            and ack.get("ok")
+            and str(ack.get("binding_version") or "") == binding_version
+            and int(ack.get("proxy_id") or 0) == candidate_id
+            and observed_egress_ip == expected_egress_ip
+        )
+        if not ack_matches:
+            await finalize(commit=False)
+            with contextlib.suppress(Exception):
+                await database.release_earnapp_proxy_reservation(
+                    node_id, binding_version=binding_version, reason="EARNAPP_PROXY_APPLY_ACK_MISMATCH"
+                )
+            return False
+        try:
+            committed = await database.commit_earnapp_proxy_rotation(
+                node_id,
+                int(worker_id),
+                expected_generation=int(generation),
+                expected_proxy_id=int(expected_proxy_id),
+                new_proxy_id=candidate_id,
+                binding_version=binding_version,
+            )
+        except Exception:
+            await finalize(commit=False)
+            with contextlib.suppress(Exception):
+                await database.release_earnapp_proxy_reservation(
+                    node_id, binding_version=binding_version, reason="EARNAPP_PROXY_COMMIT_FAILED"
+                )
+            raise
+        if not committed:
+            await finalize(commit=False)
+            with contextlib.suppress(Exception):
+                await database.release_earnapp_proxy_reservation(
+                    node_id, binding_version=binding_version, reason="EARNAPP_PROXY_CAS_LOST"
+                )
+            return False
+        if await finalize(commit=True, observed_egress_ip=observed_egress_ip):
+            return True
+        if await finalize(commit=True, observed_egress_ip=observed_egress_ip):
+            return True
+        logger.warning(
+            "EarnApp node %s proxy DB CAS committed; worker finalization remains pending",
+            node_id,
+        )
+        return True
+
+
+def _earnapp_lxd_settings(config: Mapping[str, Any] | None) -> dict[str, int]:
+    values = config or {}
+
+    def bounded(key: str, default: int, minimum: int, maximum: int) -> int:
+        raw = values.get(key, default)
+        text = str(raw if raw is not None else default).strip()
+        if not re.fullmatch(r"\d+", text):
+            raise ValueError(f"{key} must be an integer")
+        value = int(text)
+        if not minimum <= value <= maximum:
+            raise ValueError(f"{key} must be between {minimum} and {maximum}")
+        return value
+
+    return {
+        "cpu": bounded("earnapp_lxd_cpu", 1, 1, 64),
+        "memory_mib": bounded("earnapp_lxd_memory_mib", 1024, 128, 65536),
+    }
+
+
+async def _deploy_earnapp_nodes(worker_id: int, *, config: Mapping[str, Any] | None = None) -> dict[str, list[str]]:
+    """Run the EarnApp-specific slot planner; generic catalog deployment is separate."""
+    slots = await _worker_public_ip_slots(int(worker_id))
+    try:
+        limits = _earnapp_lxd_settings(config)
+    except ValueError as exc:
+        logger.warning("EarnApp LXD settings invalid for worker %s: %s", worker_id, type(exc).__name__)
+        return {"deployed": [], "skipped": [], "failed": ["settings"]}
+
+    async def docker_deploy(target_worker_id: int, node_id: str, spec: dict[str, Any]) -> dict[str, Any]:
+        return await _proxy_worker_deploy(target_worker_id, node_id, spec)
+
+    async def lxd_deploy(target_worker_id: int, node_id: str, spec: dict[str, Any]) -> dict[str, Any]:
+        return await _proxy_worker_earnapp_lxd_deploy(target_worker_id, node_id, spec)
+
+    lock = _EARNAPP_DEPLOY_LOCKS.setdefault(int(worker_id), asyncio.Lock())
+    if int(worker_id) in _EARNAPP_DEPLOY_ACTIVE:
+        return {"deployed": [], "skipped": [], "failed": []}
+    _EARNAPP_DEPLOY_ACTIVE.add(int(worker_id))
+    try:
+        async with lock:
+            return await earnapp_deploy.deploy_worker_nodes_sequentially(
+                int(worker_id),
+                slots,
+                docker_deploy=docker_deploy,
+                lxd_deploy=lxd_deploy,
+                lxd_settings=limits,
+            )
+    finally:
+        _EARNAPP_DEPLOY_ACTIVE.discard(int(worker_id))
+
+
 async def _proxy_worker_logs(worker_id: int, slug: str, lines: int = 50) -> dict[str, str]:
     """Forward a logs request to a worker."""
     return await _proxy_to_worker(worker_id, "GET", f"/api/containers/{slug}/logs", params={"lines": min(lines, 1000)})
@@ -3574,6 +4021,8 @@ async def api_service_stop(request: Request, slug: str, worker_id: int | None = 
 @app.post("/api/services/{slug}/start")
 async def api_service_start(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
+    if slug == _EARNAPP_PROTECTED_CANARY:
+        raise HTTPException(status_code=409, detail="Protected EarnApp canary is inspect-only")
     worker_id = await _resolve_worker_id(worker_id)
     result = await _proxy_worker_command(worker_id, "start", slug)
     await database.record_health_event(slug, "start")
@@ -5184,6 +5633,8 @@ def _validate_config_update(data: Mapping[str, str]) -> None:
         # Validate the merged pair so a request that changes one field keeps the
         # documented default for the other rather than inventing a partial state.
         _nkn_lxd_settings(data)
+    if {"earnapp_lxd_cpu", "earnapp_lxd_memory_mib"}.intersection(data):
+        _earnapp_lxd_settings(data)
     if any(key.startswith("nkn_chaindb_") for key in data):
         _nkn_chaindb_settings(data)
 
@@ -6067,13 +6518,27 @@ async def api_worker_runtime_asset(request: Request, body: RuntimeAssetRequest) 
     if _is_retired_provider(body.provider):
         raise HTTPException(status_code=404, detail="Runtime asset not found")
     try:
-        if body.provider == "earnapp" and body.asset_kind == "mac_identity_profile":
+        earnapp_asset_kinds = {
+            "macos": "mac_identity_profile",
+            "ios": "ios_identity_profile",
+            "ubuntu": "ubuntu_identity_profile",
+        }
+        if body.provider == "earnapp" and body.asset_kind in set(earnapp_asset_kinds.values()):
             worker = await database.get_worker_by_client_id(body.client_id)
             node = await database.get_earnapp_logical_node(body.asset_id)
             if not worker or not node or int(node.get("assigned_worker_id") or 0) != int(worker.get("id") or 0):
                 raise HTTPException(status_code=403, detail="Runtime asset is not assigned to this worker")
-            profile = await database.get_earnapp_mac_profile(body.asset_id)
-            value = (profile or {}).get("value")
+            platform = str(node.get("platform") or "").strip().lower()
+            if earnapp_asset_kinds.get(platform) != body.asset_kind:
+                raise HTTPException(status_code=403, detail="Runtime asset does not match the node platform")
+            profile = await database.get_earnapp_identity_profile(body.asset_id)
+            if (
+                not profile
+                or str(profile.get("platform") or "").strip().lower() != platform
+                or str(profile.get("asset_kind") or "").strip().lower() != body.asset_kind
+            ):
+                raise HTTPException(status_code=404, detail="Runtime asset not found")
+            value = profile.get("value")
         else:
             value = await database.get_runtime_asset(body.provider, body.asset_kind)
     except ValueError as exc:
@@ -6245,12 +6710,38 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         generation = int(instance.get("generation") or 0)
         if not logical_node_id or generation <= 0:
             continue
+        pending_binding = bool(str(instance.get("pending_binding_version") or "").strip())
+        if pending_binding:
+            _spawn(_reconcile_earnapp_pending_proxy_binding(dict(instance), worker_id))
         synced = await earnapp_recovery.heartbeat_node(
             logical_node_id,
             worker_id,
             generation=generation,
+            device_id=str(instance.get("device_id") or ""),
+            proxy_id=int(instance.get("proxy_id") or 0),
         )
         item = {"logical_node_id": logical_node_id, "generation": generation}
+        proxy_id = int(instance.get("proxy_id") or 0)
+        proxy_health = str(instance.get("proxy_health") or "unknown").strip().lower()
+        if not pending_binding and proxy_id > 0 and proxy_health in {"healthy", "unhealthy", "unknown"}:
+            recorded = await database.record_earnapp_proxy_health(
+                logical_node_id,
+                worker_id,
+                generation=generation,
+                proxy_id=proxy_id,
+                health=proxy_health,
+                observed_egress_ip=str(instance.get("observed_egress_ip") or ""),
+                reason=str(instance.get("proxy_health_reason") or ""),
+            )
+            if recorded and proxy_health == "unhealthy" and logical_node_id != _EARNAPP_PROTECTED_CANARY:
+                _spawn(
+                    _rotate_unhealthy_earnapp_node(
+                        logical_node_id,
+                        worker_id,
+                        generation=generation,
+                        expected_proxy_id=proxy_id,
+                    )
+                )
         if synced:
             earnapp_assignment_acks.append(item)
         else:
@@ -6426,6 +6917,33 @@ async def _worker_provider_states(worker: dict[str, Any]) -> dict[str, Any]:
             "online": online,
             "offline": len(nkn_instances) - online,
         }
+    earnapp_instances: list[dict[str, Any]] = []
+    for row in await database.list_earnapp_logical_nodes():
+        if int(row.get("assigned_worker_id") or 0) != int(worker.get("id") or 0):
+            continue
+        if str(row.get("state") or "").upper() == "RETIRED":
+            continue
+        health = str(row.get("proxy_health") or "unknown").strip().lower()
+        earnapp_instances.append(
+            {
+                "logical_node_id": str(row.get("logical_node_id") or ""),
+                "platform": str(row.get("platform") or "unknown"),
+                "state": str(row.get("state") or ""),
+                "generation": int(row.get("generation") or 0),
+                "proxy_id": row.get("current_proxy_id"),
+                "proxy_health": health if health in {"healthy", "unhealthy", "unknown"} else "unknown",
+                "observed_egress_ip": str(row.get("observed_egress_ip") or ""),
+                "expected_egress_ip": str(row.get("expected_egress_ip") or ""),
+                "proxy_checked_at": row.get("proxy_checked_at"),
+            }
+        )
+    if earnapp_instances:
+        online = sum(item["state"] == "ACTIVE" and item["proxy_health"] == "healthy" for item in earnapp_instances)
+        states["earnapp"] = {
+            "instances": earnapp_instances,
+            "online": online,
+            "offline": len(earnapp_instances) - online,
+        }
     return states
 
 
@@ -6486,6 +7004,8 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
         _require_owner(request)
     else:
         _require_writer(request)
+    if body.slug == _EARNAPP_PROTECTED_CANARY:
+        raise HTTPException(status_code=409, detail="Protected EarnApp canary is inspect-only")
 
     if body.command == "deploy":
         # This is a THIRD deploy path. Without the same status gate, a broken or

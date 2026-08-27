@@ -11,7 +11,7 @@ import secrets
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
-from app import database, earnapp_recovery, earnapp_runtime
+from app import database, earnapp_identity, earnapp_recovery, earnapp_runtime
 from app.collectors.earnapp import EarnAppAccountCollector
 
 WorkerDeploy = Callable[[int, str, dict[str, Any]], Awaitable[dict[str, Any]]]
@@ -85,30 +85,24 @@ def _identity_value(node_id: str) -> dict[str, Any]:
 
 async def get_or_create_mac_identity_profile(logical_node_id: str) -> dict[str, str]:
     node_id = _safe_node_id(logical_node_id)
-    existing = await database.get_earnapp_mac_profile(node_id)
-    if existing:
-        identity = earnapp_runtime.decrypt_mac_profile(existing["value"])
-        device_id = (
-            earnapp_runtime.MAC_DEVICE_PREFIX
-            + hashlib.sha256((str(identity["id"]) + str(identity["serial"])).encode("utf-8")).hexdigest()[:32]
+    profile = await earnapp_identity.ensure_identity_profile(node_id, "macos")
+    identity = earnapp_identity.decrypt_profile(profile["value"], "macos")
+    if identity.get("lan_ip") != MAC_PROXY_TUN_IP:
+        identity["lan_ip"] = MAC_PROXY_TUN_IP
+        value = earnapp_identity.encrypt_profile(identity)
+        await database.save_earnapp_identity_profile(
+            node_id,
+            platform="macos",
+            asset_kind=earnapp_runtime.MAC_IDENTITY_ASSET_KIND,
+            device_id=profile["device_id"],
+            value=value,
         )
-        if device_id != existing["device_id"]:
-            raise ValueError("EarnApp Mac profile device identity changed")
-        value = existing["value"]
-        if identity.get("lan_ip") != MAC_PROXY_TUN_IP:
-            identity["lan_ip"] = MAC_PROXY_TUN_IP
-            value = earnapp_runtime.encrypt_mac_profile(identity)
-            await database.save_earnapp_mac_profile(node_id, device_id=device_id, value=value)
-        return {"asset_id": node_id, "device_id": device_id, "value": value}
-
-    identity = _identity_value(node_id)
-    device_id = (
-        earnapp_runtime.MAC_DEVICE_PREFIX
-        + hashlib.sha256((str(identity["id"]) + str(identity["serial"])).encode("utf-8")).hexdigest()[:32]
-    )
-    value = earnapp_runtime.encrypt_mac_profile(identity)
-    await database.save_earnapp_mac_profile(node_id, device_id=device_id, value=value)
-    return {"asset_id": node_id, "device_id": device_id, "value": value}
+        profile["value"] = value
+    return {
+        "asset_id": profile["asset_id"],
+        "device_id": profile["device_id"],
+        "value": profile["value"],
+    }
 
 
 def _proxy_metadata(proxy: Mapping[str, Any]) -> dict[str, Any]:
@@ -153,6 +147,7 @@ def build_canary_spec(
     return {
         "image": earnapp_runtime.MAC_RUNTIME_IMAGE,
         "image_contract_sha256": earnapp_runtime.MAC_RUNTIME_ASSET_MANIFEST_SHA256,
+        "image_delivery": "operator_preload",
         "provider_slug": "earnapp",
         "host_runtime": earnapp_runtime.MAC_RUNTIME_HOST,
         "env": {
@@ -199,11 +194,95 @@ def build_canary_spec(
     }
 
 
+def build_runtime_spec(
+    logical_node_id: str,
+    account_id: int,
+    platform: str,
+    device_id: str,
+    proxy: Mapping[str, Any],
+    *,
+    generation: int = 1,
+    identity_asset_id: str | None = None,
+) -> dict[str, Any]:
+    """Build a Docker runtime spec for one persisted MacOS or iOS node."""
+    selected = str(platform or "").strip().lower()
+    if selected == "macos":
+        return build_canary_spec(
+            logical_node_id,
+            account_id,
+            device_id,
+            proxy,
+            generation=generation,
+            identity_asset_id=identity_asset_id,
+        )
+    if selected != "ios":
+        raise ValueError("Docker EarnApp runtime supports only MacOS or iOS")
+    node_id = _safe_node_id(logical_node_id)
+    device = str(device_id or "").strip()
+    if not re.fullmatch(r"sdk-ios-[A-Za-z0-9-]{4,96}", device):
+        raise ValueError("EarnApp iOS device_id must use the sdk-ios- prefix")
+    proxy_meta = _redacted_proxy(proxy)
+    return {
+        "image": earnapp_runtime.IOS_RUNTIME_IMAGE,
+        "image_contract_sha256": earnapp_runtime.IOS_RUNTIME_ASSET_MANIFEST_SHA256,
+        "image_delivery": "operator_preload",
+        "provider_slug": "earnapp",
+        "host_runtime": earnapp_runtime.IOS_RUNTIME_HOST,
+        "env": {
+            "EARNAPP_ENC": "/etc/earnapp-spoof/profile.json.enc",
+            "EARNAPP_PLATFORM": earnapp_runtime.IOS_PLATFORM,
+            "EARNAPP_APPID": earnapp_runtime.IOS_APPID,
+            "EARNAPP_DEVICE_ID": device,
+            "EARNAPP_LOGICAL_NODE_ID": node_id,
+        },
+        "volumes": {f"{node_id}-data": {"bind": "/etc/earnapp", "mode": "rw"}},
+        "labels": {
+            "cashpilot.provider": "earnapp",
+            "cashpilot.instance_mode": "proxy",
+            "cashpilot.earnapp.logical_node_id": node_id,
+            "cashpilot.earnapp.account_id": str(int(account_id)),
+            "cashpilot.earnapp.device_id": device,
+            "cashpilot.earnapp.platform": earnapp_runtime.IOS_PLATFORM,
+            "cashpilot.earnapp.runtime_contract": earnapp_runtime.IOS_APPID,
+            "cashpilot.earnapp.generation": str(max(1, int(generation))),
+        },
+        "privileged": False,
+        "cap_add": None,
+        "devices": None,
+        "network_mode": None,
+        "egress_mode": "proxy",
+        "egress_udp": "none",
+        "proxy": proxy_meta,
+        "resources": {"mem_limit": "1g", "oom_score_adj": 200},
+        "runtime_assets": [
+            {
+                "provider": "earnapp",
+                "asset_kind": earnapp_identity.IOS_PROFILE_ASSET_KIND,
+                "asset_id": identity_asset_id or node_id,
+                "target": "/etc/earnapp-spoof/profile.json.enc",
+                "encoding": "base64",
+            }
+        ],
+        "runtime_contract": {
+            "platform": earnapp_runtime.IOS_PLATFORM,
+            "appid": earnapp_runtime.IOS_APPID,
+            "device_id_prefix": earnapp_runtime.IOS_DEVICE_PREFIX,
+        },
+        "account_id": int(account_id),
+    }
+
+
 async def provision_canary(logical_node_id: str, worker_id: int, device_id: str) -> dict[str, Any]:
     node_id = _safe_node_id(logical_node_id)
     device = earnapp_runtime.validate_device_id(device_id)
     before = await database.get_earnapp_logical_node(node_id)
-    node = await earnapp_recovery.provision_node(node_id, int(worker_id), device_id=device, proxy_country_code="VN")
+    node = await earnapp_recovery.provision_node(
+        node_id,
+        int(worker_id),
+        device_id=device,
+        proxy_country_code="VN",
+        platform="macos",
+    )
     return {**node, "created_binding": not bool((before or {}).get("current_proxy_id"))}
 
 
@@ -342,13 +421,16 @@ async def verify_canary(
     if not route:
         raise ValueError("EarnApp canary proxy route is unavailable")
     collector = EarnAppAccountCollector(account.get("credentials") or {}, route)
+    platform = str(node.get("platform") or "macos").strip().lower()
+    if platform not in earnapp_identity.SUPPORTED_PLATFORMS:
+        raise ValueError("EarnApp canary platform is invalid")
     remaining = max(1, int(attempts))
     last: dict[str, Any] = {}
     for attempt in range(1, remaining + 1):
-        last = await collector.link_and_verify_device(str(node.get("device_id") or ""), platform="macos")
+        last = await collector.link_and_verify_device(str(node.get("device_id") or ""), platform=platform)
         if last.get("online") is True and last.get("device_present") is True and last.get("banned") is not True:
             return earnapp_runtime.redacted_evidence(last)
-        if last.get("error_kind") in {"auth", "shape"} or last.get("banned") is True or attempt >= remaining:
+        if last.get("error_kind") in {"auth", "shape", "remote"} or last.get("banned") is True or attempt >= remaining:
             break
         await asyncio.sleep(max(0, float(interval_seconds)))
     return earnapp_runtime.redacted_evidence(last)

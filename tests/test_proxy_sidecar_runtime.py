@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from app import orchestrator
+from app import earnapp_runtime, orchestrator
 
 
 def test_proxy_instance_runs_provider_inside_singbox_sidecar_namespace():
@@ -37,6 +37,54 @@ def test_proxy_instance_runs_provider_inside_singbox_sidecar_namespace():
     assert provider_call.kwargs["name"] == "cashpilot-earnfm-proxy"
     assert provider_call.kwargs["labels"]["cashpilot.provider"] == "earnfm"
     assert provider_call.kwargs["labels"]["cashpilot.instance_mode"] == "proxy"
+
+
+def test_earnapp_operator_artifact_is_never_pulled_from_a_public_registry():
+    client = MagicMock()
+    client.containers.get.side_effect = [orchestrator.NotFound("provider"), orchestrator.NotFound("sidecar")]
+    image = MagicMock()
+    image.attrs = {"Config": {"Labels": earnapp_runtime.required_image_labels("macos")}}
+    client.images.get.return_value = image
+    client.containers.run.side_effect = [MagicMock(id="sidecar-id"), MagicMock(id="provider-id", short_id="provider")]
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        orchestrator.deploy_raw(
+            slug="earnapp-mac-1",
+            provider_slug="earnapp",
+            image=earnapp_runtime.MAC_RUNTIME_IMAGE,
+            labels={"cashpilot.provider": "earnapp", "cashpilot.earnapp.platform": "darwin"},
+            host_runtime="earnapp_mac_canary",
+            image_delivery="operator_preload",
+            proxy={"host": "1.2.3.4", "port": 1080, "protocol": "socks5"},
+        )
+
+    client.images.pull.assert_not_called()
+    client.images.get.assert_called_once_with(earnapp_runtime.MAC_RUNTIME_IMAGE)
+
+
+def test_earnapp_deploy_fails_before_cleanup_when_operator_artifact_is_missing():
+    client = MagicMock()
+    client.images.get.side_effect = orchestrator.NotFound("missing image")
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        try:
+            orchestrator.deploy_raw(
+                slug="earnapp-mac-1",
+                provider_slug="earnapp",
+                image=earnapp_runtime.MAC_RUNTIME_IMAGE,
+                labels={"cashpilot.provider": "earnapp", "cashpilot.earnapp.platform": "darwin"},
+                host_runtime="earnapp_mac_canary",
+                image_delivery="operator_preload",
+                proxy={"host": "1.2.3.4", "port": 1080, "protocol": "socks5"},
+            )
+        except RuntimeError as exc:
+            assert "preload" in str(exc).lower()
+        else:
+            raise AssertionError("missing operator artifact must fail closed")
+
+    client.containers.get.assert_not_called()
+    client.containers.run.assert_not_called()
+    client.volumes.get.assert_not_called()
 
 
 def test_mysterium_proxy_routes_udp_direct():
@@ -97,6 +145,65 @@ def test_remove_proxy_instance_removes_egress_sidecar():
     provider.remove.assert_called_once_with(force=True)
     sidecar.remove.assert_called_once_with(force=True)
     client.containers.get.assert_any_call("cashpilot-earnfm-proxy-egress")
+
+
+def test_earnapp_cleanup_fails_closed_when_sidecar_remains():
+    """Account cleanup must not report success while its egress sidecar survives."""
+    client = MagicMock()
+    provider = MagicMock(attrs={"Mounts": []})
+    provider.name = "cashpilot-earnapp-node-1"
+    provider.labels = {
+        orchestrator.LABEL_MANAGED: "true",
+        orchestrator.LABEL_SERVICE: "earnapp-node-1",
+        "cashpilot.provider": "earnapp",
+    }
+    sidecar = MagicMock()
+    sidecar.name = "cashpilot-earnapp-node-1-egress"
+    sidecar.labels = {
+        orchestrator.LABEL_MANAGED: "true",
+        orchestrator.LABEL_SERVICE: "earnapp-node-1",
+        "cashpilot.provider": "earnapp",
+        "cashpilot.role": "egress-sidecar",
+    }
+    # The sidecar remains discoverable after the attempted removal.
+    sidecar.remove.side_effect = orchestrator.APIError("sidecar is busy")
+    client.containers.get.side_effect = [provider, sidecar, provider, sidecar]
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        try:
+            orchestrator.remove_earnapp_service("earnapp-node-1")
+        except RuntimeError as exc:
+            assert "sidecar" in str(exc).lower()
+        else:
+            raise AssertionError("cleanup must fail when the sidecar cannot be removed")
+
+    provider.remove.assert_called_once_with(force=True)
+
+
+def test_earnapp_cleanup_removes_orphan_sidecar_after_main_is_gone():
+    """A retry can remove an orphan sidecar without resurrecting or touching a node."""
+    client = MagicMock()
+    sidecar = MagicMock()
+    sidecar.name = "cashpilot-earnapp-node-1-egress"
+    sidecar.labels = {
+        orchestrator.LABEL_MANAGED: "true",
+        orchestrator.LABEL_SERVICE: "earnapp-node-1",
+        "cashpilot.provider": "earnapp",
+        "cashpilot.role": "egress-sidecar",
+    }
+    client.containers.get.side_effect = [
+        orchestrator.NotFound("main is already gone"),
+        sidecar,
+        orchestrator.NotFound("main is gone"),
+        orchestrator.NotFound("sidecar is gone"),
+    ]
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        result = orchestrator.remove_earnapp_service("earnapp-node-1")
+
+    assert result["main_present"] is False
+    assert result["sidecar_present"] is False
+    sidecar.remove.assert_called_once_with(force=True)
 
 
 def test_apply_proxy_binding_preflights_every_sidecar_before_writing_any_config():
@@ -167,6 +274,73 @@ def test_apply_proxy_binding_restarts_only_sidecar_and_reports_config_hash():
     assert any("rotation_1234567890" in command for command in commands)
     assert all("base64" not in command for command in commands)
     sidecar.restart.assert_called_once_with(timeout=30)
+
+
+def test_proxy_binding_status_reports_active_marker_and_artifacts():
+    client = MagicMock()
+    sidecar = MagicMock()
+    sidecar.labels = {
+        orchestrator.LABEL_MANAGED: "true",
+        orchestrator.LABEL_SERVICE: "earnapp-proxy-1",
+        "cashpilot.provider": "earnapp",
+        "cashpilot.role": "egress-sidecar",
+    }
+    sidecar.attrs = {"Mounts": [{"Destination": "/etc/sing-box", "RW": True}]}
+    sidecar.exec_run.return_value = MagicMock(
+        exit_code=0,
+        output=b'{"binding_version":"rotation_1234567890","previous_present":true,"candidate_present":false}\n',
+    )
+    client.containers.get.return_value = sidecar
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        result = orchestrator.proxy_binding_status("earnapp-proxy-1")
+
+    assert result == {
+        "binding_version": "rotation_1234567890",
+        "previous_present": True,
+        "candidate_present": False,
+    }
+
+
+def test_discard_proxy_binding_removes_only_inactive_candidate_artifacts():
+    client = MagicMock()
+    sidecar = MagicMock()
+    sidecar.labels = {
+        orchestrator.LABEL_MANAGED: "true",
+        orchestrator.LABEL_SERVICE: "earnapp-proxy-1",
+        "cashpilot.provider": "earnapp",
+        "cashpilot.role": "egress-sidecar",
+    }
+    sidecar.attrs = {"Mounts": [{"Destination": "/etc/sing-box", "RW": True}]}
+    sidecar.exec_run.side_effect = [
+        MagicMock(
+            exit_code=0,
+            output=b'{"binding_version":"","previous_present":false,"candidate_present":true}\n',
+        ),
+        MagicMock(exit_code=0),
+        MagicMock(
+            exit_code=0,
+            output=b'{"binding_version":"","previous_present":false,"candidate_present":false}\n',
+        ),
+    ]
+    client.containers.get.return_value = sidecar
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        result = orchestrator.discard_proxy_binding("earnapp-proxy-1", "rotation_1234567890")
+
+    assert result == {
+        "binding_version": "rotation_1234567890",
+        "action": "rolled_back",
+        "idempotent": True,
+    }
+    cleanup_commands = [
+        call.args[0][2] for call in sidecar.exec_run.call_args_list if call.args[0][2].startswith("rm -f")
+    ]
+    assert len(cleanup_commands) == 1
+    cleanup = cleanup_commands[0]
+    assert "config.json.cashpilot-new" in cleanup
+    assert ".cashpilot-binding-version" in cleanup
+    assert "config.json.cashpilot-prev" not in cleanup
 
 
 def test_deploy_raw_replaces_ephemeral_config_volume_before_seeding_new_proxy():

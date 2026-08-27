@@ -286,6 +286,7 @@ def test_worker_provider_states_include_nkn_instances_without_wallet_material():
                     ]
                 ),
             ),
+            patch.object(database, "list_earnapp_logical_nodes", AsyncMock(return_value=[])),
         ):
             states = await main._worker_provider_states(worker)
         assert states["nkn"]["online"] == 1

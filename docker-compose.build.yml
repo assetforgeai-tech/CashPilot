@@ -50,6 +50,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /run/cashpilot-nkn-agent:/run/cashpilot-nkn-agent
+      - /run/cashpilot-earnapp-agent:/run/cashpilot-earnapp-agent
       - cashpilot_public_ip_slots:/network:ro
       - cashpilot_worker_data:/data
       - cashpilot_fleet:/fleet

@@ -396,7 +396,7 @@ CASHPILOT_WORKER_URL=http://public-vps-ip:8081</code>
                   : w.enrollment === 'pending'
                   ? `<span style="font-size:0.7rem; padding:2px 6px; border-radius:4px; background:var(--bg-hover); color:var(--text-muted);" title="This worker has been issued its own key but has not used it yet, so the shared key still works for it for a short while. It clears itself on the worker's next heartbeat.">enrolling</span>`
                   : ''}
-                ${(w.provider_states && (w.provider_states.proxy || w.provider_states.mysterium || w.provider_states.nkn))
+                ${(w.provider_states && (w.provider_states.proxy || w.provider_states.mysterium || w.provider_states.nkn || w.provider_states.earnapp))
                   ? `<span style="font-size:0.7rem; padding:2px 6px; border-radius:4px; background:var(--bg-hover); color:var(--text-muted);" title="Worker provider state from heartbeat">provider states</span>`
                   : ''}
                 <code style="font-size:0.68rem; color:var(--text-muted); background:var(--bg-hover); padding:1px 5px; border-radius:3px;" title="This worker's client_id — the id CashPilot keys it on. Two rows with the same name always have different ids; this is how to tell which is which.">${esc(w.client_id || ('#' + w.id))}</code>
@@ -439,6 +439,14 @@ CASHPILOT_WORKER_URL=http://public-vps-ip:8081</code>
                 : `<span title="This worker predates version reporting, so CashPilot cannot tell which release it is. Update it to find out.">version unknown</span>`}
             </div>
             ${w.provider_states?.nkn ? `<div style="margin-top:8px;font-size:0.78rem;color:var(--text-muted);">NKN: ${esc(w.provider_states.nkn.online ?? 0)} online · ${esc(w.provider_states.nkn.offline ?? 0)} offline</div>` : ''}
+            ${w.provider_states?.earnapp ? (() => {
+              const earnapp = w.provider_states.earnapp;
+              const instances = Array.isArray(earnapp.instances) ? earnapp.instances : [];
+              const healthy = instances.filter(item => item.proxy_health === 'healthy').length;
+              const unhealthy = instances.filter(item => item.proxy_health === 'unhealthy').length;
+              const unknown = Math.max(0, instances.length - healthy - unhealthy);
+              return `<div style="margin-top:8px;font-size:0.78rem;color:var(--text-muted);">EarnApp: ${esc(earnapp.online ?? 0)} online · ${esc(earnapp.offline ?? 0)} offline · proxy health ${esc(healthy)} healthy / ${esc(unhealthy)} unhealthy / ${esc(unknown)} unknown</div>`;
+            })() : ''}
             ${isAndroid && items.length > 0 ? renderApps(items, isOnline, w.last_heartbeat) : ''}
             ${!isAndroid && items.length > 0 ? renderContainers(w, isOnline) : ''}
           </div>

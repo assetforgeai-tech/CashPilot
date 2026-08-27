@@ -6,7 +6,7 @@ import hashlib
 import secrets
 from typing import Any
 
-from app import database, earnapp_accounts
+from app import database
 
 STALE_WORKER_SECONDS = 15 * 60
 RECOVERY_HOLD_SECONDS = 60 * 60
@@ -26,11 +26,20 @@ async def provision_node(
     worker_id: int,
     *,
     device_id: str,
-    proxy_country_code: str = "",
+    proxy_country_code: str = "VN",
+    platform: str = "macos",
 ) -> dict[str, Any]:
-    """Create the account binding and acquire an eligible residential route."""
+    """Create a platform-bound node and acquire a compatible residential route."""
     node_id = str(logical_node_id or "").strip()
-    await earnapp_accounts.assign_account(node_id)
+    selected_platform = str(platform or "").strip().lower()
+    country_code = database.canonical_proxy_country_code(proxy_country_code)
+    if selected_platform not in {"macos", "ios", "ubuntu"}:
+        raise RecoveryClaimDenied("EarnApp platform must be macos, ios, or ubuntu")
+    if selected_platform in {"macos", "ios"} and country_code != "VN":
+        raise RecoveryClaimDenied("EarnApp Mac/iOS node requires a VN proxy")
+    if selected_platform == "ubuntu" and (not country_code or country_code == "VN"):
+        raise RecoveryClaimDenied("EarnApp Ubuntu node requires a known non-VN proxy")
+    await database.assign_earnapp_account(node_id, platform=selected_platform)
     current = await database.get_earnapp_logical_node(node_id)
     if not current:
         raise RecoveryClaimDenied("EarnApp logical node could not be created")
@@ -39,7 +48,6 @@ async def provision_node(
             raise RecoveryClaimDenied("EarnApp logical node is assigned to another worker")
         return _public_node(current)
 
-    country_code = str(proxy_country_code or "").strip().upper()
     control = await database.get_earnapp_account_control_route(int(current["account_id"]), healthy_only=True)
     if control and country_code and str(control.get("country_code") or "").strip().upper() != country_code:
         await database.release_earnapp_account_control_route(
@@ -138,11 +146,20 @@ async def claim_node(
     return _public_node(claimed)
 
 
-async def heartbeat_node(logical_node_id: str, worker_id: int, *, generation: int) -> bool:
+async def heartbeat_node(
+    logical_node_id: str,
+    worker_id: int,
+    *,
+    generation: int,
+    device_id: str = "",
+    proxy_id: int = 0,
+) -> bool:
     return await database.heartbeat_earnapp_node(
         logical_node_id,
         int(worker_id),
         generation=int(generation),
+        device_id=str(device_id or ""),
+        proxy_id=int(proxy_id or 0),
     )
 
 

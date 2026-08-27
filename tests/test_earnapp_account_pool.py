@@ -38,6 +38,49 @@ def _payload(
     }
 
 
+async def _seed_proxy_for_account_delete(database_module, provider_id: int, suffix: int = 20) -> int:
+    (proxy_id,) = await database_module.upsert_proxy_endpoints_returning_ids(
+        provider_id,
+        [
+            {
+                "provider_proxy_id": f"runtime-proxy-{suffix}",
+                "endpoint": f"proxy-{suffix}.example:1080",
+                "host": f"proxy-{suffix}.example",
+                "port": 1080,
+                "protocol": "socks5",
+                "status": "alive",
+                "exit_ip": f"198.51.100.{suffix}",
+                "ip_type": "residential",
+                "country_code": "VN",
+            }
+        ],
+    )
+    await database_module.update_proxy_endpoint_intelligence(
+        proxy_id,
+        {
+            "ip_type": "residential",
+            "ip_type_source": "test",
+            "ip_type_confidence": "high",
+            "country_code": "VN",
+            "country_name": "Vietnam",
+            "geo_source": "test",
+            "geo_confidence": "high",
+        },
+    )
+    await database_module.save_proxy_probe_result(
+        proxy_id,
+        profile="earnapp_wss",
+        probe_status="alive",
+        verdict="CID_SET",
+        eligibility="eligible",
+        reason="",
+        exit_ip=f"198.51.100.{suffix}",
+        latency_ms=10,
+        probe_version="test",
+    )
+    return proxy_id
+
+
 def test_import_encrypts_credentials_and_lists_only_masked_metadata(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
@@ -933,6 +976,12 @@ def test_stranded_v19_recovery_rejects_malformed_ciphertext_against_valid_source
                 await database.init_db()
 
             assert not await database._table_exists(db, "earnapp_accounts_v19_legacy")
+            current = await (await db.execute("SELECT credentials_enc FROM earnapp_accounts WHERE id = 3")).fetchone()
+            source = await (
+                await db.execute("SELECT credentials_enc FROM earnapp_accounts_v19 WHERE id = 3")
+            ).fetchone()
+            assert current["credentials_enc"] == "enc:malformed"
+            assert source["credentials_enc"] == source_ciphertext
 
     asyncio.run(run())
 
@@ -1359,38 +1408,235 @@ def test_completed_marker_rejects_child_schema_with_wrong_foreign_key(tmp_path):
                 VALUES (1, 'legacy@example.com', '', 'DISABLED', '2026-08-18', '2026-08-18')
                 """
             )
-            await db.execute("DROP TABLE earnapp_logical_nodes")
+            await db.execute("PRAGMA writable_schema = ON")
             await db.execute(
                 """
-                CREATE TABLE earnapp_logical_nodes (
-                    logical_node_id TEXT PRIMARY KEY,
-                    account_id INTEGER NOT NULL,
-                    state TEXT NOT NULL,
-                    generation INTEGER NOT NULL,
-                    assigned_worker_id INTEGER,
-                    last_worker_id INTEGER,
-                    device_id TEXT NOT NULL,
-                    current_proxy_id INTEGER,
-                    preferred_proxy_id INTEGER,
-                    last_heartbeat_at TEXT,
-                    recovery_started_at TEXT,
-                    recovery_hold_until TEXT,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    FOREIGN KEY(account_id) REFERENCES earnapp_accounts_legacy_v18(id)
+                UPDATE sqlite_master
+                SET sql = replace(
+                    sql,
+                    'REFERENCES earnapp_accounts(id) ON DELETE RESTRICT',
+                    'REFERENCES earnapp_accounts_legacy_v18(id) ON DELETE RESTRICT'
                 )
+                WHERE type = 'table' AND name = 'earnapp_logical_nodes'
                 """
             )
+            await db.execute("PRAGMA writable_schema = OFF")
+            schema_version = int((await (await db.execute("PRAGMA schema_version")).fetchone())[0] or 0)
+            await db.execute(f"PRAGMA schema_version = {schema_version + 1}")
             await db.execute(
                 "INSERT INTO config (key, value) VALUES (?, 'complete')",
                 (database._EARNAPP_LEGACY_MIGRATION_KEY,),
             )
             await db.commit()
+            await database.close_shared()
 
-            with pytest.raises(RuntimeError, match="canonical child schema"):
+            with pytest.raises(RuntimeError, match="canonical child schema foreign-key mismatch"):
+                await database.init_db()
+
+            check = await database._get_db()
+            assert await database._earnapp_migration_marker(check) == "complete"
+            await check.close()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "corrupt_index_sql",
+    [
+        """
+        DROP INDEX idx_earnapp_logical_nodes_account_state;
+        CREATE INDEX idx_earnapp_logical_nodes_account_state
+            ON earnapp_logical_nodes(state, account_id);
+        """,
+        """
+        DROP INDEX idx_earnapp_logical_nodes_device_id_unique;
+        CREATE UNIQUE INDEX idx_earnapp_logical_nodes_device_id_unique
+            ON earnapp_logical_nodes(device_id);
+        """,
+    ],
+)
+def test_completed_marker_rejects_child_index_with_wrong_definition(tmp_path, corrupt_index_sql):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await db.executescript(database._SCHEMA)
+            await database._create_earnapp_current_schema(db)
+            await db.executescript(
+                """
+                CREATE TABLE earnapp_accounts_legacy_v18 (
+                    id INTEGER PRIMARY KEY,
+                    account_name TEXT NOT NULL,
+                    cookies_enc TEXT NOT NULL,
+                    state TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                INSERT INTO config (key, value)
+                VALUES ('migration.earnapp_accounts.legacy_v19', 'complete');
+                """
+            )
+            await db.executescript(corrupt_index_sql)
+            await db.commit()
+
+            with pytest.raises(RuntimeError, match="canonical child schema index mismatch"):
                 await database.init_db()
 
             assert await database._earnapp_migration_marker(db) == "complete"
+
+    asyncio.run(run())
+
+
+def test_completed_marker_rejects_partial_profile_key_uniqueness(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await db.executescript(database._SCHEMA)
+            await db.execute(
+                """
+                CREATE TABLE earnapp_accounts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    profile_key TEXT NOT NULL,
+                    account_name TEXT NOT NULL,
+                    email TEXT NOT NULL DEFAULT '',
+                    auth_method TEXT NOT NULL CHECK(auth_method IN ('google', 'apple')),
+                    credentials_enc TEXT NOT NULL,
+                    credential_keys_json TEXT NOT NULL DEFAULT '[]',
+                    token_expires_at TEXT,
+                    cookie_expires_at TEXT,
+                    state TEXT NOT NULL DEFAULT 'ACTIVE',
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                )
+                """
+            )
+            await db.execute(
+                "CREATE UNIQUE INDEX idx_earnapp_accounts_profile_key_partial "
+                "ON earnapp_accounts(profile_key) WHERE profile_key != ''"
+            )
+            await database._create_earnapp_current_schema(db)
+            await db.executescript(
+                """
+                CREATE TABLE earnapp_accounts_legacy_v18 (
+                    id INTEGER PRIMARY KEY,
+                    account_name TEXT NOT NULL,
+                    cookies_enc TEXT NOT NULL,
+                    state TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                INSERT INTO config (key, value)
+                VALUES ('migration.earnapp_accounts.legacy_v19', 'complete');
+                """
+            )
+            await db.commit()
+
+            with pytest.raises(RuntimeError, match="canonical schema constraints"):
+                await database.init_db()
+
+            assert await database._earnapp_migration_marker(db) == "complete"
+
+    asyncio.run(run())
+
+
+def test_completed_v19_marker_adds_v21_proxy_reservations_without_rewriting_nodes(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await db.executescript(database._SCHEMA)
+            await database._create_earnapp_current_schema(db)
+            await db.executescript(
+                """
+                CREATE TABLE earnapp_accounts_legacy_v18 (
+                    id INTEGER PRIMARY KEY,
+                    account_name TEXT NOT NULL,
+                    cookies_enc TEXT NOT NULL,
+                    state TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                INSERT INTO earnapp_accounts
+                    (id, profile_key, account_name, email, auth_method, credentials_enc,
+                     credential_keys_json, state, created_at, updated_at)
+                VALUES (1, 'profile-v19', 'v19@example.com', 'v19@example.com',
+                        'google', '', '[]', 'ACTIVE', '2026-08-18', '2026-08-18');
+                INSERT INTO earnapp_logical_nodes
+                    (logical_node_id, account_id, platform, state, generation, device_id,
+                     proxy_health, observed_egress_ip, expected_egress_ip, proxy_health_reason)
+                VALUES ('earnapp-v19-node', 1, 'macos', 'ACTIVE', 7, 'sdk-mac-preserved-v19',
+                        'healthy', '203.0.113.10', '203.0.113.10', 'probe-ok');
+                INSERT INTO config (key, value)
+                VALUES ('migration.earnapp_accounts.legacy_v19', 'complete');
+                DROP TABLE earnapp_proxy_reservations;
+                PRAGMA user_version = 19;
+                """
+            )
+            await db.commit()
+
+            assert not await database._table_exists(db, "earnapp_proxy_reservations")
+
+            await database.init_db()
+
+            assert await database._table_exists(db, "earnapp_proxy_reservations")
+            assert database._EARNAPP_CHILD_INDEXES["earnapp_proxy_reservations"] <= await database._table_index_names(
+                db, "earnapp_proxy_reservations"
+            )
+            node = await (
+                await db.execute(
+                    """
+                    SELECT platform, state, generation, device_id, proxy_health,
+                           observed_egress_ip, expected_egress_ip, proxy_health_reason
+                    FROM earnapp_logical_nodes
+                    WHERE logical_node_id = 'earnapp-v19-node'
+                    """
+                )
+            ).fetchone()
+            assert dict(node) == {
+                "platform": "macos",
+                "state": "ACTIVE",
+                "generation": 7,
+                "device_id": "sdk-mac-preserved-v19",
+                "proxy_health": "healthy",
+                "observed_egress_ip": "203.0.113.10",
+                "expected_egress_ip": "203.0.113.10",
+                "proxy_health_reason": "probe-ok",
+            }
+            assert int((await (await db.execute("PRAGMA user_version")).fetchone())[0]) == database.SCHEMA_VERSION
+
+    asyncio.run(run())
+
+
+def test_completed_marker_rejects_invalid_schema_before_adding_v21_reservations(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            db = await database._get_db()
+            await db.executescript(database._SCHEMA)
+            await database._create_earnapp_current_schema(db)
+            await db.executescript(
+                """
+                CREATE TABLE earnapp_accounts_legacy_v18 (
+                    id INTEGER PRIMARY KEY,
+                    account_name TEXT NOT NULL,
+                    cookies_enc TEXT NOT NULL,
+                    state TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                INSERT INTO config (key, value)
+                VALUES ('migration.earnapp_accounts.legacy_v19', 'complete');
+                DROP TABLE earnapp_proxy_reservations;
+                DROP INDEX idx_earnapp_logical_nodes_account_state;
+                CREATE INDEX idx_earnapp_logical_nodes_account_state
+                    ON earnapp_logical_nodes(state, account_id);
+                PRAGMA user_version = 19;
+                """
+            )
+            await db.commit()
+
+            with pytest.raises(RuntimeError, match="canonical child schema index mismatch"):
+                await database.init_db()
+
+            assert not await database._table_exists(db, "earnapp_proxy_reservations")
+            assert int((await (await db.execute("PRAGMA user_version")).fetchone())[0]) == 19
 
     asyncio.run(run())
 
@@ -1827,12 +2073,21 @@ def test_locked_account_deletion_releases_its_local_node_proxy_lease(tmp_path):
                         "status": "alive",
                         "exit_ip": "198.51.100.10",
                         "ip_type": "residential",
+                        "country_code": "VN",
                     }
                 ],
             )
             await database.update_proxy_endpoint_intelligence(
                 proxy_id,
-                {"ip_type": "residential", "ip_type_source": "test", "ip_type_confidence": "high"},
+                {
+                    "ip_type": "residential",
+                    "ip_type_source": "test",
+                    "ip_type_confidence": "high",
+                    "country_code": "VN",
+                    "country_name": "Vietnam",
+                    "geo_source": "test",
+                    "geo_confidence": "high",
+                },
             )
             await database.save_proxy_probe_result(
                 proxy_id,
@@ -1850,13 +2105,197 @@ def test_locked_account_deletion_releases_its_local_node_proxy_lease(tmp_path):
             assert node["proxy_id"] == proxy_id
 
             assert await database.set_earnapp_account_state(account_id, "ACCOUNT_LOCKED")
-            assert await earnapp_accounts.delete_account(account_id)
+
+            async def cleanup(_binding):
+                return True
+
+            assert await earnapp_accounts.delete_account(account_id, runtime_cleanup=cleanup)
 
             assert await database.get_active_provider_proxy_lease("earnapp", worker_id, "earnapp-node-delete") is None
             retired = await database.get_earnapp_logical_node("earnapp-node-delete")
             assert retired is not None
             assert retired["state"] == "RETIRED"
             assert retired["current_proxy_id"] is None
+
+    asyncio.run(run())
+
+
+def test_locked_account_deletion_fails_closed_when_local_runtime_is_not_removed(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            await database.init_db()
+            account_id = await earnapp_accounts.import_account(_payload("profile-runtime-guard", "guard@example.com"))
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            proxy_id = await _seed_proxy_for_account_delete(database, provider_id)
+            worker_id = await database.upsert_worker("worker-runtime-guard", "runtime-guard", "http://worker")
+            node = await earnapp_recovery.provision_node(
+                "earnapp-runtime-guard", worker_id, device_id="device-runtime-guard"
+            )
+            assert node["proxy_id"] == proxy_id
+            await database.save_provider_instance(
+                "earnapp",
+                "earnapp-runtime-guard",
+                worker_id=worker_id,
+                mode="proxy",
+                container_id="container-runtime-guard",
+                proxy_id=proxy_id,
+                status="running",
+            )
+            assert await database.set_earnapp_account_state(account_id, "ACCOUNT_LOCKED")
+
+            with pytest.raises(earnapp_accounts.AccountDeletionDenied, match="runtime"):
+                await earnapp_accounts.delete_account(account_id)
+
+            assert await database.get_active_provider_proxy_lease("earnapp", worker_id, "earnapp-runtime-guard")
+            assert await database.get_earnapp_account_credentials(account_id)
+            retained = await database.get_earnapp_logical_node("earnapp-runtime-guard")
+            assert retained and retained["state"] == "ACTIVE"
+
+    asyncio.run(run())
+
+
+def test_active_logical_node_without_provider_instance_is_still_a_cleanup_binding(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            await database.init_db()
+            account_id = await earnapp_accounts.import_account(_payload("profile-orphan", "orphan@example.com"))
+            worker_id = await database.upsert_worker("worker-orphan", "orphan", "http://worker")
+            await database.assign_earnapp_account("earnapp-orphan")
+            db = await database._get_db()
+            await db.execute(
+                """
+                UPDATE earnapp_logical_nodes
+                SET state = 'ACTIVE', assigned_worker_id = ?, last_worker_id = ?,
+                    device_id = 'device-orphan', current_proxy_id = NULL
+                WHERE logical_node_id = 'earnapp-orphan' AND account_id = ?
+                """,
+                (worker_id, worker_id, account_id),
+            )
+            await db.commit()
+
+            bindings = await database.list_earnapp_runtime_bindings(account_id)
+
+            assert len(bindings) == 1
+            assert bindings[0]["logical_node_id"] == "earnapp-orphan"
+            assert bindings[0]["instance_id"] == "earnapp-orphan"
+            assert bindings[0]["worker_id"] == worker_id
+            assert bindings[0]["runtime_backend"] == ""
+
+    asyncio.run(run())
+
+
+def test_locked_account_deletion_requires_each_runtime_cleanup_ack_before_releasing_leases(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            await database.init_db()
+            account_id = await earnapp_accounts.import_account(_payload("profile-runtime-ack", "ack@example.com"))
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            proxy_id = await _seed_proxy_for_account_delete(database, provider_id, suffix=21)
+            worker_id = await database.upsert_worker("worker-runtime-ack", "runtime-ack", "http://worker")
+            node = await earnapp_recovery.provision_node(
+                "earnapp-runtime-ack", worker_id, device_id="device-runtime-ack"
+            )
+            assert node["proxy_id"] == proxy_id
+            await database.save_provider_instance(
+                "earnapp",
+                "earnapp-runtime-ack",
+                worker_id=worker_id,
+                mode="proxy",
+                container_id="container-runtime-ack",
+                proxy_id=proxy_id,
+                status="running",
+            )
+            assert await database.set_earnapp_account_state(account_id, "ACCOUNT_LOCKED")
+
+            async def cleanup(binding):
+                assert binding["logical_node_id"] == "earnapp-runtime-ack"
+                return False
+
+            with pytest.raises(earnapp_accounts.AccountDeletionDenied, match="cleanup"):
+                await earnapp_accounts.delete_account(account_id, runtime_cleanup=cleanup)
+
+            assert await database.get_active_provider_proxy_lease("earnapp", worker_id, "earnapp-runtime-ack")
+            assert await database.get_earnapp_account_credentials(account_id)
+
+    asyncio.run(run())
+
+
+def test_locked_account_deletion_releases_lease_only_after_every_runtime_ack(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            await database.init_db()
+            account_id = await earnapp_accounts.import_account(_payload("profile-runtime-ok", "ok@example.com"))
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            proxy_id = await _seed_proxy_for_account_delete(database, provider_id, suffix=22)
+            worker_id = await database.upsert_worker("worker-runtime-ok", "runtime-ok", "http://worker")
+            node = await earnapp_recovery.provision_node("earnapp-runtime-ok", worker_id, device_id="device-runtime-ok")
+            assert node["proxy_id"] == proxy_id
+            await database.save_provider_instance(
+                "earnapp",
+                "earnapp-runtime-ok",
+                worker_id=worker_id,
+                mode="proxy",
+                container_id="container-runtime-ok",
+                proxy_id=proxy_id,
+                status="running",
+            )
+            assert await database.set_earnapp_account_state(account_id, "ACCOUNT_LOCKED")
+            cleaned: list[str] = []
+
+            async def cleanup(binding):
+                cleaned.append(str(binding["instance_id"]))
+                return True
+
+            assert await earnapp_accounts.delete_account(account_id, runtime_cleanup=cleanup)
+            assert cleaned == ["earnapp-runtime-ok"]
+            assert await database.get_active_provider_proxy_lease("earnapp", worker_id, "earnapp-runtime-ok") is None
+            assert await database.get_earnapp_account_credentials(account_id) is None
+
+    asyncio.run(run())
+
+
+def test_locked_account_deletion_rechecks_stranded_logical_nodes_after_runtime_ack(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            await database.init_db()
+            account_id = await earnapp_accounts.import_account(_payload("profile-race", "race@example.com"))
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            proxy_id = await _seed_proxy_for_account_delete(database, provider_id, suffix=23)
+            worker_id = await database.upsert_worker("worker-race", "race", "http://worker")
+            node = await earnapp_recovery.provision_node(
+                "earnapp-runtime-race", worker_id, device_id="device-runtime-race"
+            )
+            assert node["proxy_id"] == proxy_id
+            await database.save_provider_instance(
+                "earnapp",
+                "earnapp-runtime-race",
+                worker_id=worker_id,
+                mode="proxy",
+                container_id="container-runtime-race",
+                proxy_id=proxy_id,
+                status="running",
+            )
+            assert await database.set_earnapp_account_state(account_id, "ACCOUNT_LOCKED")
+
+            async def cleanup(_binding):
+                db = await database._get_db()
+                await db.execute(
+                    """
+                    INSERT INTO earnapp_logical_nodes
+                        (logical_node_id, account_id, state, assigned_worker_id, last_worker_id, device_id)
+                    VALUES ('earnapp-stranded-race', ?, 'ACTIVE', ?, ?, 'device-stranded-race')
+                    """,
+                    (account_id, worker_id, worker_id),
+                )
+                await db.commit()
+                return True
+
+            with pytest.raises(earnapp_accounts.AccountDeletionDenied, match="cleanup"):
+                await earnapp_accounts.delete_account(account_id, runtime_cleanup=cleanup)
+
+            assert await database.get_earnapp_account_credentials(account_id)
+            stranded = await database.get_earnapp_logical_node("earnapp-stranded-race")
+            assert stranded and stranded["state"] == "ACTIVE"
 
     asyncio.run(run())
 
@@ -1892,7 +2331,15 @@ def test_proxy_capacity_counts_canonical_egress_and_excludes_every_assignment_ty
                     exit_ip = f"198.51.100.{index}"
                 await database.update_proxy_endpoint_intelligence(
                     proxy_id,
-                    {"ip_type": "residential", "ip_type_source": "test", "ip_type_confidence": "high"},
+                    {
+                        "ip_type": "residential",
+                        "ip_type_source": "test",
+                        "ip_type_confidence": "high",
+                        "country_code": "VN",
+                        "country_name": "Vietnam",
+                        "geo_source": "test",
+                        "geo_confidence": "high",
+                    },
                 )
                 await database.save_proxy_probe_result(
                     proxy_id,

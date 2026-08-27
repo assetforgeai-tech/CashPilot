@@ -2836,7 +2836,7 @@ def test_proxy_pool_schema_migrates_a_v17_database_without_losing_existing_rows(
                 for row in await (await db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")).fetchall()
             }
 
-            assert version == 19
+            assert version == database.SCHEMA_VERSION
             assert {
                 "country_code",
                 "country_name",
@@ -3352,7 +3352,16 @@ def test_earnapp_scoped_lease_requires_cid_set_and_never_mutates_worker_assignme
             )
             for proxy_id in proxy_ids:
                 await database.update_proxy_endpoint_intelligence(
-                    proxy_id, {"ip_type": "residential", "ip_type_source": "test", "ip_type_confidence": "high"}
+                    proxy_id,
+                    {
+                        "ip_type": "residential",
+                        "ip_type_source": "test",
+                        "ip_type_confidence": "high",
+                        "country_code": "VN",
+                        "country_name": "Vietnam",
+                        "geo_source": "test",
+                        "geo_confidence": "high",
+                    },
                 )
             worker_id = await database.upsert_worker("worker-a", "a", "http://a")
             for proxy_id, exit_ip in zip(proxy_ids, ("8.8.8.8", "9.9.9.9"), strict=True):
@@ -3409,7 +3418,16 @@ def test_earnapp_lease_rejects_stale_egress_until_current_egress_is_qualified(tm
                 provider_id, [{"provider_proxy_id": "one", "host": "1.1.1.1", "port": 1000, "ip_type": "residential"}]
             )
             await database.update_proxy_endpoint_intelligence(
-                proxy_id, {"ip_type": "residential", "ip_type_source": "test", "ip_type_confidence": "high"}
+                proxy_id,
+                {
+                    "ip_type": "residential",
+                    "ip_type_source": "test",
+                    "ip_type_confidence": "high",
+                    "country_code": "VN",
+                    "country_name": "Vietnam",
+                    "geo_source": "test",
+                    "geo_confidence": "high",
+                },
             )
             worker_id = await database.upsert_worker("worker-a", "a", "http://a")
 
@@ -3447,7 +3465,16 @@ def test_earnapp_lease_rejects_stale_egress_until_current_egress_is_qualified(tm
                 probe_version="test",
             )
             await database.update_proxy_endpoint_intelligence(
-                proxy_id, {"ip_type": "residential", "ip_type_source": "test", "ip_type_confidence": "high"}
+                proxy_id,
+                {
+                    "ip_type": "residential",
+                    "ip_type_source": "test",
+                    "ip_type_confidence": "high",
+                    "country_code": "VN",
+                    "country_name": "Vietnam",
+                    "geo_source": "test",
+                    "geo_confidence": "high",
+                },
             )
 
             stale_row = next(item for item in await database.list_proxy_pool() if int(item["id"]) == proxy_id)
@@ -3684,7 +3711,16 @@ def test_new_scoped_leases_never_share_an_egress_ip_across_providers(tmp_path):
             )
             for proxy_id in proxy_ids:
                 await database.update_proxy_endpoint_intelligence(
-                    proxy_id, {"ip_type": "residential", "ip_type_source": "test", "ip_type_confidence": "high"}
+                    proxy_id,
+                    {
+                        "ip_type": "residential",
+                        "ip_type_source": "test",
+                        "ip_type_confidence": "high",
+                        "country_code": "VN",
+                        "country_name": "Vietnam",
+                        "geo_source": "test",
+                        "geo_confidence": "high",
+                    },
                 )
             for proxy_id, exit_ip in zip(proxy_ids, ("8.8.8.8", "8.8.8.8", "9.9.9.9"), strict=True):
                 await database.save_proxy_probe_result(
@@ -3773,7 +3809,16 @@ def test_delete_all_proxy_pool_cascades_pool_state_and_preserves_provider_config
             )
             for proxy_id in proxy_ids:
                 await database.update_proxy_endpoint_intelligence(
-                    proxy_id, {"ip_type": "residential", "ip_type_source": "test", "ip_type_confidence": "high"}
+                    proxy_id,
+                    {
+                        "ip_type": "residential",
+                        "ip_type_source": "test",
+                        "ip_type_confidence": "high",
+                        "country_code": "VN",
+                        "country_name": "Vietnam",
+                        "geo_source": "test",
+                        "geo_confidence": "high",
+                    },
                 )
             await database.create_proxy_import_batch(
                 provider_id,
@@ -3882,7 +3927,15 @@ def test_delete_all_proxy_pool_removes_earnapp_control_route_but_preserves_accou
             )
             await database.update_proxy_endpoint_intelligence(
                 proxy_id,
-                {"ip_type": "residential", "ip_type_source": "test", "ip_type_confidence": "high"},
+                {
+                    "ip_type": "residential",
+                    "ip_type_source": "test",
+                    "ip_type_confidence": "high",
+                    "country_code": "VN",
+                    "country_name": "Vietnam",
+                    "geo_source": "test",
+                    "geo_confidence": "high",
+                },
             )
             await database.save_proxy_probe_result(
                 proxy_id,
@@ -3947,7 +4000,15 @@ def test_delete_selected_proxy_removes_earnapp_control_route_but_preserves_accou
             for proxy_id, exit_ip in zip(proxy_ids, ("8.8.8.8", "9.9.9.9"), strict=True):
                 await database.update_proxy_endpoint_intelligence(
                     proxy_id,
-                    {"ip_type": "residential", "ip_type_source": "test", "ip_type_confidence": "high"},
+                    {
+                        "ip_type": "residential",
+                        "ip_type_source": "test",
+                        "ip_type_confidence": "high",
+                        "country_code": "VN",
+                        "country_name": "Vietnam",
+                        "geo_source": "test",
+                        "geo_confidence": "high",
+                    },
                 )
                 await database.save_proxy_probe_result(
                     proxy_id,

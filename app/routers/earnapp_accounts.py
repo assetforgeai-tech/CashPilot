@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from typing import Any
 
@@ -30,6 +31,89 @@ class ReplacementTicketIn(BaseModel):
     target_worker_id: int = Field(gt=0)
 
 
+_RUNTIME_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{2,120}$")
+
+
+def _remote_worker_reports_not_found(exc: Exception) -> bool:
+    """Distinguish a remote runtime 404 from a missing worker record."""
+    return (
+        int(getattr(exc, "status_code", 0) or 0) == 404
+        and str(getattr(exc, "detail", "") or "") == "Worker request failed"
+    )
+
+
+async def _remove_local_runtime(binding: dict[str, Any]) -> bool:
+    """Remove one tracked runtime and require a worker-side removal ACK.
+
+    Account deletion never unlinks the remote EarnApp device.  It only asks the
+    worker to remove the local Docker/LXD runtime identified by the durable
+    binding, and treats every transport/CAS/worker error as a refusal to delete
+    the account or release its proxy lease.
+    """
+    worker_id = int(binding.get("worker_id") or 0)
+    logical_node_id = str(binding.get("logical_node_id") or "").strip()
+    instance_id = str(binding.get("instance_id") or "").strip()
+    if worker_id <= 0 or not _RUNTIME_ID_RE.fullmatch(logical_node_id) or not _RUNTIME_ID_RE.fullmatch(instance_id):
+        return False
+
+    # Import lazily: this router is included by app.main, while app.main also
+    # imports the router during startup.
+    from app.main import _proxy_to_worker
+
+    backend = str(binding.get("runtime_backend") or "").strip().lower()
+
+    async def _lxd_runtime_absent(generation: int, device_id: str) -> bool:
+        try:
+            response = await _proxy_to_worker(
+                worker_id,
+                "POST",
+                f"/api/earnapp/nodes/{logical_node_id}/presence",
+                json={"generation": generation, "device_id": device_id},
+                timeout=30,
+            )
+        except Exception as exc:
+            # Only the host helper's exact-name LXD lookup may prove absence.
+            # Network/5xx/CAS errors remain unresolved and block deletion.
+            return _remote_worker_reports_not_found(exc)
+        return isinstance(response, dict) and response.get("present") is False
+
+    try:
+        if backend == "lxd":
+            generation = int(binding.get("generation") or 0)
+            device_id = str(binding.get("device_id") or "").strip()
+            if generation <= 0 or not device_id:
+                return False
+            response = await _proxy_to_worker(
+                worker_id,
+                "DELETE",
+                f"/api/earnapp/nodes/{logical_node_id}",
+                json={"generation": generation, "device_id": device_id},
+                timeout=180,
+            )
+        elif backend == "docker":
+            response = await _proxy_to_worker(
+                worker_id,
+                "DELETE",
+                f"/api/earnapp/docker-nodes/{instance_id}",
+                timeout=180,
+            )
+        else:
+            return False
+    except Exception as exc:
+        if int(getattr(exc, "status_code", 0) or 0) == 404 and backend == "lxd":
+            generation = int(binding.get("generation") or 0)
+            device_id = str(binding.get("device_id") or "").strip()
+            if generation > 0 and device_id:
+                return await _lxd_runtime_absent(generation, device_id)
+        return False
+
+    if not isinstance(response, dict) or str(response.get("status") or "").lower() != "removed":
+        return False
+    if backend == "docker":
+        return response.get("main_present") is False and response.get("sidecar_present") is False
+    return not ("running" in response and bool(response.get("running")))
+
+
 def _parse_timestamp(value: Any) -> datetime | None:
     text = str(value or "").strip()
     if not text:
@@ -55,7 +139,9 @@ def _token_warning(row: dict[str, Any]) -> str:
     return "healthy"
 
 
-def _public_account(row: dict[str, Any], snapshot: dict[str, Any] | None) -> dict[str, Any]:
+def _public_account(
+    row: dict[str, Any], snapshot: dict[str, Any] | None, route: dict[str, Any] | None = None
+) -> dict[str, Any]:
     try:
         credential_keys = __import__("json").loads(str(row.get("credential_keys_json") or "[]"))
     except (TypeError, ValueError, __import__("json").JSONDecodeError):
@@ -79,6 +165,15 @@ def _public_account(row: dict[str, Any], snapshot: dict[str, Any] | None) -> dic
             "offline_nodes": int(snapshot["offline_nodes"]) if snapshot else None,
             "collected_at": snapshot.get("collected_at") if snapshot else None,
         },
+        "route": route
+        or {
+            "status": "unavailable",
+            "source": "none",
+            "proxy_id": None,
+            "egress_ip": "",
+            "country_code": "",
+            "checked_at": None,
+        },
         "created_at": row.get("created_at"),
         "updated_at": row.get("updated_at"),
     }
@@ -89,7 +184,8 @@ async def _account_payload() -> dict[str, Any]:
     accounts: list[dict[str, Any]] = []
     for row in rows:
         snapshot = await database.get_latest_earnapp_snapshot(int(row["id"]))
-        accounts.append(_public_account(row, snapshot))
+        route = await earnapp_collection.account_route_status(int(row["id"]))
+        accounts.append(_public_account(row, snapshot, route))
     nodes = []
     now = datetime.now(UTC)
     for row in await database.list_earnapp_logical_nodes():
@@ -160,7 +256,7 @@ async def api_earnapp_account_delete(request: Request, account_id: int, body: Ea
     if str(body.confirm_phrase).strip() != "DELETE ACCOUNT":
         raise HTTPException(status_code=400, detail="Type DELETE ACCOUNT to confirm")
     try:
-        deleted = await earnapp_accounts.delete_account(account_id)
+        deleted = await earnapp_accounts.delete_account(account_id, runtime_cleanup=_remove_local_runtime)
     except earnapp_accounts.AccountDeletionDenied as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not deleted:

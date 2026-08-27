@@ -14,6 +14,7 @@ NKN_CHAINDb_RESTORE="${INSTALL_ROOT}/nkn_chaindb_restore.py"
 NKN_CHAINDb_CACHE="${INSTALL_ROOT}/nkn_chaindb_cache.py"
 NKN_HELPER_INSTALLER="${REPO_ROOT}/scripts/install-nkn-host-helper.sh"
 NKN_AGENT_SOCKET="/run/cashpilot-nkn-agent/agent.sock"
+EARNAPP_HELPER_INSTALLER="${REPO_ROOT}/scripts/install-earnapp-host-helper.sh"
 
 publish_slots_volume() {
   local mountpoint
@@ -138,6 +139,8 @@ install -m 0755 "${BASH_SOURCE[0]}" "${INSTALLED_SCRIPT}"
 install -m 0644 "${REPO_ROOT}/app/public_ip_slots.py" "${DISCOVERY}"
 install -m 0755 "${NKN_HELPER_INSTALLER}" "${INSTALL_ROOT}/install-nkn-host-helper.sh"
 "${NKN_HELPER_INSTALLER}" "${REPO_ROOT}"
+install -m 0755 "${EARNAPP_HELPER_INSTALLER}" "${INSTALL_ROOT}/install-earnapp-host-helper.sh"
+"${EARNAPP_HELPER_INSTALLER}" "${REPO_ROOT}"
 
 task_tmp="$(mktemp -d)"
 trap 'rm -rf -- "${task_tmp}"' EXIT
@@ -214,7 +217,8 @@ fi
 systemctl enable cashpilot-network-slots.service
 systemctl enable --now cashpilot-slots-sync.timer
 systemctl enable --now cashpilot-nkn-agent.service
+systemctl enable --now cashpilot-earnapp-agent.service
 prepare_networks
 systemctl restart cashpilot-network-slots.service
 
-echo "CashPilot host prerequisites, public IPv4 slots, and the restricted NKN LXD helper are ready."
+echo "CashPilot host prerequisites, public IPv4 slots, and restricted LXD helpers are ready."

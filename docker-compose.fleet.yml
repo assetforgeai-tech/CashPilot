@@ -98,6 +98,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /run/cashpilot-nkn-agent:/run/cashpilot-nkn-agent
+      - /run/cashpilot-earnapp-agent:/run/cashpilot-earnapp-agent
       - cashpilot_public_ip_slots:/network:ro
       # SEPARATE FROM THE UI'S /data, DELIBERATELY. This container has the
       # Docker socket, which is root on the host. The UI's /data holds
@@ -144,6 +145,7 @@ services:
 #      volumes:
 #        - /var/run/docker.sock:/var/run/docker.sock
 #        - /run/cashpilot-nkn-agent:/run/cashpilot-nkn-agent
+#        - /run/cashpilot-earnapp-agent:/run/cashpilot-earnapp-agent
 #        - cashpilot_public_ip_slots:/network:ro
 #        - cashpilot_worker_data:/data
 #      environment:

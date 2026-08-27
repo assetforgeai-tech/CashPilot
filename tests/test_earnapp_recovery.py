@@ -22,7 +22,14 @@ def _account(profile: str) -> dict[str, object]:
     }
 
 
-async def _seed_proxy(database_module, provider_id: int, suffix: int, *, ip_type: str = "residential") -> int:
+async def _seed_proxy(
+    database_module,
+    provider_id: int,
+    suffix: int,
+    *,
+    ip_type: str = "residential",
+    country_code: str = "VN",
+) -> int:
     (proxy_id,) = await database_module.upsert_proxy_endpoints_returning_ids(
         provider_id,
         [
@@ -44,6 +51,10 @@ async def _seed_proxy(database_module, provider_id: int, suffix: int, *, ip_type
             "ip_type": ip_type,
             "ip_type_source": "test",
             "ip_type_confidence": "high",
+            "country_code": country_code,
+            "country_name": country_code,
+            "geo_source": "test",
+            "geo_confidence": "high",
         },
     )
     await database_module.save_proxy_probe_result(
@@ -70,6 +81,26 @@ async def _setup(tmp_path, proxy_count: int = 3):
     return old_worker, new_worker, proxies
 
 
+async def _provision_node(
+    logical_node_id: str,
+    worker_id: int,
+    *,
+    device_id: str,
+    platform: str = "macos",
+    proxy_country_code: str = "VN",
+) -> dict[str, object]:
+    return await earnapp_recovery.provision_node(
+        logical_node_id,
+        worker_id,
+        device_id=device_id,
+        proxy_country_code=proxy_country_code,
+        platform=platform,
+    )
+
+
+_provision_macos_node = _provision_node
+
+
 def _db_patch(tmp_path):
     return (
         patch.object(database, "DB_DIR", tmp_path),
@@ -87,7 +118,7 @@ def test_stale_sweep_waits_fifteen_minutes_and_holds_proxy_for_one_hour(tmp_path
         db_dir, db_path = _db_patch(tmp_path)
         with db_dir, db_path:
             old_worker, _, proxies = await _setup(tmp_path)
-            node = await earnapp_recovery.provision_node("earnapp-node-a", old_worker, device_id="device-a")
+            node = await _provision_macos_node("earnapp-node-a", old_worker, device_id="device-a")
             assert node["proxy_id"] == proxies[0]
 
             db = await database._get_db()
@@ -122,11 +153,11 @@ def test_recovery_hold_keeps_proxy_exclusive_then_preserves_affinity_after_relea
         db_dir, db_path = _db_patch(tmp_path)
         with db_dir, db_path:
             old_worker, _, proxies = await _setup(tmp_path)
-            first = await earnapp_recovery.provision_node("earnapp-node-a", old_worker, device_id="device-a")
+            first = await _provision_macos_node("earnapp-node-a", old_worker, device_id="device-a")
             await database.begin_earnapp_recovery_hold("earnapp-node-a", hold_seconds=3600)
 
             other_worker = await database.upsert_worker("worker-other", "other-worker", "http://other")
-            other = await earnapp_recovery.provision_node("earnapp-node-b", other_worker, device_id="device-b")
+            other = await _provision_macos_node("earnapp-node-b", other_worker, device_id="device-b")
             assert other["proxy_id"] != first["proxy_id"]
 
             db = await database._get_db()
@@ -160,7 +191,7 @@ def test_new_worker_needs_one_time_ticket_and_generation_blocks_old_worker(tmp_p
         db_dir, db_path = _db_patch(tmp_path)
         with db_dir, db_path:
             old_worker, new_worker, _ = await _setup(tmp_path)
-            provisioned = await earnapp_recovery.provision_node("earnapp-node-a", old_worker, device_id="device-a")
+            provisioned = await _provision_macos_node("earnapp-node-a", old_worker, device_id="device-a")
             await database.begin_earnapp_recovery_hold("earnapp-node-a", hold_seconds=3600)
 
             with pytest.raises(earnapp_recovery.RecoveryClaimDenied, match="replacement ticket"):
@@ -181,13 +212,21 @@ def test_new_worker_needs_one_time_ticket_and_generation_blocks_old_worker(tmp_p
             assert replacement["device_id"] == "device-a"
             assert (
                 await earnapp_recovery.heartbeat_node(
-                    "earnapp-node-a", old_worker, generation=provisioned["generation"]
+                    "earnapp-node-a",
+                    old_worker,
+                    generation=provisioned["generation"],
+                    device_id=provisioned["device_id"],
+                    proxy_id=provisioned["proxy_id"],
                 )
                 is False
             )
             assert (
                 await earnapp_recovery.heartbeat_node(
-                    "earnapp-node-a", new_worker, generation=replacement["generation"]
+                    "earnapp-node-a",
+                    new_worker,
+                    generation=replacement["generation"],
+                    device_id=replacement["device_id"],
+                    proxy_id=replacement["proxy_id"],
                 )
                 is True
             )
@@ -208,12 +247,16 @@ def test_original_worker_heartbeat_cancels_hold_and_revokes_an_outstanding_repla
         db_dir, db_path = _db_patch(tmp_path)
         with db_dir, db_path:
             old_worker, new_worker, _ = await _setup(tmp_path)
-            provisioned = await earnapp_recovery.provision_node("earnapp-node-a", old_worker, device_id="device-a")
+            provisioned = await _provision_macos_node("earnapp-node-a", old_worker, device_id="device-a")
             await database.begin_earnapp_recovery_hold("earnapp-node-a", hold_seconds=3600)
             ticket = await earnapp_recovery.issue_replacement_ticket("earnapp-node-a", new_worker)
 
             assert await earnapp_recovery.heartbeat_node(
-                "earnapp-node-a", old_worker, generation=provisioned["generation"]
+                "earnapp-node-a",
+                old_worker,
+                generation=provisioned["generation"],
+                device_id=provisioned["device_id"],
+                proxy_id=provisioned["proxy_id"],
             )
             recovered = await database.get_earnapp_logical_node("earnapp-node-a")
             assert recovered is not None
@@ -232,12 +275,48 @@ def test_original_worker_heartbeat_cancels_hold_and_revokes_an_outstanding_repla
     asyncio.run(run())
 
 
+def test_heartbeat_requires_the_exact_device_and_proxy_assignment(tmp_path):
+    async def run():
+        db_dir, db_path = _db_patch(tmp_path)
+        with db_dir, db_path:
+            worker_id, _, _ = await _setup(tmp_path)
+            provisioned = await earnapp_recovery.provision_node(
+                "earnapp-node-a",
+                worker_id,
+                device_id="device-a",
+            )
+
+            assert not await earnapp_recovery.heartbeat_node(
+                "earnapp-node-a",
+                worker_id,
+                generation=provisioned["generation"],
+                device_id="device-b",
+                proxy_id=provisioned["proxy_id"],
+            )
+            assert not await earnapp_recovery.heartbeat_node(
+                "earnapp-node-a",
+                worker_id,
+                generation=provisioned["generation"],
+                device_id=provisioned["device_id"],
+                proxy_id=provisioned["proxy_id"] + 1,
+            )
+            assert await earnapp_recovery.heartbeat_node(
+                "earnapp-node-a",
+                worker_id,
+                generation=provisioned["generation"],
+                device_id=provisioned["device_id"],
+                proxy_id=provisioned["proxy_id"],
+            )
+
+    asyncio.run(run())
+
+
 def test_replacement_ticket_requires_an_existing_target_worker(tmp_path):
     async def run():
         db_dir, db_path = _db_patch(tmp_path)
         with db_dir, db_path:
             old_worker, _, _ = await _setup(tmp_path)
-            await earnapp_recovery.provision_node("earnapp-node-a", old_worker, device_id="device-a")
+            await _provision_macos_node("earnapp-node-a", old_worker, device_id="device-a")
             await database.begin_earnapp_recovery_hold("earnapp-node-a", hold_seconds=3600)
 
             with pytest.raises(earnapp_recovery.RecoveryClaimDenied, match="target worker"):
@@ -251,7 +330,7 @@ def test_new_worker_still_needs_a_ticket_after_the_one_hour_hold_expires(tmp_pat
         db_dir, db_path = _db_patch(tmp_path)
         with db_dir, db_path:
             old_worker, new_worker, _ = await _setup(tmp_path)
-            provisioned = await earnapp_recovery.provision_node("earnapp-node-a", old_worker, device_id="device-a")
+            provisioned = await _provision_macos_node("earnapp-node-a", old_worker, device_id="device-a")
             await database.begin_earnapp_recovery_hold("earnapp-node-a", hold_seconds=3600)
             db = await database._get_db()
             await db.execute(
@@ -286,7 +365,7 @@ def test_recovery_falls_back_when_preferred_proxy_is_no_longer_healthy(tmp_path)
         db_dir, db_path = _db_patch(tmp_path)
         with db_dir, db_path:
             old_worker, _, proxies = await _setup(tmp_path)
-            provisioned = await earnapp_recovery.provision_node("earnapp-node-a", old_worker, device_id="device-a")
+            provisioned = await _provision_macos_node("earnapp-node-a", old_worker, device_id="device-a")
             await database.begin_earnapp_recovery_hold("earnapp-node-a", hold_seconds=3600)
             db = await database._get_db()
             await db.execute(
@@ -308,12 +387,71 @@ def test_recovery_falls_back_when_preferred_proxy_is_no_longer_healthy(tmp_path)
     asyncio.run(run())
 
 
+@pytest.mark.parametrize(
+    ("platform", "initial_country", "incompatible_country"),
+    [("macos", "VN", "US"), ("ubuntu", "US", "VN"), ("ubuntu", "US", "")],
+)
+def test_recovery_never_changes_the_immutable_platform_country_contract(
+    tmp_path,
+    platform,
+    initial_country,
+    incompatible_country,
+):
+    async def run():
+        db_dir, db_path = _db_patch(tmp_path)
+        with db_dir, db_path:
+            await database.init_db()
+            await earnapp_accounts.import_account(_account("profile-a"))
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            initial_proxy = await _seed_proxy(
+                database,
+                provider_id,
+                1,
+                country_code=initial_country,
+            )
+            await _seed_proxy(
+                database,
+                provider_id,
+                2,
+                country_code=incompatible_country,
+            )
+            worker_id = await database.upsert_worker("worker-old", "old-worker", "http://old")
+            provisioned = await _provision_node(
+                "earnapp-node-a",
+                worker_id,
+                device_id="device-a",
+                platform=platform,
+                proxy_country_code=initial_country,
+            )
+            assert provisioned["proxy_id"] == initial_proxy
+
+            await database.begin_earnapp_recovery_hold("earnapp-node-a", hold_seconds=3600)
+            db = await database._get_db()
+            await db.execute(
+                "UPDATE earnapp_logical_nodes SET recovery_hold_until=datetime('now', '-1 second') "
+                "WHERE logical_node_id=?",
+                ("earnapp-node-a",),
+            )
+            await db.commit()
+            await earnapp_recovery.sweep_stale_nodes()
+            await database.update_proxy_pool_check_results({initial_proxy: "dead"})
+
+            with pytest.raises(earnapp_recovery.RecoveryClaimDenied, match="no proxy is available"):
+                await earnapp_recovery.claim_node(
+                    "earnapp-node-a",
+                    worker_id,
+                    expected_generation=provisioned["generation"],
+                )
+
+    asyncio.run(run())
+
+
 def test_recovery_does_not_reuse_preferred_proxy_after_a_legacy_worker_claims_it(tmp_path):
     async def run():
         db_dir, db_path = _db_patch(tmp_path)
         with db_dir, db_path:
             old_worker, _, proxies = await _setup(tmp_path)
-            provisioned = await earnapp_recovery.provision_node("earnapp-node-a", old_worker, device_id="device-a")
+            provisioned = await _provision_macos_node("earnapp-node-a", old_worker, device_id="device-a")
             await database.begin_earnapp_recovery_hold("earnapp-node-a", hold_seconds=3600)
             db = await database._get_db()
             await db.execute(
@@ -342,7 +480,7 @@ def test_recovery_does_not_reuse_preferred_proxy_after_another_account_controls_
         db_dir, db_path = _db_patch(tmp_path)
         with db_dir, db_path:
             old_worker, _, proxies = await _setup(tmp_path)
-            provisioned = await earnapp_recovery.provision_node("earnapp-node-a", old_worker, device_id="device-a")
+            provisioned = await _provision_macos_node("earnapp-node-a", old_worker, device_id="device-a")
             await database.begin_earnapp_recovery_hold("earnapp-node-a", hold_seconds=3600)
             db = await database._get_db()
             await db.execute(
@@ -407,8 +545,18 @@ def test_worker_heartbeat_cas_acknowledges_only_current_earnapp_generation():
             provider_states={
                 "earnapp": {
                     "instances": [
-                        {"logical_node_id": "earnapp-node-a", "generation": 4},
-                        {"logical_node_id": "earnapp-node-stale", "generation": 2},
+                        {
+                            "logical_node_id": "earnapp-node-a",
+                            "generation": 4,
+                            "device_id": "sdk-mac-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                            "proxy_id": 11,
+                        },
+                        {
+                            "logical_node_id": "earnapp-node-stale",
+                            "generation": 2,
+                            "device_id": "sdk-mac-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                            "proxy_id": 12,
+                        },
                     ]
                 }
             },
@@ -425,6 +573,7 @@ def test_worker_heartbeat_cas_acknowledges_only_current_earnapp_generation():
                 "heartbeat_node",
                 AsyncMock(side_effect=[True, False]),
             ) as heartbeat,
+            patch.object(database, "record_earnapp_proxy_health", AsyncMock(return_value=False)),
             patch.object(database, "confirm_worker_key", AsyncMock()),
             patch.object(main, "_earnings_for_worker", AsyncMock(return_value=None)),
             patch.object(main, "_spawn", side_effect=discard),
@@ -437,6 +586,10 @@ def test_worker_heartbeat_cas_acknowledges_only_current_earnapp_generation():
         assert response["earnapp_assignment_acks"] == [{"logical_node_id": "earnapp-node-a", "generation": 4}]
         assert response["earnapp_assignment_rejections"] == [{"logical_node_id": "earnapp-node-stale", "generation": 2}]
         assert heartbeat.await_args_list[0].args == ("earnapp-node-a", 11)
-        assert heartbeat.await_args_list[0].kwargs == {"generation": 4}
+        assert heartbeat.await_args_list[0].kwargs == {
+            "generation": 4,
+            "device_id": "sdk-mac-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "proxy_id": 11,
+        }
 
     asyncio.run(run())

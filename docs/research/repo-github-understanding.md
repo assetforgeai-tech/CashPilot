@@ -1,8 +1,35 @@
 # CashPilot: Repo và GitHub Understanding
 
-Ngày chụp trạng thái nền: 2026-08-23; cập nhật EarnApp migration safety: 2026-08-26
+Ngày chụp trạng thái nền: 2026-08-23; cập nhật EarnApp standardization implementation: 2026-08-27
 
-Commit nền hiện tại: `a6c6e4c18a7e4fdfca7b00396bbb51f6f6f2e849`
+Commit nền hiện tại: `fe8dfb1` (PR #45, `origin/main`); branch
+`feat/earnapp-standardization-main` có thay đổi EarnApp chưa commit, chưa release
+và chưa deploy.
+
+## EarnApp official Mac canary live verification (2026-08-26)
+
+- Account Pool id `2` (`assetforgeai`) is `ACTIVE`; Chrome profile 40 was
+  refreshed and its Devices table shows `sdk-mac-4ae944b1` with the online
+  status dot. Authenticated collector evidence is `device_present=true`,
+  `online=true`, `banned=false`.
+- `test-sing` logical node `earnapp-canary-test-sing-1` remains bound to worker
+  `43406`, proxy lease `#12706`, and its original writable state volume. The
+  canary was replaced in place with image
+  `cashpilot/earnapp-mac-canary:asset-4a1e80cbb95d`; sidecar network, resource,
+  restart and profile mounts, UUID, tracking ID and device identity were kept.
+- The server instance row was updated only for the new Docker container ID;
+  account, worker, proxy, generation and encrypted spec were preserved. No
+  remote unlink/delete, lease rotation, or protected provider operation was
+  performed.
+- Source hardening still pending release: HTTP 200 `{error: ...}` link responses
+  are sanitized as terminal `remote` errors, and canary verification does not
+  retry those known rejections. The runtime manifest pins the new entrypoint
+  hash.
+- Schema v21, immutable cross-platform identity, node-scoped proxy evidence,
+  scheduled account collection, sequential EarnApp deployment and CAS proxy
+  rotation are implemented locally. Non-VN Ubuntu nodes use the restricted
+  EarnApp LXD helper; Settings owns the CPU/RAM values. This implementation did
+  not mutate a live worker, proxy lease, account, identity or provider.
 
 ## EarnApp migration safety patch (2026-08-26)
 
@@ -71,10 +98,11 @@ Verification của baseline đạt focused suite `283 passed`, full non-live sui
 `1812 passed, 8 skipped`; migration-safety verification mới nhất được ghi ở
 `docs/research/earnapp-legacy-migration-safety-2026-08.md`.
 
-Phạm vi còn mở là catalog/runtime EarnApp chính thức, worker provision/follow/
-link, MacOS/iOS emulation, Ubuntu LXD, DNS/reverse proxy cho hostname
-`4gmt.com`, validation bằng Chrome profile thật và live canary. Vì vậy EarnApp
-chưa được phân loại `PROTECTED_DONE`.
+Phạm vi còn mở là final local gates, review/merge/release, registry verification,
+scoped UI/worker/helper deployment and the fresh-worker live/recovery matrix.
+The EarnApp-specific lane exists in source, but the global Auto Deploy switch
+must remain operator-disabled until those gates pass. EarnApp is **not** yet
+`PROTECTED_DONE`.
 
 ## Phạm vi và nguyên tắc
 

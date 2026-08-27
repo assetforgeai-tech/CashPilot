@@ -330,13 +330,19 @@ def test_nkn_auto_deploy_retries_after_a_failed_slot_on_the_next_stable_heartbea
             ),
             patch.object(database, "get_deployments", AsyncMock(return_value=[])),
             patch.object(main, "_deploy_nkn_slots", deploy),
+            patch.object(
+                main,
+                "_deploy_earnapp_nodes",
+                AsyncMock(return_value={"deployed": [], "skipped": [], "failed": []}),
+            ),
             patch.object(main, "_spawn", side_effect=capture),
             patch.object(main.catalog, "get_services", return_value=[]),
         ):
             await main._maybe_auto_deploy_after_heartbeat(7)
-            await spawned.pop(0)
+            await asyncio.gather(*spawned)
+            spawned.clear()
             await main._maybe_auto_deploy_after_heartbeat(7)
-            await spawned.pop(0)
+            await asyncio.gather(*spawned)
 
         assert deploy.await_count == 2
         assert 7 in main._NKN_AUTO_DEPLOY_DONE
