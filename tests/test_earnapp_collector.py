@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import json
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import httpx
 
-from app import database, earnapp_accounts, earnapp_collection, earnapp_recovery
+from app import database, earnapp_accounts, earnapp_collection, earnapp_recovery, main
 from app.collectors import COLLECTOR_MAP
+from app.collectors.base import EarningsResult
 from app.collectors.earnapp import EarnAppAccountCollector, build_proxy_url
 
 
@@ -397,6 +398,8 @@ class _LinkClient:
         self.kwargs = kwargs
         self.cookies = dict(kwargs.get("cookies") or {})
         self.linked = False
+        self.link_headers: dict[str, str] = {}
+        self.link_payload: dict[str, str] = {}
 
     async def get(self, url, **kwargs):
         self.calls.append(("GET", url))
@@ -414,12 +417,9 @@ class _LinkClient:
         self.calls.append(("POST", url))
         assert kwargs["headers"]["xsrf-token"] == "rotated-xsrf"
         assert kwargs["headers"]["Origin"] == "https://earnapp.com"
-        assert kwargs["headers"]["Referer"] == "https://earnapp.com/dashboard/"
         if url.endswith("/link_device"):
-            assert kwargs["json"] == {
-                "uuid": "sdk-mac-test",
-                "platform": "macos",
-            }
+            self.link_headers = dict(kwargs["headers"])
+            self.link_payload = dict(kwargs["json"])
             self.linked = True
             return _Response(200, {"status": "ok"})
         if url.endswith("/device_statuses"):
@@ -429,6 +429,14 @@ class _LinkClient:
 
     async def aclose(self):
         self.is_closed = True
+
+
+class _LinkErrorClient(_LinkClient):
+    async def post(self, url, **kwargs):
+        if url.endswith("/link_device"):
+            self.calls.append(("POST", url))
+            return _Response(200, {"error": "The device is not found"})
+        return await super().post(url, **kwargs)
 
 
 def test_link_and_verify_device_uses_account_proxy_and_requires_dashboard_online_evidence():
@@ -462,6 +470,15 @@ def test_link_and_verify_device_uses_account_proxy_and_requires_dashboard_online
         )
 
     assert clients[0].kwargs["proxy"] == "socks5://user:pass@proxy.example:1080"
+    assert clients[0].link_headers["Referer"] == "https://earnapp.com/dashboard/link/sdk-mac-test"
+    assert clients[0].link_headers["csrf-token"] == "rotated-xsrf"
+    assert clients[0].link_headers["x-csrf-token"] == "rotated-xsrf"
+    assert clients[0].link_headers["x-xsrf-token"] == "rotated-xsrf"
+    assert clients[0].link_payload == {
+        "uuid": "sdk-mac-test",
+        "platform": "macos",
+        "_csrf": "rotated-xsrf",
+    }
     assert calls == [
         ("GET", "https://earnapp.com/dashboard/api/sec/rotate_xsrf"),
         ("GET", "https://earnapp.com/dashboard/api/user_data"),
@@ -481,6 +498,58 @@ def test_link_and_verify_device_uses_account_proxy_and_requires_dashboard_online
     }
     assert "refresh-secret" not in json.dumps(result)
     assert "rotated-xsrf" not in json.dumps(result)
+
+
+def test_link_and_verify_device_maps_internal_ubuntu_platform_to_earnapp_linux_wire_contract():
+    calls: list[tuple[str, str]] = []
+    clients: list[_LinkClient] = []
+
+    def factory(**kwargs):
+        client = _LinkClient(calls, **kwargs)
+        clients.append(client)
+        return client
+
+    credentials = {"cookies": {"oauth-refresh-token": "refresh-secret", "xsrf-token": "old-xsrf-secret"}}
+    proxy = {"protocol": "socks5", "host": "proxy.example", "port": 1080}
+    with patch("app.collectors.earnapp.httpx.AsyncClient", side_effect=factory):
+        result = asyncio.run(
+            EarnAppAccountCollector(credentials, proxy).link_and_verify_device(
+                "sdk-mac-test",
+                platform="ubuntu",
+            )
+        )
+
+    assert result["status"] == "online"
+    assert clients[0].link_payload == {
+        "uuid": "sdk-mac-test",
+        "platform": "linux",
+        "_csrf": "rotated-xsrf",
+    }
+
+
+def test_link_and_verify_device_reports_http_200_api_error_instead_of_pending():
+    calls: list[tuple[str, str]] = []
+
+    def factory(**kwargs):
+        return _LinkErrorClient(calls, **kwargs)
+
+    credentials = {"cookies": {"oauth-refresh-token": "refresh-secret", "xsrf-token": "old-xsrf-secret"}}
+    proxy = {"protocol": "socks5", "host": "proxy.example", "port": 1080}
+    with patch("app.collectors.earnapp.httpx.AsyncClient", side_effect=factory):
+        result = asyncio.run(EarnAppAccountCollector(credentials, proxy).link_and_verify_device("sdk-mac-test"))
+
+    assert result == {
+        "status": "error",
+        "error_kind": "remote",
+        "error": "EarnApp rejected device link",
+        "device_id": "sdk-mac-test",
+        "authenticated": True,
+        "link_attempted": True,
+        "device_present": False,
+        "online": False,
+        "banned": False,
+    }
+    assert "The device is not found" not in json.dumps(result)
 
 
 def test_collection_persists_sanitized_snapshot_without_registering_legacy_singleton_collector(tmp_path):
@@ -538,5 +607,187 @@ def test_auth_failure_marks_account_but_proxy_route_failure_does_not(tmp_path):
                 route_result = await earnapp_collection.collect_account(account_id)
             assert route_result["error_kind"] == "route"
             assert (await earnapp_accounts.list_accounts())[0]["state"] == "ACTIVE"
+
+    asyncio.run(run())
+
+
+def test_collect_active_accounts_isolates_failures_and_skips_locked_accounts(monkeypatch):
+    accounts = [
+        {"id": 1, "state": "ACTIVE"},
+        {"id": 2, "state": "AUTH_FAILED"},
+        {"id": 3, "state": "ACCOUNT_LOCKED"},
+        {"id": 4, "state": "DELETED"},
+    ]
+
+    async def collect(account_id):
+        if account_id == 1:
+            raise RuntimeError("refresh-secret must never escape")
+        return {"status": "error", "error_kind": "auth", "error": "authentication rejected"}
+
+    with (
+        patch.object(database, "list_earnapp_accounts", return_value=accounts),
+        patch.object(earnapp_collection, "collect_account", side_effect=collect),
+    ):
+        result = asyncio.run(earnapp_collection.collect_active_accounts())
+
+    assert result == {
+        "attempted": 2,
+        "succeeded": 0,
+        "failed": 2,
+        "accounts": [
+            {"account_id": 1, "status": "error", "error_kind": "internal"},
+            {"account_id": 2, "status": "error", "error_kind": "auth"},
+        ],
+    }
+    assert "refresh-secret" not in json.dumps(result)
+
+
+def test_account_route_status_reports_exact_account_proxy_without_credentials(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            await database.init_db()
+            account_id = await earnapp_accounts.import_account(_account())
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            proxy_id = await _seed_proxy(provider_id, 1)
+            route = await earnapp_collection.ensure_collection_route(account_id)
+            assert route is not None and route["proxy_id"] == proxy_id
+
+            status = await earnapp_collection.account_route_status(account_id)
+            assert status == {
+                "status": "healthy",
+                "source": "account_control",
+                "proxy_id": proxy_id,
+                "egress_ip": "198.51.100.1",
+                "country_code": "",
+                "checked_at": None,
+            }
+            assert "pass-1" not in json.dumps(status)
+            assert "user-1" not in json.dumps(status)
+
+    asyncio.run(run())
+
+
+def test_scheduled_earnapp_failure_does_not_discard_normal_collector_results():
+    async def run():
+        collector = type("Collector", (), {"platform": "earnfm"})()
+        result = EarningsResult(platform="earnfm", balance=2.5, currency="USD")
+        upsert = AsyncMock()
+
+        with (
+            patch.object(main, "_collection_deployments", AsyncMock(return_value=[])),
+            patch.object(main.database, "get_config", AsyncMock(return_value={})),
+            patch("app.collectors.make_collectors", return_value=[collector]),
+            patch("app.collectors._close_stale", AsyncMock()),
+            patch.object(main, "_collect_with_collector", AsyncMock(return_value=(collector, result))),
+            patch.object(
+                earnapp_collection,
+                "collect_active_accounts",
+                AsyncMock(side_effect=RuntimeError("refresh-secret must never escape")),
+            ) as collect_earnapp,
+            patch.object(main.database, "upsert_earnings", upsert),
+            patch.object(main, "_detect_payout", AsyncMock(return_value=None)),
+            patch.object(main, "_pending_payout_alerts", AsyncMock(return_value=[])),
+            patch.object(main, "_flatline_check", AsyncMock(return_value=[])),
+            patch.object(main.metrics, "record_collection_start", return_value=1.0),
+            patch.object(main.metrics, "record_collection_end"),
+            patch.object(main.exchange_rates, "to_usd", return_value=1.0),
+            patch.object(main.catalog, "get_service", return_value=None),
+        ):
+            await main._run_collection()
+
+        collect_earnapp.assert_awaited_once_with()
+        upsert.assert_awaited_once_with(platform="earnfm", balance=2.5, currency="USD", fx_rate_usd=1.0)
+
+    asyncio.run(run())
+
+
+def test_scheduled_earnapp_partial_failure_marks_run_failed_and_surfaces_one_sanitized_alert():
+    async def run():
+        previous_alerts = main._collector_alerts
+        main._collector_alerts = []
+        record_alert = AsyncMock(return_value=False)
+        try:
+            with (
+                patch.object(main, "_collection_deployments", AsyncMock(return_value=[])),
+                patch.object(main.database, "get_config", AsyncMock(return_value={})),
+                patch("app.collectors.make_collectors", return_value=[]),
+                patch("app.collectors._close_stale", AsyncMock()),
+                patch.object(
+                    earnapp_collection,
+                    "collect_active_accounts",
+                    AsyncMock(
+                        return_value={
+                            "attempted": 2,
+                            "succeeded": 1,
+                            "failed": 1,
+                            "accounts": [
+                                {"account_id": 1, "status": "ok"},
+                                {"account_id": 2, "status": "error", "error_kind": "auth"},
+                            ],
+                        }
+                    ),
+                ),
+                patch.object(main.database, "record_alert", record_alert),
+                patch.object(main, "_pending_payout_alerts", AsyncMock(return_value=[])),
+                patch.object(main, "_flatline_check", AsyncMock(return_value=[])),
+                patch.object(main.metrics, "record_collection_start", return_value=1.0),
+                patch.object(main.metrics, "record_collection_end") as record_end,
+            ):
+                await main._run_collection()
+
+            message = "1 of 2 EarnApp account collections failed"
+            record_alert.assert_awaited_once_with("collector", "earnapp", message, category="auth")
+            assert main._collector_alerts == [
+                {"kind": "collector", "platform": "earnapp", "error": message, "category": "auth"}
+            ]
+            record_end.assert_called_once_with(1.0, False, 0)
+        finally:
+            main._collector_alerts = previous_alerts
+
+    asyncio.run(run())
+
+
+def test_scheduled_earnapp_recovery_clears_the_durable_account_alert():
+    async def run():
+        previous_alerts = main._collector_alerts
+        main._collector_alerts = [
+            {
+                "kind": "collector",
+                "platform": "earnapp",
+                "error": "1 of 1 EarnApp account collections failed",
+                "category": "route",
+            }
+        ]
+        clear_alerts = AsyncMock()
+        try:
+            with (
+                patch.object(main, "_collection_deployments", AsyncMock(return_value=[])),
+                patch.object(main.database, "get_config", AsyncMock(return_value={})),
+                patch("app.collectors.make_collectors", return_value=[]),
+                patch("app.collectors._close_stale", AsyncMock()),
+                patch.object(
+                    earnapp_collection,
+                    "collect_active_accounts",
+                    AsyncMock(
+                        return_value={
+                            "attempted": 1,
+                            "succeeded": 1,
+                            "failed": 0,
+                            "accounts": [{"account_id": 1, "status": "ok"}],
+                        }
+                    ),
+                ),
+                patch.object(main.database, "clear_alerts", clear_alerts),
+                patch.object(main, "_pending_payout_alerts", AsyncMock(return_value=[])),
+                patch.object(main, "_flatline_check", AsyncMock(return_value=[])),
+                patch.object(main.metrics, "record_collection_start", return_value=1.0),
+                patch.object(main.metrics, "record_collection_end"),
+            ):
+                await main._run_collection()
+
+            clear_alerts.assert_awaited_once_with("collector", "earnapp")
+            assert main._collector_alerts == []
+        finally:
+            main._collector_alerts = previous_alerts
 
     asyncio.run(run())

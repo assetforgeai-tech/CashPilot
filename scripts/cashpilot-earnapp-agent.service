@@ -1,0 +1,21 @@
+[Unit]
+Description=Restricted CashPilot EarnApp LXD host helper
+After=network-online.target docker.service snap.lxd.daemon.service lxd.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin
+ExecStart=/usr/local/lib/cashpilot/cashpilot-earnapp-agent.py
+Restart=always
+RestartSec=3
+RuntimeDirectory=cashpilot-earnapp-agent
+RuntimeDirectoryMode=0755
+PrivateTmp=true
+ProtectHome=read-only
+ProtectSystem=strict
+ReadWritePaths=/run/cashpilot-earnapp-agent -/var/lib/lxd -/var/snap/lxd
+
+[Install]
+WantedBy=multi-user.target

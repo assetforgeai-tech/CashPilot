@@ -3431,12 +3431,13 @@ const CP = (() => {
     renderEarnAppCapacity(payload.proxy_capacity || {});
     if (!rows) return;
     if (!accounts.length) {
-      rows.innerHTML = '<tr><td colspan="5"><div class="empty-state-text">No EarnApp account has been imported.</div></td></tr>';
+      rows.innerHTML = '<tr><td colspan="6"><div class="empty-state-text">No EarnApp account has been imported.</div></td></tr>';
       return;
     }
     rows.innerHTML = accounts.map(account => {
       const token = earnAppTokenLabel(account);
       const collector = account.collector || {};
+      const route = account.route || {};
       const balance = collector.money_balance == null ? '&mdash;' : `${Number(collector.money_balance).toFixed(2)} USD`;
       const nodes = collector.online_nodes == null
         ? `${Number(account.assigned_nodes) || 0} assigned`
@@ -3445,7 +3446,8 @@ const CP = (() => {
       return `<tr>
         <td><strong>${escapeHtml(account.account_name || account.email || `Account ${account.id}`)}</strong><small>${escapeHtml(account.auth_method || '')} · ${escapeHtml(account.profile_key || '')}</small><span class="badge badge-category">${escapeHtml(account.state || '')}</span></td>
         <td><span class="earnapp-token-state ${escapeHtml(token.css)}">${escapeHtml(token.label)}</span><small>${account.token_expires_at ? escapeHtml(fmtTimestamp(account.token_expires_at).text) : 'No expiry metadata'}</small></td>
-        <td><strong>${balance}</strong><small>${collector.money_total == null ? 'Lifetime unavailable' : `${Number(collector.money_total).toFixed(2)} USD lifetime`}</small></td>
+        <td><strong>${escapeHtml(route.status || 'unavailable')}</strong><small>${route.source === 'node' ? 'Account node proxy' : (route.source === 'account_control' ? 'Pre-node control proxy' : 'No collector route')}</small><small>${route.egress_ip ? `${escapeHtml(route.country_code || '—')} · ${escapeHtml(route.egress_ip)} · proxy #${escapeHtml(route.proxy_id || '—')}` : 'No healthy account-owned egress'}</small><small>${route.checked_at ? `Checked ${escapeHtml(fmtTimestamp(route.checked_at).text)}` : 'Check time unavailable'}</small></td>
+        <td><strong>${balance}</strong><small>${collector.money_total == null ? 'Lifetime unavailable' : `${Number(collector.money_total).toFixed(2)} USD lifetime`}</small><small>${collector.collected_at ? `Last collected ${escapeHtml(fmtTimestamp(collector.collected_at).text)}` : 'No successful collection yet'}</small></td>
         <td>${escapeHtml(nodes)}</td>
         <td><div class="earnapp-row-actions">
           <button class="btn btn-ghost btn-sm" data-action="collectEarnAppAccount" data-a1="${escapeHtml(account.id)}">Collect now</button>
@@ -3490,7 +3492,7 @@ const CP = (() => {
       renderEarnAppAccounts(payload);
       renderEarnAppRecovery(payload);
     } catch (err) {
-      rows.innerHTML = `<tr><td colspan="5" style="color:var(--error);">Could not load EarnApp accounts: ${escapeHtml(err.message)}</td></tr>`;
+      rows.innerHTML = `<tr><td colspan="6" style="color:var(--error);">Could not load EarnApp accounts: ${escapeHtml(err.message)}</td></tr>`;
       const recovery = document.getElementById('earnapp-recovery-rows');
       if (recovery) recovery.innerHTML = '<tr><td colspan="7" style="color:var(--error);">Recovery state unavailable.</td></tr>';
     }

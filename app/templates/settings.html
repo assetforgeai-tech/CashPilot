@@ -59,6 +59,20 @@
     <div><span>Recovery hold</span><strong>&mdash;</strong></div>
   </div>
 
+  <div class="earnapp-runtime-settings">
+    <div>
+      <h4>Ubuntu LXD runtime</h4>
+      <p>These limits are authoritative only for future Ubuntu EarnApp LXD nodes; saving does not resize or restart existing nodes.</p>
+    </div>
+    <label class="form-label" for="earnapp-lxd-cpu">CPU cores</label>
+    <input class="form-input settings-config-input" type="number" min="1" max="64" step="1"
+           id="earnapp-lxd-cpu" data-config="earnapp_lxd_cpu" value="1">
+    <label class="form-label" for="earnapp-lxd-memory">Memory (MiB)</label>
+    <input class="form-input settings-config-input" type="number" min="128" max="65536" step="128"
+           id="earnapp-lxd-memory" data-config="earnapp_lxd_memory_mib" value="1024">
+    <button class="btn btn-ghost" data-action="saveEnvSettings">Save EarnApp runtime</button>
+  </div>
+
   <div class="earnapp-account-grid">
     <div class="earnapp-import-panel">
       <h4>Import or refresh one account</h4>
@@ -100,8 +114,8 @@
       </div>
       <div class="earnapp-table-scroll">
         <table class="breakdown-table earnapp-account-table">
-          <thead><tr><th>Account</th><th>Token</th><th>Balance</th><th>Nodes</th><th>Actions</th></tr></thead>
-          <tbody id="earnapp-account-rows"><tr><td colspan="5">Loading...</td></tr></tbody>
+          <thead><tr><th>Account</th><th>Token</th><th>Collector route</th><th>Balance</th><th>Nodes</th><th>Actions</th></tr></thead>
+          <tbody id="earnapp-account-rows"><tr><td colspan="6">Loading...</td></tr></tbody>
         </table>
       </div>
     </div>

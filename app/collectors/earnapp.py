@@ -164,6 +164,19 @@ class EarnAppAccountCollector:
             headers["xsrf-token"] = xsrf
         return headers
 
+    @staticmethod
+    def _link_contract(device_id: str, platform: str, xsrf: str) -> tuple[dict[str, str], dict[str, str]]:
+        wire_platform = {"ubuntu": "linux", "macos": "macos", "ios": "ios"}.get(platform, platform)
+        headers = {
+            "Referer": f"https://earnapp.com/dashboard/link/{device_id}",
+            "csrf-token": xsrf,
+            "xsrf-token": xsrf,
+            "x-csrf-token": xsrf,
+            "x-xsrf-token": xsrf,
+            "X-XSRF-TOKEN": xsrf,
+        }
+        return headers, {"uuid": device_id, "platform": wire_platform, "_csrf": xsrf}
+
     async def link_and_verify_device(self, device_id: str, *, platform: str = "macos") -> dict[str, Any]:
         """Link one device through its account proxy and return secret-free dashboard evidence."""
         uuid = str(device_id or "").strip()
@@ -191,15 +204,29 @@ class EarnAppAccountCollector:
                 xsrf = str(client.cookies.get("xsrf-token") or self.cookies.get("xsrf-token") or "")
                 if not xsrf:
                     return {"status": "error", "error_kind": "auth", "error": "EarnApp XSRF unavailable"}
+                link_headers, link_payload = self._link_contract(uuid, platform, xsrf)
                 link_response = await client.post(
                     f"{API_BASE}/link_device",
                     params=API_PARAMS,
-                    headers=headers,
-                    json={"uuid": uuid, "platform": platform},
+                    headers={**headers, **link_headers},
+                    json=link_payload,
                 )
                 if link_response.status_code in AUTH_FAILURE_CODES:
                     return {"status": "error", "error_kind": "auth", "error": "authentication rejected"}
                 link_response.raise_for_status()
+                link_payload = link_response.json()
+                if isinstance(link_payload, Mapping) and link_payload.get("error"):
+                    return {
+                        "status": "error",
+                        "error_kind": "remote",
+                        "error": "EarnApp rejected device link",
+                        "device_id": uuid,
+                        "authenticated": True,
+                        "link_attempted": True,
+                        "device_present": False,
+                        "online": False,
+                        "banned": False,
+                    }
                 devices_response = await client.get(f"{API_BASE}/devices", params=API_PARAMS, headers=headers)
                 if devices_response.status_code in AUTH_FAILURE_CODES:
                     return {"status": "error", "error_kind": "auth", "error": "authentication rejected"}

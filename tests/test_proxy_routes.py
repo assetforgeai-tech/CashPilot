@@ -2836,7 +2836,7 @@ def test_proxy_pool_schema_migrates_a_v17_database_without_losing_existing_rows(
                 for row in await (await db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")).fetchall()
             }
 
-            assert version == 19
+            assert version == database.SCHEMA_VERSION
             assert {
                 "country_code",
                 "country_name",

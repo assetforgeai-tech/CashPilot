@@ -58,6 +58,32 @@ def test_auto_deploy_uses_one_lock_per_worker_and_continues_after_failure():
     asyncio.run(run())
 
 
+def test_earnapp_auto_deploy_does_not_mark_done_while_device_verification_is_pending():
+    async def run():
+        main._NKN_AUTO_DEPLOY_DONE.add(7)
+        main._EARNAPP_AUTO_DEPLOY_DONE.discard(7)
+
+        with patch.object(
+            main,
+            "_deploy_earnapp_nodes",
+            AsyncMock(
+                return_value={
+                    "deployed": [],
+                    "verified": ["earnapp-proxy-w7-ipv4-001"],
+                    "skipped": ["earnapp-proxy-w7-ipv4-001"],
+                    "pending": ["earnapp-proxy-w7-ipv4-001"],
+                    "failed": [],
+                }
+            ),
+        ) as deploy:
+            await main._run_auto_deploy_sequence(7, {}, [], delay_seconds=0)
+
+        deploy.assert_awaited_once()
+        assert 7 not in main._EARNAPP_AUTO_DEPLOY_DONE
+
+    asyncio.run(run())
+
+
 def test_auto_deploy_one_uses_server_deploy_endpoint():
     async def run():
         with patch.object(main, "api_deploy", AsyncMock(return_value={"status": "deployed"})) as deploy:
@@ -66,5 +92,41 @@ def test_auto_deploy_one_uses_server_deploy_endpoint():
         assert args[1] == "demo-provider"
         assert isinstance(args[2], main.DeployRequest)
         assert kwargs["worker_id"] == 9
+
+    asyncio.run(run())
+
+
+def test_auto_deploy_sequence_runs_special_and_catalog_providers_one_at_a_time_with_earnapp_last():
+    async def run():
+        calls: list[str] = []
+        main._NKN_AUTO_DEPLOY_DONE.discard(7)
+        main._EARNAPP_AUTO_DEPLOY_DONE.discard(7)
+
+        async def nkn(*_args, **_kwargs):
+            calls.append("nkn")
+            return {"slots": 1, "failed": []}
+
+        async def generic(_worker_id, slug):
+            calls.append(slug)
+
+        async def earnapp(*_args, **_kwargs):
+            calls.append("earnapp")
+            return {"deployed": ["node-a"], "skipped": [], "failed": []}
+
+        with (
+            patch.object(main, "_deploy_nkn_slots", side_effect=nkn),
+            patch.object(main, "_auto_deploy_one", side_effect=generic),
+            patch.object(main, "_deploy_earnapp_nodes", side_effect=earnapp),
+        ):
+            await main._run_auto_deploy_sequence(
+                7,
+                {"nkn_beneficiary_address": "beneficiary"},
+                ["earnfm", "iproyal"],
+                delay_seconds=0,
+            )
+
+        assert calls == ["nkn", "earnfm", "iproyal", "earnapp"]
+        assert 7 in main._NKN_AUTO_DEPLOY_DONE
+        assert 7 in main._EARNAPP_AUTO_DEPLOY_DONE
 
     asyncio.run(run())

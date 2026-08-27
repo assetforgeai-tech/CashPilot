@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import base64
+import inspect
 import json
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
 from typing import Any
 
@@ -25,6 +26,37 @@ COOKIE_ALLOWLIST = frozenset(
 
 class AccountDeletionDenied(RuntimeError):
     """Raised when an operator tries to delete an account that is not locked."""
+
+
+RuntimeCleanup = Callable[[Mapping[str, Any]], Awaitable[bool] | bool]
+
+
+async def _cleanup_account_runtimes(account_id: int, runtime_cleanup: RuntimeCleanup | None) -> list[str]:
+    """Remove every tracked local runtime before releasing account resources."""
+    bindings = await database.list_earnapp_runtime_bindings(int(account_id))
+    if not bindings:
+        return []
+    if runtime_cleanup is None:
+        raise AccountDeletionDenied("local EarnApp runtime cleanup acknowledgement is required")
+
+    cleaned_ids: list[str] = []
+    for binding in bindings:
+        instance_id = str(binding.get("instance_id") or "").strip()
+        if not instance_id:
+            raise AccountDeletionDenied("EarnApp runtime binding has no instance id")
+        # The live canary is an explicit protected resource. Account deletion
+        # must never turn a generic account action into canary destruction.
+        if instance_id == "earnapp-canary-test-sing-1":
+            raise AccountDeletionDenied("protected EarnApp canary runtime cannot be deleted")
+        try:
+            result = runtime_cleanup(binding)
+            acknowledged = await result if inspect.isawaitable(result) else result
+        except Exception as exc:  # noqa: BLE001 - fail closed on worker uncertainty
+            raise AccountDeletionDenied(f"EarnApp runtime cleanup failed for {instance_id}") from exc
+        if acknowledged is not True:
+            raise AccountDeletionDenied(f"EarnApp runtime cleanup was not acknowledged for {instance_id}")
+        cleaned_ids.append(instance_id)
+    return cleaned_ids
 
 
 def _iso_from_timestamp(value: Any) -> str | None:
@@ -143,8 +175,12 @@ async def assign_account(logical_node_id: str) -> dict[str, Any]:
     return await database.assign_earnapp_account(logical_node_id)
 
 
-async def delete_account(account_id: int) -> bool:
-    result = await database.delete_locked_earnapp_account(account_id)
+async def delete_account(account_id: int, *, runtime_cleanup: RuntimeCleanup | None = None) -> bool:
+    """Delete a locked account only after all local runtimes acknowledge removal."""
+    cleaned_ids = await _cleanup_account_runtimes(int(account_id), runtime_cleanup)
+    result = await database.delete_locked_earnapp_account(int(account_id), runtime_instance_ids=cleaned_ids)
     if result == "NOT_LOCKED":
         raise AccountDeletionDenied("EarnApp account must be ACCOUNT_LOCKED before deletion")
+    if result == "RUNTIME_CLEANUP_REQUIRED":
+        raise AccountDeletionDenied("EarnApp local runtime cleanup is incomplete")
     return result == "DELETED"

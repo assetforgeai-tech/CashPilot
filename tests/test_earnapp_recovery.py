@@ -181,13 +181,21 @@ def test_new_worker_needs_one_time_ticket_and_generation_blocks_old_worker(tmp_p
             assert replacement["device_id"] == "device-a"
             assert (
                 await earnapp_recovery.heartbeat_node(
-                    "earnapp-node-a", old_worker, generation=provisioned["generation"]
+                    "earnapp-node-a",
+                    old_worker,
+                    generation=provisioned["generation"],
+                    device_id=provisioned["device_id"],
+                    proxy_id=provisioned["proxy_id"],
                 )
                 is False
             )
             assert (
                 await earnapp_recovery.heartbeat_node(
-                    "earnapp-node-a", new_worker, generation=replacement["generation"]
+                    "earnapp-node-a",
+                    new_worker,
+                    generation=replacement["generation"],
+                    device_id=replacement["device_id"],
+                    proxy_id=replacement["proxy_id"],
                 )
                 is True
             )
@@ -213,7 +221,11 @@ def test_original_worker_heartbeat_cancels_hold_and_revokes_an_outstanding_repla
             ticket = await earnapp_recovery.issue_replacement_ticket("earnapp-node-a", new_worker)
 
             assert await earnapp_recovery.heartbeat_node(
-                "earnapp-node-a", old_worker, generation=provisioned["generation"]
+                "earnapp-node-a",
+                old_worker,
+                generation=provisioned["generation"],
+                device_id=provisioned["device_id"],
+                proxy_id=provisioned["proxy_id"],
             )
             recovered = await database.get_earnapp_logical_node("earnapp-node-a")
             assert recovered is not None
@@ -228,6 +240,42 @@ def test_original_worker_heartbeat_cancels_hold_and_revokes_an_outstanding_repla
                     expected_generation=provisioned["generation"],
                     replacement_ticket=ticket,
                 )
+
+    asyncio.run(run())
+
+
+def test_heartbeat_requires_the_exact_device_and_proxy_assignment(tmp_path):
+    async def run():
+        db_dir, db_path = _db_patch(tmp_path)
+        with db_dir, db_path:
+            worker_id, _, _ = await _setup(tmp_path)
+            provisioned = await earnapp_recovery.provision_node(
+                "earnapp-node-a",
+                worker_id,
+                device_id="device-a",
+            )
+
+            assert not await earnapp_recovery.heartbeat_node(
+                "earnapp-node-a",
+                worker_id,
+                generation=provisioned["generation"],
+                device_id="device-b",
+                proxy_id=provisioned["proxy_id"],
+            )
+            assert not await earnapp_recovery.heartbeat_node(
+                "earnapp-node-a",
+                worker_id,
+                generation=provisioned["generation"],
+                device_id=provisioned["device_id"],
+                proxy_id=provisioned["proxy_id"] + 1,
+            )
+            assert await earnapp_recovery.heartbeat_node(
+                "earnapp-node-a",
+                worker_id,
+                generation=provisioned["generation"],
+                device_id=provisioned["device_id"],
+                proxy_id=provisioned["proxy_id"],
+            )
 
     asyncio.run(run())
 
@@ -407,8 +455,18 @@ def test_worker_heartbeat_cas_acknowledges_only_current_earnapp_generation():
             provider_states={
                 "earnapp": {
                     "instances": [
-                        {"logical_node_id": "earnapp-node-a", "generation": 4},
-                        {"logical_node_id": "earnapp-node-stale", "generation": 2},
+                        {
+                            "logical_node_id": "earnapp-node-a",
+                            "generation": 4,
+                            "device_id": "sdk-mac-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                            "proxy_id": 11,
+                        },
+                        {
+                            "logical_node_id": "earnapp-node-stale",
+                            "generation": 2,
+                            "device_id": "sdk-mac-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                            "proxy_id": 12,
+                        },
                     ]
                 }
             },
@@ -425,6 +483,7 @@ def test_worker_heartbeat_cas_acknowledges_only_current_earnapp_generation():
                 "heartbeat_node",
                 AsyncMock(side_effect=[True, False]),
             ) as heartbeat,
+            patch.object(database, "record_earnapp_proxy_health", AsyncMock(return_value=False)),
             patch.object(database, "confirm_worker_key", AsyncMock()),
             patch.object(main, "_earnings_for_worker", AsyncMock(return_value=None)),
             patch.object(main, "_spawn", side_effect=discard),
@@ -437,6 +496,10 @@ def test_worker_heartbeat_cas_acknowledges_only_current_earnapp_generation():
         assert response["earnapp_assignment_acks"] == [{"logical_node_id": "earnapp-node-a", "generation": 4}]
         assert response["earnapp_assignment_rejections"] == [{"logical_node_id": "earnapp-node-stale", "generation": 2}]
         assert heartbeat.await_args_list[0].args == ("earnapp-node-a", 11)
-        assert heartbeat.await_args_list[0].kwargs == {"generation": 4}
+        assert heartbeat.await_args_list[0].kwargs == {
+            "generation": 4,
+            "device_id": "sdk-mac-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "proxy_id": 11,
+        }
 
     asyncio.run(run())

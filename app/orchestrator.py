@@ -11,6 +11,7 @@ import base64
 import contextlib
 import hashlib
 import io
+import ipaddress
 import json
 import logging
 import os
@@ -176,6 +177,155 @@ def _find_container(slug: str):
     raise ValueError(f"Container for {slug} not found")
 
 
+def _find_earnapp_runtime_container(client: Any, slug: str, *, sidecar: bool):
+    """Find one exact EarnApp runtime component and reject label collisions."""
+    name = _sidecar_name(slug) if sidecar else _container_name(slug)
+    try:
+        candidates = [client.containers.get(name)]
+    except NotFound:
+        candidates = client.containers.list(
+            all=True,
+            filters={
+                "label": [
+                    f"{LABEL_SERVICE}={slug}",
+                    f"{LABEL_MANAGED}=true",
+                ]
+            },
+        )
+
+    matches = []
+    for container in candidates:
+        labels = getattr(container, "labels", {}) or {}
+        if labels.get(LABEL_MANAGED) != "true" or labels.get(LABEL_SERVICE) != slug:
+            raise RuntimeError(f"EarnApp runtime label conflict for {slug}")
+        if str(labels.get("cashpilot.provider") or "") != "earnapp":
+            raise RuntimeError(f"EarnApp runtime provider conflict for {slug}")
+        is_sidecar = labels.get("cashpilot.role") == "egress-sidecar"
+        if is_sidecar == sidecar:
+            matches.append(container)
+
+    if len(matches) > 1:
+        raise RuntimeError(f"Multiple EarnApp runtime components found for {slug}")
+    return matches[0] if matches else None
+
+
+def earnapp_service_presence(slug: str, *, client: Any | None = None) -> dict[str, bool]:
+    """Return authoritative presence for both halves of one Docker EarnApp node."""
+    if not re.fullmatch(r"earnapp-[a-z0-9][a-z0-9-]{1,112}", str(slug or "")):
+        raise ValueError("invalid EarnApp Docker runtime id")
+    docker_client = client or _get_client()
+    return {
+        "main_present": _find_earnapp_runtime_container(docker_client, slug, sidecar=False) is not None,
+        "sidecar_present": _find_earnapp_runtime_container(docker_client, slug, sidecar=True) is not None,
+    }
+
+
+def probe_service_egress(slug: str) -> dict[str, Any]:
+    """Probe one managed container's actual network namespace without mutation."""
+    container = _find_container(slug)
+    if str(getattr(container, "status", "") or "").lower() != "running":
+        return {"running": False, "observed_egress_ip": ""}
+    result = container.exec_run(
+        [
+            "/bin/sh",
+            "-lc",
+            "curl --fail --silent --show-error --max-time 10 https://api.ipify.org",
+        ]
+    )
+    exit_code = int(getattr(result, "exit_code", result[0] if isinstance(result, tuple) else 1))
+    output = getattr(result, "output", result[1] if isinstance(result, tuple) and len(result) > 1 else b"")
+    if isinstance(output, tuple):
+        output = b"".join(part or b"" for part in output)
+    if isinstance(output, str):
+        output = output.encode()
+    observed = str(output or b"").strip().splitlines()[0] if output else ""
+    try:
+        observed = str(ipaddress.ip_address(observed))
+    except ValueError:
+        observed = ""
+    return {
+        "running": True,
+        "observed_egress_ip": observed if exit_code == 0 else "",
+        "probe_ok": bool(exit_code == 0 and observed),
+    }
+
+
+def _earnapp_sidecar(slug: str, client: Any | None = None):
+    if not re.fullmatch(r"earnapp-[a-z0-9][a-z0-9-]{1,112}", str(slug or "")):
+        raise ValueError("invalid EarnApp Docker runtime id")
+    sidecar = _find_earnapp_runtime_container(client or _get_client(), slug, sidecar=True)
+    if sidecar is None:
+        raise RuntimeError(f"EarnApp egress sidecar for {slug} not found")
+    mounts = sidecar.attrs.get("Mounts", []) or []
+    if not any(m.get("Destination") == "/etc/sing-box" and m.get("RW", True) for m in mounts):
+        raise RuntimeError(f"{slug} egress sidecar predates persistent binding support")
+    return sidecar
+
+
+def _exec_output(result: Any) -> tuple[int, bytes]:
+    exit_code = int(getattr(result, "exit_code", result[0] if isinstance(result, tuple) else 1))
+    output = getattr(result, "output", result[1] if isinstance(result, tuple) and len(result) > 1 else b"")
+    if isinstance(output, tuple):
+        output = b"".join(part or b"" for part in output)
+    if isinstance(output, str):
+        output = output.encode()
+    return exit_code, bytes(output or b"")
+
+
+def proxy_binding_status(slug: str) -> dict[str, Any]:
+    """Read the staged-binding marker without changing a sidecar."""
+    sidecar = _earnapp_sidecar(slug)
+    result = sidecar.exec_run(
+        [
+            "/bin/sh",
+            "-c",
+            "marker=''; [ -f /etc/sing-box/.cashpilot-binding-version ] && marker=$(cat /etc/sing-box/.cashpilot-binding-version); "
+            "prev=false; cand=false; [ -f /etc/sing-box/config.json.cashpilot-prev ] && prev=true; "
+            "[ -f /etc/sing-box/config.json.cashpilot-new ] && cand=true; "
+            'printf \'{"binding_version":"%s","previous_present":%s,"candidate_present":%s}\n\' "$marker" "$prev" "$cand"',
+        ]
+    )
+    exit_code, output = _exec_output(result)
+    if exit_code != 0:
+        raise RuntimeError(f"{slug} binding status probe failed")
+    try:
+        value = json.loads(output.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"{slug} binding status probe returned invalid data") from exc
+    if not isinstance(value, dict) or not isinstance(value.get("binding_version", ""), str):
+        raise RuntimeError(f"{slug} binding status probe returned invalid data")
+    return {
+        "binding_version": str(value.get("binding_version") or ""),
+        "previous_present": bool(value.get("previous_present")),
+        "candidate_present": bool(value.get("candidate_present")),
+    }
+
+
+def discard_proxy_binding(slug: str, binding_version: str) -> dict[str, Any]:
+    """Remove only an inactive candidate; never discard an active rollback copy."""
+    version = str(binding_version or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9._-]{8,128}", version):
+        raise ValueError("invalid binding_version")
+    sidecar = _earnapp_sidecar(slug)
+    status = proxy_binding_status(slug)
+    marker = str(status.get("binding_version") or "")
+    if status["previous_present"]:
+        raise RuntimeError(f"{slug} has an active rollback artifact")
+    if marker and marker != version:
+        raise RuntimeError(f"{slug} binding version does not match")
+    if status["candidate_present"] or marker:
+        result = sidecar.exec_run(
+            ["/bin/sh", "-c", "rm -f /etc/sing-box/config.json.cashpilot-new /etc/sing-box/.cashpilot-binding-version"]
+        )
+        exit_code, _ = _exec_output(result)
+        if exit_code != 0:
+            raise RuntimeError(f"{slug} candidate cleanup failed")
+    after = proxy_binding_status(slug)
+    if after["previous_present"] or after["candidate_present"] or after["binding_version"]:
+        raise RuntimeError(f"{slug} candidate cleanup remains ambiguous")
+    return {"binding_version": version, "action": "rolled_back", "idempotent": True}
+
+
 def _normalize_resources(resources: Any) -> dict[str, Any]:
     """Coerce a resources spec (Pydantic model, dict, or None) into a plain dict.
 
@@ -262,6 +412,7 @@ def deploy_raw(
     deploy_credentials: dict[str, Any] | None = None,
     provider_slug: str | None = None,
     host_runtime: str | None = None,
+    image_delivery: str = "registry",
     user: str | None = None,
     proxy: dict[str, Any] | None = None,
     sysctls: dict[str, str] | None = None,
@@ -293,6 +444,18 @@ def deploy_raw(
         env["PROXYBASE_XYZ_PHRASE"] = str(deploy_credentials.get("phrase") or "")
         image = provider_installers.ensure_proxybase_xyz_image(client)
         command = command or provider_installers.proxybase_xyz_command()
+    if provider == "earnapp":
+        if image_delivery != "operator_preload":
+            raise RuntimeError("EarnApp runtime requires an operator-preloaded image")
+        try:
+            image_obj = client.images.get(image)
+        except NotFound as exc:
+            raise RuntimeError(f"EarnApp runtime image {image} is not preloaded on this worker") from exc
+        image_config = ((image_obj.attrs or {}).get("Config") or {}) if getattr(image_obj, "attrs", None) else {}
+        labels_value = image_config.get("Labels") or {}
+        platform_label = str((labels or {}).get("cashpilot.earnapp.platform") or "")
+        image_platform = "ios" if platform_label == "ios" else "macos"
+        earnapp_runtime.validate_image_labels(labels_value, image_platform)
     # Remove any existing container with the same name
     try:
         old = client.containers.get(name)
@@ -323,15 +486,12 @@ def deploy_raw(
     if labels:
         all_labels.update(labels)
 
-    logger.info("Pulling image %s", image)
-    try:
-        client.images.pull(image)
-    except APIError as exc:
-        logger.warning("Failed to pull image %s: %s (trying local)", image, exc)
-    if provider == "earnapp":
-        image_obj = client.images.get(image)
-        image_config = ((image_obj.attrs or {}).get("Config") or {}) if getattr(image_obj, "attrs", None) else {}
-        earnapp_runtime.validate_image_labels(image_config.get("Labels") or {})
+    if provider != "earnapp":
+        logger.info("Pulling image %s", image)
+        try:
+            client.images.pull(image)
+        except APIError as exc:
+            logger.warning("Failed to pull image %s: %s (trying local)", image, exc)
 
     if provider == "urnetwork" and deploy_credentials:
         api_key = str(deploy_credentials.get("api_key") or "")
@@ -771,6 +931,31 @@ def read_critical_state(slug: str) -> tuple[bytes, list[str]]:
                     raise
 
     return b"".join(chunks), read
+
+
+def remove_earnapp_service(slug: str) -> dict[str, bool]:
+    """Remove the main Docker runtime and its sidecar, then verify both absent."""
+    client = _get_client()
+    main = _find_earnapp_runtime_container(client, slug, sidecar=False)
+    sidecar = _find_earnapp_runtime_container(client, slug, sidecar=True)
+
+    for component in (main, sidecar):
+        if component is None:
+            continue
+        try:
+            component.remove(force=True)
+        except NotFound:
+            pass
+        except APIError as exc:
+            # A lost Docker acknowledgement is ambiguous. The exact live lookup
+            # below, not the exception, decides whether cleanup completed.
+            logger.warning("EarnApp runtime component removal was not acknowledged for %s: %s", slug, exc)
+
+    presence = earnapp_service_presence(slug, client=client)
+    if presence["main_present"] or presence["sidecar_present"]:
+        remaining = [name for name, present in presence.items() if present]
+        raise RuntimeError(f"EarnApp Docker cleanup incomplete for {slug}: {', '.join(remaining)}")
+    return presence
 
 
 def remove_service(slug: str, delete_volumes: bool = False, allow_delete_critical: bool = False) -> dict[str, Any]:

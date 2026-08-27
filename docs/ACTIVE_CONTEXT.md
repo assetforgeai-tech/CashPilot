@@ -1,5 +1,50 @@
 # CashPilot Active Context
 
+Updated: 2026-08-27 (EarnApp standardization implementation awaiting release/live gates)
+
+## EarnApp standardization implementation (2026-08-27)
+
+- Chrome profile 40 was refreshed and is authoritative: account `assetforgeai`
+  (Account Pool id `2`) is `ACTIVE`; device `sdk-mac-4ae944b1` is present and
+  shows the online status dot in the EarnApp Devices table.
+- The isolated `test-sing` canary remains account-scoped to logical node
+  `earnapp-canary-test-sing-1`, worker `43406`, proxy lease `#12706`, and the
+  existing `earnapp-canary-test-sing-1-data` volume. No unlink, delete, lease
+  rotation, or identity change was performed.
+- The canary was replaced in place with
+  `cashpilot/earnapp-mac-canary:asset-4a1e80cbb95d`; the sidecar network,
+  restart policy, resource limits, two mounts, Mac device ID, registration
+  marker, UUID and tracking ID were preserved. Server `provider_instances`
+  metadata was updated only to the new container ID after the replacement.
+- Fresh runtime evidence includes `registered`, `device online`, `proxy
+  connected`, `cid_set`, and stable EarnApp process startup. The authenticated
+  collector verification returned `authenticated=true`, `device_present=true`,
+  `online=true`, and `banned=false`.
+- Root cause fixed in the pending source change: an HTTP 200 `{error: ...}` from
+  `/link_device` was previously treated as a pending device; the collector now
+  returns sanitized `remote` evidence and canary verification stops terminal
+  remote errors without retrying a known rejection. The runtime asset manifest
+  now pins the updated registration-marker entrypoint hash.
+- Pending schema v21 adds immutable platform/device identity and node-scoped
+  proxy-health evidence. MacOS/iOS profiles and Ubuntu LXD identity are created
+  once per logical node; proxy rotation, restart, recovery and redeploy cannot
+  change the persisted platform or reuse a non-empty device ID.
+- The EarnApp-specific auto-deploy lane is implemented after NKN and the generic
+  provider queue, with provider/node failure isolation. The global
+  `Deploy to stable workers` setting remains off by default and must stay
+  operator-disabled until this branch is merged, released and the live recovery
+  matrix passes; no live worker or provider was changed by this implementation.
+- Non-VN nodes use the official Ubuntu runtime through the restricted
+  `cashpilot-earnapp-agent` Unix socket. Settings is authoritative for the LXD
+  CPU/RAM limits (defaults: `1` CPU, `1024 MiB`); the worker never receives the
+  raw LXD socket.
+- Scheduled account collection, token/route alerts, secret-free Fleet evidence
+  and node-scoped CAS proxy rotation are implemented. EarnApp remains open and
+  must not be marked `PROTECTED_DONE` before CI, release/registry verification,
+  fresh-worker evidence, restart persistence and isolated proxy recovery pass.
+- The pending worktree changes are not yet committed, released or deployed.
+  Fresh final quality-gate evidence is recorded before the PR is opened.
+
 Updated: 2026-08-26 (EarnApp v1.11.2 legacy migration live closeout complete)
 
 ## EarnApp v1.11.2 legacy migration live closeout (2026-08-26)

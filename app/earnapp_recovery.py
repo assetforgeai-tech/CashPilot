@@ -138,11 +138,20 @@ async def claim_node(
     return _public_node(claimed)
 
 
-async def heartbeat_node(logical_node_id: str, worker_id: int, *, generation: int) -> bool:
+async def heartbeat_node(
+    logical_node_id: str,
+    worker_id: int,
+    *,
+    generation: int,
+    device_id: str = "",
+    proxy_id: int = 0,
+) -> bool:
     return await database.heartbeat_earnapp_node(
         logical_node_id,
         int(worker_id),
         generation=int(generation),
+        device_id=str(device_id or ""),
+        proxy_id=int(proxy_id or 0),
     )
 
 

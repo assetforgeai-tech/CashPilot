@@ -43,6 +43,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field, model_validator
 
 from app import (
+    earnapp_lxd_runtime,
     earnapp_runtime,
     egress,
     fleet_key,
@@ -84,6 +85,7 @@ HEARTBEAT_INTERVAL = 60  # seconds
 # Stop locally one heartbeat before the server's 15-minute reclaim boundary so
 # the old wallet cannot still be running when the server makes it available.
 NKN_LEASE_GUARD_SECONDS = 14 * 60
+_EARNAPP_PROTECTED_CANARY = "earnapp-canary-test-sing-1"
 
 _heartbeat_task: asyncio.Task | None = None
 _ui_connected = False
@@ -452,18 +454,103 @@ def _earnapp_provider_state(containers: list[dict[str, Any]]) -> dict[str, Any] 
     for state in states:
         logical_node_id = str(state.get("logical_node_id") or "")
         runtime = by_instance.get(logical_node_id, {})
-        evidence = earnapp_runtime.redacted_evidence(runtime.get("provider_evidence") or state.get("evidence") or {})
+        if str(state.get("runtime_backend") or "docker") == "lxd":
+            evidence = earnapp_runtime.redacted_evidence(state.get("evidence") or {})
+        else:
+            evidence = earnapp_runtime.redacted_evidence(
+                runtime.get("provider_evidence") or state.get("evidence") or {}
+            )
         instances.append(
             {
                 "logical_node_id": logical_node_id,
                 "generation": int(state.get("generation") or 0),
                 "device_id": str(state.get("device_id") or ""),
+                "platform": str(state.get("platform") or "unknown"),
+                "runtime_backend": str(state.get("runtime_backend") or "docker"),
+                "proxy_id": int(state.get("proxy_id") or 0),
+                "expected_egress_ip": str(state.get("expected_egress_ip") or ""),
+                "proxy_health": str(state.get("proxy_health") or "unknown"),
+                "observed_egress_ip": str(state.get("observed_egress_ip") or ""),
+                "proxy_health_reason": str(state.get("proxy_health_reason") or ""),
+                "pending_binding_version": str(state.get("pending_binding_version") or ""),
+                "pending_proxy_id": int(state.get("pending_proxy_id") or 0),
+                "pending_expected_egress_ip": str(state.get("pending_expected_egress_ip") or ""),
+                "pending_observed_egress_ip": str(state.get("pending_observed_egress_ip") or ""),
                 "runtime_status": str(runtime.get("status") or state.get("runtime_status") or "unknown"),
                 "evidence": evidence,
             }
         )
     online = sum(1 for item in instances if item["evidence"].get("online") is True)
     return {"instances": instances, "online": online, "offline": len(instances) - online}
+
+
+async def _refresh_earnapp_lxd_evidence() -> None:
+    """Backward-compatible wrapper for the all-backend runtime evidence pass."""
+    await _refresh_earnapp_runtime_evidence()
+
+
+async def _refresh_earnapp_runtime_evidence() -> None:
+    """Probe each EarnApp node in its own namespace and persist scoped health."""
+    states = _load_earnapp_states()
+    semaphore = asyncio.Semaphore(8)
+
+    async def refresh(state: dict[str, Any]) -> None:
+        logical_node_id = str(state.get("logical_node_id") or "").strip()
+        if not logical_node_id:
+            return
+        backend = str(state.get("runtime_backend") or "docker").strip().lower()
+        generation = int(state.get("generation") or 0)
+        device_id = str(state.get("device_id") or "")
+        try:
+            async with semaphore:
+                if backend == "lxd":
+                    evidence = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            earnapp_lxd_runtime.node_evidence,
+                            logical_node_id,
+                            generation=generation,
+                            device_id=device_id,
+                        ),
+                        timeout=20,
+                    )
+                else:
+                    evidence = await asyncio.wait_for(
+                        asyncio.to_thread(orchestrator.probe_service_egress, logical_node_id),
+                        timeout=20,
+                    )
+        except (TimeoutError, ValueError, RuntimeError, OSError):
+            # An inspection failure is inconclusive; never rotate on it alone.
+            state["proxy_health"] = "unknown"
+            state["proxy_health_reason"] = "runtime_probe_unavailable"
+            _save_earnapp_state(logical_node_id, state)
+            return
+
+        evidence = earnapp_runtime.redacted_evidence(evidence)
+        running = evidence.get("running") is True
+        observed = str(evidence.get("observed_egress_ip") or "").strip()
+        expected = str(state.get("expected_egress_ip") or "").strip()
+        probe_ok = evidence.get("probe_ok") is True
+        pending_version = str(state.get("pending_binding_version") or "").strip()
+        if pending_version:
+            pending_expected = str(state.get("pending_expected_egress_ip") or "").strip()
+            state["pending_observed_egress_ip"] = observed if probe_ok and observed == pending_expected else ""
+            health, reason = "unknown", "proxy_binding_pending"
+        elif not running:
+            health, reason = "unknown", "runtime_stopped"
+        elif not probe_ok or not observed:
+            health, reason = "unhealthy", "proxy_probe_failed"
+        elif expected and observed != expected:
+            health, reason = "unhealthy", "egress_mismatch"
+        else:
+            health, reason = "healthy", ""
+        state["runtime_status"] = "running" if running else "stopped"
+        state["observed_egress_ip"] = observed
+        state["proxy_health"] = health
+        state["proxy_health_reason"] = reason
+        state["evidence"] = evidence
+        _save_earnapp_state(logical_node_id, state)
+
+    await asyncio.gather(*(refresh(state) for state in states))
 
 
 def _nkn_assignment_identity(state: dict[str, Any]) -> tuple[str, int, int, str] | None:
@@ -1078,6 +1165,7 @@ async def _send_heartbeat() -> None:
     nkn_state = await _nkn_provider_state()
     if nkn_state:
         provider_states["nkn"] = nkn_state
+    await _refresh_earnapp_lxd_evidence()
     earnapp_state = _earnapp_provider_state(containers)
     if earnapp_state:
         provider_states["earnapp"] = earnapp_state
@@ -1388,6 +1476,7 @@ class DeploySpec(BaseModel):
     host_runtime: str | None = None
     runtime_contract: dict[str, str] = Field(default_factory=dict)
     image_contract_sha256: str = ""
+    image_delivery: str = "registry"
     sysctls: dict[str, str] | None = None
     shm_size: str | None = None
     # Advanced and unsupported. Absent means Docker's default runtime, which is
@@ -1427,6 +1516,78 @@ class NknRemoveSpec(BaseModel):
     wallet_id: int
     wallet_assignment_version: int
     lease_client_id: str = Field(min_length=3, max_length=256)
+
+
+class EarnAppLxdDeploySpec(BaseModel):
+    account_id: int = Field(ge=1)
+    generation: int = Field(ge=1)
+    platform: str = Field(default="ubuntu", pattern=r"^ubuntu$")
+    device_id: str = Field(pattern=r"^sdk-node-[0-9a-f]{32}$")
+    identity: dict[str, Any]
+    proxy_id: int = Field(ge=1)
+    proxy: dict[str, Any]
+    lxd_cpu: int = Field(default=1, ge=1, le=64)
+    lxd_memory_mib: int = Field(default=1024, ge=128, le=65536)
+
+    @model_validator(mode="after")
+    def validate_identity_and_proxy(self) -> EarnAppLxdDeploySpec:
+        from app import earnapp_identity
+
+        earnapp_identity.validate_identity(self.identity, "ubuntu")
+        if str(self.identity.get("device_id") or "") != self.device_id:
+            raise ValueError("EarnApp identity does not match device_id")
+        if int(self.proxy.get("proxy_id") or self.proxy.get("id") or 0) != self.proxy_id:
+            raise ValueError("EarnApp proxy_id does not match proxy payload")
+        if str(self.proxy.get("ip_type") or "").strip().lower() != "residential":
+            raise ValueError("EarnApp requires a residential proxy")
+        return self
+
+
+class EarnAppNodeCasSpec(BaseModel):
+    generation: int = Field(ge=1)
+    device_id: str = Field(pattern=r"^sdk-node-[0-9a-f]{32}$")
+
+
+class EarnAppProxyApplySpec(BaseModel):
+    generation: int = Field(ge=1)
+    device_id: str = Field(min_length=8, max_length=128)
+    expected_proxy_id: int = Field(ge=1)
+    binding_version: str = Field(min_length=8, max_length=128, pattern=r"^[A-Za-z0-9._-]+$")
+    proxy: dict[str, Any]
+
+    @model_validator(mode="after")
+    def validate_proxy(self) -> EarnAppProxyApplySpec:
+        if not re.fullmatch(r"sdk-(?:mac|ios|node)-[A-Za-z0-9-]{4,96}", self.device_id):
+            raise ValueError("EarnApp device_id is invalid")
+        proxy_id = int(self.proxy.get("proxy_id") or self.proxy.get("id") or 0)
+        if proxy_id <= 0 or proxy_id == self.expected_proxy_id:
+            raise ValueError("EarnApp replacement proxy is invalid")
+        if str(self.proxy.get("ip_type") or "").strip().lower() != "residential":
+            raise ValueError("EarnApp requires a residential proxy")
+        if not str(self.proxy.get("exit_ip") or "").strip():
+            raise ValueError("EarnApp replacement proxy requires an egress IP")
+        return self
+
+
+class EarnAppProxyFinalizeSpec(BaseModel):
+    generation: int = Field(ge=1)
+    device_id: str = Field(min_length=8, max_length=128)
+    expected_proxy_id: int = Field(ge=1)
+    new_proxy_id: int = Field(ge=1)
+    binding_version: str = Field(min_length=8, max_length=128, pattern=r"^[A-Za-z0-9._-]+$")
+    expected_egress_ip: str = ""
+    observed_egress_ip: str = ""
+    commit: bool
+
+    @model_validator(mode="after")
+    def validate_binding(self) -> EarnAppProxyFinalizeSpec:
+        if not re.fullmatch(r"sdk-(?:mac|ios|node)-[A-Za-z0-9-]{4,96}", self.device_id):
+            raise ValueError("EarnApp device_id is invalid")
+        if self.new_proxy_id == self.expected_proxy_id:
+            raise ValueError("EarnApp replacement proxy is invalid")
+        if self.commit and (not self.expected_egress_ip or self.observed_egress_ip != self.expected_egress_ip):
+            raise ValueError("EarnApp proxy egress evidence does not match")
+        return self
 
 
 class EgressApplySpec(BaseModel):
@@ -1850,9 +2011,11 @@ def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
     provider_slug = spec.provider_slug or slug
     if provider_slug == "earnapp":
         try:
-            earnapp_runtime.validate_canary_spec(spec.model_dump())
+            earnapp_runtime.validate_runtime_spec(spec.model_dump())
         except ValueError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
+        if spec.image_delivery != "operator_preload":
+            raise HTTPException(status_code=403, detail="EarnApp runtime requires an operator-preloaded image")
     if spec.privileged:
         raise HTTPException(status_code=403, detail="Privileged containers are not allowed")
     if spec.cap_add:
@@ -1936,6 +2099,26 @@ async def api_list_containers(request: Request) -> list[dict[str, Any]]:
         return await asyncio.to_thread(orchestrator.get_status_cached)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
+
+
+@app.get("/api/containers/{slug}/presence")
+async def api_container_presence(request: Request, slug: str) -> dict[str, Any]:
+    """Check one exact managed Docker container without consulting the cache."""
+    _verify_api_key(request)
+    try:
+        container = await asyncio.to_thread(orchestrator._find_container, slug)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    labels = getattr(container, "labels", {}) or {}
+    provider = str(labels.get("cashpilot.provider") or labels.get("cashpilot.service") or "")
+    return {
+        "present": True,
+        "slug": slug,
+        "provider_slug": provider,
+        "container_id": str(getattr(container, "short_id", "") or ""),
+    }
 
 
 @app.post("/api/nkn/slots/{slot_id}/deploy")
@@ -2062,10 +2245,575 @@ async def api_remove_nkn_slot(request: Request, slot_id: str, spec: NknRemoveSpe
     return {"status": "removed", "slot_id": slot_id, **result}
 
 
+def _earnapp_lxd_state(logical_node_id: str) -> dict[str, Any]:
+    try:
+        value = json.loads(_earnapp_state_path(logical_node_id).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail="EarnApp node state not found") from exc
+    if not isinstance(value, dict) or str(value.get("runtime_backend") or "") != "lxd":
+        raise HTTPException(status_code=404, detail="EarnApp LXD node state not found")
+    return value
+
+
+def _earnapp_node_state(logical_node_id: str) -> dict[str, Any]:
+    try:
+        value = json.loads(_earnapp_state_path(logical_node_id).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail="EarnApp node state not found") from exc
+    if not isinstance(value, dict):
+        raise HTTPException(status_code=404, detail="EarnApp node state not found")
+    return value
+
+
+def _validate_earnapp_proxy_cas(
+    state: dict[str, Any], *, generation: int, device_id: str, expected_proxy_id: int
+) -> None:
+    expected = (
+        int(state.get("generation") or 0),
+        str(state.get("device_id") or ""),
+        int(state.get("proxy_id") or 0),
+    )
+    supplied = (int(generation), str(device_id), int(expected_proxy_id))
+    if expected != supplied:
+        raise HTTPException(status_code=409, detail="EarnApp proxy assignment conflict")
+
+
+def _earnapp_proxy_finalize_replay(state: dict[str, Any], spec: EarnAppProxyFinalizeSpec) -> bool:
+    """Accept only an exact replay of a commit whose acknowledgement was lost.
+
+    The committed binding journal is deliberately separate from ``proxy_id``.  A
+    changed proxy by itself is not evidence that an arbitrary finalize request is
+    safe to replay.
+    """
+    if not spec.commit:
+        return False
+    if any(
+        state.get(key) not in (None, "")
+        for key in (
+            "pending_binding_version",
+            "pending_proxy_id",
+            "pending_expected_egress_ip",
+            "pending_observed_egress_ip",
+        )
+    ):
+        return False
+    return (
+        str(state.get("last_binding_version") or "") == spec.binding_version
+        and int(state.get("last_binding_generation") or 0) == spec.generation
+        and str(state.get("last_binding_device_id") or "") == spec.device_id
+        and int(state.get("last_binding_expected_proxy_id") or 0) == spec.expected_proxy_id
+        and int(state.get("last_binding_proxy_id") or 0) == spec.new_proxy_id
+        and int(state.get("proxy_id") or 0) == spec.new_proxy_id
+        and str(state.get("expected_egress_ip") or "") == spec.expected_egress_ip
+        and str(state.get("observed_egress_ip") or "") == spec.observed_egress_ip
+    )
+
+
+async def _earnapp_proxy_runtime_snapshot(
+    logical_node_id: str,
+    state: dict[str, Any],
+    *,
+    generation: int,
+    device_id: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    backend = str(state.get("runtime_backend") or "docker").strip().lower()
+    if backend == "lxd":
+        status = await asyncio.to_thread(
+            earnapp_lxd_runtime.proxy_binding_status,
+            logical_node_id,
+            generation=generation,
+            device_id=device_id,
+        )
+        evidence = await asyncio.to_thread(
+            earnapp_lxd_runtime.node_evidence,
+            logical_node_id,
+            generation=generation,
+            device_id=device_id,
+        )
+    else:
+        status = await asyncio.to_thread(orchestrator.proxy_binding_status, logical_node_id)
+        evidence = await asyncio.to_thread(orchestrator.probe_service_egress, logical_node_id)
+    return status, evidence
+
+
+async def _discard_earnapp_proxy_candidate(
+    logical_node_id: str,
+    state: dict[str, Any],
+    *,
+    generation: int,
+    device_id: str,
+    expected_proxy_id: int,
+    binding_version: str,
+) -> dict[str, Any]:
+    backend = str(state.get("runtime_backend") or "docker").strip().lower()
+    if backend == "lxd":
+        return await asyncio.to_thread(
+            earnapp_lxd_runtime.discard_proxy_binding,
+            logical_node_id,
+            generation=generation,
+            device_id=device_id,
+            expected_proxy_id=expected_proxy_id,
+            binding_version=binding_version,
+        )
+    return await asyncio.to_thread(orchestrator.discard_proxy_binding, logical_node_id, binding_version)
+
+
+def _validate_earnapp_lxd_cas(state: dict[str, Any], spec: EarnAppNodeCasSpec) -> None:
+    expected = (int(state.get("generation") or 0), str(state.get("device_id") or ""))
+    if expected != (spec.generation, spec.device_id):
+        raise HTTPException(status_code=409, detail="EarnApp node assignment conflict")
+
+
+@app.post("/api/earnapp/nodes/{logical_node_id}/deploy")
+async def api_deploy_earnapp_lxd_node(
+    request: Request,
+    logical_node_id: str,
+    spec: EarnAppLxdDeploySpec,
+) -> dict[str, Any]:
+    """Deploy one official Ubuntu EarnApp runtime through the restricted helper."""
+    _verify_api_key(request)
+    try:
+        result = await asyncio.to_thread(
+            earnapp_lxd_runtime.deploy_node,
+            logical_node_id,
+            generation=spec.generation,
+            account_id=spec.account_id,
+            device_id=spec.device_id,
+            identity=spec.identity,
+            proxy=spec.proxy,
+            settings={"cpu": spec.lxd_cpu, "memory_mib": spec.lxd_memory_mib},
+        )
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    state = {
+        "logical_node_id": logical_node_id,
+        "generation": spec.generation,
+        "account_id": spec.account_id,
+        "device_id": spec.device_id,
+        "proxy_id": spec.proxy_id,
+        "expected_egress_ip": str(spec.proxy.get("exit_ip") or ""),
+        "observed_egress_ip": "",
+        "proxy_health": "unknown",
+        "proxy_health_reason": "",
+        "platform": "ubuntu",
+        "runtime_backend": "lxd",
+        "runtime_status": "running" if result.get("running") is True else "unknown",
+        "instance_id": str(result.get("instance_id") or ""),
+        "lxd_cpu": spec.lxd_cpu,
+        "lxd_memory_mib": spec.lxd_memory_mib,
+        "evidence": earnapp_runtime.redacted_evidence(result),
+    }
+    _save_earnapp_state(logical_node_id, state)
+    return {"status": "deployed", "logical_node_id": logical_node_id, **earnapp_runtime.redacted_evidence(result)}
+
+
+@app.post("/api/earnapp/nodes/{logical_node_id}/suspend")
+async def api_suspend_earnapp_lxd_node(
+    request: Request, logical_node_id: str, spec: EarnAppNodeCasSpec
+) -> dict[str, Any]:
+    _verify_api_key(request)
+    state = _earnapp_lxd_state(logical_node_id)
+    _validate_earnapp_lxd_cas(state, spec)
+    result = await asyncio.to_thread(
+        earnapp_lxd_runtime.suspend_node,
+        logical_node_id,
+        generation=spec.generation,
+        device_id=spec.device_id,
+    )
+    state["runtime_status"] = "stopped"
+    state["evidence"] = earnapp_runtime.redacted_evidence(result)
+    _save_earnapp_state(logical_node_id, state)
+    return {"status": "suspended", **earnapp_runtime.redacted_evidence(result)}
+
+
+@app.post("/api/earnapp/nodes/{logical_node_id}/resume")
+async def api_resume_earnapp_lxd_node(
+    request: Request, logical_node_id: str, spec: EarnAppNodeCasSpec
+) -> dict[str, Any]:
+    _verify_api_key(request)
+    state = _earnapp_lxd_state(logical_node_id)
+    _validate_earnapp_lxd_cas(state, spec)
+    result = await asyncio.to_thread(
+        earnapp_lxd_runtime.resume_node,
+        logical_node_id,
+        generation=spec.generation,
+        device_id=spec.device_id,
+    )
+    state["runtime_status"] = "running"
+    state["evidence"] = earnapp_runtime.redacted_evidence(result)
+    _save_earnapp_state(logical_node_id, state)
+    return {"status": "resumed", **earnapp_runtime.redacted_evidence(result)}
+
+
+@app.get("/api/earnapp/nodes/{logical_node_id}/evidence")
+async def api_earnapp_lxd_node_evidence(
+    request: Request, logical_node_id: str, generation: int, device_id: str
+) -> dict[str, Any]:
+    _verify_api_key(request)
+    state = _earnapp_lxd_state(logical_node_id)
+    spec = EarnAppNodeCasSpec(generation=generation, device_id=device_id)
+    _validate_earnapp_lxd_cas(state, spec)
+    result = await asyncio.to_thread(
+        earnapp_lxd_runtime.node_evidence,
+        logical_node_id,
+        generation=generation,
+        device_id=device_id,
+    )
+    state["evidence"] = earnapp_runtime.redacted_evidence(result)
+    state["runtime_status"] = "running" if result.get("running") is True else "stopped"
+    _save_earnapp_state(logical_node_id, state)
+    return earnapp_runtime.redacted_evidence(result)
+
+
+@app.post("/api/earnapp/nodes/{logical_node_id}/presence")
+async def api_earnapp_lxd_node_presence(
+    request: Request, logical_node_id: str, spec: EarnAppNodeCasSpec
+) -> dict[str, Any]:
+    """Check the exact LXD assignment even if the worker state file is gone."""
+    _verify_api_key(request)
+    try:
+        return await asyncio.to_thread(
+            earnapp_lxd_runtime.node_presence,
+            logical_node_id,
+            generation=spec.generation,
+            device_id=spec.device_id,
+        )
+    except earnapp_lxd_runtime.EarnAppLxdHelperError as exc:
+        status = exc.status_code if exc.status_code in {404, 409} else 503
+        raise HTTPException(status_code=status, detail=str(exc)) from exc
+
+
+@app.delete("/api/earnapp/nodes/{logical_node_id}")
+async def api_remove_earnapp_lxd_node(
+    request: Request, logical_node_id: str, spec: EarnAppNodeCasSpec
+) -> dict[str, Any]:
+    _verify_api_key(request)
+    try:
+        state = _earnapp_lxd_state(logical_node_id)
+    except HTTPException as exc:
+        if exc.status_code != 404:
+            raise
+    else:
+        _validate_earnapp_lxd_cas(state, spec)
+    result = await asyncio.to_thread(
+        earnapp_lxd_runtime.remove_node,
+        logical_node_id,
+        generation=spec.generation,
+        device_id=spec.device_id,
+    )
+    _remove_earnapp_state(logical_node_id)
+    return {"status": "removed", "logical_node_id": logical_node_id, **earnapp_runtime.redacted_evidence(result)}
+
+
+@app.delete("/api/earnapp/docker-nodes/{slug}")
+async def api_remove_earnapp_docker_node(request: Request, slug: str) -> dict[str, Any]:
+    """Remove both Docker components before acknowledging local EarnApp cleanup."""
+    _verify_api_key(request)
+    if slug == _EARNAPP_PROTECTED_CANARY:
+        raise HTTPException(status_code=409, detail="Protected EarnApp canary is inspect-only")
+    try:
+        result = await asyncio.to_thread(orchestrator.remove_earnapp_service, slug)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if result.get("main_present") is not False or result.get("sidecar_present") is not False:
+        raise HTTPException(status_code=409, detail="EarnApp Docker cleanup is incomplete")
+    with contextlib.suppress(ValueError):
+        _remove_earnapp_state(slug)
+    return {"status": "removed", **result}
+
+
+@app.post("/api/earnapp/nodes/{logical_node_id}/proxy/apply")
+async def api_apply_earnapp_node_proxy(
+    request: Request, logical_node_id: str, spec: EarnAppProxyApplySpec
+) -> dict[str, Any]:
+    """Stage one candidate proxy and require egress evidence before server CAS."""
+    _verify_api_key(request)
+    state = _earnapp_node_state(logical_node_id)
+    _validate_earnapp_proxy_cas(
+        state,
+        generation=spec.generation,
+        device_id=spec.device_id,
+        expected_proxy_id=spec.expected_proxy_id,
+    )
+    if state.get("pending_binding_version") not in (None, "", spec.binding_version):
+        raise HTTPException(status_code=409, detail="EarnApp proxy binding already in progress")
+    proxy_id = int(spec.proxy.get("proxy_id") or spec.proxy.get("id") or 0)
+    expected_egress_ip = str(spec.proxy.get("exit_ip") or "").strip()
+    backend = str(state.get("runtime_backend") or "docker").strip().lower()
+    pending = (
+        str(state.get("pending_binding_version") or ""),
+        int(state.get("pending_proxy_id") or 0),
+        str(state.get("pending_expected_egress_ip") or ""),
+    )
+    if pending[0]:
+        if pending != (spec.binding_version, proxy_id, expected_egress_ip):
+            raise HTTPException(status_code=409, detail="EarnApp proxy binding already in progress")
+        observed = str(state.get("pending_observed_egress_ip") or "")
+        if observed == expected_egress_ip:
+            try:
+                runtime_status, runtime_evidence = await _earnapp_proxy_runtime_snapshot(
+                    logical_node_id,
+                    state,
+                    generation=spec.generation,
+                    device_id=spec.device_id,
+                )
+                if (
+                    str(runtime_status.get("binding_version") or "") != spec.binding_version
+                    or runtime_status.get("candidate_present") is True
+                    or runtime_evidence.get("running") is not True
+                    or runtime_evidence.get("probe_ok") is not True
+                    or str(runtime_evidence.get("observed_egress_ip") or "") != expected_egress_ip
+                ):
+                    raise HTTPException(status_code=409, detail="EarnApp proxy binding reconciliation required")
+            except HTTPException:
+                raise
+            except (ValueError, RuntimeError, OSError) as exc:
+                raise HTTPException(status_code=409, detail="EarnApp proxy binding reconciliation required") from exc
+            return {
+                "ok": True,
+                "binding_version": spec.binding_version,
+                "proxy_id": proxy_id,
+                "observed_egress_ip": observed,
+                "idempotent": True,
+            }
+        raise HTTPException(status_code=409, detail="EarnApp proxy binding reconciliation required")
+    state.update(
+        pending_binding_version=spec.binding_version,
+        pending_proxy_id=proxy_id,
+        pending_expected_egress_ip=expected_egress_ip,
+        pending_observed_egress_ip="",
+    )
+    _save_earnapp_state(logical_node_id, state)
+    try:
+        if backend == "lxd":
+            result = await asyncio.to_thread(
+                earnapp_lxd_runtime.apply_proxy_binding,
+                logical_node_id,
+                generation=spec.generation,
+                device_id=spec.device_id,
+                expected_proxy_id=spec.expected_proxy_id,
+                binding_version=spec.binding_version,
+                proxy=spec.proxy,
+            )
+        else:
+            applied = await asyncio.to_thread(
+                orchestrator.apply_proxy_binding_batch,
+                [logical_node_id],
+                spec.proxy,
+                spec.binding_version,
+            )
+            evidence = await asyncio.to_thread(orchestrator.probe_service_egress, logical_node_id)
+            observed = str(evidence.get("observed_egress_ip") or "")
+            if observed != expected_egress_ip:
+                await asyncio.to_thread(
+                    orchestrator.finalize_proxy_binding_batch,
+                    [logical_node_id],
+                    spec.binding_version,
+                    commit=False,
+                )
+                raise HTTPException(status_code=409, detail="EarnApp candidate proxy egress mismatch")
+            result = {
+                "binding_version": spec.binding_version,
+                "proxy_id": proxy_id,
+                "observed_egress_ip": observed,
+                "probe_ok": True,
+                "applied_instances": list(applied.get("applied_instances") or []),
+            }
+    except HTTPException:
+        raise
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=409, detail="EarnApp proxy apply failed") from exc
+    observed_egress_ip = str(result.get("observed_egress_ip") or "")
+    if (
+        str(result.get("binding_version") or "") != spec.binding_version
+        or int(result.get("proxy_id") or 0) != proxy_id
+        or observed_egress_ip != expected_egress_ip
+    ):
+        raise HTTPException(status_code=409, detail="EarnApp proxy apply acknowledgement mismatch")
+    state["pending_observed_egress_ip"] = observed_egress_ip
+    _save_earnapp_state(logical_node_id, state)
+    return {
+        "ok": True,
+        "binding_version": spec.binding_version,
+        "proxy_id": proxy_id,
+        "observed_egress_ip": observed_egress_ip,
+    }
+
+
+@app.post("/api/earnapp/nodes/{logical_node_id}/proxy/finalize")
+async def api_finalize_earnapp_node_proxy(
+    request: Request, logical_node_id: str, spec: EarnAppProxyFinalizeSpec
+) -> dict[str, Any]:
+    """Confirm or roll back the exact proxy binding staged for one node."""
+    _verify_api_key(request)
+    state = _earnapp_node_state(logical_node_id)
+    if _earnapp_proxy_finalize_replay(state, spec):
+        return {
+            "ok": True,
+            "binding_version": spec.binding_version,
+            "action": "confirmed",
+            "proxy_id": spec.new_proxy_id,
+            "idempotent": True,
+        }
+    _validate_earnapp_proxy_cas(
+        state,
+        generation=spec.generation,
+        device_id=spec.device_id,
+        expected_proxy_id=spec.expected_proxy_id,
+    )
+    pending = (
+        str(state.get("pending_binding_version") or ""),
+        int(state.get("pending_proxy_id") or 0),
+    )
+    if pending != (spec.binding_version, spec.new_proxy_id):
+        raise HTTPException(status_code=409, detail="EarnApp proxy binding version conflict")
+    backend = str(state.get("runtime_backend") or "docker").strip().lower()
+    idempotent = False
+    try:
+        if backend == "lxd":
+            result = await asyncio.to_thread(
+                earnapp_lxd_runtime.finalize_proxy_binding,
+                logical_node_id,
+                generation=spec.generation,
+                device_id=spec.device_id,
+                expected_proxy_id=spec.expected_proxy_id,
+                new_proxy_id=spec.new_proxy_id,
+                binding_version=spec.binding_version,
+                commit=spec.commit,
+                expected_egress_ip=spec.expected_egress_ip,
+                observed_egress_ip=spec.observed_egress_ip,
+            )
+        else:
+            finalized = await asyncio.to_thread(
+                orchestrator.finalize_proxy_binding_batch,
+                [logical_node_id],
+                spec.binding_version,
+                commit=spec.commit,
+            )
+            result = {
+                "binding_version": spec.binding_version,
+                "action": str(finalized.get("action") or ""),
+                "proxy_id": spec.new_proxy_id if spec.commit else spec.expected_proxy_id,
+            }
+    except (ValueError, RuntimeError) as exc:
+        if spec.commit:
+            raise HTTPException(status_code=409, detail="EarnApp proxy finalization failed") from exc
+        try:
+            _status, evidence = await _earnapp_proxy_runtime_snapshot(
+                logical_node_id,
+                state,
+                generation=spec.generation,
+                device_id=spec.device_id,
+            )
+            old_egress_ip = str(state.get("expected_egress_ip") or "").strip()
+            observed_egress_ip = str(evidence.get("observed_egress_ip") or "").strip()
+            if (
+                evidence.get("running") is not True
+                or evidence.get("probe_ok") is not True
+                or not old_egress_ip
+                or observed_egress_ip != old_egress_ip
+            ):
+                raise RuntimeError("EarnApp old proxy route is not authoritative")
+            discarded = await _discard_earnapp_proxy_candidate(
+                logical_node_id,
+                state,
+                generation=spec.generation,
+                device_id=spec.device_id,
+                expected_proxy_id=spec.expected_proxy_id,
+                binding_version=spec.binding_version,
+            )
+        except (ValueError, RuntimeError, OSError) as cleanup_exc:
+            raise HTTPException(status_code=409, detail="EarnApp proxy finalization failed") from cleanup_exc
+        if (
+            str(discarded.get("binding_version") or "") != spec.binding_version
+            or str(discarded.get("action") or "") != "rolled_back"
+        ):
+            raise HTTPException(status_code=409, detail="EarnApp proxy finalization failed") from exc
+        result = {**discarded, "proxy_id": spec.expected_proxy_id}
+        idempotent = True
+    expected_action = "confirmed" if spec.commit else "rolled_back"
+    if str(result.get("action") or "") != expected_action:
+        raise HTTPException(status_code=409, detail="EarnApp proxy finalization acknowledgement mismatch")
+    if spec.commit:
+        try:
+            status, evidence = await _earnapp_proxy_runtime_snapshot(
+                logical_node_id,
+                state,
+                generation=spec.generation,
+                device_id=spec.device_id,
+            )
+        except (ValueError, RuntimeError, OSError, TimeoutError) as exc:
+            raise HTTPException(status_code=409, detail="EarnApp proxy finalization failed") from exc
+        if (
+            str(status.get("binding_version") or "") != spec.binding_version
+            or status.get("previous_present") is True
+            or status.get("candidate_present") is True
+            or evidence.get("running") is not True
+            or evidence.get("probe_ok") is not True
+            or str(evidence.get("observed_egress_ip") or "").strip() != spec.expected_egress_ip
+        ):
+            raise HTTPException(status_code=409, detail="EarnApp proxy finalization failed")
+    if not spec.commit:
+        try:
+            status, evidence = await _earnapp_proxy_runtime_snapshot(
+                logical_node_id,
+                state,
+                generation=spec.generation,
+                device_id=spec.device_id,
+            )
+        except (ValueError, RuntimeError, OSError) as exc:
+            raise HTTPException(status_code=409, detail="EarnApp proxy finalization failed") from exc
+        old_egress_ip = str(state.get("expected_egress_ip") or "").strip()
+        if (
+            status.get("binding_version")
+            or status.get("candidate_present") is True
+            or status.get("previous_present") is True
+            or evidence.get("running") is not True
+            or evidence.get("probe_ok") is not True
+            or not old_egress_ip
+            or str(evidence.get("observed_egress_ip") or "").strip() != old_egress_ip
+        ):
+            raise HTTPException(status_code=409, detail="EarnApp proxy finalization failed")
+    for key in (
+        "pending_binding_version",
+        "pending_proxy_id",
+        "pending_expected_egress_ip",
+        "pending_observed_egress_ip",
+    ):
+        state.pop(key, None)
+    if spec.commit:
+        state.update(
+            proxy_id=spec.new_proxy_id,
+            expected_egress_ip=spec.expected_egress_ip,
+            observed_egress_ip=spec.observed_egress_ip,
+            proxy_health="healthy",
+            proxy_health_reason="",
+            last_binding_version=spec.binding_version,
+            last_binding_generation=spec.generation,
+            last_binding_device_id=spec.device_id,
+            last_binding_expected_proxy_id=spec.expected_proxy_id,
+            last_binding_proxy_id=spec.new_proxy_id,
+        )
+    _save_earnapp_state(logical_node_id, state)
+    response = {
+        "ok": True,
+        "binding_version": spec.binding_version,
+        "action": expected_action,
+        "proxy_id": spec.new_proxy_id if spec.commit else spec.expected_proxy_id,
+    }
+    if idempotent:
+        response["idempotent"] = True
+    return response
+
+
 @app.post("/api/containers/{slug}/deploy")
 async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) -> dict[str, str]:
     """Deploy a container from spec sent by UI."""
     _verify_api_key(request)
+    if slug == _EARNAPP_PROTECTED_CANARY:
+        raise HTTPException(status_code=409, detail="Protected EarnApp canary is inspect-only")
     _validate_deploy_spec(spec, slug=slug)
     try:
         await _materialize_runtime_assets(slug, spec)
@@ -2092,17 +2840,27 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             deploy_credentials=spec.deploy_credentials,
             user=spec.user,
             host_runtime=spec.host_runtime,
+            image_delivery=spec.image_delivery,
             proxy=spec.proxy,
             sysctls=spec.sysctls,
             shm_size=spec.shm_size,
         )
         if (spec.provider_slug or slug) == "earnapp":
+            proxy = dict(spec.proxy or {})
+            expected_egress_ip = str(proxy.get("exit_ip") or "")
             _save_earnapp_state(
                 str(spec.labels.get("cashpilot.earnapp.logical_node_id") or slug),
                 {
                     "logical_node_id": str(spec.labels.get("cashpilot.earnapp.logical_node_id") or slug),
                     "generation": int(spec.labels.get("cashpilot.earnapp.generation") or 0),
                     "device_id": str(spec.labels.get("cashpilot.earnapp.device_id") or ""),
+                    "platform": str(spec.labels.get("cashpilot.earnapp.platform") or "unknown"),
+                    "runtime_backend": "docker",
+                    "proxy_id": int(proxy.get("proxy_id") or proxy.get("id") or 0),
+                    "expected_egress_ip": expected_egress_ip,
+                    "observed_egress_ip": "",
+                    "proxy_health": "unknown",
+                    "proxy_health_reason": "",
                     "runtime_status": "running",
                     "container_id": container_id,
                     "evidence": {"running": True, "online": False},
@@ -2201,6 +2959,8 @@ async def api_finalize_proxy_binding(request: Request, spec: ProxyBindingFinaliz
 @app.post("/api/containers/{slug}/restart")
 async def api_restart_container(request: Request, slug: str) -> dict[str, str]:
     _verify_api_key(request)
+    if slug == _EARNAPP_PROTECTED_CANARY:
+        raise HTTPException(status_code=409, detail="Protected EarnApp canary is inspect-only")
     try:
         await asyncio.to_thread(orchestrator.restart_service, slug)
         return {"status": "restarted"}
@@ -2213,6 +2973,8 @@ async def api_restart_container(request: Request, slug: str) -> dict[str, str]:
 @app.post("/api/containers/{slug}/stop")
 async def api_stop_container(request: Request, slug: str) -> dict[str, str]:
     _verify_api_key(request)
+    if slug == _EARNAPP_PROTECTED_CANARY:
+        raise HTTPException(status_code=409, detail="Protected EarnApp canary is inspect-only")
     try:
         await asyncio.to_thread(orchestrator.stop_service, slug)
         return {"status": "stopped"}
@@ -2225,6 +2987,8 @@ async def api_stop_container(request: Request, slug: str) -> dict[str, str]:
 @app.post("/api/containers/{slug}/start")
 async def api_start_container(request: Request, slug: str) -> dict[str, str]:
     _verify_api_key(request)
+    if slug == _EARNAPP_PROTECTED_CANARY:
+        raise HTTPException(status_code=409, detail="Protected EarnApp canary is inspect-only")
     try:
         await asyncio.to_thread(orchestrator.start_service, slug)
         return {"status": "started"}
@@ -2242,6 +3006,8 @@ async def api_remove_container(
     allow_delete_critical: bool = False,
 ) -> dict[str, Any]:
     _verify_api_key(request)
+    if slug.startswith("earnapp-"):
+        return await api_remove_earnapp_docker_node(request, slug)
     try:
         result = await asyncio.to_thread(
             orchestrator.remove_service,
@@ -2249,11 +3015,6 @@ async def api_remove_container(
             delete_volumes=delete_volumes,
             allow_delete_critical=allow_delete_critical,
         )
-        # The marker is worker-local heartbeat state, not provider identity. It
-        # is safe to remove only after Docker confirms this exact canary is gone.
-        if slug.startswith("earnapp-"):
-            with contextlib.suppress(ValueError):
-                _remove_earnapp_state(slug)
         return {"status": "removed", **result}
     except orchestrator.CriticalVolumeError as exc:
         # 409, not 400: the request is well-formed, the state is what refuses.

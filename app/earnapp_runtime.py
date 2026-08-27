@@ -1,4 +1,4 @@
-"""Small, secret-free helpers for the verified EarnApp Mac wire contract."""
+"""Secret-free helpers for the verified EarnApp platform wire contracts."""
 
 from __future__ import annotations
 
@@ -15,6 +15,9 @@ MAC_IDENTITY_ASSET_KIND = "mac_identity_profile"
 MAC_PLATFORM = "darwin"
 MAC_APPID = "mac_com.earnapp"
 MAC_DEVICE_PREFIX = "sdk-mac-"
+IOS_PLATFORM = "ios"
+IOS_APPID = "com.brd.earnapp"
+IOS_DEVICE_PREFIX = "sdk-ios-"
 
 # These are the only runtime artifacts copied into the canary image.  The
 # binaries remain outside Git; the hashes pin the exact local source bundle
@@ -23,35 +26,84 @@ MAC_RUNTIME_ARTIFACT_HASHES = {
     "boot.js": "c58e9f8276e4cc25a94f73fb6b11048477792e57d2f3839445982626bb8a77c2",
     "earn-supervisor": "550204505e47a29ca7d4b3853aefb8d05982a566744809fa65c10edf6c2531a2",
     "earnapp-mac": "977483ef03f1967c2a6fda07e978000a12218c46855c5d86ccb1e09b2fefe757",
-    "entrypoint.sh": "13497536e56a8eeb204c697ed7ca89de11017d0daf49cab49e63f2984682a6c2",
+    "entrypoint.sh": "c7b922bc4e47c2b87bfee3fdbfc32ac4582bcb6b3d7db54ab78be2d212a02af9",
+}
+
+IOS_RUNTIME_ARTIFACT_HASHES = {
+    "boot.js": "5de4b51eecdaf4b8b01bd5a2cafd019c701f877b9add727f405d6409f0c1793d",
+    "earn-supervisor": "170c39c7821b7fd6110b96242b703fd6a0541dee29cf6c4525c3a70b67d42a25",
+    "earnapp-bootstrap": "be9c4f6865134c87dbae373304e4b20bc55e91f60d2744ac03ebb864ca7fc2ee",
+    "entrypoint.sh": "50b32e6f7280da75a7568cd25b6e4e43797f254517b1ee316f5b359f24e4144e",
+}
+
+_PLATFORM_CONTRACTS = {
+    "macos": {
+        "artifact_hashes": MAC_RUNTIME_ARTIFACT_HASHES,
+        "runtime": "earnapp_mac_canary",
+        "platform": MAC_PLATFORM,
+        "appid": MAC_APPID,
+        "device_prefix": MAC_DEVICE_PREFIX,
+        "image": "cashpilot/earnapp-mac-canary",
+    },
+    "ios": {
+        "artifact_hashes": IOS_RUNTIME_ARTIFACT_HASHES,
+        "runtime": "earnapp_ios",
+        "platform": IOS_PLATFORM,
+        "appid": IOS_APPID,
+        "device_prefix": IOS_DEVICE_PREFIX,
+        "image": "cashpilot/earnapp-ios",
+    },
 }
 
 
-def runtime_asset_manifest(artifact_hashes: Mapping[str, str] | None = None) -> dict[str, Any]:
-    """Return the canonical manifest used to pin the Mac runtime build."""
-    hashes = artifact_hashes or MAC_RUNTIME_ARTIFACT_HASHES
+def _image_platform(platform: str) -> str:
+    value = str(platform or "macos").strip().lower()
+    if value not in _PLATFORM_CONTRACTS:
+        raise ValueError("unsupported EarnApp image platform")
+    return value
+
+
+def runtime_asset_manifest(
+    artifact_hashes: Mapping[str, str] | None = None,
+    *,
+    platform: str = "macos",
+) -> dict[str, Any]:
+    """Return the canonical manifest used to pin one emulated runtime build."""
+    selected = _image_platform(platform)
+    hashes = artifact_hashes or _PLATFORM_CONTRACTS[selected]["artifact_hashes"]
     return {
         "version": 1,
         "artifacts": [{"path": str(path), "sha256": str(digest).lower()} for path, digest in sorted(hashes.items())],
     }
 
 
-def runtime_asset_manifest_bytes(artifact_hashes: Mapping[str, str] | None = None) -> bytes:
+def runtime_asset_manifest_bytes(
+    artifact_hashes: Mapping[str, str] | None = None,
+    *,
+    platform: str = "macos",
+) -> bytes:
     payload = json.dumps(
-        runtime_asset_manifest(artifact_hashes),
+        runtime_asset_manifest(artifact_hashes, platform=platform),
         sort_keys=True,
         separators=(",", ":"),
     )
     return (payload + "\n").encode("utf-8")
 
 
-def runtime_asset_manifest_sha256(artifact_hashes: Mapping[str, str] | None = None) -> str:
-    return hashlib.sha256(runtime_asset_manifest_bytes(artifact_hashes)).hexdigest()
+def runtime_asset_manifest_sha256(
+    artifact_hashes: Mapping[str, str] | None = None,
+    *,
+    platform: str = "macos",
+) -> str:
+    return hashlib.sha256(runtime_asset_manifest_bytes(artifact_hashes, platform=platform)).hexdigest()
 
 
 MAC_RUNTIME_ASSET_MANIFEST_SHA256 = runtime_asset_manifest_sha256()
 MAC_RUNTIME_IMAGE = f"cashpilot/earnapp-mac-canary:asset-{MAC_RUNTIME_ASSET_MANIFEST_SHA256[:12]}"
 MAC_RUNTIME_HOST = "earnapp_mac_canary"
+IOS_RUNTIME_ASSET_MANIFEST_SHA256 = runtime_asset_manifest_sha256(platform="ios")
+IOS_RUNTIME_IMAGE = f"cashpilot/earnapp-ios:asset-{IOS_RUNTIME_ASSET_MANIFEST_SHA256[:12]}"
+IOS_RUNTIME_HOST = "earnapp_ios"
 MAC_PROFILE_MAGIC = b"ESPF"
 MAC_PROFILE_VERSION = 1
 # Keep this precomputed key in lock-step with the official ``boot.js`` fallback
@@ -60,21 +112,32 @@ MAC_PROFILE_KEY_HEX = "c0f6e9049acba2e1980b0dfd3dbe0fdbde5df4706235f814651722592
 MAC_PROFILE_KEY = bytes.fromhex(MAC_PROFILE_KEY_HEX)
 
 
-def required_image_labels() -> dict[str, str]:
+def runtime_image(platform: str = "macos") -> str:
+    selected = _image_platform(platform)
+    contract = _PLATFORM_CONTRACTS[selected]
+    digest = runtime_asset_manifest_sha256(platform=selected)
+    return f"{contract['image']}:asset-{digest[:12]}"
+
+
+def required_image_labels(platform: str = "macos") -> dict[str, str]:
+    selected = _image_platform(platform)
+    contract = _PLATFORM_CONTRACTS[selected]
     return {
-        "com.cashpilot.earnapp.runtime": MAC_RUNTIME_HOST,
-        "com.cashpilot.earnapp.platform": MAC_PLATFORM,
-        "com.cashpilot.earnapp.appid": MAC_APPID,
-        "com.cashpilot.earnapp.device-prefix": MAC_DEVICE_PREFIX,
-        "com.cashpilot.earnapp.assets-sha256": MAC_RUNTIME_ASSET_MANIFEST_SHA256,
+        "com.cashpilot.earnapp.runtime": str(contract["runtime"]),
+        "com.cashpilot.earnapp.platform": str(contract["platform"]),
+        "com.cashpilot.earnapp.appid": str(contract["appid"]),
+        "com.cashpilot.earnapp.device-prefix": str(contract["device_prefix"]),
+        "com.cashpilot.earnapp.assets-sha256": runtime_asset_manifest_sha256(platform=selected),
     }
 
 
-def validate_image_labels(labels: Any) -> None:
+def validate_image_labels(labels: Any, platform: str = "macos") -> None:
     actual = labels if isinstance(labels, dict) else {}
-    missing = [key for key, expected in required_image_labels().items() if str(actual.get(key) or "") != expected]
+    missing = [
+        key for key, expected in required_image_labels(platform).items() if str(actual.get(key) or "") != expected
+    ]
     if missing:
-        raise ValueError(f"EarnApp image is missing verified Mac labels: {', '.join(missing)}")
+        raise ValueError(f"EarnApp image is missing verified labels: {', '.join(missing)}")
 
 
 def validate_canary_spec(spec: dict[str, Any]) -> None:
@@ -127,6 +190,52 @@ def validate_canary_spec(spec: dict[str, Any]) -> None:
         raise ValueError("EarnApp canary proxy is incomplete")
     if str(proxy.get("protocol") or "").lower() not in {"http", "socks5"}:
         raise ValueError("EarnApp canary proxy protocol is invalid")
+
+
+def validate_runtime_spec(spec: dict[str, Any]) -> None:
+    labels = spec.get("labels") or {}
+    platform_label = str(labels.get("cashpilot.earnapp.platform") or "").strip().lower()
+    selected = "macos" if platform_label == MAC_PLATFORM else platform_label
+    if selected == "macos":
+        validate_canary_spec(spec)
+        return
+    if selected != "ios":
+        raise ValueError("EarnApp Docker runtime supports only MacOS or iOS")
+    if str(spec.get("provider_slug") or "") != "earnapp":
+        raise ValueError("EarnApp provider is required")
+    if str(spec.get("host_runtime") or "") != IOS_RUNTIME_HOST:
+        raise ValueError("EarnApp iOS runtime is required")
+    if str(spec.get("image") or "") != IOS_RUNTIME_IMAGE:
+        raise ValueError("EarnApp image is not the verified iOS image")
+    if spec.get("privileged") or spec.get("cap_add") or spec.get("devices"):
+        raise ValueError("EarnApp iOS runtime cannot request host privilege")
+    if spec.get("network_mode") not in (None, "", "bridge") or str(spec.get("egress_mode") or "") != "proxy":
+        raise ValueError("EarnApp iOS runtime must use proxy bridge egress")
+    contract = spec.get("runtime_contract") or {}
+    expected_contract = {
+        "platform": IOS_PLATFORM,
+        "appid": IOS_APPID,
+        "device_id_prefix": IOS_DEVICE_PREFIX,
+    }
+    if contract != expected_contract:
+        raise ValueError("EarnApp iOS runtime contract is not verified")
+    device_id = str((spec.get("env") or {}).get("EARNAPP_DEVICE_ID") or "")
+    if not re.fullmatch(r"sdk-ios-[A-Za-z0-9-]{4,96}", device_id):
+        raise ValueError("EarnApp iOS device identity is invalid")
+    if str(labels.get("cashpilot.earnapp.device_id") or "") != device_id:
+        raise ValueError("EarnApp iOS device label does not match")
+    assets = spec.get("runtime_assets") or []
+    if len(assets) != 1:
+        raise ValueError("EarnApp iOS runtime requires one identity profile")
+    asset = assets[0]
+    if (
+        str(asset.get("provider") or "") != "earnapp"
+        or str(asset.get("asset_kind") or "") != "ios_identity_profile"
+        or str(asset.get("target") or "") != "/etc/earnapp-spoof/profile.json.enc"
+        or str(asset.get("encoding") or "") != "base64"
+        or not str(asset.get("asset_id") or "").strip()
+    ):
+        raise ValueError("EarnApp iOS identity asset is invalid")
 
 
 def encrypt_mac_profile(identity: dict[str, Any]) -> str:
@@ -231,5 +340,25 @@ def validate_device_id(device_id: str) -> str:
 def redacted_evidence(value: dict[str, Any] | None = None) -> dict[str, Any]:
     """Keep heartbeat evidence non-secret even if a caller passes raw metadata."""
     value = value if isinstance(value, dict) else {}
-    blocked = {"password", "proxy_password", "oauth-refresh-token", "xsrf-token", "credentials", "token"}
-    return {str(k): v for k, v in value.items() if str(k).lower() not in blocked}
+    blocked = {
+        "password",
+        "proxy_password",
+        "proxy_username",
+        "username",
+        "oauth-refresh-token",
+        "xsrf-token",
+        "credentials",
+        "token",
+        "identity",
+        "machine_id",
+        "serial",
+    }
+
+    def clean(item: Any) -> Any:
+        if isinstance(item, dict):
+            return {str(key): clean(child) for key, child in item.items() if str(key).lower() not in blocked}
+        if isinstance(item, list):
+            return [clean(child) for child in item]
+        return item
+
+    return clean(value)

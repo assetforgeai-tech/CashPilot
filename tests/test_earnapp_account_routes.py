@@ -5,10 +5,12 @@ from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app import database, earnapp_collection, earnapp_recovery
 from app.main import app
+from app.routers import earnapp_accounts as earnapp_accounts_router
 
 
 @asynccontextmanager
@@ -169,7 +171,21 @@ def test_list_includes_latest_collector_summary_and_recovery_countdown(tmp_path,
             )
 
         asyncio.run(seed())
-        response = client.get("/api/admin/earnapp/accounts")
+        with patch.object(
+            earnapp_collection,
+            "account_route_status",
+            AsyncMock(
+                return_value={
+                    "status": "healthy",
+                    "source": "node",
+                    "proxy_id": 17,
+                    "egress_ip": "198.51.100.17",
+                    "country_code": "VN",
+                    "checked_at": "2026-08-27 10:00:00",
+                }
+            ),
+        ):
+            response = client.get("/api/admin/earnapp/accounts")
 
     payload = response.json()
     snapshot = payload["accounts"][0]["collector"]
@@ -177,6 +193,14 @@ def test_list_includes_latest_collector_summary_and_recovery_countdown(tmp_path,
     assert snapshot["money_total"] == 90.0
     assert snapshot["online_nodes"] == 2
     assert snapshot["offline_nodes"] == 1
+    assert payload["accounts"][0]["route"] == {
+        "status": "healthy",
+        "source": "node",
+        "proxy_id": 17,
+        "egress_ip": "198.51.100.17",
+        "country_code": "VN",
+        "checked_at": "2026-08-27 10:00:00",
+    }
     assert "devices_json" not in snapshot
     node = payload["nodes"][0]
     assert node["logical_node_id"] == "earnapp-node-a"
@@ -225,3 +249,213 @@ def test_collect_and_replacement_ticket_endpoints_return_sanitized_results(clien
         "replacement_ticket": "one-time-ticket",
         "expires_in_seconds": 900,
     }
+
+
+@pytest.mark.asyncio
+async def test_local_runtime_cleanup_accepts_authoritative_docker_absence(monkeypatch):
+    remove = AsyncMock(
+        return_value={
+            "status": "removed",
+            "main_present": False,
+            "sidecar_present": False,
+        }
+    )
+    monkeypatch.setattr("app.main._proxy_to_worker", remove)
+
+    assert await earnapp_accounts_router._remove_local_runtime(
+        {
+            "logical_node_id": "earnapp-node-1",
+            "instance_id": "earnapp-node-1",
+            "worker_id": 7,
+            "runtime_backend": "docker",
+        }
+    )
+    remove.assert_awaited_once_with(
+        7,
+        "DELETE",
+        "/api/earnapp/docker-nodes/earnapp-node-1",
+        timeout=180,
+    )
+
+
+@pytest.mark.asyncio
+async def test_local_runtime_cleanup_does_not_use_a_stale_container_list_as_absence_evidence(monkeypatch):
+    remove = AsyncMock(
+        return_value={
+            "status": "removed",
+            "main_present": False,
+            "sidecar_present": True,
+        }
+    )
+    monkeypatch.setattr("app.main._proxy_to_worker", remove)
+
+    assert not await earnapp_accounts_router._remove_local_runtime(
+        {
+            "logical_node_id": "earnapp-node-1",
+            "instance_id": "earnapp-node-1",
+            "worker_id": 7,
+            "runtime_backend": "docker",
+        }
+    )
+    remove.assert_awaited_once_with(
+        7,
+        "DELETE",
+        "/api/earnapp/docker-nodes/earnapp-node-1",
+        timeout=180,
+    )
+
+
+@pytest.mark.asyncio
+async def test_local_runtime_cleanup_does_not_treat_worker_failure_as_absence(monkeypatch):
+    remove = AsyncMock(side_effect=HTTPException(status_code=503, detail="worker offline"))
+    monkeypatch.setattr("app.main._proxy_to_worker", remove)
+
+    assert not await earnapp_accounts_router._remove_local_runtime(
+        {
+            "logical_node_id": "earnapp-node-3",
+            "instance_id": "earnapp-node-3",
+            "worker_id": 9,
+            "runtime_backend": "docker",
+        }
+    )
+    remove.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_local_runtime_cleanup_rejects_orphaned_docker_sidecar(monkeypatch):
+    remove = AsyncMock(
+        return_value={
+            "status": "removed",
+            "main_present": False,
+            "sidecar_present": True,
+        }
+    )
+    monkeypatch.setattr("app.main._proxy_to_worker", remove)
+
+    assert not await earnapp_accounts_router._remove_local_runtime(
+        {
+            "logical_node_id": "earnapp-node-1",
+            "instance_id": "earnapp-node-1",
+            "worker_id": 7,
+            "runtime_backend": "docker",
+        }
+    )
+    remove.assert_awaited_once_with(
+        7,
+        "DELETE",
+        "/api/earnapp/docker-nodes/earnapp-node-1",
+        timeout=180,
+    )
+
+
+def test_worker_container_presence_uses_exact_live_lookup():
+    class Container:
+        short_id = "abcdef123456"
+        labels = {
+            "cashpilot.managed": "true",
+            "cashpilot.service": "earnapp-node-1",
+            "cashpilot.provider": "earnapp",
+        }
+
+    with (
+        patch("app.worker_api._verify_api_key"),
+        patch("app.worker_api.orchestrator._find_container", return_value=Container()) as find,
+    ):
+        from app import worker_api
+
+        result = asyncio.run(worker_api.api_container_presence(object(), "earnapp-node-1"))
+
+    assert result == {
+        "present": True,
+        "slug": "earnapp-node-1",
+        "provider_slug": "earnapp",
+        "container_id": "abcdef123456",
+    }
+    find.assert_called_once_with("earnapp-node-1")
+
+
+@pytest.mark.asyncio
+async def test_local_runtime_cleanup_uses_authoritative_lxd_presence_when_state_file_is_missing(monkeypatch):
+    calls = []
+
+    async def proxy(worker_id, method, path, **kwargs):
+        calls.append((worker_id, method, path, kwargs))
+        if method == "DELETE":
+            raise HTTPException(status_code=404, detail="worker state missing")
+        return {
+            "present": True,
+            "runtime_backend": "lxd",
+            "instance_id": "cashpilot-earnapp-earnapp-node-lxd",
+        }
+
+    monkeypatch.setattr("app.main._proxy_to_worker", proxy)
+
+    assert not await earnapp_accounts_router._remove_local_runtime(
+        {
+            "logical_node_id": "earnapp-node-lxd",
+            "instance_id": "earnapp-node-lxd",
+            "worker_id": 7,
+            "runtime_backend": "lxd",
+            "generation": 3,
+            "device_id": "sdk-node-" + "a" * 32,
+        }
+    )
+    assert calls[-1] == (
+        7,
+        "POST",
+        "/api/earnapp/nodes/earnapp-node-lxd/presence",
+        {
+            "json": {"generation": 3, "device_id": "sdk-node-" + "a" * 32},
+            "timeout": 30,
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_local_runtime_cleanup_accepts_lxd_absence_only_from_authoritative_presence_404(monkeypatch):
+    calls = []
+
+    async def proxy(worker_id, method, path, **kwargs):
+        calls.append((worker_id, method, path, kwargs))
+        raise HTTPException(status_code=404, detail="Worker request failed")
+
+    monkeypatch.setattr("app.main._proxy_to_worker", proxy)
+
+    assert await earnapp_accounts_router._remove_local_runtime(
+        {
+            "logical_node_id": "earnapp-node-lxd",
+            "instance_id": "earnapp-node-lxd",
+            "worker_id": 7,
+            "runtime_backend": "lxd",
+            "generation": 3,
+            "device_id": "sdk-node-" + "a" * 32,
+        }
+    )
+    assert calls[-1] == (
+        7,
+        "POST",
+        "/api/earnapp/nodes/earnapp-node-lxd/presence",
+        {
+            "json": {"generation": 3, "device_id": "sdk-node-" + "a" * 32},
+            "timeout": 30,
+        },
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("backend", ["docker", "lxd"])
+async def test_local_runtime_cleanup_never_treats_a_missing_worker_as_runtime_absence(monkeypatch, backend):
+    async def proxy(*_args, **_kwargs):
+        raise HTTPException(status_code=404, detail="Worker not found")
+
+    monkeypatch.setattr("app.main._proxy_to_worker", proxy)
+    binding = {
+        "logical_node_id": "earnapp-node-missing-worker",
+        "instance_id": "earnapp-node-missing-worker",
+        "worker_id": 404,
+        "runtime_backend": backend,
+    }
+    if backend == "lxd":
+        binding.update(generation=3, device_id="sdk-node-" + "a" * 32)
+
+    assert not await earnapp_accounts_router._remove_local_runtime(binding)
