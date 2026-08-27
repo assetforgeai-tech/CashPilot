@@ -51,12 +51,21 @@ async def _seed_proxy_for_account_delete(database_module, provider_id: int, suff
                 "status": "alive",
                 "exit_ip": f"198.51.100.{suffix}",
                 "ip_type": "residential",
+                "country_code": "VN",
             }
         ],
     )
     await database_module.update_proxy_endpoint_intelligence(
         proxy_id,
-        {"ip_type": "residential", "ip_type_source": "test", "ip_type_confidence": "high"},
+        {
+            "ip_type": "residential",
+            "ip_type_source": "test",
+            "ip_type_confidence": "high",
+            "country_code": "VN",
+            "country_name": "Vietnam",
+            "geo_source": "test",
+            "geo_confidence": "high",
+        },
     )
     await database_module.save_proxy_probe_result(
         proxy_id,
@@ -2064,12 +2073,21 @@ def test_locked_account_deletion_releases_its_local_node_proxy_lease(tmp_path):
                         "status": "alive",
                         "exit_ip": "198.51.100.10",
                         "ip_type": "residential",
+                        "country_code": "VN",
                     }
                 ],
             )
             await database.update_proxy_endpoint_intelligence(
                 proxy_id,
-                {"ip_type": "residential", "ip_type_source": "test", "ip_type_confidence": "high"},
+                {
+                    "ip_type": "residential",
+                    "ip_type_source": "test",
+                    "ip_type_confidence": "high",
+                    "country_code": "VN",
+                    "country_name": "Vietnam",
+                    "geo_source": "test",
+                    "geo_confidence": "high",
+                },
             )
             await database.save_proxy_probe_result(
                 proxy_id,
@@ -2313,7 +2331,15 @@ def test_proxy_capacity_counts_canonical_egress_and_excludes_every_assignment_ty
                     exit_ip = f"198.51.100.{index}"
                 await database.update_proxy_endpoint_intelligence(
                     proxy_id,
-                    {"ip_type": "residential", "ip_type_source": "test", "ip_type_confidence": "high"},
+                    {
+                        "ip_type": "residential",
+                        "ip_type_source": "test",
+                        "ip_type_confidence": "high",
+                        "country_code": "VN",
+                        "country_name": "Vietnam",
+                        "geo_source": "test",
+                        "geo_confidence": "high",
+                    },
                 )
                 await database.save_proxy_probe_result(
                     proxy_id,

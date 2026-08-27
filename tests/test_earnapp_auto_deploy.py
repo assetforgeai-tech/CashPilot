@@ -213,6 +213,28 @@ def test_prepare_node_derives_platform_from_proxy_country_and_persists_unique_id
     asyncio.run(run())
 
 
+def test_prepare_node_skips_proxy_without_canonical_country_metadata(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            await database.init_db()
+            await earnapp_accounts.import_account(_account("profile-a"))
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            unknown_proxy = await _seed_proxy(provider_id, 1, "")
+            us_proxy = await _seed_proxy(provider_id, 2, "US")
+            worker_id = await database.upsert_worker("worker-a", "worker-a", "http://worker-a")
+            plan = earnapp_deploy.plan_worker_nodes(worker_id, 1)[0]
+
+            prepared = await earnapp_deploy.prepare_node(plan)
+
+            assert prepared.platform == "ubuntu"
+            assert prepared.proxy["proxy_id"] == us_proxy
+            assert prepared.proxy["proxy_id"] != unknown_proxy
+            active = await database.get_active_provider_proxy_lease("earnapp", worker_id, plan.logical_node_id)
+            assert active and active["proxy_id"] == us_proxy
+
+    asyncio.run(run())
+
+
 def test_verification_requires_observed_device_id_to_match_expected_identity():
     evidence = {
         "authenticated": True,

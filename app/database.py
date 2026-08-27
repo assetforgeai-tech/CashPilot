@@ -4047,6 +4047,8 @@ def _earnapp_proxy_eligible_sql(alias: str = "pe") -> str:
         lower(coalesce({alias}.status, 'unknown')) = 'alive'
         AND lower(trim(coalesce({alias}.ip_type, ''))) = 'residential'
         AND trim(coalesce({alias}.exit_ip, '')) != ''
+        AND length(trim(coalesce({alias}.country_code, ''))) = 2
+        AND upper(trim({alias}.country_code)) GLOB '[A-Z][A-Z]'
         AND coalesce({alias}.duplicate_egress, 0) = 0
         AND EXISTS (
             SELECT 1 FROM proxy_probe_results earnapp
@@ -4250,7 +4252,11 @@ async def find_available_earnapp_proxy_for_node(
         if platform in {"macos", "ios"}:
             country_clause = "upper(trim(coalesce(pe.country_code, ''))) = 'VN'"
         elif platform == "ubuntu":
-            country_clause = "upper(trim(coalesce(pe.country_code, ''))) != 'VN'"
+            country_clause = (
+                "length(trim(coalesce(pe.country_code, ''))) = 2 "
+                "AND upper(trim(pe.country_code)) GLOB '[A-Z][A-Z]' "
+                "AND upper(trim(pe.country_code)) != 'VN'"
+            )
         else:
             return None
         preferred_proxy_id = int(node["preferred_proxy_id"] or 0)
@@ -4365,7 +4371,11 @@ async def reserve_earnapp_proxy_candidate(
             if platform in {"macos", "ios"}:
                 country_clause = "AND upper(trim(coalesce(pe.country_code, ''))) = 'VN'"
             elif platform == "ubuntu":
-                country_clause = "AND upper(trim(coalesce(pe.country_code, ''))) != 'VN'"
+                country_clause = (
+                    "AND length(trim(coalesce(pe.country_code, ''))) = 2 "
+                    "AND upper(trim(pe.country_code)) GLOB '[A-Z][A-Z]' "
+                    "AND upper(trim(pe.country_code)) != 'VN'"
+                )
             else:
                 await db.rollback()
                 return None
@@ -4554,7 +4564,11 @@ async def commit_earnapp_proxy_rotation(
             if platform in {"macos", "ios"}:
                 country_clause = "AND upper(trim(coalesce(pe.country_code, ''))) = 'VN'"
             elif platform == "ubuntu":
-                country_clause = "AND upper(trim(coalesce(pe.country_code, ''))) != 'VN'"
+                country_clause = (
+                    "AND length(trim(coalesce(pe.country_code, ''))) = 2 "
+                    "AND upper(trim(pe.country_code)) GLOB '[A-Z][A-Z]' "
+                    "AND upper(trim(pe.country_code)) != 'VN'"
+                )
             else:
                 await db.rollback()
                 return None
@@ -5026,6 +5040,18 @@ async def claim_earnapp_node(
             if str(node["state"] or "") not in {"RECOVERY_HOLD", "RECOVERABLE"}:
                 await db.rollback()
                 return None
+            platform = str(node["platform"] or "unknown").strip().lower()
+            if platform in {"macos", "ios"}:
+                country_clause = "AND upper(trim(coalesce(pe.country_code, ''))) = 'VN'"
+            elif platform == "ubuntu":
+                country_clause = (
+                    "AND length(trim(coalesce(pe.country_code, ''))) = 2 "
+                    "AND upper(trim(pe.country_code)) GLOB '[A-Z][A-Z]' "
+                    "AND upper(trim(pe.country_code)) != 'VN'"
+                )
+            else:
+                await db.rollback()
+                return None
             assigned_worker_id = int(node["assigned_worker_id"] or 0)
             last_worker_id = int(node["last_worker_id"] or assigned_worker_id or 0)
             replacing = bool(
@@ -5064,6 +5090,7 @@ async def claim_earnapp_node(
                           ON control.proxy_id = pe.id AND control.state = 'ACTIVE'
                         WHERE pe.id = ? AND legacy.proxy_id IS NULL AND occupied.id IS NULL
                           AND control.proxy_id IS NULL AND {_earnapp_proxy_eligible_sql("pe")}
+                          {country_clause}
                           AND NOT EXISTS (
                               SELECT 1 FROM proxy_assignments used_legacy
                               JOIN proxy_endpoints used_proxy ON used_proxy.id = used_legacy.proxy_id
@@ -5095,6 +5122,7 @@ async def claim_earnapp_node(
                         LEFT JOIN provider_proxy_leases occupied ON occupied.proxy_id = pe.id AND occupied.released_at IS NULL
                         WHERE pa.proxy_id IS NULL AND occupied.id IS NULL
                           AND {_earnapp_proxy_eligible_sql("pe")}
+                          {country_clause}
                           AND NOT EXISTS (
                               SELECT 1 FROM proxy_assignments used_legacy
                               JOIN proxy_endpoints used_proxy ON used_proxy.id = used_legacy.proxy_id
@@ -8454,7 +8482,14 @@ async def lease_proxy_for_provider_instance(
                           )
                       )
                   )
-                   AND (? != 'earnapp' OR lower(trim(coalesce(pe.ip_type, ''))) = 'residential')
+                   AND (
+                       ? != 'earnapp'
+                       OR (
+                           lower(trim(coalesce(pe.ip_type, ''))) = 'residential'
+                           AND length(trim(coalesce(pe.country_code, ''))) = 2
+                           AND upper(trim(pe.country_code)) GLOB '[A-Z][A-Z]'
+                       )
+                   )
                     AND (? = '' OR upper(trim(coalesce(pe.country_code, ''))) = ?)
                     AND (? = '' OR upper(trim(coalesce(pe.country_code, ''))) != ?)
                 ORDER BY CASE WHEN pe.id = ? THEN 0 ELSE 1 END, pe.id

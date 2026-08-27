@@ -816,12 +816,19 @@ def test_provision_canary_reuses_existing_node_and_never_worker_assignment():
                         "state": "ACTIVE",
                     }
                 ),
-            ),
+            ) as provision,
             patch.object(database, "get_worker_proxy_assignment", AsyncMock(return_value=None)),
         ):
             first = await earnapp_canary.provision_canary("earnapp-canary-1", 3, "sdk-mac-test")
             second = await earnapp_canary.provision_canary("earnapp-canary-1", 3, "sdk-mac-test")
             assert second["proxy_id"] == first["proxy_id"]
+            provision.assert_awaited_with(
+                "earnapp-canary-1",
+                3,
+                device_id="sdk-mac-test",
+                proxy_country_code="VN",
+                platform="macos",
+            )
             assert await database.get_worker_proxy_assignment(3) is None
 
     asyncio.run(run())

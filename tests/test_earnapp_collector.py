@@ -27,7 +27,14 @@ def _account(profile: str = "profile-a") -> dict[str, object]:
     }
 
 
-async def _seed_proxy(provider_id: int, suffix: int, *, status: str = "alive", ip_type: str = "residential") -> int:
+async def _seed_proxy(
+    provider_id: int,
+    suffix: int,
+    *,
+    status: str = "alive",
+    ip_type: str = "residential",
+    country_code: str = "VN",
+) -> int:
     (proxy_id,) = await database.upsert_proxy_endpoints_returning_ids(
         provider_id,
         [
@@ -42,12 +49,21 @@ async def _seed_proxy(provider_id: int, suffix: int, *, status: str = "alive", i
                 "status": status,
                 "exit_ip": f"198.51.100.{suffix}",
                 "ip_type": ip_type,
+                "country_code": country_code,
             }
         ],
     )
     await database.update_proxy_endpoint_intelligence(
         proxy_id,
-        {"ip_type": ip_type, "ip_type_source": "test", "ip_type_confidence": "high"},
+        {
+            "ip_type": ip_type,
+            "ip_type_source": "test",
+            "ip_type_confidence": "high",
+            "country_code": country_code,
+            "country_name": "Vietnam" if country_code == "VN" else "United States",
+            "geo_source": "test",
+            "geo_confidence": "high",
+        },
     )
     await database.save_proxy_probe_result(
         proxy_id,
@@ -658,7 +674,7 @@ def test_account_route_status_reports_exact_account_proxy_without_credentials(tm
                 "source": "account_control",
                 "proxy_id": proxy_id,
                 "egress_ip": "198.51.100.1",
-                "country_code": "",
+                "country_code": "VN",
                 "checked_at": None,
             }
             assert "pass-1" not in json.dumps(status)

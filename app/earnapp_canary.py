@@ -276,7 +276,13 @@ async def provision_canary(logical_node_id: str, worker_id: int, device_id: str)
     node_id = _safe_node_id(logical_node_id)
     device = earnapp_runtime.validate_device_id(device_id)
     before = await database.get_earnapp_logical_node(node_id)
-    node = await earnapp_recovery.provision_node(node_id, int(worker_id), device_id=device, proxy_country_code="VN")
+    node = await earnapp_recovery.provision_node(
+        node_id,
+        int(worker_id),
+        device_id=device,
+        proxy_country_code="VN",
+        platform="macos",
+    )
     return {**node, "created_binding": not bool((before or {}).get("current_proxy_id"))}
 
 
