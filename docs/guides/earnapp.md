@@ -29,8 +29,9 @@ EarnApp proxy-only runtime with account-scoped identity and an explicit Mac-emul
 EarnApp has an owner-controlled **Mac-emulation canary** and an implemented
 provider-specific auto-deploy lane. The first live device is linked and verified
 on the EarnApp dashboard. Keep the global `Deploy to stable workers` setting
-disabled until the pending UI/worker release and fresh-worker recovery matrix
-have passed; implementation alone does not authorize a fleet rollout.
+disabled until the separate restart/recovery-persistence matrix and isolated
+proxy-rotation canary have passed; the scoped v1.13.2 rollout does not authorize
+a fleet rollout.
 
 1. Sign in to [EarnApp](https://earnapp.com) in a dedicated Chrome profile.
 2. Use the CashPilot Provider Importer to import that profile's allowlisted
@@ -67,6 +68,25 @@ are:
 The canary is successful only when the authenticated account route reports the
 same device in `devices` and `device_statuses` reports it `online`. A running
 container or a local heartbeat alone is not sufficient evidence.
+
+## Verified live baseline
+
+The v1.13.2 UI and worker rollout was limited to the CashPilot server and the
+`test-sing` worker. Chrome profile 40 is authoritative and shows account
+`AssetForge AI` with device `sdk-mac-4ae944b1` online in `VN`. CashPilot Fleet
+reports the same logical node online.
+
+Preserve this baseline while completing the remaining gates:
+
+- logical node `earnapp-canary-test-sing-1`
+- container `cashpilot-earnapp-canary-test-sing-1`
+- sidecar `cashpilot-earnapp-canary-test-sing-1-egress`
+- volume `earnapp-canary-test-sing-1-data`
+- proxy lease `#12706`, egress `171.251.97.103`
+
+Do not use this successful node for destructive recovery or proxy-rotation
+tests. Those tests require a new disposable canary with separate identity,
+volume and lease. EarnApp remains open until both tests pass.
 
 ## Operational contract
 

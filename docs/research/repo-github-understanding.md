@@ -1,35 +1,46 @@
 # CashPilot: Repo và GitHub Understanding
 
-Ngày chụp trạng thái nền: 2026-08-23; cập nhật EarnApp standardization implementation: 2026-08-27
+Ngày chụp trạng thái nền: 2026-08-23; cập nhật live EarnApp v1.13.2: 2026-08-28
 
-Commit nền hiện tại: `fe8dfb1` (PR #45, `origin/main`); branch
-`feat/earnapp-standardization-main` có thay đổi EarnApp chưa commit, chưa release
-và chưa deploy.
+Commit nền hiện tại là `ba2d29d` (merge PR #48, `origin/main`, tag
+`v1.13.2`). Worktree tài liệu dùng branch `docs/earnapp-v1132-live-closeout` và
+không thay đổi product source.
 
-## EarnApp official Mac canary live verification (2026-08-26)
+## EarnApp v1.13.2 scoped live verification (2026-08-28)
 
-- Account Pool id `2` (`assetforgeai`) is `ACTIVE`; Chrome profile 40 was
-  refreshed and its Devices table shows `sdk-mac-4ae944b1` with the online
-  status dot. Authenticated collector evidence is `device_present=true`,
-  `online=true`, `banned=false`.
-- `test-sing` logical node `earnapp-canary-test-sing-1` remains bound to worker
-  `43406`, proxy lease `#12706`, and its original writable state volume. The
-  canary was replaced in place with image
-  `cashpilot/earnapp-mac-canary:asset-4a1e80cbb95d`; sidecar network, resource,
-  restart and profile mounts, UUID, tracking ID and device identity were kept.
-- The server instance row was updated only for the new Docker container ID;
-  account, worker, proxy, generation and encrypted spec were preserved. No
-  remote unlink/delete, lease rotation, or protected provider operation was
-  performed.
-- Source hardening still pending release: HTTP 200 `{error: ...}` link responses
-  are sanitized as terminal `remote` errors, and canary verification does not
-  retry those known rejections. The runtime manifest pins the new entrypoint
-  hash.
-- Schema v21, immutable cross-platform identity, node-scoped proxy evidence,
-  scheduled account collection, sequential EarnApp deployment and CAS proxy
-  rotation are implemented locally. Non-VN Ubuntu nodes use the restricted
-  EarnApp LXD helper; Settings owns the CPU/RAM values. This implementation did
-  not mutate a live worker, proxy lease, account, identity or provider.
+- PRs #46-#48 đã merge phần standardization, Docker egress decoding và legacy
+  state hydration. PR #48 merge tại
+  `ba2d29dda746327e0db445239244e12c684d9e03`; các check sau merge gồm Catalog,
+  CodeQL, Lint, Tests và Auto Release đều thành công. Release `v1.13.2` được
+  publish từ cùng merge commit.
+- Registry trả UI digest
+  `sha256:83a5b98c698d4ac59513d72108d516581e58be2895dcf9351ee68d77fc8ce913`
+  và worker digest
+  `sha256:03419892ec982acb240d13b6238bbb9a6ea15f36ff1db281d39e8fb20a73e1a7`.
+  Backup trước deploy nằm tại
+  `/opt/cashpilot/backups/earnapp-v132-authority-backfill-20260827T192358Z`.
+- Legacy metadata thiếu authority được CAS-fill sau khi đối chiếu database,
+  lease, proxy evidence, encrypted spec và container labels:
+  `platform=macos`, `expected_egress_ip=171.251.97.103`. Không đổi account,
+  worker, generation, device identity hoặc proxy lease.
+- Chỉ `cashpilot-ui` trên server và `cashpilot-worker` trên `test-sing` được
+  force-recreate riêng, không kéo dependency. Cả hai healthy ở version `1.13.2`;
+  SQLite là schema `21`, `integrity=ok`, foreign-key violation `0`.
+- Worker row `43406` giữ client ID
+  `e2a103a007d7e7c93172de6505e2e14839519dca4176989561dcf6f827a0871c`;
+  signing-key file được xác minh không đổi nhưng secret value không được ghi vào
+  tài liệu. Heartbeat authenticated mới được nhận lúc
+  `2026-08-27 19:30:18 UTC` và `2026-08-27 19:31:21 UTC`.
+- Logical node `earnapp-canary-test-sing-1` vẫn thuộc Account Pool id `2`
+  (`assetforgeai`), platform/backend `macos`/`docker`, lease `#12706`, egress
+  `171.251.97.103`. Container, sidecar, volume, account binding, generation và
+  device identity đều được giữ nguyên; Fleet báo online `1`, offline `0`.
+- Chrome profile 40 là nguồn authoritative: account `AssetForge AI`, balance
+  `$2.284`, device `sdk-mac-4ae944b1`, country `VN`, usage đang hoạt động.
+- NKN LXD, Mysterium và các provider `PROTECTED_DONE` khác không bị thay đổi.
+  EarnApp vẫn chưa là `PROTECTED_DONE`: còn phải chạy restart/recovery
+  persistence và isolated proxy rotation trên canary mới, không dùng node live
+  thành công làm vật thử nghiệm.
 
 ## EarnApp migration safety patch (2026-08-26)
 
@@ -40,13 +51,14 @@ Migration/archive/marker và boot idempotency đều được xác minh live; wo
 mọi non-UI container giữ nguyên. Provider `PROTECTED_DONE`, proxy/wallet lease,
 identity và volume không bị redeploy hoặc chỉnh sửa.
 
-## EarnApp account/recovery baseline (merged 2026-08-25)
+## EarnApp account/recovery baseline (merged 2026-08-25; historical checkpoint)
 
 PR #40 (`102fa9e1`) bổ sung control plane cô lập cho EarnApp trên nền
 `origin/main` `ff25e7b`; implementation commit là `9968a85`. PR đã merge. Việc
-merge chỉ đưa control plane vào source, chưa đồng nghĩa official runtime,
-DNS, Chrome profile live hay VPS canary đã hoàn tất; provider
-`PROTECTED_DONE` không bị đụng tới.
+merge tại thời điểm đó chỉ đưa control plane vào source, chưa đồng nghĩa
+official runtime, DNS, Chrome profile live hay VPS canary đã hoàn tất; provider
+`PROTECTED_DONE` không bị đụng tới. Đây là mô tả lịch sử, không phải trạng thái
+hiện tại.
 
 Domain model mới gồm `earnapp_accounts`, `earnapp_logical_nodes`,
 `earnapp_replacement_tickets`, `earnapp_account_control_routes` và
@@ -94,19 +106,22 @@ canonical egress thật thay vì số endpoint row. Importer bắt lỗi URL Cas
 trong UI và dùng alarm debounce riêng cho cookie change, không ghi đè alarm
 đồng bộ định kỳ 15 phút.
 
-Verification của baseline đạt focused suite `283 passed`, full non-live suite
-`1812 passed, 8 skipped`; migration-safety verification mới nhất được ghi ở
-`docs/research/earnapp-legacy-migration-safety-2026-08.md`.
+Verification của baseline tại checkpoint đó đạt focused suite `283 passed`,
+full non-live suite `1812 passed, 8 skipped`; migration-safety verification mới
+nhất được ghi ở `docs/research/earnapp-legacy-migration-safety-2026-08.md`.
 
-Phạm vi còn mở là final local gates, review/merge/release, registry verification,
-scoped UI/worker/helper deployment and the fresh-worker live/recovery matrix.
-The EarnApp-specific lane exists in source, but the global Auto Deploy switch
-must remain operator-disabled until those gates pass. EarnApp is **not** yet
+Release, registry verification và scoped UI/worker deployment đã hoàn tất ở
+`v1.13.2`. Phạm vi còn mở chỉ là restart/recovery persistence và isolated proxy
+rotation trên một canary mới. Global Auto Deploy phải tiếp tục
+operator-disabled cho tới khi hai gate này pass. EarnApp **chưa** là
 `PROTECTED_DONE`.
 
 ## Phạm vi và nguyên tắc
 
-Tài liệu này tổng hợp kết quả đọc source, tests, docs, Git history và GitHub metadata bằng `gh`. Giai đoạn phân tích không sửa product source, không truy cập hoặc thay đổi VPS, container, volume, database, credential, proxy lease, wallet lease hay provider identity.
+Tài liệu này tổng hợp kết quả đọc source, tests, docs, Git history và GitHub
+metadata bằng `gh`. Phần audit kiến trúc ban đầu là read-only; phần live closeout
+ở trên chỉ ghi nhận các thay đổi scoped đã được phê duyệt cho UI, worker và
+EarnApp canary. Không được suy rộng bằng chứng đó thành quyền bulk redeploy.
 
 14 provider cũ đã chốt là baseline bất biến; NKN direct-only cũng đã chuyển sang
 `PROTECTED_DONE` sau canary trên `test-sing`. Grass đã bị loại khỏi product theo
@@ -119,16 +134,16 @@ do refactor hoặc redeploy khi chưa có phê duyệt rõ ràng.
 | Hạng mục | Trạng thái đã kiểm chứng |
 |---|---|
 | Canonical base branch | `main`, theo dõi `origin/main` |
-| Audited base HEAD | `a6c6e4c`, merge PR #42, khớp `origin/main` và tag `v1.11.2` |
+| Audited base HEAD | `ba2d29d`, merge PR #48, khớp `origin/main` và tag `v1.13.2` |
 | Fork | `assetforgeai-tech/CashPilot` |
 | Upstream | `GeiserX/CashPilot` |
-| Divergence | Fork ahead 343, behind 26; histories diverged |
-| Fork release mới nhất | `v1.11.2` (Auto Release run `32902222108`) |
+| Divergence | Fork ahead 431, behind 31; histories diverged |
+| Fork release mới nhất | `v1.13.2` (Auto Release run `33104948032`) |
 | Upstream release quan sát | `v1.36.4` |
-| Fork CI/release hiện tại | Commit `a6c6e4c` pass CodeQL, Catalog Check, Lint, Documentation, Tests và Auto Release; PR #42 đã merge |
-| Merge/release state | PRs #27-#42 đã merge; `v1.11.2` đã live-closeout UI-only |
+| Fork CI/release hiện tại | Commit `ba2d29d` pass CodeQL, Catalog Check, Lint, Tests và Auto Release; PR #48 đã merge |
+| Merge/release state | PRs #27-#48 đã merge; `v1.13.2` đã scoped-deploy UI và worker |
 | Tag namespace | Fork tags được giữ ở `refs/fork-tags/*`; không lấy local `refs/tags/*` làm bằng chứng vì upstream dùng trùng version names |
-| Audit worktree | Branch `docs/earnapp-v1112-migration-closeout`; chỉ cập nhật tài liệu closeout |
+| Audit worktree | Branch `docs/earnapp-v1132-live-closeout`; chỉ cập nhật tài liệu closeout |
 
 Upstream mới hơn không đồng nghĩa fork phải merge. Fork-only history chứa nhiều contract quan trọng về provider/runtime hardening, Grass identity/auth, MYST wallet lease/runtime, proxy lease rotation và CI/release. Mọi merge hoặc cherry-pick phải được đánh giá riêng và nằm ngoài giai đoạn này.
 
@@ -144,9 +159,8 @@ Giới hạn phase này là assignment proxy vẫn ở worker-level để giữ 
 
 Release workflow dùng diff từ tag trước để quyết định có tạo release hay không. Khi
 có release, workflow chạy gate tests, build và publish độc lập UI/worker lên GHCR,
-xác minh image/tag rồi mới tạo Git tag và GitHub release. Release `v1.3.2` đã
-publish UI digest `sha256:25450f...302f31e` và worker digest
-`sha256:e487e8...87a28`; live deployment vẫn là thao tác riêng có approval.
+xác minh image/tag rồi mới tạo Git tag và GitHub release. Release hiện hành được
+ghi nhận ở v1.13.2; live deployment vẫn là thao tác riêng có approval.
 
 ## Ma trận bảo vệ provider
 
@@ -168,6 +182,7 @@ publish UI digest `sha256:25450f...302f31e` và worker digest
 | `grass` | `RETIRED` | Không còn catalog/runtime; giữ legacy rows/secrets để tương thích |
 | `mysterium` | `PROTECTED_DONE` | Direct-only; không đưa vào Proxy Pool |
 | `nkn` | `PROTECTED_DONE` | Direct-only; giữ nguyên contract và canary thành công |
+| `earnapp` | `OPEN_RECOVERY_GATES` | Giữ canary live; chỉ test recovery/rotation trên canary mới |
 
 ## Retired Grass history
 
@@ -198,9 +213,14 @@ worker heartbeat đồng bộ `online=true`, Fleet báo `total_nodes=1`, `online
 
 ## Gate cho thay đổi tương lai
 
-Mọi provider hiện hành đều là baseline bảo vệ. Nếu buộc phải sửa shared module, cần impact map, danh sách provider có thể bị ảnh hưởng, regression tests cho shared contracts, canary riêng, rollback bảo toàn identity/volume/credential/lease và phê duyệt rõ ràng của người dùng.
+Mọi provider `PROTECTED_DONE` đều là baseline bảo vệ. EarnApp là ngoại lệ duy
+nhất ở trạng thái `OPEN_RECOVERY_GATES`, nhưng phạm vi chỉ gồm restart/recovery
+persistence và isolated proxy rotation trên canary mới. Nếu buộc phải sửa shared
+module, cần impact map, danh sách provider có thể bị ảnh hưởng, regression tests
+cho shared contracts, canary riêng, rollback bảo toàn
+identity/volume/credential/lease và phê duyệt rõ ràng của người dùng.
 
-## Trạng thái hiện tại sau PR #13
+## Lịch sử contract sau PR #13 (không phải trạng thái live hiện tại)
 
 - Proxy rotation hiện có contract server-authoritative/worker-ACK: worker probe
   candidate từ chính VPS, stage persistent sing-box config, restart sidecar liên

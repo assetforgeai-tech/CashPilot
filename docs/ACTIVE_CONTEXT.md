@@ -1,49 +1,52 @@
 # CashPilot Active Context
 
-Updated: 2026-08-27 (EarnApp standardization implementation awaiting release/live gates)
+Updated: 2026-08-28 (EarnApp v1.13.2 scoped live rollout verified; recovery gates remain open)
 
-## EarnApp standardization implementation (2026-08-27)
+## EarnApp v1.13.2 scoped live rollout (2026-08-28)
 
-- Chrome profile 40 was refreshed and is authoritative: account `assetforgeai`
-  (Account Pool id `2`) is `ACTIVE`; device `sdk-mac-4ae944b1` is present and
-  shows the online status dot in the EarnApp Devices table.
-- The isolated `test-sing` canary remains account-scoped to logical node
-  `earnapp-canary-test-sing-1`, worker `43406`, proxy lease `#12706`, and the
-  existing `earnapp-canary-test-sing-1-data` volume. No unlink, delete, lease
-  rotation, or identity change was performed.
-- The canary was replaced in place with
-  `cashpilot/earnapp-mac-canary:asset-4a1e80cbb95d`; the sidecar network,
-  restart policy, resource limits, two mounts, Mac device ID, registration
-  marker, UUID and tracking ID were preserved. Server `provider_instances`
-  metadata was updated only to the new container ID after the replacement.
-- Fresh runtime evidence includes `registered`, `device online`, `proxy
-  connected`, `cid_set`, and stable EarnApp process startup. The authenticated
-  collector verification returned `authenticated=true`, `device_present=true`,
-  `online=true`, and `banned=false`.
-- Root cause fixed in the pending source change: an HTTP 200 `{error: ...}` from
-  `/link_device` was previously treated as a pending device; the collector now
-  returns sanitized `remote` evidence and canary verification stops terminal
-  remote errors without retrying a known rejection. The runtime asset manifest
-  now pins the updated registration-marker entrypoint hash.
-- Pending schema v21 adds immutable platform/device identity and node-scoped
-  proxy-health evidence. MacOS/iOS profiles and Ubuntu LXD identity are created
-  once per logical node; proxy rotation, restart, recovery and redeploy cannot
-  change the persisted platform or reuse a non-empty device ID.
-- The EarnApp-specific auto-deploy lane is implemented after NKN and the generic
-  provider queue, with provider/node failure isolation. The global
-  `Deploy to stable workers` setting remains off by default and must stay
-  operator-disabled until this branch is merged, released and the live recovery
-  matrix passes; no live worker or provider was changed by this implementation.
-- Non-VN nodes use the official Ubuntu runtime through the restricted
-  `cashpilot-earnapp-agent` Unix socket. Settings is authoritative for the LXD
-  CPU/RAM limits (defaults: `1` CPU, `1024 MiB`); the worker never receives the
-  raw LXD socket.
-- Scheduled account collection, token/route alerts, secret-free Fleet evidence
-  and node-scoped CAS proxy rotation are implemented. EarnApp remains open and
-  must not be marked `PROTECTED_DONE` before CI, release/registry verification,
-  fresh-worker evidence, restart persistence and isolated proxy recovery pass.
-- The pending worktree changes are not yet committed, released or deployed.
-  Fresh final quality-gate evidence is recorded before the PR is opened.
+- PR #48 merged at `ba2d29dda746327e0db445239244e12c684d9e03` and Auto
+  Release run `33104948032` published `v1.13.2` from that merge. Post-merge
+  Catalog Check, CodeQL, Lint, Tests and Auto Release all completed
+  successfully.
+- Registry verification resolved the UI image to
+  `sha256:83a5b98c698d4ac59513d72108d516581e58be2895dcf9351ee68d77fc8ce913`
+  and the worker image to
+  `sha256:03419892ec982acb240d13b6238bbb9a6ea15f36ff1db281d39e8fb20a73e1a7`.
+- Before the live change, a consistent server SQLite backup was written to
+  `/opt/cashpilot/backups/earnapp-v132-authority-backfill-20260827T192358Z`.
+  The approved metadata-only backfill set the legacy canary to
+  `platform=macos` and `expected_egress_ip=171.251.97.103` after correlating
+  database state, the active lease, proxy evidence, encrypted spec and running
+  container labels. Account, worker, generation, device identity and lease did
+  not change.
+- Only `cashpilot-ui` on the server and `cashpilot-worker` on `test-sing` were
+  force-recreated without their dependencies. Both report version `1.13.2` and
+  healthy state. The UI database remains at schema `21` with `integrity=ok` and
+  zero foreign-key violations.
+- Worker row `43406` retained persisted client ID
+  `e2a103a007d7e7c93172de6505e2e14839519dca4176989561dcf6f827a0871c`.
+  The signing-key file was verified unchanged without recording its secret
+  value. Fresh authenticated heartbeats arrived at `2026-08-27 19:30:18 UTC`
+  and `2026-08-27 19:31:21 UTC`.
+- The live node remains `earnapp-canary-test-sing-1`, Account Pool id `2`
+  (`assetforgeai`), platform/backend `macos`/`docker`, proxy lease `#12706`, and
+  egress `171.251.97.103`. The runtime image remains
+  `cashpilot/earnapp-mac-canary:asset-4a1e80cbb95d`. Container
+  `cashpilot-earnapp-canary-test-sing-1`, sidecar
+  `cashpilot-earnapp-canary-test-sing-1-egress`, volume
+  `earnapp-canary-test-sing-1-data`, account binding, generation and device
+  identity were preserved. Fleet reports online `1`, offline `0`, with healthy
+  runtime state.
+- Chrome profile 40 remains authoritative. It shows account `AssetForge AI`,
+  balance `$2.284`, device `sdk-mac-4ae944b1`, country `VN`, and active usage.
+  This is the remote-account evidence; container health alone is not treated as
+  proof of a linked online device.
+- NKN LXD, Mysterium and all other `PROTECTED_DONE` providers, their containers,
+  volumes, identities, proxy/wallet leases and runtime state were not changed.
+- EarnApp is not yet `PROTECTED_DONE`. Preserve the successful canary exactly as
+  it is. The remaining closeout gates are a separate restart/recovery-persistence
+  matrix and isolated proxy rotation on a new disposable canary. Keep global
+  `Deploy to stable workers` operator-disabled until those gates pass.
 
 Updated: 2026-08-26 (EarnApp v1.11.2 legacy migration live closeout complete)
 
@@ -101,12 +104,12 @@ Updated: 2026-08-26 (EarnApp v1.11.2 legacy migration live closeout complete)
   workers/provider instances/MYST wallets/NKN wallets remained
   `3 / 29 / 6266 / 26021`. No worker/provider runtime was redeployed.
 
-## EarnApp account/recovery implementation (merged baseline, 2026-08-25)
+## EarnApp account/recovery implementation (merged baseline, 2026-08-25; historical checkpoint)
 
 - PR #40 merged as `102fa9e1e163a9cb0ebd7715da19a19a33e17b51`; its implementation
-  commit is `9968a853ba5523c4bd96fa61e98473583c6a7e46`. The control plane is
-  merged source, but official EarnApp runtime/live canary work remains open;
-  no DNS, Chrome profile or VPS mutation was performed by that implementation.
+  commit is `9968a853ba5523c4bd96fa61e98473583c6a7e46`. At this historical
+  checkpoint the control plane was merged, while the official runtime/live
+  canary work was intentionally still open.
 - The server now has an isolated EarnApp Account Pool: Google/Apple metadata,
   Fernet-encrypted allowlisted cookies, masked owner APIs, token/cookie expiry
   warnings, least-assigned account allocation, account-scoped read-only
@@ -146,11 +149,11 @@ Updated: 2026-08-26 (EarnApp v1.11.2 legacy migration live closeout complete)
 - The merged baseline's earlier verification was `283 passed` focused and
   `1812 passed, 8 skipped` full; the current migration-safety branch's fresh
   verification is recorded in the section above.
-- Still not implemented or claimed complete: official EarnApp catalog/runtime,
-  MacOS/iOS emulation, Ubuntu LXD deployment, worker provision/follow/link
-  automation, DNS/reverse proxy provisioning for the chosen `4gmt.com`
-  hostname, Chrome profile validation and live EarnApp canary. EarnApp is not
-  `PROTECTED_DONE`.
+- Historical checkpoint only: official catalog/runtime, MacOS/iOS emulation,
+  Ubuntu LXD deployment, worker provision/follow/link automation, DNS/reverse
+  proxy provisioning, Chrome validation and the live canary had not yet been
+  completed. See the v1.13.2 scoped-live section above for the current state;
+  EarnApp remains open pending recovery gates.
 
 ## v1.10.0 Proxy Pool metadata/location live closeout (2026-08-25)
 
@@ -263,9 +266,13 @@ Updated: 2026-08-26 (EarnApp v1.11.2 legacy migration live closeout complete)
 
 ## Current repository state
 
-- Canonical source and tag `v1.11.2` both resolve to merge `a6c6e4c`. The live
-  server UI is verified on the exact v1.11.2 digest; worker and provider
-  runtimes retain their pre-deploy state.
+- Canonical source and tag `v1.13.2` both resolve to merge `ba2d29d`; the live
+  server UI and `test-sing` worker are verified on the v1.13.2 digests recorded
+  in the scoped-live section above. The deployment was limited to those two
+  CashPilot components and the existing EarnApp canary.
+- Current schema is `21`; the server database integrity check is `ok` with zero
+  foreign-key violations. EarnApp platform/device identity is immutable per
+  logical node, and its recovery/rotation gates remain intentionally open.
 - PR #27 upgrades the reported SQLite schema from 17 to 18 through
   idempotent guards. A migration regression starts from a populated v17 proxy
   schema and verifies that endpoints, worker assignments and provider masks are
@@ -314,22 +321,23 @@ Updated: 2026-08-26 (EarnApp v1.11.2 legacy migration live closeout complete)
 
 ## Product baseline
 
-- Current catalog: 15 providers, 13 bandwidth and 2 DePIN.
-- Current collectors: 9 (NKN beneficiary balance plus node summary).
-- Current Docker-deployable catalog entries: 14; manual-only catalog behavior
-  remains explicit.
-- The 14 pre-existing provider YAML definitions remain the protected baseline.
-  NKN is now also `PROTECTED_DONE` after its isolated direct-only canary; no
-  current provider is open for incidental redesign.
+- Current catalog: 16 providers, 14 bandwidth and 2 DePIN.
+- Current collectors: 9 shared-registry collectors plus the separate
+  account-scoped EarnApp collector.
+- Current Docker/runtime-capable catalog entries: 15; the one manual-only entry
+  remains explicit. Provider-specific automation (including NKN direct slots
+  and EarnApp Mac/LXD lanes) stays outside the generic Docker queue.
+- Fifteen providers are `PROTECTED_DONE`, including NKN after its isolated
+  direct-only canary. EarnApp is the only open provider, strictly limited to the
+  restart/recovery and isolated proxy-rotation gates.
 - Mysterium remains direct-only. Its wallet inventory, lease, identity,
   WireGuard/TUN and runtime contracts are not altered by this branch.
 
-## EarnApp Proxy Pool qualification baseline
+## EarnApp Proxy Pool and runtime baseline
 
-- EarnApp runtime/provider/collector/catalog implementation remains pending and
-  out of scope. The merged baseline adds only the isolated Proxy Pool
-  qualification and lease contract required before EarnApp is designed as a
-  provider.
+- EarnApp now has an active catalog/runtime/collector lane. The qualification
+  and lease rules below remain the source of truth for its proxy selection;
+  they are separate from the generic worker-level assignment.
 - Only the latest EarnApp WSS verdict `CID_SET` is eligible. `BLACKLIST` is
   blocked, `DECLINE` is quality-rejected, and timeout/transport failures remain
   unknown. WSS ping payloads are returned as binary pong frames without UTF-8
@@ -719,12 +727,17 @@ stopped and must not be mistaken for the active node.
 `proxies-sx`, `proxybase`, `proxybase-xyz`, `proxyrack`, `repocket`, `spide`,
 `traffmonetizer`, `uprock`, `urnetwork`, `wipter`, `nkn`.
 
-No current provider is open for redesign in this branch. Any future
-shared-module change requires an impact map, regression coverage, isolated
-canary and explicit user approval.
+EarnApp is `OPEN_RECOVERY_GATES`, not open for broad redesign. Any shared-module
+change requires an impact map, regression coverage, isolated canary and explicit
+user approval.
 
 ## Verification status
 
+- PR #48 merged at `ba2d29d`; Catalog Check, CodeQL, Lint, Tests and Auto
+  Release all passed. Release `v1.13.2`, both registry digests, scoped UI/worker
+  health, schema `21`, database integrity, preserved worker identity, two fresh
+  heartbeats, Fleet `1/0` and Chrome profile 40 remote-device evidence are
+  recorded in the current section at the top of this file.
 - PR #34 is merged at `a3d2dce`; Auto Release run `32817037347` completed
   successfully and published `v1.8.1`. Fresh authenticated proof confirms the
   dashboard session is masked, the UI-only deployment boundary is intact, DB
@@ -771,3 +784,6 @@ canary and explicit user approval.
 - Future provider deployment still requires an impact map and explicit approval;
   this canary did not authorize bulk redeploy, wallet rotation, credential
   rotation or changes to any protected provider.
+- EarnApp closeout remains incomplete until restart/recovery persistence and
+  isolated proxy rotation pass on a separate disposable canary. Do not alter the
+  successful `test-sing` EarnApp node to obtain those results.
