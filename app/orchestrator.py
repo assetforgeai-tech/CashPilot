@@ -275,11 +275,7 @@ def _restart_earnapp_main_after_sidecar_restart(client: Any, slug: str, sidecar:
     network_mode = str(((getattr(main, "attrs", {}) or {}).get("HostConfig") or {}).get("NetworkMode") or "")
     sidecar_id = str(getattr(sidecar, "id", "") or "").strip()
     sidecar_name = str(getattr(sidecar, "name", "") or "").strip().lstrip("/")
-    accepted_modes = {
-        f"container:{identifier}"
-        for identifier in (sidecar_id, sidecar_name)
-        if identifier
-    }
+    accepted_modes = {f"container:{identifier}" for identifier in (sidecar_id, sidecar_name) if identifier}
     if network_mode not in accepted_modes:
         raise RuntimeError(f"{slug} EarnApp main container has an unexpected network namespace")
     main.restart(timeout=30)
