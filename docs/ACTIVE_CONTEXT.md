@@ -1,8 +1,55 @@
 # CashPilot Active Context
 
-Updated: 2026-08-28 (EarnApp v1.13.2 scoped live rollout verified; recovery gates remain open)
+Updated: 2026-08-28 (EarnApp v1.13.4 recovery/rotation closeout complete; provider protected)
 
-## EarnApp v1.13.2 scoped live rollout (2026-08-28)
+## EarnApp v1.13.4 closeout (2026-08-28)
+
+- PR #52 merged at `8d2b86087c4cefc8e256aa8e359e2b2829c8af3e` after
+  CodeQL, Ruff and the full GitHub test suite passed. Auto Release run
+  `33137032952` published `v1.13.4`; the worker manifest is
+  `sha256:9e8e3e20f671fd775aa4443ba9d0b63b11fcb90bb63a96cb549213f9ed7e695f`.
+- The release fixes EarnApp proxy rotation when the main container uses
+  `network_mode=container:<sidecar-id>`. After each EarnApp sidecar restart,
+  the worker validates the exact sidecar ID/name and restarts only the matching
+  main container so it joins the new network namespace. Apply, explicit
+  rollback and internal rollback are regression-covered; non-EarnApp sidecars
+  keep their existing behavior.
+- Only `cashpilot-worker` on `test-sing` was recreated, with `--no-deps`, from
+  the pinned v1.13.4 digest. Its persisted worker ID/key hashes were unchanged,
+  the server received a fresh authenticated `1.13.4` heartbeat, and all EarnApp
+  and NKN runtime lifecycle snapshots were unchanged by the worker rollout.
+- `cashpilot-ui` intentionally remained on the verified v1.13.2 digest because
+  this fix executes inside the remote worker's sidecar orchestration path; no
+  server-side schema, route or scheduler change was required for the gate.
+- Protected node `earnapp-canary-test-sing-1` remained inspect-only throughout:
+  container `346712d55ab6`, sidecar `59dc3b1034ac`, volume
+  `earnapp-canary-test-sing-1-data`, device
+  `sdk-mac-84809cc96464d92c8a2786714ae944b1`, proxy `12706`, egress
+  `171.251.97.103`, start times, restart counts and machine ID were unchanged.
+- Disposable node `earnapp-recovery-test-sing-2` retained container
+  `075ad5d045a6`, sidecar `dbc24f66d495`, volume
+  `earnapp-recovery-test-sing-2-data`, generation `1`, account `2`, device
+  `sdk-mac-9e2dfc3d266d95b951cc24e5f5ab3142` and machine ID while two isolated
+  rotations succeeded. The first changed proxy `12708`/`116.98.176.124` to
+  `12724`/`14.236.137.88`; the second selected the prior proxy by affinity and
+  returned to `12708`/`116.98.176.124`. Main networking retained `eth0`, routes
+  and DNS after both sidecar restarts.
+- Authenticated EarnApp evidence reported both device IDs present, online and
+  not banned. The account snapshot was balance `$2.284`, online `2`, offline
+  `0`. Final database state is `integrity=ok`, foreign-key violations `0`,
+  active rotation reservations `0`, and exactly two active EarnApp leases.
+- Server backup is
+  `/opt/cashpilot/backups/earnapp-v134-rotation-20260828T030039Z`; worker/runtime
+  snapshots are under
+  `/opt/cashpilot-worker/backups/earnapp-v134-rotation-20260828T030039Z` and
+  `/opt/cashpilot-worker/backups/v1.13.4-worker-deploy-20260828T025707Z`.
+- EarnApp is now `PROTECTED_DONE`. Future changes require an impact map,
+  provider-scoped regression coverage, a disposable canary and explicit user
+  approval. Do not use either successful live node as a destructive test.
+
+Updated: 2026-08-28 (historical v1.13.2 checkpoint; recovery gates were open at this release)
+
+## EarnApp v1.13.2 scoped live rollout (historical checkpoint, 2026-08-28)
 
 - PR #48 merged at `ba2d29dda746327e0db445239244e12c684d9e03` and Auto
   Release run `33104948032` published `v1.13.2` from that merge. Post-merge
@@ -43,10 +90,9 @@ Updated: 2026-08-28 (EarnApp v1.13.2 scoped live rollout verified; recovery gate
   proof of a linked online device.
 - NKN LXD, Mysterium and all other `PROTECTED_DONE` providers, their containers,
   volumes, identities, proxy/wallet leases and runtime state were not changed.
-- EarnApp is not yet `PROTECTED_DONE`. Preserve the successful canary exactly as
-  it is. The remaining closeout gates are a separate restart/recovery-persistence
-  matrix and isolated proxy rotation on a new disposable canary. Keep global
-  `Deploy to stable workers` operator-disabled until those gates pass.
+- At this v1.13.2 checkpoint EarnApp was not yet `PROTECTED_DONE`; the remaining
+  gates were restart/recovery persistence and isolated proxy rotation on a new
+  disposable canary. The v1.13.4 closeout above supersedes that open status.
 
 Updated: 2026-08-26 (EarnApp v1.11.2 legacy migration live closeout complete)
 
@@ -152,8 +198,8 @@ Updated: 2026-08-26 (EarnApp v1.11.2 legacy migration live closeout complete)
 - Historical checkpoint only: official catalog/runtime, MacOS/iOS emulation,
   Ubuntu LXD deployment, worker provision/follow/link automation, DNS/reverse
   proxy provisioning, Chrome validation and the live canary had not yet been
-  completed. See the v1.13.2 scoped-live section above for the current state;
-  EarnApp remains open pending recovery gates.
+  completed. See the v1.13.4 closeout section above for the current protected
+  state.
 
 ## v1.10.0 Proxy Pool metadata/location live closeout (2026-08-25)
 
@@ -327,9 +373,8 @@ Updated: 2026-08-26 (EarnApp v1.11.2 legacy migration live closeout complete)
 - Current Docker/runtime-capable catalog entries: 15; the one manual-only entry
   remains explicit. Provider-specific automation (including NKN direct slots
   and EarnApp Mac/LXD lanes) stays outside the generic Docker queue.
-- Fifteen providers are `PROTECTED_DONE`, including NKN after its isolated
-  direct-only canary. EarnApp is the only open provider, strictly limited to the
-  restart/recovery and isolated proxy-rotation gates.
+- All sixteen active providers are `PROTECTED_DONE`, including NKN direct-only
+  and EarnApp after its isolated restart/recovery and proxy-rotation gates.
 - Mysterium remains direct-only. Its wallet inventory, lease, identity,
   WireGuard/TUN and runtime contracts are not altered by this branch.
 
@@ -725,9 +770,9 @@ stopped and must not be mistaken for the active node.
 
 `PROTECTED_DONE`: `earnfm`, `iproyal`, `mysterium`, `packetstream`,
 `proxies-sx`, `proxybase`, `proxybase-xyz`, `proxyrack`, `repocket`, `spide`,
-`traffmonetizer`, `uprock`, `urnetwork`, `wipter`, `nkn`.
+`traffmonetizer`, `uprock`, `urnetwork`, `wipter`, `nkn`, `earnapp`.
 
-EarnApp is `OPEN_RECOVERY_GATES`, not open for broad redesign. Any shared-module
+EarnApp is `PROTECTED_DONE`, not open for broad redesign. Any shared-module
 change requires an impact map, regression coverage, isolated canary and explicit
 user approval.
 
@@ -784,6 +829,6 @@ user approval.
 - Future provider deployment still requires an impact map and explicit approval;
   this canary did not authorize bulk redeploy, wallet rotation, credential
   rotation or changes to any protected provider.
-- EarnApp closeout remains incomplete until restart/recovery persistence and
-  isolated proxy rotation pass on a separate disposable canary. Do not alter the
-  successful `test-sing` EarnApp node to obtain those results.
+- EarnApp closeout is complete. Restart/network-namespace persistence and two
+  isolated proxy rotations passed on `earnapp-recovery-test-sing-2`; the
+  protected `earnapp-canary-test-sing-1` remained unchanged.

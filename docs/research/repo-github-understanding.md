@@ -1,10 +1,31 @@
 # CashPilot: Repo và GitHub Understanding
 
-Ngày chụp trạng thái nền: 2026-08-23; cập nhật live EarnApp v1.13.2: 2026-08-28
+Ngày chụp trạng thái nền: 2026-08-23; cập nhật live EarnApp v1.13.4: 2026-08-28
 
-Commit nền hiện tại là `ba2d29d` (merge PR #48, `origin/main`, tag
-`v1.13.2`). Worktree tài liệu dùng branch `docs/earnapp-v1132-live-closeout` và
-không thay đổi product source.
+Commit nền hiện tại là `8d2b860` (merge PR #52, `origin/main`, tag
+`v1.13.4`). Worktree closeout chỉ thay đổi tài liệu sau khi product source,
+release và live gates đã được xác minh.
+
+## EarnApp v1.13.4 recovery/rotation closeout (2026-08-28)
+
+- PR #52 sửa đúng root cause Docker network namespace: main EarnApp dùng
+  `container:<sidecar-id>` phải được restart sau sidecar apply/rollback để gắn
+  namespace mới. CI và Auto Release run `33137032952` pass; worker digest là
+  `sha256:9e8e3e20f671fd775aa4443ba9d0b63b11fcb90bb63a96cb549213f9ed7e695f`.
+- Chỉ worker `43406` trên `test-sing` được recreate `--no-deps`; worker identity
+  và key hash không đổi. NKN, MYST và mọi provider protected khác không bị
+  restart/redeploy. Server UI chủ đích giữ v1.13.2 vì fix chỉ chạy trong worker.
+- Node protected `earnapp-canary-test-sing-1` giữ nguyên container, sidecar,
+  volume, device, lease `12706`, egress `171.251.97.103`, machine ID và lifecycle.
+- Canary riêng `earnapp-recovery-test-sing-2` giữ nguyên container, volume,
+  account, generation, device và machine ID qua hai rotation CAS:
+  `12708/116.98.176.124 -> 12724/14.236.137.88 -> 12708/116.98.176.124`.
+  Lần hai chứng minh prior-proxy affinity; main giữ `eth0`, route, DNS và egress.
+- Authenticated account evidence thấy cả hai device online/not-banned; snapshot
+  online `2`, offline `0`, balance `$2.284`. DB `integrity=ok`, FK `0`, active
+  reservation `0`, active EarnApp lease `2`.
+- EarnApp được nâng thành `PROTECTED_DONE`. Mọi thay đổi tương lai phải có impact
+  map, regression coverage, canary mới và approval rõ ràng.
 
 ## EarnApp v1.13.2 scoped live verification (2026-08-28)
 
@@ -38,9 +59,8 @@ không thay đổi product source.
 - Chrome profile 40 là nguồn authoritative: account `AssetForge AI`, balance
   `$2.284`, device `sdk-mac-4ae944b1`, country `VN`, usage đang hoạt động.
 - NKN LXD, Mysterium và các provider `PROTECTED_DONE` khác không bị thay đổi.
-  EarnApp vẫn chưa là `PROTECTED_DONE`: còn phải chạy restart/recovery
-  persistence và isolated proxy rotation trên canary mới, không dùng node live
-  thành công làm vật thử nghiệm.
+  Tại checkpoint v1.13.2, EarnApp vẫn chưa là `PROTECTED_DONE`; trạng thái mở đó
+  đã được supersede bởi closeout v1.13.4 ở trên.
 
 ## EarnApp migration safety patch (2026-08-26)
 
@@ -182,7 +202,7 @@ ghi nhận ở v1.13.2; live deployment vẫn là thao tác riêng có approval.
 | `grass` | `RETIRED` | Không còn catalog/runtime; giữ legacy rows/secrets để tương thích |
 | `mysterium` | `PROTECTED_DONE` | Direct-only; không đưa vào Proxy Pool |
 | `nkn` | `PROTECTED_DONE` | Direct-only; giữ nguyên contract và canary thành công |
-| `earnapp` | `OPEN_RECOVERY_GATES` | Giữ canary live; chỉ test recovery/rotation trên canary mới |
+| `earnapp` | `PROTECTED_DONE` | Giữ cả hai node live; thay đổi mới cần canary riêng và approval |
 
 ## Retired Grass history
 
@@ -213,11 +233,9 @@ worker heartbeat đồng bộ `online=true`, Fleet báo `total_nodes=1`, `online
 
 ## Gate cho thay đổi tương lai
 
-Mọi provider `PROTECTED_DONE` đều là baseline bảo vệ. EarnApp là ngoại lệ duy
-nhất ở trạng thái `OPEN_RECOVERY_GATES`, nhưng phạm vi chỉ gồm restart/recovery
-persistence và isolated proxy rotation trên canary mới. Nếu buộc phải sửa shared
-module, cần impact map, danh sách provider có thể bị ảnh hưởng, regression tests
-cho shared contracts, canary riêng, rollback bảo toàn
+Mọi provider active đều là `PROTECTED_DONE` và là baseline bảo vệ. Nếu buộc phải
+sửa shared module, cần impact map, danh sách provider có thể bị ảnh hưởng,
+regression tests cho shared contracts, canary riêng, rollback bảo toàn
 identity/volume/credential/lease và phê duyệt rõ ràng của người dùng.
 
 ## Lịch sử contract sau PR #13 (không phải trạng thái live hiện tại)
