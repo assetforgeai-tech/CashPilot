@@ -91,10 +91,15 @@ async def _remove_local_runtime(binding: dict[str, Any]) -> bool:
                 timeout=180,
             )
         elif backend == "docker":
+            generation = int(binding.get("generation") or 0)
+            device_id = str(binding.get("device_id") or "").strip()
+            if generation <= 0 or not device_id:
+                return False
             response = await _proxy_to_worker(
                 worker_id,
                 "DELETE",
                 f"/api/earnapp/docker-nodes/{instance_id}",
+                json={"generation": generation, "device_id": device_id},
                 timeout=180,
             )
         else:
@@ -146,6 +151,16 @@ def _public_account(
         credential_keys = __import__("json").loads(str(row.get("credential_keys_json") or "[]"))
     except (TypeError, ValueError, __import__("json").JSONDecodeError):
         credential_keys = []
+    devices: list[dict[str, Any]] = []
+    if snapshot:
+        try:
+            raw_devices = __import__("json").loads(str(snapshot.get("devices_json") or "[]"))
+            devices = (
+                [device for device in raw_devices if isinstance(device, dict)] if isinstance(raw_devices, list) else []
+            )
+        except (TypeError, ValueError, __import__("json").JSONDecodeError):
+            devices = []
+    usage_devices = [device for device in devices if device.get("usage_available")]
     return {
         "id": int(row["id"]),
         "profile_key": str(row.get("profile_key") or ""),
@@ -163,6 +178,12 @@ def _public_account(
             "money_total": float(snapshot["money_total"]) if snapshot else None,
             "online_nodes": int(snapshot["online_nodes"]) if snapshot else None,
             "offline_nodes": int(snapshot["offline_nodes"]) if snapshot else None,
+            "usage_current": sum(float(device.get("usage_current") or 0) for device in usage_devices)
+            if snapshot
+            else None,
+            "usage_total": sum(float(device.get("usage_total") or 0) for device in usage_devices) if snapshot else None,
+            "usage_available_nodes": len(usage_devices) if snapshot else None,
+            "usage_missing_nodes": len(devices) - len(usage_devices) if snapshot else None,
             "collected_at": snapshot.get("collected_at") if snapshot else None,
         },
         "route": route

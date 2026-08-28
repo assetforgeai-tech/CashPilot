@@ -16,6 +16,7 @@ from app import (
     catalog,
     database,
     earnapp_canary,
+    earnapp_deploy,
     earnapp_identity,
     earnapp_runtime,
     main,
@@ -197,7 +198,7 @@ def test_server_profile_routes_mac_lan_ip_through_sidecar_tun(tmp_path):
     asyncio.run(run())
 
 
-def test_existing_profile_updates_tun_lan_ip_without_changing_device_id(tmp_path):
+def test_existing_profile_with_wrong_tun_lan_ip_fails_closed_without_rewrite(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
             await database.init_db()
@@ -212,13 +213,13 @@ def test_existing_profile_updates_tun_lan_ip_without_changing_device_id(tmp_path
                 device_id=device_id,
                 value=earnapp_runtime.encrypt_mac_profile(original),
             )
-            updated = await earnapp_canary.get_or_create_mac_identity_profile("earnapp-canary-1")
+            before = await database.get_earnapp_identity_profile("earnapp-canary-1")
+            with pytest.raises(ValueError, match="lan_ip"):
+                await earnapp_canary.get_or_create_mac_identity_profile("earnapp-canary-1")
+            after = await database.get_earnapp_identity_profile("earnapp-canary-1")
 
-        identity = earnapp_runtime.decrypt_mac_profile(updated["value"])
-        assert updated["device_id"] == device_id
-        assert identity["id"] == original["id"]
-        assert identity["serial"] == original["serial"]
-        assert identity["lan_ip"] == "172.31.255.1"
+        assert after["device_id"] == device_id
+        assert after["value"] == before["value"]
 
     asyncio.run(run())
 
@@ -341,6 +342,19 @@ def test_ios_runtime_manifest_is_content_addressed_from_the_forensic_bundle():
     assert labels["com.cashpilot.earnapp.platform"] == "ios"
     assert labels["com.cashpilot.earnapp.appid"] == "com.brd.earnapp"
     assert labels["com.cashpilot.earnapp.device-prefix"] == "sdk-ios-"
+
+
+def test_audited_runtime_artifacts_only_override_machine_architecture_queries():
+    root = Path(r"D:\1. WORK_true\CashPilot\earnapp_new_update\earnapp-runtime-small")
+
+    for platform in ("mac", "ios"):
+        uname = (root / platform / "uname").read_text(encoding="utf-8")
+        entrypoint = (root / platform / "entrypoint.sh").read_text(encoding="utf-8")
+        assert "-m|-p|-i" in uname
+        assert '*) exec /bin/uname "$@"' in uname
+        assert "rm -f /.dockerenv" in entrypoint
+        assert "systemd-detect-virt" not in entrypoint
+        assert "/proc/1/cgroup" not in entrypoint
 
 
 def test_ios_image_builder_uses_the_ios_bundle_and_verified_runtime_contract(tmp_path):
@@ -526,7 +540,7 @@ async def test_failed_canary_deploy_removes_and_rolls_back_only_that_canary(monk
             worker_remove=remove,
         )
 
-    remove.assert_awaited_once_with(3, "earnapp-canary-1")
+    remove.assert_awaited_once_with(3, "earnapp-canary-1", 4, "sdk-mac-test")
     rollback.assert_awaited_once_with(
         "earnapp-canary-1",
         3,
@@ -725,7 +739,7 @@ async def test_provider_instance_persist_failure_removes_and_rolls_back_new_cana
             worker_remove=remove,
         )
 
-    remove.assert_awaited_once_with(3, "earnapp-canary-1")
+    remove.assert_awaited_once_with(3, "earnapp-canary-1", 4, "sdk-mac-test")
     rollback.assert_awaited_once_with(
         "earnapp-canary-1",
         3,
@@ -899,7 +913,8 @@ async def test_verify_canary_uses_the_bound_account_proxy_and_returns_only_sanit
         collector_type.return_value.link_and_verify_device = collector
         result = await earnapp_canary.verify_canary("earnapp-canary-1", attempts=1)
 
-    assert result["status"] == "online"
+    assert result["status"] == "online_pending_usage"
+    assert result["workload_state"] == "online_pending_usage"
     assert result["online"] is True
     serialized = json.dumps(result, sort_keys=True)
     assert "refresh-secret" not in serialized
@@ -1003,6 +1018,603 @@ async def test_verify_canary_uses_the_persisted_node_platform(monkeypatch, store
     collector.assert_awaited_once_with(device_id, platform=wire_platform)
 
 
+def test_verify_canary_requires_a_positive_usage_or_earnings_delta_between_samples(monkeypatch):
+    async def run():
+        collector = AsyncMock(
+            side_effect=[
+                {
+                    "status": "online",
+                    "device_id": "sdk-mac-test",
+                    "authenticated": True,
+                    "device_present": True,
+                    "online": True,
+                    "banned": False,
+                    "billing": "bandwidth",
+                    "bandwidth": 1000,
+                    "total_bandwidth": 5000,
+                    "earned_total": 0.0,
+                },
+                {
+                    "status": "online",
+                    "device_id": "sdk-mac-test",
+                    "authenticated": True,
+                    "device_present": True,
+                    "online": True,
+                    "banned": False,
+                    "billing": "bandwidth",
+                    "bandwidth": 1600,
+                    "total_bandwidth": 5600,
+                    "earned_total": 0.0,
+                },
+            ]
+        )
+        monkeypatch.setattr(
+            database,
+            "get_earnapp_logical_node",
+            AsyncMock(
+                return_value={
+                    "logical_node_id": "earnapp-canary-1",
+                    "account_id": 7,
+                    "device_id": "sdk-mac-test",
+                    "platform": "macos",
+                    "current_proxy_id": 12,
+                    "state": "ACTIVE",
+                }
+            ),
+        )
+        monkeypatch.setattr(
+            database,
+            "get_earnapp_account_credentials",
+            AsyncMock(return_value={"id": 7, "state": "ACTIVE", "credentials": {}}),
+        )
+        monkeypatch.setattr(
+            database,
+            "get_earnapp_account_node_routes",
+            AsyncMock(
+                return_value=[
+                    {
+                        "logical_node_id": "earnapp-canary-1",
+                        "proxy_id": 12,
+                        "host": "proxy",
+                        "port": 1,
+                        "protocol": "http",
+                    }
+                ]
+            ),
+        )
+        with patch("app.earnapp_canary.EarnAppAccountCollector") as collector_type:
+            collector_type.return_value.link_and_verify_device = collector
+            result = await earnapp_canary.verify_canary("earnapp-canary-1", attempts=2, interval_seconds=0)
+
+        assert result["status"] == "workload_verified"
+        assert result["workload_state"] == "workload_verified"
+        assert result["workload_delta"] == {
+            "bandwidth": 600.0,
+            "total_bandwidth": 600.0,
+            "earned_total": 0.0,
+        }
+        assert collector.await_count == 2
+
+    asyncio.run(run())
+
+
+def test_verify_canary_accepts_any_positive_qualified_uptime_delta_within_poll_window(monkeypatch):
+    samples = [
+        {
+            "status": "online",
+            "authenticated": True,
+            "device_present": True,
+            "online": True,
+            "banned": False,
+            "device_id": "sdk-mac-" + "a" * 32,
+            "billing": "qualified_uptime",
+            "total_uptime": 1000,
+            "bandwidth": 0,
+            "total_bandwidth": 0,
+            "earned_total": 0,
+        },
+        {
+            "status": "online",
+            "authenticated": True,
+            "device_present": True,
+            "online": True,
+            "banned": False,
+            "device_id": "sdk-mac-" + "a" * 32,
+            "billing": "qualified_uptime",
+            "total_uptime": 1600,
+            "bandwidth": 0,
+            "total_bandwidth": 0,
+            "earned_total": 0,
+        },
+    ]
+
+    class Collector:
+        async def link_and_verify_device(self, *_args, **_kwargs):
+            return samples.pop(0)
+
+    with (
+        patch.object(
+            database,
+            "get_earnapp_logical_node",
+            AsyncMock(
+                return_value={
+                    "state": "ACTIVE",
+                    "account_id": 1,
+                    "current_proxy_id": 12,
+                    "device_id": "sdk-mac-" + "a" * 32,
+                    "platform": "macos",
+                }
+            ),
+        ),
+        patch.object(
+            database,
+            "get_earnapp_account_credentials",
+            AsyncMock(
+                return_value={
+                    "state": "ACTIVE",
+                    "credentials": {},
+                }
+            ),
+        ),
+        patch.object(
+            database,
+            "get_earnapp_account_node_routes",
+            AsyncMock(
+                return_value=[
+                    {
+                        "logical_node_id": "earnapp-node-1",
+                        "proxy_id": 12,
+                    }
+                ]
+            ),
+        ),
+        patch.object(earnapp_canary, "EarnAppAccountCollector", return_value=Collector()),
+    ):
+        result = asyncio.run(earnapp_canary.verify_canary("earnapp-node-1", attempts=2, interval_seconds=0))
+
+    assert result["status"] == "workload_verified"
+    assert result["workload_state"] == "workload_verified"
+    assert result["workload_delta"]["total_uptime"] == 600.0
+
+
+def test_verify_canary_keeps_flat_qualified_uptime_pending(monkeypatch):
+    samples = [
+        {
+            "status": "online",
+            "authenticated": True,
+            "device_present": True,
+            "online": True,
+            "banned": False,
+            "device_id": "sdk-mac-" + "c" * 32,
+            "billing": "qualified_uptime",
+            "total_uptime": 1000,
+            "earned_total": 0,
+        },
+        {
+            "status": "online",
+            "authenticated": True,
+            "device_present": True,
+            "online": True,
+            "banned": False,
+            "device_id": "sdk-mac-" + "c" * 32,
+            "billing": "qualified_uptime",
+            "total_uptime": 1000,
+            "earned_total": 0,
+        },
+    ]
+
+    class Collector:
+        async def link_and_verify_device(self, *_args, **_kwargs):
+            return samples.pop(0)
+
+    with (
+        patch.object(
+            database,
+            "get_earnapp_logical_node",
+            AsyncMock(
+                return_value={
+                    "state": "ACTIVE",
+                    "account_id": 1,
+                    "current_proxy_id": 12,
+                    "device_id": "sdk-mac-" + "c" * 32,
+                    "platform": "macos",
+                }
+            ),
+        ),
+        patch.object(
+            database,
+            "get_earnapp_account_credentials",
+            AsyncMock(
+                return_value={
+                    "state": "ACTIVE",
+                    "credentials": {},
+                }
+            ),
+        ),
+        patch.object(
+            database,
+            "get_earnapp_account_node_routes",
+            AsyncMock(
+                return_value=[
+                    {
+                        "logical_node_id": "earnapp-node-sustained",
+                        "proxy_id": 12,
+                    }
+                ]
+            ),
+        ),
+        patch.object(earnapp_canary, "EarnAppAccountCollector", return_value=Collector()),
+    ):
+        result = asyncio.run(earnapp_canary.verify_canary("earnapp-node-sustained", attempts=2, interval_seconds=0))
+
+    assert result["status"] == "online_pending_usage"
+    assert result["workload_state"] == "online_pending_usage"
+    assert result["workload_reason"] == "awaiting_metric_delta"
+
+
+def test_verify_canary_ignores_historical_usage_growth_when_current_workload_is_flat(monkeypatch):
+    samples = [
+        {
+            "status": "online",
+            "authenticated": True,
+            "device_present": True,
+            "online": True,
+            "banned": False,
+            "device_id": "sdk-mac-" + "e" * 32,
+            "billing": "qualified_uptime",
+            "uptime": 1000,
+            "total_uptime": 1000,
+            "usage_current": 1000,
+            "usage_total": 5000,
+            "earned_total": 0,
+        },
+        {
+            "status": "online",
+            "authenticated": True,
+            "device_present": True,
+            "online": True,
+            "banned": False,
+            "device_id": "sdk-mac-" + "e" * 32,
+            "billing": "qualified_uptime",
+            "uptime": 1000,
+            "total_uptime": 1000,
+            "usage_current": 1000,
+            "usage_total": 9000,
+            "earned_total": 0,
+        },
+    ]
+
+    class Collector:
+        async def link_and_verify_device(self, *_args, **_kwargs):
+            return samples.pop(0)
+
+    with (
+        patch.object(
+            database,
+            "get_earnapp_logical_node",
+            AsyncMock(
+                return_value={
+                    "state": "ACTIVE",
+                    "account_id": 1,
+                    "current_proxy_id": 12,
+                    "device_id": "sdk-mac-" + "e" * 32,
+                    "platform": "macos",
+                }
+            ),
+        ),
+        patch.object(
+            database,
+            "get_earnapp_account_credentials",
+            AsyncMock(return_value={"state": "ACTIVE", "credentials": {}}),
+        ),
+        patch.object(
+            database,
+            "get_earnapp_account_node_routes",
+            AsyncMock(return_value=[{"logical_node_id": "earnapp-node-history", "proxy_id": 12}]),
+        ),
+        patch.object(earnapp_canary, "EarnAppAccountCollector", return_value=Collector()),
+    ):
+        result = asyncio.run(earnapp_canary.verify_canary("earnapp-node-history", attempts=2, interval_seconds=0))
+
+    assert result["workload_state"] == "online_pending_usage"
+    assert result["workload_reason"] == "awaiting_metric_delta"
+
+
+def test_verify_canary_accepts_positive_current_usage_when_legacy_bandwidth_counters_are_flat(monkeypatch):
+    samples = [
+        {
+            "status": "online",
+            "authenticated": True,
+            "device_present": True,
+            "online": True,
+            "banned": False,
+            "device_id": "sdk-ios-" + "f" * 32,
+            "billing": "bandwidth",
+            "bandwidth": 0,
+            "total_bandwidth": 0,
+            "usage_current": 100,
+            "usage_total": 5000,
+            "earned_total": 0,
+        },
+        {
+            "status": "online",
+            "authenticated": True,
+            "device_present": True,
+            "online": True,
+            "banned": False,
+            "device_id": "sdk-ios-" + "f" * 32,
+            "billing": "bandwidth",
+            "bandwidth": 0,
+            "total_bandwidth": 0,
+            "usage_current": 160,
+            "usage_total": 5060,
+            "earned_total": 0,
+        },
+    ]
+
+    class Collector:
+        async def link_and_verify_device(self, *_args, **_kwargs):
+            return samples.pop(0)
+
+    with (
+        patch.object(
+            database,
+            "get_earnapp_logical_node",
+            AsyncMock(
+                return_value={
+                    "state": "ACTIVE",
+                    "account_id": 1,
+                    "current_proxy_id": 12,
+                    "device_id": "sdk-ios-" + "f" * 32,
+                    "platform": "ios",
+                }
+            ),
+        ),
+        patch.object(
+            database,
+            "get_earnapp_account_credentials",
+            AsyncMock(return_value={"state": "ACTIVE", "credentials": {}}),
+        ),
+        patch.object(
+            database,
+            "get_earnapp_account_node_routes",
+            AsyncMock(return_value=[{"logical_node_id": "earnapp-node-current", "proxy_id": 12}]),
+        ),
+        patch.object(earnapp_canary, "EarnAppAccountCollector", return_value=Collector()),
+    ):
+        result = asyncio.run(earnapp_canary.verify_canary("earnapp-node-current", attempts=2, interval_seconds=0))
+
+    assert result["workload_state"] == "workload_verified"
+    assert result["workload_delta"]["usage_current"] == 60.0
+
+
+def test_verify_canary_accepts_positive_current_usage_for_qualified_uptime(monkeypatch):
+    samples = [
+        {
+            "status": "online",
+            "authenticated": True,
+            "device_present": True,
+            "online": True,
+            "banned": False,
+            "device_id": "sdk-mac-" + "a" * 32,
+            "billing": "qualified_uptime",
+            "uptime": 1000,
+            "total_uptime": 1000,
+            "usage_current": 100,
+            "usage_total": 5000,
+            "earned_total": 0,
+        },
+        {
+            "status": "online",
+            "authenticated": True,
+            "device_present": True,
+            "online": True,
+            "banned": False,
+            "device_id": "sdk-mac-" + "a" * 32,
+            "billing": "qualified_uptime",
+            "uptime": 1000,
+            "total_uptime": 1000,
+            "usage_current": 160,
+            "usage_total": 5060,
+            "earned_total": 0,
+        },
+    ]
+
+    class Collector:
+        async def link_and_verify_device(self, *_args, **_kwargs):
+            return samples.pop(0)
+
+    with (
+        patch.object(
+            database,
+            "get_earnapp_logical_node",
+            AsyncMock(
+                return_value={
+                    "state": "ACTIVE",
+                    "account_id": 1,
+                    "current_proxy_id": 12,
+                    "device_id": "sdk-mac-" + "a" * 32,
+                    "platform": "macos",
+                }
+            ),
+        ),
+        patch.object(
+            database,
+            "get_earnapp_account_credentials",
+            AsyncMock(return_value={"state": "ACTIVE", "credentials": {}}),
+        ),
+        patch.object(
+            database,
+            "get_earnapp_account_node_routes",
+            AsyncMock(return_value=[{"logical_node_id": "earnapp-node-uptime-current", "proxy_id": 12}]),
+        ),
+        patch.object(earnapp_canary, "EarnAppAccountCollector", return_value=Collector()),
+    ):
+        result = asyncio.run(
+            earnapp_canary.verify_canary("earnapp-node-uptime-current", attempts=2, interval_seconds=0)
+        )
+
+    assert result["workload_state"] == "workload_verified"
+    assert result["workload_delta"]["usage_current"] == 60.0
+
+
+def test_verify_canary_uses_persisted_pending_baseline_across_verify_calls(monkeypatch):
+    sample = {
+        "status": "online",
+        "authenticated": True,
+        "device_present": True,
+        "online": True,
+        "banned": False,
+        "device_id": "sdk-mac-" + "d" * 32,
+        "billing": "qualified_uptime",
+        "total_uptime": 1600,
+        "earned_total": 0,
+    }
+
+    class Collector:
+        async def link_and_verify_device(self, *_args, **_kwargs):
+            return sample
+
+    with (
+        patch.object(
+            database,
+            "get_earnapp_logical_node",
+            AsyncMock(
+                return_value={
+                    "state": "ACTIVE",
+                    "account_id": 1,
+                    "current_proxy_id": 12,
+                    "device_id": "sdk-mac-" + "d" * 32,
+                    "platform": "macos",
+                }
+            ),
+        ),
+        patch.object(
+            database,
+            "get_earnapp_account_credentials",
+            AsyncMock(
+                return_value={
+                    "state": "ACTIVE",
+                    "credentials": {},
+                }
+            ),
+        ),
+        patch.object(
+            database,
+            "get_earnapp_account_node_routes",
+            AsyncMock(
+                return_value=[
+                    {
+                        "logical_node_id": "earnapp-node-persisted-baseline",
+                        "proxy_id": 12,
+                    }
+                ]
+            ),
+        ),
+        patch.object(
+            database,
+            "get_provider_instance_spec",
+            AsyncMock(
+                return_value={
+                    "earnapp_device_verification": {
+                        "device_id": "sdk-mac-" + "d" * 32,
+                        "billing": "qualified_uptime",
+                        "total_uptime": 1000,
+                        "earned_total": 0,
+                        "workload_state": "online_pending_usage",
+                    },
+                }
+            ),
+        ),
+        patch.object(earnapp_canary, "EarnAppAccountCollector", return_value=Collector()),
+    ):
+        result = asyncio.run(
+            earnapp_canary.verify_canary(
+                "earnapp-node-persisted-baseline",
+                attempts=1,
+                interval_seconds=0,
+            )
+        )
+
+    assert result["status"] == "workload_verified"
+    assert result["workload_delta"]["total_uptime"] == 600.0
+
+
+def test_verify_canary_keeps_unknown_billing_pending_without_guessing(monkeypatch):
+    samples = [
+        {
+            "status": "online",
+            "authenticated": True,
+            "device_present": True,
+            "online": True,
+            "banned": False,
+            "device_id": "sdk-mac-" + "b" * 32,
+            "billing": "",
+            "total_uptime": 1000,
+            "bandwidth": 10,
+        },
+        {
+            "status": "online",
+            "authenticated": True,
+            "device_present": True,
+            "online": True,
+            "banned": False,
+            "device_id": "sdk-mac-" + "b" * 32,
+            "billing": "",
+            "total_uptime": 1600,
+            "bandwidth": 20,
+        },
+    ]
+
+    class Collector:
+        async def link_and_verify_device(self, *_args, **_kwargs):
+            return samples.pop(0)
+
+    with (
+        patch.object(
+            database,
+            "get_earnapp_logical_node",
+            AsyncMock(
+                return_value={
+                    "state": "ACTIVE",
+                    "account_id": 1,
+                    "current_proxy_id": 12,
+                    "device_id": "sdk-mac-" + "b" * 32,
+                    "platform": "macos",
+                }
+            ),
+        ),
+        patch.object(
+            database,
+            "get_earnapp_account_credentials",
+            AsyncMock(
+                return_value={
+                    "state": "ACTIVE",
+                    "credentials": {},
+                }
+            ),
+        ),
+        patch.object(
+            database,
+            "get_earnapp_account_node_routes",
+            AsyncMock(
+                return_value=[
+                    {
+                        "logical_node_id": "earnapp-node-unknown",
+                        "proxy_id": 12,
+                    }
+                ]
+            ),
+        ),
+        patch.object(earnapp_canary, "EarnAppAccountCollector", return_value=Collector()),
+    ):
+        result = asyncio.run(earnapp_canary.verify_canary("earnapp-node-unknown", attempts=2, interval_seconds=0))
+
+    assert result["status"] == "online_pending_usage"
+    assert result["workload_state"] == "online_pending_usage"
+    assert result["workload_reason"] == "billing_unknown"
+
+
 @pytest.mark.asyncio
 async def test_canary_deploy_route_is_owner_only_and_calls_deploy_then_verify(monkeypatch):
     routes = {route.path for route in main.app.routes}
@@ -1021,10 +1633,18 @@ async def test_canary_deploy_route_is_owner_only_and_calls_deploy_then_verify(mo
             "container_id": "container-id",
         }
     )
-    verify = AsyncMock(return_value={"status": "online", "device_id": "sdk-mac-test", "online": True})
+    verify = AsyncMock(
+        return_value={
+            "status": "workload_verified",
+            "workload_state": "workload_verified",
+            "device_id": "sdk-mac-test",
+            "online": True,
+        }
+    )
     monkeypatch.setattr(main, "_resolve_worker_id", AsyncMock(return_value=3))
     monkeypatch.setattr(earnapp_canary, "deploy_canary", deploy)
     monkeypatch.setattr(earnapp_canary, "verify_canary", verify)
+    monkeypatch.setattr(main, "_persist_earnapp_canary_verification", AsyncMock(side_effect=lambda _node, value: value))
     monkeypatch.setattr(database, "record_health_event", AsyncMock())
 
     result = await main.api_deploy_earnapp_canary(
@@ -1033,10 +1653,284 @@ async def test_canary_deploy_route_is_owner_only_and_calls_deploy_then_verify(mo
         _auth={"r": "owner"},
     )
 
-    assert result["status"] == "online"
+    assert result["status"] == "workload_verified"
     assert result["deployment"]["container_id"] == "container-id"
     deploy.assert_awaited_once()
     verify.assert_awaited_once_with("earnapp-canary-1")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", ["ios", "ubuntu"])
+async def test_owner_canary_route_dispatches_platform_specific_runtime(monkeypatch, platform):
+    deploy = AsyncMock(
+        return_value={
+            "status": "deployed",
+            "logical_node_id": f"earnapp-{platform}-canary",
+            "worker_id": 3,
+            "device_id": ("sdk-ios-" if platform == "ios" else "sdk-node-") + "1" * 32,
+            "generation": 1,
+        }
+    )
+    verify = AsyncMock(
+        return_value={
+            "status": "workload_verified",
+            "workload_state": "workload_verified",
+            "online": True,
+        }
+    )
+    monkeypatch.setattr(main, "_resolve_worker_id", AsyncMock(return_value=3))
+    monkeypatch.setattr(earnapp_canary, "deploy_platform_canary", deploy)
+    monkeypatch.setattr(earnapp_canary, "verify_canary", verify)
+    monkeypatch.setattr(main, "_persist_earnapp_canary_verification", AsyncMock(side_effect=lambda _node, value: value))
+    monkeypatch.setattr(database, "get_config", AsyncMock(return_value={}))
+    monkeypatch.setattr(database, "record_health_event", AsyncMock())
+
+    result = await main.api_deploy_earnapp_canary(
+        _request("/api/admin/earnapp/canary/deploy"),
+        main.EarnAppCanaryDeployRequest(
+            logical_node_id=f"earnapp-{platform}-canary",
+            worker_id=3,
+            platform=platform,
+        ),
+        _auth={"r": "owner"},
+    )
+
+    assert result["status"] == "workload_verified"
+    assert deploy.await_args.kwargs["platform"] == platform
+    verify.assert_awaited_once_with(f"earnapp-{platform}-canary")
+
+
+def test_owner_canary_request_defaults_to_mac_and_rejects_unknown_platform():
+    assert main.EarnAppCanaryDeployRequest(logical_node_id="earnapp-mac-canary").platform == "macos"
+    with pytest.raises(ValueError):
+        main.EarnAppCanaryDeployRequest(logical_node_id="earnapp-invalid-canary", platform="android")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", ["ios", "ubuntu"])
+async def test_platform_canary_uses_matching_transport_and_persists_redacted_state(monkeypatch, platform):
+    device_prefix = "sdk-ios-" if platform == "ios" else "sdk-node-"
+    prepared = earnapp_deploy.PreparedEarnAppNode(
+        worker_id=3,
+        slot_id="ipv4-001",
+        logical_node_id=f"earnapp-{platform}-canary",
+        platform=platform,
+        account_id=7,
+        device_id=device_prefix + "1" * 32,
+        generation=4,
+        proxy={
+            "proxy_id": 12,
+            "host": "proxy.example",
+            "port": 1080,
+            "protocol": "socks5",
+            "username": "proxy-user",
+            "password": "proxy-secret",
+            "exit_ip": "203.0.113.10",
+            "country_code": "VN" if platform == "ios" else "US",
+            "ip_type": "residential",
+        },
+        identity={
+            "platform": "ubuntu",
+            "machine_id": "2" * 32,
+            "device_id": device_prefix + "1" * 32,
+            "hostname": "earnapp-test",
+        }
+        if platform == "ubuntu"
+        else {},
+        identity_asset_id=f"earnapp-{platform}-canary",
+    )
+    deploy = AsyncMock(
+        return_value={"instance_id": "lxd-node"} if platform == "ubuntu" else {"container_id": "ios-node"}
+    )
+    save = AsyncMock()
+    monkeypatch.setattr(database, "get_provider_instance", AsyncMock(return_value=None))
+    monkeypatch.setattr(database, "get_earnapp_logical_node", AsyncMock(return_value=None))
+    monkeypatch.setattr(database, "assign_earnapp_account", AsyncMock())
+    monkeypatch.setattr(earnapp_deploy, "prepare_node", AsyncMock(return_value=prepared))
+    monkeypatch.setattr(database, "save_provider_instance", save)
+
+    result = await earnapp_canary.deploy_platform_canary(
+        prepared.logical_node_id,
+        3,
+        platform=platform,
+        worker_deploy=deploy,
+        worker_remove=AsyncMock(),
+        lxd_settings={"cpu": 2, "memory_mib": 2048},
+    )
+
+    transport = deploy.await_args.args[2]
+    if platform == "ios":
+        assert transport["image"] == earnapp_runtime.IOS_RUNTIME_IMAGE
+        assert transport["runtime_contract"]["platform"] == "ios"
+    else:
+        assert transport["lxd_cpu"] == 2
+        assert transport["lxd_memory_mib"] == 2048
+        assert transport["identity"]["device_id"] == prepared.device_id
+    persisted = save.await_args.kwargs["spec"]
+    assert "proxy-secret" not in json.dumps(persisted, sort_keys=True)
+    assert save.await_args.kwargs["proxy_id"] == 12
+    assert save.await_args.kwargs["status"] == "running"
+    assert result["device_id"] == prepared.device_id
+
+
+@pytest.mark.asyncio
+async def test_failed_ubuntu_canary_cleanup_is_cas_scoped_to_its_own_node(monkeypatch):
+    node_id = "earnapp-ubuntu-canary"
+    device_id = "sdk-node-" + "3" * 32
+    prepared = earnapp_deploy.PreparedEarnAppNode(
+        worker_id=3,
+        slot_id="ipv4-001",
+        logical_node_id=node_id,
+        platform="ubuntu",
+        account_id=7,
+        device_id=device_id,
+        generation=5,
+        proxy={
+            "proxy_id": 14,
+            "host": "proxy.example",
+            "port": 1080,
+            "protocol": "socks5",
+            "exit_ip": "203.0.113.14",
+            "country_code": "US",
+            "ip_type": "residential",
+        },
+        identity={
+            "platform": "ubuntu",
+            "machine_id": "4" * 32,
+            "device_id": device_id,
+            "hostname": "earnapp-test",
+        },
+    )
+    remove = AsyncMock()
+    rollback = AsyncMock(return_value=True)
+    monkeypatch.setattr(database, "get_provider_instance", AsyncMock(return_value=None))
+    monkeypatch.setattr(database, "get_earnapp_logical_node", AsyncMock(return_value=None))
+    monkeypatch.setattr(database, "assign_earnapp_account", AsyncMock())
+    monkeypatch.setattr(earnapp_deploy, "prepare_node", AsyncMock(return_value=prepared))
+    monkeypatch.setattr(database, "rollback_earnapp_canary_binding", rollback)
+
+    with pytest.raises(RuntimeError, match="isolated failure"):
+        await earnapp_canary.deploy_platform_canary(
+            node_id,
+            3,
+            platform="ubuntu",
+            worker_deploy=AsyncMock(side_effect=RuntimeError("isolated failure")),
+            worker_remove=remove,
+        )
+
+    remove.assert_awaited_once_with(3, node_id, 5, device_id)
+    rollback.assert_awaited_once_with(
+        node_id,
+        3,
+        generation=5,
+        proxy_id=14,
+        reason="EARNAPP_CANARY_DEPLOY_FAILED",
+    )
+
+
+@pytest.mark.asyncio
+async def test_retry_running_ios_canary_reuses_identity_account_and_proxy(monkeypatch):
+    node_id = "earnapp-ios-retry"
+    assign = AsyncMock()
+    prepare = AsyncMock()
+    deploy = AsyncMock()
+    remove = AsyncMock()
+    monkeypatch.setattr(
+        database,
+        "get_earnapp_logical_node",
+        AsyncMock(
+            return_value={
+                "logical_node_id": node_id,
+                "platform": "ios",
+                "account_id": 7,
+                "current_proxy_id": 12,
+                "device_id": "sdk-ios-" + "4" * 32,
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        database,
+        "get_provider_instance",
+        AsyncMock(
+            return_value={
+                "worker_id": 3,
+                "status": "verification_pending",
+                "container_id": "ios-existing",
+            }
+        ),
+    )
+    monkeypatch.setattr(database, "assign_earnapp_account", assign)
+    monkeypatch.setattr(earnapp_deploy, "prepare_node", prepare)
+
+    result = await earnapp_canary.deploy_platform_canary(
+        node_id,
+        3,
+        platform="ios",
+        worker_deploy=deploy,
+        worker_remove=remove,
+    )
+
+    assert result == {
+        "status": "already_deployed",
+        "logical_node_id": node_id,
+        "worker_id": 3,
+        "container_id": "ios-existing",
+    }
+    assign.assert_not_awaited()
+    prepare.assert_not_awaited()
+    deploy.assert_not_awaited()
+    remove.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_ios_provider_instance_persist_failure_cleans_only_matching_generation(monkeypatch):
+    node_id = "earnapp-ios-persist-fail"
+    device_id = "sdk-ios-" + "5" * 32
+    prepared = earnapp_deploy.PreparedEarnAppNode(
+        worker_id=3,
+        slot_id="ipv4-001",
+        logical_node_id=node_id,
+        platform="ios",
+        account_id=7,
+        device_id=device_id,
+        generation=6,
+        proxy={
+            "proxy_id": 16,
+            "host": "proxy.example",
+            "port": 1080,
+            "protocol": "socks5",
+            "exit_ip": "203.0.113.16",
+            "country_code": "VN",
+            "ip_type": "residential",
+        },
+        identity_asset_id=node_id,
+    )
+    remove = AsyncMock()
+    rollback = AsyncMock(return_value=True)
+    monkeypatch.setattr(database, "get_provider_instance", AsyncMock(return_value=None))
+    monkeypatch.setattr(database, "get_earnapp_logical_node", AsyncMock(return_value=None))
+    monkeypatch.setattr(database, "assign_earnapp_account", AsyncMock())
+    monkeypatch.setattr(earnapp_deploy, "prepare_node", AsyncMock(return_value=prepared))
+    monkeypatch.setattr(database, "save_provider_instance", AsyncMock(side_effect=RuntimeError("db failed")))
+    monkeypatch.setattr(database, "rollback_earnapp_canary_binding", rollback)
+
+    with pytest.raises(RuntimeError, match="db failed"):
+        await earnapp_canary.deploy_platform_canary(
+            node_id,
+            3,
+            platform="ios",
+            worker_deploy=AsyncMock(return_value={"container_id": "ios-container"}),
+            worker_remove=remove,
+        )
+
+    remove.assert_awaited_once_with(3, node_id, 6, device_id)
+    rollback.assert_awaited_once_with(
+        node_id,
+        3,
+        generation=6,
+        proxy_id=16,
+        reason="EARNAPP_CANARY_PERSIST_FAILED",
+    )
 
 
 @pytest.mark.asyncio
@@ -1063,10 +1957,18 @@ async def test_canary_deploy_route_rollback_uses_composite_docker_cleanup(monkey
     monkeypatch.setattr(main, "_resolve_worker_id", AsyncMock(return_value=3))
     monkeypatch.setattr(main, "_proxy_to_worker", proxy)
     monkeypatch.setattr(earnapp_canary, "deploy_canary", deploy)
+    monkeypatch.setattr(main, "_persist_earnapp_canary_verification", AsyncMock(side_effect=lambda _node, value: value))
     monkeypatch.setattr(
         earnapp_canary,
         "verify_canary",
-        AsyncMock(return_value={"status": "online", "device_id": "sdk-mac-test", "online": True}),
+        AsyncMock(
+            return_value={
+                "status": "workload_verified",
+                "workload_state": "workload_verified",
+                "device_id": "sdk-mac-test",
+                "online": True,
+            }
+        ),
     )
     monkeypatch.setattr(database, "record_health_event", AsyncMock())
 
@@ -1076,13 +1978,90 @@ async def test_canary_deploy_route_rollback_uses_composite_docker_cleanup(monkey
         _auth={"r": "owner"},
     )
     rollback = deploy.await_args.kwargs["worker_remove"]
-    await rollback(3, "earnapp-canary-1")
+    await rollback(3, "earnapp-canary-1", 1, "sdk-mac-test")
 
     proxy.assert_awaited_once_with(
         3,
         "DELETE",
         "/api/earnapp/docker-nodes/earnapp-canary-1",
+        json={"generation": 1, "device_id": "sdk-mac-test"},
         timeout=180,
+    )
+
+
+@pytest.mark.asyncio
+async def test_macos_canary_cleanup_sends_generation_and_device_cas(monkeypatch):
+    """Mac rollback must not derive a fresh CAS tuple from mutable worker state."""
+    node_id = "earnapp-macos-cas"
+    device_id = "sdk-mac-" + "a" * 32
+    proxy = AsyncMock(return_value={"status": "removed", "main_present": False, "sidecar_present": False})
+
+    async def deploy(*_args, **kwargs):
+        await kwargs["worker_remove"](3, node_id, 7, device_id)
+        return {"status": "deployed", "logical_node_id": node_id, "worker_id": 3}
+
+    monkeypatch.setattr(main, "_resolve_worker_id", AsyncMock(return_value=3))
+    monkeypatch.setattr(main, "_proxy_to_worker", proxy)
+    monkeypatch.setattr(earnapp_canary, "deploy_canary", deploy)
+    monkeypatch.setattr(
+        earnapp_canary,
+        "verify_canary",
+        AsyncMock(return_value={"workload_state": "workload_verified", "online": True}),
+    )
+    monkeypatch.setattr(main, "_persist_earnapp_canary_verification", AsyncMock(side_effect=lambda _node, value: value))
+    monkeypatch.setattr(database, "record_health_event", AsyncMock())
+
+    await main.api_deploy_earnapp_canary(
+        _request("/api/admin/earnapp/canary/deploy"),
+        main.EarnAppCanaryDeployRequest(logical_node_id=node_id, worker_id=3, platform="macos"),
+        _auth={"r": "owner"},
+    )
+
+    proxy.assert_awaited_once_with(
+        3,
+        "DELETE",
+        f"/api/earnapp/docker-nodes/{node_id}",
+        json={"generation": 7, "device_id": device_id},
+        timeout=180,
+    )
+
+
+@pytest.mark.asyncio
+async def test_platform_mismatch_rolls_back_new_binding_before_raising(monkeypatch):
+    node_id = "earnapp-ubuntu-mismatch"
+    device_id = "sdk-node-" + "b" * 32
+    rollback = AsyncMock(return_value=True)
+    prepared = earnapp_deploy.PreparedEarnAppNode(
+        worker_id=3,
+        slot_id="ipv4-001",
+        logical_node_id=node_id,
+        platform="ios",
+        account_id=7,
+        device_id=device_id,
+        generation=4,
+        proxy={"proxy_id": 21, "exit_ip": "203.0.113.21", "country_code": "US", "ip_type": "residential"},
+    )
+    monkeypatch.setattr(database, "get_earnapp_logical_node", AsyncMock(return_value=None))
+    monkeypatch.setattr(database, "get_provider_instance", AsyncMock(return_value=None))
+    monkeypatch.setattr(database, "assign_earnapp_account", AsyncMock())
+    monkeypatch.setattr(earnapp_deploy, "prepare_node", AsyncMock(return_value=prepared))
+    monkeypatch.setattr(database, "rollback_earnapp_canary_binding", rollback)
+
+    with pytest.raises(ValueError, match="platform selection"):
+        await earnapp_canary.deploy_platform_canary(
+            node_id,
+            3,
+            platform="ubuntu",
+            worker_deploy=AsyncMock(),
+            worker_remove=AsyncMock(),
+        )
+
+    rollback.assert_awaited_once_with(
+        node_id,
+        3,
+        generation=4,
+        proxy_id=21,
+        reason="EARNAPP_CANARY_PLATFORM_MISMATCH",
     )
 
 
@@ -1103,6 +2082,210 @@ async def test_canary_deploy_route_refuses_mutating_the_protected_live_canary(mo
     assert exc.value.status_code == 409
     resolve.assert_not_awaited()
     deploy.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_canary_deploy_route_rejects_online_without_workload(monkeypatch):
+    monkeypatch.setattr(main, "_resolve_worker_id", AsyncMock(return_value=3))
+    monkeypatch.setattr(
+        earnapp_canary,
+        "deploy_canary",
+        AsyncMock(
+            return_value={
+                "status": "deployed",
+                "logical_node_id": "earnapp-canary-online-only",
+                "worker_id": 3,
+            }
+        ),
+    )
+    monkeypatch.setattr(main, "_persist_earnapp_canary_verification", AsyncMock(side_effect=lambda _node, value: value))
+    monkeypatch.setattr(
+        earnapp_canary,
+        "verify_canary",
+        AsyncMock(
+            return_value={
+                "status": "online_pending_usage",
+                "workload_state": "online_pending_usage",
+                "online": True,
+            }
+        ),
+    )
+    monkeypatch.setattr(database, "record_health_event", AsyncMock())
+
+    with pytest.raises(HTTPException) as exc:
+        await main.api_deploy_earnapp_canary(
+            _request("/api/admin/earnapp/canary/deploy"),
+            main.EarnAppCanaryDeployRequest(logical_node_id="earnapp-canary-online-only", worker_id=3),
+            _auth={"r": "owner"},
+        )
+
+    assert exc.value.status_code == 409
+    assert "workload" in str(exc.value.detail).lower()
+
+
+@pytest.mark.asyncio
+async def test_canary_verify_route_rejects_online_without_workload(monkeypatch):
+    pending = {
+        "status": "online_pending_usage",
+        "workload_state": "online_pending_usage",
+        "workload_reason": "awaiting_metric_delta",
+        "authenticated": True,
+        "device_present": True,
+        "device_id": "sdk-ios-" + "7" * 32,
+        "billing": "qualified_uptime",
+        "total_uptime": 1200.0,
+        "earned_total": 0.0,
+        "online": True,
+    }
+    monkeypatch.setattr(
+        earnapp_canary,
+        "verify_canary",
+        AsyncMock(return_value=pending),
+    )
+    monkeypatch.setattr(
+        database,
+        "get_provider_instance",
+        AsyncMock(
+            return_value={
+                "instance_id": "earnapp-canary-online-only",
+                "slug": "earnapp",
+                "worker_id": 3,
+                "mode": "proxy",
+                "container_id": "ios-container",
+                "sidecar_id": "ios-sidecar",
+                "proxy_id": 12,
+                "status": "running",
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        database,
+        "get_provider_instance_spec",
+        AsyncMock(return_value={"device_id": pending["device_id"], "generation": 4}),
+    )
+    save = AsyncMock()
+    monkeypatch.setattr(database, "save_provider_instance", save)
+
+    with pytest.raises(HTTPException) as exc:
+        await main.api_verify_earnapp_canary(
+            _request("/api/admin/earnapp/canary/earnapp-canary-online-only/verify"),
+            "earnapp-canary-online-only",
+            _auth={"r": "owner"},
+        )
+
+    assert exc.value.status_code == 409
+    assert "workload" in str(exc.value.detail).lower()
+    saved = save.await_args.kwargs
+    assert saved["status"] == "verification_pending"
+    assert saved["sidecar_id"] == "ios-sidecar"
+    assert saved["spec"]["earnapp_device_verification"] == pending
+
+
+@pytest.mark.asyncio
+async def test_canary_deploy_route_persists_pending_workload_baseline_before_409(monkeypatch):
+    node_id = "earnapp-ios-pending"
+    device_id = "sdk-ios-" + "8" * 32
+    pending = {
+        "status": "online_pending_usage",
+        "workload_state": "online_pending_usage",
+        "workload_reason": "awaiting_metric_delta",
+        "authenticated": True,
+        "device_present": True,
+        "device_id": device_id,
+        "billing": "qualified_uptime",
+        "total_uptime": 900.0,
+        "online": True,
+    }
+    monkeypatch.setattr(main, "_resolve_worker_id", AsyncMock(return_value=3))
+    monkeypatch.setattr(
+        earnapp_canary,
+        "deploy_platform_canary",
+        AsyncMock(
+            return_value={
+                "status": "deployed",
+                "logical_node_id": node_id,
+                "worker_id": 3,
+                "device_id": device_id,
+                "generation": 2,
+                "proxy_id": 12,
+                "container_id": "ios-container",
+            }
+        ),
+    )
+    monkeypatch.setattr(earnapp_canary, "verify_canary", AsyncMock(return_value=pending))
+    monkeypatch.setattr(
+        database,
+        "get_provider_instance",
+        AsyncMock(
+            return_value={
+                "instance_id": node_id,
+                "slug": "earnapp",
+                "worker_id": 3,
+                "mode": "proxy",
+                "container_id": "ios-container",
+                "sidecar_id": "",
+                "proxy_id": 12,
+                "status": "running",
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        database,
+        "get_provider_instance_spec",
+        AsyncMock(return_value={"device_id": device_id, "generation": 2}),
+    )
+    save = AsyncMock()
+    monkeypatch.setattr(database, "save_provider_instance", save)
+    monkeypatch.setattr(database, "record_health_event", AsyncMock())
+
+    with pytest.raises(HTTPException) as exc:
+        await main.api_deploy_earnapp_canary(
+            _request("/api/admin/earnapp/canary/deploy"),
+            main.EarnAppCanaryDeployRequest(logical_node_id=node_id, worker_id=3, platform="ios"),
+            _auth={"r": "owner"},
+        )
+
+    assert exc.value.status_code == 409
+    saved = save.await_args.kwargs
+    assert saved["status"] == "verification_pending"
+    assert saved["spec"]["earnapp_device_verification"] == pending
+
+
+@pytest.mark.asyncio
+async def test_ios_canary_cleanup_sends_generation_and_device_cas(monkeypatch):
+    node_id = "earnapp-ios-cas"
+    device_id = "sdk-ios-" + "9" * 32
+    proxy = AsyncMock(return_value={"status": "removed", "main_present": False, "sidecar_present": False})
+
+    async def deploy(*_args, **kwargs):
+        await kwargs["worker_remove"](3, node_id, 6, device_id)
+        return {"status": "deployed", "logical_node_id": node_id, "worker_id": 3}
+
+    monkeypatch.setattr(main, "_resolve_worker_id", AsyncMock(return_value=3))
+    monkeypatch.setattr(main, "_proxy_to_worker", proxy)
+    monkeypatch.setattr(earnapp_canary, "deploy_platform_canary", deploy)
+    monkeypatch.setattr(
+        earnapp_canary,
+        "verify_canary",
+        AsyncMock(return_value={"workload_state": "workload_verified", "online": True}),
+    )
+    monkeypatch.setattr(database, "get_provider_instance", AsyncMock(return_value=None))
+    monkeypatch.setattr(main, "_persist_earnapp_canary_verification", AsyncMock(side_effect=lambda _node, value: value))
+    monkeypatch.setattr(database, "record_health_event", AsyncMock())
+
+    await main.api_deploy_earnapp_canary(
+        _request("/api/admin/earnapp/canary/deploy"),
+        main.EarnAppCanaryDeployRequest(logical_node_id=node_id, worker_id=3, platform="ios"),
+        _auth={"r": "owner"},
+    )
+
+    proxy.assert_awaited_once_with(
+        3,
+        "DELETE",
+        f"/api/earnapp/docker-nodes/{node_id}",
+        json={"generation": 6, "device_id": device_id},
+        timeout=180,
+    )
 
 
 @pytest.mark.asyncio
@@ -1314,8 +2497,9 @@ async def test_runtime_asset_request_rejects_worker_that_does_not_own_logical_no
 @pytest.mark.asyncio
 async def test_worker_remove_cleans_only_the_matching_earnapp_heartbeat_state(tmp_path, monkeypatch):
     monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
-    worker_api._save_earnapp_state("earnapp-canary-1", {"generation": 1})
-    worker_api._save_earnapp_state("earnapp-canary-2", {"generation": 1})
+    device_id = "sdk-ios-" + "1" * 32
+    worker_api._save_earnapp_state("earnapp-canary-1", {"generation": 1, "device_id": device_id})
+    worker_api._save_earnapp_state("earnapp-canary-2", {"generation": 1, "device_id": "sdk-ios-" + "2" * 32})
 
     with (
         patch.object(worker_api, "_verify_api_key"),
@@ -1338,7 +2522,8 @@ async def test_worker_remove_cleans_only_the_matching_earnapp_heartbeat_state(tm
 @pytest.mark.asyncio
 async def test_generic_worker_remove_uses_composite_cleanup_for_earnapp(tmp_path, monkeypatch):
     monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
-    worker_api._save_earnapp_state("earnapp-node-1", {"generation": 1})
+    device_id = "sdk-mac-" + "1" * 32
+    worker_api._save_earnapp_state("earnapp-node-1", {"generation": 1, "device_id": device_id})
 
     with (
         patch.object(worker_api, "_verify_api_key"),
@@ -1377,6 +2562,7 @@ async def test_worker_cleanup_refuses_the_protected_live_canary(monkeypatch):
         await worker_api.api_remove_earnapp_docker_node(
             _request("/api/earnapp/docker-nodes/earnapp-canary-test-sing-1"),
             "earnapp-canary-test-sing-1",
+            worker_api.EarnAppDockerNodeCasSpec(generation=1, device_id="sdk-mac-" + "1" * 32),
         )
 
     assert exc.value.status_code == 409
@@ -1431,7 +2617,8 @@ async def test_worker_deploy_refuses_the_protected_live_canary(monkeypatch):
 @pytest.mark.asyncio
 async def test_worker_earnapp_docker_remove_requires_composite_runtime_absence(tmp_path, monkeypatch):
     monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
-    worker_api._save_earnapp_state("earnapp-node-1", {"generation": 1})
+    device_id = "sdk-ios-" + "1" * 32
+    worker_api._save_earnapp_state("earnapp-node-1", {"generation": 1, "device_id": device_id})
 
     with (
         patch.object(worker_api, "_verify_api_key"),
@@ -1444,6 +2631,7 @@ async def test_worker_earnapp_docker_remove_requires_composite_runtime_absence(t
         result = await worker_api.api_remove_earnapp_docker_node(
             _request("/api/earnapp/docker-nodes/earnapp-node-1"),
             "earnapp-node-1",
+            worker_api.EarnAppDockerNodeCasSpec(generation=1, device_id=device_id),
         )
 
     assert result == {
@@ -1458,7 +2646,8 @@ async def test_worker_earnapp_docker_remove_requires_composite_runtime_absence(t
 @pytest.mark.asyncio
 async def test_worker_earnapp_docker_remove_preserves_state_when_sidecar_cleanup_fails(tmp_path, monkeypatch):
     monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
-    worker_api._save_earnapp_state("earnapp-node-1", {"generation": 1})
+    device_id = "sdk-ios-" + "1" * 32
+    worker_api._save_earnapp_state("earnapp-node-1", {"generation": 1, "device_id": device_id})
 
     with (
         patch.object(worker_api, "_verify_api_key"),
@@ -1472,7 +2661,30 @@ async def test_worker_earnapp_docker_remove_preserves_state_when_sidecar_cleanup
         await worker_api.api_remove_earnapp_docker_node(
             _request("/api/earnapp/docker-nodes/earnapp-node-1"),
             "earnapp-node-1",
+            worker_api.EarnAppDockerNodeCasSpec(generation=1, device_id=device_id),
         )
 
     assert exc.value.status_code == 409
+    assert worker_api._earnapp_state_path("earnapp-node-1").exists()
+
+
+@pytest.mark.asyncio
+async def test_worker_earnapp_docker_remove_rejects_stale_generation_before_cleanup(tmp_path, monkeypatch):
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    device_id = "sdk-ios-" + "6" * 32
+    worker_api._save_earnapp_state("earnapp-node-1", {"generation": 7, "device_id": device_id})
+
+    with (
+        patch.object(worker_api, "_verify_api_key"),
+        patch.object(worker_api.orchestrator, "remove_earnapp_service") as remove,
+        pytest.raises(HTTPException) as exc,
+    ):
+        await worker_api.api_remove_earnapp_docker_node(
+            _request("/api/earnapp/docker-nodes/earnapp-node-1"),
+            "earnapp-node-1",
+            worker_api.EarnAppDockerNodeCasSpec(generation=6, device_id=device_id),
+        )
+
+    assert exc.value.status_code == 409
+    remove.assert_not_called()
     assert worker_api._earnapp_state_path("earnapp-node-1").exists()

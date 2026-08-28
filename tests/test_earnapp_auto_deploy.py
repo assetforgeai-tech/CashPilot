@@ -258,6 +258,41 @@ def test_verification_rejects_a_different_observed_device_id():
     assert not earnapp_deploy._verification_ok(evidence, device_id="sdk-mac-00000000000000000000000000000001")
 
 
+def test_verification_keeps_online_node_pending_until_usage_delta_is_observed():
+    evidence = {
+        "authenticated": True,
+        "device_present": True,
+        "online": True,
+        "banned": False,
+        "device_id": "sdk-mac-00000000000000000000000000000001",
+        "workload_state": "online_pending_usage",
+        "total_uptime": 18142,
+        "earned_total": 0.0,
+    }
+
+    assert not earnapp_deploy._verification_ok(
+        evidence,
+        device_id="sdk-mac-00000000000000000000000000000001",
+    )
+
+
+def test_verification_accepts_exact_node_only_after_workload_delta_is_observed():
+    evidence = {
+        "authenticated": True,
+        "device_present": True,
+        "online": True,
+        "banned": False,
+        "device_id": "sdk-mac-00000000000000000000000000000001",
+        "workload_state": "workload_verified",
+        "workload_delta": {"bandwidth": 60000.0, "total_bandwidth": 60000.0, "earned_total": 0.0},
+    }
+
+    assert earnapp_deploy._verification_ok(
+        evidence,
+        device_id="sdk-mac-00000000000000000000000000000001",
+    )
+
+
 @pytest.mark.asyncio
 async def test_sequential_deploy_continues_after_one_node_fails(monkeypatch):
     plans = [
@@ -285,12 +320,14 @@ async def test_sequential_deploy_continues_after_one_node_fails(monkeypatch):
 
     async def verify(node_id):
         return {
-            "status": "online",
+            "status": "workload_verified",
             "device_id": next(node.device_id for node in prepared if node.logical_node_id == node_id),
             "authenticated": True,
             "device_present": True,
             "online": True,
             "banned": False,
+            "workload_state": "workload_verified",
+            "workload_delta": {"bandwidth": 1.0, "total_bandwidth": 1.0, "earned_total": 0.0},
         }
 
     monkeypatch.setattr(earnapp_deploy, "target_worker_plans", AsyncMock(return_value=plans))
@@ -364,6 +401,8 @@ async def test_verified_running_provider_instance_is_idempotently_skipped(monkey
                     "online": True,
                     "banned": False,
                     "device_id": "sdk-mac-00000000000000000000000000000001",
+                    "workload_state": "workload_verified",
+                    "workload_delta": {"bandwidth": 1.0, "total_bandwidth": 1.0, "earned_total": 0.0},
                 },
             }
         ),
@@ -388,12 +427,14 @@ async def test_running_unverified_instance_is_verified_without_redeploy(monkeypa
     deploy = AsyncMock()
     verify = AsyncMock(
         return_value={
-            "status": "online",
+            "status": "workload_verified",
             "device_id": "sdk-mac-00000000000000000000000000000001",
             "authenticated": True,
             "device_present": True,
             "online": True,
             "banned": False,
+            "workload_state": "workload_verified",
+            "workload_delta": {"bandwidth": 1.0, "total_bandwidth": 1.0, "earned_total": 0.0},
         }
     )
     existing = {

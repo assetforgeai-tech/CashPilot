@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import re
 from unittest.mock import patch
 
 import pytest
@@ -41,6 +42,20 @@ IOS_REQUIRED_FIELDS = {
     "perr_os_version",
     "lan_ip",
     "local_hostname",
+}
+IOS_REFERENCE_FIELDS = {
+    "codename",
+    "conf_user",
+    "confdir",
+    "cp_id",
+    "device_kind",
+    "device_marketing",
+    "device_model",
+    "gw_ip",
+    "iface_type",
+    "is_swift",
+    "mobile_type",
+    "soc",
 }
 
 
@@ -133,3 +148,128 @@ def test_persisted_identity_profile_is_stable_and_platform_immutable(tmp_path):
                 await earnapp_identity.ensure_identity_profile("persisted-ios-node", "macos")
 
     asyncio.run(run())
+
+
+def test_generated_macos_profile_matches_reference_runtime_state_shape():
+    identity = earnapp_identity.generate_identity("parity-mac-node", "macos")
+
+    assert set(identity["new_state"]) == {
+        "battery_percentage",
+        "full_screen",
+        "full_screen_ts",
+        "idle_state",
+        "monitor_power",
+        "power_source",
+        "session_state",
+        "user_io",
+    }
+    assert isinstance(identity["new_state"]["idle_state"], dict)
+    assert identity["new_state"]["session_state"] == "logged"
+    assert isinstance(identity["usage"]["app_bytes"], str)
+    usage = json.loads(identity["usage"]["app_bytes"])
+    assert isinstance(usage, dict)
+    assert usage["wifi_connected"] is False
+
+
+def test_generated_ios_profile_matches_reference_identity_and_state_shape():
+    identity = earnapp_identity.generate_identity("parity-ios-node", "ios")
+
+    assert set(identity) >= {
+        "codename",
+        "conf_user",
+        "confdir",
+        "cp_id",
+        "device_kind",
+        "device_marketing",
+        "device_model",
+        "gw_ip",
+        "iface_type",
+        "is_swift",
+        "mobile_type",
+        "soc",
+    }
+    assert identity["new_state"]["session_state"] == "logged"
+    assert isinstance(identity["new_state"]["idle_state"], dict)
+    usage = json.loads(identity["usage"]["app_bytes"])
+    assert isinstance(usage, dict)
+    assert usage["wifi_connected"] is True
+    assert identity["ua"].startswith("earnapp/1 ")
+
+
+@pytest.mark.parametrize("field", sorted(IOS_REFERENCE_FIELDS))
+def test_new_ios_reference_profile_rejects_each_missing_field(field):
+    identity = earnapp_identity.generate_identity(f"ios-reference-missing-{field.replace('_', '-')}", "ios")
+    identity.pop(field)
+
+    with pytest.raises(ValueError, match="missing"):
+        earnapp_identity.validate_identity(identity, "ios")
+
+
+def test_generated_ios_profile_keeps_reference_cp_id_and_distinct_container_uuid():
+    first = earnapp_identity.generate_identity("parity-ios-container-a", "ios")
+    second = earnapp_identity.generate_identity("parity-ios-container-b", "ios")
+
+    assert first["container_uuid"] in first["confdir"]
+    assert first["cp_id"] == "ios_com.brd.earnapp"
+    assert second["container_uuid"] in second["confdir"]
+    assert first["container_uuid"] != second["container_uuid"]
+    assert second["cp_id"] == "ios_com.brd.earnapp"
+
+
+def test_new_mac_and_ios_tracking_ids_are_valid_uuid4_values():
+    mac = earnapp_identity.generate_identity("parity-mac-tracking-shape", "macos")
+    ios = earnapp_identity.generate_identity("parity-ios-tracking-shape", "ios")
+
+    uuid_shape = re.compile(r"^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$")
+    assert uuid_shape.fullmatch(mac["platform_uuid"])
+    assert mac["platform_uuid"][14] == "4"
+    assert uuid_shape.fullmatch(ios["identifier_for_vendor"])
+    assert ios["identifier_for_vendor"][14] == "4"
+    assert uuid_shape.fullmatch(ios["container_uuid"])
+    assert ios["container_uuid"][14] == "4"
+
+
+def test_new_identity_tracking_ids_and_network_ids_are_unique_per_node():
+    macs = [earnapp_identity.generate_identity(f"unique-mac-{index}", "macos") for index in range(16)]
+    ios_profiles = [earnapp_identity.generate_identity(f"unique-ios-{index}", "ios") for index in range(16)]
+
+    assert len({profile["platform_uuid"] for profile in macs}) == len(macs)
+    assert len({profile["serial_material_mac"] for profile in macs}) == len(macs)
+    assert len({profile["identifier_for_vendor"] for profile in ios_profiles}) == len(ios_profiles)
+    assert len({profile["container_uuid"] for profile in ios_profiles}) == len(ios_profiles)
+    assert len({profile["wifi_mac"] for profile in ios_profiles}) == len(ios_profiles)
+
+
+def test_generated_macos_profile_uses_observed_runtime_value_types_and_ranges():
+    identity = earnapp_identity.generate_identity("parity-mac-runtime-values", "macos")
+    state = identity["new_state"]
+
+    assert state["battery_percentage"] == -1
+    assert state["power_source"] == "AC"
+    assert 0 <= state["idle_state"]["cpu_usage"] <= 4
+    assert 0 <= state["idle_state"]["mem_usage"] <= 5
+    assert 2_806_000 <= state["user_io"] <= 4_000_000
+    assert state["full_screen_ts"] > 1_700_000_000_000
+    assert set(identity["perf"]) == {"cpu", "cpu_max", "mem", "mem_free", "mem_max"}
+    assert all(isinstance(value, str) for value in identity["perf"].values())
+    assert identity["timezone"] in {
+        "America/Los_Angeles",
+        "America/New_York",
+        "Europe/Berlin",
+        "Europe/London",
+    }
+
+
+def test_generated_ios_profile_uses_observed_runtime_value_types_and_ranges():
+    identity = earnapp_identity.generate_identity("parity-ios-runtime-values", "ios")
+    state = identity["new_state"]
+    usage = json.loads(identity["usage"]["app_bytes"])
+
+    assert state["battery_percentage"] in {38, 52, 67, 81, 94}
+    assert state["power_source"] in {"AC", "battery"}
+    assert 2 <= state["idle_state"]["cpu_usage"] <= 12
+    assert 8 <= state["idle_state"]["mem_usage"] <= 28
+    assert usage["battery_level"] == state["battery_percentage"]
+    assert usage["using_battery"] is True
+    assert set(identity["perf"]) == {"cpu", "cpu_max", "mem", "mem_free", "mem_max"}
+    assert all(isinstance(value, str) for value in identity["perf"].values())

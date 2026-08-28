@@ -166,7 +166,15 @@ def test_list_includes_latest_collector_summary_and_recovery_countdown(tmp_path,
                     "money_total": 90.0,
                     "online_nodes": 2,
                     "offline_nodes": 1,
-                    "devices": [{"device_id": "secretly-not-returned"}],
+                    "devices": [
+                        {
+                            "device_id": "secretly-not-returned",
+                            "billing": "qualified_uptime",
+                            "usage_current": 18142,
+                            "usage_total": 18142,
+                            "usage_available": True,
+                        }
+                    ],
                 },
             )
 
@@ -193,6 +201,10 @@ def test_list_includes_latest_collector_summary_and_recovery_countdown(tmp_path,
     assert snapshot["money_total"] == 90.0
     assert snapshot["online_nodes"] == 2
     assert snapshot["offline_nodes"] == 1
+    assert snapshot["usage_current"] == 18142
+    assert snapshot["usage_total"] == 18142
+    assert snapshot["usage_available_nodes"] == 1
+    assert snapshot["usage_missing_nodes"] == 0
     assert payload["accounts"][0]["route"] == {
         "status": "healthy",
         "source": "node",
@@ -268,12 +280,15 @@ async def test_local_runtime_cleanup_accepts_authoritative_docker_absence(monkey
             "instance_id": "earnapp-node-1",
             "worker_id": 7,
             "runtime_backend": "docker",
+            "generation": 4,
+            "device_id": "sdk-ios-" + "1" * 32,
         }
     )
     remove.assert_awaited_once_with(
         7,
         "DELETE",
         "/api/earnapp/docker-nodes/earnapp-node-1",
+        json={"generation": 4, "device_id": "sdk-ios-" + "1" * 32},
         timeout=180,
     )
 
@@ -295,12 +310,15 @@ async def test_local_runtime_cleanup_does_not_use_a_stale_container_list_as_abse
             "instance_id": "earnapp-node-1",
             "worker_id": 7,
             "runtime_backend": "docker",
+            "generation": 4,
+            "device_id": "sdk-ios-" + "1" * 32,
         }
     )
     remove.assert_awaited_once_with(
         7,
         "DELETE",
         "/api/earnapp/docker-nodes/earnapp-node-1",
+        json={"generation": 4, "device_id": "sdk-ios-" + "1" * 32},
         timeout=180,
     )
 
@@ -316,6 +334,8 @@ async def test_local_runtime_cleanup_does_not_treat_worker_failure_as_absence(mo
             "instance_id": "earnapp-node-3",
             "worker_id": 9,
             "runtime_backend": "docker",
+            "generation": 2,
+            "device_id": "sdk-mac-" + "3" * 32,
         }
     )
     remove.assert_awaited_once()
@@ -338,12 +358,15 @@ async def test_local_runtime_cleanup_rejects_orphaned_docker_sidecar(monkeypatch
             "instance_id": "earnapp-node-1",
             "worker_id": 7,
             "runtime_backend": "docker",
+            "generation": 4,
+            "device_id": "sdk-ios-" + "1" * 32,
         }
     )
     remove.assert_awaited_once_with(
         7,
         "DELETE",
         "/api/earnapp/docker-nodes/earnapp-node-1",
+        json={"generation": 4, "device_id": "sdk-ios-" + "1" * 32},
         timeout=180,
     )
 

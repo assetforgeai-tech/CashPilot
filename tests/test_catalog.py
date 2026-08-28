@@ -268,3 +268,33 @@ def test_wipter_matches_tested_container_runtime_knobs():
     assert docker["sysctls"] == {"net.ipv4.ip_forward": "1"}
     assert docker["shm_size"] == "2gb"
     assert docker["ports"] == ["5900:5900", "6080:6080"]
+
+
+def test_earnapp_catalog_describes_each_platform_runtime_without_changing_other_providers():
+    with open(SERVICES_DIR / "bandwidth" / "earnapp.yml") as f:
+        data = yaml.safe_load(f)
+
+    assert data["deploy"]["automation"] == "earnapp_platform_nodes"
+    routes = {route["platform"]: route for route in data["deploy"]["platform_routes"]}
+    assert routes == {
+        "macos": {
+            "platform": "macos",
+            "country_policy": "VN",
+            "runtime_backend": "docker",
+            "asset_kind": "mac_identity_profile",
+        },
+        "ios": {
+            "platform": "ios",
+            "country_policy": "VN",
+            "runtime_backend": "docker",
+            "asset_kind": "ios_identity_profile",
+        },
+        "ubuntu": {
+            "platform": "ubuntu",
+            "country_policy": "non-VN",
+            "runtime_backend": "lxd",
+            "asset_kind": "ubuntu_identity_profile",
+        },
+    }
+    assert data["deploy"]["existing_node_policy"] == "immutable"
+    assert "runtime_assets" not in data["deploy"]

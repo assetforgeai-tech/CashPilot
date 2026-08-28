@@ -3442,13 +3442,19 @@ const CP = (() => {
       const nodes = collector.online_nodes == null
         ? `${Number(account.assigned_nodes) || 0} assigned`
         : `${Number(collector.online_nodes) || 0} online / ${Number(collector.offline_nodes) || 0} offline`;
+      const usage = collector.usage_current == null
+        ? 'Current qualified usage unavailable'
+        : `Current qualified usage ${Math.max(0, Number(collector.usage_current) || 0).toLocaleString()} ms`;
+      const usageCoverage = collector.usage_available_nodes == null
+        ? ''
+        : `${Number(collector.usage_available_nodes) || 0} measured / ${Math.max(0, (Number(collector.usage_available_nodes) || 0) + (Number(collector.usage_missing_nodes) || 0))} devices`;
       const canDelete = account.state === 'ACCOUNT_LOCKED';
       return `<tr>
         <td><strong>${escapeHtml(account.account_name || account.email || `Account ${account.id}`)}</strong><small>${escapeHtml(account.auth_method || '')} · ${escapeHtml(account.profile_key || '')}</small><span class="badge badge-category">${escapeHtml(account.state || '')}</span></td>
         <td><span class="earnapp-token-state ${escapeHtml(token.css)}">${escapeHtml(token.label)}</span><small>${account.token_expires_at ? escapeHtml(fmtTimestamp(account.token_expires_at).text) : 'No expiry metadata'}</small></td>
         <td><strong>${escapeHtml(route.status || 'unavailable')}</strong><small>${route.source === 'node' ? 'Account node proxy' : (route.source === 'account_control' ? 'Pre-node control proxy' : 'No collector route')}</small><small>${route.egress_ip ? `${escapeHtml(route.country_code || '—')} · ${escapeHtml(route.egress_ip)} · proxy #${escapeHtml(route.proxy_id || '—')}` : 'No healthy account-owned egress'}</small><small>${route.checked_at ? `Checked ${escapeHtml(fmtTimestamp(route.checked_at).text)}` : 'Check time unavailable'}</small></td>
         <td><strong>${balance}</strong><small>${collector.money_total == null ? 'Lifetime unavailable' : `${Number(collector.money_total).toFixed(2)} USD lifetime`}</small><small>${collector.collected_at ? `Last collected ${escapeHtml(fmtTimestamp(collector.collected_at).text)}` : 'No successful collection yet'}</small></td>
-        <td>${escapeHtml(nodes)}</td>
+        <td>${escapeHtml(nodes)}<small>${escapeHtml(usage)}</small>${usageCoverage ? `<small>${escapeHtml(usageCoverage)}</small>` : ''}</td>
         <td><div class="earnapp-row-actions">
           <button class="btn btn-ghost btn-sm" data-action="collectEarnAppAccount" data-a1="${escapeHtml(account.id)}">Collect now</button>
           ${canDelete ? `<button class="btn btn-ghost btn-sm danger-action" data-action="deleteEarnAppAccount" data-a1="${escapeHtml(account.id)}" data-a2="${escapeHtml(account.account_name)}">Delete local account</button>` : ''}
