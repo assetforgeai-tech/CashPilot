@@ -1625,6 +1625,11 @@ class EarnAppNodeCasSpec(BaseModel):
     device_id: str = Field(pattern=r"^sdk-node-[0-9a-f]{32}$")
 
 
+class EarnAppDockerNodeCasSpec(BaseModel):
+    generation: int = Field(ge=1)
+    device_id: str = Field(pattern=r"^sdk-(?:mac|ios)-[0-9a-f]{32}$")
+
+
 class EarnAppProxyApplySpec(BaseModel):
     generation: int = Field(ge=1)
     device_id: str = Field(min_length=8, max_length=128)
@@ -2601,11 +2606,19 @@ async def api_remove_earnapp_lxd_node(
 
 
 @app.delete("/api/earnapp/docker-nodes/{slug}")
-async def api_remove_earnapp_docker_node(request: Request, slug: str) -> dict[str, Any]:
+async def api_remove_earnapp_docker_node(
+    request: Request,
+    slug: str,
+    spec: EarnAppDockerNodeCasSpec,
+) -> dict[str, Any]:
     """Remove both Docker components before acknowledging local EarnApp cleanup."""
     _verify_api_key(request)
     if slug == _EARNAPP_PROTECTED_CANARY:
         raise HTTPException(status_code=409, detail="Protected EarnApp canary is inspect-only")
+    state = _earnapp_node_state(slug)
+    expected = (int(state.get("generation") or 0), str(state.get("device_id") or ""))
+    if expected != (spec.generation, spec.device_id):
+        raise HTTPException(status_code=409, detail="EarnApp node assignment conflict")
     try:
         result = await asyncio.to_thread(orchestrator.remove_earnapp_service, slug)
     except ValueError as exc:
@@ -3088,7 +3101,15 @@ async def api_remove_container(
 ) -> dict[str, Any]:
     _verify_api_key(request)
     if slug.startswith("earnapp-"):
-        return await api_remove_earnapp_docker_node(request, slug)
+        state = _earnapp_node_state(slug)
+        try:
+            spec = EarnAppDockerNodeCasSpec(
+                generation=int(state.get("generation") or 0),
+                device_id=str(state.get("device_id") or ""),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail="EarnApp node assignment is incomplete") from exc
+        return await api_remove_earnapp_docker_node(request, slug, spec)
     try:
         result = await asyncio.to_thread(
             orchestrator.remove_service,

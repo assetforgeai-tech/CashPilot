@@ -5,7 +5,9 @@
 
 ## Description
 
-EarnApp proxy-only runtime with account-scoped identity and an explicit Mac-emulation canary lane. Each node owns one exclusive residential proxy.
+EarnApp proxy-only runtime with account-scoped identity and isolated
+platform-specific canary lanes. Each node owns one exclusive residential
+proxy.
 
 ## Earning Estimates
 
@@ -26,11 +28,10 @@ EarnApp proxy-only runtime with account-scoped identity and an explicit Mac-emul
 
 ## Setup
 
-EarnApp has an owner-controlled **Mac-emulation canary** and an implemented
-provider-specific auto-deploy lane. The first live device is linked and verified
-on the EarnApp dashboard. The isolated restart/network-namespace and proxy
-rotation gates passed in v1.13.4. Global auto-deploy remains an operator policy
-decision; provider protection does not itself turn that setting on.
+EarnApp has an owner-controlled platform canary lane and an implemented
+provider-specific auto-deploy path. The existing Docker Mac nodes are preserved
+for evidence and are not migration targets. Global auto-deploy remains an
+operator policy decision.
 
 1. Sign in to [EarnApp](https://earnapp.com) in a dedicated Chrome profile.
 2. Use the CashPilot Provider Importer to import that profile's allowlisted
@@ -65,15 +66,18 @@ are:
 - `cashpilot/earnapp-ios:asset-061a2a32d69d`
 
 The canary is successful only when the authenticated account route reports the
-same device in `devices` and `device_statuses` reports it `online`. A running
-container or a local heartbeat alone is not sufficient evidence.
+same device in `devices`, `device_statuses` reports it `online`, and a positive
+workload/usage delta is observed. A running container or a local heartbeat alone
+is not sufficient evidence.
 
 ## Verified live baseline
 
 The v1.13.4 worker rollout was limited to `cashpilot-worker` on `test-sing`.
 Chrome profile 40 remains authoritative. Authenticated collector evidence shows
 both live devices online and not banned, with account totals online `2`, offline
-`0`.
+`0`. Current-day qualified usage is positive for node 1 (`32,740,937 ms`) but
+node 2 is near plateau (`18,142 ms`); this is a workload diagnostic, not proof
+that Docker is the cause.
 
 Preserve both successful nodes:
 
@@ -91,8 +95,9 @@ Preserve both successful nodes:
 The recovery node retained its account, generation, device ID, volume and
 machine ID while rotating `12708 -> 12724 -> 12708`. The main process rejoined
 the sidecar network namespace after each restart and retained egress, `eth0`,
-routes and DNS. EarnApp is `PROTECTED_DONE`; future destructive tests require a
-new disposable node with separate identity, volume and lease.
+routes and DNS. Existing nodes remain protected; iOS Docker and Ubuntu-LXD
+platform canaries are still pending. MacOS/iOS remain Docker-only and are never
+migrated to LXD.
 
 ## Operational contract
 

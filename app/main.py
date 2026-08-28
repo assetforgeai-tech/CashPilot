@@ -47,6 +47,7 @@ from app import (
     earnapp_collection,
     earnapp_deploy,
     earnapp_recovery,
+    earnapp_runtime,
     egress,
     exchange_rates,
     fleet_key,
@@ -2532,6 +2533,7 @@ class DeployRequest(BaseModel):
 class EarnAppCanaryDeployRequest(BaseModel):
     logical_node_id: str = Field(min_length=3, max_length=128, pattern=r"^[a-z0-9][a-z0-9-]{2,120}$")
     worker_id: int | None = Field(default=None, gt=0)
+    platform: str = Field(default="macos", pattern=r"^(macos|ios|ubuntu)$")
 
 
 def _resolve_deploy_credentials(
@@ -3150,13 +3152,39 @@ async def api_deploy(
     return response
 
 
+async def _persist_earnapp_canary_verification(
+    logical_node_id: str,
+    evidence: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Persist the redacted workload sample so later verify calls retain a baseline."""
+    sanitized = earnapp_runtime.redacted_evidence(dict(evidence))
+    instance = await database.get_provider_instance(logical_node_id)
+    if not instance:
+        return sanitized
+    spec = dict(await database.get_provider_instance_spec(logical_node_id) or {})
+    spec["earnapp_device_verification"] = sanitized
+    verified = str(sanitized.get("workload_state") or "").strip().lower() == "workload_verified"
+    await database.save_provider_instance(
+        "earnapp",
+        logical_node_id,
+        worker_id=int(instance.get("worker_id") or 0) or None,
+        mode=str(instance.get("mode") or "proxy"),
+        container_id=str(instance.get("container_id") or ""),
+        sidecar_id=str(instance.get("sidecar_id") or ""),
+        proxy_id=int(instance.get("proxy_id") or 0) or None,
+        status="running" if verified else "verification_pending",
+        spec=spec,
+    )
+    return sanitized
+
+
 @app.post("/api/admin/earnapp/canary/deploy")
 async def api_deploy_earnapp_canary(
     request: Request,
     body: EarnAppCanaryDeployRequest,
     _auth: dict[str, Any] = Depends(_require_owner),
 ) -> dict[str, Any]:
-    """Deploy exactly one owner-authorized EarnApp Mac canary node."""
+    """Deploy exactly one owner-authorized EarnApp platform canary node."""
     if body.logical_node_id == _EARNAPP_PROTECTED_CANARY:
         raise HTTPException(status_code=409, detail="Protected EarnApp canary is inspect-only")
     worker_id = await _resolve_worker_id(body.worker_id)
@@ -3164,35 +3192,79 @@ async def api_deploy_earnapp_canary(
     async def worker_deploy(target_worker_id: int, instance_slug: str, spec: dict[str, Any]) -> dict[str, Any]:
         return await _proxy_worker_deploy(target_worker_id, instance_slug, spec)
 
-    async def worker_remove(target_worker_id: int, instance_slug: str) -> dict[str, Any]:
+    async def worker_remove(
+        target_worker_id: int,
+        instance_slug: str,
+        generation: int,
+        device_id: str,
+    ) -> dict[str, Any]:
         return await _proxy_to_worker(
             target_worker_id,
             "DELETE",
             f"/api/earnapp/docker-nodes/{instance_slug}",
+            json={"generation": int(generation), "device_id": str(device_id)},
+            timeout=180,
+        )
+
+    async def platform_remove(
+        target_worker_id: int,
+        instance_slug: str,
+        generation: int,
+        device_id: str,
+    ) -> dict[str, Any]:
+        if body.platform == "ios":
+            return await _proxy_to_worker(
+                target_worker_id,
+                "DELETE",
+                f"/api/earnapp/docker-nodes/{instance_slug}",
+                json={"generation": int(generation), "device_id": str(device_id)},
+                timeout=180,
+            )
+        return await _proxy_to_worker(
+            target_worker_id,
+            "DELETE",
+            f"/api/earnapp/nodes/{instance_slug}",
+            json={"generation": int(generation), "device_id": str(device_id)},
             timeout=180,
         )
 
     try:
-        result = await earnapp_canary.deploy_canary(
-            body.logical_node_id,
-            int(worker_id),
-            worker_deploy=worker_deploy,
-            worker_remove=worker_remove,
-        )
+        if body.platform == "macos":
+            result = await earnapp_canary.deploy_canary(
+                body.logical_node_id,
+                int(worker_id),
+                worker_deploy=worker_deploy,
+                worker_remove=worker_remove,
+            )
+        else:
+            config = await database.get_config() if body.platform == "ubuntu" else {}
+            limits = _earnapp_lxd_settings(config if isinstance(config, Mapping) else {})
+            platform_deploy = worker_deploy if body.platform == "ios" else _proxy_worker_earnapp_lxd_deploy
+            result = await earnapp_canary.deploy_platform_canary(
+                body.logical_node_id,
+                int(worker_id),
+                platform=body.platform,
+                worker_deploy=platform_deploy,
+                worker_remove=platform_remove,
+                lxd_settings=limits,
+            )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except Exception as exc:
         logger.warning("EarnApp canary deployment failed for %s: %s", body.logical_node_id, type(exc).__name__)
         raise HTTPException(status_code=502, detail="EarnApp canary deployment failed") from exc
-    verification = await earnapp_canary.verify_canary(body.logical_node_id)
-    if verification.get("online") is not True:
+    verification = await _persist_earnapp_canary_verification(
+        body.logical_node_id,
+        await earnapp_canary.verify_canary(body.logical_node_id),
+    )
+    if str(verification.get("workload_state") or "").strip().lower() != "workload_verified":
         await database.record_health_event(
-            "earnapp", "canary_pending", f"dashboard verification pending for {body.logical_node_id}"
+            "earnapp", "canary_pending", f"workload verification pending for {body.logical_node_id}"
         )
         raise HTTPException(
-            status_code=409, detail="EarnApp canary deployed but is not online on the account dashboard"
+            status_code=409, detail="EarnApp canary deployed but authenticated workload is not verified"
         )
-    await database.record_health_event("earnapp", "canary_online", f"verified {body.logical_node_id}")
+    await database.record_health_event("earnapp", "canary_workload_verified", f"verified {body.logical_node_id}")
     return {**verification, "deployment": result}
 
 
@@ -3204,12 +3276,15 @@ async def api_verify_earnapp_canary(
 ) -> dict[str, Any]:
     """Retry authenticated account-side verification without redeploying the node."""
     try:
-        result = await earnapp_canary.verify_canary(logical_node_id)
+        result = await _persist_earnapp_canary_verification(
+            logical_node_id,
+            await earnapp_canary.verify_canary(logical_node_id),
+        )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    if result.get("online") is not True:
-        raise HTTPException(status_code=409, detail="EarnApp canary is not online on the account dashboard")
-    await database.record_health_event("earnapp", "canary_online", f"verified {logical_node_id}")
+    if str(result.get("workload_state") or "").strip().lower() != "workload_verified":
+        raise HTTPException(status_code=409, detail="EarnApp canary authenticated workload is not verified")
+    await database.record_health_event("earnapp", "canary_workload_verified", f"verified {logical_node_id}")
     return result
 
 

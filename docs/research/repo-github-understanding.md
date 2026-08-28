@@ -6,6 +6,24 @@ Commit nền hiện tại là `8d2b860` (merge PR #52, `origin/main`, tag
 `v1.13.4`). Worktree closeout chỉ thay đổi tài liệu sau khi product source,
 release và live gates đã được xác minh.
 
+## EarnApp platform canary investigation (2026-08-28)
+
+The v1.13.4 recovery/rotation closeout remains the immutable baseline for the
+two existing Docker nodes, but platform closeout is reopened for fresh
+disposable canaries. An authenticated usage read shows node 1 has positive
+current-day qualified usage (`32,740,937 ms`), while node 2 has only `18,142 ms`
+and is near plateau. Both are online and not banned. The earlier statement that
+both nodes had zero current-day usage was caused by selecting the wrong usage
+series value and is withdrawn.
+
+This evidence does not prove Docker is the root cause. Node 1 has repeated WSS
+timeouts and proxy `502` responses; node 2 has a clean route but little
+workload, so control-plane allocation/eligibility remains an open hypothesis.
+The next safe lanes are a new iOS Docker node on a VN residential proxy and a
+new official Ubuntu LXD node on a non-VN residential proxy. Existing containers,
+sidecars, volumes, identities, account bindings and leases are not migration
+targets. MacOS/iOS remain Docker-only; Ubuntu is the only EarnApp LXD lane.
+
 ## EarnApp v1.13.4 recovery/rotation closeout (2026-08-28)
 
 - PR #52 sửa đúng root cause Docker network namespace: main EarnApp dùng

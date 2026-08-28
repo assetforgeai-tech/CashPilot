@@ -15,11 +15,34 @@ from app import database, earnapp_identity, earnapp_recovery, earnapp_runtime
 from app.collectors.earnapp import EarnAppAccountCollector
 
 WorkerDeploy = Callable[[int, str, dict[str, Any]], Awaitable[dict[str, Any]]]
-WorkerRemove = Callable[[int, str], Awaitable[Any]]
+WorkerRemove = Callable[[int, str, int, str], Awaitable[Any]]
+PlatformWorkerRemove = WorkerRemove
 
 LINK_VERIFY_ATTEMPTS = 10
 LINK_VERIFY_INTERVAL_SECONDS = 15
 MAC_PROXY_TUN_IP = "172.31.255.1"
+_UPTIME_BILLING = frozenset({"uptime", "fixed", "qualified_uptime"})
+_BYTE_BILLING = frozenset({"bandwidth", "bytes", "byte", "traffic", "gb"})
+
+
+def _workload_metric_names(evidence: Mapping[str, Any], billing: str) -> tuple[str, ...]:
+    """Select monotonic/runtime counters and prefer the current-day series.
+
+    ``usage_total`` is a historical aggregate.  It remains a compatibility
+    fallback for older collector payloads, but must not be used when the API
+    provides ``usage_current`` because historical rollups can change without
+    the node doing work in the current verification window.
+    """
+    if billing in _UPTIME_BILLING:
+        names: list[str] = ["uptime", "total_uptime"]
+    else:
+        names = ["bandwidth", "total_bandwidth"]
+    if evidence.get("usage_current") is not None:
+        names.append("usage_current")
+    elif evidence.get("usage_total") is not None:
+        names.append("usage_total")
+    names.append("earned_total")
+    return tuple(names)
 
 
 def _safe_node_id(value: str) -> str:
@@ -88,16 +111,7 @@ async def get_or_create_mac_identity_profile(logical_node_id: str) -> dict[str, 
     profile = await earnapp_identity.ensure_identity_profile(node_id, "macos")
     identity = earnapp_identity.decrypt_profile(profile["value"], "macos")
     if identity.get("lan_ip") != MAC_PROXY_TUN_IP:
-        identity["lan_ip"] = MAC_PROXY_TUN_IP
-        value = earnapp_identity.encrypt_profile(identity)
-        await database.save_earnapp_identity_profile(
-            node_id,
-            platform="macos",
-            asset_kind=earnapp_runtime.MAC_IDENTITY_ASSET_KIND,
-            device_id=profile["device_id"],
-            value=value,
-        )
-        profile["value"] = value
+        raise ValueError("EarnApp persisted Mac identity lan_ip is incompatible with the proxy tunnel")
     return {
         "asset_id": profile["asset_id"],
         "device_id": profile["device_id"],
@@ -348,7 +362,12 @@ async def deploy_canary(
     except Exception:
         if provisioned.get("created_binding"):
             with contextlib.suppress(Exception):
-                await worker_remove(int(worker_id), node_id)
+                await worker_remove(
+                    int(worker_id),
+                    node_id,
+                    int(provisioned["generation"]),
+                    str(profile["device_id"]),
+                )
             await database.rollback_earnapp_canary_binding(
                 node_id,
                 int(worker_id),
@@ -371,7 +390,12 @@ async def deploy_canary(
         )
     except Exception:
         with contextlib.suppress(Exception):
-            await worker_remove(int(worker_id), node_id)
+            await worker_remove(
+                int(worker_id),
+                node_id,
+                int(provisioned["generation"]),
+                str(profile["device_id"]),
+            )
         if provisioned.get("created_binding"):
             with contextlib.suppress(Exception):
                 await database.rollback_earnapp_canary_binding(
@@ -390,6 +414,154 @@ async def deploy_canary(
         "device_id": profile["device_id"],
         "proxy_id": int(provisioned["proxy_id"]),
         "generation": int(provisioned["generation"]),
+        "container_id": container_id,
+    }
+
+
+async def deploy_platform_canary(
+    logical_node_id: str,
+    worker_id: int,
+    *,
+    platform: str,
+    worker_deploy: WorkerDeploy,
+    worker_remove: PlatformWorkerRemove,
+    lxd_settings: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Deploy one fresh iOS-Docker or Ubuntu-LXD canary without touching Mac nodes."""
+    from app import earnapp_deploy
+
+    node_id = _safe_node_id(logical_node_id)
+    selected = str(platform or "").strip().lower()
+    if selected not in {"ios", "ubuntu"}:
+        raise ValueError("platform canary supports only iOS or Ubuntu")
+
+    before = await database.get_earnapp_logical_node(node_id)
+    before_platform = str((before or {}).get("platform") or "unknown").strip().lower()
+    if before_platform not in {"", "unknown", selected}:
+        raise ValueError("EarnApp canary platform is immutable")
+
+    existing = await database.get_provider_instance(node_id)
+    if existing and str(existing.get("status") or "").lower() in {
+        "running",
+        "deployed",
+        "verification_pending",
+    }:
+        existing_worker = int(existing.get("worker_id") or 0)
+        if existing_worker and existing_worker != int(worker_id):
+            raise ValueError("EarnApp canary is already assigned to another worker")
+        return {
+            "status": "already_deployed",
+            "logical_node_id": node_id,
+            "worker_id": existing_worker or int(worker_id),
+            "container_id": str(existing.get("container_id") or "remote"),
+        }
+
+    await database.assign_earnapp_account(node_id, platform=selected)
+    plan = earnapp_deploy.EarnAppNodePlan(int(worker_id), "ipv4-001", node_id)
+    try:
+        prepared = await earnapp_deploy.prepare_node(
+            plan,
+            vn_platform_choice=(lambda: "ios"),
+        )
+    except Exception:
+        if not (before or {}).get("current_proxy_id"):
+            with contextlib.suppress(Exception):
+                await database.release_proxy_for_provider_instance(
+                    "earnapp",
+                    int(worker_id),
+                    node_id,
+                    reason="EARNAPP_CANARY_PREPARE_FAILED",
+                )
+        raise
+    created_binding = not bool((before or {}).get("current_proxy_id"))
+    if prepared.platform != selected:
+        if created_binding:
+            with contextlib.suppress(Exception):
+                await database.rollback_earnapp_canary_binding(
+                    node_id,
+                    int(worker_id),
+                    generation=prepared.generation,
+                    proxy_id=int(prepared.proxy["proxy_id"]),
+                    reason="EARNAPP_CANARY_PLATFORM_MISMATCH",
+                )
+        raise ValueError("EarnApp canary platform selection changed during provisioning")
+
+    if selected == "ios":
+        transport_spec = build_runtime_spec(
+            node_id,
+            prepared.account_id,
+            selected,
+            prepared.device_id,
+            prepared.proxy,
+            generation=prepared.generation,
+            identity_asset_id=prepared.identity_asset_id,
+        )
+        transport_spec["proxy"] = _proxy_metadata(prepared.proxy)
+    else:
+        limits = dict(lxd_settings or {})
+        transport_spec = {
+            "logical_node_id": node_id,
+            "generation": prepared.generation,
+            "account_id": prepared.account_id,
+            "device_id": prepared.device_id,
+            "identity": dict(prepared.identity),
+            "proxy_id": int(prepared.proxy["proxy_id"]),
+            "proxy": dict(prepared.proxy),
+            "lxd_cpu": int(limits.get("cpu", 1) or 1),
+            "lxd_memory_mib": int(limits.get("memory_mib", 1024) or 1024),
+        }
+    persisted_spec = earnapp_runtime.redacted_evidence(json.loads(json.dumps(transport_spec)))
+    try:
+        result = await worker_deploy(int(worker_id), node_id, transport_spec)
+    except Exception:
+        if created_binding:
+            with contextlib.suppress(Exception):
+                await worker_remove(int(worker_id), node_id, prepared.generation, prepared.device_id)
+            with contextlib.suppress(Exception):
+                await database.rollback_earnapp_canary_binding(
+                    node_id,
+                    int(worker_id),
+                    generation=prepared.generation,
+                    proxy_id=int(prepared.proxy["proxy_id"]),
+                    reason="EARNAPP_CANARY_DEPLOY_FAILED",
+                )
+        raise
+
+    container_id = str(result.get("container_id") or result.get("instance_id") or "remote")
+    try:
+        await database.save_provider_instance(
+            "earnapp",
+            node_id,
+            worker_id=int(worker_id),
+            mode="proxy",
+            container_id=container_id,
+            proxy_id=int(prepared.proxy["proxy_id"]),
+            status="running",
+            spec=persisted_spec,
+        )
+    except Exception:
+        with contextlib.suppress(Exception):
+            await worker_remove(int(worker_id), node_id, prepared.generation, prepared.device_id)
+        if created_binding:
+            with contextlib.suppress(Exception):
+                await database.rollback_earnapp_canary_binding(
+                    node_id,
+                    int(worker_id),
+                    generation=prepared.generation,
+                    proxy_id=int(prepared.proxy["proxy_id"]),
+                    reason="EARNAPP_CANARY_PERSIST_FAILED",
+                )
+        raise
+
+    return {
+        "status": "deployed",
+        "logical_node_id": node_id,
+        "platform": selected,
+        "account_id": prepared.account_id,
+        "worker_id": int(worker_id),
+        "device_id": prepared.device_id,
+        "proxy_id": int(prepared.proxy["proxy_id"]),
+        "generation": prepared.generation,
         "container_id": container_id,
     }
 
@@ -426,10 +598,71 @@ async def verify_canary(
         raise ValueError("EarnApp canary platform is invalid")
     remaining = max(1, int(attempts))
     last: dict[str, Any] = {}
+    baseline: dict[str, float] | None = None
+    baseline_billing = ""
+    with contextlib.suppress(Exception):
+        persisted_spec = await database.get_provider_instance_spec(node_id)
+        persisted = persisted_spec.get("earnapp_device_verification") if isinstance(persisted_spec, Mapping) else None
+        persisted_billing = str((persisted or {}).get("billing") or "").strip().lower()
+        if (
+            isinstance(persisted, Mapping)
+            and str(persisted.get("device_id") or "") == str(node.get("device_id") or "")
+            and persisted_billing in _UPTIME_BILLING | _BYTE_BILLING
+        ):
+            metric_names = _workload_metric_names(persisted, persisted_billing)
+            baseline = {key: max(0.0, float(persisted[key])) for key in metric_names if persisted.get(key) is not None}
+            baseline_billing = persisted_billing
     for attempt in range(1, remaining + 1):
         last = await collector.link_and_verify_device(str(node.get("device_id") or ""), platform=platform)
         if last.get("online") is True and last.get("device_present") is True and last.get("banned") is not True:
-            return earnapp_runtime.redacted_evidence(last)
+            billing = str(last.get("billing") or "").strip().lower()
+            if billing in _UPTIME_BILLING or billing in _BYTE_BILLING:
+                metric_names = _workload_metric_names(last, billing)
+            else:
+                baseline = None
+                baseline_billing = ""
+                last = {
+                    **last,
+                    "status": "online_pending_usage",
+                    "workload_state": "online_pending_usage",
+                    "workload_reason": "billing_unknown",
+                }
+                if attempt >= remaining:
+                    break
+                await asyncio.sleep(max(0, float(interval_seconds)))
+                continue
+
+            current = {key: max(0.0, float(last[key])) for key in metric_names if last.get(key) is not None}
+            if baseline is not None and baseline_billing == billing:
+                delta = {key: max(0.0, current[key] - baseline[key]) for key in current if key in baseline}
+                earned_growth = max(0.0, delta.get("earned_total", 0.0))
+                if billing in _UPTIME_BILLING:
+                    workload_verified = (
+                        any(
+                            delta.get(metric, 0.0) > 0
+                            for metric in ("uptime", "total_uptime", "usage_current", "usage_total")
+                        )
+                        or earned_growth > 0
+                    )
+                else:
+                    workload_verified = any(value > 0 for value in delta.values())
+                if workload_verified:
+                    return earnapp_runtime.redacted_evidence(
+                        {
+                            **last,
+                            "status": "workload_verified",
+                            "workload_state": "workload_verified",
+                            "workload_delta": delta,
+                        }
+                    )
+            baseline = current
+            baseline_billing = billing
+            last = {
+                **last,
+                "status": "online_pending_usage",
+                "workload_state": "online_pending_usage",
+                "workload_reason": "awaiting_metric_delta",
+            }
         if last.get("error_kind") in {"auth", "shape", "remote"} or last.get("banned") is True or attempt >= remaining:
             break
         await asyncio.sleep(max(0, float(interval_seconds)))

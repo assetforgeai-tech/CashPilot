@@ -307,7 +307,7 @@ def _persisted_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _verification_ok(evidence: Mapping[str, Any] | None, *, device_id: str = "") -> bool:
-    """Accept only authenticated, present, online evidence for this exact node."""
+    """Accept only authenticated workload evidence for this exact node."""
     if not isinstance(evidence, Mapping):
         return False
     if evidence.get("authenticated") is not True:
@@ -319,7 +319,9 @@ def _verification_ok(evidence: Mapping[str, Any] | None, *, device_id: str = "")
     observed_device = str(evidence.get("device_id") or "").strip()
     if not observed_device:
         return False
-    return not device_id or observed_device == device_id
+    if device_id and observed_device != device_id:
+        return False
+    return str(evidence.get("workload_state") or "").strip().lower() == "workload_verified"
 
 
 def _spec_device_id(spec: Mapping[str, Any] | None) -> str:

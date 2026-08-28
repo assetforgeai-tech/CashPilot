@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import quote
 
@@ -38,6 +39,20 @@ def _float(value: Any) -> float:
         return float(str(value).replace("$", "").strip())
     except (TypeError, ValueError):
         return 0.0
+
+
+def _optional_float(value: Any) -> float | None:
+    if value is None or isinstance(value, str) and not value.strip():
+        return None
+    try:
+        return float(str(value).replace("$", "").strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _optional_int(value: Any) -> int | None:
+    parsed = _optional_float(value)
+    return None if parsed is None else max(0, int(parsed))
 
 
 def _payload_devices(payload: Any) -> list[dict[str, Any]]:
@@ -94,15 +109,90 @@ def _device_for(payload: Any, device_id: str) -> dict[str, Any] | None:
     return None
 
 
+def _first_ip(raw: Mapping[str, Any], node: Mapping[str, Any] | None = None) -> str:
+    nested = node if isinstance(node, Mapping) else {}
+    direct = nested.get("ip") or raw.get("ip") or raw.get("public_ip")
+    if direct:
+        return str(direct)
+    ips = raw.get("ips")
+    if isinstance(ips, list):
+        return next((str(value) for value in ips if str(value).strip()), "")
+    return ""
+
+
+def normalize_usage_series(payload: Any) -> dict[str, dict[str, Any]]:
+    rows = payload if isinstance(payload, list) else []
+    if isinstance(payload, Mapping):
+        for key in ("list", "items", "data"):
+            if isinstance(payload.get(key), list):
+                rows = payload[key]
+                break
+    normalized: dict[str, dict[str, Any]] = {}
+    for raw in rows:
+        if not isinstance(raw, Mapping):
+            continue
+        device_id = str(raw.get("_id") or raw.get("device_id") or raw.get("uuid") or "").strip()
+        data = raw.get("data")
+        if not device_id or not isinstance(data, Mapping):
+            continue
+        points = [value for value in (_optional_float(item) for item in data.values()) if value is not None]
+        today_key = datetime.now(UTC).date().isoformat()
+        # A missing UTC-today bucket means current workload is unknown; never
+        # promote the latest historical bucket into the live verification metric.
+        current = _optional_float(data.get(today_key)) if today_key in data else None
+        normalized[device_id] = {
+            "name": str(raw.get("name") or device_id),
+            "total": sum(points),
+            "current": current,
+            "points": len(points),
+        }
+    return normalized
+
+
+def _device_metrics(
+    raw: Mapping[str, Any],
+    usage: Mapping[str, Mapping[str, Any]] | None = None,
+) -> dict[str, Any]:
+    # EarnApp has emitted both the compact dashboard keys and descriptive keys.
+    # Keep both forms normalized so usage evidence survives API shape changes.
+    bandwidth = raw.get("bandwidth", raw.get("bw", raw.get("traffic")))
+    total_bandwidth = raw.get("total_bandwidth", raw.get("total_bw"))
+    redeemed_bandwidth = raw.get("redeemed_bandwidth", raw.get("redeem_bw"))
+    usage_row = usage.get(_device_id(raw)) if isinstance(usage, Mapping) else None
+    return {
+        "ip": _first_ip(raw),
+        "country_code": str(raw.get("country") or raw.get("country_code") or "").strip().upper(),
+        "bandwidth": _optional_float(bandwidth),
+        "total_bandwidth": _optional_float(total_bandwidth),
+        "redeemed_bandwidth": _optional_float(redeemed_bandwidth),
+        "earned": _optional_float(raw.get("earned")),
+        "earned_total": _optional_float(raw.get("earned_total")),
+        "uptime": _optional_int(raw.get("uptime")),
+        "total_uptime": _optional_int(raw.get("total_uptime")),
+        "billing": str(raw.get("billing") or "").strip(),
+        "usage_total": _optional_float(usage_row.get("total")) if isinstance(usage_row, Mapping) else None,
+        "usage_current": _optional_float(usage_row.get("current")) if isinstance(usage_row, Mapping) else None,
+        "usage_points": int(usage_row.get("points") or 0) if isinstance(usage_row, Mapping) else 0,
+        "usage_available": isinstance(usage_row, Mapping),
+    }
+
+
 def _banned(device: Mapping[str, Any] | None) -> bool:
     if not isinstance(device, Mapping):
         return False
     return bool(device.get("banned") or device.get("is_banned"))
 
 
-def normalize_snapshot(user_data: Any, money: Any, devices_payload: Any, statuses: Any) -> dict[str, Any]:
+def normalize_snapshot(
+    user_data: Any,
+    money: Any,
+    devices_payload: Any,
+    statuses: Any,
+    usage_payload: Any = None,
+) -> dict[str, Any]:
     user = dict(user_data) if isinstance(user_data, Mapping) else {}
     balances = dict(money) if isinstance(money, Mapping) else {}
+    usage = normalize_usage_series(usage_payload)
     devices: list[dict[str, Any]] = []
     for raw in _payload_devices(devices_payload):
         device_id = str(raw.get("device_id") or raw.get("uuid") or raw.get("id") or "").strip()
@@ -114,21 +204,32 @@ def normalize_snapshot(user_data: Any, money: Any, devices_payload: Any, statuse
         devices.append(
             {
                 "device_id": device_id,
-                "ip": str(node.get("ip") or raw.get("ip") or raw.get("public_ip") or ""),
+                **_device_metrics(raw, usage),
+                "ip": _first_ip(raw, node),
                 "rate": _float(share.get("rate", raw.get("rate"))),
-                "bandwidth": _float(raw.get("bandwidth", raw.get("traffic"))),
                 "online": _online(status),
             }
         )
     balance = balances.get("money_balance", balances.get("balance", user.get("money_balance", user.get("balance"))))
-    total = balances.get("money_total", balances.get("total", user.get("money_total", user.get("total"))))
+    total = balances.get(
+        "money_total",
+        balances.get(
+            "earnings_total",
+            balances.get("total", user.get("money_total", user.get("earnings_total", user.get("total")))),
+        ),
+    )
     online = sum(1 for device in devices if device["online"])
+    available = [device for device in devices if device.get("usage_available")]
     return {
         "status": "ok",
         "money_balance": _float(balance),
         "money_total": _float(total),
         "online_nodes": online,
         "offline_nodes": len(devices) - online,
+        "usage_current": sum(float(device.get("usage_current") or 0) for device in available),
+        "usage_total": sum(float(device.get("usage_total") or 0) for device in available),
+        "usage_available_nodes": len(available),
+        "usage_missing_nodes": len(devices) - len(available),
         "devices": devices,
     }
 
@@ -254,6 +355,15 @@ class EarnAppAccountCollector:
             status_response.raise_for_status()
             online = _online(_status_for(status_response.json(), uuid))
             banned = _banned(device)
+            usage_response = await client.get(
+                f"{API_BASE}/usage",
+                params={**API_PARAMS, "step": "daily"},
+                headers=headers,
+            )
+            if usage_response.status_code in AUTH_FAILURE_CODES:
+                return {"status": "error", "error_kind": "auth", "error": "authentication rejected"}
+            usage_response.raise_for_status()
+            usage = normalize_usage_series(usage_response.json())
             return {
                 "status": "online" if online and not banned else "offline",
                 "device_id": uuid,
@@ -262,6 +372,7 @@ class EarnAppAccountCollector:
                 "device_present": True,
                 "online": online,
                 "banned": banned,
+                **_device_metrics(device, usage),
             }
         except (httpx.TimeoutException, httpx.NetworkError, httpx.ProxyError):
             return {"status": "error", "error_kind": "route", "error": "proxy unavailable"}
@@ -290,7 +401,12 @@ class EarnAppAccountCollector:
                 user_response = await client.get(f"{API_BASE}/user_data", params=API_PARAMS, headers=headers)
                 money_response = await client.get(f"{API_BASE}/money", params=API_PARAMS, headers=headers)
                 devices_response = await client.get(f"{API_BASE}/devices", params=API_PARAMS, headers=headers)
-                for response in (user_response, money_response, devices_response):
+                usage_response = await client.get(
+                    f"{API_BASE}/usage",
+                    params={**API_PARAMS, "step": "daily"},
+                    headers=headers,
+                )
+                for response in (user_response, money_response, devices_response, usage_response):
                     if response.status_code in AUTH_FAILURE_CODES:
                         return {"status": "error", "error_kind": "auth", "error": "authentication rejected"}
                     response.raise_for_status()
@@ -314,6 +430,7 @@ class EarnAppAccountCollector:
                     money_response.json(),
                     devices_response.json(),
                     statuses,
+                    usage_response.json(),
                 )
             finally:
                 await client.aclose()

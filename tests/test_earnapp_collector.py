@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import httpx
 
 from app import database, earnapp_accounts, earnapp_collection, earnapp_recovery, main
-from app.collectors import COLLECTOR_MAP
+from app.collectors import COLLECTOR_MAP, earnapp
 from app.collectors.base import EarningsResult
-from app.collectors.earnapp import EarnAppAccountCollector, build_proxy_url
+from app.collectors.earnapp import EarnAppAccountCollector, build_proxy_url, normalize_snapshot
 
 
 def _account(profile: str = "profile-a") -> dict[str, object]:
@@ -86,6 +87,60 @@ def test_proxy_url_encodes_credentials_and_supports_http_and_socks5():
         )
         == "socks5://user%40x:p%3Aa%2Fss@proxy.example:1080"
     )
+
+
+def test_normalize_snapshot_supports_current_earnapp_money_and_device_shape():
+    snapshot = normalize_snapshot(
+        {},
+        {"balance": 2.31, "earnings_total": 2.31},
+        [
+            {
+                "uuid": "device-a",
+                "country": "vn",
+                "ips": ["198.51.100.1"],
+                "rate": 5,
+                "earned": 0.026,
+                "earned_total": 0.026,
+                "uptime": 13654694,
+                "total_uptime": 13654694,
+                "billing": "qualified_uptime",
+            }
+        ],
+        {"device-a": [1787700000, 60]},
+    )
+
+    assert snapshot == {
+        "status": "ok",
+        "money_balance": 2.31,
+        "money_total": 2.31,
+        "online_nodes": 1,
+        "offline_nodes": 0,
+        "usage_current": 0,
+        "usage_total": 0,
+        "usage_available_nodes": 0,
+        "usage_missing_nodes": 1,
+        "devices": [
+            {
+                "device_id": "device-a",
+                "ip": "198.51.100.1",
+                "country_code": "VN",
+                "rate": 5.0,
+                "bandwidth": None,
+                "total_bandwidth": None,
+                "redeemed_bandwidth": None,
+                "earned": 0.026,
+                "earned_total": 0.026,
+                "uptime": 13654694,
+                "total_uptime": 13654694,
+                "billing": "qualified_uptime",
+                "usage_total": None,
+                "usage_current": None,
+                "usage_points": 0,
+                "usage_available": False,
+                "online": True,
+            }
+        ],
+    }
     assert (
         build_proxy_url({"protocol": "http", "host": "2001:db8::1", "port": 8080, "username": "", "password": ""})
         == "http://[2001:db8::1]:8080"
@@ -292,6 +347,255 @@ class _Response:
             raise httpx.HTTPStatusError("request failed", request=self.request, response=self)
 
 
+class _CurrentShapeClient:
+    is_closed = False
+
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+        self.cookies = dict(kwargs.get("cookies") or {})
+
+    async def get(self, url, **kwargs):
+        if url.endswith("/sec/rotate_xsrf"):
+            self.cookies["xsrf-token"] = "rotated-xsrf"
+            return _Response(200, {"ok": 1})
+        if url.endswith("/user_data"):
+            return _Response(200, {"email": "owner@example.com"})
+        if url.endswith("/money"):
+            return _Response(200, {"balance": 2.31, "earnings_total": 2.31})
+        if url.endswith("/devices"):
+            return _Response(
+                200,
+                [
+                    {
+                        "uuid": "device-a",
+                        "country": "vn",
+                        "ips": ["198.51.100.1"],
+                        "rate": 5,
+                        "earned": 0.026,
+                        "earned_total": 0.026,
+                        "uptime": 13654694,
+                        "total_uptime": 13654694,
+                        "billing": "qualified_uptime",
+                    }
+                ],
+            )
+        if url.endswith("/usage"):
+            assert kwargs["params"]["step"] == "daily"
+            today = datetime.now(UTC).date().isoformat()
+            return _Response(
+                200,
+                [
+                    {
+                        "_id": "device-a",
+                        "name": "Mac A",
+                        "data": {today: 13654694},
+                    }
+                ],
+            )
+        raise AssertionError(url)
+
+    async def post(self, url, **kwargs):
+        assert url.endswith("/device_statuses")
+        return _Response(200, {"device-a": [1787700000, 60]})
+
+    async def aclose(self):
+        self.is_closed = True
+
+
+def test_link_and_verify_device_exposes_current_workload_counters():
+    credentials = {"cookies": {"oauth-refresh-token": "refresh-secret", "xsrf-token": "xsrf-secret"}}
+    proxy = {"protocol": "http", "host": "proxy.example", "port": 8080}
+
+    with patch("app.collectors.earnapp.httpx.AsyncClient", side_effect=_CurrentShapeClient):
+        result = asyncio.run(EarnAppAccountCollector(credentials, proxy).link_and_verify_device("device-a"))
+
+    assert result["status"] == "online"
+    assert result["total_uptime"] == 13654694
+    assert result["earned_total"] == 0.026
+    assert result["usage_total"] == 13654694.0
+    assert result["usage_current"] == 13654694.0
+    assert result["usage_points"] == 1
+
+
+def test_normalize_snapshot_reads_current_and_legacy_bandwidth_counters():
+    result = earnapp.normalize_snapshot(
+        {},
+        {"balance": 0, "earnings_total": 0},
+        [
+            {
+                "uuid": "sdk-mac-current",
+                "bw": 123,
+                "total_bw": 456,
+                "redeem_bw": 78,
+            },
+            {
+                "uuid": "sdk-mac-legacy",
+                "bandwidth": 12,
+                "total_bandwidth": 34,
+                "redeemed_bandwidth": 5,
+            },
+        ],
+        {"sdk-mac-current": True, "sdk-mac-legacy": True},
+    )
+
+    assert result["devices"] == [
+        {
+            "device_id": "sdk-mac-current",
+            "ip": "",
+            "country_code": "",
+            "rate": 0.0,
+            "bandwidth": 123.0,
+            "total_bandwidth": 456.0,
+            "redeemed_bandwidth": 78.0,
+            "earned": None,
+            "earned_total": None,
+            "uptime": None,
+            "total_uptime": None,
+            "billing": "",
+            "usage_total": None,
+            "usage_current": None,
+            "usage_points": 0,
+            "usage_available": False,
+            "online": True,
+        },
+        {
+            "device_id": "sdk-mac-legacy",
+            "ip": "",
+            "country_code": "",
+            "rate": 0.0,
+            "bandwidth": 12.0,
+            "total_bandwidth": 34.0,
+            "redeemed_bandwidth": 5.0,
+            "earned": None,
+            "earned_total": None,
+            "uptime": None,
+            "total_uptime": None,
+            "billing": "",
+            "usage_total": None,
+            "usage_current": None,
+            "usage_points": 0,
+            "usage_available": False,
+            "online": True,
+        },
+    ]
+
+
+def test_normalize_snapshot_preserves_absent_workload_metrics_as_none():
+    result = earnapp.normalize_snapshot(
+        {},
+        {},
+        [{"uuid": "sdk-mac-missing", "billing": "qualified_uptime"}],
+        {"sdk-mac-missing": True},
+    )
+
+    device = result["devices"][0]
+    assert device["bandwidth"] is None
+    assert device["total_bandwidth"] is None
+    assert device["earned_total"] is None
+    assert device["uptime"] is None
+    assert device["total_uptime"] is None
+
+
+def test_normalize_snapshot_keeps_current_usage_separate_from_historical_total():
+    today = datetime.now(UTC).date()
+    yesterday = (today - timedelta(days=1)).isoformat()
+    result = earnapp.normalize_snapshot(
+        {},
+        {},
+        [{"uuid": "sdk-mac-current", "billing": "qualified_uptime", "uptime": 18}],
+        {"sdk-mac-current": True},
+        [
+            {
+                "_id": "sdk-mac-current",
+                "data": {yesterday: 7659, today.isoformat(): 18},
+            }
+        ],
+    )
+
+    device = result["devices"][0]
+    assert device["usage_total"] == 7677.0
+    assert device["usage_current"] == 18.0
+
+
+def test_normalize_snapshot_summarizes_account_workload_without_counting_history_twice():
+    today = datetime.now(UTC).date()
+    yesterday = (today - timedelta(days=1)).isoformat()
+    result = earnapp.normalize_snapshot(
+        {},
+        {},
+        [
+            {"uuid": "sdk-mac-a", "billing": "qualified_uptime", "uptime": 120},
+            {"uuid": "sdk-mac-b", "billing": "qualified_uptime", "uptime": 18},
+        ],
+        {"sdk-mac-a": True, "sdk-mac-b": True},
+        [
+            {"_id": "sdk-mac-a", "data": {yesterday: 3600, today.isoformat(): 120}},
+            {"_id": "sdk-mac-b", "data": {today.isoformat(): 18}},
+        ],
+    )
+
+    assert result["usage_current"] == 138.0
+    assert result["usage_total"] == 3738.0
+    assert result["usage_available_nodes"] == 2
+    assert result["usage_missing_nodes"] == 0
+
+
+def test_normalize_usage_series_supports_per_device_dashboard_rows():
+    today = datetime.now(UTC).date()
+    yesterday = (today - timedelta(days=1)).isoformat()
+    result = earnapp.normalize_usage_series(
+        [
+            {
+                "_id": "sdk-mac-a",
+                "name": "Mac A",
+                "data": {yesterday: 3600, today.isoformat(): 120},
+            },
+            {
+                "_id": "sdk-mac-b",
+                "data": {today.isoformat(): 18},
+            },
+        ]
+    )
+
+    assert result == {
+        "sdk-mac-a": {"name": "Mac A", "total": 3720.0, "current": 120.0, "points": 2},
+        "sdk-mac-b": {"name": "sdk-mac-b", "total": 18.0, "current": 18.0, "points": 1},
+    }
+
+
+def test_normalize_usage_series_uses_utc_today_instead_of_a_future_key():
+    today = datetime.now(UTC).date().isoformat()
+    future = "2999-01-01"
+
+    result = earnapp.normalize_usage_series(
+        [
+            {
+                "_id": "sdk-mac-a",
+                "data": {today: 120, future: 999999},
+            }
+        ]
+    )
+
+    assert result["sdk-mac-a"]["current"] == 120.0
+
+
+def test_normalize_usage_series_does_not_treat_historical_usage_as_current():
+    today = datetime.now(UTC).date()
+    two_days_ago = (today - timedelta(days=2)).isoformat()
+    yesterday = (today - timedelta(days=1)).isoformat()
+    result = earnapp.normalize_usage_series(
+        [
+            {
+                "_id": "sdk-mac-a",
+                "data": {two_days_ago: 3600, yesterday: 120},
+            }
+        ]
+    )
+
+    assert result["sdk-mac-a"]["total"] == 3720.0
+    assert result["sdk-mac-a"]["current"] is None
+
+
 class _Client:
     is_closed = False
 
@@ -329,6 +633,9 @@ class _Client:
                     ]
                 },
             )
+        if url.endswith("/usage"):
+            assert kwargs["params"]["step"] == "daily"
+            return _Response(200, [])
         raise AssertionError(url)
 
     async def post(self, url, **kwargs):
@@ -377,6 +684,7 @@ def test_collector_rotates_xsrf_routes_every_request_through_account_proxy_and_n
         ("GET", "https://earnapp.com/dashboard/api/user_data"),
         ("GET", "https://earnapp.com/dashboard/api/money"),
         ("GET", "https://earnapp.com/dashboard/api/devices"),
+        ("GET", "https://earnapp.com/dashboard/api/usage"),
         ("POST", "https://earnapp.com/dashboard/api/device_statuses"),
     ]
     assert snapshot == {
@@ -385,19 +693,47 @@ def test_collector_rotates_xsrf_routes_every_request_through_account_proxy_and_n
         "money_total": 98.76,
         "online_nodes": 1,
         "offline_nodes": 1,
+        "usage_current": 0,
+        "usage_total": 0,
+        "usage_available_nodes": 0,
+        "usage_missing_nodes": 2,
         "devices": [
             {
                 "device_id": "device-a",
                 "ip": "198.51.100.1",
+                "country_code": "",
                 "rate": 0.25,
                 "bandwidth": 1234.0,
+                "total_bandwidth": None,
+                "redeemed_bandwidth": None,
+                "earned": None,
+                "earned_total": None,
+                "uptime": None,
+                "total_uptime": None,
+                "billing": "",
+                "usage_total": None,
+                "usage_current": None,
+                "usage_points": 0,
+                "usage_available": False,
                 "online": True,
             },
             {
                 "device_id": "device-b",
                 "ip": "198.51.100.2",
+                "country_code": "",
                 "rate": 0.5,
                 "bandwidth": 5678.0,
+                "total_bandwidth": None,
+                "redeemed_bandwidth": None,
+                "earned": None,
+                "earned_total": None,
+                "uptime": None,
+                "total_uptime": None,
+                "billing": "",
+                "usage_total": None,
+                "usage_current": None,
+                "usage_points": 0,
+                "usage_available": False,
                 "online": False,
             },
         ],
@@ -427,6 +763,9 @@ class _LinkClient:
         if url.endswith("/devices"):
             devices = [{"uuid": "sdk-mac-test", "banned": False}] if self.linked else []
             return _Response(200, {"devices": devices})
+        if url.endswith("/usage"):
+            assert kwargs["params"]["step"] == "daily"
+            return _Response(200, [])
         raise AssertionError(url)
 
     async def post(self, url, **kwargs):
@@ -502,8 +841,20 @@ def test_link_and_verify_device_uses_account_proxy_and_requires_dashboard_online
         ("POST", "https://earnapp.com/dashboard/api/link_device"),
         ("GET", "https://earnapp.com/dashboard/api/devices"),
         ("POST", "https://earnapp.com/dashboard/api/device_statuses"),
+        ("GET", "https://earnapp.com/dashboard/api/usage"),
     ]
-    assert result == {
+    assert {
+        key: result[key]
+        for key in (
+            "status",
+            "device_id",
+            "authenticated",
+            "link_attempted",
+            "device_present",
+            "online",
+            "banned",
+        )
+    } == {
         "status": "online",
         "device_id": "sdk-mac-test",
         "authenticated": True,

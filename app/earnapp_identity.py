@@ -8,7 +8,9 @@ import json
 import re
 import secrets
 import string
+import time
 import uuid
+from collections.abc import Mapping
 from typing import Any
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -19,21 +21,51 @@ SUPPORTED_PLATFORMS = frozenset({"macos", "ios", "ubuntu"})
 IOS_PROFILE_ASSET_KIND = "ios_identity_profile"
 UBUNTU_IDENTITY_ASSET_KIND = "ubuntu_identity_profile"
 IOS_DEVICE_PREFIX = "sdk-ios-"
+IOS_CP_ID = "ios_com.brd.earnapp"
 UBUNTU_DEVICE_PREFIX = "sdk-node-"
 PROXY_TUN_IP = "172.31.255.1"
 
 _IOS_CATALOG = (
-    ("iPhone14,5", "17.4.1", "21E237", "23.4.0", "CFNetwork/1496.0.7"),
-    ("iPhone15,2", "17.6.1", "21G93", "23.6.0", "CFNetwork/1498.700.2"),
-    ("iPhone16,2", "18.2.1", "22C161", "24.2.0", "CFNetwork/1568.200.51"),
-    ("iPhone17,3", "18.4.1", "22E252", "24.4.0", "CFNetwork/1568.400.1"),
-    ("iPhone17,2", "18.5", "22F76", "24.5.0", "CFNetwork/1575.500.1"),
+    ("iPhone14,5", "17.4.1", "21E237", "23.4.0", "CFNetwork/1496.0.7", "iPhone 13", "A15"),
+    ("iPhone15,2", "17.6.1", "21G93", "23.6.0", "CFNetwork/1498.700.2", "iPhone 14 Pro", "A16"),
+    ("iPhone16,2", "18.2.1", "22C161", "24.2.0", "CFNetwork/1568.200.51", "iPhone 15 Pro Max", "A17 Pro"),
+    ("iPhone17,3", "18.4.1", "22E252", "24.4.0", "CFNetwork/1568.400.1", "iPhone 16", "A18"),
+    ("iPhone17,2", "18.5", "22F76", "24.5.0", "CFNetwork/1575.500.1", "iPhone 16 Pro", "A18 Pro"),
 )
 _MAC_CATALOG = (
-    ("MacBookPro17,1", "11.0.1", "20B50", "20.1.0", "Big-Sur", "1209.0.0"),
+    ("MacBookPro17,1", "11.0.1", "20B50", "20.1.0", "Big Sur", "1209.0.0"),
     ("MacBookPro18,3", "12.6.8", "21G725", "21.6.0", "Monterey", "1335.0.3"),
     ("MacBookPro18,2", "13.6.7", "22G720", "22.6.0", "Ventura", "1408.0.4"),
     ("MacBookPro20,1", "14.6.1", "23G93", "23.6.0", "Sonoma", "1498.700.2"),
+)
+
+_MAC_STATE_FIELDS = frozenset(
+    {
+        "battery_percentage",
+        "full_screen",
+        "full_screen_ts",
+        "idle_state",
+        "monitor_power",
+        "power_source",
+        "session_state",
+        "user_io",
+    }
+)
+_IOS_REFERENCE_FIELDS = frozenset(
+    {
+        "codename",
+        "conf_user",
+        "confdir",
+        "cp_id",
+        "device_kind",
+        "device_marketing",
+        "device_model",
+        "gw_ip",
+        "iface_type",
+        "is_swift",
+        "mobile_type",
+        "soc",
+    }
 )
 
 
@@ -91,13 +123,54 @@ def _base_state() -> dict[str, Any]:
     }
 
 
+def _usage_state(*, mobile: bool, battery_percentage: int) -> dict[str, Any]:
+    return {
+        "total_bytes": "",
+        "app_bytes": json.dumps(
+            {
+                "wifi_connected": bool(mobile),
+                "screen_on": bool(mobile),
+                "battery_level": int(battery_percentage),
+                "using_battery": bool(mobile),
+                "on_call": False,
+                "roaming": False,
+                "mobile_connected": False,
+            },
+            separators=(",", ":"),
+        ),
+    }
+
+
+def _runtime_state(*, mobile: bool, battery_percentage: int) -> dict[str, Any]:
+    state: dict[str, Any] = {
+        "full_screen": "off",
+        "power_source": secrets.choice(("AC", "battery")) if mobile else "AC",
+        "monitor_power": "on",
+        "battery_percentage": int(battery_percentage),
+        "session_state": "logged",
+        "idle_state": {
+            "cpu_usage": secrets.randbelow(11) + 2 if mobile else secrets.randbelow(5),
+            "mem_usage": secrets.randbelow(21) + 8 if mobile else secrets.randbelow(6),
+        },
+    }
+    if mobile:
+        return state
+    state.update(
+        {
+            "user_io": 2_806_000 + secrets.randbelow(1_194_001),
+            "full_screen_ts": time.time_ns() // 1_000_000,
+        }
+    )
+    return state
+
+
 def _mac_identity(logical_node_id: str) -> dict[str, Any]:
     suffix = _node_suffix(logical_node_id)
     model, os_version, os_build, uname_r, codename, cfnetwork = secrets.choice(_MAC_CATALOG)
     serial = secrets.token_hex(20)
     identity = {
         **_base_state(),
-        "id": f"cp-macos-{os_version.replace('.', '')}-x64-{codename.lower()}-{secrets.token_hex(4)}",
+        "id": f"cp-macos-{os_version.replace('.', '')}-x64-{codename.lower().replace(' ', '-')}-{secrets.token_hex(4)}",
         "platform": earnapp_runtime.MAC_PLATFORM,
         "appid": earnapp_runtime.MAC_APPID,
         "version": "1.605.415",
@@ -109,6 +182,7 @@ def _mac_identity(logical_node_id: str) -> dict[str, Any]:
         "hostname": f"MacBook-Pro-{suffix}",
         "local_hostname": f"MacBook-Pro-{suffix}",
         "conf_user": "cashpilot",
+        "timezone": secrets.choice(("America/Los_Angeles", "America/New_York", "Europe/Berlin", "Europe/London")),
         "os_product": "macOS",
         "os_version": os_version,
         "os_build": os_build,
@@ -127,19 +201,31 @@ def _mac_identity(logical_node_id: str) -> dict[str, Any]:
         "is_swift": True,
         "makeflags": "DIST=APP RELEASE=y AUTO_SIGN=y IS_MACOS=y MACOS_SDK=y IS_MAC_BVPN=y",
         "bat_platform": "app_macr_mac",
-        "new_state": {"full_screen": "off", "power_source": "AC", "monitor_power": "on"},
-        "perf": {"cpu": 0.0, "cpu_max": 100.0, "mem": 8192, "mem_free": 4096, "mem_max": 8192},
+        "new_state": _runtime_state(mobile=False, battery_percentage=-1),
+        "perf": {
+            "cpu": "0.0",
+            "cpu_max": "0.0",
+            "mem": "8192",
+            "mem_free": secrets.choice(("2048", "2210", "2300", "3840", "4096", "4200", "5120")),
+            "mem_max": "8192",
+        },
         "perr_os_version": f"OS version: macOS {os_version}",
         "ua": f"brdsdk/1.605.415 CFNetwork/{cfnetwork} Darwin/{uname_r}",
     }
+    identity["usage"] = _usage_state(mobile=False, battery_percentage=-1)
     identity["device_id"] = _device_id(earnapp_runtime.MAC_DEVICE_PREFIX, identity)
     return identity
 
 
 def _ios_identity(logical_node_id: str) -> dict[str, Any]:
     suffix = _node_suffix(logical_node_id)
-    model, os_version, os_build, uname_r, cfnetwork = secrets.choice(_IOS_CATALOG)
+    model, os_version, os_build, uname_r, cfnetwork, marketing, soc = secrets.choice(_IOS_CATALOG)
     serial = _random_text(10, string.ascii_uppercase + string.digits)
+    major = os_version.split(".", 1)[0]
+    container_uuid = str(uuid.uuid4()).upper()
+    battery_percentage = secrets.choice((38, 52, 67, 81, 94))
+    memory_usage = (281 + secrets.randbelow(89)) / 10
+    memory_max = max(memory_usage, (321 + secrets.randbelow(49)) / 10)
     identity = {
         **_base_state(),
         "id": f"cp-ios-{model.lower().replace(',', '')}-{os_version}-{secrets.token_hex(4)}",
@@ -157,28 +243,44 @@ def _ios_identity(logical_node_id: str) -> dict[str, Any]:
         "os_product": "iOS",
         "os_version": os_version,
         "os_build": os_build,
+        "codename": f"iOS {major}",
         "device_model": model,
+        "device_marketing": marketing,
+        "device_kind": "iphone",
+        "soc": soc,
         "uname_s": "Darwin",
         "uname_m": "arm64",
         "uname_r": uname_r,
+        "conf_user": "mobile",
+        "confdir": (
+            "file:///var/mobile/Containers/Data/Application/"
+            f"{container_uuid}/Library/Application%20Support/com.brd.earnapp/"
+        ),
+        # The app identity is stable across installs; the container UUID is
+        # the per-node value carried by confdir and the persisted profile.
+        "cp_id": IOS_CP_ID,
+        "gw_ip": "0.0.0.0",
+        "iface_type": "wifi",
         "identifier_for_vendor": str(uuid.uuid4()).upper(),
-        "container_uuid": str(uuid.uuid4()).upper(),
+        "container_uuid": container_uuid,
         "wifi_mac": _local_unicast_mac(),
         "lan_ip": PROXY_TUN_IP,
-        "makeflags": "DIST=APP RELEASE=y AUTO_SIGN=y app_macr_ios_sdk IS_IOS=y",
+        "is_swift": True,
+        "mobile_type": "wifi",
+        "makeflags": "DIST=APP RELEASE=y IS_IOS=y IOS_SDK=y IOS_UNITY=n CONFIG_BATREQ=y CONFIG_BAT_CYCLE=y CONFIG_BAT_PLATFORM=app_macr_ios_sdk",
         "bat_platform": "app_macr_ios_sdk",
-        "new_state": {
-            "battery_percentage": 100,
-            "full_screen": "off",
-            "idle_state": "active",
-            "monitor_power": "on",
-            "power_source": "battery",
-            "session_state": "active",
+        "new_state": _runtime_state(mobile=True, battery_percentage=battery_percentage),
+        "perf": {
+            "cpu": "0.15",
+            "cpu_max": "1.4",
+            "mem": f"{memory_usage:.1f}",
+            "mem_free": secrets.choice(("800", "900", "1400", "1500", "2100", "2200")),
+            "mem_max": f"{memory_max:.1f}",
         },
-        "perf": {"cpu": 0.0, "cpu_max": 100.0, "mem": 6144, "mem_free": 3072, "mem_max": 6144},
         "perr_os_version": f"OS version: iOS {os_version}",
-        "ua": f"earnapp/1.617.813 {cfnetwork} Darwin/{uname_r}",
+        "ua": f"earnapp/1 {cfnetwork} Darwin/{uname_r}",
     }
+    identity["usage"] = _usage_state(mobile=True, battery_percentage=battery_percentage)
     identity["device_id"] = _device_id(IOS_DEVICE_PREFIX, identity)
     return identity
 
@@ -214,12 +316,58 @@ def generate_identity(logical_node_id: str, platform: str) -> dict[str, Any]:
     return identity
 
 
+def _validate_reference_shape(identity: Mapping[str, Any], platform: str) -> None:
+    """Validate optional fields when present without breaking legacy profiles."""
+    state = identity.get("new_state")
+    if state is not None:
+        if not isinstance(state, Mapping):
+            raise ValueError("EarnApp new_state must be an object")
+        if "idle_state" in state and not isinstance(state.get("idle_state"), Mapping):
+            raise ValueError(f"EarnApp {platform} idle_state must be an object")
+        if "session_state" in state and str(state.get("session_state") or "") not in {"logged", "active"}:
+            raise ValueError(f"EarnApp {platform} session_state is invalid")
+
+    usage = identity.get("usage")
+    if usage is not None:
+        if not isinstance(usage, Mapping):
+            raise ValueError(f"EarnApp {platform} usage must be an object")
+        app_bytes = usage.get("app_bytes")
+        if app_bytes is not None and not isinstance(app_bytes, (str, int, float)):
+            raise ValueError(f"EarnApp {platform} app_bytes is invalid")
+        if isinstance(app_bytes, str) and app_bytes:
+            try:
+                parsed = json.loads(app_bytes)
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise ValueError(f"EarnApp {platform} app_bytes is invalid") from exc
+            if not isinstance(parsed, Mapping):
+                raise ValueError(f"EarnApp {platform} app_bytes must encode an object")
+
+    if platform == "ios":
+        # Version 1.617.813 is the audited profile generation. Legacy stored
+        # profiles remain readable, but newly generated profiles fail closed
+        # if any reference field is missing.
+        if str(identity.get("version") or "") == "1.617.813":
+            missing = sorted(_IOS_REFERENCE_FIELDS - identity.keys())
+            if missing:
+                raise ValueError(f"EarnApp iOS reference profile is missing: {', '.join(missing)}")
+        present = _IOS_REFERENCE_FIELDS.intersection(identity)
+        if "device_kind" in present and str(identity.get("device_kind") or "").lower() != "iphone":
+            raise ValueError("EarnApp iOS device_kind is invalid")
+        if "iface_type" in present and str(identity.get("iface_type") or "").lower() != "wifi":
+            raise ValueError("EarnApp iOS iface_type is invalid")
+        if "mobile_type" in present and str(identity.get("mobile_type") or "").lower() != "wifi":
+            raise ValueError("EarnApp iOS mobile_type is invalid")
+        if "is_swift" in present and identity.get("is_swift") is not True:
+            raise ValueError("EarnApp iOS is_swift must be true")
+
+
 def validate_identity(identity: dict[str, Any], platform: str) -> None:
     selected = _platform(platform)
     if not isinstance(identity, dict):
         raise ValueError("EarnApp identity must be an object")
     if selected == "macos":
         earnapp_runtime.validate_identity_contract(identity)
+        _validate_reference_shape(identity, selected)
         expected = _device_id(earnapp_runtime.MAC_DEVICE_PREFIX, identity)
         if identity.get("device_id") and identity.get("device_id") != expected:
             raise ValueError("EarnApp Mac device identity is invalid")
@@ -265,6 +413,7 @@ def validate_identity(identity: dict[str, Any], platform: str) -> None:
             term in json.dumps(identity, sort_keys=True).lower() for term in ("2movn", "mac_com.earnapp", "sdk-mac-")
         ):
             raise ValueError("EarnApp iOS identity mixes a Mac or lab profile")
+        _validate_reference_shape(identity, selected)
         return
     if (
         identity.get("platform") != "ubuntu"

@@ -5,8 +5,10 @@ status: active
 website: https://earnapp.com
 description: >
   EarnApp proxy-only runtime with account-scoped identity and an explicit
-  Mac-emulation canary lane. Each node owns one exclusive residential proxy.
-short_description: Proxy-only EarnApp runtime with account-scoped canary provisioning
+  platform-aware canary lane. VN residential egress selects MacOS or iOS;
+  non-VN residential egress selects the official Ubuntu runtime in LXD. Each
+  node owns one exclusive residential proxy.
+short_description: Proxy-only EarnApp runtime with platform-aware canary provisioning
 
 docker:
   image: cashpilot/earnapp-mac-canary:asset-4a1e80cbb95d
@@ -30,13 +32,21 @@ docker:
     oom_score_adj: 200
 
 deploy:
-  automation: earnapp_mac_canary
-  runtime_assets:
-    - provider: earnapp
+  automation: earnapp_platform_nodes
+  existing_node_policy: immutable
+  platform_routes:
+    - platform: macos
+      country_policy: VN
+      runtime_backend: docker
       asset_kind: mac_identity_profile
-      asset_id: "${EARNAPP_LOGICAL_NODE_ID}"
-      target: /etc/earnapp-spoof/profile.json.enc
-      encoding: base64
+    - platform: ios
+      country_policy: VN
+      runtime_backend: docker
+      asset_kind: ios_identity_profile
+    - platform: ubuntu
+      country_policy: non-VN
+      runtime_backend: lxd
+      asset_kind: ubuntu_identity_profile
   credentials: []
 
 egress:

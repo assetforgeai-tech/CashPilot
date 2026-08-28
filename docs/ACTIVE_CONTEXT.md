@@ -1,6 +1,31 @@
 # CashPilot Active Context
 
-Updated: 2026-08-28 (EarnApp v1.13.4 recovery/rotation closeout complete; provider protected)
+Updated: 2026-08-28 (EarnApp platform canary investigation reopened; existing nodes immutable)
+
+## EarnApp platform canary investigation (2026-08-28)
+
+- This investigation reopens platform validation without changing the
+  immutable baseline. The existing Docker nodes `earnapp-canary-test-sing-1`
+  and `earnapp-recovery-test-sing-2` must not be recreated, migrated, rotated
+  or deleted; their containers, sidecars, volumes, identities, account binding
+  and leases remain protected.
+- Fresh authenticated usage data corrects an earlier diagnostic mistake: node 1
+  has positive current-day qualified usage (`32,740,937 ms` on 2026-08-28),
+  while node 2 has only `18,142 ms` and is near a workload plateau. Both devices
+  are present, online and not banned. Online status alone is not a workload
+  success gate.
+- The evidence does not establish Docker as the root cause. Node 1 has WSS
+  timeout/proxy `502` signals; node 2 has a clean route but little workload, so
+  control-plane allocation/eligibility remains an open hypothesis.
+- New canaries are disposable only: iOS uses a fresh Docker node with a VN
+  residential lease; Ubuntu uses the official runtime in a fresh LXD guest with
+  a non-VN residential lease. Each must prove authenticated presence, online
+  state, positive workload delta, identity persistence and exclusive proxy
+  ownership.
+- MacOS/iOS remain Docker-only. Apple-platform LXD conversion is outside the
+  approved design and has no deploy or experimental-spec path in CashPilot.
+- EarnApp remains open for platform closeout until iOS and Ubuntu-LXD canaries
+  pass all gates. NKN, MYST and other `PROTECTED_DONE` providers are unaffected.
 
 ## EarnApp v1.13.4 closeout (2026-08-28)
 
