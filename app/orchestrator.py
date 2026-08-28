@@ -262,6 +262,29 @@ def _earnapp_sidecar(slug: str, client: Any | None = None):
     return sidecar
 
 
+def _restart_earnapp_main_after_sidecar_restart(client: Any, slug: str, sidecar: Any) -> None:
+    """Reconnect an EarnApp process to the sidecar network namespace.
+
+    Docker containers using ``network_mode=container:<sidecar>`` retain the old
+    network namespace when the sidecar is restarted. Restarting the dependent
+    main container makes Docker attach it to the sidecar's new namespace.
+    """
+    main = _find_earnapp_runtime_container(client, slug, sidecar=False)
+    if main is None:
+        raise RuntimeError(f"{slug} EarnApp main container is missing")
+    network_mode = str(((getattr(main, "attrs", {}) or {}).get("HostConfig") or {}).get("NetworkMode") or "")
+    sidecar_id = str(getattr(sidecar, "id", "") or "").strip()
+    sidecar_name = str(getattr(sidecar, "name", "") or "").strip().lstrip("/")
+    accepted_modes = {f"container:{identifier}" for identifier in (sidecar_id, sidecar_name) if identifier}
+    if network_mode not in accepted_modes:
+        raise RuntimeError(f"{slug} EarnApp main container has an unexpected network namespace")
+    main.restart(timeout=30)
+    with contextlib.suppress(Exception):
+        main.reload()
+    if str(getattr(main, "status", "") or "").lower() != "running":
+        raise RuntimeError(f"{slug} EarnApp main container did not recover after sidecar restart")
+
+
 def _exec_output(result: Any) -> tuple[int, bytes]:
     exit_code = int(getattr(result, "exit_code", result[0] if isinstance(result, tuple) else 1))
     output = getattr(result, "output", result[1] if isinstance(result, tuple) and len(result) > 1 else b"")
@@ -696,6 +719,8 @@ def apply_proxy_binding_batch(instance_slugs: list[str], proxy: dict[str, Any], 
             sidecar.reload()
             if str(sidecar.status or "").lower() != "running":
                 raise RuntimeError(f"{slug} egress sidecar did not restart")
+            if (sidecar.labels or {}).get("cashpilot.provider") == "earnapp":
+                _restart_earnapp_main_after_sidecar_restart(client, slug, sidecar)
             verify = sidecar.exec_run(
                 [
                     "/bin/sh",
@@ -713,6 +738,9 @@ def apply_proxy_binding_batch(instance_slugs: list[str], proxy: dict[str, Any], 
                 sidecar.exec_run(["/bin/sh", "-c", rollback_command])
             with contextlib.suppress(Exception):
                 sidecar.restart(timeout=30)
+            if (sidecar.labels or {}).get("cashpilot.provider") == "earnapp":
+                with contextlib.suppress(Exception):
+                    _restart_earnapp_main_after_sidecar_restart(client, _slug, sidecar)
         raise
 
     hashes = {config_hash for _slug, _sidecar, _raw, config_hash in staged}
@@ -777,6 +805,8 @@ def finalize_proxy_binding_batch(instance_slugs: list[str], binding_version: str
         sidecar.reload()
         if str(sidecar.status or "").lower() != "running":
             raise RuntimeError(f"{slug} egress sidecar did not recover after rollback")
+        if (sidecar.labels or {}).get("cashpilot.provider") == "earnapp":
+            _restart_earnapp_main_after_sidecar_restart(client, slug, sidecar)
     return {"finalized_instances": slugs, "action": "rolled_back"}
 
 
