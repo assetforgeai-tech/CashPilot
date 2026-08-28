@@ -4,6 +4,7 @@ import asyncio
 import base64
 import hashlib
 import json
+import os
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -345,7 +346,14 @@ def test_ios_runtime_manifest_is_content_addressed_from_the_forensic_bundle():
 
 
 def test_audited_runtime_artifacts_only_override_machine_architecture_queries():
-    root = Path(r"D:\1. WORK_true\CashPilot\earnapp_new_update\earnapp-runtime-small")
+    configured = str(os.environ.get("CASHPILOT_EARNAPP_AUDIT_ROOT") or "").strip()
+    root = (
+        Path(configured)
+        if configured
+        else Path(__file__).resolve().parents[2] / "earnapp_new_update" / "earnapp-runtime-small"
+    )
+    if not root.is_dir():
+        pytest.skip("external EarnApp forensic bundle is not available on this runner")
 
     for platform in ("mac", "ios"):
         uname = (root / platform / "uname").read_text(encoding="utf-8")
