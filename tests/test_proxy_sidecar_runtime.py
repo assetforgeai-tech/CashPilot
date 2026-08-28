@@ -477,3 +477,117 @@ def test_proxy_binding_finalize_rolls_back_matching_version_and_restarts_sidecar
     command = sidecar.exec_run.call_args.args[0][2]
     assert "mv /etc/sing-box/config.json.cashpilot-prev /etc/sing-box/config.json" in command
     sidecar.restart.assert_called_once_with(timeout=30)
+
+
+def test_earnapp_proxy_binding_restart_reconnects_main_container_after_sidecar_restart():
+    """A container sharing a sidecar network namespace must be restarted after rotation."""
+    client = MagicMock()
+    sidecar = MagicMock()
+    sidecar.labels = {
+        orchestrator.LABEL_MANAGED: "true",
+        orchestrator.LABEL_SERVICE: "earnapp-node-1",
+        "cashpilot.provider": "earnapp",
+        "cashpilot.role": "egress-sidecar",
+    }
+    sidecar.attrs = {"Mounts": [{"Destination": "/etc/sing-box", "RW": True}]}
+    sidecar.name = "cashpilot-earnapp-node-1-egress"
+    sidecar.id = "sidecar-container-id"
+    sidecar.exec_run.return_value = MagicMock(exit_code=0)
+    sidecar.status = "running"
+    main = MagicMock()
+    main.labels = {
+        orchestrator.LABEL_MANAGED: "true",
+        orchestrator.LABEL_SERVICE: "earnapp-node-1",
+        "cashpilot.provider": "earnapp",
+    }
+    main.attrs = {"HostConfig": {"NetworkMode": "container:sidecar-container-id"}}
+    client.containers.get.side_effect = [sidecar, main]
+    main.status = "running"
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        result = orchestrator.apply_proxy_binding_batch(
+            ["earnapp-node-1"],
+            {"host": "2.2.2.2", "port": 1080, "protocol": "socks5"},
+            "rotation_1234567890",
+        )
+
+    assert result["applied_instances"] == ["earnapp-node-1"]
+    main.restart.assert_called_once_with(timeout=30)
+
+
+def test_earnapp_proxy_rollback_reconnects_main_container_after_sidecar_restart():
+    """Rollback must also repair the dependent network namespace."""
+    client = MagicMock()
+    sidecar = MagicMock()
+    sidecar.name = "cashpilot-earnapp-node-1-egress"
+    sidecar.id = "sidecar-container-id"
+    sidecar.labels = {
+        orchestrator.LABEL_MANAGED: "true",
+        orchestrator.LABEL_SERVICE: "earnapp-node-1",
+        "cashpilot.provider": "earnapp",
+        "cashpilot.role": "egress-sidecar",
+    }
+    sidecar.attrs = {"Mounts": [{"Destination": "/etc/sing-box", "RW": True}]}
+    sidecar.exec_run.return_value = MagicMock(exit_code=0)
+    sidecar.status = "running"
+    main = MagicMock()
+    main.status = "running"
+    main.labels = {
+        orchestrator.LABEL_MANAGED: "true",
+        orchestrator.LABEL_SERVICE: "earnapp-node-1",
+        "cashpilot.provider": "earnapp",
+    }
+    main.attrs = {"HostConfig": {"NetworkMode": "container:sidecar-container-id"}}
+    client.containers.get.side_effect = [sidecar, main]
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        result = orchestrator.finalize_proxy_binding_batch(["earnapp-node-1"], "rotation_1234567890", commit=False)
+
+    assert result["action"] == "rolled_back"
+    main.restart.assert_called_once_with(timeout=30)
+
+
+def test_earnapp_failed_proxy_apply_reconnects_main_after_internal_rollback():
+    """A failed candidate must not leave the main process on the rolled-back sidecar's old namespace."""
+    client = MagicMock()
+    sidecar = MagicMock()
+    sidecar.name = "cashpilot-earnapp-node-1-egress"
+    sidecar.id = "sidecar-container-id"
+    sidecar.labels = {
+        orchestrator.LABEL_MANAGED: "true",
+        orchestrator.LABEL_SERVICE: "earnapp-node-1",
+        "cashpilot.provider": "earnapp",
+        "cashpilot.role": "egress-sidecar",
+    }
+    sidecar.attrs = {"Mounts": [{"Destination": "/etc/sing-box", "RW": True}]}
+    sidecar.exec_run.side_effect = [
+        MagicMock(exit_code=0),
+        MagicMock(exit_code=0),
+        MagicMock(exit_code=1),
+        MagicMock(exit_code=0),
+    ]
+    sidecar.status = "running"
+    main = MagicMock()
+    main.status = "running"
+    main.labels = {
+        orchestrator.LABEL_MANAGED: "true",
+        orchestrator.LABEL_SERVICE: "earnapp-node-1",
+        "cashpilot.provider": "earnapp",
+    }
+    main.attrs = {"HostConfig": {"NetworkMode": "container:sidecar-container-id"}}
+    client.containers.get.side_effect = [sidecar, main, main]
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        try:
+            orchestrator.apply_proxy_binding_batch(
+                ["earnapp-node-1"],
+                {"host": "2.2.2.2", "port": 1080, "protocol": "socks5"},
+                "rotation_1234567890",
+            )
+        except RuntimeError as exc:
+            assert "did not acknowledge" in str(exc)
+        else:
+            raise AssertionError("a failed candidate verification must roll back")
+
+    assert sidecar.restart.call_count == 2
+    assert main.restart.call_count == 2
