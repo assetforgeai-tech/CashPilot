@@ -30,6 +30,7 @@ import time
 import urllib.parse
 import uuid
 import zipfile
+from collections.abc import Mapping
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from html import escape as _esc
@@ -2385,6 +2386,24 @@ def _earnapp_proxy_finalize_replay(state: dict[str, Any], spec: EarnAppProxyFina
     )
 
 
+def _earnapp_proxy_rollback_complete(
+    status: Mapping[str, Any], evidence: Mapping[str, Any], old_egress_ip: str
+) -> bool:
+    """Recognize a clean rollback without treating a failed egress probe as drift."""
+    if (
+        status.get("binding_version")
+        or status.get("candidate_present") is True
+        or status.get("previous_present") is True
+        or evidence.get("running") is not True
+        or not old_egress_ip
+    ):
+        return False
+    observed = str(evidence.get("observed_egress_ip") or "").strip()
+    if evidence.get("probe_ok") is True:
+        return observed == old_egress_ip
+    return not observed
+
+
 async def _earnapp_proxy_runtime_snapshot(
     logical_node_id: str,
     state: dict[str, Any],
@@ -2777,20 +2796,14 @@ async def api_finalize_earnapp_node_proxy(
         if spec.commit:
             raise HTTPException(status_code=409, detail="EarnApp proxy finalization failed") from exc
         try:
-            _status, evidence = await _earnapp_proxy_runtime_snapshot(
+            status, evidence = await _earnapp_proxy_runtime_snapshot(
                 logical_node_id,
                 state,
                 generation=spec.generation,
                 device_id=spec.device_id,
             )
             old_egress_ip = str(state.get("expected_egress_ip") or "").strip()
-            observed_egress_ip = str(evidence.get("observed_egress_ip") or "").strip()
-            if (
-                evidence.get("running") is not True
-                or evidence.get("probe_ok") is not True
-                or not old_egress_ip
-                or observed_egress_ip != old_egress_ip
-            ):
+            if not _earnapp_proxy_rollback_complete(status, evidence, old_egress_ip):
                 raise RuntimeError("EarnApp old proxy route is not authoritative")
             discarded = await _discard_earnapp_proxy_candidate(
                 logical_node_id,
@@ -2842,15 +2855,7 @@ async def api_finalize_earnapp_node_proxy(
         except (ValueError, RuntimeError, OSError) as exc:
             raise HTTPException(status_code=409, detail="EarnApp proxy finalization failed") from exc
         old_egress_ip = str(state.get("expected_egress_ip") or "").strip()
-        if (
-            status.get("binding_version")
-            or status.get("candidate_present") is True
-            or status.get("previous_present") is True
-            or evidence.get("running") is not True
-            or evidence.get("probe_ok") is not True
-            or not old_egress_ip
-            or str(evidence.get("observed_egress_ip") or "").strip() != old_egress_ip
-        ):
+        if not _earnapp_proxy_rollback_complete(status, evidence, old_egress_ip):
             raise HTTPException(status_code=409, detail="EarnApp proxy finalization failed")
     for key in (
         "pending_binding_version",

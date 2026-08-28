@@ -807,6 +807,70 @@ def test_worker_proxy_finalize_discards_unapplied_write_ahead_intent_idempotentl
     assert "pending_binding_version" not in saved
 
 
+def test_worker_proxy_finalize_accepts_clean_rollback_when_egress_probe_is_unavailable(tmp_path, monkeypatch):
+    """Clean binding artifacts prove rollback even when the old proxy cannot answer ipify."""
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    device_id = "sdk-mac-" + "a" * 32
+    worker_api._save_earnapp_state(
+        "earnapp-macos-1",
+        {
+            "logical_node_id": "earnapp-macos-1",
+            "generation": 3,
+            "device_id": device_id,
+            "platform": "macos",
+            "runtime_backend": "docker",
+            "proxy_id": 12,
+            "expected_egress_ip": "203.0.113.10",
+            "pending_binding_version": "rotation_12345678",
+            "pending_proxy_id": 13,
+            "pending_expected_egress_ip": "203.0.113.13",
+            "pending_observed_egress_ip": "",
+        },
+    )
+    spec = worker_api.EarnAppProxyFinalizeSpec(
+        generation=3,
+        device_id=device_id,
+        expected_proxy_id=12,
+        new_proxy_id=13,
+        binding_version="rotation_12345678",
+        commit=False,
+    )
+    with (
+        patch.object(worker_api, "_verify_api_key"),
+        patch.object(
+            worker_api.orchestrator,
+            "finalize_proxy_binding_batch",
+            side_effect=RuntimeError("binding marker absent"),
+        ),
+        patch.object(
+            worker_api,
+            "_earnapp_proxy_runtime_snapshot",
+            return_value=(
+                {"binding_version": "", "previous_present": False, "candidate_present": False},
+                {"running": True, "observed_egress_ip": "", "probe_ok": False},
+            ),
+        ),
+        patch.object(
+            worker_api.orchestrator,
+            "discard_proxy_binding",
+            return_value={
+                "binding_version": "rotation_12345678",
+                "action": "rolled_back",
+                "idempotent": True,
+            },
+        ) as discard,
+    ):
+        result = __import__("asyncio").run(
+            worker_api.api_finalize_earnapp_node_proxy(_request(), "earnapp-macos-1", spec)
+        )
+
+    assert result["action"] == "rolled_back"
+    assert result["idempotent"] is True
+    discard.assert_called_once_with("earnapp-macos-1", "rotation_12345678")
+    saved = json.loads(Path(tmp_path, "earnapp-nodes", "earnapp-macos-1.json").read_text(encoding="utf-8"))
+    assert "pending_binding_version" not in saved
+
+
 def test_worker_proxy_finalize_keeps_journal_when_inactive_candidate_cannot_be_discarded(tmp_path, monkeypatch):
     monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
     device_id = str(_identity()["device_id"])
