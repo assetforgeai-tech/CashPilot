@@ -1179,9 +1179,7 @@ def test_worker_lxd_remove_never_treats_helper_assignment_conflict_as_absence(tm
         ),
         pytest.raises(worker_api.HTTPException) as exc_info,
     ):
-        __import__("asyncio").run(
-            worker_api.api_remove_earnapp_lxd_node(_request("DELETE"), "earnapp-ubuntu-1", spec)
-        )
+        __import__("asyncio").run(worker_api.api_remove_earnapp_lxd_node(_request("DELETE"), "earnapp-ubuntu-1", spec))
 
     assert exc_info.value.status_code == 409
     assert Path(tmp_path, "earnapp-nodes", "earnapp-ubuntu-1.json").exists()

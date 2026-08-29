@@ -67,9 +67,7 @@ async def test_unhealthy_rotation_is_blocked_before_authority_or_worker_mutation
     monkeypatch.setattr(database, "get_earnapp_logical_node", authority)
     monkeypatch.setattr(main, "_proxy_to_worker", worker)
 
-    result = await main._rotate_unhealthy_earnapp_node(
-        "earnapp-node-1", 7, generation=1, expected_proxy_id=11
-    )
+    result = await main._rotate_unhealthy_earnapp_node("earnapp-node-1", 7, generation=1, expected_proxy_id=11)
 
     assert result is False
     authority.assert_not_awaited()
@@ -145,7 +143,9 @@ async def test_worker_earnapp_mutation_route_does_not_depend_on_node_id_prefix(m
     spec = worker_api.EarnAppNodeCasSpec(generation=1, device_id="sdk-node-" + "1" * 32)
 
     with pytest.raises(HTTPException) as exc:
-        await worker_api.api_suspend_earnapp_lxd_node(_request("/api/earnapp/nodes/legacy-node/suspend"), "legacy-node", spec)
+        await worker_api.api_suspend_earnapp_lxd_node(
+            _request("/api/earnapp/nodes/legacy-node/suspend"), "legacy-node", spec
+        )
 
     assert exc.value.status_code == 409
     assert "prohibits virtual machines" in str(exc.value.detail)

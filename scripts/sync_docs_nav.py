@@ -61,6 +61,7 @@ CATEGORY_TITLES = [
 #: Guides under docs/guides/ that are not service guides and must be left alone.
 NON_SERVICE_GUIDES = {"README", "prometheus-metrics"}
 
+
 def runtime_disabled_slugs() -> frozenset[str]:
     """Read deployment policy from the same truth matrix as the API and UI."""
     return frozenset(slug for slug, provider in provider_runtime.PROVIDERS.items() if not provider.deployment_allowed)

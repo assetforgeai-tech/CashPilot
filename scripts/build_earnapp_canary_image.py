@@ -89,10 +89,7 @@ def render_dockerfile(manifest: Mapping[str, object], *, platform: str = "macos"
             "COPY ios-entrypoint /usr/local/bin/entrypoint.sh\n"
             "COPY ios-register-device /usr/local/bin/ios-register-device\n"
         )
-        registration_mode = (
-            " /usr/local/bin/entrypoint-original.sh"
-            " /usr/local/bin/ios-register-device"
-        )
+        registration_mode = " /usr/local/bin/entrypoint-original.sh /usr/local/bin/ios-register-device"
         entrypoint_copy = ""
         shellcheck = " /usr/local/bin/entrypoint-original.sh /usr/local/bin/ios-register-device"
     else:

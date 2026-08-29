@@ -81,6 +81,7 @@ def _reject_earnapp_runtime_mutation(logical_node_id: str = "earnapp") -> None:
     if policy:
         raise HTTPException(status_code=409, detail=policy.policy_message)
 
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------

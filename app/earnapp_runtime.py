@@ -22,6 +22,7 @@ def runtime_deployment_allowed() -> bool:
     policy = provider_runtime.get("earnapp")
     return bool(policy and policy.deployment_allowed)
 
+
 MAC_IDENTITY_ASSET_KIND = "mac_identity_profile"
 MAC_PLATFORM = "darwin"
 MAC_APPID = "mac_com.earnapp"

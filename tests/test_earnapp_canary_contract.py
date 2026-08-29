@@ -423,7 +423,7 @@ def test_ios_image_builder_installs_idempotent_control_plane_registration_wrappe
     assert 'test "$(cat "$MARKER")" = "$FINGERPRINT"' in wrapper
     assert "install_device" in wrapper
     assert "is_linked" in wrapper
-    assert "mv -f \"$TEMP_MARKER\" \"$MARKER\"" in wrapper
+    assert 'mv -f "$TEMP_MARKER" "$MARKER"' in wrapper
 
 
 def test_ios_registration_uses_query_parameters_json_body_and_validated_responses():

@@ -114,6 +114,7 @@ def test_helper_launches_ubuntu_with_hard_limits_and_no_nested_docker(monkeypatc
         "runtime_backend": "lxd",
         "device_id": payload["device_id"],
     }
+
     def run(args, **kwargs):
         commands.append(args)
         stdout = b"10.252.0.1/24\n" if args[:4] == ["lxc", "network", "get", "lxdbr0"] else b""
@@ -134,8 +135,7 @@ def test_helper_launches_ubuntu_with_hard_limits_and_no_nested_docker(monkeypatc
     network = next(
         command
         for command in commands
-        if command[:5]
-        == ["lxc", "config", "set", "cashpilot-earnapp-earnapp-ubuntu-1", "cloud-init.network-config"]
+        if command[:5] == ["lxc", "config", "set", "cashpilot-earnapp-earnapp-ubuntu-1", "cloud-init.network-config"]
     )
     assert "addresses: [10.252.0.3/24]" in network[-1]
     assert "via: 10.252.0.1" in network[-1]
@@ -200,8 +200,7 @@ def test_helper_removes_fresh_lxd_instance_when_pinning_the_ip_fails(monkeypatch
     monkeypatch.setattr(
         agent,
         "_run",
-        lambda args, **kwargs: commands.append(args)
-        or subprocess.CompletedProcess(args, 0, b"", b""),
+        lambda args, **kwargs: commands.append(args) or subprocess.CompletedProcess(args, 0, b"", b""),
     )
 
     with pytest.raises(agent.AgentError, match="pin failed"):
@@ -231,8 +230,7 @@ def test_helper_removes_fresh_lxd_instance_when_guest_bootstrap_fails(monkeypatc
     monkeypatch.setattr(
         agent,
         "_run",
-        lambda args, **kwargs: commands.append((args, kwargs))
-        or subprocess.CompletedProcess(args, 0, b"", b""),
+        lambda args, **kwargs: commands.append((args, kwargs)) or subprocess.CompletedProcess(args, 0, b"", b""),
     )
 
     with pytest.raises(agent.AgentError, match="installer failed"):
@@ -255,9 +253,7 @@ def test_helper_allocates_the_first_free_lxd_ipv4_without_using_gateway_or_exist
             [
                 {
                     "name": "other-instance",
-                    "devices": {
-                        "eth0": {"network": "lxdbr0", "ipv4.address": "10.252.0.3"}
-                    },
+                    "devices": {"eth0": {"network": "lxdbr0", "ipv4.address": "10.252.0.3"}},
                     "state": {"network": {}},
                 }
             ]
@@ -281,6 +277,7 @@ def test_helper_pins_the_inherited_lxd_nic_before_first_boot(monkeypatch):
         "devices": {},
         "expanded_devices": {"eth0": {"name": "eth0", "network": "lxdbr0", "type": "nic"}},
     }
+
     def run(args, **kwargs):
         commands.append(args)
         stdout = b"10.252.0.1/24\n" if args[:4] == ["lxc", "network", "get", "lxdbr0"] else b""
