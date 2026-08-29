@@ -45,7 +45,7 @@ from app import (
     disclosure,
     earnapp_canary,
     earnapp_collection,
-    earnapp_deploy,
+    earnapp_deploy,  # noqa: F401 - retained for historical canary helpers/tests
     earnapp_recovery,
     earnapp_runtime,
     egress,
@@ -639,17 +639,10 @@ async def _run_auto_deploy_sequence(
                 if delay_seconds:
                     await asyncio.sleep(delay_seconds)
 
-            if worker_id not in _EARNAPP_AUTO_DEPLOY_DONE:
-                try:
-                    result = await _deploy_earnapp_nodes(worker_id, config=config)
-                    if (
-                        not result.get("failed")
-                        and not result.get("pending")
-                        and (result.get("deployed") or result.get("verified"))
-                    ):
-                        _EARNAPP_AUTO_DEPLOY_DONE.add(worker_id)
-                except Exception as exc:  # noqa: BLE001 - queue already isolated
-                    logger.warning("EarnApp auto deploy failed on worker %s: %s", worker_id, type(exc).__name__)
+            # EarnApp's current terms prohibit VM/container/hosting runtimes.
+            # Mark this lane complete without planning nodes, leasing proxies or
+            # contacting a worker; account collection remains independent.
+            _EARNAPP_AUTO_DEPLOY_DONE.add(worker_id)
     finally:
         _AUTO_DEPLOY_ACTIVE.discard(worker_id)
 
@@ -1680,11 +1673,13 @@ async def _check_stale_workers() -> None:
     except Exception as exc:
         logger.warning("NKN stale wallet reclaim error: %s", exc)
     try:
-        recovered = await earnapp_recovery.sweep_stale_nodes(stale_after_seconds=EARNAPP_NODE_STALE_SECONDS)
-        if recovered["held"]:
-            logger.warning("Put %d EarnApp node(s) into recovery hold", len(recovered["held"]))
-        if recovered["released"]:
-            logger.warning("Released %d expired EarnApp recovery proxy lease(s)", len(recovered["released"]))
+        runtime = provider_runtime.get("earnapp")
+        if runtime and runtime.deployment_allowed:
+            recovered = await earnapp_recovery.sweep_stale_nodes(stale_after_seconds=EARNAPP_NODE_STALE_SECONDS)
+            if recovered["held"]:
+                logger.warning("Put %d EarnApp node(s) into recovery hold", len(recovered["held"]))
+            if recovered["released"]:
+                logger.warning("Released %d expired EarnApp recovery proxy lease(s)", len(recovered["released"]))
     except Exception as exc:
         logger.warning("EarnApp stale node recovery error: %s", exc)
 
@@ -2110,6 +2105,12 @@ def _apply_service_meta(entry: dict[str, Any], svc: dict[str, Any] | None) -> No
     if referral:
         entry["referral_url"] = referral.get("signup_url", "")
     entry["website"] = svc.get("website", "")
+    runtime = provider_runtime.catalog_runtime(str(svc.get("slug") or ""))
+    if runtime:
+        entry["runtime"] = runtime
+        entry["deployment_allowed"] = runtime["deployment_allowed"]
+        entry["deployment_policy"] = runtime["deployment_policy"]
+        entry["deployment_policy_message"] = runtime["deployment_policy_message"]
 
 
 def _service_supported_modes(svc: dict[str, Any] | None) -> list[str]:
@@ -2476,6 +2477,12 @@ async def api_services_available(request: Request) -> list[dict[str, Any]]:
         svc["manual_only"] = (deploy_surface == "host_systemd") or not has_image
         svc["node_count"] = sum(1 for i in instances if i["slug"] == slug)
         svc["supported_modes"] = _service_supported_modes(svc)
+        runtime = provider_runtime.catalog_runtime(slug)
+        if runtime:
+            svc["runtime"] = runtime
+            svc["deployment_allowed"] = runtime["deployment_allowed"]
+            svc["deployment_policy"] = runtime["deployment_policy"]
+            svc["deployment_policy_message"] = runtime["deployment_policy_message"]
         # The setup wizard reads this endpoint, and it needs to know whether
         # earnings tracking takes a SECOND set of credentials — the service
         # detail view already says so, and the wizard is the screen a new user
@@ -2502,6 +2509,12 @@ async def api_get_service(request: Request, slug: str) -> dict[str, Any]:
     svc["deploy_surface"] = _service_deploy_surface(svc)
     svc["manual_only"] = (svc["deploy_surface"] == "host_systemd") or not bool((svc.get("docker") or {}).get("image"))
     svc["supported_modes"] = _service_supported_modes(svc)
+    runtime = provider_runtime.catalog_runtime(slug)
+    if runtime:
+        svc["runtime"] = runtime
+        svc["deployment_allowed"] = runtime["deployment_allowed"]
+        svc["deployment_policy"] = runtime["deployment_policy"]
+        svc["deployment_policy_message"] = runtime["deployment_policy_message"]
 
     # Flag whether earnings tracking uses separate credentials (entered in
     # Settings → Collectors), so the deploy UI can tell users the container
@@ -2858,6 +2871,9 @@ async def api_deploy(
     adopt_slot_id: str = "ipv4-001",
     _auth: dict[str, Any] = Depends(_require_owner),
 ) -> dict[str, Any]:
+    runtime = provider_runtime.get(slug)
+    if runtime and not runtime.deployment_allowed:
+        raise HTTPException(status_code=409, detail=runtime.policy_message)
     worker_id = await _resolve_worker_id(worker_id)
     svc = catalog.get_service(slug)
     if not svc:
@@ -2894,12 +2910,6 @@ async def api_deploy(
             )
         result = await _deploy_nkn_slots(worker_id, **deploy_kwargs)
         return {"status": "deployed", "provider": "nkn", **result}
-
-    if slug == "earnapp":
-        raise HTTPException(
-            status_code=409,
-            detail="EarnApp uses the owner-only Mac canary endpoint, not generic provider deploy",
-        )
 
     docker_conf = svc.get("docker", {})
     deploy_conf = svc.get("deploy", {}) or {}
@@ -3185,6 +3195,9 @@ async def api_deploy_earnapp_canary(
     _auth: dict[str, Any] = Depends(_require_owner),
 ) -> dict[str, Any]:
     """Deploy exactly one owner-authorized EarnApp platform canary node."""
+    runtime_policy = provider_runtime.get("earnapp")
+    if runtime_policy and not runtime_policy.deployment_allowed:
+        raise HTTPException(status_code=409, detail=runtime_policy.policy_message)
     if body.logical_node_id == _EARNAPP_PROTECTED_CANARY:
         raise HTTPException(status_code=409, detail="Protected EarnApp canary is inspect-only")
     worker_id = await _resolve_worker_id(body.worker_id)
@@ -3459,8 +3472,8 @@ def _merge_recorded_spec(
 # resolution, proxy, and bookkeeping live in exactly one place per action.
 async def _svc_stop(request: Request, slug: str, worker_id: int | None) -> dict[str, str]:
     _require_writer(request)
-    if slug == _EARNAPP_PROTECTED_CANARY:
-        raise HTTPException(status_code=409, detail="Protected EarnApp canary is inspect-only")
+    if provider_runtime.is_runtime_instance(slug):
+        raise HTTPException(status_code=409, detail="Existing EarnApp runtimes are inspection-only")
     if slug == "nkn" or str(slug).startswith("nkn-direct-"):
         raise HTTPException(status_code=409, detail="NKN nodes use deliberate remove, not stop")
     worker_id = await _resolve_worker_id(worker_id)
@@ -3523,8 +3536,8 @@ async def _remove_nkn_slot(request: Request, slot_id: str, *, worker_id: int | N
 
 async def _svc_restart(request: Request, slug: str, worker_id: int | None) -> dict[str, str]:
     _require_writer(request)
-    if slug == _EARNAPP_PROTECTED_CANARY:
-        raise HTTPException(status_code=409, detail="Protected EarnApp canary is inspect-only")
+    if provider_runtime.is_runtime_instance(slug):
+        raise HTTPException(status_code=409, detail="Existing EarnApp runtimes are inspection-only")
     worker_id = await _resolve_worker_id(worker_id)
     result = await _proxy_worker_command(worker_id, "restart", slug)
     await database.record_health_event(slug, "restart")
@@ -3539,8 +3552,8 @@ async def _svc_remove(
     delete_volumes: bool,
     allow_delete_critical: bool = False,
 ) -> dict[str, Any]:
-    if slug == _EARNAPP_PROTECTED_CANARY:
-        raise HTTPException(status_code=409, detail="Protected EarnApp canary is inspect-only")
+    if provider_runtime.is_runtime_instance(slug):
+        raise HTTPException(status_code=409, detail="Existing EarnApp runtimes are inspection-only")
     if str(slug).startswith("nkn-direct-"):
         suffix = str(slug).removeprefix("nkn-direct-")
         scoped = re.fullmatch(r"w(\d+)-(ipv4-\d{3,6})", suffix)
@@ -3768,6 +3781,10 @@ async def _reconcile_earnapp_pending_proxy_binding(instance: Mapping[str, Any], 
     current). Any other state is left untouched for a later, operator-visible
     repair rather than guessing.
     """
+    # Reconciliation can finalize a proxy lease, so a disabled provider keeps
+    # this background path inspection-only too.
+    if provider_runtime.mutation_block("earnapp", instance):
+        return False
     node_id = str(instance.get("logical_node_id") or "").strip()
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]{2,120}", node_id) or node_id == _EARNAPP_PROTECTED_CANARY:
         return False
@@ -3857,6 +3874,10 @@ async def _rotate_unhealthy_earnapp_node(
     expected_proxy_id: int,
 ) -> bool:
     """Rotate one explicit EarnApp failure; the protected live canary is inspect-only."""
+    # Fail before locks or database reads so policy-disabled runtime heartbeats
+    # cannot trigger proxy reservations or worker calls.
+    if provider_runtime.mutation_block("earnapp"):
+        return False
     node_id = str(logical_node_id or "").strip()
     if not node_id or node_id == _EARNAPP_PROTECTED_CANARY:
         return False
@@ -4041,36 +4062,23 @@ def _earnapp_lxd_settings(config: Mapping[str, Any] | None) -> dict[str, int]:
     }
 
 
-async def _deploy_earnapp_nodes(worker_id: int, *, config: Mapping[str, Any] | None = None) -> dict[str, list[str]]:
-    """Run the EarnApp-specific slot planner; generic catalog deployment is separate."""
-    slots = await _worker_public_ip_slots(int(worker_id))
-    try:
-        limits = _earnapp_lxd_settings(config)
-    except ValueError as exc:
-        logger.warning("EarnApp LXD settings invalid for worker %s: %s", worker_id, type(exc).__name__)
-        return {"deployed": [], "skipped": [], "failed": ["settings"]}
+async def _deploy_earnapp_nodes(worker_id: int, *, config: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Report the provider policy without planning slots or acquiring leases.
 
-    async def docker_deploy(target_worker_id: int, node_id: str, spec: dict[str, Any]) -> dict[str, Any]:
-        return await _proxy_worker_deploy(target_worker_id, node_id, spec)
-
-    async def lxd_deploy(target_worker_id: int, node_id: str, spec: dict[str, Any]) -> dict[str, Any]:
-        return await _proxy_worker_earnapp_lxd_deploy(target_worker_id, node_id, spec)
-
-    lock = _EARNAPP_DEPLOY_LOCKS.setdefault(int(worker_id), asyncio.Lock())
-    if int(worker_id) in _EARNAPP_DEPLOY_ACTIVE:
-        return {"deployed": [], "skipped": [], "failed": []}
-    _EARNAPP_DEPLOY_ACTIVE.add(int(worker_id))
-    try:
-        async with lock:
-            return await earnapp_deploy.deploy_worker_nodes_sequentially(
-                int(worker_id),
-                slots,
-                docker_deploy=docker_deploy,
-                lxd_deploy=lxd_deploy,
-                lxd_settings=limits,
-            )
-    finally:
-        _EARNAPP_DEPLOY_ACTIVE.discard(int(worker_id))
+    Existing account, collector and historical-node paths remain available, but
+    no new VPS runtime may be created while EarnApp's hosting restriction is in
+    force. Keeping this gate server-side prevents accidental lease side effects
+    from callers that bypass the generic deploy route.
+    """
+    del worker_id, config
+    return {
+        "deployed": [],
+        "verified": [],
+        "skipped": ["provider_policy"],
+        "pending": [],
+        "failed": [],
+        "blocked_reason": earnapp_runtime.VPS_RUNTIME_BLOCK_REASON,
+    }
 
 
 async def _proxy_worker_logs(worker_id: int, slug: str, lines: int = 50) -> dict[str, str]:
@@ -4096,8 +4104,8 @@ async def api_service_stop(request: Request, slug: str, worker_id: int | None = 
 @app.post("/api/services/{slug}/start")
 async def api_service_start(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
-    if slug == _EARNAPP_PROTECTED_CANARY:
-        raise HTTPException(status_code=409, detail="Protected EarnApp canary is inspect-only")
+    if provider_runtime.is_runtime_instance(slug):
+        raise HTTPException(status_code=409, detail="Existing EarnApp runtimes are inspection-only")
     worker_id = await _resolve_worker_id(worker_id)
     result = await _proxy_worker_command(worker_id, "start", slug)
     await database.record_health_event(slug, "start")
@@ -5644,6 +5652,9 @@ async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
             entry["manual_only"] = runtime["manual_only"]
             entry["count_only"] = runtime["count_only"]
             entry["supported_modes"] = runtime["modes"]
+            entry["deployment_allowed"] = runtime["deployment_allowed"]
+            entry["deployment_policy"] = runtime["deployment_policy"]
+            entry["deployment_policy_message"] = runtime["deployment_policy_message"]
         hint = (svc.get("collector") or {}).get("credential_hint") if svc else None
         if hint:
             entry["hint"] = hint
@@ -6798,6 +6809,7 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
     earnapp = body.provider_states.get("earnapp") or {}
     earnapp_assignment_acks: list[dict[str, Any]] = []
     earnapp_assignment_rejections: list[dict[str, Any]] = []
+    earnapp_mutations_blocked = provider_runtime.mutation_block("earnapp") is not None
     for instance in earnapp.get("instances") or []:
         if not isinstance(instance, dict):
             continue
@@ -6806,7 +6818,7 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         if not logical_node_id or generation <= 0:
             continue
         pending_binding = bool(str(instance.get("pending_binding_version") or "").strip())
-        if pending_binding:
+        if pending_binding and not earnapp_mutations_blocked:
             _spawn(_reconcile_earnapp_pending_proxy_binding(dict(instance), worker_id))
         reported_token = _earnapp_hydration_state_token(instance)
         proxy_id = int(reported_token["proxy_id"])
@@ -6895,7 +6907,12 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
                 observed_egress_ip=str(instance.get("observed_egress_ip") or ""),
                 reason=str(instance.get("proxy_health_reason") or ""),
             )
-            if recorded and proxy_health == "unhealthy" and logical_node_id != _EARNAPP_PROTECTED_CANARY:
+            if (
+                recorded
+                and not earnapp_mutations_blocked
+                and proxy_health == "unhealthy"
+                and logical_node_id != _EARNAPP_PROTECTED_CANARY
+            ):
                 _spawn(
                     _rotate_unhealthy_earnapp_node(
                         logical_node_id,
@@ -7169,14 +7186,14 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
         _require_owner(request)
     else:
         _require_writer(request)
-    if body.slug == _EARNAPP_PROTECTED_CANARY:
-        raise HTTPException(status_code=409, detail="Protected EarnApp canary is inspect-only")
-
     if body.command == "deploy":
         # This is a THIRD deploy path. Without the same status gate, a broken or
         # dropped service could still be deployed here — and this route then runs the
         # full bookkeeping below, so it would look deployed while earning nothing.
         # An unknown slug is left alone: this raw route is not catalog-only.
+        runtime = provider_runtime.deployment_block(body.slug, body.spec)
+        if runtime:
+            raise HTTPException(status_code=409, detail=runtime.policy_message)
         deploy_status = (catalog.get_service(body.slug) or {}).get("status")
         if body.slug == "nkn" or str(body.slug).startswith("nkn-direct-"):
             raise HTTPException(
@@ -7197,6 +7214,8 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
                 with contextlib.suppress(Exception):
                     await _release_myst_wallet_from_spec(spec, reason="DEPLOY_FAILED")
             raise
+    elif provider_runtime.is_runtime_instance(body.slug):
+        raise HTTPException(status_code=409, detail="Existing EarnApp runtimes are inspection-only")
     elif body.command in ("stop", "restart", "start"):
         if body.slug == "nkn" or str(body.slug).startswith("nkn-direct-"):
             raise HTTPException(status_code=409, detail="NKN nodes use deliberate slot remove, not generic lifecycle")

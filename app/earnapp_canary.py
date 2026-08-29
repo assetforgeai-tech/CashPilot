@@ -236,6 +236,9 @@ def build_runtime_spec(
     if not re.fullmatch(r"sdk-ios-[A-Za-z0-9-]{4,96}", device):
         raise ValueError("EarnApp iOS device_id must use the sdk-ios- prefix")
     proxy_meta = _redacted_proxy(proxy)
+    expected_egress_ip = str(proxy_meta.get("exit_ip") or "").strip()
+    if not expected_egress_ip:
+        raise ValueError("EarnApp iOS runtime requires an authoritative proxy egress IP")
     return {
         "image": earnapp_runtime.IOS_RUNTIME_IMAGE,
         "image_contract_sha256": earnapp_runtime.IOS_RUNTIME_ASSET_MANIFEST_SHA256,
@@ -248,6 +251,7 @@ def build_runtime_spec(
             "EARNAPP_APPID": earnapp_runtime.IOS_APPID,
             "EARNAPP_DEVICE_ID": device,
             "EARNAPP_LOGICAL_NODE_ID": node_id,
+            "EARNAPP_EXPECTED_EGRESS_IP": expected_egress_ip,
         },
         "volumes": {f"{node_id}-data": {"bind": "/etc/earnapp", "mode": "rw"}},
         "labels": {

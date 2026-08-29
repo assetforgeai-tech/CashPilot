@@ -245,7 +245,8 @@ class TestEarnAppAccountPoolIsReachable:
         assert 'id="earnapp-account-rows"' in page
         assert 'id="earnapp-recovery-rows"' in page
         assert "Credentials are encrypted" in page
-        assert "1-hour recovery hold" in page
+        assert "Runtime deployment disabled" in page
+        assert "inspection-only" in page
 
     def test_settings_loader_and_actions_are_exported(self):
         app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
@@ -797,6 +798,20 @@ class TestCatalogShowsReadiness:
         assert "Count only" in text
         assert "Dashboard only" in text
         assert "mode:" in badges
+
+    def test_catalog_and_detail_surface_provider_runtime_policy(self):
+        catalog_card = js_function("renderCatalogCard")
+        detail = js_function("renderServiceDetail")
+        service_row = js_function("renderServiceRow")
+        wizard = js_function("renderServiceSetupForm")
+        assert "deployment_allowed" in catalog_card
+        assert "deployment_policy_message" in catalog_card
+        assert "deployment_allowed" in detail
+        assert "deployment_policy_message" in detail
+        assert "deployment_allowed" in service_row
+        assert "Inspection only" in service_row
+        assert "deployment_allowed" in wizard
+        assert "Runtime deployment disabled" in frontend_text()
 
 
 class TestFleetShowsProviderStates:

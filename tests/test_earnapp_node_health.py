@@ -393,6 +393,9 @@ def test_earnapp_heartbeat_state_exposes_only_nonsecret_pending_binding_journal(
 
 @pytest.mark.asyncio
 async def test_pending_rotation_reconciliation_commits_when_database_already_rotated(monkeypatch):
+    # Exercise the transaction mechanics independently of the current
+    # compliance policy, which blocks this background mutation in production.
+    monkeypatch.setattr(main.provider_runtime, "mutation_block", lambda *_args, **_kwargs: None)
     node_id = "earnapp-proxy-w11-ipv4-003"
     device_id = "sdk-mac-" + "b" * 32
     instance = {
@@ -441,6 +444,7 @@ async def test_pending_rotation_reconciliation_commits_when_database_already_rot
 
 @pytest.mark.asyncio
 async def test_pending_rotation_reconciliation_rolls_back_when_database_did_not_rotate(monkeypatch):
+    monkeypatch.setattr(main.provider_runtime, "mutation_block", lambda *_args, **_kwargs: None)
     node_id = "earnapp-proxy-w11-ipv4-004"
     device_id = "sdk-ios-" + "c" * 32
     instance = {
@@ -488,6 +492,7 @@ async def test_pending_rotation_reconciliation_rolls_back_when_database_did_not_
 
 @pytest.mark.asyncio
 async def test_pending_rotation_reconciliation_rolls_back_write_ahead_intent_without_apply_evidence(monkeypatch):
+    monkeypatch.setattr(main.provider_runtime, "mutation_block", lambda *_args, **_kwargs: None)
     node_id = "earnapp-proxy-w11-ipv4-004b"
     device_id = "sdk-ios-" + "d" * 32
     instance = {
@@ -567,7 +572,7 @@ async def test_pending_rotation_reconciliation_refuses_database_egress_mismatch(
     finalize.assert_not_awaited()
 
 
-def test_server_heartbeat_reconciles_pending_binding_without_starting_another_rotation():
+def test_server_heartbeat_keeps_pending_binding_inspection_only_when_runtime_disabled():
     async def run():
         body = main.WorkerHeartbeat(
             name="worker-a",
@@ -615,7 +620,7 @@ def test_server_heartbeat_reconciles_pending_binding_without_starting_another_ro
             )
 
         reconcile.assert_not_awaited()
-        assert len(spawned) == 2
+        assert len(spawned) == 1
         record.assert_not_awaited()
         rotate.assert_not_awaited()
 
@@ -721,7 +726,7 @@ def test_worker_proxy_probe_failure_is_unhealthy_but_helper_outage_stays_unknown
     assert lxd_state["proxy_health_reason"] == "runtime_probe_unavailable"
 
 
-def test_server_heartbeat_records_scoped_health_and_rotates_only_explicitly_unhealthy_nodes():
+def test_server_heartbeat_records_scoped_health_without_rotating_when_runtime_disabled():
     async def run():
         body = main.WorkerHeartbeat(
             name="worker-a",
@@ -820,7 +825,7 @@ def test_server_heartbeat_records_scoped_health_and_rotates_only_explicitly_unhe
             await asyncio.gather(*spawned)
 
         assert record.await_count == 3
-        rotate.assert_awaited_once_with("earnapp-node-unhealthy", 11, generation=4, expected_proxy_id=11)
+        rotate.assert_not_awaited()
 
     asyncio.run(run())
 
@@ -1346,6 +1351,7 @@ def test_server_fleet_state_exposes_only_secret_free_earnapp_evidence():
 
 @pytest.mark.asyncio
 async def test_unhealthy_node_rotation_commits_only_after_matching_worker_ack(monkeypatch):
+    monkeypatch.setattr(main.provider_runtime, "mutation_block", lambda *_args, **_kwargs: None)
     node_id = "earnapp-proxy-w11-ipv4-001"
     device_id = "sdk-mac-" + "e" * 32
     candidate = {
@@ -1419,6 +1425,7 @@ async def test_unhealthy_node_rotation_commits_only_after_matching_worker_ack(mo
 
 @pytest.mark.asyncio
 async def test_unhealthy_node_rotation_rolls_runtime_back_when_database_cas_loses(monkeypatch):
+    monkeypatch.setattr(main.provider_runtime, "mutation_block", lambda *_args, **_kwargs: None)
     node_id = "earnapp-proxy-w11-ipv4-002"
     device_id = "sdk-ios-" + "f" * 32
     candidate = {

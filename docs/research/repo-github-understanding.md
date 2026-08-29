@@ -6,11 +6,23 @@ Commit nền hiện tại là `8d2b860` (merge PR #52, `origin/main`, tag
 `v1.13.4`). Worktree closeout chỉ thay đổi tài liệu sau khi product source,
 release và live gates đã được xác minh.
 
-## EarnApp platform canary investigation (2026-08-28)
+## EarnApp current policy (2026-08-29)
+
+EarnApp is currently `COMPLIANCE_BLOCKED` / `RUNTIME_DISABLED` for new hosted
+runtime deployment. Its terms prohibit VM, Docker/LXD and hosting-service
+runtimes. The Account Pool, encrypted collector credentials, token-expiry
+metadata, historical snapshots and read-only inspection of existing devices
+remain available; a refreshed token restores collection only. Existing EarnApp
+nodes are immutable. Server and worker gates reject new deployment before
+worker resolution, slot planning, proxy leasing or runtime mutation. Older
+canary and closeout sections in this document are historical records, not
+current deployment authorization.
+
+## EarnApp platform canary investigation (historical, 2026-08-28)
 
 The v1.13.4 recovery/rotation closeout remains the immutable baseline for the
-two existing Docker nodes, but platform closeout is reopened for fresh
-disposable canaries. An authenticated usage read shows node 1 has positive
+two existing Docker nodes. At this historical checkpoint, platform closeout
+was reopened for fresh disposable canaries. An authenticated usage read showed node 1 has positive
 current-day qualified usage (`32,740,937 ms`), while node 2 has only `18,142 ms`
 and is near plateau. Both are online and not banned. The earlier statement that
 both nodes had zero current-day usage was caused by selecting the wrong usage
@@ -19,12 +31,12 @@ series value and is withdrawn.
 This evidence does not prove Docker is the root cause. Node 1 has repeated WSS
 timeouts and proxy `502` responses; node 2 has a clean route but little
 workload, so control-plane allocation/eligibility remains an open hypothesis.
-The next safe lanes are a new iOS Docker node on a VN residential proxy and a
-new official Ubuntu LXD node on a non-VN residential proxy. Existing containers,
-sidecars, volumes, identities, account bindings and leases are not migration
-targets. MacOS/iOS remain Docker-only; Ubuntu is the only EarnApp LXD lane.
+The proposed lanes were a new iOS Docker node on a VN residential proxy and a
+new official Ubuntu LXD node on a non-VN residential proxy. The current
+compliance gate supersedes that proposal and blocks both. Existing containers,
+sidecars, volumes, identities, account bindings and leases remain immutable.
 
-## EarnApp v1.13.4 recovery/rotation closeout (2026-08-28)
+## EarnApp v1.13.4 recovery/rotation closeout (historical runtime baseline, 2026-08-28)
 
 - PR #52 sửa đúng root cause Docker network namespace: main EarnApp dùng
   `container:<sidecar-id>` phải được restart sau sidecar apply/rollback để gắn
@@ -42,8 +54,10 @@ targets. MacOS/iOS remain Docker-only; Ubuntu is the only EarnApp LXD lane.
 - Authenticated account evidence thấy cả hai device online/not-banned; snapshot
   online `2`, offline `0`, balance `$2.284`. DB `integrity=ok`, FK `0`, active
   reservation `0`, active EarnApp lease `2`.
-- EarnApp được nâng thành `PROTECTED_DONE`. Mọi thay đổi tương lai phải có impact
-  map, regression coverage, canary mới và approval rõ ràng.
+- Tại checkpoint này EarnApp được nâng thành `PROTECTED_DONE`. Quyết định
+  compliance ngày 2026-08-29 supersede quyền deploy: baseline/node cũ vẫn được
+  bảo vệ, còn hosted runtime chuyển thành `COMPLIANCE_BLOCKED` /
+  `RUNTIME_DISABLED`.
 
 ## EarnApp v1.13.2 scoped live verification (2026-08-28)
 
@@ -148,11 +162,10 @@ Verification của baseline tại checkpoint đó đạt focused suite `283 pass
 full non-live suite `1812 passed, 8 skipped`; migration-safety verification mới
 nhất được ghi ở `docs/research/earnapp-legacy-migration-safety-2026-08.md`.
 
-Release, registry verification và scoped UI/worker deployment đã hoàn tất ở
-`v1.13.2`. Phạm vi còn mở chỉ là restart/recovery persistence và isolated proxy
-rotation trên một canary mới. Global Auto Deploy phải tiếp tục
-operator-disabled cho tới khi hai gate này pass. EarnApp **chưa** là
-`PROTECTED_DONE`.
+Tại checkpoint lịch sử này, release, registry verification và scoped UI/worker
+deployment đã hoàn tất ở `v1.13.2`; restart/recovery persistence và isolated
+proxy rotation vẫn còn mở trên canary mới. Closeout v1.13.4 sau đó supersede
+trạng thái này, và policy 2026-08-29 tiếp tục supersede mọi quyền hosted deploy.
 
 ## Phạm vi và nguyên tắc
 
@@ -220,7 +233,7 @@ ghi nhận ở v1.13.2; live deployment vẫn là thao tác riêng có approval.
 | `grass` | `RETIRED` | Không còn catalog/runtime; giữ legacy rows/secrets để tương thích |
 | `mysterium` | `PROTECTED_DONE` | Direct-only; không đưa vào Proxy Pool |
 | `nkn` | `PROTECTED_DONE` | Direct-only; giữ nguyên contract và canary thành công |
-| `earnapp` | `PROTECTED_DONE` | Giữ cả hai node live; thay đổi mới cần canary riêng và approval |
+| `earnapp` | `COMPLIANCE_BLOCKED` / `RUNTIME_DISABLED` | Giữ node cũ immutable; không tạo VPS runtime mới; chỉ collection/history/inspection |
 
 ## Retired Grass history
 

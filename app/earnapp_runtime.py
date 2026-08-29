@@ -11,12 +11,24 @@ from typing import Any
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
+from app import provider_runtime
+
+VPS_RUNTIME_BLOCK_REASON = provider_runtime.VPS_RUNTIME_BLOCK_REASON
+VPS_RUNTIME_BLOCK_MESSAGE = provider_runtime.VPS_RUNTIME_BLOCK_MESSAGE
+
+
+def runtime_deployment_allowed() -> bool:
+    """Return the single source-of-truth decision for new hosted runtimes."""
+    policy = provider_runtime.get("earnapp")
+    return bool(policy and policy.deployment_allowed)
+
 MAC_IDENTITY_ASSET_KIND = "mac_identity_profile"
 MAC_PLATFORM = "darwin"
 MAC_APPID = "mac_com.earnapp"
 MAC_DEVICE_PREFIX = "sdk-mac-"
 IOS_PLATFORM = "ios"
 IOS_APPID = "com.brd.earnapp"
+IOS_INSTALL_APPID = "ios_com.brd.earnapp"
 IOS_DEVICE_PREFIX = "sdk-ios-"
 
 # These are the only runtime artifacts copied into the canary image.  The
@@ -63,6 +75,148 @@ def _image_platform(platform: str) -> str:
     return value
 
 
+def ios_registration_script() -> bytes:
+    """Return the deterministic iOS control-plane registration helper."""
+    script = """#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+STATE_DIR=/etc/earnapp
+IDENTITY_FILE=/run/ios-spoof/identity.json
+MARKER="$STATE_DIR/registered-ios-control-plane"
+EXPECTED_EGRESS_IP="${EARNAPP_EXPECTED_EGRESS_IP:-}"
+APPID=__IOS_INSTALL_APPID__
+
+if [[ -z "$EXPECTED_EGRESS_IP" ]]; then
+    echo '[earnapp] iOS registration requires an authoritative proxy egress' >&2
+    exit 1
+fi
+if ! node -e 'const net=require("net"); process.exit(net.isIP(process.argv[1]) === 4 ? 0 : 1)' "$EXPECTED_EGRESS_IP"; then
+    echo '[earnapp] iOS registration egress is not an IPv4 address' >&2
+    exit 1
+fi
+[[ -s "$STATE_DIR/uuid" && -s "$STATE_DIR/ver" && -s "$IDENTITY_FILE" ]]
+
+UUID=$(cat "$STATE_DIR/uuid")
+VERSION=$(cat "$STATE_DIR/ver")
+ARCH=$(node -e 'const d=require(process.argv[1]); process.stdout.write(String(d.arch || ""))' "$IDENTITY_FILE")
+OS_VERSION=$(node -e 'const d=require(process.argv[1]); process.stdout.write(String(d.os_version || ""))' "$IDENTITY_FILE")
+SERIAL=$(node -e 'const d=require(process.argv[1]); process.stdout.write(String(d.serial || ""))' "$IDENTITY_FILE")
+FINGERPRINT=$(printf '%s\\0%s\\0%s\\0%s' "$UUID" "$VERSION" "$ARCH" "$SERIAL" | sha256sum | awk '{print $1}')
+
+probe_egress() {
+    local raw observed attempt
+    for attempt in 1 2 3 4 5; do
+        raw=$(curl --silent --show-error --http1.1 --noproxy '' \\
+            --connect-timeout 10 --max-time 20 \\
+            'https://api.ipify.org?format=json' 2>/dev/null || true)
+        OBSERVED_EGRESS_IP=$(node -e '
+const net=require("net");
+const raw=process.argv[1] || "";
+let value=raw.trim();
+try { const body=JSON.parse(raw); value=String(body.ip || "").trim(); } catch {}
+process.stdout.write(net.isIP(value) === 4 ? value : "");
+' "$raw" 2>/dev/null || true)
+        if [[ "$OBSERVED_EGRESS_IP" == "$EXPECTED_EGRESS_IP" ]]; then
+            return 0
+        fi
+        sleep 2
+    done
+    echo '[earnapp] iOS registration proxy egress did not match the leased IP' >&2
+    return 1
+}
+
+probe_egress
+if [[ -s "$MARKER" ]] && test "$(cat "$MARKER")" = "$FINGERPRINT"; then
+    exit 0
+fi
+
+register_body=$(mktemp)
+register_error=$(mktemp)
+linked_body=$(mktemp)
+linked_error=$(mktemp)
+TEMP_MARKER=$(mktemp "$STATE_DIR/.registered-ios-control-plane.XXXXXX")
+cleanup() {
+    rm -f "$register_body" "$register_error" "$linked_body" "$linked_error" "$TEMP_MARKER"
+}
+trap cleanup EXIT
+
+REGISTER_URL=$(node -e '
+const [uuid,version,arch,appid,osVersion]=process.argv.slice(1);
+const url=new URL("https://client.earnapp.com/install_device");
+url.searchParams.set("uuid", uuid);
+url.searchParams.set("version", version);
+url.searchParams.set("arch", arch);
+url.searchParams.set("appid", "__IOS_INSTALL_APPID__");
+url.searchParams.set("os", "iOS "+osVersion);
+process.stdout.write(url.href);
+' "$UUID" "$VERSION" "$ARCH" "$APPID" "$OS_VERSION")
+REGISTER_BODY=$(node -e 'process.stdout.write(JSON.stringify({serial: process.argv[1]}))' "$SERIAL")
+register_code=$(curl --silent --show-error --http1.1 --noproxy '' \\
+    --connect-timeout 15 --max-time 45 \\
+    --output "$register_body" --write-out '%{http_code}' \\
+    -H 'Content-Type: application/json' -X POST \\
+    "$REGISTER_URL" --data-binary "$REGISTER_BODY" 2>"$register_error" || true)
+if [[ ! "$register_code" =~ ^2 ]]; then
+    echo '[earnapp] iOS install_device request failed' >&2
+    exit 1
+fi
+node -e '
+const fs=require("fs");
+let body;
+try { body=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); } catch { process.exit(1); }
+if (body.ok !== 1 && body.ok !== "1") process.exit(1);
+' "$register_body"
+
+LINKED_URL=$(node -e '
+const [uuid,version,appid]=process.argv.slice(1);
+const url=new URL("https://client.earnapp.com/is_linked");
+for (const [key,value] of Object.entries({uuid,version,appid})) url.searchParams.set(key,value);
+process.stdout.write(url.href);
+' "$UUID" "$VERSION" "$APPID")
+linked_code=$(curl --silent --show-error --http1.1 --noproxy '' \\
+    --connect-timeout 15 --max-time 45 \\
+    --output "$linked_body" --write-out '%{http_code}' \\
+    -G "$LINKED_URL" 2>"$linked_error" || true)
+if [[ ! "$linked_code" =~ ^2 ]]; then
+    echo '[earnapp] iOS is_linked request failed' >&2
+    exit 1
+fi
+node -e '
+const fs=require("fs");
+let body;
+try { body=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); } catch { process.exit(1); }
+if (!body || typeof body.linked !== "boolean") process.exit(1);
+' "$linked_body"
+
+printf '%s\\n' "$FINGERPRINT" > "$TEMP_MARKER"
+chmod 0600 "$TEMP_MARKER"
+mv -f "$TEMP_MARKER" "$MARKER"
+""".replace("__IOS_INSTALL_APPID__", IOS_INSTALL_APPID)
+    return script.encode("utf-8")
+
+
+def ios_entrypoint_script() -> bytes:
+    """Run iOS registration before the immutable upstream entrypoint."""
+    return (
+        b"#!/usr/bin/env bash\n"
+        b"set -euo pipefail\n"
+        b"/usr/local/bin/ios-register-device\n"
+        b'exec /usr/local/bin/entrypoint-original.sh "$@"\n'
+    )
+
+
+def generated_runtime_artifacts(platform: str = "macos") -> dict[str, bytes]:
+    """Return generated scripts that are part of the platform image digest."""
+    selected = _image_platform(platform)
+    if selected != "ios":
+        return {}
+    return {
+        "ios-entrypoint": ios_entrypoint_script(),
+        "ios-register-device": ios_registration_script(),
+    }
+
+
 def runtime_asset_manifest(
     artifact_hashes: Mapping[str, str] | None = None,
     *,
@@ -70,7 +224,9 @@ def runtime_asset_manifest(
 ) -> dict[str, Any]:
     """Return the canonical manifest used to pin one emulated runtime build."""
     selected = _image_platform(platform)
-    hashes = artifact_hashes or _PLATFORM_CONTRACTS[selected]["artifact_hashes"]
+    hashes = dict(artifact_hashes or _PLATFORM_CONTRACTS[selected]["artifact_hashes"])
+    for path, payload in generated_runtime_artifacts(selected).items():
+        hashes[path] = hashlib.sha256(payload).hexdigest()
     return {
         "version": 1,
         "artifacts": [{"path": str(path), "sha256": str(digest).lower()} for path, digest in sorted(hashes.items())],
@@ -224,6 +380,26 @@ def validate_runtime_spec(spec: dict[str, Any]) -> None:
         raise ValueError("EarnApp iOS device identity is invalid")
     if str(labels.get("cashpilot.earnapp.device_id") or "") != device_id:
         raise ValueError("EarnApp iOS device label does not match")
+    expected_egress = str((spec.get("env") or {}).get("EARNAPP_EXPECTED_EGRESS_IP") or "").strip()
+    if not re.fullmatch(r"(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}", expected_egress):
+        raise ValueError("EarnApp iOS runtime requires an authoritative egress IP")
+    proxy = spec.get("proxy") if isinstance(spec.get("proxy"), Mapping) else {}
+    host = str(proxy.get("host") or "").strip()
+    try:
+        port = int(proxy.get("port") or 0)
+    except (TypeError, ValueError):
+        port = 0
+    if not host or not 1 <= port <= 65535:
+        raise ValueError("EarnApp iOS proxy is incomplete")
+    if str(proxy.get("protocol") or "").strip().lower() not in {"http", "socks5"}:
+        raise ValueError("EarnApp iOS proxy protocol is invalid")
+    if (
+        str(proxy.get("country_code") or "").strip().upper() != "VN"
+        or str(proxy.get("ip_type") or "").strip().lower() != "residential"
+    ):
+        raise ValueError("EarnApp iOS runtime requires a VN residential proxy")
+    if str(proxy.get("exit_ip") or "").strip() != expected_egress:
+        raise ValueError("EarnApp iOS runtime egress does not match proxy lease")
     assets = spec.get("runtime_assets") or []
     if len(assets) != 1:
         raise ValueError("EarnApp iOS runtime requires one identity profile")

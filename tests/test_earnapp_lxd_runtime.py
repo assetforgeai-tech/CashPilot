@@ -4,7 +4,7 @@ import importlib
 import importlib.util
 import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -12,6 +12,12 @@ from pydantic import ValidationError
 from starlette.requests import Request
 
 from app import earnapp_identity, main, worker_api
+
+
+@pytest.fixture(autouse=True)
+def _enable_historical_runtime_mechanics(monkeypatch):
+    """Test LXD/CAS mechanics independently from the production compliance gate."""
+    monkeypatch.setattr(worker_api.provider_runtime, "mutation_block", lambda *_args, **_kwargs: None)
 
 
 def test_worker_composes_mount_the_restricted_earnapp_helper_socket():
@@ -628,7 +634,7 @@ def test_worker_ubuntu_deploy_model_defaults_to_one_cpu_and_1024_mib():
         )
 
 
-def test_worker_lxd_deploy_persists_redacted_platform_generation_and_evidence(tmp_path, monkeypatch):
+def test_worker_lxd_deploy_is_policy_blocked_without_persisting_state(tmp_path, monkeypatch):
     assert hasattr(worker_api, "api_deploy_earnapp_lxd_node")
     runtime = _runtime()
     monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
@@ -653,21 +659,12 @@ def test_worker_lxd_deploy_persists_redacted_platform_generation_and_evidence(tm
                 "runtime_backend": "lxd",
             },
         ),
+        pytest.raises(HTTPException) as exc,
     ):
-        result = __import__("asyncio").run(worker_api.api_deploy_earnapp_lxd_node(_request(), "earnapp-ubuntu-1", spec))
+        __import__("asyncio").run(worker_api.api_deploy_earnapp_lxd_node(_request(), "earnapp-ubuntu-1", spec))
 
-    saved = json.loads(Path(tmp_path, "earnapp-nodes", "earnapp-ubuntu-1.json").read_text(encoding="utf-8"))
-    assert result["status"] == "deployed"
-    assert saved["platform"] == "ubuntu"
-    assert saved["generation"] == 3
-    assert saved["account_id"] == 7
-    assert saved["proxy_id"] == 12
-    assert saved["runtime_backend"] == "lxd"
-    assert saved["lxd_cpu"] == 1
-    assert saved["lxd_memory_mib"] == 1024
-    serialized = json.dumps(saved, sort_keys=True)
-    assert "proxy-secret" not in serialized
-    assert "machine_id" not in serialized
+    assert exc.value.status_code == 409
+    assert not Path(tmp_path, "earnapp-nodes", "earnapp-ubuntu-1.json").exists()
 
 
 def test_worker_proxy_apply_writes_ahead_journal_before_runtime_mutation_and_survives_save_crash(tmp_path, monkeypatch):
@@ -1083,6 +1080,111 @@ def test_worker_lxd_remove_uses_host_cas_when_worker_state_file_is_missing(tmp_p
     assert result["status"] == "removed"
     remove.assert_called_once_with("earnapp-ubuntu-1", generation=3, device_id=device_id)
     assert not Path(tmp_path, "earnapp-nodes", "earnapp-ubuntu-1.json").exists()
+
+
+def test_worker_lxd_remove_is_idempotent_after_helper_already_removed_the_guest(tmp_path, monkeypatch):
+    runtime = _runtime()
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    device_id = str(_identity()["device_id"])
+    worker_api._save_earnapp_state(
+        "earnapp-ubuntu-1",
+        {
+            "logical_node_id": "earnapp-ubuntu-1",
+            "generation": 3,
+            "device_id": device_id,
+            "runtime_backend": "lxd",
+        },
+    )
+    spec = worker_api.EarnAppNodeCasSpec(generation=3, device_id=device_id)
+
+    with (
+        patch.object(worker_api, "_verify_api_key"),
+        patch.object(
+            runtime,
+            "remove_node",
+            side_effect=runtime.EarnAppLxdHelperError("EarnApp LXD node not found", 404),
+        ),
+    ):
+        result = __import__("asyncio").run(
+            worker_api.api_remove_earnapp_lxd_node(_request("DELETE"), "earnapp-ubuntu-1", spec)
+        )
+
+    assert result == {
+        "status": "removed",
+        "logical_node_id": "earnapp-ubuntu-1",
+        "idempotent": True,
+    }
+
+
+@pytest.mark.asyncio
+async def test_worker_rejects_new_earnapp_lxd_deploy_before_calling_host_helper(monkeypatch):
+    deploy = Mock()
+    monkeypatch.setattr(worker_api.earnapp_lxd_runtime, "deploy_node", deploy)
+
+    with (
+        patch.object(worker_api, "_verify_api_key"),
+        pytest.raises(HTTPException) as exc,
+    ):
+        await worker_api.api_deploy_earnapp_lxd_node(
+            _request(),
+            "earnapp-ubuntu-policy-block",
+            worker_api.EarnAppLxdDeploySpec(
+                generation=1,
+                account_id=2,
+                device_id="sdk-node-" + "1" * 32,
+                proxy_id=9,
+                identity={
+                    "platform": "ubuntu",
+                    "machine_id": "2" * 32,
+                    "device_id": "sdk-node-" + "1" * 32,
+                    "hostname": "earnapp-policy-block",
+                },
+                proxy={
+                    "proxy_id": 9,
+                    "host": "proxy.example",
+                    "port": 1080,
+                    "protocol": "socks5",
+                    "exit_ip": "203.0.113.9",
+                    "country_code": "US",
+                    "ip_type": "residential",
+                },
+            ),
+        )
+
+    assert exc.value.status_code == 409
+    deploy.assert_not_called()
+
+
+def test_worker_lxd_remove_never_treats_helper_assignment_conflict_as_absence(tmp_path, monkeypatch):
+    runtime = _runtime()
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    device_id = str(_identity()["device_id"])
+    worker_api._save_earnapp_state(
+        "earnapp-ubuntu-1",
+        {
+            "logical_node_id": "earnapp-ubuntu-1",
+            "generation": 3,
+            "device_id": device_id,
+            "runtime_backend": "lxd",
+        },
+    )
+    spec = worker_api.EarnAppNodeCasSpec(generation=3, device_id=device_id)
+
+    with (
+        patch.object(worker_api, "_verify_api_key"),
+        patch.object(
+            runtime,
+            "remove_node",
+            side_effect=runtime.EarnAppLxdHelperError("EarnApp node assignment conflict", 409),
+        ),
+        pytest.raises(worker_api.HTTPException) as exc_info,
+    ):
+        __import__("asyncio").run(
+            worker_api.api_remove_earnapp_lxd_node(_request("DELETE"), "earnapp-ubuntu-1", spec)
+        )
+
+    assert exc_info.value.status_code == 409
+    assert Path(tmp_path, "earnapp-nodes", "earnapp-ubuntu-1.json").exists()
 
 
 def test_heartbeat_provider_state_never_calls_lxd_helper_synchronously(tmp_path, monkeypatch):

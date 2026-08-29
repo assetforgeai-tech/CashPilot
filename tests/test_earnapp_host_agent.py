@@ -99,6 +99,9 @@ def test_helper_launches_ubuntu_with_hard_limits_and_no_nested_docker(monkeypatc
     commands = []
 
     controller._exists = lambda _name: False
+    controller._allocate_lxd_ipv4 = lambda _name: "10.252.0.3"
+    pinned = []
+    controller._pin_instance_ip = lambda name, address: pinned.append((name, address))
     controller._wait_ready = lambda _name: None
     controller._configure_guest = lambda *_args: {
         "installer_sha256": "a" * 64,
@@ -111,21 +114,206 @@ def test_helper_launches_ubuntu_with_hard_limits_and_no_nested_docker(monkeypatc
         "runtime_backend": "lxd",
         "device_id": payload["device_id"],
     }
+    def run(args, **kwargs):
+        commands.append(args)
+        stdout = b"10.252.0.1/24\n" if args[:4] == ["lxc", "network", "get", "lxdbr0"] else b""
+        return subprocess.CompletedProcess(args, 0, stdout, b"")
+
+    monkeypatch.setattr(agent, "_run", run)
+
+    controller.deploy(payload)
+
+    init = next(command for command in commands if command[:2] == ["lxc", "init"])
+    assert init[2] == "ubuntu:24.04"
+    assert init[3] == "cashpilot-earnapp-earnapp-ubuntu-1"
+    assert init[4:6] == ["-c", "limits.cpu=1"]
+    assert "limits.cpu=1" in init
+    assert "limits.memory=1024MiB" in init
+    start = ["lxc", "start", "cashpilot-earnapp-earnapp-ubuntu-1"]
+    assert start in commands
+    network = next(
+        command
+        for command in commands
+        if command[:5]
+        == ["lxc", "config", "set", "cashpilot-earnapp-earnapp-ubuntu-1", "cloud-init.network-config"]
+    )
+    assert "addresses: [10.252.0.3/24]" in network[-1]
+    assert "via: 10.252.0.1" in network[-1]
+    assert "addresses: [1.1.1.1, 8.8.8.8]" in network[-1]
+    assert commands.index(network) < commands.index(start)
+    assert pinned == [("cashpilot-earnapp-earnapp-ubuntu-1", "10.252.0.3")]
+    assert not any("docker" in command for command in commands)
+
+
+def test_helper_holds_the_lxd_allocator_lock_until_the_new_instance_ip_is_pinned(monkeypatch):
+    agent = _module()
+    controller = agent.Controller()
+    payload = agent.validate_deploy("earnapp-ubuntu-1", _payload())
+
+    class AllocationGuard:
+        held = False
+
+        def __enter__(self):
+            self.held = True
+
+        def __exit__(self, *_args):
+            self.held = False
+
+    guard = AllocationGuard()
+    controller._exists = lambda _name: False
+    controller._allocate_lxd_ipv4 = lambda _name: "10.252.0.3"
+
+    def pin_while_locked(_name, _address):
+        assert guard.held is True
+
+    controller._pin_instance_ip = pin_while_locked
+    controller._configure_instance_network = pin_while_locked
+    controller._wait_ready = lambda _name: None
+    controller._configure_guest = lambda *_args: {
+        "installer_sha256": "a" * 64,
+        "version": "1.651.510",
+    }
+    controller._set_metadata = lambda *_args: None
+    monkeypatch.setattr(agent, "_LXD_ALLOC_LOCK", guard)
     monkeypatch.setattr(
         agent,
         "_run",
-        lambda args, **kwargs: commands.append(args) or subprocess.CompletedProcess(args, 0, b"", b""),
+        lambda args, **kwargs: subprocess.CompletedProcess(args, 0, b"", b""),
     )
 
     controller.deploy(payload)
 
-    launch = next(command for command in commands if command[:2] == ["lxc", "launch"])
-    assert launch[2] == "ubuntu:24.04"
-    assert launch[3] == "cashpilot-earnapp-earnapp-ubuntu-1"
-    assert launch[4:6] == ["-c", "limits.cpu=1"]
-    assert "limits.cpu=1" in launch
-    assert "limits.memory=1024MiB" in launch
-    assert not any("docker" in command for command in commands)
+
+def test_helper_removes_fresh_lxd_instance_when_pinning_the_ip_fails(monkeypatch):
+    agent = _module()
+    controller = agent.Controller()
+    payload = agent.validate_deploy("earnapp-ubuntu-1", _payload())
+    commands = []
+
+    controller._exists = lambda _name: False
+    controller._allocate_lxd_ipv4 = lambda _name: "10.252.0.3"
+
+    def fail_pin(_name, _address):
+        raise agent.AgentError("pin failed", 503)
+
+    controller._pin_instance_ip = fail_pin
+    monkeypatch.setattr(
+        agent,
+        "_run",
+        lambda args, **kwargs: commands.append(args)
+        or subprocess.CompletedProcess(args, 0, b"", b""),
+    )
+
+    with pytest.raises(agent.AgentError, match="pin failed"):
+        controller.deploy(payload)
+
+    cleanup = [args for args in commands if args[:2] == ["lxc", "delete"]]
+    assert cleanup == [["lxc", "delete", "cashpilot-earnapp-earnapp-ubuntu-1", "--force"]]
+
+
+def test_helper_removes_fresh_lxd_instance_when_guest_bootstrap_fails(monkeypatch):
+    agent = _module()
+    controller = agent.Controller()
+    payload = agent.validate_deploy("earnapp-ubuntu-1", _payload())
+    commands = []
+
+    controller._exists = lambda _name: False
+    controller._allocate_lxd_ipv4 = lambda _name: "10.252.0.3"
+    pinned = []
+    controller._pin_instance_ip = lambda name, address: pinned.append((name, address))
+    controller._configure_instance_network = lambda *_args: None
+    controller._wait_ready = lambda _name: None
+
+    def fail_bootstrap(*_args):
+        raise agent.AgentError("installer failed", 503)
+
+    controller._configure_guest = fail_bootstrap
+    monkeypatch.setattr(
+        agent,
+        "_run",
+        lambda args, **kwargs: commands.append((args, kwargs))
+        or subprocess.CompletedProcess(args, 0, b"", b""),
+    )
+
+    with pytest.raises(agent.AgentError, match="installer failed"):
+        controller.deploy(payload)
+
+    cleanup = [args for args, _kwargs in commands if args[:2] == ["lxc", "delete"]]
+    assert cleanup == [["lxc", "delete", "cashpilot-earnapp-earnapp-ubuntu-1", "--force"]]
+
+
+def test_helper_allocates_the_first_free_lxd_ipv4_without_using_gateway_or_existing_leases(monkeypatch):
+    agent = _module()
+    controller = agent.Controller()
+
+    responses = {
+        ("lxc", "network", "get", "lxdbr0", "ipv4.address"): b"10.252.0.1/29\n",
+        ("lxc", "network", "list-leases", "lxdbr0", "--format=json"): json.dumps(
+            [{"address": "10.252.0.2"}, {"address": "10.252.0.4"}]
+        ).encode(),
+        ("lxc", "list", "--format=json"): json.dumps(
+            [
+                {
+                    "name": "other-instance",
+                    "devices": {
+                        "eth0": {"network": "lxdbr0", "ipv4.address": "10.252.0.3"}
+                    },
+                    "state": {"network": {}},
+                }
+            ]
+        ).encode(),
+    }
+
+    def run(args, **kwargs):
+        return subprocess.CompletedProcess(args, 0, responses[tuple(args)], b"")
+
+    monkeypatch.setattr(agent, "_run", run)
+
+    assert controller._allocate_lxd_ipv4("cashpilot-earnapp-earnapp-ubuntu-1") == "10.252.0.5"
+
+
+def test_helper_pins_the_inherited_lxd_nic_before_first_boot(monkeypatch):
+    agent = _module()
+    controller = agent.Controller()
+    commands = []
+
+    controller._config = lambda _name: {
+        "devices": {},
+        "expanded_devices": {"eth0": {"name": "eth0", "network": "lxdbr0", "type": "nic"}},
+    }
+    def run(args, **kwargs):
+        commands.append(args)
+        stdout = b"10.252.0.1/24\n" if args[:4] == ["lxc", "network", "get", "lxdbr0"] else b""
+        return subprocess.CompletedProcess(args, 0, stdout, b"")
+
+    monkeypatch.setattr(agent, "_run", run)
+
+    controller._pin_instance_ip("cashpilot-earnapp-earnapp-ubuntu-1", "10.252.0.5")
+
+    assert commands == [
+        [
+            "lxc",
+            "config",
+            "device",
+            "override",
+            "cashpilot-earnapp-earnapp-ubuntu-1",
+            "eth0",
+            "ipv4.address=10.252.0.5",
+        ]
+    ]
+
+
+def test_helper_rejects_a_static_guest_address_outside_the_lxd_bridge(monkeypatch):
+    agent = _module()
+    controller = agent.Controller()
+    monkeypatch.setattr(
+        agent,
+        "_run",
+        lambda args, **kwargs: subprocess.CompletedProcess(args, 0, b"10.252.0.1/24\n", b""),
+    )
+
+    with pytest.raises(agent.AgentError, match="bridge subnet"):
+        controller._configure_instance_network("cashpilot-earnapp-earnapp-ubuntu-1", "10.253.0.3")
 
 
 def test_helper_proxy_setup_uses_official_installer_and_persists_identity_without_logging_secrets():
@@ -142,6 +330,39 @@ def test_helper_proxy_setup_uses_official_installer_and_persists_identity_withou
     assert "proxy-secret" not in script
 
 
+def test_helper_embedded_proxy_script_is_valid_python():
+    agent = _module()
+    bootstrap = agent.guest_bootstrap_script(_payload())
+    start = bootstrap.index("#!/usr/bin/env python3", bootstrap.index("cashpilot-earnapp-proxy <<'PROXY'"))
+    end = bootstrap.index("\nPROXY\n", start)
+
+    compile(bootstrap[start:end], "cashpilot-earnapp-proxy", "exec")
+
+
+def test_helper_reports_the_failing_bootstrap_stage_without_secret_output(monkeypatch):
+    agent = _module()
+    controller = agent.Controller()
+    payload = _payload()
+    payload["proxy"] = {**payload["proxy"], "endpoint_ip": "198.51.100.10"}
+    controller._write_guest_file = lambda *_args, **_kwargs: None
+    commands = []
+
+    def run(args, **kwargs):
+        commands.append(args)
+        if args[-1] == "/root/cashpilot-earnapp-bootstrap.sh":
+            raise agent.AgentError("host command failed: lxc", 503)
+        if "bootstrap.stage" in args[-1]:
+            return subprocess.CompletedProcess(args, 0, b"proxy_service\n", b"")
+        return subprocess.CompletedProcess(args, 0, b"", b"")
+
+    monkeypatch.setattr(agent, "_run", run)
+
+    with pytest.raises(agent.AgentError, match="proxy_service"):
+        controller._configure_guest("cashpilot-earnapp-earnapp-ubuntu-1", payload)
+
+    assert not any("proxy-secret" in " ".join(command) for command in commands)
+
+
 def test_helper_bootstrap_installs_transparent_tcp_redirect_and_exempts_proxy_endpoint():
     agent = _module()
     script = agent.guest_bootstrap_script(_payload())
@@ -155,6 +376,30 @@ def test_helper_bootstrap_installs_transparent_tcp_redirect_and_exempts_proxy_en
     assert 'os.path.join(runtime, "redsocks.conf")' in script
     assert "PROXY_USERNAME_B64" in script
     assert "/run/cashpilot-earnapp-redsocks.conf" not in script
+
+
+def test_helper_disables_the_package_redsocks_service_before_claiming_its_listener():
+    agent = _module()
+    script = agent.guest_bootstrap_script(_payload())
+
+    package_install = script.index("apt-get install")
+    stock_disable = script.index("systemctl disable --now redsocks.service")
+    cashpilot_start = script.index("systemctl enable --now cashpilot-earnapp-proxy.service")
+
+    assert package_install < stock_disable < cashpilot_start
+
+
+def test_helper_waits_for_transparent_proxy_egress_before_downloading_the_installer():
+    agent = _module()
+    script = agent.guest_bootstrap_script(_payload())
+
+    proxy_start = script.index("systemctl enable --now cashpilot-earnapp-proxy.service")
+    ready_stage = script.index("stage proxy_ready")
+    egress_probe = script.index("https://api.ipify.org", ready_stage)
+    installer_stage = script.index("stage installer_download")
+
+    assert proxy_start < ready_stage < egress_probe < installer_stage
+    assert "EarnApp transparent proxy did not become ready" in script
 
 
 def test_helper_bootstrap_fails_closed_for_udp_ipv6_and_routes_dns_through_proxy():
@@ -267,8 +512,9 @@ def test_proxy_rule_refresh_keeps_a_fail_closed_guard_while_rebuilding_rules():
     assert 'iptables -t nat -I OUTPUT 1 -p tcp -j "$CHAIN"' in apply_path
     assert 'iptables -t nat -I OUTPUT 1 -p udp -j "$CHAIN"' in apply_path
     assert 'iptables -I OUTPUT 1 -j "$FILTER_CHAIN"' in apply_path
-    assert 'iptables -A "$ALLOW_CHAIN" -m owner --uid-owner cashpilot-redsocks -j RETURN' in apply_path
-    assert '-d "$PROXY_ENDPOINT_IPV4" --dport "$PROXY_PORT" -j RETURN' in apply_path
+    assert 'iptables -A "$ALLOW_CHAIN" -m owner --uid-owner cashpilot-redsocks -j ACCEPT' in apply_path
+    assert 'iptables -A "$ALLOW_CHAIN" -p tcp -d "$PROXY_ENDPOINT_IPV4" --dport "$PROXY_PORT" -j ACCEPT' in apply_path
+    assert 'iptables -t nat -A "$CHAIN" -p tcp -d "$PROXY_ENDPOINT_IPV4" --dport "$PROXY_PORT" -j RETURN' in apply_path
     assert ('iptables -A "$FILTER_CHAIN" -p udp -j REJECT --reject-with icmp-port-unreachable') in apply_path
 
 
@@ -348,6 +594,9 @@ def test_helper_retries_an_uninitialized_instance_instead_of_treating_it_as_assi
         }
     }
     configured = []
+    controller._allocate_lxd_ipv4 = lambda _name: "10.252.0.3"
+    controller._pin_instance_ip = lambda *_args: None
+    controller._configure_instance_network = lambda *_args: None
     controller._wait_ready = lambda _name: None
     controller._status = lambda _name: "stopped"
     controller._configure_guest = lambda name, body: configured.append((name, body)) or {"version": "1.651.510"}
@@ -614,6 +863,7 @@ def test_installer_bootstrap_and_compose_use_a_dedicated_earnapp_socket():
     assert "Requires=snap.lxd.daemon.service" not in service
     assert "After=network-online.target docker.service" in service
     assert "Requires=docker.service" in service
+    assert "ExecStart=/usr/bin/python3 /usr/local/lib/cashpilot/cashpilot-earnapp-agent.py" in service
     assert "ProtectHome=true" not in service
     assert "ProtectHome=read-only" in service
 
@@ -622,6 +872,7 @@ def test_helper_systemd_allows_snap_or_deb_lxd_paths_to_be_absent():
     service = SERVICE.read_text(encoding="utf-8")
     assert "ProtectSystem=strict" in service
     assert "RuntimeDirectory=cashpilot-earnapp-agent" in service
+    assert "RuntimeDirectoryPreserve=yes" in service
     assert "Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin" in service
     assert "NoNewPrivileges=true" not in service
     assert "ReadWritePaths=/run/cashpilot-earnapp-agent -/var/lib/lxd -/var/snap/lxd" in service

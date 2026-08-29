@@ -1028,6 +1028,8 @@ const CP = (() => {
     const instances = svc.instances || 0;
     const details = svc.instance_details || [];
     const isMulti = details.length > 1;
+    const runtime = svc.runtime || {};
+    const deployment_allowed = runtime.deployment_allowed !== false && svc.deployment_allowed !== false;
 
     // Service name — linked to dashboard for deployed services, referral URL otherwise
     const name = escapeHtml(svc.name);
@@ -1208,7 +1210,9 @@ const CP = (() => {
       // Running. Offering the button at all is the bug; the disabled title says
       // why rather than leaving it looking broken.
       const unmanaged = inst.unmanaged || svc.unmanaged;
-      const disabledAttr = unmanaged
+      const disabledAttr = !deployment_allowed
+        ? ' disabled title="Inspection only — EarnApp runtime mutation is disabled"'
+        : unmanaged
         ? ' disabled title="Started outside CashPilot — manage it where you started it"'
         : (noDocker ? ' disabled title="No Docker access"' : '');
       actionBtns = `<div class="action-btns">
@@ -1260,7 +1264,9 @@ const CP = (() => {
         // place a mixed service is drawn left the bug exactly where it was.
         // (CodeRabbit, PR #212.)
         const iUnmanaged = inst.unmanaged || svc.unmanaged;
-        const disabledAttr = iUnmanaged
+        const disabledAttr = !deployment_allowed
+          ? ' disabled title="Inspection only — EarnApp runtime mutation is disabled"'
+          : iUnmanaged
           ? ' disabled title="Started outside CashPilot — manage it where you started it"'
           : (iNoDocker ? ' disabled title="No Docker access"' : '');
         const subLabel = inst.is_android ? '' : escapeHtml(inst.container_name);
@@ -2570,12 +2576,16 @@ const CP = (() => {
     const isSelected = wizardState.selectedServices.includes(svc.slug);
     const isDeployed = svc.deployed;
     const isManual = svc.manual_only;
+    const runtime = svc.runtime || {};
+    const deployment_allowed = runtime.deployment_allowed !== false && svc.deployment_allowed !== false;
+    const deployment_policy_message = runtime.deployment_policy_message || runtime.policy_message || svc.deployment_policy_message || '';
     const totalNodes = svc.node_count || 0;
 
     const classes = ['service-card'];
     if (isSelected) classes.push('selected');
     if (isDeployed) classes.push('deployed');
     if (isManual) classes.push('manual-only');
+    if (!deployment_allowed) classes.push('runtime-disabled');
 
     let deployedBadge = '';
     if (totalNodes > 0) {
@@ -2585,7 +2595,9 @@ const CP = (() => {
 
     // Platform notice for manual-only services
     let manualNotice = '';
-    if (isManual) {
+    if (!deployment_allowed) {
+      manualNotice = `<div class="manual-notice" role="status"><strong>Runtime deployment disabled</strong><br>${escapeHtml(deployment_policy_message)}</div>`;
+    } else if (isManual) {
       const platforms = (svc.platforms || []).map(p => p.charAt(0).toUpperCase() + p.slice(1)).join('/');
       manualNotice = svc.deploy_surface === 'host_systemd'
         ? '<div class="manual-notice">Host systemd runtime — CashPilot deploy runner pending</div>'
@@ -2593,7 +2605,7 @@ const CP = (() => {
     }
 
     return `
-    <div class="${classes.join(' ')}" data-slug="${svc.slug}" data-action="toggleWizardService" data-a1="${svc.slug}">
+    <div class="${classes.join(' ')}" data-slug="${svc.slug}" data-action="toggleWizardService" data-a1="${svc.slug}" data-runtime-disabled="${deployment_allowed ? 'false' : 'true'}">
       <div class="service-card-header">
         <div class="service-icon">${(svc.name || '?')[0]}</div>
         <div>
@@ -2624,6 +2636,7 @@ const CP = (() => {
     // pressed Next and were told to select something.
     const card = document.querySelector(`#wizard-services .service-card[data-slug="${CSS.escape(slug)}"]`)
       || document.querySelector(`.service-card[data-slug="${CSS.escape(slug)}"]`);
+    if (card?.dataset.runtimeDisabled === 'true') return;
     const idx = wizardState.selectedServices.indexOf(slug);
     if (idx >= 0) {
       wizardState.selectedServices.splice(idx, 1);
@@ -2675,12 +2688,34 @@ const CP = (() => {
 
   function renderServiceSetupForm(svc, workers) {
     const isDeployed = svc.deployed || false;
+    const runtime = svc.runtime || {};
+    const deployment_allowed = runtime.deployment_allowed !== false && svc.deployment_allowed !== false;
+    const deployment_policy_message = runtime.deployment_policy_message || runtime.policy_message || svc.deployment_policy_message || '';
     const dashboardUrl = (svc.cashout && svc.cashout.dashboard_url) || svc.website || '';
     const signupUrl = svc.referral && svc.referral.signup_url
       ? svc.referral.signup_url
       : svc.website || '#';
     const linkUrl = isDeployed && dashboardUrl ? dashboardUrl : signupUrl;
     const linkLabel = isDeployed && dashboardUrl ? 'Dashboard' : 'Sign Up';
+
+    if (!deployment_allowed) {
+      return `
+      <div class="card" style="margin-bottom: 16px;" id="setup-${svc.slug}">
+        <div class="card-header">
+          <h3 class="section-title">${escapeHtml(svc.name)}</h3>
+          <span class="badge badge-category">${escapeHtml(capFirst(svc.category))}</span>
+        </div>
+        <div style="padding: 8px 0;">
+          <p style="color: var(--warning, #f59e0b); margin-bottom: 12px;">
+            <strong>Runtime deployment disabled</strong>
+          </p>
+          <p style="color: var(--text-secondary); margin-bottom: 12px;">${escapeHtml(deployment_policy_message)}</p>
+          <p style="color: var(--text-secondary); margin-bottom: 16px;">Account collection, historical data, and inspection of existing nodes remain available.</p>
+          ${svc.has_collector ? collectorCredentialsNotice(svc.slug) : ''}
+          ${dashboardUrl ? `<a href="${escapeHtml(dashboardUrl)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Open Dashboard</a>` : ''}
+        </div>
+      </div>`;
+    }
 
     // Manual-only services: show signup link + earnings tracking notice + any env fields
     if (svc.manual_only) {
@@ -2952,8 +2987,12 @@ const CP = (() => {
   }
 
   function readinessBadges(svc) {
-    const deploy = svc.docker && svc.docker.image ? 'Deploy runtime' : 'No deploy';
     const runtime = svc.runtime || {};
+    const deployment_allowed = runtime.deployment_allowed !== false && svc.deployment_allowed !== false;
+    const deployment_policy_message = runtime.deployment_policy_message || runtime.policy_message || svc.deployment_policy_message || '';
+    const deploy = !deployment_allowed
+      ? 'Runtime disabled'
+      : svc.docker && svc.docker.image ? 'Deploy runtime' : 'No deploy';
     const collector = runtime.collector_kind === 'count_only'
       ? 'Count only'
       : runtime.collector_kind === 'dashboard_only'
@@ -2966,7 +3005,7 @@ const CP = (() => {
     const egress = `mode: ${modes}`;
     return `
       <div class="platform-badges" style="margin-top:8px;">
-        <span class="platform-badge">${escapeHtml(deploy)}</span>
+        <span class="platform-badge"${!deployment_allowed && deployment_policy_message ? ` title="${escapeHtml(deployment_policy_message)}"` : ''}>${escapeHtml(deploy)}</span>
         <span class="platform-badge">${escapeHtml(collector)}</span>
         <span class="platform-badge">${escapeHtml(dashboard)}</span>
         <span class="platform-badge">${escapeHtml(egress)}</span>
@@ -2979,8 +3018,13 @@ const CP = (() => {
       ? `$${svc.earnings.monthly_low}-$${svc.earnings.monthly_high}/${svc.earnings.per || 'mo'}`
       : 'Varies';
     const isDeployed = svc.deployed || false;
+    const runtime = svc.runtime || {};
+    const deployment_allowed = runtime.deployment_allowed !== false && svc.deployment_allowed !== false;
+    const deployment_policy_message = runtime.deployment_policy_message || runtime.policy_message || svc.deployment_policy_message || '';
     const statusBadge = svc.status === 'broken'
       ? '<span class="badge badge-broken">Broken</span>'
+      : !deployment_allowed
+        ? '<span class="badge badge-warning">Runtime disabled</span>'
       : isDeployed
         ? '<span class="badge badge-deployed">Deployed</span>'
         : '<span class="badge badge-available">Available</span>';
@@ -2989,8 +3033,10 @@ const CP = (() => {
     let actionBtn;
     if (isDeployed) {
       actionBtn = `<button class="btn btn-secondary btn-sm" data-action="openServiceDetail" data-a1="${svc.slug}">Manage</button>`;
-    } else if (hasDocker) {
+    } else if (hasDocker && deployment_allowed) {
       actionBtn = `<button class="btn btn-primary btn-sm" data-action="openServiceDetail" data-a1="${svc.slug}">Deploy</button>`;
+    } else if (!deployment_allowed) {
+      actionBtn = `<button class="btn btn-ghost btn-sm" data-action="openServiceDetail" data-a1="${svc.slug}" title="${escapeHtml(deployment_policy_message)}">Inspect</button>`;
     } else {
       const url = (svc.referral && svc.referral.signup_url) || svc.website || '#';
       actionBtn = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Visit</a>`;
@@ -3021,6 +3067,7 @@ const CP = (() => {
       </div>
     ${platformBadges ? `<div class="platform-badges" style="margin-top:8px;">${platformBadges}</div>` : ''}
       ${readinessBadges(svc)}
+      ${!deployment_allowed ? `<div class="manual-notice" role="status" style="margin-top:10px;"><strong>Runtime deployment disabled</strong><br>${escapeHtml(deployment_policy_message)}</div>` : ''}
       <div class="service-stats" style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border-color);">
         <span></span>
         ${actionBtn}
@@ -3080,6 +3127,9 @@ const CP = (() => {
       : 'Varies';
 
     const isDeployed = svc.deployed || false;
+    const runtime = svc.runtime || {};
+    const deployment_allowed = runtime.deployment_allowed !== false && svc.deployment_allowed !== false;
+    const deployment_policy_message = runtime.deployment_policy_message || runtime.policy_message || svc.deployment_policy_message || '';
     const dashboardUrl = (svc.cashout && svc.cashout.dashboard_url) || svc.website || '';
     const signupUrl = svc.referral && svc.referral.signup_url
       ? svc.referral.signup_url
@@ -3088,6 +3138,7 @@ const CP = (() => {
     // --- Info grid (no referral bonus) ---
     let html = `
     <p style="color: var(--text-secondary); margin-bottom: 16px;">${escapeHtml(svc.description || svc.short_description || '')}</p>
+    ${!deployment_allowed ? `<div class="manual-notice" role="status" style="margin-bottom:16px;"><strong>Runtime deployment disabled</strong><br>${escapeHtml(deployment_policy_message)}<br><span>Collector, historical data, and existing-node inspection remain available.</span></div>` : ''}
     <!-- Filled in by loadPayoutProgress once the modal is in the DOM. Hidden
          until it has a real answer: an empty "Payout progress" heading on a
          service that has never been collected is worse than no heading. -->
@@ -3149,7 +3200,7 @@ const CP = (() => {
 
     // --- Deploy section (worker-aware) ---
     const hasDocker = svc.docker && svc.docker.image;
-    if (hasDocker) {
+    if (hasDocker && deployment_allowed) {
       const envFields = envInputFields(svc, svc.docker.env, { withId: false, withHint: false });
 
       // Worker deploy targets
@@ -3474,7 +3525,6 @@ const CP = (() => {
     }
     rows.innerHTML = nodes.map(node => {
       const account = accounts.get(Number(node.account_id)) || {};
-      const recoverable = ['RECOVERY_HOLD', 'RECOVERABLE'].includes(node.state);
       const recovery = node.state === 'RECOVERY_HOLD'
         ? earnAppHoldCountdown(node.recovery_hold_remaining_seconds)
         : (node.state === 'RECOVERABLE' ? 'Proxy released; affinity retained' : 'Not in recovery');
@@ -3485,7 +3535,7 @@ const CP = (() => {
         <td>${node.assigned_worker_id == null ? '&mdash;' : escapeHtml(node.assigned_worker_id)}</td>
         <td>${node.current_proxy_id == null ? '&mdash;' : `#${escapeHtml(node.current_proxy_id)}`}<small>preferred #${escapeHtml(node.preferred_proxy_id || '—')}</small></td>
         <td>v${escapeHtml(node.generation)}</td>
-        <td><span>${escapeHtml(recovery)}</span>${recoverable ? `<button class="btn btn-ghost btn-sm" data-action="issueEarnAppReplacementTicket" data-a1="${escapeHtml(node.logical_node_id)}">Issue ticket</button>` : ''}</td>
+        <td><span>${escapeHtml(recovery)}</span><small>Recovery disabled by runtime policy</small></td>
       </tr>`;
     }).join('');
   }

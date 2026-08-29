@@ -1,5 +1,9 @@
 # EarnApp Official Runtime Canary Implementation Plan
 
+> **Superseded 2026-08-29:** retained as historical planning evidence only.
+> EarnApp hosted-runtime deployment is now `COMPLIANCE_BLOCKED` /
+> `RUNTIME_DISABLED`; do not execute the canary deployment steps in this plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a separately scoped EarnApp Mac-emulation worker lane that can deploy one verified VN residential canary without changing protected provider runtimes.

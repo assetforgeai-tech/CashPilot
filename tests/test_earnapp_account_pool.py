@@ -2055,7 +2055,7 @@ def test_refresh_does_not_reactivate_locked_or_deleted_accounts(tmp_path):
     asyncio.run(run())
 
 
-def test_locked_account_deletion_releases_its_local_node_proxy_lease(tmp_path):
+def test_locked_account_deletion_preserves_its_local_node_proxy_lease_while_runtime_is_disabled(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
             await database.init_db()
@@ -2109,13 +2109,14 @@ def test_locked_account_deletion_releases_its_local_node_proxy_lease(tmp_path):
             async def cleanup(_binding):
                 return True
 
-            assert await earnapp_accounts.delete_account(account_id, runtime_cleanup=cleanup)
+            with pytest.raises(earnapp_accounts.AccountDeletionDenied, match="inspection-only"):
+                await earnapp_accounts.delete_account(account_id, runtime_cleanup=cleanup)
 
-            assert await database.get_active_provider_proxy_lease("earnapp", worker_id, "earnapp-node-delete") is None
-            retired = await database.get_earnapp_logical_node("earnapp-node-delete")
-            assert retired is not None
-            assert retired["state"] == "RETIRED"
-            assert retired["current_proxy_id"] is None
+            assert await database.get_active_provider_proxy_lease("earnapp", worker_id, "earnapp-node-delete")
+            retained = await database.get_earnapp_logical_node("earnapp-node-delete")
+            assert retained is not None
+            assert retained["state"] == "ACTIVE"
+            assert retained["current_proxy_id"] == proxy_id
 
     asyncio.run(run())
 
@@ -2211,7 +2212,7 @@ def test_locked_account_deletion_requires_each_runtime_cleanup_ack_before_releas
                 assert binding["logical_node_id"] == "earnapp-runtime-ack"
                 return False
 
-            with pytest.raises(earnapp_accounts.AccountDeletionDenied, match="cleanup"):
+            with pytest.raises(earnapp_accounts.AccountDeletionDenied, match="inspection-only"):
                 await earnapp_accounts.delete_account(account_id, runtime_cleanup=cleanup)
 
             assert await database.get_active_provider_proxy_lease("earnapp", worker_id, "earnapp-runtime-ack")
@@ -2220,7 +2221,7 @@ def test_locked_account_deletion_requires_each_runtime_cleanup_ack_before_releas
     asyncio.run(run())
 
 
-def test_locked_account_deletion_releases_lease_only_after_every_runtime_ack(tmp_path):
+def test_locked_account_deletion_does_not_request_runtime_cleanup_while_disabled(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
             await database.init_db()
@@ -2246,15 +2247,16 @@ def test_locked_account_deletion_releases_lease_only_after_every_runtime_ack(tmp
                 cleaned.append(str(binding["instance_id"]))
                 return True
 
-            assert await earnapp_accounts.delete_account(account_id, runtime_cleanup=cleanup)
-            assert cleaned == ["earnapp-runtime-ok"]
-            assert await database.get_active_provider_proxy_lease("earnapp", worker_id, "earnapp-runtime-ok") is None
-            assert await database.get_earnapp_account_credentials(account_id) is None
+            with pytest.raises(earnapp_accounts.AccountDeletionDenied, match="inspection-only"):
+                await earnapp_accounts.delete_account(account_id, runtime_cleanup=cleanup)
+            assert cleaned == []
+            assert await database.get_active_provider_proxy_lease("earnapp", worker_id, "earnapp-runtime-ok")
+            assert await database.get_earnapp_account_credentials(account_id)
 
     asyncio.run(run())
 
 
-def test_locked_account_deletion_rechecks_stranded_logical_nodes_after_runtime_ack(tmp_path):
+def test_locked_account_deletion_does_not_run_runtime_cleanup_callback_while_disabled(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
             await database.init_db()
@@ -2290,12 +2292,12 @@ def test_locked_account_deletion_rechecks_stranded_logical_nodes_after_runtime_a
                 await db.commit()
                 return True
 
-            with pytest.raises(earnapp_accounts.AccountDeletionDenied, match="cleanup"):
+            with pytest.raises(earnapp_accounts.AccountDeletionDenied, match="inspection-only"):
                 await earnapp_accounts.delete_account(account_id, runtime_cleanup=cleanup)
 
             assert await database.get_earnapp_account_credentials(account_id)
             stranded = await database.get_earnapp_logical_node("earnapp-stranded-race")
-            assert stranded and stranded["state"] == "ACTIVE"
+            assert stranded is None
 
     asyncio.run(run())
 

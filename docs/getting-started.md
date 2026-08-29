@@ -176,7 +176,7 @@ CashPilot tracks **16 providers** across two active categories:
 - **Bandwidth Sharing** (14 providers) -- Share your internet bandwidth for passive income
 - **DePIN** (2 providers) -- Decentralized physical infrastructure networks
 
-Of these, **15 providers** have a Docker runtime, and **9 collectors** use the shared collector registry. EarnApp uses its separate account-scoped collector and owner-only canary lane; providers without collection support still need dashboard/manual verification for earnings.
+Of these, **15 providers** retain Docker/runtime catalog metadata, and **9 collectors** use the shared collector registry. EarnApp uses its separate account-scoped collector, but its hosted canary/runtime lane is currently `RUNTIME_DISABLED`; providers without collection support still need dashboard/manual verification for earnings.
 
 The server-side Settings page is where you keep provider runtime assets, collector secrets, dashboard/session credentials, proxy policy, MYST default password, NKN beneficiary address, and auto-deploy policy. NKN is direct-only: the worker bootstrap discovers public IPv4 slots and CashPilot assigns one wallet and node per ready slot. The command in `client command setup script.txt` is the canonical one-command onboarding path; it defaults to the fork `main` branch, invokes the tracked host bootstrap, and installs the NKN helper/cache prerequisites without deploying a provider. Set `CASHPILOT_BRANCH` before running it when a reviewed ref must be pinned.
 
