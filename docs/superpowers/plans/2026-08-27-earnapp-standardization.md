@@ -1,5 +1,10 @@
 # EarnApp Standardization Implementation Plan
 
+> **Superseded 2026-08-29:** retained as historical planning evidence only.
+> EarnApp hosted-runtime deployment is now `COMPLIANCE_BLOCKED` /
+> `RUNTIME_DISABLED`; do not execute new Docker/LXD deployment steps from this
+> plan. Account collection and existing-node inspection remain available.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Turn the verified single Mac canary into a production-safe EarnApp provider supporting VN Mac/iOS nodes and non-VN Ubuntu LXD nodes, with immutable identity, exclusive residential proxy lifecycle, account collection, sequential auto-deploy, recovery, and auditable live evidence.

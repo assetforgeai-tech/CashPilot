@@ -516,17 +516,24 @@ async def test_new_deploy_remains_pending_until_authenticated_device_is_online(m
 
 
 @pytest.mark.asyncio
-async def test_server_earnapp_lane_uses_worker_slots_and_platform_specific_endpoints(monkeypatch):
-    slots = [{"slot_id": "ipv4-001", "public_ip": "203.0.113.1", "route_ready": True}]
-    deploy = AsyncMock(return_value={"deployed": ["earnapp-proxy-w3-ipv4-001"], "failed": []})
-    monkeypatch.setattr(main, "_worker_public_ip_slots", AsyncMock(return_value=slots))
+async def test_server_earnapp_lane_fails_closed_before_slots_or_proxy_leases(monkeypatch):
+    slots = AsyncMock()
+    deploy = AsyncMock()
+    monkeypatch.setattr(main, "_worker_public_ip_slots", slots)
     monkeypatch.setattr(main.earnapp_deploy, "deploy_worker_nodes_sequentially", deploy)
 
     result = await main._deploy_earnapp_nodes(3, config={"earnapp_lxd_cpu": "2", "earnapp_lxd_memory_mib": "2048"})
 
-    assert result["deployed"] == ["earnapp-proxy-w3-ipv4-001"]
-    assert deploy.await_args.args[:2] == (3, slots)
-    assert deploy.await_args.kwargs["lxd_settings"] == {"cpu": 2, "memory_mib": 2048}
+    assert result == {
+        "deployed": [],
+        "verified": [],
+        "skipped": ["provider_policy"],
+        "pending": [],
+        "failed": [],
+        "blocked_reason": "vps_runtime_prohibited",
+    }
+    slots.assert_not_awaited()
+    deploy.assert_not_awaited()
 
 
 def test_earnapp_transport_spec_does_not_fall_back_to_nkn_lxd_settings():
@@ -562,7 +569,7 @@ def test_auto_deploy_excludes_earnapp_from_generic_catalog_batch():
     assert main._auto_deploy_slugs(services) == ["earnfm"]
 
 
-def test_earnapp_auto_deploy_retries_after_failed_node_then_marks_done(monkeypatch):
+def test_earnapp_auto_deploy_stays_disabled_across_stable_heartbeats(monkeypatch):
     async def run():
         main._EARNAPP_AUTO_DEPLOY_DONE.discard(7)
         main._WORKER_HEARTBEAT_STREAKS[7] = 2
@@ -572,12 +579,7 @@ def test_earnapp_auto_deploy_retries_after_failed_node_then_marks_done(monkeypat
             spawned.append(coro)
             return None
 
-        deploy = AsyncMock(
-            side_effect=[
-                {"deployed": [], "skipped": [], "failed": ["node-a"]},
-                {"deployed": ["node-a"], "skipped": [], "failed": []},
-            ]
-        )
+        deploy = AsyncMock()
         with (
             patch.object(
                 database,
@@ -600,7 +602,7 @@ def test_earnapp_auto_deploy_retries_after_failed_node_then_marks_done(monkeypat
             await main._maybe_auto_deploy_after_heartbeat(7)
             await asyncio.gather(*spawned)
 
-        assert deploy.await_count == 2
+        deploy.assert_not_awaited()
         assert 7 in main._EARNAPP_AUTO_DEPLOY_DONE
 
     asyncio.run(run())

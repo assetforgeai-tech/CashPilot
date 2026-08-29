@@ -67,12 +67,16 @@ def validate_artifacts(
     return earnapp_runtime.runtime_asset_manifest(expected, platform=selected)
 
 
+def render_ios_registration_wrapper() -> str:
+    """Render the iOS registration script from the same source as the digest."""
+    return earnapp_runtime.ios_registration_script().decode("utf-8")
+
+
 def render_dockerfile(manifest: Mapping[str, object], *, platform: str = "macos") -> str:
     selected = str(platform or "macos").strip().lower()
     if selected not in {"macos", "ios"}:
         raise ValueError("unsupported EarnApp image platform")
-    hashes = manifest_hashes(manifest)
-    manifest_hash = earnapp_runtime.runtime_asset_manifest_sha256(hashes, platform=selected)
+    manifest_hash = hashlib.sha256(_manifest_bytes(manifest)).hexdigest()
     if selected == "ios":
         binary_source = "earnapp-bootstrap"
         binary_target = "earnapp-ios"
@@ -80,6 +84,14 @@ def render_dockerfile(manifest: Mapping[str, object], *, platform: str = "macos"
         wire_platform = earnapp_runtime.IOS_PLATFORM
         appid = earnapp_runtime.IOS_APPID
         device_prefix = earnapp_runtime.IOS_DEVICE_PREFIX
+        registration_copy = (
+            "COPY entrypoint.sh /usr/local/bin/entrypoint-original.sh\n"
+            "COPY ios-entrypoint /usr/local/bin/entrypoint.sh\n"
+            "COPY ios-register-device /usr/local/bin/ios-register-device\n"
+        )
+        registration_mode = " /usr/local/bin/entrypoint-original.sh /usr/local/bin/ios-register-device"
+        entrypoint_copy = ""
+        shellcheck = " /usr/local/bin/entrypoint-original.sh /usr/local/bin/ios-register-device"
     else:
         binary_source = "earnapp-mac"
         binary_target = "earnapp-mac"
@@ -87,6 +99,10 @@ def render_dockerfile(manifest: Mapping[str, object], *, platform: str = "macos"
         wire_platform = earnapp_runtime.MAC_PLATFORM
         appid = earnapp_runtime.MAC_APPID
         device_prefix = earnapp_runtime.MAC_DEVICE_PREFIX
+        registration_copy = ""
+        registration_mode = ""
+        entrypoint_copy = "COPY entrypoint.sh /usr/local/bin/entrypoint.sh\n"
+        shellcheck = ""
     return f"""FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \\
@@ -100,12 +116,11 @@ RUN apt-get update \\
 COPY {binary_source} /opt/{binary_target}
 COPY boot.js /usr/local/lib/node/boot.js
 COPY earn-supervisor /usr/local/bin/earn-supervisor
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-COPY runtime-manifest.json /opt/cashpilot/runtime-manifest.json
+{entrypoint_copy}{registration_copy}COPY runtime-manifest.json /opt/cashpilot/runtime-manifest.json
 
-RUN chmod 0755 /opt/{binary_target} /usr/local/bin/earn-supervisor /usr/local/bin/entrypoint.sh \\
+RUN chmod 0755 /opt/{binary_target} /usr/local/bin/earn-supervisor /usr/local/bin/entrypoint.sh{registration_mode} \\
     && node --check /usr/local/lib/node/boot.js \\
-    && bash -n /usr/local/bin/earn-supervisor /usr/local/bin/entrypoint.sh
+    && bash -n /usr/local/bin/earn-supervisor /usr/local/bin/entrypoint.sh{shellcheck}
 
 LABEL com.cashpilot.earnapp.runtime={runtime} \\
       com.cashpilot.earnapp.platform={wire_platform} \\
@@ -130,6 +145,11 @@ def manifest_hashes(manifest: Mapping[str, object]) -> dict[str, str]:
     return result
 
 
+def _manifest_bytes(manifest: Mapping[str, object]) -> bytes:
+    payload = json.dumps(dict(manifest), sort_keys=True, separators=(",", ":"))
+    return (payload + "\n").encode("utf-8")
+
+
 def write_context(
     source_dir: str | Path,
     context_dir: str | Path,
@@ -143,13 +163,19 @@ def write_context(
     context.mkdir(parents=True, exist_ok=True)
     selected = str(platform or "macos").strip().lower()
     manifest = validate_artifacts(source, platform=selected)
+    generated_names = set(earnapp_runtime.generated_runtime_artifacts(selected))
     for row in manifest["artifacts"]:
         name = str(row["path"])
-        shutil.copy2(source / name, context / name)
-    manifest_bytes = earnapp_runtime.runtime_asset_manifest_bytes(manifest_hashes(manifest), platform=selected)
+        if name not in generated_names:
+            shutil.copy2(source / name, context / name)
+    manifest_bytes = _manifest_bytes(manifest)
     (context / "runtime-manifest.json").write_bytes(manifest_bytes)
+    if selected == "ios":
+        generated = earnapp_runtime.generated_runtime_artifacts("ios")
+        for name, payload in generated.items():
+            (context / name).write_bytes(payload)
     (context / "Dockerfile").write_text(render_dockerfile(manifest, platform=selected), encoding="utf-8")
-    return context, earnapp_runtime.runtime_asset_manifest_sha256(manifest_hashes(manifest), platform=selected)
+    return context, hashlib.sha256(manifest_bytes).hexdigest()
 
 
 def image_reference(manifest_hash: str, *, platform: str = "macos") -> str:

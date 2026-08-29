@@ -14,6 +14,7 @@ import shlex
 import socket
 import socketserver
 import subprocess
+import threading
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any
@@ -22,9 +23,12 @@ SOCKET_PATH = Path("/run/cashpilot-earnapp-agent/agent.sock")
 INSTANCE_PREFIX = "cashpilot-earnapp-"
 OFFICIAL_INSTALLER_URL = "https://brightdata.com/static/earnapp/install.sh"
 OFFICIAL_INSTALLER_SHA256 = "2212fb2a39bc6f7fc176a39c43522a289bf837d5253e0b734cd4a395ddde82d0"
+LXD_NETWORK = "lxdbr0"
 _NODE_RE = re.compile(r"^[a-z0-9][a-z0-9-]{2,120}$")
 _DEVICE_RE = re.compile(r"^sdk-node-[0-9a-f]{32}$")
 _MACHINE_RE = re.compile(r"^[0-9a-f]{32}$")
+_STAGE_RE = re.compile(r"^[a-z][a-z0-9_]{1,64}$")
+_LXD_ALLOC_LOCK = threading.Lock()
 
 
 class AgentError(RuntimeError):
@@ -192,17 +196,26 @@ def guest_bootstrap_script(payload: dict[str, Any]) -> str:
     return f"""#!/usr/bin/env bash
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
+install -d -m 0700 /etc/cashpilot/earnapp /etc/earnapp
+STAGE_FILE=/etc/cashpilot/earnapp/bootstrap.stage
+stage() {{ printf '%s\\n' "$1" >"$STAGE_FILE"; }}
+stage apt_update
 apt-get update
+stage apt_install
 apt-get install -y ca-certificates curl iproute2 iptables procps python3 redsocks
+# Ubuntu enables the package's stock listener on port 12345. CashPilot owns
+# that listener with its generated, credential-scoped service instead.
+systemctl disable --now redsocks.service 2>/dev/null || true
+stage identity
 printf '%s\\n' {machine_id} >/etc/machine-id
 ln -sfn /etc/machine-id /var/lib/dbus/machine-id
 printf '%s\\n' {hostname} >/etc/hostname
 hostname {hostname}
-install -d -m 0700 /etc/cashpilot/earnapp /etc/earnapp
 printf '%s\\n' {device_id} >/etc/earnapp/uuid
 id -u cashpilot-redsocks >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin cashpilot-redsocks
 chown root:cashpilot-redsocks /etc/cashpilot/earnapp/proxy.env
 chmod 0640 /etc/cashpilot/earnapp/proxy.env
+stage proxy_helper
 cat >/usr/local/sbin/cashpilot-earnapp-proxy <<'PROXY'
 #!/usr/bin/env python3
 import base64
@@ -215,10 +228,10 @@ def decoded(name):
 
 def quoted(value):
     return (
-        value.replace("\\", "\\\\")
-        .replace('"', '\\"')
-        .replace("\r", "\\r")
-        .replace("\n", "\\n")
+        value.replace("\\\\", "\\\\\\\\")
+        .replace('"', '\\\\"')
+        .replace("\\r", "\\\\r")
+        .replace("\\n", "\\\\n")
     )
 
 
@@ -231,26 +244,27 @@ port = int(os.environ["PROXY_PORT"])
 runtime = os.environ["RUNTIME_DIRECTORY"]
 path = os.path.join(runtime, "redsocks.conf")
 config = (
-    "base {{ log_debug = off; log_info = off; log = stderr; daemon = off; redirector = iptables; }}\n"
-    "redsocks {{ local_ip = 127.0.0.1; local_port = 12345; ip = \""
+    "base {{ log_debug = off; log_info = off; log = stderr; daemon = off; redirector = iptables; }}\\n"
+    "redsocks {{ local_ip = 127.0.0.1; local_port = 12345; ip = \\\""
     + host
-    + "\"; port = "
+    + "\\\"; port = "
     + str(port)
     + "; type = "
     + kind
-    + ";\nlogin = \""
+    + ";\\nlogin = \\\""
     + username
-    + "\"; password = \""
+    + "\\\"; password = \\\""
     + password
-    + "\"; }}\n"
-    + "dnstc {{ local_ip = 127.0.0.1; local_port = 1053; }}\n"
+    + "\\\"; }}\\n"
+    + "dnstc {{ local_ip = 127.0.0.1; local_port = 1053; }}\\n"
 )
-with open(path, "w", encoding="utf-8", newline="\n") as handle:
+with open(path, "w", encoding="utf-8", newline="\\n") as handle:
     handle.write(config)
 os.chmod(path, 0o600)
 os.execv("/usr/sbin/redsocks", ["redsocks", "-c", path])
 PROXY
 chmod 0755 /usr/local/sbin/cashpilot-earnapp-proxy
+stage proxy_rules
 cat >/usr/local/sbin/cashpilot-earnapp-proxy-rules <<'RULES'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -327,11 +341,11 @@ iptables -N "$FILTER_CHAIN" >/dev/null 2>&1 || true
 iptables -F "$FILTER_CHAIN"
 iptables -N "$ALLOW_CHAIN" >/dev/null 2>&1 || true
 iptables -F "$ALLOW_CHAIN"
-iptables -A "$ALLOW_CHAIN" -o lo -j RETURN
-iptables -A "$ALLOW_CHAIN" -m owner --uid-owner cashpilot-redsocks -j RETURN
-iptables -A "$ALLOW_CHAIN" -p tcp -d "$PROXY_ENDPOINT_IPV4" --dport "$PROXY_PORT" -j RETURN
+iptables -A "$ALLOW_CHAIN" -o lo -j ACCEPT
+iptables -A "$ALLOW_CHAIN" -m owner --uid-owner cashpilot-redsocks -j ACCEPT
+iptables -A "$ALLOW_CHAIN" -p tcp -d "$PROXY_ENDPOINT_IPV4" --dport "$PROXY_PORT" -j ACCEPT
 for subnet in 0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4; do
-  iptables -A "$ALLOW_CHAIN" -d "$subnet" -j RETURN
+  iptables -A "$ALLOW_CHAIN" -d "$subnet" -j ACCEPT
 done
 iptables -A "$FILTER_CHAIN" -o lo -j RETURN
 iptables -A "$FILTER_CHAIN" -j "$ALLOW_CHAIN"
@@ -384,6 +398,7 @@ ip6tables -F "$V6_TEMP_FILTER_CHAIN"
 ip6tables -X "$V6_TEMP_FILTER_CHAIN"
 RULES
 chmod 0755 /usr/local/sbin/cashpilot-earnapp-proxy-rules
+stage proxy_service
 cat >/etc/systemd/system/cashpilot-earnapp-proxy.service <<'UNIT'
 [Unit]
 Description=CashPilot EarnApp proxy
@@ -404,29 +419,50 @@ WantedBy=multi-user.target
 UNIT
 systemctl daemon-reload
 systemctl enable --now cashpilot-earnapp-proxy.service
+stage proxy_ready
+proxy_ready=false
+for _ in $(seq 1 30); do
+  if systemctl is-active --quiet cashpilot-earnapp-proxy.service && \
+     curl --fail --silent --show-error --connect-timeout 5 --max-time 10 https://api.ipify.org >/dev/null; then
+    proxy_ready=true
+    break
+  fi
+  sleep 1
+done
+if [ "$proxy_ready" != true ]; then
+  echo "EarnApp transparent proxy did not become ready" >&2
+  exit 1
+fi
+stage installer_download
 OFFICIAL_INSTALLER_SHA256={OFFICIAL_INSTALLER_SHA256}
 installer=/tmp/earnapp-install.sh
 trap 'rm -f "$installer"' EXIT
 curl --fail --silent --show-error --location {OFFICIAL_INSTALLER_URL} -o "$installer"
+stage installer_verify
 printf '%s  %s\\n' "$OFFICIAL_INSTALLER_SHA256" "$installer" | sha256sum -c - || {{
   echo "EarnApp installer checksum mismatch" >&2
   exit 1
 }}
+stage installer_execute
 bash "$installer" -y
 rm -f "$installer"
 trap - EXIT
+stage identity_check
 test "$(cat /etc/earnapp/uuid)" = {device_id} || {{
   echo "EarnApp installer changed the persisted device identity" >&2
   exit 1
 }}
+stage install_device
 earnapp_version=$(cat /etc/earnapp/ver)
 earnapp_serial=$(sha1sum /etc/machine-id | awk '{{print $1}}')
 curl --fail --silent --show-error \
   -H 'Content-Type: application/json' \
   "https://client.earnapp.com/install_device?uuid={device_id}&version=${{earnapp_version}}&arch=x64&appid=node_earnapp.com&os=Ubuntu" \
   --data "$(printf '{{\"serial\":\"%s\"}}' "$earnapp_serial")" >/dev/null
+stage service_start
 systemctl enable --now earnapp.service earnapp_upgrader.service
-"""
+stage complete
+    """
 
 
 class Controller:
@@ -543,12 +579,169 @@ class Controller:
         script = guest_bootstrap_script(payload).encode()
         self._write_guest_file(name, "/etc/cashpilot/earnapp/proxy.env", env)
         self._write_guest_file(name, "/root/cashpilot-earnapp-bootstrap.sh", script, "0700")
-        _run(["lxc", "exec", name, "--", "bash", "/root/cashpilot-earnapp-bootstrap.sh"], timeout=1800)
+        try:
+            _run(["lxc", "exec", name, "--", "bash", "/root/cashpilot-earnapp-bootstrap.sh"], timeout=1800)
+        except AgentError as exc:
+            stage_result = _run(
+                [
+                    "lxc",
+                    "exec",
+                    name,
+                    "--",
+                    "sh",
+                    "-lc",
+                    "cat /etc/cashpilot/earnapp/bootstrap.stage 2>/dev/null || true",
+                ],
+                check=False,
+                timeout=30,
+            )
+            stage_name = (stage_result.stdout.decode(errors="replace").strip().splitlines() or [""])[-1].strip()
+            if _STAGE_RE.fullmatch(stage_name):
+                raise AgentError(f"EarnApp guest bootstrap failed at {stage_name}", exc.status) from exc
+            raise
         result = _run(
             ["lxc", "exec", name, "--", "sh", "-lc", "earnapp --version 2>/dev/null || true"],
             timeout=30,
         )
         return {"version": result.stdout.decode(errors="replace").strip()}
+
+    @staticmethod
+    def _parse_json_result(result: subprocess.CompletedProcess[bytes], description: str) -> Any:
+        if result.returncode != 0:
+            raise AgentError(f"{description} failed", 503)
+        try:
+            return json.loads(result.stdout.decode(errors="strict"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise AgentError(f"{description} returned invalid JSON", 503) from exc
+
+    def _pin_instance_ip(self, name: str, address: str) -> None:
+        """Pin the inherited default-profile NIC before the first boot."""
+        try:
+            parsed = ipaddress.ip_address(str(address))
+        except ValueError as exc:
+            raise AgentError("EarnApp LXD IPv4 address is invalid", 503) from exc
+        if not isinstance(parsed, ipaddress.IPv4Address):
+            raise AgentError("EarnApp LXD IPv4 address is invalid", 503)
+        config = self._config(name)
+        devices = config.get("devices") if isinstance(config.get("devices"), dict) else {}
+        eth0 = devices.get("eth0") if isinstance(devices.get("eth0"), dict) else None
+        if eth0 is None:
+            _run(["lxc", "config", "device", "override", name, "eth0", f"ipv4.address={parsed}"], timeout=30)
+        elif str(eth0.get("ipv4.address") or "") != str(parsed):
+            _run(["lxc", "config", "device", "set", name, "eth0", "ipv4.address", str(parsed)], timeout=30)
+
+    def _lxd_bridge_ipv4(self) -> ipaddress.IPv4Interface:
+        network_result = _run(
+            ["lxc", "network", "get", LXD_NETWORK, "ipv4.address"],
+            check=False,
+            timeout=30,
+        )
+        if network_result.returncode != 0:
+            raise AgentError("EarnApp LXD bridge has no IPv4 subnet", 503)
+        try:
+            bridge = ipaddress.ip_interface(network_result.stdout.decode().strip().strip('"'))
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise AgentError("EarnApp LXD bridge IPv4 subnet is invalid", 503) from exc
+        if not isinstance(bridge, ipaddress.IPv4Interface) or bridge.network.prefixlen > 30:
+            raise AgentError("EarnApp LXD bridge IPv4 subnet is too small", 503)
+        return bridge
+
+    def _configure_instance_network(self, name: str, address: str) -> None:
+        """Give cloud-init the static IPv4 route that LXD's NIC pin does not install."""
+        try:
+            parsed = ipaddress.ip_address(str(address))
+        except ValueError as exc:
+            raise AgentError("EarnApp LXD IPv4 address is invalid", 503) from exc
+        bridge = self._lxd_bridge_ipv4()
+        network = bridge.network
+        if (
+            not isinstance(parsed, ipaddress.IPv4Address)
+            or parsed not in network
+            or parsed in {network.network_address, network.broadcast_address, bridge.ip}
+        ):
+            raise AgentError("EarnApp LXD IPv4 address is outside the bridge subnet", 503)
+        config = (
+            "version: 2\n"
+            "ethernets:\n"
+            "  eth0:\n"
+            "    dhcp4: false\n"
+            f"    addresses: [{parsed}/{network.prefixlen}]\n"
+            "    routes:\n"
+            "      - to: default\n"
+            f"        via: {bridge.ip}\n"
+            "    nameservers:\n"
+            "      addresses: [1.1.1.1, 8.8.8.8]\n"
+        )
+        _run(["lxc", "config", "set", name, "cloud-init.network-config", config], timeout=30)
+
+    def _allocate_lxd_ipv4(self, name: str) -> str:
+        """Choose a collision-free address on the managed LXD bridge."""
+        del name  # The address pool is shared; the instance name is not a key.
+        bridge = self._lxd_bridge_ipv4()
+        network = bridge.network
+
+        used: set[ipaddress.IPv4Address] = {network.network_address, network.broadcast_address}
+        used.add(bridge.ip)
+
+        leases = self._parse_json_result(
+            _run(["lxc", "network", "list-leases", LXD_NETWORK, "--format=json"], check=False, timeout=30),
+            "EarnApp LXD bridge leases",
+        )
+        if not isinstance(leases, list):
+            raise AgentError("EarnApp LXD bridge leases are invalid", 503)
+        for row in leases:
+            if not isinstance(row, dict):
+                continue
+            try:
+                address = ipaddress.ip_address(str(row.get("address") or ""))
+            except ValueError:
+                continue
+            if isinstance(address, ipaddress.IPv4Address):
+                used.add(address)
+
+        instances = self._parse_json_result(
+            _run(["lxc", "list", "--format=json"], check=False, timeout=30),
+            "EarnApp LXD instance inventory",
+        )
+        if not isinstance(instances, list):
+            raise AgentError("EarnApp LXD instance inventory is invalid", 503)
+        for instance in instances:
+            if not isinstance(instance, dict):
+                continue
+            device_sets = (
+                instance.get("devices") if isinstance(instance.get("devices"), dict) else {},
+                instance.get("expanded_devices") if isinstance(instance.get("expanded_devices"), dict) else {},
+            )
+            for devices in device_sets:
+                for device in devices.values():
+                    if not isinstance(device, dict) or str(device.get("network") or "") != LXD_NETWORK:
+                        continue
+                    try:
+                        address = ipaddress.ip_address(str(device.get("ipv4.address") or ""))
+                    except ValueError:
+                        continue
+                    if isinstance(address, ipaddress.IPv4Address):
+                        used.add(address)
+
+            state = instance.get("state") if isinstance(instance.get("state"), dict) else {}
+            state_network = state.get("network") if isinstance(state.get("network"), dict) else {}
+            for row in state_network.values():
+                if not isinstance(row, dict):
+                    continue
+                for address_row in row.get("addresses") or []:
+                    if not isinstance(address_row, dict) or str(address_row.get("family") or "") != "inet":
+                        continue
+                    try:
+                        address = ipaddress.ip_address(str(address_row.get("address") or ""))
+                    except ValueError:
+                        continue
+                    if isinstance(address, ipaddress.IPv4Address):
+                        used.add(address)
+
+        for candidate in network.hosts():
+            if candidate not in used:
+                return str(candidate)
+        raise AgentError("EarnApp LXD bridge has no free IPv4 address", 503)
 
     @staticmethod
     def _resolve_proxy_ipv4(host: str) -> str:
@@ -615,28 +808,42 @@ class Controller:
         data = validate_deploy(logical_node_id, payload)
         name = instance_name(logical_node_id)
         if not self._exists(name):
-            _run(
-                [
-                    "lxc",
-                    "launch",
-                    "ubuntu:24.04",
-                    name,
-                    "-c",
-                    f"limits.cpu={data['lxd_cpu']}",
-                    "-c",
-                    f"limits.memory={data['lxd_memory_mib']}MiB",
-                    "-c",
-                    "limits.memory.enforce=hard",
-                    "-c",
-                    "limits.memory.swap=false",
-                    "-c",
-                    "boot.autostart=true",
-                ],
-                timeout=300,
-            )
-            self._wait_ready(name)
-            self._configure_guest(name, data)
-            self._set_metadata(name, data)
+            # A launch is transactional: bootstrap failures must not leave an
+            # unassigned guest that the CAS-scoped cleanup endpoint cannot see.
+            try:
+                # Reserve and pin the bridge address while the new instance is
+                # still stopped. cloud-init must see IPv4 on its first boot.
+                with _LXD_ALLOC_LOCK:
+                    lxd_ip = self._allocate_lxd_ipv4(name)
+                    _run(
+                        [
+                            "lxc",
+                            "init",
+                            "ubuntu:24.04",
+                            name,
+                            "-c",
+                            f"limits.cpu={data['lxd_cpu']}",
+                            "-c",
+                            f"limits.memory={data['lxd_memory_mib']}MiB",
+                            "-c",
+                            "limits.memory.enforce=hard",
+                            "-c",
+                            "limits.memory.swap=false",
+                            "-c",
+                            "boot.autostart=true",
+                        ],
+                        timeout=300,
+                    )
+                    self._pin_instance_ip(name, lxd_ip)
+                    self._configure_instance_network(name, lxd_ip)
+                _run(["lxc", "start", name], timeout=120)
+                self._wait_ready(name)
+                self._configure_guest(name, data)
+                self._set_metadata(name, data)
+            except Exception:
+                with contextlib.suppress(Exception):
+                    _run(["lxc", "delete", name, "--force"], check=False, timeout=180)
+                raise
             return {
                 "logical_node_id": logical_node_id,
                 "instance_id": name,
@@ -655,6 +862,10 @@ class Controller:
             )
             if not any(assignment_values):
                 self._verify_lxd_contract(config, data)
+                with _LXD_ALLOC_LOCK:
+                    lxd_ip = self._allocate_lxd_ipv4(name)
+                    self._pin_instance_ip(name, lxd_ip)
+                    self._configure_instance_network(name, lxd_ip)
                 if self._status(name) != "running":
                     _run(["lxc", "start", name], timeout=120)
                 self._wait_ready(name)

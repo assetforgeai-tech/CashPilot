@@ -9,7 +9,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from app import database, deps, earnapp_accounts, earnapp_collection, earnapp_recovery
+from app import database, deps, earnapp_accounts, earnapp_collection, earnapp_recovery, provider_runtime
 
 router = APIRouter()
 
@@ -290,6 +290,9 @@ async def api_earnapp_replacement_ticket(
     request: Request, logical_node_id: str, body: ReplacementTicketIn
 ) -> dict[str, Any]:
     deps._require_owner(request)
+    runtime = provider_runtime.get("earnapp")
+    if runtime and not runtime.deployment_allowed:
+        raise HTTPException(status_code=409, detail=runtime.policy_message)
     try:
         token = await earnapp_recovery.issue_replacement_ticket(logical_node_id, body.target_worker_id)
     except earnapp_recovery.RecoveryClaimDenied as exc:

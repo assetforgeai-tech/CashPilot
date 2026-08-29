@@ -21,7 +21,7 @@ SUPPORTED_PLATFORMS = frozenset({"macos", "ios", "ubuntu"})
 IOS_PROFILE_ASSET_KIND = "ios_identity_profile"
 UBUNTU_IDENTITY_ASSET_KIND = "ubuntu_identity_profile"
 IOS_DEVICE_PREFIX = "sdk-ios-"
-IOS_CP_ID = "ios_com.brd.earnapp"
+IOS_CP_ID = earnapp_runtime.IOS_INSTALL_APPID
 UBUNTU_DEVICE_PREFIX = "sdk-node-"
 PROXY_TUN_IP = "172.31.255.1"
 

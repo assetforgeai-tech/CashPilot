@@ -9,7 +9,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
 from typing import Any
 
-from app import database
+from app import database, provider_runtime
 
 COOKIE_ALLOWLIST = frozenset(
     {
@@ -36,6 +36,10 @@ async def _cleanup_account_runtimes(account_id: int, runtime_cleanup: RuntimeCle
     bindings = await database.list_earnapp_runtime_bindings(int(account_id))
     if not bindings:
         return []
+    if provider_runtime.mutation_block("earnapp"):
+        raise AccountDeletionDenied(
+            "EarnApp account has an inspection-only runtime binding while hosted runtime is disabled"
+        )
     if runtime_cleanup is None:
         raise AccountDeletionDenied("local EarnApp runtime cleanup acknowledgement is required")
 

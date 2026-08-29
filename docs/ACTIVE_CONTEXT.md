@@ -1,10 +1,33 @@
 # CashPilot Active Context
 
-Updated: 2026-08-28 (EarnApp platform canary investigation reopened; existing nodes immutable)
+Updated: 2026-08-29 (EarnApp runtime compliance gate; collector token refreshed)
 
-## EarnApp platform canary investigation (2026-08-28)
+## Current EarnApp status (authoritative)
 
-- This investigation reopens platform validation without changing the
+- **Status:** `COMPLIANCE_BLOCKED` / `RUNTIME_DISABLED` for all new VPS
+  runtimes. EarnApp terms prohibit virtual machines, containers and hosting
+  services, so CashPilot does not create new Docker, LXD or other hosted nodes.
+- The Account Pool and collector remain enabled. The operator refreshed the
+  account token; the server stores only encrypted credentials and exposes only
+  expiry/status metadata. A token refresh restores collection only and does not
+  authorize a new hosted node.
+- Fresh collection-only verification after the refresh returned `status=ok`,
+  balance/total `2.505`, online/offline `3/1`, and a healthy existing account
+  route on proxy `#12706`. The token expiry remains `unknown` because the
+  refreshed credential did not expose parseable expiry metadata. No runtime or
+  lease mutation was performed by this check.
+- Existing EarnApp nodes are inspection-only and immutable. Do not recreate,
+  migrate, rotate, unlink, delete or alter their identities, volumes, sidecars,
+  account bindings or leases through this policy change.
+- Generic deploy, platform-canary deploy, Ubuntu-LXD deploy and EarnApp
+  auto-deploy fail closed before worker, slot, proxy or lease calls. Collection,
+  historical snapshots and existing-node inspection remain available.
+- Older sections below describe historical canary states. They are retained for
+  auditability and are not current deployment authorization.
+
+## EarnApp platform canary investigation (historical, 2026-08-28)
+
+- At this historical checkpoint, the investigation reopened platform validation without changing the
   immutable baseline. The existing Docker nodes `earnapp-canary-test-sing-1`
   and `earnapp-recovery-test-sing-2` must not be recreated, migrated, rotated
   or deleted; their containers, sidecars, volumes, identities, account binding
@@ -24,10 +47,12 @@ Updated: 2026-08-28 (EarnApp platform canary investigation reopened; existing no
   ownership.
 - MacOS/iOS remain Docker-only. Apple-platform LXD conversion is outside the
   approved design and has no deploy or experimental-spec path in CashPilot.
-- EarnApp remains open for platform closeout until iOS and Ubuntu-LXD canaries
-  pass all gates. NKN, MYST and other `PROTECTED_DONE` providers are unaffected.
+- Historical status only: EarnApp remained open for platform closeout until
+  iOS and Ubuntu-LXD canaries could pass all gates. The current compliance gate
+  supersedes that authorization. NKN, MYST and other `PROTECTED_DONE`
+  providers are unaffected.
 
-## EarnApp v1.13.4 closeout (2026-08-28)
+## EarnApp v1.13.4 closeout (historical runtime baseline, 2026-08-28)
 
 - PR #52 merged at `8d2b86087c4cefc8e256aa8e359e2b2829c8af3e` after
   CodeQL, Ruff and the full GitHub test suite passed. Auto Release run
@@ -68,9 +93,11 @@ Updated: 2026-08-28 (EarnApp platform canary investigation reopened; existing no
   snapshots are under
   `/opt/cashpilot-worker/backups/earnapp-v134-rotation-20260828T030039Z` and
   `/opt/cashpilot-worker/backups/v1.13.4-worker-deploy-20260828T025707Z`.
-- EarnApp is now `PROTECTED_DONE`. Future changes require an impact map,
-  provider-scoped regression coverage, a disposable canary and explicit user
-  approval. Do not use either successful live node as a destructive test.
+- At this checkpoint EarnApp became `PROTECTED_DONE`. The 2026-08-29
+  compliance decision supersedes deploy authorization: it remains a protected
+  historical baseline, but hosted runtime is now `COMPLIANCE_BLOCKED` /
+  `RUNTIME_DISABLED`. Do not use either successful live node as a destructive
+  test.
 
 Updated: 2026-08-28 (historical v1.13.2 checkpoint; recovery gates were open at this release)
 
@@ -337,13 +364,15 @@ Updated: 2026-08-26 (EarnApp v1.11.2 legacy migration live closeout complete)
 
 ## Current repository state
 
-- Canonical source and tag `v1.13.2` both resolve to merge `ba2d29d`; the live
+- Historical repository/deployment checkpoint: canonical source and tag
+  `v1.13.2` both resolved to merge `ba2d29d`; the live
   server UI and `test-sing` worker are verified on the v1.13.2 digests recorded
   in the scoped-live section above. The deployment was limited to those two
   CashPilot components and the existing EarnApp canary.
-- Current schema is `21`; the server database integrity check is `ok` with zero
-  foreign-key violations. EarnApp platform/device identity is immutable per
-  logical node, and its recovery/rotation gates remain intentionally open.
+- At that checkpoint schema was `21`; the server database integrity check was
+  `ok` with zero foreign-key violations. EarnApp platform/device identity
+  remains immutable per logical node. Recovery/rotation mutation gates are now
+  closed by the current inspection-only policy.
 - PR #27 upgrades the reported SQLite schema from 17 to 18 through
   idempotent guards. A migration regression starts from a populated v17 proxy
   schema and verifies that endpoints, worker assignments and provider masks are
@@ -395,19 +424,22 @@ Updated: 2026-08-26 (EarnApp v1.11.2 legacy migration live closeout complete)
 - Current catalog: 16 providers, 14 bandwidth and 2 DePIN.
 - Current collectors: 9 shared-registry collectors plus the separate
   account-scoped EarnApp collector.
-- Current Docker/runtime-capable catalog entries: 15; the one manual-only entry
-  remains explicit. Provider-specific automation (including NKN direct slots
-  and EarnApp Mac/LXD lanes) stays outside the generic Docker queue.
-- All sixteen active providers are `PROTECTED_DONE`, including NKN direct-only
-  and EarnApp after its isolated restart/recovery and proxy-rotation gates.
+- Current catalog metadata still contains 15 runtime-capable entries for
+  historical compatibility; the one manual-only entry remains explicit. NKN
+  direct slots stay outside the generic Docker queue, while every new EarnApp
+  Mac/iOS/Ubuntu lane is blocked by the current provider policy.
+- Fifteen provider runtimes are `PROTECTED_DONE`; EarnApp is separately
+  `COMPLIANCE_BLOCKED` / `RUNTIME_DISABLED` for new hosted nodes while its
+  Account Pool, collector and historical evidence remain available.
 - Mysterium remains direct-only. Its wallet inventory, lease, identity,
   WireGuard/TUN and runtime contracts are not altered by this branch.
 
-## EarnApp Proxy Pool and runtime baseline
+## EarnApp Proxy Pool and runtime baseline (historical runtime contract)
 
-- EarnApp now has an active catalog/runtime/collector lane. The qualification
-  and lease rules below remain the source of truth for its proxy selection;
-  they are separate from the generic worker-level assignment.
+- EarnApp retains catalog/runtime metadata and an active collector lane for
+  compatibility and historical inspection. The qualification and lease rules
+  below describe the established runtime contract, but no new runtime lease is
+  issued while the provider is `RUNTIME_DISABLED`.
 - Only the latest EarnApp WSS verdict `CID_SET` is eligible. `BLACKLIST` is
   blocked, `DECLINE` is quality-rejected, and timeout/transport failures remain
   unknown. WSS ping payloads are returned as binary pong frames without UTF-8
@@ -795,11 +827,13 @@ stopped and must not be mistaken for the active node.
 
 `PROTECTED_DONE`: `earnfm`, `iproyal`, `mysterium`, `packetstream`,
 `proxies-sx`, `proxybase`, `proxybase-xyz`, `proxyrack`, `repocket`, `spide`,
-`traffmonetizer`, `uprock`, `urnetwork`, `wipter`, `nkn`, `earnapp`.
+`traffmonetizer`, `uprock`, `urnetwork`, `wipter`, `nkn`.
 
-EarnApp is `PROTECTED_DONE`, not open for broad redesign. Any shared-module
-change requires an impact map, regression coverage, isolated canary and explicit
-user approval.
+EarnApp is `COMPLIANCE_BLOCKED` / `RUNTIME_DISABLED`. Its historical runtime
+baseline and existing nodes remain protected, but no lifecycle, recovery,
+rotation, account-delete cleanup or new deploy mutation is authorized. Account
+collection, token refresh, historical snapshots and read-only inspection stay
+available.
 
 ## Verification status
 
@@ -854,6 +888,7 @@ user approval.
 - Future provider deployment still requires an impact map and explicit approval;
   this canary did not authorize bulk redeploy, wallet rotation, credential
   rotation or changes to any protected provider.
-- EarnApp closeout is complete. Restart/network-namespace persistence and two
-  isolated proxy rotations passed on `earnapp-recovery-test-sing-2`; the
-  protected `earnapp-canary-test-sing-1` remained unchanged.
+- Historical technical closeout evidence remains valid: restart/network-
+  namespace persistence and two isolated proxy rotations passed on
+  `earnapp-recovery-test-sing-2`, while `earnapp-canary-test-sing-1` remained
+  unchanged. This does not override the current hosted-runtime compliance gate.

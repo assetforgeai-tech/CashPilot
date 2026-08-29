@@ -52,6 +52,7 @@ from app import (
     nkn_lxd_runtime,
     nkn_runtime,
     orchestrator,
+    provider_runtime,
     proxy_egress,
     public_ip_slots,
     singbox_config,
@@ -71,6 +72,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+def _reject_earnapp_runtime_mutation(logical_node_id: str = "earnapp") -> None:
+    """Fail closed before a disabled EarnApp runtime or its state is touched."""
+    # These routes are already provider-scoped; include the canonical slug so
+    # legacy logical-node IDs cannot bypass the policy by lacking a prefix.
+    policy = provider_runtime.mutation_block(logical_node_id, {"provider_slug": "earnapp"})
+    if policy:
+        raise HTTPException(status_code=409, detail=policy.policy_message)
+
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -86,8 +97,6 @@ HEARTBEAT_INTERVAL = 60  # seconds
 # Stop locally one heartbeat before the server's 15-minute reclaim boundary so
 # the old wallet cannot still be running when the server makes it available.
 NKN_LEASE_GUARD_SECONDS = 14 * 60
-_EARNAPP_PROTECTED_CANARY = "earnapp-canary-test-sing-1"
-
 _heartbeat_task: asyncio.Task | None = None
 _ui_connected = False
 _last_heartbeat: str = "never"
@@ -2472,6 +2481,8 @@ async def api_deploy_earnapp_lxd_node(
 ) -> dict[str, Any]:
     """Deploy one official Ubuntu EarnApp runtime through the restricted helper."""
     _verify_api_key(request)
+    if not earnapp_runtime.runtime_deployment_allowed():
+        raise HTTPException(status_code=409, detail=earnapp_runtime.VPS_RUNTIME_BLOCK_MESSAGE)
     try:
         result = await asyncio.to_thread(
             earnapp_lxd_runtime.deploy_node,
@@ -2512,6 +2523,7 @@ async def api_suspend_earnapp_lxd_node(
     request: Request, logical_node_id: str, spec: EarnAppNodeCasSpec
 ) -> dict[str, Any]:
     _verify_api_key(request)
+    _reject_earnapp_runtime_mutation(logical_node_id)
     state = _earnapp_lxd_state(logical_node_id)
     _validate_earnapp_lxd_cas(state, spec)
     result = await asyncio.to_thread(
@@ -2531,6 +2543,7 @@ async def api_resume_earnapp_lxd_node(
     request: Request, logical_node_id: str, spec: EarnAppNodeCasSpec
 ) -> dict[str, Any]:
     _verify_api_key(request)
+    _reject_earnapp_runtime_mutation(logical_node_id)
     state = _earnapp_lxd_state(logical_node_id)
     _validate_earnapp_lxd_cas(state, spec)
     result = await asyncio.to_thread(
@@ -2588,6 +2601,7 @@ async def api_remove_earnapp_lxd_node(
     request: Request, logical_node_id: str, spec: EarnAppNodeCasSpec
 ) -> dict[str, Any]:
     _verify_api_key(request)
+    _reject_earnapp_runtime_mutation(logical_node_id)
     try:
         state = _earnapp_lxd_state(logical_node_id)
     except HTTPException as exc:
@@ -2595,12 +2609,18 @@ async def api_remove_earnapp_lxd_node(
             raise
     else:
         _validate_earnapp_lxd_cas(state, spec)
-    result = await asyncio.to_thread(
-        earnapp_lxd_runtime.remove_node,
-        logical_node_id,
-        generation=spec.generation,
-        device_id=spec.device_id,
-    )
+    try:
+        result = await asyncio.to_thread(
+            earnapp_lxd_runtime.remove_node,
+            logical_node_id,
+            generation=spec.generation,
+            device_id=spec.device_id,
+        )
+    except earnapp_lxd_runtime.EarnAppLxdHelperError as exc:
+        if exc.status_code != 404:
+            status = 409 if exc.status_code == 409 else 503
+            raise HTTPException(status_code=status, detail=str(exc)) from exc
+        result = {"idempotent": True}
     _remove_earnapp_state(logical_node_id)
     return {"status": "removed", "logical_node_id": logical_node_id, **earnapp_runtime.redacted_evidence(result)}
 
@@ -2613,8 +2633,8 @@ async def api_remove_earnapp_docker_node(
 ) -> dict[str, Any]:
     """Remove both Docker components before acknowledging local EarnApp cleanup."""
     _verify_api_key(request)
-    if slug == _EARNAPP_PROTECTED_CANARY:
-        raise HTTPException(status_code=409, detail="Protected EarnApp canary is inspect-only")
+    if provider_runtime.is_runtime_instance(slug):
+        raise HTTPException(status_code=409, detail="Existing EarnApp runtimes are inspection-only")
     state = _earnapp_node_state(slug)
     expected = (int(state.get("generation") or 0), str(state.get("device_id") or ""))
     if expected != (spec.generation, spec.device_id):
@@ -2638,6 +2658,7 @@ async def api_apply_earnapp_node_proxy(
 ) -> dict[str, Any]:
     """Stage one candidate proxy and require egress evidence before server CAS."""
     _verify_api_key(request)
+    _reject_earnapp_runtime_mutation(logical_node_id)
     state = _earnapp_node_state(logical_node_id)
     _validate_earnapp_proxy_cas(
         state,
@@ -2756,6 +2777,7 @@ async def api_finalize_earnapp_node_proxy(
 ) -> dict[str, Any]:
     """Confirm or roll back the exact proxy binding staged for one node."""
     _verify_api_key(request)
+    _reject_earnapp_runtime_mutation(logical_node_id)
     state = _earnapp_node_state(logical_node_id)
     if _earnapp_proxy_finalize_replay(state, spec):
         return {
@@ -2906,8 +2928,9 @@ async def api_finalize_earnapp_node_proxy(
 async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) -> dict[str, str]:
     """Deploy a container from spec sent by UI."""
     _verify_api_key(request)
-    if slug == _EARNAPP_PROTECTED_CANARY:
-        raise HTTPException(status_code=409, detail="Protected EarnApp canary is inspect-only")
+    runtime = provider_runtime.deployment_block(slug, spec.model_dump())
+    if runtime:
+        raise HTTPException(status_code=409, detail=runtime.policy_message)
     _validate_deploy_spec(spec, slug=slug)
     try:
         await _materialize_runtime_assets(slug, spec)
@@ -3053,8 +3076,8 @@ async def api_finalize_proxy_binding(request: Request, spec: ProxyBindingFinaliz
 @app.post("/api/containers/{slug}/restart")
 async def api_restart_container(request: Request, slug: str) -> dict[str, str]:
     _verify_api_key(request)
-    if slug == _EARNAPP_PROTECTED_CANARY:
-        raise HTTPException(status_code=409, detail="Protected EarnApp canary is inspect-only")
+    if provider_runtime.is_runtime_instance(slug):
+        raise HTTPException(status_code=409, detail="Existing EarnApp runtimes are inspection-only")
     try:
         await asyncio.to_thread(orchestrator.restart_service, slug)
         return {"status": "restarted"}
@@ -3067,8 +3090,8 @@ async def api_restart_container(request: Request, slug: str) -> dict[str, str]:
 @app.post("/api/containers/{slug}/stop")
 async def api_stop_container(request: Request, slug: str) -> dict[str, str]:
     _verify_api_key(request)
-    if slug == _EARNAPP_PROTECTED_CANARY:
-        raise HTTPException(status_code=409, detail="Protected EarnApp canary is inspect-only")
+    if provider_runtime.is_runtime_instance(slug):
+        raise HTTPException(status_code=409, detail="Existing EarnApp runtimes are inspection-only")
     try:
         await asyncio.to_thread(orchestrator.stop_service, slug)
         return {"status": "stopped"}
@@ -3081,8 +3104,8 @@ async def api_stop_container(request: Request, slug: str) -> dict[str, str]:
 @app.post("/api/containers/{slug}/start")
 async def api_start_container(request: Request, slug: str) -> dict[str, str]:
     _verify_api_key(request)
-    if slug == _EARNAPP_PROTECTED_CANARY:
-        raise HTTPException(status_code=409, detail="Protected EarnApp canary is inspect-only")
+    if provider_runtime.is_runtime_instance(slug):
+        raise HTTPException(status_code=409, detail="Existing EarnApp runtimes are inspection-only")
     try:
         await asyncio.to_thread(orchestrator.start_service, slug)
         return {"status": "started"}
@@ -3100,16 +3123,8 @@ async def api_remove_container(
     allow_delete_critical: bool = False,
 ) -> dict[str, Any]:
     _verify_api_key(request)
-    if slug.startswith("earnapp-"):
-        state = _earnapp_node_state(slug)
-        try:
-            spec = EarnAppDockerNodeCasSpec(
-                generation=int(state.get("generation") or 0),
-                device_id=str(state.get("device_id") or ""),
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=409, detail="EarnApp node assignment is incomplete") from exc
-        return await api_remove_earnapp_docker_node(request, slug, spec)
+    if provider_runtime.is_runtime_instance(slug):
+        raise HTTPException(status_code=409, detail="Existing EarnApp runtimes are inspection-only")
     try:
         result = await asyncio.to_thread(
             orchestrator.remove_service,

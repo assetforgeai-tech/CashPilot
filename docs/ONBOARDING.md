@@ -6,6 +6,11 @@ CashPilot là hệ thống điều phối provider bandwidth/DePIN qua FastAPI s
 worker Docker, service catalog, resource leasing, collectors và dashboard.
 Repo dùng chủ yếu Python, YAML, Docker/Compose và GitHub Actions.
 
+**EarnApp note:** the Account Pool and collector remain supported, but hosted
+EarnApp runtime deployment is currently `COMPLIANCE_BLOCKED` /
+`RUNTIME_DISABLED`. Do not use historical Docker/LXD canary instructions to
+create a new node; existing EarnApp nodes are immutable and inspection-only.
+
 Tài liệu này mô tả baseline hiện hành sau quyết định loại bỏ Grass, merge proxy
 worker ACK rotation và bổ sung NKN direct runtime. Code hiện ở `main`; release
 công khai gần nhất là `v1.3.2`, đã có cả UI và worker image.
@@ -17,6 +22,9 @@ Chi tiết quyết định, tương thích dữ liệu cũ và bằng chứng n�
 - `PROTECTED_DONE`: `earnfm`, `iproyal`, `mysterium`, `packetstream`,
   `proxies-sx`, `proxybase`, `proxybase-xyz`, `proxyrack`, `repocket`,
   `spide`, `traffmonetizer`, `uprock`, `urnetwork`, `wipter`, `nkn`.
+- `COMPLIANCE_BLOCKED` / `RUNTIME_DISABLED`: EarnApp hosted runtime. Account
+  collection and historical inspection remain available; no new VPS runtime,
+  worker deploy, proxy lease or platform canary is allowed.
 - NKN được chốt direct-only sau khi canary hoàn tất `PERSIST_FINISHED`, worker
   heartbeat và Fleet đều xác nhận online; không provider nào mở để redesign.
 - Mysterium là direct-only; không suy ra proxy mode từ lịch sử cũ.
@@ -76,9 +84,11 @@ Chi tiết quyết định, tương thích dữ liệu cũ và bằng chứng n�
   CodeQL, Lint, Catalog Check, Tests and Auto Release.
 - Current release: `v1.3.2`; both fork GHCR image manifests were published and
   verified, then deployed only to the approved UI/test worker components.
-- Current catalog: 15 providers, all `PROTECTED_DONE`. The 14 pre-existing
-  provider YAML files match the protected baseline; NKN is protected by its
-  completed direct-only canary evidence.
+- Current catalog: 16 providers. Fifteen provider runtimes are `PROTECTED_DONE`
+  and EarnApp is separately `COMPLIANCE_BLOCKED` / `RUNTIME_DISABLED` for new
+  hosted nodes; its Account Pool and collector remain usable. The provider YAML
+  files match the protected baseline, and NKN is protected by its completed
+  direct-only canary evidence.
 - Grass references remaining in source are limited to the explicit retired
   provider boundary, legacy secret masking compatibility, tests and historical
   research/changelog records.

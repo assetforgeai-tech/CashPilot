@@ -522,7 +522,7 @@ def test_earnapp_never_leases_a_non_residential_proxy(tmp_path):
     asyncio.run(run())
 
 
-def test_main_stale_worker_job_runs_earnapp_recovery_with_fifteen_minute_threshold():
+def test_main_stale_worker_job_does_not_mutate_disabled_earnapp_runtimes():
     async def run():
         with (
             patch.object(database, "list_workers", AsyncMock(return_value=[])),
@@ -532,7 +532,7 @@ def test_main_stale_worker_job_runs_earnapp_recovery_with_fifteen_minute_thresho
             ) as sweep,
         ):
             await main._check_stale_workers()
-        sweep.assert_awaited_once_with(stale_after_seconds=900)
+        sweep.assert_not_awaited()
 
     asyncio.run(run())
 

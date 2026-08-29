@@ -61,16 +61,16 @@ Provider credentials are grouped by purpose:
 - **Dashboard / session**: used for dashboard/API/session access and should not be echoed back to the browser.
 - **Credential health**: shows freshness/status only; raw secret values remain write-only.
 
-Auto deploy is off by default. When enabled, the server waits for three healthy worker heartbeats, then deploys NKN, generic catalog providers and the EarnApp-specific lane sequentially with the configured per-provider delay. Keep this global switch operator-disabled until every provider-specific release and live gate intended for the target fleet has passed.
+Auto deploy is off by default. When enabled, the server waits for three healthy worker heartbeats, then deploys NKN and generic catalog providers sequentially with the configured per-provider delay. EarnApp hosted runtime is `RUNTIME_DISABLED`, so that lane is marked skipped without worker, proxy or lease calls. Keep this global switch operator-disabled until every provider-specific release and live gate intended for the target fleet has passed.
 
-EarnApp Ubuntu LXD limits are database-backed Settings values:
+EarnApp Ubuntu LXD limits are retained as historical database-backed Settings values. They do not re-enable deployment while the provider policy is `RUNTIME_DISABLED`:
 
 | Setting | Default | Accepted range | Purpose |
 |---------|---------|----------------|---------|
 | `earnapp_lxd_cpu` | `1` | `1`-`64` | CPU cores visible to each Ubuntu EarnApp LXD guest. |
 | `earnapp_lxd_memory_mib` | `1024` | `128`-`65536` | Memory limit in MiB for each Ubuntu EarnApp LXD guest. |
 
-The server validates these values before saving them and includes them only in the EarnApp Ubuntu deployment contract. MacOS/iOS identity and runtime contracts do not use the LXD limits.
+The server still validates these values for backward compatibility with existing state, but all new EarnApp VPS deployment paths fail closed before using them. MacOS/iOS identity and runtime contracts do not use the LXD limits.
 
 Proxy Pool leases are currently worker-level. The server is the only pool and lease authority: it probes the pool, sends one exact candidate to the worker, and keeps the old database assignment until the worker has probed that candidate from the VPS, staged it in every named sing-box sidecar, restarted only those sidecars, and returned a redacted ACK with the binding token and observed exit IP. The server then CAS-commits the assignment and affected provider-instance rows in one transaction. Proxy assignment transactions are serialized on the server; a stale assignment generation, a candidate claimed by another worker, or mixed per-instance proxy rows loses the CAS/fails closed and the worker restores the previous sidecar configuration.
 
@@ -97,7 +97,7 @@ MYST Wallet is a separate asset inventory. Wallet lease/reclaim follows the norm
 | `CASHPILOT_PIDS_LIMIT` | unset | `pids` limit applied to managed containers. | — |
 | `CASHPILOT_DATA_DIR` | `/data` | Where `.worker_id` and `.worker_key` live. | — |
 | `CASHPILOT_NKN_AGENT_SOCKET` | `/run/cashpilot-nkn-agent/agent.sock` | Unix socket for the restricted host helper that manages only NKN LXD instances. Standard Compose mounts its parent directory; this is not the raw LXD socket. | — |
-| `CASHPILOT_EARNAPP_AGENT_SOCKET` | `/run/cashpilot-earnapp-agent/agent.sock` | Unix socket for the restricted host helper that manages only EarnApp Ubuntu LXD instances. Standard Compose mounts its parent directory; this is not the raw LXD socket. | — |
+| `CASHPILOT_EARNAPP_AGENT_SOCKET` | `/run/cashpilot-earnapp-agent/agent.sock` | Historical/cleanup-only Unix socket for existing EarnApp Ubuntu LXD state. New EarnApp VPS deployment is disabled; this is not the raw LXD socket. | — |
 
 !!! danger "`CASHPILOT_PORT` does not change the port the worker listens on"
 

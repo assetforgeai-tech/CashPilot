@@ -43,8 +43,8 @@
       <h3 class="settings-section-title" id="earnapp-account-title">EarnApp Account Pool</h3>
       <p class="settings-section-desc">
         One Chrome profile maps to one EarnApp account. Credentials are encrypted at rest and never shown again;
-        collectors use a proxy already owned by that account. Worker recovery keeps the original route in a
-        <strong>1-hour recovery hold</strong> before it can return to the pool.
+        collectors use a proxy already owned by that account. <strong>Runtime deployment disabled:</strong>
+        existing hosted nodes are inspection-only; CashPilot does not recreate, rotate, recover or remove them.
       </p>
     </div>
     <button class="btn btn-ghost btn-sm" data-action="loadEarnAppAccounts">Refresh</button>
@@ -62,15 +62,14 @@
   <div class="earnapp-runtime-settings">
     <div>
       <h4>Ubuntu LXD runtime</h4>
-      <p>These limits are authoritative only for future Ubuntu EarnApp LXD nodes; saving does not resize or restart existing nodes.</p>
+      <p>Historical values retained for inspection. They do not re-enable Ubuntu LXD deployment.</p>
     </div>
     <label class="form-label" for="earnapp-lxd-cpu">CPU cores</label>
     <input class="form-input settings-config-input" type="number" min="1" max="64" step="1"
-           id="earnapp-lxd-cpu" data-config="earnapp_lxd_cpu" value="1">
+           id="earnapp-lxd-cpu" data-config="earnapp_lxd_cpu" value="1" disabled>
     <label class="form-label" for="earnapp-lxd-memory">Memory (MiB)</label>
     <input class="form-input settings-config-input" type="number" min="128" max="65536" step="128"
-           id="earnapp-lxd-memory" data-config="earnapp_lxd_memory_mib" value="1024">
-    <button class="btn btn-ghost" data-action="saveEnvSettings">Save EarnApp runtime</button>
+           id="earnapp-lxd-memory" data-config="earnapp_lxd_memory_mib" value="1024" disabled>
   </div>
 
   <div class="earnapp-account-grid">
@@ -124,8 +123,8 @@
   <div class="earnapp-recovery-panel">
     <div class="earnapp-panel-title">
       <div>
-        <h4>Logical node recovery</h4>
-        <p>A replacement worker needs a one-time ticket. Generation checks prevent the old and new workers running the same device.</p>
+        <h4>Existing node inspection</h4>
+        <p>Existing hosted nodes are inspection-only. Recovery and replacement deployment are disabled by runtime policy.</p>
       </div>
     </div>
     <div class="earnapp-table-scroll">
