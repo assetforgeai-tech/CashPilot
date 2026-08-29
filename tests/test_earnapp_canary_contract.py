@@ -444,9 +444,9 @@ def test_ios_registration_fails_closed_unless_sidecar_egress_matches_the_lease()
     wrapper = build_earnapp_canary_image.render_ios_registration_wrapper()
 
     assert 'EXPECTED_EGRESS_IP="${EARNAPP_EXPECTED_EGRESS_IP:-}"' in wrapper
-    assert "https://api.ipify.org" in wrapper
+    assert "format=json" in wrapper
     assert '[[ "$OBSERVED_EGRESS_IP" == "$EXPECTED_EGRESS_IP" ]]' in wrapper
-    assert wrapper.index("https://api.ipify.org") < wrapper.index("install_device")
+    assert wrapper.index("format=json") < wrapper.index("install_device")
 
 
 def test_ios_generated_entrypoint_runs_registration_after_profile_boot_before_runtime():
