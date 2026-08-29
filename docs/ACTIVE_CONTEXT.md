@@ -2,6 +2,49 @@
 
 Updated: 2026-08-29 (EarnApp runtime compliance gate; collector token refreshed)
 
+## v1.14.1 compliance rollout closeout (2026-08-29)
+
+- PR #55 merged as `21b4f90765cb98cfc97c753ea6e9f2ab6fc3e599` and
+  Auto Release run `33241201751` published `v1.14.1`. Post-merge Catalog
+  Check, CodeQL, Documentation, Lint, Tests and Auto Release all completed
+  successfully. The published UI and worker digests are respectively
+  `sha256:f8291ff7ecae02981edbdfd987ad3a45e3386efa9a843004148ad7773b38b552`
+  and
+  `sha256:09550bc1098eccd8dbef04b1b0d7e665196e460ef25414f25d4d856e078140f0`.
+- The server UI was recreated alone and is healthy on `v1.14.1`, restart count
+  `0`, with the existing `cashpilot_cashpilot_data:/data` and
+  `cashpilot_cashpilot_fleet:/fleet` volumes unchanged. SQLite remains schema
+  `21` with `integrity=ok` and zero foreign-key violations. The live runtime
+  matrix returns `deployment_allowed=false` and
+  `deployment_policy=vps_runtime_prohibited`; both generic deployment and
+  existing-runtime mutation checks block EarnApp instances.
+- Collection remained available through the compliance gate. The active
+  account's fresh redacted snapshot reports balance/total `2.511`, online
+  `3`, offline `1`; the legacy account remains `DISABLED`. No credential was
+  rendered during verification.
+- Only `cashpilot-worker` on `test-sing` was recreated, with `--no-deps`, from
+  the pinned worker digest above. It is healthy on `v1.14.1`, restart count
+  `0`, and retains the existing `/data`, public-IP-slot, NKN-agent,
+  EarnApp-agent and Docker-socket mounts. The persisted worker ID and signing
+  key hashes, plus the public-IP-slot hash, are unchanged.
+- Server worker row `43406` remains online with confirmed enrollment and a
+  fresh `v1.14.1` heartbeat. The NKN LXD instance remains `RUNNING`; its inner
+  official NKN container ID, one-CPU/one-GiB limits, wallet `#1`, lease client,
+  assignment version `3`, node identity and runtime evidence are unchanged.
+  Both NKN and EarnApp host agents remain enabled and active.
+- All nine existing EarnApp containers and sidecars retained their exact IDs,
+  images, state, restart counts and mounts. The three active leases remain
+  bound to the same logical nodes and proxies: Mac node 1 to `#12706`, Mac
+  recovery node 2 to `#12708`, and iOS node 3 to `#12724`. No EarnApp node,
+  sidecar, volume, identity, proxy or account binding was deployed, stopped,
+  restarted, recreated, rotated, released, recovered, unlinked or deleted.
+- Protected operational backups are
+  `/opt/cashpilot/backups/v1.14.1-ui-predeploy-20260829T075511Z` on the server
+  and
+  `/opt/cashpilot-worker/backups/v1.14.1-worker-predeploy-20260829T081122Z`
+  on `test-sing`. They contain compose/inspect evidence and data snapshots;
+  credentials remain protected and were not added to Git.
+
 ## Current EarnApp status (authoritative)
 
 - **Status:** `COMPLIANCE_BLOCKED` / `RUNTIME_DISABLED` for all new VPS
@@ -11,8 +54,8 @@ Updated: 2026-08-29 (EarnApp runtime compliance gate; collector token refreshed)
   account token; the server stores only encrypted credentials and exposes only
   expiry/status metadata. A token refresh restores collection only and does not
   authorize a new hosted node.
-- Fresh collection-only verification after the refresh returned `status=ok`,
-  balance/total `2.505`, online/offline `3/1`, and a healthy existing account
+- Fresh collection-only verification after the refresh and rollout returned
+  `status=ok`, balance/total `2.511`, online/offline `3/1`, and a healthy existing account
   route on proxy `#12706`. The token expiry remains `unknown` because the
   refreshed credential did not expose parseable expiry metadata. No runtime or
   lease mutation was performed by this check.
