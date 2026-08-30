@@ -395,8 +395,16 @@ class _CurrentShapeClient:
         raise AssertionError(url)
 
     async def post(self, url, **kwargs):
-        assert url.endswith("/device_statuses")
-        return _Response(200, {"device-a": [1787700000, 60]})
+        if url.endswith("/link_device"):
+            assert kwargs["json"] == {
+                "uuid": "device-a",
+                "platform": "macos",
+                "_csrf": "rotated-xsrf",
+            }
+            return _Response(200, {"error": "This device was already linked"})
+        if url.endswith("/device_statuses"):
+            return _Response(200, {"device-a": [1787700000, 60]})
+        raise AssertionError(url)
 
     async def aclose(self):
         self.is_closed = True
@@ -794,6 +802,28 @@ class _LinkErrorClient(_LinkClient):
         return await super().post(url, **kwargs)
 
 
+class _AlreadyPresentLinkClient(_LinkClient):
+    def __init__(self, calls: list[tuple[str, str]], **kwargs):
+        super().__init__(calls, **kwargs)
+        self.linked = True
+
+    async def post(self, url, **kwargs):
+        if url.endswith("/link_device"):
+            self.calls.append(("POST", url))
+            self.link_headers = dict(kwargs["headers"])
+            self.link_payload = dict(kwargs["json"])
+            return _Response(200, {"error": "This device was already linked"})
+        return await super().post(url, **kwargs)
+
+
+class _AlreadyLinkedButMissingClient(_AlreadyPresentLinkClient):
+    async def post(self, url, **kwargs):
+        response = await super().post(url, **kwargs)
+        if url.endswith("/link_device"):
+            self.linked = False
+        return response
+
+
 def test_link_and_verify_device_uses_account_proxy_and_requires_dashboard_online_evidence():
     calls: list[tuple[str, str]] = []
     clients: list[_LinkClient] = []
@@ -865,6 +895,108 @@ def test_link_and_verify_device_uses_account_proxy_and_requires_dashboard_online
     }
     assert "refresh-secret" not in json.dumps(result)
     assert "rotated-xsrf" not in json.dumps(result)
+
+
+def test_link_and_verify_device_links_an_install_registered_device_before_accepting_already_linked():
+    calls: list[tuple[str, str]] = []
+    clients: list[_AlreadyPresentLinkClient] = []
+
+    def factory(**kwargs):
+        client = _AlreadyPresentLinkClient(calls, **kwargs)
+        clients.append(client)
+        return client
+
+    credentials = {
+        "cookies": {
+            "oauth-refresh-token": "refresh-secret",
+            "xsrf-token": "old-xsrf-secret",
+        }
+    }
+    proxy = {"protocol": "socks5", "host": "proxy.example", "port": 1080}
+    with patch("app.collectors.earnapp.httpx.AsyncClient", side_effect=factory):
+        result = asyncio.run(
+            EarnAppAccountCollector(credentials, proxy).link_and_verify_device(
+                "sdk-mac-test",
+                platform="ubuntu",
+            )
+        )
+
+    assert clients[0].link_payload == {
+        "uuid": "sdk-mac-test",
+        "platform": "linux",
+        "_csrf": "rotated-xsrf",
+    }
+    assert calls == [
+        ("GET", "https://earnapp.com/dashboard/api/sec/rotate_xsrf"),
+        ("GET", "https://earnapp.com/dashboard/api/user_data"),
+        ("GET", "https://earnapp.com/dashboard/api/devices"),
+        ("POST", "https://earnapp.com/dashboard/api/link_device"),
+        ("GET", "https://earnapp.com/dashboard/api/devices"),
+        ("POST", "https://earnapp.com/dashboard/api/device_statuses"),
+        ("GET", "https://earnapp.com/dashboard/api/usage"),
+    ]
+    assert {
+        key: result[key]
+        for key in (
+            "status",
+            "device_id",
+            "authenticated",
+            "link_attempted",
+            "device_present",
+            "online",
+            "banned",
+        )
+    } == {
+        "status": "online",
+        "device_id": "sdk-mac-test",
+        "authenticated": True,
+        "link_attempted": True,
+        "device_present": True,
+        "online": True,
+        "banned": False,
+    }
+    assert "refresh-secret" not in json.dumps(result)
+    assert "rotated-xsrf" not in json.dumps(result)
+    assert "already linked" not in json.dumps(result).lower()
+
+
+def test_link_and_verify_device_rejects_already_linked_when_authenticated_refetch_loses_uuid():
+    calls: list[tuple[str, str]] = []
+
+    def factory(**kwargs):
+        return _AlreadyLinkedButMissingClient(calls, **kwargs)
+
+    credentials = {
+        "cookies": {
+            "oauth-refresh-token": "refresh-secret",
+            "xsrf-token": "old-xsrf-secret",
+        }
+    }
+    proxy = {"protocol": "socks5", "host": "proxy.example", "port": 1080}
+    with patch("app.collectors.earnapp.httpx.AsyncClient", side_effect=factory):
+        result = asyncio.run(EarnAppAccountCollector(credentials, proxy).link_and_verify_device("sdk-mac-test"))
+
+    assert calls == [
+        ("GET", "https://earnapp.com/dashboard/api/sec/rotate_xsrf"),
+        ("GET", "https://earnapp.com/dashboard/api/user_data"),
+        ("GET", "https://earnapp.com/dashboard/api/devices"),
+        ("POST", "https://earnapp.com/dashboard/api/link_device"),
+        ("GET", "https://earnapp.com/dashboard/api/devices"),
+    ]
+    assert result == {
+        "status": "error",
+        "error_kind": "remote",
+        "error": "EarnApp rejected device link",
+        "device_id": "sdk-mac-test",
+        "authenticated": True,
+        "link_attempted": True,
+        "device_present": False,
+        "online": False,
+        "banned": False,
+    }
+    assert "refresh-secret" not in json.dumps(result)
+    assert "rotated-xsrf" not in json.dumps(result)
+    assert "already linked" not in json.dumps(result).lower()
 
 
 def test_link_and_verify_device_maps_internal_ubuntu_platform_to_earnapp_linux_wire_contract():
