@@ -1085,7 +1085,7 @@ async def test_verify_canary_uses_the_bound_account_proxy_and_returns_only_sanit
 
 
 @pytest.mark.asyncio
-async def test_verify_canary_stops_after_terminal_remote_error(monkeypatch):
+async def test_verify_canary_stops_remote_link_error_for_macos(monkeypatch):
     collector = AsyncMock(
         return_value={
             "status": "error",
@@ -1133,6 +1133,213 @@ async def test_verify_canary_stops_after_terminal_remote_error(monkeypatch):
     assert result["status"] == "error"
     assert result["error_kind"] == "remote"
     collector.assert_awaited_once_with("sdk-mac-test", platform="macos")
+
+
+@pytest.mark.asyncio
+async def test_verify_canary_retries_remote_link_error_until_attempt_budget_for_ubuntu(monkeypatch):
+    collector = AsyncMock(
+        return_value={
+            "status": "error",
+            "error_kind": "remote",
+            "error": "device registration rejected",
+        }
+    )
+    monkeypatch.setattr(
+        database,
+        "get_earnapp_logical_node",
+        AsyncMock(
+            return_value={
+                "logical_node_id": "earnapp-ubuntu-canary-1",
+                "account_id": 7,
+                "device_id": "sdk-node-" + "a" * 32,
+                "platform": "ubuntu",
+                "current_proxy_id": 12,
+                "state": "ACTIVE",
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        database,
+        "get_earnapp_account_credentials",
+        AsyncMock(return_value={"id": 7, "state": "ACTIVE", "credentials": {}}),
+    )
+    monkeypatch.setattr(
+        database,
+        "get_earnapp_account_node_routes",
+        AsyncMock(
+            return_value=[
+                {
+                    "logical_node_id": "earnapp-ubuntu-canary-1",
+                    "proxy_id": 12,
+                    "protocol": "socks5",
+                    "host": "proxy.example",
+                    "port": 1080,
+                }
+            ]
+        ),
+    )
+    with patch("app.earnapp_canary.EarnAppAccountCollector") as collector_type:
+        collector_type.return_value.link_and_verify_device = collector
+        result = await earnapp_canary.verify_canary("earnapp-ubuntu-canary-1", attempts=3, interval_seconds=0)
+
+    assert result["status"] == "error"
+    assert result["error_kind"] == "remote"
+    assert collector.await_count == 3
+    assert all(
+        call == (("sdk-node-" + "a" * 32,), {"platform": "ubuntu"})
+        for call in collector.await_args_list
+    )
+
+
+@pytest.mark.asyncio
+async def test_verify_canary_retries_remote_link_error_until_exact_device_is_online(monkeypatch):
+    collector = AsyncMock(
+        side_effect=[
+            {
+                "status": "error",
+                "error_kind": "remote",
+                "error": "device registration is still pending",
+            },
+            {
+                "status": "online",
+                "device_id": "sdk-node-" + "a" * 32,
+                "authenticated": True,
+                "link_attempted": True,
+                "device_present": True,
+                "online": True,
+                "banned": False,
+                "billing": "bandwidth",
+                "bandwidth": 100,
+                "total_bandwidth": 100,
+                "earned_total": 0,
+            },
+            {
+                "status": "online",
+                "device_id": "sdk-node-" + "a" * 32,
+                "authenticated": True,
+                "link_attempted": True,
+                "device_present": True,
+                "online": True,
+                "banned": False,
+                "billing": "bandwidth",
+                "bandwidth": 140,
+                "total_bandwidth": 140,
+                "earned_total": 0,
+            },
+        ]
+    )
+    monkeypatch.setattr(
+        database,
+        "get_earnapp_logical_node",
+        AsyncMock(
+            return_value={
+                "logical_node_id": "earnapp-ubuntu-canary-1",
+                "account_id": 7,
+                "device_id": "sdk-node-" + "a" * 32,
+                "platform": "ubuntu",
+                "current_proxy_id": 12,
+                "state": "ACTIVE",
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        database,
+        "get_earnapp_account_credentials",
+        AsyncMock(return_value={"id": 7, "state": "ACTIVE", "credentials": {}}),
+    )
+    monkeypatch.setattr(
+        database,
+        "get_earnapp_account_node_routes",
+        AsyncMock(
+            return_value=[
+                {
+                    "logical_node_id": "earnapp-ubuntu-canary-1",
+                    "proxy_id": 12,
+                    "protocol": "socks5",
+                    "host": "proxy.example",
+                    "port": 1080,
+                }
+            ]
+        ),
+    )
+    with patch("app.earnapp_canary.EarnAppAccountCollector") as collector_type:
+        collector_type.return_value.link_and_verify_device = collector
+        result = await earnapp_canary.verify_canary(
+            "earnapp-ubuntu-canary-1", attempts=3, interval_seconds=0
+        )
+
+    assert result["status"] == "workload_verified"
+    assert result["workload_state"] == "workload_verified"
+    assert result["device_id"] == "sdk-node-" + "a" * 32
+    assert result["workload_delta"]["bandwidth"] == 40.0
+    assert collector.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_verify_canary_rejects_online_evidence_for_stale_device_uuid(monkeypatch):
+    stale_device_id = "sdk-node-" + "b" * 32
+    expected_device_id = "sdk-node-" + "a" * 32
+    collector = AsyncMock(
+        return_value={
+            "status": "online",
+            "device_id": stale_device_id,
+            "authenticated": True,
+            "link_attempted": True,
+            "device_present": True,
+            "online": True,
+            "banned": False,
+            "billing": "bandwidth",
+            "bandwidth": 999,
+            "total_bandwidth": 999,
+            "earned_total": 0,
+        }
+    )
+    monkeypatch.setattr(
+        database,
+        "get_earnapp_logical_node",
+        AsyncMock(
+            return_value={
+                "logical_node_id": "earnapp-ubuntu-canary-stale",
+                "account_id": 7,
+                "device_id": expected_device_id,
+                "platform": "ubuntu",
+                "current_proxy_id": 12,
+                "state": "ACTIVE",
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        database,
+        "get_earnapp_account_credentials",
+        AsyncMock(return_value={"id": 7, "state": "ACTIVE", "credentials": {}}),
+    )
+    monkeypatch.setattr(
+        database,
+        "get_earnapp_account_node_routes",
+        AsyncMock(
+            return_value=[
+                {
+                    "logical_node_id": "earnapp-ubuntu-canary-stale",
+                    "proxy_id": 12,
+                    "protocol": "socks5",
+                    "host": "proxy.example",
+                    "port": 1080,
+                }
+            ]
+        ),
+    )
+    with patch("app.earnapp_canary.EarnAppAccountCollector") as collector_type:
+        collector_type.return_value.link_and_verify_device = collector
+        result = await earnapp_canary.verify_canary(
+            "earnapp-ubuntu-canary-stale", attempts=2, interval_seconds=0
+        )
+
+    assert result["status"] == "error"
+    assert result["error_kind"] == "identity"
+    assert result["device_id"] == expected_device_id
+    assert result["observed_device_id"] == stale_device_id
+    assert result["online"] is False
+    assert collector.await_count == 1
 
 
 @pytest.mark.asyncio

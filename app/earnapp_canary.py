@@ -604,6 +604,7 @@ async def verify_canary(
     last: dict[str, Any] = {}
     baseline: dict[str, float] | None = None
     baseline_billing = ""
+    expected_device_id = str(node.get("device_id") or "").strip()
     with contextlib.suppress(Exception):
         persisted_spec = await database.get_provider_instance_spec(node_id)
         persisted = persisted_spec.get("earnapp_device_verification") if isinstance(persisted_spec, Mapping) else None
@@ -617,7 +618,22 @@ async def verify_canary(
             baseline = {key: max(0.0, float(persisted[key])) for key in metric_names if persisted.get(key) is not None}
             baseline_billing = persisted_billing
     for attempt in range(1, remaining + 1):
-        last = await collector.link_and_verify_device(str(node.get("device_id") or ""), platform=platform)
+        last = await collector.link_and_verify_device(expected_device_id, platform=platform)
+        observed_device_id = str(last.get("device_id") or "").strip()
+        if observed_device_id and observed_device_id != expected_device_id:
+            # A dashboard row from an older canary must never satisfy this node.
+            last = {
+                "status": "error",
+                "error_kind": "identity",
+                "error": "EarnApp evidence belongs to a different device",
+                "device_id": expected_device_id,
+                "observed_device_id": observed_device_id,
+                "authenticated": last.get("authenticated") is True,
+                "link_attempted": last.get("link_attempted") is True,
+                "device_present": False,
+                "online": False,
+                "banned": False,
+            }
         if last.get("online") is True and last.get("device_present") is True and last.get("banned") is not True:
             billing = str(last.get("billing") or "").strip().lower()
             if billing in _UPTIME_BILLING or billing in _BYTE_BILLING:
@@ -667,7 +683,10 @@ async def verify_canary(
                 "workload_state": "online_pending_usage",
                 "workload_reason": "awaiting_metric_delta",
             }
-        if last.get("error_kind") in {"auth", "shape", "remote"} or last.get("banned") is True or attempt >= remaining:
+        terminal_error = last.get("error_kind") in {"auth", "shape", "identity"}
+        if platform != "ubuntu" and last.get("error_kind") == "remote":
+            terminal_error = True
+        if terminal_error or last.get("banned") is True or attempt >= remaining:
             break
         await asyncio.sleep(max(0, float(interval_seconds)))
     return earnapp_runtime.redacted_evidence(last)
