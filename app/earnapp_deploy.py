@@ -173,7 +173,10 @@ async def _proxy_for_id(proxy_id: int) -> dict[str, Any]:
 
 
 async def prepare_node(
-    plan: EarnAppNodePlan, *, vn_platform_choice: PlatformChoice | None = None
+    plan: EarnAppNodePlan,
+    *,
+    vn_platform_choice: PlatformChoice | None = None,
+    required_platform: str | None = None,
 ) -> PreparedEarnAppNode:
     """Bind an account, exclusive proxy, immutable platform, and identity."""
     node = await database.get_earnapp_logical_node(plan.logical_node_id)
@@ -185,7 +188,12 @@ async def prepare_node(
     existing_platform = str(node.get("platform") or "").strip().lower()
     if existing_platform == "unknown":
         existing_platform = ""
-    requested_country, excluded_country = _platform_country_filter(existing_platform)
+    required = str(required_platform or "").strip().lower()
+    if required and required not in earnapp_identity.SUPPORTED_PLATFORMS:
+        raise ValueError("EarnApp required platform is invalid")
+    if existing_platform and required and existing_platform != required:
+        raise RuntimeError("EarnApp logical node platform is disabled by runtime policy")
+    requested_country, excluded_country = _platform_country_filter(existing_platform or required)
 
     lease: dict[str, Any] | None = None
     active = await database.get_active_provider_proxy_lease("earnapp", plan.worker_id, plan.logical_node_id)
@@ -235,8 +243,8 @@ async def prepare_node(
     country = str(lease.get("country_code") or "").strip().upper()
     platform = (
         existing_platform
-        if existing_platform in earnapp_identity.SUPPORTED_PLATFORMS
-        else _platform_for_country(country, vn_platform_choice or (lambda: secrets.choice(("macos", "ios"))))
+        or required
+        or _platform_for_country(country, vn_platform_choice or (lambda: secrets.choice(("macos", "ios"))))
     )
     if platform in {"macos", "ios"} and country != "VN":
         raise RuntimeError("EarnApp Mac/iOS node requires a VN proxy")
@@ -346,6 +354,7 @@ async def deploy_worker_nodes_sequentially(
     lxd_settings: Mapping[str, Any] | None = None,
     vn_platform_choice: PlatformChoice | None = None,
     verify_node: VerifyNode | None = None,
+    required_platform: str | None = None,
 ) -> dict[str, list[str]]:
     """Deploy each planned node in order and require authenticated online evidence."""
     verifier = verify_node or _default_verify_node
@@ -358,6 +367,13 @@ async def deploy_worker_nodes_sequentially(
     }
     for plan in await target_worker_plans(worker_id, public_ipv4_slots):
         prepared_node: PreparedEarnAppNode | None = None
+        required = str(required_platform or "").strip().lower()
+        if required:
+            logical_node = await database.get_earnapp_logical_node(plan.logical_node_id)
+            existing_platform = str((logical_node or {}).get("platform") or "unknown").strip().lower()
+            if existing_platform not in {"", "unknown", required}:
+                outcome["skipped"].append(plan.logical_node_id)
+                continue
         existing = await database.get_provider_instance(plan.logical_node_id)
         if (
             existing
@@ -398,7 +414,11 @@ async def deploy_worker_nodes_sequentially(
                 outcome["pending"].append(plan.logical_node_id)
             continue
         try:
-            node = await prepare_node(plan, vn_platform_choice=vn_platform_choice)
+            node = await prepare_node(
+                plan,
+                vn_platform_choice=vn_platform_choice,
+                required_platform=required or None,
+            )
             prepared_node = node
             spec = _transport_spec(node, lxd_settings=lxd_settings)
             if node.platform == "ubuntu":

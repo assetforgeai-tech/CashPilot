@@ -73,11 +73,23 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def _reject_earnapp_runtime_mutation(logical_node_id: str = "earnapp") -> None:
-    """Fail closed before a disabled EarnApp runtime or its state is touched."""
+def _reject_earnapp_runtime_mutation(
+    logical_node_id: str = "earnapp",
+    *,
+    platform: str = "",
+    runtime_backend: str = "",
+) -> None:
+    """Fail closed before a disabled EarnApp platform is touched."""
     # These routes are already provider-scoped; include the canonical slug so
     # legacy logical-node IDs cannot bypass the policy by lacking a prefix.
-    policy = provider_runtime.mutation_block(logical_node_id, {"provider_slug": "earnapp"})
+    policy = provider_runtime.mutation_block(
+        logical_node_id,
+        {
+            "provider_slug": "earnapp",
+            "platform": platform,
+            "runtime_backend": runtime_backend,
+        },
+    )
     if policy:
         raise HTTPException(status_code=409, detail=policy.policy_message)
 
@@ -2481,8 +2493,8 @@ async def api_deploy_earnapp_lxd_node(
 ) -> dict[str, Any]:
     """Deploy one official Ubuntu EarnApp runtime through the restricted helper."""
     _verify_api_key(request)
-    if not earnapp_runtime.runtime_deployment_allowed():
-        raise HTTPException(status_code=409, detail=earnapp_runtime.VPS_RUNTIME_BLOCK_MESSAGE)
+    if not earnapp_runtime.runtime_deployment_allowed("ubuntu", "lxd"):
+        raise HTTPException(status_code=409, detail=provider_runtime.EARNAPP_PLATFORM_BLOCK_MESSAGE)
     try:
         result = await asyncio.to_thread(
             earnapp_lxd_runtime.deploy_node,
@@ -2523,7 +2535,7 @@ async def api_suspend_earnapp_lxd_node(
     request: Request, logical_node_id: str, spec: EarnAppNodeCasSpec
 ) -> dict[str, Any]:
     _verify_api_key(request)
-    _reject_earnapp_runtime_mutation(logical_node_id)
+    _reject_earnapp_runtime_mutation(logical_node_id, platform="ubuntu", runtime_backend="lxd")
     state = _earnapp_lxd_state(logical_node_id)
     _validate_earnapp_lxd_cas(state, spec)
     result = await asyncio.to_thread(
@@ -2543,7 +2555,7 @@ async def api_resume_earnapp_lxd_node(
     request: Request, logical_node_id: str, spec: EarnAppNodeCasSpec
 ) -> dict[str, Any]:
     _verify_api_key(request)
-    _reject_earnapp_runtime_mutation(logical_node_id)
+    _reject_earnapp_runtime_mutation(logical_node_id, platform="ubuntu", runtime_backend="lxd")
     state = _earnapp_lxd_state(logical_node_id)
     _validate_earnapp_lxd_cas(state, spec)
     result = await asyncio.to_thread(
@@ -2601,7 +2613,7 @@ async def api_remove_earnapp_lxd_node(
     request: Request, logical_node_id: str, spec: EarnAppNodeCasSpec
 ) -> dict[str, Any]:
     _verify_api_key(request)
-    _reject_earnapp_runtime_mutation(logical_node_id)
+    _reject_earnapp_runtime_mutation(logical_node_id, platform="ubuntu", runtime_backend="lxd")
     try:
         state = _earnapp_lxd_state(logical_node_id)
     except HTTPException as exc:
@@ -2633,8 +2645,7 @@ async def api_remove_earnapp_docker_node(
 ) -> dict[str, Any]:
     """Remove both Docker components before acknowledging local EarnApp cleanup."""
     _verify_api_key(request)
-    if provider_runtime.is_runtime_instance(slug):
-        raise HTTPException(status_code=409, detail="Existing EarnApp runtimes are inspection-only")
+    _reject_earnapp_runtime_mutation(slug, platform="macos", runtime_backend="docker")
     state = _earnapp_node_state(slug)
     expected = (int(state.get("generation") or 0), str(state.get("device_id") or ""))
     if expected != (spec.generation, spec.device_id):
@@ -2658,8 +2669,12 @@ async def api_apply_earnapp_node_proxy(
 ) -> dict[str, Any]:
     """Stage one candidate proxy and require egress evidence before server CAS."""
     _verify_api_key(request)
-    _reject_earnapp_runtime_mutation(logical_node_id)
     state = _earnapp_node_state(logical_node_id)
+    _reject_earnapp_runtime_mutation(
+        logical_node_id,
+        platform=str(state.get("platform") or ""),
+        runtime_backend=str(state.get("runtime_backend") or ""),
+    )
     _validate_earnapp_proxy_cas(
         state,
         generation=spec.generation,
@@ -2777,8 +2792,12 @@ async def api_finalize_earnapp_node_proxy(
 ) -> dict[str, Any]:
     """Confirm or roll back the exact proxy binding staged for one node."""
     _verify_api_key(request)
-    _reject_earnapp_runtime_mutation(logical_node_id)
     state = _earnapp_node_state(logical_node_id)
+    _reject_earnapp_runtime_mutation(
+        logical_node_id,
+        platform=str(state.get("platform") or ""),
+        runtime_backend=str(state.get("runtime_backend") or ""),
+    )
     if _earnapp_proxy_finalize_replay(state, spec):
         return {
             "ok": True,

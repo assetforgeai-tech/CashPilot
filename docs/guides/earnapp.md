@@ -1,6 +1,6 @@
 # EarnApp
 
-> **Category:** bandwidth | **Status:** Collector active; hosted runtime disabled
+> **Category:** bandwidth | **Status:** Collector active; Ubuntu x64/LXD platform restricted
 > **Website:** [https://earnapp.com](https://earnapp.com)
 
 ## Description
@@ -11,17 +11,18 @@ proxy.
 
 ## Current runtime policy (2026-08-29)
 
-EarnApp hosted-runtime deployment is currently **disabled**. EarnApp terms
-prohibit virtual machines, Docker/LXD containers and hosting services, so
-CashPilot fails closed before selecting a worker, proxy, slot or lease for a
-new VPS node. This is a compliance boundary, not a transient proxy or token
-failure.
+EarnApp runtime deployment is **platform restricted**. CashPilot permits only
+the official Linux x64 package through the dedicated Ubuntu LXD lane. The
+official installation guide says EarnApp supports x64 Linux on a 64-bit OS,
+identifies Ubuntu 20.04 as its tested distribution, and installs a service that
+starts automatically after reboot.
 
 The encrypted Account Pool, collector, token-expiry metadata, historical
-earnings and read-only inspection of existing nodes remain available. A
-refreshed account token restores collection only; it does not re-enable hosted
-runtime deployment. Existing nodes are immutable and must not be recreated,
-migrated, rotated, unlinked or deleted by this policy change.
+earnings and read-only inspection of existing Apple nodes remain available.
+MacOS/iOS emulation, the generic catalog/Docker route, raw worker Docker deploy,
+and caller-supplied Ubuntu metadata on generic routes remain blocked. This
+source policy change does not release, deploy, migrate, rotate or otherwise
+alter the existing live baseline.
 
 ## Earning Estimates
 
@@ -36,15 +37,15 @@ migrated, rotated, unlinked or deleted by this policy change.
 | Requirement | Value |
 |-------------|-------|
 | Residential IP required | Yes |
-| VPS allowed | No |
+| CashPilot runtime | Official Linux x64 in dedicated Ubuntu LXD only |
 | Devices per account | Not documented |
 | Devices per IP | 1 |
 
 ## Setup
 
-The historical platform-canary and provider-specific auto-deploy paths remain
-in source for auditability, but the current policy gate disables them. Use the
-Account Pool and collector screens for account maintenance and inspection.
+Use the Account Pool for account credentials and the dedicated EarnApp Ubuntu
+lane for runtime planning. Do not submit EarnApp through the generic provider
+deploy endpoint or the generic worker Docker endpoint.
 
 1. Sign in to [EarnApp](https://earnapp.com) in a dedicated Chrome profile.
 2. Use the CashPilot Provider Importer to import that profile's allowlisted
@@ -52,12 +53,14 @@ Account Pool and collector screens for account maintenance and inspection.
    not paste Google/Apple passwords, MFA codes, or raw cookies into Docker.
 3. Ensure the Proxy Pool has a latest `earnapp_wss` probe with verdict
    `CID_SET`/`eligible`, a non-empty egress IP, `alive` status, `residential`
-   IP type, and country `VN` for the Mac canary.
-4. Do not deploy a hosted canary. New VPS deployment is blocked by policy.
+   IP type, and a non-VN country for an Ubuntu node.
+4. Configure `earnapp_lxd_cpu` and `earnapp_lxd_memory_mib`; defaults are `1`
+   CPU and `1024 MiB`.
+5. Use only the dedicated server/worker Ubuntu LXD contract. The official
+   installer remains pinned and verified by the restricted host helper.
 
-Historical platform selection was immutable after a logical node was created:
+Current platform selection is immutable after a logical node is created:
 
-- VN residential egress selects and persists MacOS or iOS.
 - Non-VN residential egress selects Ubuntu in LXD and uses the official EarnApp
   package.
 - Settings values `earnapp_lxd_cpu` and `earnapp_lxd_memory_mib` are
@@ -65,19 +68,14 @@ Historical platform selection was immutable after a logical node was created:
 - The worker accesses Ubuntu LXD only through the restricted
   `cashpilot-earnapp-agent` socket. It is never mounted to the raw LXD socket.
 
-MacOS and iOS runtimes are separately authorized operator artifacts, not part
-of the public CashPilot UI/worker release. Before deploying a fresh MacOS/iOS
-node, build the exact external bundle with
-`scripts/build_earnapp_canary_image.py`, verify its content-addressed manifest,
-and preload the resulting image on that worker. CashPilot never pulls these
-images from a public registry; a missing or wrongly labelled image fails before
-an existing node, sidecar, volume, or lease is changed. The current pinned tags
-are:
+MacOS and iOS artifacts are retained only as historical forensic evidence. They
+are not deployment-authorized by the current source policy. Their historical
+pinned tags were:
 
 - `cashpilot/earnapp-mac-canary:asset-4a1e80cbb95d`
 - `cashpilot/earnapp-ios:asset-061a2a32d69d`
 
-Historical canary verification was successful only when the authenticated account route reports the
+Runtime closeout is successful only when the authenticated account route reports the
 same device in `devices`, `device_statuses` reports it `online`, and a positive
 workload/usage delta is observed. A running container or a local heartbeat alone
 is not sufficient evidence.
@@ -107,25 +105,26 @@ Preserve both successful nodes:
 The recovery node retained its account, generation, device ID, volume and
 machine ID while rotating `12708 -> 12724 -> 12708`. The main process rejoined
 the sidecar network namespace after each restart and retained egress, `eth0`,
-routes and DNS. Existing nodes remain protected. Older iOS Docker and
-Ubuntu-LXD canary notes are historical and are not deploy instructions under
-the current policy.
+routes and DNS. Existing Apple nodes remain protected. Older iOS Docker notes
+are historical and are not deploy instructions under the current policy. The
+Ubuntu lane is enabled in source but has not been released, deployed or
+live-closed by this gate change.
 
 ## Operational contract
 
 - EarnApp runs in `proxy` mode only; one node owns one residential egress.
 - NKN, Mysterium, and other protected provider identities are outside this
   lane and are never recreated as part of an EarnApp retry.
-- Existing runtime removal and lease release are blocked while hosted runtime
-  is disabled. CashPilot does not automatically unlink or delete the remote
-  EarnApp device.
-- The encrypted Mac identity asset and writable `/etc/earnapp` volume are
-  identity-critical. Do not delete the volume during a normal retry.
-- Auto-deploy skips the disabled EarnApp runtime without contacting a worker or
-  acquiring a proxy lease; other providers keep their existing queue behavior.
-- The historical node-scoped proxy-rotation contract remains regression-tested,
-  but automatic rotation and reconciliation are disabled for existing nodes.
-  Heartbeats may record health evidence without mutating the lease.
+- Ubuntu lifecycle, recovery, removal and proxy rotation use the dedicated LXD
+  endpoints plus generation/device CAS. Removal must complete at the worker
+  before the server releases the scoped lease and finalizes bookkeeping.
+- The Ubuntu identity and `/etc/earnapp` guest state remain identity-critical;
+  suspend, resume and proxy rotation preserve them.
+- Auto-deploy invokes the dedicated Ubuntu planner sequentially and excludes
+  EarnApp from the generic Docker catalog queue. A failed node must not block
+  later providers.
+- Stale recovery and replacement tickets apply only to Ubuntu nodes. MacOS/iOS
+  lifecycle, recovery, removal and proxy mutation remain blocked.
 
 ## Token expiry
 

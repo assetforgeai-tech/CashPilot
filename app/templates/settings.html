@@ -43,8 +43,8 @@
       <h3 class="settings-section-title" id="earnapp-account-title">EarnApp Account Pool</h3>
       <p class="settings-section-desc">
         One Chrome profile maps to one EarnApp account. Credentials are encrypted at rest and never shown again;
-        collectors use a proxy already owned by that account. <strong>Runtime deployment disabled:</strong>
-        existing hosted nodes are inspection-only; CashPilot does not recreate, rotate, recover or remove them.
+        collectors use a proxy already owned by that account. <strong>Ubuntu x64 in LXD is enabled:</strong>
+        MacOS/iOS emulation and generic Docker deployment remain disabled.
       </p>
     </div>
     <button class="btn btn-ghost btn-sm" data-action="loadEarnAppAccounts">Refresh</button>
@@ -62,14 +62,15 @@
   <div class="earnapp-runtime-settings">
     <div>
       <h4>Ubuntu LXD runtime</h4>
-      <p>Historical values retained for inspection. They do not re-enable Ubuntu LXD deployment.</p>
+      <p>Authoritative limits for new official EarnApp Linux x64 guests. Existing guests are not resized automatically.</p>
     </div>
     <label class="form-label" for="earnapp-lxd-cpu">CPU cores</label>
     <input class="form-input settings-config-input" type="number" min="1" max="64" step="1"
-           id="earnapp-lxd-cpu" data-config="earnapp_lxd_cpu" value="1" disabled>
+           id="earnapp-lxd-cpu" data-config="earnapp_lxd_cpu" value="1">
     <label class="form-label" for="earnapp-lxd-memory">Memory (MiB)</label>
     <input class="form-input settings-config-input" type="number" min="128" max="65536" step="128"
-           id="earnapp-lxd-memory" data-config="earnapp_lxd_memory_mib" value="1024" disabled>
+           id="earnapp-lxd-memory" data-config="earnapp_lxd_memory_mib" value="1024">
+    <button class="btn btn-ghost" data-action="saveEnvSettings">Save EarnApp runtime</button>
   </div>
 
   <div class="earnapp-account-grid">
@@ -123,8 +124,8 @@
   <div class="earnapp-recovery-panel">
     <div class="earnapp-panel-title">
       <div>
-        <h4>Existing node inspection</h4>
-        <p>Existing hosted nodes are inspection-only. Recovery and replacement deployment are disabled by runtime policy.</p>
+        <h4>Node recovery</h4>
+        <p>Ubuntu LXD nodes support the one-hour recovery hold and one-time replacement tickets. MacOS/iOS nodes remain inspection-only.</p>
       </div>
     </div>
     <div class="earnapp-table-scroll">

@@ -6,17 +6,19 @@ Commit nền hiện tại là `8d2b860` (merge PR #52, `origin/main`, tag
 `v1.13.4`). Worktree closeout chỉ thay đổi tài liệu sau khi product source,
 release và live gates đã được xác minh.
 
-## EarnApp current policy (2026-08-29)
+## EarnApp current source policy (2026-08-29)
 
-EarnApp is currently `COMPLIANCE_BLOCKED` / `RUNTIME_DISABLED` for new hosted
-runtime deployment. Its terms prohibit VM, Docker/LXD and hosting-service
-runtimes. The Account Pool, encrypted collector credentials, token-expiry
-metadata, historical snapshots and read-only inspection of existing devices
-remain available; a refreshed token restores collection only. Existing EarnApp
-nodes are immutable. Server and worker gates reject new deployment before
-worker resolution, slot planning, proxy leasing or runtime mutation. Older
-canary and closeout sections in this document are historical records, not
-current deployment authorization.
+EarnApp is now `platform_restricted`: the official Linux x64 package may run
+only through CashPilot's dedicated Ubuntu LXD helper. The official help article
+states Linux x64/64-bit support, identifies Ubuntu 20.04 as tested, publishes
+the Bright Data installer command, and states the service starts after reboot.
+The host helper pins that same installer and its current SHA-256 was verified.
+
+MacOS/iOS emulation, generic catalog Docker deploy and raw caller-controlled
+EarnApp deploy remain blocked. Account Pool, encrypted collector credentials,
+token metadata, historical snapshots and read-only inspection of Apple nodes
+remain available. Ubuntu nodes keep the server-authoritative account, proxy,
+identity, generation, lifecycle and recovery contracts.
 
 ## EarnApp platform canary investigation (historical, 2026-08-28)
 
@@ -32,9 +34,10 @@ This evidence does not prove Docker is the root cause. Node 1 has repeated WSS
 timeouts and proxy `502` responses; node 2 has a clean route but little
 workload, so control-plane allocation/eligibility remains an open hypothesis.
 The proposed lanes were a new iOS Docker node on a VN residential proxy and a
-new official Ubuntu LXD node on a non-VN residential proxy. The current
-compliance gate supersedes that proposal and blocks both. Existing containers,
-sidecars, volumes, identities, account bindings and leases remain immutable.
+new official Ubuntu LXD node on a non-VN residential proxy. The current source
+policy enables only the Ubuntu lane; the iOS proposal remains blocked. Existing
+containers, sidecars, volumes, identities, account bindings and leases remain
+immutable.
 
 ## EarnApp v1.13.4 recovery/rotation closeout (historical runtime baseline, 2026-08-28)
 
@@ -233,7 +236,7 @@ ghi nhận ở v1.13.2; live deployment vẫn là thao tác riêng có approval.
 | `grass` | `RETIRED` | Không còn catalog/runtime; giữ legacy rows/secrets để tương thích |
 | `mysterium` | `PROTECTED_DONE` | Direct-only; không đưa vào Proxy Pool |
 | `nkn` | `PROTECTED_DONE` | Direct-only; giữ nguyên contract và canary thành công |
-| `earnapp` | `COMPLIANCE_BLOCKED` / `RUNTIME_DISABLED` | Giữ node cũ immutable; không tạo VPS runtime mới; chỉ collection/history/inspection |
+| `earnapp` | `FOCUS_EARNAPP_UBUNTU` / `platform_restricted` | Chỉ official Linux x64 qua Ubuntu LXD; MacOS/iOS và generic Docker bị block |
 
 ## Retired Grass history
 

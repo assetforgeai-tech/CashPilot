@@ -50,6 +50,9 @@ def _request(
     payload: Mapping[str, Any] | None = None,
     timeout: float = 900,
 ) -> dict[str, Any]:
+    address_family = getattr(socket, "AF_UNIX", None)
+    if address_family is None:
+        raise RuntimeError("Unix sockets are unavailable on this worker platform")
     body = json.dumps(dict(payload or {}), separators=(",", ":")).encode()
     request = (
         f"{method} {path} HTTP/1.1\r\n"
@@ -57,7 +60,7 @@ def _request(
         "Content-Type: application/json\r\n"
         f"Content-Length: {len(body)}\r\n\r\n"
     ).encode("ascii") + body
-    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+    with socket.socket(address_family, socket.SOCK_STREAM) as client:
         client.settimeout(float(timeout))
         client.connect(SOCKET_PATH)
         client.sendall(request)

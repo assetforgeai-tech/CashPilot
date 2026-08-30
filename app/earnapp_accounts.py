@@ -36,10 +36,18 @@ async def _cleanup_account_runtimes(account_id: int, runtime_cleanup: RuntimeCle
     bindings = await database.list_earnapp_runtime_bindings(int(account_id))
     if not bindings:
         return []
-    if provider_runtime.mutation_block("earnapp"):
-        raise AccountDeletionDenied(
-            "EarnApp account has an inspection-only runtime binding while hosted runtime is disabled"
-        )
+    for binding in bindings:
+        if provider_runtime.mutation_block(
+            str(binding.get("logical_node_id") or "earnapp"),
+            {
+                "provider_slug": "earnapp",
+                "platform": binding.get("platform"),
+                "runtime_backend": binding.get("runtime_backend"),
+            },
+        ):
+            platform = str(binding.get("platform") or "unknown").strip().lower()
+            label = {"macos": "MacOS", "ios": "iOS"}.get(platform, platform or "unknown")
+            raise AccountDeletionDenied(f"EarnApp {label} runtime is inspection-only and cannot be removed")
     if runtime_cleanup is None:
         raise AccountDeletionDenied("local EarnApp runtime cleanup acknowledgement is required")
 

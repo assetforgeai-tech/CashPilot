@@ -255,7 +255,7 @@ async def test_generic_earnapp_deploy_is_rejected_before_worker_call(monkeypatch
         )
 
     assert exc.value.status_code == 409
-    assert "prohibits virtual machines, containers, and hosting services" in str(exc.value.detail).lower()
+    assert "ubuntu lxd" in str(exc.value.detail).lower()
     deploy.assert_not_awaited()
 
 
@@ -1776,7 +1776,7 @@ def test_verify_canary_keeps_unknown_billing_pending_without_guessing(monkeypatc
 
 
 @pytest.mark.asyncio
-async def test_canary_deploy_route_is_owner_only_but_runtime_is_policy_blocked(monkeypatch):
+async def test_canary_deploy_route_defaults_to_authorized_ubuntu_lane(monkeypatch):
     routes = {route.path for route in main.app.routes}
     assert "/api/admin/earnapp/canary/deploy" in routes
     assert "/api/admin/earnapp/canary/{logical_node_id}/verify" in routes
@@ -1787,7 +1787,7 @@ async def test_canary_deploy_route_is_owner_only_but_runtime_is_policy_blocked(m
             "logical_node_id": "earnapp-canary-1",
             "account_id": 7,
             "worker_id": 3,
-            "device_id": "sdk-mac-test",
+            "device_id": "sdk-node-test",
             "proxy_id": 12,
             "generation": 1,
             "container_id": "container-id",
@@ -1797,30 +1797,30 @@ async def test_canary_deploy_route_is_owner_only_but_runtime_is_policy_blocked(m
         return_value={
             "status": "workload_verified",
             "workload_state": "workload_verified",
-            "device_id": "sdk-mac-test",
+            "device_id": "sdk-node-test",
             "online": True,
         }
     )
     monkeypatch.setattr(main, "_resolve_worker_id", AsyncMock(return_value=3))
-    monkeypatch.setattr(earnapp_canary, "deploy_canary", deploy)
+    monkeypatch.setattr(database, "get_config", AsyncMock(return_value={}))
+    monkeypatch.setattr(earnapp_canary, "deploy_platform_canary", deploy)
     monkeypatch.setattr(earnapp_canary, "verify_canary", verify)
     monkeypatch.setattr(main, "_persist_earnapp_canary_verification", AsyncMock(side_effect=lambda _node, value: value))
     monkeypatch.setattr(database, "record_health_event", AsyncMock())
 
-    with pytest.raises(HTTPException) as exc:
-        await main.api_deploy_earnapp_canary(
-            _request("/api/admin/earnapp/canary/deploy"),
-            main.EarnAppCanaryDeployRequest(logical_node_id="earnapp-canary-1", worker_id=3),
-            _auth={"r": "owner"},
-        )
+    result = await main.api_deploy_earnapp_canary(
+        _request("/api/admin/earnapp/canary/deploy"),
+        main.EarnAppCanaryDeployRequest(logical_node_id="earnapp-canary-1", worker_id=3),
+        _auth={"r": "owner"},
+    )
 
-    assert exc.value.status_code == 409
-    deploy.assert_not_awaited()
-    verify.assert_not_awaited()
+    assert result["deployment"]["logical_node_id"] == "earnapp-canary-1"
+    assert deploy.await_args.kwargs["platform"] == "ubuntu"
+    verify.assert_awaited_once_with("earnapp-canary-1")
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("platform", ["ios", "ubuntu"])
+@pytest.mark.parametrize("platform", ["ios"])
 async def test_owner_canary_route_blocks_platform_specific_runtime(monkeypatch, platform):
     deploy = AsyncMock(
         return_value={
@@ -1861,15 +1861,15 @@ async def test_owner_canary_route_blocks_platform_specific_runtime(monkeypatch, 
     verify.assert_not_awaited()
 
 
-def test_owner_canary_request_defaults_to_mac_and_rejects_unknown_platform():
-    assert main.EarnAppCanaryDeployRequest(logical_node_id="earnapp-mac-canary").platform == "macos"
+def test_owner_canary_request_defaults_to_ubuntu_and_rejects_unknown_platform():
+    assert main.EarnAppCanaryDeployRequest(logical_node_id="earnapp-ubuntu-canary").platform == "ubuntu"
     with pytest.raises(ValueError):
         main.EarnAppCanaryDeployRequest(logical_node_id="earnapp-invalid-canary", platform="android")
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("platform", ["macos", "ios", "ubuntu"])
-async def test_canary_deploy_route_rejects_all_new_vps_runtimes_before_worker_or_lease_calls(monkeypatch, platform):
+@pytest.mark.parametrize("platform", ["macos", "ios"])
+async def test_canary_deploy_route_rejects_apple_runtimes_before_worker_or_lease_calls(monkeypatch, platform):
     resolve = AsyncMock()
     deploy = AsyncMock()
     prepare = AsyncMock()
@@ -1890,7 +1890,7 @@ async def test_canary_deploy_route_rejects_all_new_vps_runtimes_before_worker_or
         )
 
     assert exc.value.status_code == 409
-    assert "prohibits virtual machines, containers, and hosting services" in str(exc.value.detail)
+    assert "macos/ios emulation remains disabled" in str(exc.value.detail).lower()
     resolve.assert_not_awaited()
     deploy.assert_not_awaited()
     prepare.assert_not_awaited()
@@ -2124,7 +2124,7 @@ async def test_ios_provider_instance_persist_failure_cleans_only_matching_genera
 
 
 @pytest.mark.asyncio
-async def test_canary_deploy_route_policy_block_prevents_composite_docker_cleanup(monkeypatch):
+async def test_canary_deploy_route_defaults_to_lxd_cleanup_not_composite_docker_cleanup(monkeypatch):
     deploy = AsyncMock(
         return_value={
             "status": "deployed",
@@ -2146,7 +2146,8 @@ async def test_canary_deploy_route_policy_block_prevents_composite_docker_cleanu
     )
     monkeypatch.setattr(main, "_resolve_worker_id", AsyncMock(return_value=3))
     monkeypatch.setattr(main, "_proxy_to_worker", proxy)
-    monkeypatch.setattr(earnapp_canary, "deploy_canary", deploy)
+    monkeypatch.setattr(database, "get_config", AsyncMock(return_value={}))
+    monkeypatch.setattr(earnapp_canary, "deploy_platform_canary", deploy)
     monkeypatch.setattr(main, "_persist_earnapp_canary_verification", AsyncMock(side_effect=lambda _node, value: value))
     monkeypatch.setattr(
         earnapp_canary,
@@ -2162,15 +2163,13 @@ async def test_canary_deploy_route_policy_block_prevents_composite_docker_cleanu
     )
     monkeypatch.setattr(database, "record_health_event", AsyncMock())
 
-    with pytest.raises(HTTPException) as exc:
-        await main.api_deploy_earnapp_canary(
-            _request("/api/admin/earnapp/canary/deploy"),
-            main.EarnAppCanaryDeployRequest(logical_node_id="earnapp-canary-1", worker_id=3),
-            _auth={"r": "owner"},
-        )
+    await main.api_deploy_earnapp_canary(
+        _request("/api/admin/earnapp/canary/deploy"),
+        main.EarnAppCanaryDeployRequest(logical_node_id="earnapp-canary-1", worker_id=3),
+        _auth={"r": "owner"},
+    )
 
-    assert exc.value.status_code == 409
-    deploy.assert_not_awaited()
+    deploy.assert_awaited_once()
     proxy.assert_not_awaited()
 
 
@@ -2267,9 +2266,10 @@ async def test_canary_deploy_route_refuses_mutating_the_protected_live_canary(mo
 @pytest.mark.asyncio
 async def test_canary_deploy_route_rejects_online_without_workload(monkeypatch):
     monkeypatch.setattr(main, "_resolve_worker_id", AsyncMock(return_value=3))
+    monkeypatch.setattr(database, "get_config", AsyncMock(return_value={}))
     monkeypatch.setattr(
         earnapp_canary,
-        "deploy_canary",
+        "deploy_platform_canary",
         AsyncMock(
             return_value={
                 "status": "deployed",
@@ -2295,12 +2295,16 @@ async def test_canary_deploy_route_rejects_online_without_workload(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         await main.api_deploy_earnapp_canary(
             _request("/api/admin/earnapp/canary/deploy"),
-            main.EarnAppCanaryDeployRequest(logical_node_id="earnapp-canary-online-only", worker_id=3),
+            main.EarnAppCanaryDeployRequest(
+                logical_node_id="earnapp-canary-online-only",
+                worker_id=3,
+                platform="ubuntu",
+            ),
             _auth={"r": "owner"},
         )
 
     assert exc.value.status_code == 409
-    assert "hosting services" in str(exc.value.detail).lower()
+    assert "authenticated workload is not verified" in str(exc.value.detail).lower()
 
 
 @pytest.mark.asyncio
@@ -2642,7 +2646,7 @@ async def test_raw_worker_deploy_refuses_earnapp_before_worker_or_lease_calls(mo
         )
 
     assert exc.value.status_code == 409
-    assert "prohibits virtual machines, containers, and hosting services" in str(exc.value.detail).lower()
+    assert "macos/ios emulation remains disabled" in str(exc.value.detail).lower()
     proxy.assert_not_awaited()
     wallet.assert_not_awaited()
 

@@ -1,10 +1,10 @@
 # EarnApp Identity and LXD Audit (2026-08-28)
 
-> **Current status (2026-08-29): `COMPLIANCE_BLOCKED` / `RUNTIME_DISABLED`.**
-> EarnApp hosted-runtime deployment is disabled after review of the provider
-> terms. The Account Pool and collector remain available; existing nodes are
-> immutable and all new VPS runtime paths fail closed before worker or lease
-> calls. Canary-readiness material below is historical evidence only.
+> **Current source status (2026-08-29): Ubuntu-only `platform_restricted`.**
+> The official Linux x64 package is enabled only through CashPilot's dedicated
+> Ubuntu LXD lane. MacOS/iOS emulation and all generic/raw Docker deploy paths
+> remain disabled. This is a source-policy change only; no release, deployment,
+> VPS mutation or live closeout was performed.
 
 ## Scope
 
@@ -28,9 +28,9 @@ both, with materially different current-day workload:
 The evidence therefore did not establish Docker as the cause: a clean route
 could remain online without receiving workload. At the time, the unresolved
 boundary was between EarnApp control-plane allocation/eligibility and runtime
-workload. The current compliance decision closes all new hosted-runtime tests;
-none of this evidence authorizes an LXD transport change or migration of an
-existing Mac node.
+workload. The current policy still closes all Apple-emulation tests and does not
+authorize an LXD transport change or migration of an existing Mac node. It opens
+only a fresh official Ubuntu x64/LXD node through the dedicated contract.
 
 The existing verifier also had a local measurement bug: its default window is
 ten polls at fifteen seconds, but it required a `3,600,000 ms` qualified-uptime
@@ -103,16 +103,17 @@ and does not claim that LXD would make the userspace binary a real Apple
 device. Runtime work remains limited to isolation, lifecycle and resource
 limits; anti-abuse detection bypass is out of scope.
 
-## LXD boundary (historical implementation evidence)
+## Current LXD boundary
 
 The existing restricted host helper supports official Ubuntu EarnApp in LXD.
 It validates a fresh Ubuntu identity, residential proxy, generation/device CAS
 tuple, and 1 CPU/1024 MiB defaults. There is no verified Mac/iOS LXD artifact
 or helper contract in this repository. Consequently:
 
-1. At the time of this audit, iOS and Ubuntu canaries were proposed as fresh
-   logical nodes. The current policy blocks both deployment paths.
-2. MacOS/iOS remain Docker-only; no LXD conversion or experimental Apple-LXD
+1. Ubuntu is the only enabled platform and must use the dedicated LXD route.
+   Generic catalog and worker Docker routes fail closed even when caller input
+   claims `platform=ubuntu` and `runtime_backend=lxd`.
+2. MacOS/iOS remain disabled; no LXD conversion or experimental Apple-LXD
    deploy path is part of the approved design.
 3. Existing Docker-backed Mac nodes, volumes, identities, sidecars, account
    bindings, and leases are immutable during this work.
@@ -134,9 +135,9 @@ or helper contract in this repository. Consequently:
 - Ubuntu remains the only implemented and authorized LXD runtime. Mac/iOS have
   no LXD implementation or artifact path.
 
-## Historical gates before the compliance decision
+## Runtime closeout gates
 
-These were the prior technical gates: authenticated device presence, online
-state, positive workload/usage delta, restart persistence, and isolated proxy
-rotation. They are retained for audit only; hosted-runtime closeout is no
-longer pursued while EarnApp is `COMPLIANCE_BLOCKED` / `RUNTIME_DISABLED`.
+The technical gates remain authenticated device presence, online state,
+positive workload/usage delta, restart persistence, and isolated proxy
+rotation. Opening the source-policy gate does not claim those live gates have
+passed for Ubuntu; release, deployment and canary closeout are separate work.

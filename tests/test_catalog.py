@@ -100,11 +100,13 @@ def test_catalog_is_enriched_from_provider_runtime_truth():
         assert services[slug]["runtime"]["collector_kind"] == runtime.collector_kind
 
 
-def test_catalog_exposes_earnapp_runtime_policy_as_read_only_metadata():
+def test_catalog_exposes_earnapp_as_ubuntu_only_runtime_metadata():
     service = catalog.get_service("earnapp")
     assert service is not None
-    assert service["runtime"]["deployment_allowed"] is False
-    assert service["runtime"]["deployment_policy"] == "vps_runtime_prohibited"
+    assert service["runtime"]["deployment_allowed"] is True
+    assert service["runtime"]["deployment_policy"] == "platform_restricted"
+    assert service["runtime"]["allowed_platforms"] == ["ubuntu"]
+    assert service["runtime"]["blocked_platforms"] == ["macos", "ios"]
 
 
 def test_repocket_container_env_keys():

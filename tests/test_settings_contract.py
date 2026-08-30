@@ -276,8 +276,8 @@ def test_collectors_meta_carries_runtime_contract_for_all_providers():
             by_slug = {row["slug"]: row for row in rows}
             assert len(by_slug) == 16
             assert by_slug["earnapp"]["supported_modes"] == ["proxy"]
-            assert by_slug["earnapp"]["deployment_allowed"] is False
-            assert by_slug["earnapp"]["deployment_policy"] == "vps_runtime_prohibited"
+            assert by_slug["earnapp"]["deployment_allowed"] is True
+            assert by_slug["earnapp"]["deployment_policy"] == "platform_restricted"
             assert by_slug["nkn"]["supported_modes"] == ["direct"]
             assert by_slug["nkn"]["collector_kind"] == "dashboard_only"
             assert by_slug["proxybase"]["manual_only"] is True

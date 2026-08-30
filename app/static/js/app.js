@@ -1021,6 +1021,16 @@ const CP = (() => {
     return { rows, allDeployed };
   }
 
+  function dedicatedDeploymentLane(svc) {
+    const runtime = svc.runtime || {};
+    return runtime.deployment_policy === 'platform_restricted' ? String(svc.slug || '') : '';
+  }
+
+  function dedicatedDeploymentNotice(svc) {
+    if (dedicatedDeploymentLane(svc) !== 'earnapp') return '';
+    return `<div class="manual-notice" role="status"><strong>Ubuntu x64 / LXD dedicated lane</strong><br>CashPilot provisions official Linux x64 nodes through sequential Auto Deploy; generic Docker deploy is unavailable. MacOS/iOS emulation remains disabled.</div>`;
+  }
+
   function renderServiceRow(svc, bk) {
     const isExternal = svc.container_status === 'external';
     const statusClass = isExternal ? 'external' : (svc.container_status || 'stopped').toLowerCase();
@@ -2691,6 +2701,7 @@ const CP = (() => {
     const runtime = svc.runtime || {};
     const deployment_allowed = runtime.deployment_allowed !== false && svc.deployment_allowed !== false;
     const deployment_policy_message = runtime.deployment_policy_message || runtime.policy_message || svc.deployment_policy_message || '';
+    const dedicatedLane = dedicatedDeploymentLane(svc);
     const dashboardUrl = (svc.cashout && svc.cashout.dashboard_url) || svc.website || '';
     const signupUrl = svc.referral && svc.referral.signup_url
       ? svc.referral.signup_url
@@ -2714,6 +2725,20 @@ const CP = (() => {
           ${svc.has_collector ? collectorCredentialsNotice(svc.slug) : ''}
           ${dashboardUrl ? `<a href="${escapeHtml(dashboardUrl)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Open Dashboard</a>` : ''}
         </div>
+      </div>`;
+    }
+
+    if (dedicatedLane === 'earnapp') {
+      return `
+      <div class="card" style="margin-bottom: 16px;" id="setup-${svc.slug}">
+        <div class="card-header">
+          <h3 class="section-title">${escapeHtml(svc.name)}</h3>
+          <span class="badge badge-category">${escapeHtml(capFirst(svc.category))}</span>
+        </div>
+        ${dedicatedDeploymentNotice(svc)}
+        <p style="color:var(--text-secondary); margin:12px 0;">Configure the Account Pool and Ubuntu LXD CPU/RAM in Settings. Auto Deploy creates nodes one at a time on eligible non-VN residential proxies.</p>
+        ${svc.has_collector ? collectorCredentialsNotice(svc.slug) : ''}
+        ${dashboardUrl ? `<a href="${escapeHtml(dashboardUrl)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Open Dashboard</a>` : ''}
       </div>`;
     }
 
@@ -2990,7 +3015,9 @@ const CP = (() => {
     const runtime = svc.runtime || {};
     const deployment_allowed = runtime.deployment_allowed !== false && svc.deployment_allowed !== false;
     const deployment_policy_message = runtime.deployment_policy_message || runtime.policy_message || svc.deployment_policy_message || '';
-    const deploy = !deployment_allowed
+    const deploy = dedicatedDeploymentLane(svc) === 'earnapp'
+      ? 'Ubuntu LXD lane'
+      : !deployment_allowed
       ? 'Runtime disabled'
       : svc.docker && svc.docker.image ? 'Deploy runtime' : 'No deploy';
     const collector = runtime.collector_kind === 'count_only'
@@ -3021,6 +3048,7 @@ const CP = (() => {
     const runtime = svc.runtime || {};
     const deployment_allowed = runtime.deployment_allowed !== false && svc.deployment_allowed !== false;
     const deployment_policy_message = runtime.deployment_policy_message || runtime.policy_message || svc.deployment_policy_message || '';
+    const dedicatedLane = dedicatedDeploymentLane(svc);
     const statusBadge = svc.status === 'broken'
       ? '<span class="badge badge-broken">Broken</span>'
       : !deployment_allowed
@@ -3033,6 +3061,8 @@ const CP = (() => {
     let actionBtn;
     if (isDeployed) {
       actionBtn = `<button class="btn btn-secondary btn-sm" data-action="openServiceDetail" data-a1="${svc.slug}">Manage</button>`;
+    } else if (dedicatedLane === 'earnapp') {
+      actionBtn = `<button class="btn btn-ghost btn-sm" data-action="openServiceDetail" data-a1="${svc.slug}">Inspect</button>`;
     } else if (hasDocker && deployment_allowed) {
       actionBtn = `<button class="btn btn-primary btn-sm" data-action="openServiceDetail" data-a1="${svc.slug}">Deploy</button>`;
     } else if (!deployment_allowed) {
@@ -3067,6 +3097,7 @@ const CP = (() => {
       </div>
     ${platformBadges ? `<div class="platform-badges" style="margin-top:8px;">${platformBadges}</div>` : ''}
       ${readinessBadges(svc)}
+      ${dedicatedDeploymentNotice(svc)}
       ${!deployment_allowed ? `<div class="manual-notice" role="status" style="margin-top:10px;"><strong>Runtime deployment disabled</strong><br>${escapeHtml(deployment_policy_message)}</div>` : ''}
       <div class="service-stats" style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border-color);">
         <span></span>
@@ -3130,6 +3161,7 @@ const CP = (() => {
     const runtime = svc.runtime || {};
     const deployment_allowed = runtime.deployment_allowed !== false && svc.deployment_allowed !== false;
     const deployment_policy_message = runtime.deployment_policy_message || runtime.policy_message || svc.deployment_policy_message || '';
+    const dedicatedLane = dedicatedDeploymentLane(svc);
     const dashboardUrl = (svc.cashout && svc.cashout.dashboard_url) || svc.website || '';
     const signupUrl = svc.referral && svc.referral.signup_url
       ? svc.referral.signup_url
@@ -3138,6 +3170,7 @@ const CP = (() => {
     // --- Info grid (no referral bonus) ---
     let html = `
     <p style="color: var(--text-secondary); margin-bottom: 16px;">${escapeHtml(svc.description || svc.short_description || '')}</p>
+    ${dedicatedDeploymentNotice(svc)}
     ${!deployment_allowed ? `<div class="manual-notice" role="status" style="margin-bottom:16px;"><strong>Runtime deployment disabled</strong><br>${escapeHtml(deployment_policy_message)}<br><span>Collector, historical data, and existing-node inspection remain available.</span></div>` : ''}
     <!-- Filled in by loadPayoutProgress once the modal is in the DOM. Hidden
          until it has a real answer: an empty "Payout progress" heading on a
@@ -3200,7 +3233,7 @@ const CP = (() => {
 
     // --- Deploy section (worker-aware) ---
     const hasDocker = svc.docker && svc.docker.image;
-    if (hasDocker && deployment_allowed) {
+    if (hasDocker && deployment_allowed && !dedicatedLane) {
       const envFields = envInputFields(svc, svc.docker.env, { withId: false, withHint: false });
 
       // Worker deploy targets
@@ -3525,17 +3558,22 @@ const CP = (() => {
     }
     rows.innerHTML = nodes.map(node => {
       const account = accounts.get(Number(node.account_id)) || {};
+      const platform = String(node.platform || 'unknown').toLowerCase();
+      const ubuntuRecovery = platform === 'ubuntu';
       const recovery = node.state === 'RECOVERY_HOLD'
         ? earnAppHoldCountdown(node.recovery_hold_remaining_seconds)
         : (node.state === 'RECOVERABLE' ? 'Proxy released; affinity retained' : 'Not in recovery');
+      const recoveryAction = ubuntuRecovery && ['RECOVERY_HOLD', 'RECOVERABLE'].includes(node.state)
+        ? `<button class="btn btn-ghost btn-sm" data-action="issueEarnAppReplacementTicket" data-a1="${escapeHtml(node.logical_node_id)}">Issue ticket</button>`
+        : `<small>${ubuntuRecovery ? 'Replacement ticket becomes available during recovery' : 'MacOS/iOS runtime is inspection-only'}</small>`;
       return `<tr>
-        <td><strong>${escapeHtml(node.logical_node_id)}</strong><small>${escapeHtml(node.device_id || 'Device identity pending')}</small></td>
+        <td><strong>${escapeHtml(node.logical_node_id)}</strong><small>${escapeHtml(platform)} · ${escapeHtml(node.device_id || 'Device identity pending')}</small></td>
         <td>${escapeHtml(account.account_name || `Account ${node.account_id}`)}</td>
         <td><span class="badge badge-category">${escapeHtml(node.state)}</span></td>
         <td>${node.assigned_worker_id == null ? '&mdash;' : escapeHtml(node.assigned_worker_id)}</td>
         <td>${node.current_proxy_id == null ? '&mdash;' : `#${escapeHtml(node.current_proxy_id)}`}<small>preferred #${escapeHtml(node.preferred_proxy_id || '—')}</small></td>
         <td>v${escapeHtml(node.generation)}</td>
-        <td><span>${escapeHtml(recovery)}</span><small>Recovery disabled by runtime policy</small></td>
+        <td><span>${escapeHtml(recovery)}</span>${recoveryAction}</td>
       </tr>`;
     }).join('');
   }

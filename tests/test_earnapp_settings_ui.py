@@ -33,21 +33,21 @@ def test_fleet_renders_earnapp_node_health_from_worker_provider_state():
     assert "proxy_health" in template
 
 
-def test_settings_keeps_earnapp_lxd_values_read_only_under_runtime_policy():
+def test_settings_exposes_authoritative_earnapp_lxd_values():
     template = SETTINGS.read_text(encoding="utf-8")
 
     assert 'data-config="earnapp_lxd_cpu"' in template
     assert 'data-config="earnapp_lxd_memory_mib"' in template
-    assert "Runtime deployment disabled" in template
-    assert 'id="earnapp-lxd-cpu" data-config="earnapp_lxd_cpu" value="1" disabled' in template
-    assert 'id="earnapp-lxd-memory" data-config="earnapp_lxd_memory_mib" value="1024" disabled' in template
-    assert "Save EarnApp runtime" not in template
+    assert "Ubuntu x64 in LXD is enabled" in template
+    assert 'id="earnapp-lxd-cpu" data-config="earnapp_lxd_cpu" value="1"' in template
+    assert 'id="earnapp-lxd-memory" data-config="earnapp_lxd_memory_mib" value="1024"' in template
+    assert "Save EarnApp runtime" in template
 
 
-def test_settings_marks_existing_earnapp_nodes_inspection_only():
+def test_settings_scopes_recovery_to_ubuntu_and_keeps_apple_inspection_only():
     template = SETTINGS.read_text(encoding="utf-8")
     javascript = APP_JS.read_text(encoding="utf-8")
 
-    assert "Existing hosted nodes are inspection-only" in template
-    assert "Issue ticket" not in javascript
-    assert "Recovery disabled by runtime policy" in javascript
+    assert "Ubuntu LXD nodes support" in template
+    assert "Issue ticket" in javascript
+    assert "MacOS/iOS runtime is inspection-only" in javascript

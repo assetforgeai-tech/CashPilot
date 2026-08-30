@@ -8,15 +8,18 @@ from typing import Literal
 
 Mode = Literal["direct", "proxy"]
 CollectorKind = Literal["earnings", "dashboard_only", "count_only"]
-DeploymentPolicy = Literal["enabled", "vps_runtime_prohibited"]
+DeploymentPolicy = Literal["enabled", "platform_restricted", "vps_runtime_prohibited"]
 
 # Keep the compliance decision in the provider truth matrix so the catalog,
 # API and UI all expose the same policy without inferring it from a Docker
 # image or from historical deployments.
 VPS_RUNTIME_BLOCK_REASON = "vps_runtime_prohibited"
 VPS_RUNTIME_BLOCK_MESSAGE = (
-    "EarnApp prohibits virtual machines, containers, and hosting services; "
-    "CashPilot keeps collection and historical state available but blocks new VPS runtime deployment."
+    "EarnApp generic hosted deployment is disabled. Use the dedicated official Ubuntu x64 LXD runtime."
+)
+EARNAPP_PLATFORM_BLOCK_REASON = "platform_runtime_disabled"
+EARNAPP_PLATFORM_BLOCK_MESSAGE = (
+    "EarnApp MacOS/iOS emulation remains disabled; only the dedicated official Ubuntu x64 LXD runtime is enabled."
 )
 
 
@@ -30,6 +33,8 @@ class ProviderRuntime:
     deployment_allowed: bool = True
     deployment_policy: DeploymentPolicy = "enabled"
     policy_message: str = ""
+    allowed_platforms: tuple[str, ...] = ()
+    blocked_platforms: tuple[str, ...] = ()
 
     @property
     def default_mode(self) -> str:
@@ -52,14 +57,16 @@ class ProviderRuntime:
 PROVIDERS: dict[str, ProviderRuntime] = {
     "earnfm": ProviderRuntime("earnfm", "earn.fm.py", "earn.fm.py", ("direct", "proxy"), "earnings"),
     "earnapp": ProviderRuntime(
-        "earnapp",
-        "earnapp.py",
-        "earnapp.py",
-        ("proxy",),
-        "earnings",
-        False,
-        VPS_RUNTIME_BLOCK_REASON,
-        VPS_RUNTIME_BLOCK_MESSAGE,
+        slug="earnapp",
+        setup_file="earnapp.py",
+        collector_file="earnapp.py",
+        modes=("proxy",),
+        collector_kind="earnings",
+        deployment_allowed=True,
+        deployment_policy="platform_restricted",
+        policy_message=EARNAPP_PLATFORM_BLOCK_MESSAGE,
+        allowed_platforms=("ubuntu",),
+        blocked_platforms=("macos", "ios"),
     ),
     "iproyal": ProviderRuntime("iproyal", "pawns.py", "pawns.py", ("proxy",), "earnings"),
     "mysterium": ProviderRuntime("mysterium", "MYST.py", "MYST.py", ("direct",), "earnings"),
@@ -90,15 +97,56 @@ def get(slug: str) -> ProviderRuntime | None:
     return PROVIDERS.get(slug)
 
 
+def _runtime_platform(spec: object) -> tuple[str, str]:
+    if not isinstance(spec, Mapping):
+        return "", ""
+    platform = str(spec.get("platform") or "").strip().lower()
+    backend = str(spec.get("runtime_backend") or "").strip().lower()
+    if not platform:
+        contract = spec.get("runtime_contract")
+        if isinstance(contract, Mapping):
+            platform = str(contract.get("platform") or "").strip().lower()
+    if platform == "darwin":
+        platform = "macos"
+    return platform, backend
+
+
+def platform_deployment_allowed(slug: str, platform: str, runtime_backend: str = "") -> bool:
+    """Return whether one explicit provider platform/backend is deployable."""
+    provider = get(str(slug or "").strip().lower())
+    if not provider or not provider.deployment_allowed:
+        return False
+    if provider.deployment_policy == "enabled":
+        return True
+    selected = str(platform or "").strip().lower()
+    backend = str(runtime_backend or "").strip().lower()
+    if selected == "darwin":
+        selected = "macos"
+    if provider.allowed_platforms and selected not in provider.allowed_platforms:
+        return False
+    if provider.slug == "earnapp" and selected == "ubuntu":
+        return backend == "lxd"
+    return bool(selected)
+
+
 def deployment_block(slug: str, spec: object = None) -> ProviderRuntime | None:
-    """Return the disabled runtime named by a route slug or raw deploy spec."""
+    """Block generic deploy routes for restricted provider runtimes.
+
+    Platform-restricted runtimes must use their dedicated endpoint. Otherwise
+    caller-controlled metadata could turn the generic Docker route into an
+    Ubuntu/LXD bypass without executing the LXD runtime contract.
+    """
     route_slug = str(slug or "").strip().lower()
     spec_slug = ""
-    if isinstance(spec, dict):
+    if isinstance(spec, Mapping):
         spec_slug = str(spec.get("provider_slug") or "").strip().lower()
     if is_runtime_instance(route_slug, spec_slug):
         policy = get("earnapp")
-        return policy if policy and not policy.deployment_allowed else None
+        if not policy:
+            return None
+        if policy.deployment_policy == "platform_restricted":
+            return policy
+        return None if policy.deployment_allowed else policy
     for candidate in (spec_slug, route_slug):
         provider = get(candidate)
         if provider and not provider.deployment_allowed:
@@ -119,8 +167,10 @@ def mutation_block(slug: str = "", spec: object = None) -> ProviderRuntime | Non
     if isinstance(spec, Mapping):
         spec_slug = str(spec.get("provider_slug") or "").strip().lower()
     policy = get("earnapp")
-    if policy and not policy.deployment_allowed and is_runtime_instance(route_slug, spec_slug):
-        return policy
+    if policy and is_runtime_instance(route_slug, spec_slug):
+        platform, backend = _runtime_platform(spec)
+        if not platform_deployment_allowed("earnapp", platform, backend):
+            return policy
     return None
 
 
@@ -155,6 +205,8 @@ def catalog_runtime(slug: str) -> dict[str, object]:
         "deployment_policy": provider.deployment_policy,
         "policy_message": provider.policy_message,
         "deployment_policy_message": provider.deployment_policy_message,
+        "allowed_platforms": list(provider.allowed_platforms),
+        "blocked_platforms": list(provider.blocked_platforms),
         "setup_source": provider.setup_file,
         "collector_source": provider.collector_file,
     }

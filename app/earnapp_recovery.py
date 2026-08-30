@@ -6,7 +6,7 @@ import hashlib
 import secrets
 from typing import Any
 
-from app import database
+from app import database, provider_runtime
 
 STALE_WORKER_SECONDS = 15 * 60
 RECOVERY_HOLD_SECONDS = 60 * 60
@@ -86,6 +86,7 @@ async def sweep_stale_nodes(*, stale_after_seconds: int = STALE_WORKER_SECONDS) 
     return await database.sweep_stale_earnapp_nodes(
         stale_after_seconds=stale_after_seconds,
         hold_seconds=RECOVERY_HOLD_SECONDS,
+        platforms=("ubuntu",),
     )
 
 
@@ -93,6 +94,13 @@ async def issue_replacement_ticket(logical_node_id: str, target_worker_id: int) 
     node = await database.get_earnapp_logical_node(logical_node_id)
     if not node or str(node.get("state") or "") not in {"RECOVERY_HOLD", "RECOVERABLE"}:
         raise RecoveryClaimDenied("EarnApp node is not recoverable")
+    platform = str(node.get("platform") or "").strip().lower()
+    backend = "lxd" if platform == "ubuntu" else "docker"
+    if provider_runtime.mutation_block(
+        logical_node_id,
+        {"provider_slug": "earnapp", "platform": platform, "runtime_backend": backend},
+    ):
+        raise RecoveryClaimDenied("EarnApp recovery is disabled for this platform")
     token = secrets.token_urlsafe(32)
     result = await database.create_earnapp_replacement_ticket(
         logical_node_id,
@@ -122,6 +130,13 @@ async def claim_node(
     node = await database.get_earnapp_logical_node(logical_node_id)
     if not node:
         raise RecoveryClaimDenied("EarnApp logical node not found")
+    platform = str(node.get("platform") or "").strip().lower()
+    backend = "lxd" if platform == "ubuntu" else "docker"
+    if provider_runtime.mutation_block(
+        logical_node_id,
+        {"provider_slug": "earnapp", "platform": platform, "runtime_backend": backend},
+    ):
+        raise RecoveryClaimDenied("EarnApp recovery is disabled for this platform")
     assigned_worker_id = int(node.get("assigned_worker_id") or 0)
     last_worker_id = int(node.get("last_worker_id") or assigned_worker_id or 0)
     replacing = bool(
