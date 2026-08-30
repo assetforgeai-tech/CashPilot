@@ -1185,10 +1185,7 @@ async def test_verify_canary_retries_remote_link_error_until_attempt_budget_for_
     assert result["status"] == "error"
     assert result["error_kind"] == "remote"
     assert collector.await_count == 3
-    assert all(
-        call == (("sdk-node-" + "a" * 32,), {"platform": "ubuntu"})
-        for call in collector.await_args_list
-    )
+    assert all(call == (("sdk-node-" + "a" * 32,), {"platform": "ubuntu"}) for call in collector.await_args_list)
 
 
 @pytest.mark.asyncio
@@ -1264,9 +1261,7 @@ async def test_verify_canary_retries_remote_link_error_until_exact_device_is_onl
     )
     with patch("app.earnapp_canary.EarnAppAccountCollector") as collector_type:
         collector_type.return_value.link_and_verify_device = collector
-        result = await earnapp_canary.verify_canary(
-            "earnapp-ubuntu-canary-1", attempts=3, interval_seconds=0
-        )
+        result = await earnapp_canary.verify_canary("earnapp-ubuntu-canary-1", attempts=3, interval_seconds=0)
 
     assert result["status"] == "workload_verified"
     assert result["workload_state"] == "workload_verified"
@@ -1330,9 +1325,7 @@ async def test_verify_canary_rejects_online_evidence_for_stale_device_uuid(monke
     )
     with patch("app.earnapp_canary.EarnAppAccountCollector") as collector_type:
         collector_type.return_value.link_and_verify_device = collector
-        result = await earnapp_canary.verify_canary(
-            "earnapp-ubuntu-canary-stale", attempts=2, interval_seconds=0
-        )
+        result = await earnapp_canary.verify_canary("earnapp-ubuntu-canary-stale", attempts=2, interval_seconds=0)
 
     assert result["status"] == "error"
     assert result["error_kind"] == "identity"
