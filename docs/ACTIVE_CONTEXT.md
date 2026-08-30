@@ -1,6 +1,29 @@
 # CashPilot Active Context
 
-Updated: 2026-08-29 (EarnApp runtime compliance gate; collector token refreshed)
+Updated: 2026-08-29 (EarnApp official Ubuntu x64/LXD policy gate opened in source)
+
+## Current source policy (unreleased, 2026-08-29)
+
+- The current worktree changes EarnApp from a provider-wide runtime block to
+  `deployment_policy=platform_restricted`. The only allowed runtime is the
+  official Linux x64 package inside the dedicated Ubuntu LXD lane.
+- MacOS/iOS emulation remains disabled. Generic catalog deploy, raw Docker
+  deploy and caller-supplied Ubuntu metadata on generic routes remain blocked;
+  only the dedicated server/worker Ubuntu LXD contract may deploy or mutate a
+  node.
+- Ubuntu nodes retain sequential auto-deploy, non-VN residential proxy
+  selection, account binding, one-hour recovery hold, one-time replacement
+  tickets, CAS lifecycle and proxy rotation/reconciliation. Settings
+  `earnapp_lxd_cpu` and `earnapp_lxd_memory_mib` are authoritative for new
+  guests.
+- The official EarnApp help article, updated 2026-07-30, states that Linux x64
+  on a 64-bit OS is supported, Ubuntu 20.04 is the tested distribution, the
+  Bright Data installer is authoritative, and the installed service starts on
+  reboot. The pinned installer SHA-256 in the host helper was rechecked against
+  the current official download and still matches.
+- This source-only gate change does not alter the v1.14.1 live fleet evidence
+  recorded below. No release, deploy, VPS mutation, proxy lease, account,
+  identity or existing EarnApp node was changed in this worktree.
 
 ## v1.14.1 compliance rollout closeout (2026-08-29)
 
@@ -45,7 +68,7 @@ Updated: 2026-08-29 (EarnApp runtime compliance gate; collector token refreshed)
   on `test-sing`. They contain compose/inspect evidence and data snapshots;
   credentials remain protected and were not added to Git.
 
-## Current EarnApp status (authoritative)
+## v1.14.1 live EarnApp status (historical deployed baseline)
 
 - **Status:** `COMPLIANCE_BLOCKED` / `RUNTIME_DISABLED` for all new VPS
   runtimes. EarnApp terms prohibit virtual machines, containers and hosting
@@ -66,7 +89,8 @@ Updated: 2026-08-29 (EarnApp runtime compliance gate; collector token refreshed)
   auto-deploy fail closed before worker, slot, proxy or lease calls. Collection,
   historical snapshots and existing-node inspection remain available.
 - Older sections below describe historical canary states. They are retained for
-  auditability and are not current deployment authorization.
+  auditability; the unreleased source policy at the top is the current code
+  authorization.
 
 ## EarnApp platform canary investigation (historical, 2026-08-28)
 
@@ -469,20 +493,20 @@ Updated: 2026-08-26 (EarnApp v1.11.2 legacy migration live closeout complete)
   account-scoped EarnApp collector.
 - Current catalog metadata still contains 15 runtime-capable entries for
   historical compatibility; the one manual-only entry remains explicit. NKN
-  direct slots stay outside the generic Docker queue, while every new EarnApp
-  Mac/iOS/Ubuntu lane is blocked by the current provider policy.
+  direct slots stay outside the generic Docker queue. EarnApp also stays out of
+  that queue: only its dedicated Ubuntu x64/LXD lane is enabled, while Mac/iOS
+  and generic/raw Docker paths remain blocked.
 - Fifteen provider runtimes are `PROTECTED_DONE`; EarnApp is separately
-  `COMPLIANCE_BLOCKED` / `RUNTIME_DISABLED` for new hosted nodes while its
-  Account Pool, collector and historical evidence remain available.
+  `FOCUS_EARNAPP_UBUNTU` / `platform_restricted`. Its Account Pool, collector
+  and historical evidence remain available.
 - Mysterium remains direct-only. Its wallet inventory, lease, identity,
   WireGuard/TUN and runtime contracts are not altered by this branch.
 
 ## EarnApp Proxy Pool and runtime baseline (historical runtime contract)
 
-- EarnApp retains catalog/runtime metadata and an active collector lane for
-  compatibility and historical inspection. The qualification and lease rules
-  below describe the established runtime contract, but no new runtime lease is
-  issued while the provider is `RUNTIME_DISABLED`.
+- EarnApp retains catalog/runtime metadata and an active collector lane. The
+  qualification and lease rules below apply to the dedicated Ubuntu LXD route;
+  no Mac/iOS or generic Docker runtime lease is authorized.
 - Only the latest EarnApp WSS verdict `CID_SET` is eligible. `BLACKLIST` is
   blocked, `DECLINE` is quality-rejected, and timeout/transport failures remain
   unknown. WSS ping payloads are returned as binary pong frames without UTF-8
@@ -872,11 +896,11 @@ stopped and must not be mistaken for the active node.
 `proxies-sx`, `proxybase`, `proxybase-xyz`, `proxyrack`, `repocket`, `spide`,
 `traffmonetizer`, `uprock`, `urnetwork`, `wipter`, `nkn`.
 
-EarnApp is `COMPLIANCE_BLOCKED` / `RUNTIME_DISABLED`. Its historical runtime
-baseline and existing nodes remain protected, but no lifecycle, recovery,
-rotation, account-delete cleanup or new deploy mutation is authorized. Account
-collection, token refresh, historical snapshots and read-only inspection stay
-available.
+EarnApp is `FOCUS_EARNAPP_UBUNTU` / `platform_restricted`. Only official Linux
+x64 through the dedicated Ubuntu LXD route may deploy or mutate; MacOS/iOS and
+generic/raw Docker remain blocked. The historical Apple runtime baseline and
+existing nodes remain protected. Account collection, token refresh, historical
+snapshots and read-only inspection stay available.
 
 ## Verification status
 

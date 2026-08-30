@@ -58,15 +58,27 @@ def test_auto_deploy_uses_one_lock_per_worker_and_continues_after_failure():
     asyncio.run(run())
 
 
-def test_earnapp_auto_deploy_is_disabled_without_calling_the_runtime_lane():
+def test_earnapp_auto_deploy_calls_the_dedicated_ubuntu_lane():
     async def run():
         main._NKN_AUTO_DEPLOY_DONE.add(7)
         main._EARNAPP_AUTO_DEPLOY_DONE.discard(7)
 
-        with patch.object(main, "_deploy_earnapp_nodes", AsyncMock()) as deploy:
+        with patch.object(
+            main,
+            "_deploy_earnapp_nodes",
+            AsyncMock(
+                return_value={
+                    "deployed": ["earnapp-proxy-w7-ipv4-001"],
+                    "verified": ["earnapp-proxy-w7-ipv4-001"],
+                    "skipped": [],
+                    "pending": [],
+                    "failed": [],
+                }
+            ),
+        ) as deploy:
             await main._run_auto_deploy_sequence(7, {}, [], delay_seconds=0)
 
-        deploy.assert_not_awaited()
+        deploy.assert_awaited_once_with(7, config={})
         assert 7 in main._EARNAPP_AUTO_DEPLOY_DONE
 
     asyncio.run(run())
@@ -84,7 +96,7 @@ def test_auto_deploy_one_uses_server_deploy_endpoint():
     asyncio.run(run())
 
 
-def test_auto_deploy_sequence_runs_nkn_and_catalog_providers_without_earnapp_runtime():
+def test_auto_deploy_sequence_runs_nkn_catalog_and_earnapp_ubuntu_lanes():
     async def run():
         calls: list[str] = []
         main._NKN_AUTO_DEPLOY_DONE.discard(7)
@@ -100,7 +112,19 @@ def test_auto_deploy_sequence_runs_nkn_and_catalog_providers_without_earnapp_run
         with (
             patch.object(main, "_deploy_nkn_slots", side_effect=nkn),
             patch.object(main, "_auto_deploy_one", side_effect=generic),
-            patch.object(main, "_deploy_earnapp_nodes", AsyncMock()) as earnapp,
+            patch.object(
+                main,
+                "_deploy_earnapp_nodes",
+                AsyncMock(
+                    return_value={
+                        "deployed": [],
+                        "verified": [],
+                        "skipped": ["no_capacity"],
+                        "pending": [],
+                        "failed": [],
+                    }
+                ),
+            ) as earnapp,
         ):
             await main._run_auto_deploy_sequence(
                 7,
@@ -110,7 +134,7 @@ def test_auto_deploy_sequence_runs_nkn_and_catalog_providers_without_earnapp_run
             )
 
         assert calls == ["nkn", "earnfm", "iproyal"]
-        earnapp.assert_not_awaited()
+        earnapp.assert_awaited_once()
         assert 7 in main._NKN_AUTO_DEPLOY_DONE
         assert 7 in main._EARNAPP_AUTO_DEPLOY_DONE
 

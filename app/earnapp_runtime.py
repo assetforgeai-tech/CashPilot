@@ -17,10 +17,9 @@ VPS_RUNTIME_BLOCK_REASON = provider_runtime.VPS_RUNTIME_BLOCK_REASON
 VPS_RUNTIME_BLOCK_MESSAGE = provider_runtime.VPS_RUNTIME_BLOCK_MESSAGE
 
 
-def runtime_deployment_allowed() -> bool:
-    """Return the single source-of-truth decision for new hosted runtimes."""
-    policy = provider_runtime.get("earnapp")
-    return bool(policy and policy.deployment_allowed)
+def runtime_deployment_allowed(platform: str = "", runtime_backend: str = "") -> bool:
+    """Return the source-of-truth decision for one explicit EarnApp runtime."""
+    return provider_runtime.platform_deployment_allowed("earnapp", platform, runtime_backend)
 
 
 MAC_IDENTITY_ASSET_KIND = "mac_identity_profile"

@@ -49,7 +49,7 @@ def test_generated_service_index_derives_runtime_disabled_from_provider_truth_ma
 
     disabled_slugs = sync_docs_nav.runtime_disabled_slugs()
 
-    assert disabled_slugs == frozenset({"earnapp", "earnfm"})
+    assert disabled_slugs == frozenset({"earnfm"})
 
 
 def test_generated_service_index_removes_earnapp_policy_notice_when_runtime_is_reenabled(monkeypatch):

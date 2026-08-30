@@ -4863,6 +4863,84 @@ async def rollback_earnapp_canary_binding(
             await db.close()
 
 
+async def finalize_earnapp_node_removal(
+    logical_node_id: str,
+    worker_id: int,
+    *,
+    generation: int,
+    device_id: str,
+    reason: str = "EARNAPP_NODE_REMOVED",
+) -> bool:
+    """Release one removed runtime while preserving its reusable identity and proxy affinity."""
+    node_id = str(logical_node_id or "").strip()
+    expected_device_id = str(device_id or "").strip()
+    if not node_id or int(worker_id or 0) <= 0 or int(generation or 0) <= 0 or not expected_device_id:
+        return False
+    async with _earnapp_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            node = await (
+                await db.execute(
+                    """
+                    SELECT state, assigned_worker_id, generation, device_id, current_proxy_id
+                    FROM earnapp_logical_nodes
+                    WHERE logical_node_id = ?
+                    """,
+                    (node_id,),
+                )
+            ).fetchone()
+            if not node or (
+                str(node["state"] or "") not in {"ACTIVE", "RECOVERY_HOLD"}
+                or int(node["assigned_worker_id"] or 0) != int(worker_id)
+                or int(node["generation"] or 0) != int(generation)
+                or str(node["device_id"] or "") != expected_device_id
+            ):
+                await db.rollback()
+                return False
+            proxy_id = int(node["current_proxy_id"] or 0)
+            await db.execute(
+                """
+                UPDATE provider_proxy_leases
+                SET released_at = datetime('now'), release_reason = ?
+                WHERE provider_slug = 'earnapp' AND worker_id = ? AND instance_id = ?
+                  AND released_at IS NULL
+                """,
+                (str(reason or "EARNAPP_NODE_REMOVED")[:300], int(worker_id), node_id),
+            )
+            cursor = await db.execute(
+                """
+                UPDATE earnapp_logical_nodes
+                SET state = 'PLANNED', assigned_worker_id = NULL, last_worker_id = ?,
+                    current_proxy_id = NULL,
+                    preferred_proxy_id = CASE WHEN ? > 0 THEN ? ELSE preferred_proxy_id END,
+                    proxy_health = 'unknown', observed_egress_ip = '', expected_egress_ip = '',
+                    proxy_checked_at = NULL, proxy_health_reason = '', last_heartbeat_at = NULL,
+                    recovery_started_at = NULL, recovery_hold_until = NULL, updated_at = datetime('now')
+                WHERE logical_node_id = ? AND assigned_worker_id = ? AND generation = ? AND device_id = ?
+                """,
+                (
+                    int(worker_id),
+                    proxy_id,
+                    proxy_id,
+                    node_id,
+                    int(worker_id),
+                    int(generation),
+                    expected_device_id,
+                ),
+            )
+            if int(cursor.rowcount or 0) != 1:
+                await db.rollback()
+                return False
+            await db.commit()
+            return True
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
+
+
 async def begin_earnapp_recovery_hold(logical_node_id: str, *, hold_seconds: int) -> dict[str, Any] | None:
     node_id = str(logical_node_id or "").strip()
     seconds = max(1, int(hold_seconds))
@@ -4885,9 +4963,25 @@ async def begin_earnapp_recovery_hold(logical_node_id: str, *, hold_seconds: int
         await db.close()
 
 
-async def sweep_stale_earnapp_nodes(*, stale_after_seconds: int, hold_seconds: int) -> dict[str, list[dict[str, Any]]]:
+async def sweep_stale_earnapp_nodes(
+    *,
+    stale_after_seconds: int,
+    hold_seconds: int,
+    platforms: Sequence[str] | None = None,
+) -> dict[str, list[dict[str, Any]]]:
     held: list[dict[str, Any]] = []
     released: list[dict[str, Any]] = []
+    selected_platforms = tuple(
+        platform
+        for platform in (str(value or "").strip().lower() for value in (platforms or ()))
+        if platform in {"macos", "ios", "ubuntu"}
+    )
+    platform_clause = ""
+    platform_params: tuple[str, ...] = ()
+    if selected_platforms:
+        placeholders = ", ".join("?" for _ in selected_platforms)
+        platform_clause = f" AND n.platform IN ({placeholders})"
+        platform_params = selected_platforms
     async with _earnapp_lock():
         db = await _open_transaction_connection()
         try:
@@ -4895,16 +4989,17 @@ async def sweep_stale_earnapp_nodes(*, stale_after_seconds: int, hold_seconds: i
             cutoff = f"-{max(1, int(stale_after_seconds))} seconds"
             stale = await (
                 await db.execute(
-                    """
+                    f"""
                     SELECT n.*
                     FROM earnapp_logical_nodes n
                     JOIN workers w ON w.id = n.assigned_worker_id
                     WHERE n.state = 'ACTIVE'
+                      {platform_clause}
                       AND w.last_heartbeat IS NOT NULL
                       AND w.last_heartbeat < datetime('now', ?)
                     ORDER BY n.logical_node_id
                     """,
-                    (cutoff,),
+                    (*platform_params, cutoff),
                 )
             ).fetchall()
             for row in stale:
@@ -4921,13 +5016,15 @@ async def sweep_stale_earnapp_nodes(*, stale_after_seconds: int, hold_seconds: i
 
             expired = await (
                 await db.execute(
-                    """
+                    f"""
                     SELECT * FROM earnapp_logical_nodes
                     WHERE state = 'RECOVERY_HOLD'
+                      {platform_clause.replace("n.", "")}
                       AND recovery_hold_until IS NOT NULL
                       AND recovery_hold_until <= datetime('now')
                     ORDER BY logical_node_id
-                    """
+                    """,
+                    platform_params,
                 )
             ).fetchall()
             for row in expired:

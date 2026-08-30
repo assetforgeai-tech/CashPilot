@@ -221,7 +221,7 @@ def test_list_includes_latest_collector_summary_and_recovery_countdown(tmp_path,
     assert "secretly-not-returned" not in response.text
 
 
-def test_collect_endpoint_returns_sanitized_result_and_replacement_is_policy_blocked(client):
+def test_collect_endpoint_returns_sanitized_result_and_replacement_delegates_platform_policy(client):
     issue_ticket = AsyncMock(return_value="one-time-ticket")
     with (
         patch("app.deps.auth.get_current_user", return_value=_owner()),
@@ -256,9 +256,9 @@ def test_collect_endpoint_returns_sanitized_result_and_replacement_is_policy_blo
         "offline_nodes": 0,
     }
     assert "device-a" not in collected.text
-    assert ticket.status_code == 409
-    assert "runtime" in str(ticket.json()).lower()
-    issue_ticket.assert_not_awaited()
+    assert ticket.status_code == 200
+    assert ticket.json()["replacement_ticket"] == "one-time-ticket"
+    issue_ticket.assert_awaited_once_with("earnapp-node-a", 9)
 
 
 @pytest.mark.asyncio

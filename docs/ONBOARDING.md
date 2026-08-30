@@ -6,10 +6,10 @@ CashPilot là hệ thống điều phối provider bandwidth/DePIN qua FastAPI s
 worker Docker, service catalog, resource leasing, collectors và dashboard.
 Repo dùng chủ yếu Python, YAML, Docker/Compose và GitHub Actions.
 
-**EarnApp note:** the Account Pool and collector remain supported, but hosted
-EarnApp runtime deployment is currently `COMPLIANCE_BLOCKED` /
-`RUNTIME_DISABLED`. Do not use historical Docker/LXD canary instructions to
-create a new node; existing EarnApp nodes are immutable and inspection-only.
+**EarnApp note:** the Account Pool and collector remain supported. Runtime is
+`platform_restricted`: only the official Linux x64 package in the dedicated
+Ubuntu LXD lane is enabled. MacOS/iOS emulation and generic Docker/raw deploy
+remain disabled.
 
 Tài liệu này mô tả baseline hiện hành sau quyết định loại bỏ Grass, merge proxy
 worker ACK rotation và bổ sung NKN direct runtime. Code hiện ở `main`; release
@@ -22,9 +22,9 @@ Chi tiết quyết định, tương thích dữ liệu cũ và bằng chứng n�
 - `PROTECTED_DONE`: `earnfm`, `iproyal`, `mysterium`, `packetstream`,
   `proxies-sx`, `proxybase`, `proxybase-xyz`, `proxyrack`, `repocket`,
   `spide`, `traffmonetizer`, `uprock`, `urnetwork`, `wipter`, `nkn`.
-- `COMPLIANCE_BLOCKED` / `RUNTIME_DISABLED`: EarnApp hosted runtime. Account
-  collection and historical inspection remain available; no new VPS runtime,
-  worker deploy, proxy lease or platform canary is allowed.
+- `FOCUS_EARNAPP_UBUNTU` / `platform_restricted`: official Ubuntu x64/LXD is
+  enabled through its dedicated worker helper; MacOS/iOS and generic Docker
+  remain blocked.
 - NKN được chốt direct-only sau khi canary hoàn tất `PERSIST_FINISHED`, worker
   heartbeat và Fleet đều xác nhận online; không provider nào mở để redesign.
 - Mysterium là direct-only; không suy ra proxy mode từ lịch sử cũ.
@@ -85,8 +85,8 @@ Chi tiết quyết định, tương thích dữ liệu cũ và bằng chứng n�
 - Current release: `v1.3.2`; both fork GHCR image manifests were published and
   verified, then deployed only to the approved UI/test worker components.
 - Current catalog: 16 providers. Fifteen provider runtimes are `PROTECTED_DONE`
-  and EarnApp is separately `COMPLIANCE_BLOCKED` / `RUNTIME_DISABLED` for new
-  hosted nodes; its Account Pool and collector remain usable. The provider YAML
+  and EarnApp is `platform_restricted` to official Ubuntu x64/LXD; its Account
+  Pool and collector remain usable. The provider YAML
   files match the protected baseline, and NKN is protected by its completed
   direct-only canary evidence.
 - Grass references remaining in source are limited to the explicit retired

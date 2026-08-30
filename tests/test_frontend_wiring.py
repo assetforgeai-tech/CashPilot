@@ -245,8 +245,8 @@ class TestEarnAppAccountPoolIsReachable:
         assert 'id="earnapp-account-rows"' in page
         assert 'id="earnapp-recovery-rows"' in page
         assert "Credentials are encrypted" in page
-        assert "Runtime deployment disabled" in page
-        assert "inspection-only" in page
+        assert "Ubuntu x64 in LXD is enabled" in page
+        assert "MacOS/iOS nodes remain inspection-only" in page
 
     def test_settings_loader_and_actions_are_exported(self):
         app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
@@ -258,6 +258,19 @@ class TestEarnAppAccountPoolIsReachable:
         assert "deleteEarnAppAccount" in exported
         assert "issueEarnAppReplacementTicket" in exported
         assert "loadEarnAppAccounts();" in app_js
+
+
+class TestEarnAppUbuntuDedicatedCatalogLane:
+    def test_catalog_and_setup_do_not_offer_generic_docker_deploy_for_earnapp(self):
+        app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+        catalog_card = js_function("renderCatalogCard")
+        detail = js_function("renderServiceDetail")
+        setup = js_function("renderServiceSetupForm")
+
+        for function in (catalog_card, detail, setup):
+            assert "dedicatedDeploymentLane" in function
+        assert "Ubuntu x64 / LXD dedicated lane" in app_js
+        assert "generic Docker deploy is unavailable" in app_js
         assert "/api/admin/earnapp/accounts" in app_js
         assert "DELETE ACCOUNT" in app_js
         assert "recovery_hold_remaining_seconds" in app_js

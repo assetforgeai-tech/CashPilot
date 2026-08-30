@@ -2,9 +2,8 @@
 
 # Service guides
 
-> EarnApp's catalog entry is retained for its Account Pool, collector and
-> historical inspection. Hosted Docker/LXD deployment is currently disabled;
-> see the EarnApp guide for the authoritative policy.
+> EarnApp runtime is platform-restricted: official Linux x64 uses the dedicated
+> Ubuntu LXD lane; MacOS/iOS emulation and generic Docker deploy remain disabled.
 
 Setup and configuration for every service CashPilot supports.
 
@@ -21,7 +20,7 @@ Setup and configuration for every service CashPilot supports.
 | Service | Needs | Runs as | Minimum payout | Status |
 |---|---|---|---|---|
 | [Earn.fm](earnfm.md) | Residential IP | Docker | $3 | active |
-| [EarnApp](earnapp.md) | Residential IP | Collector only | $2 | runtime disabled |
+| [EarnApp](earnapp.md) | Residential IP | Ubuntu LXD | $2 | platform restricted |
 | [IPRoyal Pawns](iproyal.md) | Residential IP | Docker | $5 | active |
 | [MystNodes](mysterium.md) | — | Docker | 4 MYST | active |
 | [NKN](nkn.md) | — | Docker | 0 NKN | active |

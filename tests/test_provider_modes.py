@@ -41,17 +41,18 @@ def test_runtime_matrix_labels_count_only_and_manual_only_providers():
     assert provider_runtime.get("uprock").manual_only is True
 
 
-def test_earnapp_runtime_policy_blocks_new_vps_runtime_without_changing_other_providers():
+def test_earnapp_runtime_policy_allows_only_ubuntu_lxd_without_changing_other_providers():
     earnapp = provider_runtime.get("earnapp")
     earnfm = provider_runtime.get("earnfm")
 
     assert earnapp is not None
-    assert earnapp.deployment_allowed is False
-    assert earnapp.deployment_policy == "vps_runtime_prohibited"
-    assert "prohibits" in earnapp.policy_message.lower()
+    assert earnapp.deployment_allowed is True
+    assert earnapp.deployment_policy == "platform_restricted"
+    assert earnapp.allowed_platforms == ("ubuntu",)
+    assert earnapp.blocked_platforms == ("macos", "ios")
     assert earnfm is not None and earnfm.deployment_allowed is True
 
     catalog_policy = provider_runtime.catalog_runtime("earnapp")
-    assert catalog_policy["deployment_allowed"] is False
-    assert catalog_policy["deployment_policy"] == "vps_runtime_prohibited"
+    assert catalog_policy["deployment_allowed"] is True
+    assert catalog_policy["deployment_policy"] == "platform_restricted"
     assert catalog_policy["policy_message"] == earnapp.policy_message
