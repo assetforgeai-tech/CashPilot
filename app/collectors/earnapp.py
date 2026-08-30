@@ -300,23 +300,48 @@ class EarnAppAccountCollector:
                 return {"status": "error", "error_kind": "auth", "error": "authentication rejected"}
             devices_response.raise_for_status()
             device = _device_for(devices_response.json(), uuid)
-            link_attempted = device is None
-            if link_attempted:
-                xsrf = str(client.cookies.get("xsrf-token") or self.cookies.get("xsrf-token") or "")
-                if not xsrf:
-                    return {"status": "error", "error_kind": "auth", "error": "EarnApp XSRF unavailable"}
-                link_headers, link_payload = self._link_contract(uuid, platform, xsrf)
-                link_response = await client.post(
-                    f"{API_BASE}/link_device",
-                    params=API_PARAMS,
-                    headers={**headers, **link_headers},
-                    json=link_payload,
-                )
-                if link_response.status_code in AUTH_FAILURE_CODES:
-                    return {"status": "error", "error_kind": "auth", "error": "authentication rejected"}
-                link_response.raise_for_status()
-                link_payload = link_response.json()
-                if isinstance(link_payload, Mapping) and link_payload.get("error"):
+            # Official runtimes register a UUID before account linking.  Always
+            # perform the account-scoped API link instead of treating presence
+            # in /devices as proof that the account assignment is complete.
+            link_attempted = True
+            xsrf = str(client.cookies.get("xsrf-token") or self.cookies.get("xsrf-token") or "")
+            if not xsrf:
+                return {"status": "error", "error_kind": "auth", "error": "EarnApp XSRF unavailable"}
+            link_headers, link_request = self._link_contract(uuid, platform, xsrf)
+            link_response = await client.post(
+                f"{API_BASE}/link_device",
+                params=API_PARAMS,
+                headers={**headers, **link_headers},
+                json=link_request,
+            )
+            if link_response.status_code in AUTH_FAILURE_CODES:
+                return {"status": "error", "error_kind": "auth", "error": "authentication rejected"}
+            link_response.raise_for_status()
+            link_result = link_response.json()
+            link_error = str(link_result.get("error") or "") if isinstance(link_result, Mapping) else ""
+            already_linked = "already linked" in link_error.lower()
+            if link_error and not already_linked:
+                return {
+                    "status": "error",
+                    "error_kind": "remote",
+                    "error": "EarnApp rejected device link",
+                    "device_id": uuid,
+                    "authenticated": True,
+                    "link_attempted": True,
+                    "device_present": False,
+                    "online": False,
+                    "banned": False,
+                }
+            # Treat an "already linked" response as success only after an
+            # authenticated refetch still contains this exact UUID.
+            devices_response = await client.get(f"{API_BASE}/devices", params=API_PARAMS, headers=headers)
+            if devices_response.status_code in AUTH_FAILURE_CODES:
+                return {"status": "error", "error_kind": "auth", "error": "authentication rejected"}
+            devices_response.raise_for_status()
+            device = _device_for(devices_response.json(), uuid)
+
+            if device is None:
+                if already_linked:
                     return {
                         "status": "error",
                         "error_kind": "remote",
@@ -328,13 +353,6 @@ class EarnAppAccountCollector:
                         "online": False,
                         "banned": False,
                     }
-                devices_response = await client.get(f"{API_BASE}/devices", params=API_PARAMS, headers=headers)
-                if devices_response.status_code in AUTH_FAILURE_CODES:
-                    return {"status": "error", "error_kind": "auth", "error": "authentication rejected"}
-                devices_response.raise_for_status()
-                device = _device_for(devices_response.json(), uuid)
-
-            if device is None:
                 return {
                     "status": "pending",
                     "device_id": uuid,
