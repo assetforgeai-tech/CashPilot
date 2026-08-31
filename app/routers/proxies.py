@@ -1296,12 +1296,24 @@ async def api_proxy_pool_delete(request: Request, body: ProxyDeleteIn) -> dict[s
                 status_code=400,
                 detail="Delete all requires the exact phrase twice: DELETE ALL PROXY POOL",
             )
-        deleted = await database.delete_all_proxy_pool()
+        try:
+            deleted = await database.delete_all_proxy_pool()
+        except database.ProtectedEarnAppProxyError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail="Proxy is still referenced by a protected EarnApp runtime",
+            ) from exc
         return {"status": "ok", "deleted": deleted, "delete_all": True}
     status = str(body.status or "").strip().lower()
     if status and status != "dead":
         raise HTTPException(status_code=400, detail="Only status=dead bulk delete is allowed")
-    deleted = await database.delete_proxy_endpoints(body.proxy_ids, status=status or None)
+    try:
+        deleted = await database.delete_proxy_endpoints(body.proxy_ids, status=status or None)
+    except database.ProtectedEarnAppProxyError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Proxy is still referenced by a protected EarnApp runtime",
+        ) from exc
     return {"status": "ok", "deleted": deleted}
 
 

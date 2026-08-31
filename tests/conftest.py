@@ -70,6 +70,9 @@ def _reset_shared_db():
 
     conns = list(database._shared_conns.values())
     database._shared_conns.clear()
+    database._shared_conn_locks.clear()
+    database._shared_conn_owners.clear()
+    database._shared_conn_depths.clear()
     database._proxy_assignment_locks.clear()
     with contextlib.suppress(Exception):
         from app.routers import proxies
@@ -105,6 +108,7 @@ def _reset_login_attempts():
         from app import main
 
         main._login_attempts.clear()
+        main._EARNAPP_UNHEALTHY_STREAKS.clear()
     yield
 
 

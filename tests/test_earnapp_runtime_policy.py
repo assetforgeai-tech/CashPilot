@@ -15,15 +15,13 @@ def _request(path: str) -> Request:
     return Request({"type": "http", "method": "POST", "path": path, "headers": []})
 
 
-def test_runtime_policy_exposes_a_mutation_block_for_apple_earnapp():
+def test_runtime_policy_allows_dedicated_apple_earnapp_mutation():
     block = provider_runtime.mutation_block(
         "earnapp-node-1",
         {"provider_slug": "earnapp", "platform": "macos", "runtime_backend": "docker"},
     )
 
-    assert block is not None
-    assert block.slug == "earnapp"
-    assert block.deployment_policy == "platform_restricted"
+    assert block is None
 
 
 def test_runtime_guards_follow_the_authoritative_policy_when_earnapp_is_reenabled(monkeypatch):
@@ -115,7 +113,7 @@ async def test_worker_apple_mutation_routes_fail_closed_before_runtime_calls(mon
         await handler(_request(f"/api/earnapp/nodes/{node_id}/{route}"), node_id, spec)
 
     assert exc.value.status_code == 409
-    assert "macos/ios emulation remains disabled" in str(exc.value.detail).lower()
+    assert "assignment conflict" in str(exc.value.detail).lower()
     lxd_state.assert_not_awaited()
 
 
@@ -167,7 +165,8 @@ def test_locked_account_with_existing_runtime_cannot_be_deleted_under_disabled_p
             await db.commit()
             await database.set_earnapp_account_state(account_id, "ACCOUNT_LOCKED")
 
-            with pytest.raises(earnapp_accounts.AccountDeletionDenied, match="inspection-only"):
-                await earnapp_accounts.delete_account(account_id, runtime_cleanup=AsyncMock(return_value=True))
+            cleanup = AsyncMock(return_value=True)
+            await earnapp_accounts.delete_account(account_id, runtime_cleanup=cleanup)
+            cleanup.assert_awaited_once()
 
     asyncio.run(run())

@@ -11,7 +11,7 @@ import secrets
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
-from app import database, earnapp_identity, earnapp_recovery, earnapp_runtime
+from app import database, earnapp_identity, earnapp_policy, earnapp_recovery, earnapp_runtime
 from app.collectors.earnapp import EarnAppAccountCollector
 
 WorkerDeploy = Callable[[int, str, dict[str, Any]], Awaitable[dict[str, Any]]]
@@ -49,6 +49,13 @@ def _safe_node_id(value: str) -> str:
     node_id = str(value or "").strip()
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]{2,120}", node_id):
         raise ValueError("invalid EarnApp logical node id")
+    return node_id
+
+
+def _mutable_node_id(value: str) -> str:
+    node_id = _safe_node_id(value)
+    if earnapp_policy.is_protected_logical_node(node_id):
+        raise ValueError("protected EarnApp node is inspection-only")
     return node_id
 
 
@@ -291,7 +298,7 @@ def build_runtime_spec(
 
 
 async def provision_canary(logical_node_id: str, worker_id: int, device_id: str) -> dict[str, Any]:
-    node_id = _safe_node_id(logical_node_id)
+    node_id = _mutable_node_id(logical_node_id)
     device = earnapp_runtime.validate_device_id(device_id)
     before = await database.get_earnapp_logical_node(node_id)
     node = await earnapp_recovery.provision_node(
@@ -311,7 +318,7 @@ async def deploy_canary(
     worker_deploy: WorkerDeploy,
     worker_remove: WorkerRemove,
 ) -> dict[str, Any]:
-    node_id = _safe_node_id(logical_node_id)
+    node_id = _mutable_node_id(logical_node_id)
     profile = await get_or_create_mac_identity_profile(node_id)
 
     # A retry must not recreate a running identity container. The provider
@@ -434,7 +441,7 @@ async def deploy_platform_canary(
     """Deploy one fresh iOS-Docker or Ubuntu-LXD canary without touching Mac nodes."""
     from app import earnapp_deploy
 
-    node_id = _safe_node_id(logical_node_id)
+    node_id = _mutable_node_id(logical_node_id)
     selected = str(platform or "").strip().lower()
     if selected not in {"ios", "ubuntu"}:
         raise ValueError("platform canary supports only iOS or Ubuntu")
@@ -577,7 +584,7 @@ async def verify_canary(
     interval_seconds: float = LINK_VERIFY_INTERVAL_SECONDS,
 ) -> dict[str, Any]:
     """Link and verify one provisioned canary through its exact account route."""
-    node_id = _safe_node_id(logical_node_id)
+    node_id = _mutable_node_id(logical_node_id)
     node = await database.get_earnapp_logical_node(node_id)
     if not node or str(node.get("state") or "") != "ACTIVE":
         raise ValueError("EarnApp canary is not active")

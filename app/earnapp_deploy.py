@@ -9,7 +9,7 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Any
 
-from app import database, earnapp_canary, earnapp_identity, earnapp_runtime
+from app import database, earnapp_canary, earnapp_identity, earnapp_policy, earnapp_runtime
 
 logger = logging.getLogger(__name__)
 
@@ -179,6 +179,8 @@ async def prepare_node(
     required_platform: str | None = None,
 ) -> PreparedEarnAppNode:
     """Bind an account, exclusive proxy, immutable platform, and identity."""
+    if earnapp_policy.is_protected_logical_node(plan.logical_node_id):
+        raise RuntimeError("protected EarnApp node is inspection-only")
     node = await database.get_earnapp_logical_node(plan.logical_node_id)
     if not node:
         await database.assign_earnapp_account(plan.logical_node_id)

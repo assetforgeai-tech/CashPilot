@@ -38,6 +38,14 @@ def test_readme_has_only_live_catalog_categories():
     assert "compute/      # GPU compute services" not in text
 
 
+def test_active_context_marks_earnapp_provider_block_as_historical():
+    text = (ROOT / "docs" / "ACTIVE_CONTEXT.md").read_text(encoding="utf-8")
+
+    assert "## Current source policy (unreleased, 2026-08-29)" in text
+    assert "**Historical v1.14.1 status:** `COMPLIANCE_BLOCKED` / `RUNTIME_DISABLED`" in text
+    assert "- **Status:** `COMPLIANCE_BLOCKED` / `RUNTIME_DISABLED`" not in text
+
+
 def test_generated_service_index_derives_runtime_disabled_from_provider_truth_matrix(monkeypatch):
     providers = dict(provider_runtime.PROVIDERS)
     providers["earnfm"] = replace(

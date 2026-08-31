@@ -60,6 +60,8 @@ COPY --chown=cashpilot:root app/state_backup.py ./app/
 # against worker_api's actual imports.
 COPY --chown=cashpilot:root app/version.py ./app/
 COPY --chown=cashpilot:root app/worker_api.py ./app/
+# Shared policy used by worker-side mutation guards.
+COPY --chown=cashpilot:root app/earnapp_policy.py ./app/
 COPY --chown=cashpilot:root app/orchestrator.py ./app/
 COPY --chown=cashpilot:root app/provider_automation.py ./app/
 COPY --chown=cashpilot:root app/provider_installers.py ./app/

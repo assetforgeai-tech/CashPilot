@@ -28,6 +28,7 @@ def test_worker_delete_returns_conflict_when_nkn_lease_is_still_active():
         with (
             patch.object(main, "_require_owner"),
             patch.object(main.database, "get_worker", AsyncMock(return_value={"id": 7, "name": "worker-a"})),
+            patch.object(main.database, "list_earnapp_logical_nodes", AsyncMock(return_value=[])),
             patch.object(
                 main.database,
                 "delete_worker",

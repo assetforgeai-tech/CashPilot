@@ -46,6 +46,7 @@ from app import (
     earnapp_canary,
     earnapp_collection,
     earnapp_deploy,  # noqa: F401 - retained for historical canary helpers/tests
+    earnapp_policy,
     earnapp_recovery,
     earnapp_runtime,
     egress,
@@ -124,10 +125,11 @@ _EARNAPP_DEPLOY_LOCKS: dict[int, asyncio.Lock] = {}
 _EARNAPP_DEPLOY_ACTIVE: set[int] = set()
 _EARNAPP_AUTO_DEPLOY_DONE: set[int] = set()
 _EARNAPP_ROTATION_LOCKS: dict[str, asyncio.Lock] = {}
+_EARNAPP_UNHEALTHY_STREAKS: dict[tuple[str, int, int], int] = {}
 _WORKER_HEARTBEAT_STREAKS: dict[int, int] = {}
 _proxy_pool_last_recheck: datetime | None = None
 _NKN_ADOPTABLE_CANARY = "cashpilot-nkn-lxd-canary"
-_EARNAPP_PROTECTED_CANARY = "earnapp-canary-test-sing-1"
+_EARNAPP_UNHEALTHY_ROTATION_THRESHOLD = 3
 _NKN_NODE_ID_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 _NKN_PUBLISHER_KNOWN_HOSTS = Path("/data/nkn-chaindb-known-hosts")
 _SSH_SHA256_RE = re.compile(r"^SHA256:[A-Za-z0-9+/]{43}=?$")
@@ -2884,7 +2886,7 @@ async def api_deploy(
     if slug == "earnapp":
         raise HTTPException(
             status_code=409,
-            detail="EarnApp uses the owner-only Ubuntu LXD canary endpoint, not generic provider deploy",
+            detail="EarnApp uses owner-authorized dedicated platform lanes, not generic provider deploy",
         )
     worker_id = await _resolve_worker_id(worker_id)
     svc = catalog.get_service(slug)
@@ -3210,11 +3212,13 @@ async def api_deploy_earnapp_canary(
     runtime_backend = "lxd" if body.platform == "ubuntu" else "docker"
     if not provider_runtime.platform_deployment_allowed("earnapp", body.platform, runtime_backend):
         raise HTTPException(status_code=409, detail=provider_runtime.EARNAPP_PLATFORM_BLOCK_MESSAGE)
-    if body.logical_node_id == _EARNAPP_PROTECTED_CANARY:
+    if earnapp_policy.is_protected_logical_node(body.logical_node_id):
         raise HTTPException(status_code=409, detail="Protected EarnApp canary is inspect-only")
     worker_id = await _resolve_worker_id(body.worker_id)
 
     async def worker_deploy(target_worker_id: int, instance_slug: str, spec: dict[str, Any]) -> dict[str, Any]:
+        if body.platform in {"macos", "ios"}:
+            return await _proxy_worker_earnapp_docker_deploy(target_worker_id, instance_slug, spec)
         return await _proxy_worker_deploy(target_worker_id, instance_slug, spec)
 
     async def worker_remove(
@@ -3300,6 +3304,8 @@ async def api_verify_earnapp_canary(
     _auth: dict[str, Any] = Depends(_require_owner),
 ) -> dict[str, Any]:
     """Retry authenticated account-side verification without redeploying the node."""
+    if earnapp_policy.is_protected_logical_node(logical_node_id):
+        raise HTTPException(status_code=409, detail="Protected EarnApp canary is inspect-only")
     try:
         result = await _persist_earnapp_canary_verification(
             logical_node_id,
@@ -3488,6 +3494,8 @@ async def _resolve_earnapp_ubuntu_lifecycle(
 ) -> tuple[int, dict[str, Any]]:
     """Resolve one Ubuntu/LXD assignment from server-authoritative state."""
     node_id = str(logical_node_id or "").strip()
+    if earnapp_policy.is_protected_logical_node(node_id):
+        raise HTTPException(status_code=409, detail="Protected EarnApp node is inspection-only")
     if node_id == "earnapp" or not provider_runtime.is_runtime_instance(node_id):
         raise HTTPException(status_code=409, detail="Specify an EarnApp Ubuntu logical node")
     try:
@@ -3581,6 +3589,8 @@ async def _remove_earnapp_ubuntu_runtime(
 
 async def _svc_stop(request: Request, slug: str, worker_id: int | None) -> dict[str, str]:
     _require_writer(request)
+    if earnapp_policy.is_protected_runtime_reference(slug):
+        raise HTTPException(status_code=409, detail="Protected EarnApp node is inspection-only")
     if provider_runtime.is_runtime_instance(slug):
         worker_id, result = await _proxy_earnapp_ubuntu_lifecycle(slug, worker_id, "stop")
         await database.record_health_event("earnapp", "stop", f"suspended {slug} on worker {worker_id}")
@@ -3648,6 +3658,8 @@ async def _remove_nkn_slot(request: Request, slot_id: str, *, worker_id: int | N
 
 async def _svc_restart(request: Request, slug: str, worker_id: int | None) -> dict[str, str]:
     _require_writer(request)
+    if earnapp_policy.is_protected_runtime_reference(slug):
+        raise HTTPException(status_code=409, detail="Protected EarnApp node is inspection-only")
     if provider_runtime.is_runtime_instance(slug):
         worker_id, result = await _proxy_earnapp_ubuntu_lifecycle(slug, worker_id, "restart")
         await database.record_health_event("earnapp", "restart", f"restarted {slug} on worker {worker_id}")
@@ -3667,6 +3679,9 @@ async def _svc_remove(
     delete_volumes: bool,
     allow_delete_critical: bool = False,
 ) -> dict[str, Any]:
+    if earnapp_policy.is_protected_runtime_reference(slug):
+        _require_writer(request)
+        raise HTTPException(status_code=409, detail="Protected EarnApp node is inspection-only")
     if provider_runtime.is_runtime_instance(slug):
         _require_writer(request)
         worker_id, result = await _remove_earnapp_ubuntu_runtime(slug, worker_id)
@@ -3891,6 +3906,19 @@ async def _proxy_worker_earnapp_lxd_deploy(
     )
 
 
+async def _proxy_worker_earnapp_docker_deploy(
+    worker_id: int, logical_node_id: str, spec: dict[str, Any]
+) -> dict[str, Any]:
+    """Dispatch MacOS/iOS EarnApp only through the dedicated worker contract."""
+    return await _proxy_to_worker(
+        worker_id,
+        "POST",
+        f"/api/earnapp/docker-nodes/{logical_node_id}/deploy",
+        json=spec,
+        timeout=60 * 60,
+    )
+
+
 async def _reconcile_earnapp_pending_proxy_binding(instance: Mapping[str, Any], worker_id: int) -> bool:
     """Finish or roll back a proxy transaction whose final ACK was lost.
 
@@ -3901,7 +3929,7 @@ async def _reconcile_earnapp_pending_proxy_binding(instance: Mapping[str, Any], 
     repair rather than guessing.
     """
     node_id = str(instance.get("logical_node_id") or "").strip()
-    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{2,120}", node_id) or node_id == _EARNAPP_PROTECTED_CANARY:
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{2,120}", node_id) or earnapp_policy.is_protected_logical_node(node_id):
         return False
     try:
         generation = int(instance.get("generation") or 0)
@@ -3997,7 +4025,7 @@ async def _rotate_unhealthy_earnapp_node(
 ) -> bool:
     """Rotate one explicit EarnApp failure; the protected live canary is inspect-only."""
     node_id = str(logical_node_id or "").strip()
-    if not node_id or node_id == _EARNAPP_PROTECTED_CANARY:
+    if not node_id or earnapp_policy.is_protected_logical_node(node_id):
         return False
     lock = _EARNAPP_ROTATION_LOCKS.setdefault(node_id, asyncio.Lock())
     if lock.locked():
@@ -4188,7 +4216,7 @@ def _earnapp_lxd_settings(config: Mapping[str, Any] | None) -> dict[str, int]:
 
 
 async def _deploy_earnapp_nodes(worker_id: int, *, config: Mapping[str, Any] | None = None) -> dict[str, Any]:
-    """Deploy only official Ubuntu x64 nodes through the dedicated LXD route."""
+    """Deploy geo-compatible EarnApp nodes through dedicated platform routes."""
     slots = await _worker_public_ip_slots(int(worker_id))
     try:
         limits = _earnapp_lxd_settings(config)
@@ -4196,11 +4224,11 @@ async def _deploy_earnapp_nodes(worker_id: int, *, config: Mapping[str, Any] | N
         logger.warning("EarnApp LXD settings invalid for worker %s: %s", worker_id, type(exc).__name__)
         return {"deployed": [], "verified": [], "skipped": [], "pending": [], "failed": ["settings"]}
 
-    async def blocked_docker_deploy(_worker_id: int, _node_id: str, _spec: dict[str, Any]) -> dict[str, Any]:
-        raise RuntimeError("EarnApp MacOS/iOS runtime is disabled")
-
     async def lxd_deploy(target_worker_id: int, node_id: str, spec: dict[str, Any]) -> dict[str, Any]:
         return await _proxy_worker_earnapp_lxd_deploy(target_worker_id, node_id, spec)
+
+    async def docker_deploy(target_worker_id: int, node_id: str, spec: dict[str, Any]) -> dict[str, Any]:
+        return await _proxy_worker_earnapp_docker_deploy(target_worker_id, node_id, spec)
 
     lock = _EARNAPP_DEPLOY_LOCKS.setdefault(int(worker_id), asyncio.Lock())
     if int(worker_id) in _EARNAPP_DEPLOY_ACTIVE:
@@ -4211,10 +4239,9 @@ async def _deploy_earnapp_nodes(worker_id: int, *, config: Mapping[str, Any] | N
             return await earnapp_deploy.deploy_worker_nodes_sequentially(
                 int(worker_id),
                 slots,
-                docker_deploy=blocked_docker_deploy,
+                docker_deploy=docker_deploy,
                 lxd_deploy=lxd_deploy,
                 lxd_settings=limits,
-                required_platform="ubuntu",
             )
     finally:
         _EARNAPP_DEPLOY_ACTIVE.discard(int(worker_id))
@@ -4243,6 +4270,8 @@ async def api_service_stop(request: Request, slug: str, worker_id: int | None = 
 @app.post("/api/services/{slug}/start")
 async def api_service_start(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
+    if earnapp_policy.is_protected_runtime_reference(slug):
+        raise HTTPException(status_code=409, detail="Protected EarnApp node is inspection-only")
     if provider_runtime.is_runtime_instance(slug):
         worker_id, result = await _proxy_earnapp_ubuntu_lifecycle(slug, worker_id, "start")
         await database.record_health_event("earnapp", "start", f"resumed {slug} on worker {worker_id}")
@@ -7061,12 +7090,30 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
                 observed_egress_ip=str(instance.get("observed_egress_ip") or ""),
                 reason=str(instance.get("proxy_health_reason") or ""),
             )
+            streak_key = (logical_node_id, generation, proxy_id)
+            stale_streaks = [
+                key for key in _EARNAPP_UNHEALTHY_STREAKS if key[0] == logical_node_id and key != streak_key
+            ]
+            for key in stale_streaks:
+                _EARNAPP_UNHEALTHY_STREAKS.pop(key, None)
+            protected_node = earnapp_policy.is_protected_logical_node(logical_node_id)
+            if protected_node or instance_mutations_blocked or not recorded:
+                _EARNAPP_UNHEALTHY_STREAKS.pop(streak_key, None)
+                unhealthy_streak = 0
+            elif proxy_health == "unhealthy":
+                unhealthy_streak = _EARNAPP_UNHEALTHY_STREAKS.get(streak_key, 0) + 1
+                _EARNAPP_UNHEALTHY_STREAKS[streak_key] = unhealthy_streak
+            else:
+                _EARNAPP_UNHEALTHY_STREAKS.pop(streak_key, None)
+                unhealthy_streak = 0
             if (
                 recorded
                 and not instance_mutations_blocked
                 and proxy_health == "unhealthy"
-                and logical_node_id != _EARNAPP_PROTECTED_CANARY
+                and unhealthy_streak >= _EARNAPP_UNHEALTHY_ROTATION_THRESHOLD
+                and not protected_node
             ):
+                _EARNAPP_UNHEALTHY_STREAKS.pop(streak_key, None)
                 _spawn(
                     _rotate_unhealthy_earnapp_node(
                         logical_node_id,
@@ -7315,6 +7362,17 @@ async def api_delete_worker(request: Request, worker_id: int) -> dict[str, str]:
     worker = await database.get_worker(worker_id)
     if not worker:
         raise HTTPException(status_code=404, detail="Worker not found")
+    earnapp_nodes = await database.list_earnapp_logical_nodes()
+    if any(
+        int(worker_id)
+        in {
+            int(node.get("assigned_worker_id") or 0),
+            int(node.get("last_worker_id") or 0),
+        }
+        and earnapp_policy.is_protected_logical_node(node.get("logical_node_id"))
+        for node in earnapp_nodes
+    ):
+        raise HTTPException(status_code=409, detail="Worker hosts a protected EarnApp node")
     try:
         await database.delete_worker(worker_id)
     except database.NknWalletLeaseActive as exc:
@@ -7322,6 +7380,8 @@ async def api_delete_worker(request: Request, worker_id: int) -> dict[str, str]:
             status_code=409,
             detail="Remove or reclaim the worker's NKN slots before deleting the worker",
         ) from exc
+    except database.ProtectedEarnAppWorkerReference as exc:
+        raise HTTPException(status_code=409, detail="Worker still references a protected EarnApp node") from exc
     return {"status": "deleted"}
 
 
@@ -7340,6 +7400,8 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
         _require_owner(request)
     else:
         _require_writer(request)
+    if earnapp_policy.is_protected_runtime_reference(body.slug):
+        raise HTTPException(status_code=409, detail="Protected EarnApp node is inspection-only")
     if body.command == "deploy":
         # This is a THIRD deploy path. Without the same status gate, a broken or
         # dropped service could still be deployed here — and this route then runs the

@@ -1,6 +1,6 @@
 # EarnApp Identity and LXD Audit (2026-08-28)
 
-> **Current source status (2026-08-29): Ubuntu-only `platform_restricted`.**
+> **Historical snapshot (2026-08-29): Ubuntu-only `platform_restricted`.**
 > The official Linux x64 package is enabled only through CashPilot's dedicated
 > Ubuntu LXD lane. MacOS/iOS emulation and all generic/raw Docker deploy paths
 > remain disabled. This is a source-policy change only; no release, deployment,
@@ -39,6 +39,85 @@ gate. The corrected contract accepts any positive monotonic delta and can use
 the last persisted pending sample as the next verification baseline. The
 collector does not promote a historical usage bucket into `usage_current` when
 the UTC-today bucket is absent.
+
+## Ubuntu canary 5 transport investigation (2026-08-31)
+
+The operator reported that an earlier EarnApp link failure was associated with
+TLS, so TLS is now an explicit root-cause hypothesis for Ubuntu canary 5. The
+scope remains one disposable node only:
+
+- logical node `earnapp-ubuntu-canary-test-sing-5`;
+- LXD guest `cashpilot-earnapp-earnapp-ubuntu-canary-test-sing-5`;
+- device `sdk-node-2a7f6d1a0695feb31485a559fc6f0137`;
+- account `2`, generation `1`, proxy `13746`, egress `64.52.28.108`.
+
+Fresh read-only evidence shows that the node is `RUNNING`, both EarnApp and its
+proxy service are active, the persisted UUID is unchanged, the proxy lease and
+observed egress still match, and the authenticated account API contains the
+exact device. It is nevertheless not closed out: the daily usage rows from
+2026-08-24 through 2026-08-30 remain zero, and the status endpoint did not
+return an online record for the exact UUID. Registration presence is therefore
+not equivalent to online or earning state.
+
+Chrome profile 40 independently confirms the same remote state: the dashboard
+lists `sdk-node-fc6f0137`, but its country is blank and it remains at `0s`,
+rate `$5`, amount `$0`. The other Ubuntu node `sdk-node-a4addc8f` is also at
+`0s`, while the protected Mac/iOS rows show positive usage. This makes the
+official dashboard, not local service health, the authoritative failing gate.
+
+The generic TLS path currently succeeds through the node's assigned proxy:
+
+- strict CA/SNI verification succeeds with TLS 1.3 for the relevant control
+  endpoints;
+- a strict WSS upgrade to `proxyjs.brdtnet.com` returns HTTP `101` with the
+  correct `Sec-WebSocket-Accept` value;
+- the current `proxyjs.brdtnet.com` SPKI is
+  `LX0+nXiJHH9Ar7wi6bsnsSp+b9UwdEbZU/yIhTztnNE=`, and the current certificate
+  pin document contains both that historical pin and the certificate's current
+  pin;
+- the guest CA bundle is installed, OpenSSL is current for the image, and the
+  system clock is synchronized;
+- the official Linux runtime is a native stripped ELF and has no
+  `NODE_TLS_REJECT_UNAUTHORIZED` environment. That Node.js variable in the
+  historical Mac/iOS Docker image is not evidence about the native Ubuntu
+  binary.
+
+This does **not** prove that every proprietary Bright SDK handshake succeeds.
+The native runtime logs are binary/encrypted and no direct certificate error is
+available, so an internal pinning or protocol-specific TLS failure remains a
+residual uncertainty. It is not currently the leading demonstrated cause, and
+TLS verification or pinning must not be disabled as a diagnostic shortcut.
+
+Transport evidence remains incomplete and is at least as important as TLS:
+proxy `13746` rejects SOCKS5 UDP ASSOCIATE with reply `7`; its persisted
+`udp_ok` is unknown; the current guest firewall rejects non-DNS UDP; and the
+catalog still declares `egress.udp: none`. Runtime marker names mentioning UDP
+and TUN are signals to investigate, not proof that UDP is mandatory. No
+eligible non-VN residential proxy in the current server-side snapshot has
+verified `udp_ok=true`, so there is no evidence-backed candidate for a safe
+lease rotation yet.
+
+The sing-box reference confirms that a SOCKS outbound enables both TCP and UDP
+by default and offers `udp_over_tcp`, while its Linux TUN documentation states
+that the system stack translates both L3-to-L4 traffic and exposes UDP NAT
+fields. CashPilot's current node-5 runtime differs from that generic capability:
+it explicitly rejects non-DNS UDP and the assigned SOCKS endpoint rejects UDP
+ASSOCIATE. This establishes a concrete transport mismatch to test, but still
+does not establish that EarnApp requires UDP for online/usage state.
+
+A bounded read-only UDP ASSOCIATE probe was then run against all seven known
+non-VN residential candidates (`13746`, `13751`, `13754`, `13781`, `13752`,
+`13768`, `13773`). Every endpoint returned SOCKS reply `7`; rotating among this
+set would not test UDP capability and would add lease risk without changing the
+hypothesized variable. sing-box's `udp_over_tcp` is a proprietary SagerNet
+protocol that requires compatible server-side support; it cannot be assumed to
+make an ordinary third-party SOCKS5 proxy carry UDP. A live UoT toggle is
+therefore not an evidence-backed next step for this pool.
+
+No release, proxy rotation, identity rewrite, LXD recreate, account change or
+provider change was made during this investigation. Before any live A/B test,
+the change must preserve canary 5's UUID/account/generation/volume, affect only
+its proxy transport, and have a rollback to the two protected LXD snapshots.
 
 ## Reference profile shapes
 
@@ -113,7 +192,7 @@ or helper contract in this repository. Consequently:
 1. Ubuntu is the only enabled platform and must use the dedicated LXD route.
    Generic catalog and worker Docker routes fail closed even when caller input
    claims `platform=ubuntu` and `runtime_backend=lxd`.
-2. MacOS/iOS remain disabled; no LXD conversion or experimental Apple-LXD
+2. At that snapshot MacOS/iOS remained disabled; no LXD conversion or experimental Apple-LXD
    deploy path is part of the approved design.
 3. Existing Docker-backed Mac nodes, volumes, identities, sidecars, account
    bindings, and leases are immutable during this work.

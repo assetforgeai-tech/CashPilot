@@ -1,6 +1,6 @@
 # EarnApp
 
-> **Category:** bandwidth | **Status:** Collector active; Ubuntu x64/LXD platform restricted
+> **Category:** bandwidth | **Status:** Collector active; geo-platform runtime lanes
 > **Website:** [https://earnapp.com](https://earnapp.com)
 
 ## Description
@@ -9,20 +9,23 @@ EarnApp proxy-only runtime with account-scoped identity and isolated
 platform-specific canary lanes. Each node owns one exclusive residential
 proxy.
 
-## Current runtime policy (2026-08-29)
+## Current runtime policy (2026-08-31)
 
-EarnApp runtime deployment is **platform restricted**. CashPilot permits only
-the official Linux x64 package through the dedicated Ubuntu LXD lane. The
-official installation guide says EarnApp supports x64 Linux on a 64-bit OS,
-identifies Ubuntu 20.04 as its tested distribution, and installs a service that
-starts automatically after reboot.
+EarnApp runtime deployment is **geo-platform restricted**. CashPilot permits
+MacOS/iOS emulation through the dedicated Docker runtime for qualified VN
+residential proxies, and the official Linux x64 package through the dedicated
+Ubuntu LXD lane for qualified non-VN residential proxies. The official
+installation guide says EarnApp supports x64 Linux on a 64-bit OS, identifies
+Ubuntu 20.04 as its tested distribution, and installs a service that starts
+automatically after reboot.
 
 The encrypted Account Pool, collector, token-expiry metadata, historical
 earnings and read-only inspection of existing Apple nodes remain available.
-MacOS/iOS emulation, the generic catalog/Docker route, raw worker Docker deploy,
-and caller-supplied Ubuntu metadata on generic routes remain blocked. This
-source policy change does not release, deploy, migrate, rotate or otherwise
-alter the existing live baseline.
+The generic catalog/Docker route and raw worker Docker deploy remain blocked;
+Apple runtimes are available only through the dedicated platform contract, and
+Ubuntu is available only through the dedicated LXD contract. This source policy
+change does not release, deploy, migrate, rotate or otherwise alter the existing
+live baseline.
 
 ## Earning Estimates
 
@@ -56,7 +59,7 @@ deploy endpoint or the generic worker Docker endpoint.
    IP type, and a non-VN country for an Ubuntu node.
 4. Configure `earnapp_lxd_cpu` and `earnapp_lxd_memory_mib`; defaults are `1`
    CPU and `1024 MiB`.
-5. Use only the dedicated server/worker Ubuntu LXD contract. The official
+5. Use only the dedicated server/worker platform contract. The official
    installer remains pinned and verified by the restricted host helper.
 
 Current platform selection is immutable after a logical node is created:
@@ -123,8 +126,8 @@ live-closed by this gate change.
 - Auto-deploy invokes the dedicated Ubuntu planner sequentially and excludes
   EarnApp from the generic Docker catalog queue. A failed node must not block
   later providers.
-- Stale recovery and replacement tickets apply only to Ubuntu nodes. MacOS/iOS
-  lifecycle, recovery, removal and proxy mutation remain blocked.
+- Stale recovery and replacement tickets apply to all dedicated platform lanes;
+  protected nodes remain inspection-only.
 
 ## Token expiry
 
