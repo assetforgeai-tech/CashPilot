@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import stat
 from pathlib import Path
 from unittest.mock import patch

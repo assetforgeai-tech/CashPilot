@@ -1842,11 +1842,11 @@ async def _materialize_runtime_assets(slug: str, spec: DeploySpec) -> None:
         download_url = _runtime_asset_url(asset, spec, slug)
         if download_url:
             raise HTTPException(status_code=400, detail="Direct runtime asset downloads are disabled")
-        else:
-            payload = await _fetch_runtime_asset(provider, asset_kind, asset_id=str(asset.asset_id or ""))
-            data = base64.b64decode(payload) if encoding in {"base64", "zip"} else payload.encode()
         if encoding == "zip":
             raise HTTPException(status_code=400, detail="ZIP runtime assets are disabled")
+        else:
+            payload = await _fetch_runtime_asset(provider, asset_kind, asset_id=str(asset.asset_id or ""))
+            data = base64.b64decode(payload) if encoding == "base64" else payload.encode()
         host_path.write_bytes(data)
         with contextlib.suppress(OSError):
             host_path.chmod(0o644)
