@@ -449,6 +449,13 @@ def test_ios_registration_fails_closed_unless_sidecar_egress_matches_the_lease()
     assert wrapper.index("format=json") < wrapper.index("install_device")
 
 
+def test_ios_registration_skips_egress_probe_after_persisted_registration():
+    wrapper = build_earnapp_canary_image.render_ios_registration_wrapper()
+
+    marker_gate = 'if [[ -s "$MARKER" ]] && test "$(cat "$MARKER")" = "$FINGERPRINT"; then'
+    assert wrapper.index(marker_gate) < wrapper.index("\nprobe_egress\n")
+
+
 def test_ios_generated_entrypoint_runs_registration_after_profile_boot_before_runtime():
     startup = earnapp_runtime.ios_entrypoint_script().decode("utf-8")
 

@@ -126,10 +126,10 @@ process.stdout.write(net.isIP(value) === 4 ? value : "");
     return 1
 }
 
-probe_egress
 if [[ -s "$MARKER" ]] && test "$(cat "$MARKER")" = "$FINGERPRINT"; then
     exit 0
 fi
+probe_egress
 
 register_body=$(mktemp)
 register_error=$(mktemp)
