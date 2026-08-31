@@ -123,7 +123,7 @@ def platform_deployment_allowed(slug: str, platform: str, runtime_backend: str =
     if provider.allowed_platforms and selected not in provider.allowed_platforms:
         return False
     if provider.slug == "earnapp" and selected == "ubuntu":
-        return backend == "lxd"
+        return backend in {"lxd", "docker"}
     if provider.slug == "earnapp" and selected in {"macos", "ios"}:
         return backend == "docker"
     return bool(selected)

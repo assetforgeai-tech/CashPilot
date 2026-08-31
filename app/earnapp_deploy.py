@@ -285,20 +285,17 @@ async def prepare_node(
 
 def _transport_spec(node: PreparedEarnAppNode, *, lxd_settings: Mapping[str, Any] | None = None) -> dict[str, Any]:
     if node.platform == "ubuntu":
-        settings = dict(lxd_settings or {})
-        cpu = int(settings.get("cpu", 1) or 1)
-        memory = int(settings.get("memory_mib", 1024) or 1024)
-        return {
-            "logical_node_id": node.logical_node_id,
-            "generation": node.generation,
-            "account_id": node.account_id,
-            "device_id": node.device_id,
-            "identity": node.identity,
-            "proxy_id": int(node.proxy["proxy_id"]),
-            "proxy": dict(node.proxy),
-            "lxd_cpu": cpu,
-            "lxd_memory_mib": memory,
-        }
+        spec = earnapp_canary.build_runtime_spec(
+            node.logical_node_id,
+            node.account_id,
+            node.platform,
+            node.device_id,
+            node.proxy,
+            generation=node.generation,
+            identity_asset_id=node.identity_asset_id,
+        )
+        spec["proxy"] = earnapp_canary._proxy_metadata(node.proxy)
+        return spec
     spec = earnapp_canary.build_runtime_spec(
         node.logical_node_id,
         node.account_id,
@@ -352,7 +349,7 @@ async def deploy_worker_nodes_sequentially(
     public_ipv4_slots: int | list[Any] | tuple[Any, ...],
     *,
     docker_deploy: DockerDeploy,
-    lxd_deploy: LxdDeploy,
+    lxd_deploy: LxdDeploy | None = None,
     lxd_settings: Mapping[str, Any] | None = None,
     vn_platform_choice: PlatformChoice | None = None,
     verify_node: VerifyNode | None = None,
@@ -423,10 +420,7 @@ async def deploy_worker_nodes_sequentially(
             )
             prepared_node = node
             spec = _transport_spec(node, lxd_settings=lxd_settings)
-            if node.platform == "ubuntu":
-                result = await lxd_deploy(worker_id, node.logical_node_id, spec)
-            else:
-                result = await docker_deploy(worker_id, node.logical_node_id, spec)
+            result = await docker_deploy(worker_id, node.logical_node_id, spec)
             container_id = str(result.get("container_id") or result.get("instance_id") or "remote")
             try:
                 evidence = earnapp_runtime.redacted_evidence(dict(await verifier(node.logical_node_id)))

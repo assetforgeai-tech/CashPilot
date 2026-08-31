@@ -484,6 +484,46 @@ def test_non_ios_runtime_paths_do_not_install_or_invoke_ios_registration():
     assert "COPY entrypoint.sh /usr/local/bin/entrypoint.sh" in recipe
 
 
+def test_ubuntu_runtime_spec_is_dedicated_docker_and_persists_full_identity():
+    identity = earnapp_identity.generate_identity("earnapp-ubuntu-docker-1", "ubuntu")
+    spec = earnapp_canary.build_runtime_spec(
+        logical_node_id="earnapp-ubuntu-docker-1",
+        account_id=7,
+        platform="ubuntu",
+        device_id=identity["device_id"],
+        proxy={
+            "proxy_id": 12,
+            "host": "proxy.example",
+            "port": 1080,
+            "protocol": "socks5",
+            "exit_ip": "203.0.113.10",
+            "country_code": "US",
+            "ip_type": "residential",
+        },
+        generation=4,
+    )
+    assert spec["runtime_backend"] == "docker"
+    assert spec["runtime_contract"]["platform"] == "linux"
+    assert spec["runtime_contract"]["appid"] == "node_earnapp.com"
+    assert spec["labels"]["cashpilot.earnapp.device_id"] == identity["device_id"]
+    assert spec["env"]["EARNAPP_EXPECTED_EGRESS_IP"] == "203.0.113.10"
+    assert spec["resources"]["mem_limit"] == "1g"
+    earnapp_runtime.validate_runtime_spec(spec)
+
+
+def test_ubuntu_entrypoint_persists_identity_and_retries_registration_contract():
+    entrypoint = earnapp_runtime.ubuntu_entrypoint_script().decode("utf-8")
+
+    assert "rm -f /.dockerenv" in entrypoint
+    assert 'install -m 0444 "$HOST_ID_FILE" /etc/machine-id' in entrypoint
+    assert '"$(cat /etc/machine-id)" >"$STATE_DIR/tracking_id"' in entrypoint
+    assert '[[ "$PROFILE_DEVICE_ID" == "$EXPECTED_DEVICE_ID" ]]' in entrypoint
+    assert "api.ipify.org" in entrypoint
+    assert "for attempt in $(seq 1 10)" in entrypoint
+    assert "install_device?uuid=$EXPECTED_DEVICE_ID" in entrypoint
+    assert "is_linked?uuid=$EXPECTED_DEVICE_ID" in entrypoint
+
+
 def test_ios_runtime_spec_is_account_scoped_hardened_and_uses_the_persisted_profile():
     identity = earnapp_identity.generate_identity("earnapp-ios-1", "ios")
     spec = earnapp_canary.build_runtime_spec(
@@ -2154,9 +2194,10 @@ async def test_platform_canary_uses_matching_transport_and_persists_redacted_sta
         assert transport["image"] == earnapp_runtime.IOS_RUNTIME_IMAGE
         assert transport["runtime_contract"]["platform"] == "ios"
     else:
-        assert transport["lxd_cpu"] == 2
-        assert transport["lxd_memory_mib"] == 2048
-        assert transport["identity"]["device_id"] == prepared.device_id
+        assert transport["image"] == earnapp_runtime.UBUNTU_RUNTIME_IMAGE
+        assert transport["runtime_backend"] == "docker"
+        assert transport["runtime_contract"]["platform"] == "linux"
+        assert transport["env"]["EARNAPP_DEVICE_ID"] == prepared.device_id
     persisted = save.await_args.kwargs["spec"]
     assert "proxy-secret" not in json.dumps(persisted, sort_keys=True)
     assert save.await_args.kwargs["proxy_id"] == 12

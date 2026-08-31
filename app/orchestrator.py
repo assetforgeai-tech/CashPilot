@@ -477,7 +477,7 @@ def deploy_raw(
         image_config = ((image_obj.attrs or {}).get("Config") or {}) if getattr(image_obj, "attrs", None) else {}
         labels_value = image_config.get("Labels") or {}
         platform_label = str((labels or {}).get("cashpilot.earnapp.platform") or "")
-        image_platform = "ios" if platform_label == "ios" else "macos"
+        image_platform = "ios" if platform_label == "ios" else ("ubuntu" if platform_label == "linux" else "macos")
         earnapp_runtime.validate_image_labels(labels_value, image_platform)
     # Remove any existing container with the same name
     try:

@@ -3968,17 +3968,27 @@ async def list_earnapp_runtime_bindings(account_id: int) -> list[dict[str, Any]]
                 worker_id = data.get("assigned_worker_id")
             if worker_id is None:
                 worker_id = data.get("last_worker_id")
+            # Ubuntu historically implied LXD. New Docker nodes persist their
+            # backend in provider_instances.spec_encrypted; prefer it when
+            # available and retain LXD as the legacy fallback.
+            runtime_backend = ""
+            if instance_id and data.get("instance_id"):
+                try:
+                    persisted_spec = await get_provider_instance_spec(instance_id)
+                except Exception:
+                    persisted_spec = None
+                candidate_backend = str((persisted_spec or {}).get("runtime_backend") or "").strip().lower()
+                if candidate_backend in {"docker", "lxd"}:
+                    runtime_backend = candidate_backend
+            if not runtime_backend:
+                runtime_backend = "lxd" if platform == "ubuntu" else "docker" if platform in {"macos", "ios"} else ""
             data.update(
                 {
                     "logical_node_id": logical_node_id,
                     "instance_id": instance_id,
                     "worker_id": int(worker_id) if worker_id is not None else None,
                     "platform": platform,
-                    "runtime_backend": "lxd"
-                    if platform == "ubuntu"
-                    else "docker"
-                    if platform in {"macos", "ios"}
-                    else "",
+                    "runtime_backend": runtime_backend,
                     "generation": int(data.get("generation") or 0),
                     "device_id": str(data.get("device_id") or ""),
                 }

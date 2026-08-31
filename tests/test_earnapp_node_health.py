@@ -1335,6 +1335,10 @@ def test_server_hydration_derives_backend_from_authoritative_ubuntu_platform():
             patch.object(database, "upsert_worker", AsyncMock(return_value=11)),
             patch.object(main.earnapp_recovery, "heartbeat_node", AsyncMock(return_value=True)) as heartbeat,
             patch.object(database, "get_earnapp_logical_node", AsyncMock(return_value=authoritative)),
+            patch.object(
+                database, "get_provider_instance", AsyncMock(return_value={"instance_id": "earnapp-ubuntu-legacy"})
+            ),
+            patch.object(database, "get_provider_instance_spec", AsyncMock(return_value={"runtime_backend": "docker"})),
             patch.object(database, "record_earnapp_proxy_health", AsyncMock()) as record,
             patch.object(database, "confirm_worker_key", AsyncMock()),
             patch.object(main, "_earnings_for_worker", AsyncMock(return_value=None)),
@@ -1354,7 +1358,7 @@ def test_server_hydration_derives_backend_from_authoritative_ubuntu_platform():
             proxy_id=12706,
         )
         assert response["earnapp_assignment_acks"][0]["platform"] == "ubuntu"
-        assert response["earnapp_assignment_acks"][0]["runtime_backend"] == "lxd"
+        assert response["earnapp_assignment_acks"][0]["runtime_backend"] == "docker"
         record.assert_not_awaited()
 
     asyncio.run(run())

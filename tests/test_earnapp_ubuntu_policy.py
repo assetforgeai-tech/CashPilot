@@ -33,9 +33,11 @@ def test_earnapp_policy_allows_geo_platform_lanes():
     assert policy.deployment_policy == "platform_restricted"
     assert policy.allowed_platforms == ("macos", "ios", "ubuntu")
     assert provider_runtime.platform_deployment_allowed("earnapp", "ubuntu", "lxd") is True
+    assert provider_runtime.platform_deployment_allowed("earnapp", "ubuntu", "docker") is True
     assert provider_runtime.platform_deployment_allowed("earnapp", "macos", "docker") is True
     assert provider_runtime.platform_deployment_allowed("earnapp", "ios", "docker") is True
     assert earnapp_runtime.runtime_deployment_allowed("ubuntu", "lxd") is True
+    assert earnapp_runtime.runtime_deployment_allowed("ubuntu", "docker") is True
     assert earnapp_runtime.runtime_deployment_allowed("macos", "docker") is True
 
 
@@ -585,6 +587,29 @@ async def test_server_lifecycle_dispatches_authoritative_ubuntu_lxd_node(monkeyp
     assert [(call.args[1], call.args[2]) for call in proxy.await_args_list] == expected_calls
     for call in proxy.await_args_list:
         assert call.kwargs["json"] == {"generation": 4, "device_id": device_id}
+
+
+@pytest.mark.asyncio
+async def test_server_lifecycle_dispatches_persisted_ubuntu_docker_node(monkeypatch):
+    device_id = "sdk-node-" + "6" * 32
+    proxy = AsyncMock(return_value={"status": "ok"})
+    monkeypatch.setattr(main, "_require_writer", lambda _request: {"r": "writer"})
+    monkeypatch.setattr(
+        database,
+        "get_earnapp_logical_node",
+        AsyncMock(return_value=_authoritative_node(generation=6, device_id=device_id)),
+    )
+    monkeypatch.setattr(
+        database, "get_provider_instance", AsyncMock(return_value={"instance_id": "earnapp-ubuntu-policy"})
+    )
+    monkeypatch.setattr(database, "get_provider_instance_spec", AsyncMock(return_value={"runtime_backend": "docker"}))
+    monkeypatch.setattr(main, "_proxy_to_worker", proxy)
+    monkeypatch.setattr(database, "record_health_event", AsyncMock())
+    monkeypatch.setattr(main.metrics, "record_container_lifecycle", lambda *_args, **_kwargs: None)
+
+    await main._svc_stop(_request("/api/stop/earnapp-ubuntu-policy"), "earnapp-ubuntu-policy", 3)
+
+    proxy.assert_awaited_once_with(3, "POST", "/api/containers/earnapp-ubuntu-policy/stop")
 
 
 @pytest.mark.asyncio

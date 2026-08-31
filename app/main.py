@@ -3209,7 +3209,10 @@ async def api_deploy_earnapp_canary(
     _auth: dict[str, Any] = Depends(_require_owner),
 ) -> dict[str, Any]:
     """Deploy exactly one owner-authorized EarnApp platform canary node."""
-    runtime_backend = "lxd" if body.platform == "ubuntu" else "docker"
+    # New Ubuntu deployments use the dedicated Docker lane. Legacy LXD nodes
+    # are selected only from their persisted provider-instance metadata during
+    # lifecycle operations below.
+    runtime_backend = "docker"
     if not provider_runtime.platform_deployment_allowed("earnapp", body.platform, runtime_backend):
         raise HTTPException(status_code=409, detail=provider_runtime.EARNAPP_PLATFORM_BLOCK_MESSAGE)
     if earnapp_policy.is_protected_logical_node(body.logical_node_id):
@@ -3217,7 +3220,7 @@ async def api_deploy_earnapp_canary(
     worker_id = await _resolve_worker_id(body.worker_id)
 
     async def worker_deploy(target_worker_id: int, instance_slug: str, spec: dict[str, Any]) -> dict[str, Any]:
-        if body.platform in {"macos", "ios"}:
+        if body.platform in {"macos", "ios", "ubuntu"}:
             return await _proxy_worker_earnapp_docker_deploy(target_worker_id, instance_slug, spec)
         return await _proxy_worker_deploy(target_worker_id, instance_slug, spec)
 
@@ -3241,7 +3244,7 @@ async def api_deploy_earnapp_canary(
         generation: int,
         device_id: str,
     ) -> dict[str, Any]:
-        if body.platform == "ios":
+        if body.platform in {"ios", "ubuntu"}:
             return await _proxy_to_worker(
                 target_worker_id,
                 "DELETE",
@@ -3266,9 +3269,15 @@ async def api_deploy_earnapp_canary(
                 worker_remove=worker_remove,
             )
         else:
-            config = await database.get_config() if body.platform == "ubuntu" else {}
-            limits = _earnapp_lxd_settings(config if isinstance(config, Mapping) else {})
-            platform_deploy = worker_deploy if body.platform == "ios" else _proxy_worker_earnapp_lxd_deploy
+            # Ubuntu canaries use Docker; retain parsed legacy limits for
+            # compatibility with the orchestration contract, but they do not
+            # select or gate the Docker backend.
+            try:
+                config = await database.get_config()
+                limits = _earnapp_lxd_settings(config if isinstance(config, Mapping) else {})
+            except Exception:
+                limits = {}
+            platform_deploy = worker_deploy
             result = await earnapp_canary.deploy_platform_canary(
                 body.logical_node_id,
                 int(worker_id),
@@ -3491,8 +3500,8 @@ def _merge_recorded_spec(
 async def _resolve_earnapp_ubuntu_lifecycle(
     logical_node_id: str,
     worker_id: int | None,
-) -> tuple[int, dict[str, Any]]:
-    """Resolve one Ubuntu/LXD assignment from server-authoritative state."""
+) -> tuple[int, dict[str, Any], str]:
+    """Resolve one Ubuntu assignment and its persisted runtime backend."""
     node_id = str(logical_node_id or "").strip()
     if earnapp_policy.is_protected_logical_node(node_id):
         raise HTTPException(status_code=409, detail="Protected EarnApp node is inspection-only")
@@ -3516,7 +3525,25 @@ async def _resolve_earnapp_ubuntu_lifecycle(
         raise HTTPException(status_code=409, detail="EarnApp Ubuntu assignment is not lifecycle-ready")
     if worker_id is not None and int(worker_id) != assigned_worker_id:
         raise HTTPException(status_code=409, detail="EarnApp logical node belongs to another worker")
-    return assigned_worker_id, {"generation": generation, "device_id": device_id}
+    try:
+        instance = await database.get_provider_instance(node_id)
+    except Exception as exc:  # noqa: BLE001 - only pre-migration DBs may use legacy fallback
+        if "no such table: provider_instances" not in str(exc).lower():
+            logger.warning("EarnApp runtime metadata lookup failed for %s: %s", node_id, type(exc).__name__)
+            raise HTTPException(status_code=409, detail="EarnApp runtime metadata is unavailable") from exc
+        instance = None
+    if instance:
+        try:
+            spec = await database.get_provider_instance_spec(node_id)
+        except Exception as exc:  # noqa: BLE001 - never guess a persisted backend
+            logger.warning("EarnApp runtime spec lookup failed for %s: %s", node_id, type(exc).__name__)
+            raise HTTPException(status_code=409, detail="EarnApp runtime metadata is unavailable") from exc
+    else:
+        spec = {}
+    backend = str((spec or {}).get("runtime_backend") or "lxd").strip().lower()
+    if backend not in {"docker", "lxd"}:
+        raise HTTPException(status_code=409, detail="EarnApp Ubuntu runtime backend is invalid")
+    return assigned_worker_id, {"generation": generation, "device_id": device_id}, backend
 
 
 async def _proxy_earnapp_ubuntu_lifecycle(
@@ -3526,8 +3553,22 @@ async def _proxy_earnapp_ubuntu_lifecycle(
 ) -> tuple[int, dict[str, Any]]:
     if action not in {"stop", "start", "restart", "remove"}:
         raise HTTPException(status_code=400, detail=f"Unknown command: {action}")
-    assigned_worker_id, cas = await _resolve_earnapp_ubuntu_lifecycle(logical_node_id, worker_id)
+    assigned_worker_id, cas, backend = await _resolve_earnapp_ubuntu_lifecycle(logical_node_id, worker_id)
     node_id = str(logical_node_id).strip()
+    if backend == "docker":
+        if action == "restart":
+            result = await _proxy_worker_command(assigned_worker_id, "restart", node_id)
+        elif action == "remove":
+            result = await _proxy_to_worker(
+                assigned_worker_id,
+                "DELETE",
+                f"/api/earnapp/docker-nodes/{node_id}",
+                json=cas,
+                timeout=180,
+            )
+        else:
+            result = await _proxy_worker_command(assigned_worker_id, "stop" if action == "stop" else "start", node_id)
+        return assigned_worker_id, result
     if action == "restart":
         await _proxy_to_worker(
             assigned_worker_id,
@@ -3566,14 +3607,9 @@ async def _remove_earnapp_ubuntu_runtime(
 ) -> tuple[int, dict[str, Any]]:
     """Remove one Ubuntu runtime, then CAS-release only its assignment."""
     node_id = str(logical_node_id or "").strip()
-    assigned_worker_id, cas = await _resolve_earnapp_ubuntu_lifecycle(node_id, worker_id)
-    result = await _proxy_to_worker(
-        assigned_worker_id,
-        "DELETE",
-        f"/api/earnapp/nodes/{node_id}",
-        json=cas,
-        timeout=180,
-    )
+    assigned_worker_id, cas, backend = await _resolve_earnapp_ubuntu_lifecycle(node_id, worker_id)
+    route = f"/api/earnapp/docker-nodes/{node_id}" if backend == "docker" else f"/api/earnapp/nodes/{node_id}"
+    result = await _proxy_to_worker(assigned_worker_id, "DELETE", route, json=cas, timeout=180)
     removed = await database.finalize_earnapp_node_removal(
         node_id,
         assigned_worker_id,
@@ -3896,7 +3932,7 @@ async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) 
 async def _proxy_worker_earnapp_lxd_deploy(
     worker_id: int, logical_node_id: str, spec: dict[str, Any]
 ) -> dict[str, Any]:
-    """Dispatch one Ubuntu EarnApp node through the dedicated worker endpoint."""
+    """Dispatch one legacy Ubuntu EarnApp node through the restricted LXD helper."""
     return await _proxy_to_worker(
         worker_id,
         "POST",
@@ -3909,7 +3945,7 @@ async def _proxy_worker_earnapp_lxd_deploy(
 async def _proxy_worker_earnapp_docker_deploy(
     worker_id: int, logical_node_id: str, spec: dict[str, Any]
 ) -> dict[str, Any]:
-    """Dispatch MacOS/iOS EarnApp only through the dedicated worker contract."""
+    """Dispatch a Docker-backed EarnApp node through the dedicated worker contract."""
     return await _proxy_to_worker(
         worker_id,
         "POST",
@@ -3957,7 +3993,7 @@ async def _reconcile_earnapp_pending_proxy_binding(instance: Mapping[str, Any], 
         if not node:
             return False
         platform = str(node.get("platform") or "").strip().lower()
-        backend = "lxd" if platform == "ubuntu" else "docker"
+        backend = str(instance.get("runtime_backend") or ("lxd" if platform == "ubuntu" else "docker")).strip().lower()
         if provider_runtime.mutation_block(
             node_id,
             {"provider_slug": "earnapp", "platform": platform, "runtime_backend": backend},
@@ -4218,14 +4254,13 @@ def _earnapp_lxd_settings(config: Mapping[str, Any] | None) -> dict[str, int]:
 async def _deploy_earnapp_nodes(worker_id: int, *, config: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Deploy geo-compatible EarnApp nodes through dedicated platform routes."""
     slots = await _worker_public_ip_slots(int(worker_id))
+    # Auto-deploy creates new Ubuntu nodes through Docker. Keep parsed limits
+    # for compatibility with the sequential deploy contract, but do not let
+    # legacy LXD settings block the Docker lane.
     try:
         limits = _earnapp_lxd_settings(config)
-    except ValueError as exc:
-        logger.warning("EarnApp LXD settings invalid for worker %s: %s", worker_id, type(exc).__name__)
-        return {"deployed": [], "verified": [], "skipped": [], "pending": [], "failed": ["settings"]}
-
-    async def lxd_deploy(target_worker_id: int, node_id: str, spec: dict[str, Any]) -> dict[str, Any]:
-        return await _proxy_worker_earnapp_lxd_deploy(target_worker_id, node_id, spec)
+    except Exception:
+        limits = {}
 
     async def docker_deploy(target_worker_id: int, node_id: str, spec: dict[str, Any]) -> dict[str, Any]:
         return await _proxy_worker_earnapp_docker_deploy(target_worker_id, node_id, spec)
@@ -4240,7 +4275,7 @@ async def _deploy_earnapp_nodes(worker_id: int, *, config: Mapping[str, Any] | N
                 int(worker_id),
                 slots,
                 docker_deploy=docker_deploy,
-                lxd_deploy=lxd_deploy,
+                lxd_deploy=None,
                 lxd_settings=limits,
             )
     finally:
@@ -7024,7 +7059,24 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
             authoritative_expected = (
                 str(authoritative_token["expected_egress_ip"] or "").strip() if authoritative else ""
             )
-            authoritative_backend = "lxd" if authoritative_platform == "ubuntu" else "docker"
+            # The persisted instance spec is authoritative for Ubuntu because
+            # both Docker (new) and LXD (legacy) nodes remain readable.
+            try:
+                authoritative_instance = await database.get_provider_instance(logical_node_id)
+                authoritative_spec = (
+                    await database.get_provider_instance_spec(logical_node_id) if authoritative_instance else None
+                )
+            except Exception as exc:  # noqa: BLE001 - metadata lookup must not break heartbeats
+                authoritative_instance = None
+                authoritative_spec = None
+                logger.warning(
+                    "Could not inspect EarnApp runtime backend for %s: %s",
+                    logical_node_id,
+                    type(exc).__name__,
+                )
+            authoritative_backend = str((authoritative_spec or {}).get("runtime_backend") or "").strip().lower()
+            if authoritative_backend not in {"docker", "lxd"}:
+                authoritative_backend = "lxd" if authoritative_platform == "ubuntu" else "docker"
             authoritative_token = {
                 "proxy_id": authoritative_proxy_id,
                 "platform": authoritative_platform,

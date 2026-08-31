@@ -531,7 +531,9 @@ def _hydrate_earnapp_state_from_assignment(assignment: dict[str, Any]) -> bool:
     backend = str(assignment.get("runtime_backend") or "docker").strip().lower()
     if proxy_id <= 0 or not expected or platform not in {"macos", "ios", "ubuntu"} or backend not in {"docker", "lxd"}:
         return False
-    if (platform == "ubuntu") != (backend == "lxd"):
+    # MacOS/iOS are Docker-only. Ubuntu accepts either backend so legacy LXD
+    # state remains recoverable while new assignments can use Docker.
+    if platform in {"macos", "ios"} and backend != "docker":
         return False
     state.update(
         proxy_id=proxy_id,
@@ -1655,7 +1657,7 @@ class EarnAppNodeCasSpec(BaseModel):
 
 class EarnAppDockerNodeCasSpec(BaseModel):
     generation: int = Field(ge=1)
-    device_id: str = Field(pattern=r"^sdk-(?:mac|ios)-[0-9a-f]{32}$")
+    device_id: str = Field(pattern=r"^sdk-(?:mac|ios|node)-[0-9a-f]{32}$")
 
 
 class EarnAppProxyApplySpec(BaseModel):
@@ -2614,8 +2616,13 @@ async def api_remove_earnapp_docker_node(
 ) -> dict[str, Any]:
     """Remove both Docker components before acknowledging local EarnApp cleanup."""
     _verify_api_key(request)
-    _reject_earnapp_runtime_mutation(slug, platform="macos", runtime_backend="docker")
+    if earnapp_policy.is_protected_logical_node(slug):
+        raise HTTPException(status_code=409, detail="Protected EarnApp node is inspection-only")
     state = _earnapp_node_state(slug)
+    platform = str(state.get("platform") or "").strip().lower()
+    if not platform:
+        platform = "ios" if str(state.get("device_id") or "").startswith("sdk-ios-") else "macos"
+    _reject_earnapp_runtime_mutation(slug, platform=platform, runtime_backend="docker")
     expected = (int(state.get("generation") or 0), str(state.get("device_id") or ""))
     if expected != (spec.generation, spec.device_id):
         raise HTTPException(status_code=409, detail="EarnApp node assignment conflict")
@@ -2634,7 +2641,7 @@ async def api_remove_earnapp_docker_node(
 
 @app.post("/api/earnapp/docker-nodes/{slug}/deploy")
 async def api_deploy_earnapp_docker_node(request: Request, slug: str, spec: DeploySpec) -> dict[str, Any]:
-    """Deploy a validated MacOS/iOS EarnApp runtime through its dedicated lane."""
+    """Deploy a validated MacOS/iOS/Ubuntu EarnApp runtime through its dedicated lane."""
     _verify_api_key(request)
     platform = str((spec.runtime_contract or {}).get("platform") or "").strip().lower()
     if platform == "darwin":
@@ -2642,8 +2649,8 @@ async def api_deploy_earnapp_docker_node(request: Request, slug: str, spec: Depl
     _reject_earnapp_runtime_mutation(slug, platform=platform, runtime_backend="docker")
     if str(spec.provider_slug or "").strip().lower() != "earnapp":
         raise HTTPException(status_code=400, detail="EarnApp provider is required")
-    if platform not in {"macos", "ios"}:
-        raise HTTPException(status_code=400, detail="Dedicated Docker route supports only MacOS or iOS")
+    if platform not in {"macos", "ios", "linux"}:
+        raise HTTPException(status_code=400, detail="Dedicated Docker route supports only MacOS, iOS, or Ubuntu")
     try:
         _validate_deploy_spec(spec, slug=slug)
         await _materialize_runtime_assets(slug, spec)
