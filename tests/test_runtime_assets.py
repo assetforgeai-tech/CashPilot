@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import hashlib
 import io
 import stat
 import zipfile
@@ -15,10 +14,27 @@ from fastapi import HTTPException
 from app import database, main, runtime_assets, worker_api
 
 
-def test_runtime_asset_url_rejects_private_or_non_https_targets():
-    for value in ("http://assets.example/file", "https://127.0.0.1/file", "https://user:pass@assets.example/file"):
-        with pytest.raises(HTTPException):
-            worker_api._validated_runtime_asset_url(value)
+def test_worker_rejects_legacy_direct_runtime_asset_downloads(tmp_path):
+    async def run():
+        spec = worker_api.DeploySpec(
+            image="img",
+            runtime_assets=[
+                worker_api.RuntimeAssetSpec(
+                    provider="demo",
+                    asset_kind="chrome_profile_zip",
+                    target="/config",
+                    encoding="zip",
+                    url="https://assets.example/profile.zip",
+                )
+            ],
+        )
+        with (
+            patch.object(worker_api, "_RUNTIME_ASSET_DIR", tmp_path),
+            pytest.raises(HTTPException, match="Direct runtime asset downloads are disabled"),
+        ):
+            await worker_api._materialize_runtime_assets("demo", spec)
+
+    asyncio.run(run())
 
 
 def test_runtime_asset_zip_rejects_path_traversal(tmp_path):
@@ -149,49 +165,6 @@ class TestRuntimeAssets:
             assert spec.volumes[source] == {"bind": "/config", "mode": "ro"}
             prefs = Path(source) / ".config" / "chromium" / "Default" / "Preferences"
             assert prefs.exists()
-
-        asyncio.run(run())
-
-    def test_worker_downloads_decrypts_and_unpacks_direct_chrome_profile_zip(self, tmp_path):
-        async def run():
-            buf = io.BytesIO()
-            with zipfile.ZipFile(buf, "w") as zf:
-                zf.writestr("chromeprofiledata/.config/chromium/Default/Preferences", "{}")
-            key = "test-fernet-key"
-            encrypted = b"encrypted-zip"
-            spec = worker_api.DeploySpec(
-                image="img",
-                deploy_credentials={
-                    "chrome_profile_url": "https://assets.example/profile.zip.fernet",
-                    "chrome_profile_key": key,
-                },
-                runtime_assets=[
-                    worker_api.RuntimeAssetSpec(
-                        provider="demo",
-                        asset_kind="chrome_profile_zip",
-                        target="/config",
-                        encoding="zip",
-                        url_arg="chrome_profile_url",
-                        sha256=hashlib.sha256(encrypted).hexdigest(),
-                        decrypt="fernet",
-                        decrypt_key_arg="chrome_profile_key",
-                    )
-                ],
-            )
-            with (
-                patch.object(worker_api, "_RUNTIME_ASSET_DIR", tmp_path),
-                patch.object(worker_api, "_download_runtime_asset", return_value=encrypted) as download,
-                patch.object(worker_api, "_decrypt_runtime_asset", return_value=buf.getvalue()) as decrypt,
-            ):
-                await worker_api._materialize_runtime_assets("demo", spec)
-
-            download.assert_awaited_once_with(
-                "https://assets.example/profile.zip.fernet", tmp_path / "demo" / "chrome_profile_zip.download"
-            )
-            decrypt.assert_called_once_with(encrypted, "fernet", key)
-            source = next(iter(spec.volumes))
-            assert "/chrome_profile_zip-" in source.replace("\\", "/")
-            assert (Path(source) / ".config" / "chromium" / "Default" / "Preferences").exists()
 
         asyncio.run(run())
 

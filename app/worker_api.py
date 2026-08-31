@@ -18,7 +18,6 @@ import contextlib
 import hashlib
 import hmac
 import io
-import ipaddress
 import json
 import logging
 import os
@@ -28,7 +27,6 @@ import shutil
 import socket
 import subprocess
 import time
-import urllib.parse
 import uuid
 import zipfile
 from collections.abc import Mapping
@@ -1808,34 +1806,6 @@ async def _fetch_runtime_asset(provider: str, asset_kind: str, *, asset_id: str 
     return value
 
 
-async def _download_runtime_asset(url: str, dest: Path) -> bytes:
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    # URL is validated by _validated_runtime_asset_url immediately before this sink.
-    async with (
-        httpx.AsyncClient(timeout=60, follow_redirects=True) as client,
-        client.stream("GET", url) as resp,
-    ):  # lgtm [py/ssrf]
-        resp.raise_for_status()
-        buf = bytearray()
-        with dest.open("wb") as fh:
-            async for chunk in resp.aiter_bytes():
-                if not chunk:
-                    continue
-                fh.write(chunk)
-                buf.extend(chunk)
-    return bytes(buf)
-
-
-def _decrypt_runtime_asset(data: bytes, mode: str | None, key: str | None) -> bytes:
-    if not mode:
-        return data
-    if mode.lower() != "fernet":
-        raise ValueError(f"Unsupported runtime asset decrypt mode: {mode}")
-    if not key:
-        raise ValueError("Missing runtime asset decrypt key")
-    return Fernet(key.encode()).decrypt(data)
-
-
 def _runtime_asset_url(asset: RuntimeAssetSpec, spec: DeploySpec, slug: str) -> str:
     url = str(asset.url or "").strip()
     if url:
@@ -1843,23 +1813,6 @@ def _runtime_asset_url(asset: RuntimeAssetSpec, spec: DeploySpec, slug: str) -> 
     if asset.url_arg:
         return str((spec.deploy_credentials or {}).get(asset.url_arg) or "").strip()
     return ""
-
-
-def _validated_runtime_asset_url(value: str) -> str:
-    """Reject non-HTTPS and private runtime-asset download targets."""
-    raw = str(value or "").strip()
-    parsed = urllib.parse.urlsplit(raw)
-    if parsed.scheme.lower() != "https" or not parsed.hostname or parsed.username or parsed.password:
-        raise HTTPException(status_code=400, detail="Runtime asset URL must be a public HTTPS URL")
-    try:
-        address = ipaddress.ip_address(parsed.hostname)
-    except ValueError:
-        address = None
-    if address is not None and (
-        address.is_private or address.is_loopback or address.is_link_local or address.is_reserved
-    ):
-        raise HTTPException(status_code=400, detail="Runtime asset URL must not target a private address")
-    return raw
 
 
 def _extract_zip_safely(data: bytes, destination: Path) -> None:
@@ -1870,14 +1823,14 @@ def _extract_zip_safely(data: bytes, destination: Path) -> None:
             target = (root / member.filename).resolve()
             if target != root and root not in target.parents:
                 raise HTTPException(status_code=400, detail="Runtime asset archive contains an unsafe path")
-        # Every member was canonicalized and checked against root above.
-        archive.extractall(root)  # lgtm [py/path-injection]
-
-
-def _runtime_asset_decrypt_key(asset: RuntimeAssetSpec, spec: DeploySpec, slug: str) -> str:
-    if asset.decrypt_key_arg:
-        return str((spec.deploy_credentials or {}).get(asset.decrypt_key_arg) or "").strip()
-    return ""
+        for member in archive.infolist():
+            target = root / member.filename
+            if member.is_dir():
+                target.mkdir(parents=True, exist_ok=True)
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with archive.open(member) as source, target.open("wb") as output:
+                shutil.copyfileobj(source, output)
 
 
 def _runtime_asset_scope(value: str, *, label: str) -> str:
@@ -1910,17 +1863,7 @@ async def _materialize_runtime_assets(slug: str, spec: DeploySpec) -> None:
         host_path.parent.mkdir(parents=True, exist_ok=True)
         download_url = _runtime_asset_url(asset, spec, slug)
         if download_url:
-            download_url = _validated_runtime_asset_url(download_url)
-            download_path = host_path.parent / f"{asset_kind}.download"
-            data = await _download_runtime_asset(download_url, download_path)
-            expected_sha256 = str(asset.sha256 or "").strip()
-            if expected_sha256 and hashlib.sha256(data).hexdigest() != expected_sha256:
-                raise HTTPException(status_code=400, detail=f"runtime asset {provider}:{asset_kind} sha256 mismatch")
-            data = _decrypt_runtime_asset(
-                data,
-                asset.decrypt,
-                _runtime_asset_decrypt_key(asset, spec, slug),
-            )
+            raise HTTPException(status_code=400, detail="Direct runtime asset downloads are disabled")
         else:
             payload = await _fetch_runtime_asset(provider, asset_kind, asset_id=str(asset.asset_id or ""))
             data = base64.b64decode(payload) if encoding in {"base64", "zip"} else payload.encode()
