@@ -17,8 +17,8 @@ import base64
 import contextlib
 import hashlib
 import hmac
-import ipaddress
 import io
+import ipaddress
 import json
 import logging
 import os
