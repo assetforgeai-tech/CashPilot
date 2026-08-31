@@ -50,6 +50,7 @@ def validate_artifacts(
     defaults = {
         "macos": earnapp_runtime.MAC_RUNTIME_ARTIFACT_HASHES,
         "ios": earnapp_runtime.IOS_RUNTIME_ARTIFACT_HASHES,
+        "ubuntu": earnapp_runtime.UBUNTU_RUNTIME_ARTIFACT_HASHES,
     }
     if selected not in defaults:
         raise ValueError("unsupported EarnApp image platform")
@@ -61,9 +62,10 @@ def validate_artifacts(
         actual = _sha256(path)
         if actual.lower() != str(expected_hash).lower():
             raise ValueError(f"EarnApp runtime artifact hash mismatch for {name}")
-    entrypoint = (source / "entrypoint.sh").read_text(encoding="utf-8")
-    if _ENTRYPOINT_INSTALL_MARKERS[selected] not in entrypoint:
-        raise ValueError(f"EarnApp {selected} entrypoint install marker is invalid")
+    if selected in _ENTRYPOINT_INSTALL_MARKERS:
+        entrypoint = (source / "entrypoint.sh").read_text(encoding="utf-8")
+        if _ENTRYPOINT_INSTALL_MARKERS[selected] not in entrypoint:
+            raise ValueError(f"EarnApp {selected} entrypoint install marker is invalid")
     return earnapp_runtime.runtime_asset_manifest(expected, platform=selected)
 
 
@@ -74,9 +76,35 @@ def render_ios_registration_wrapper() -> str:
 
 def render_dockerfile(manifest: Mapping[str, object], *, platform: str = "macos") -> str:
     selected = str(platform or "macos").strip().lower()
-    if selected not in {"macos", "ios"}:
+    if selected not in {"macos", "ios", "ubuntu"}:
         raise ValueError("unsupported EarnApp image platform")
     manifest_hash = hashlib.sha256(_manifest_bytes(manifest)).hexdigest()
+    if selected == "ubuntu":
+        return f"""FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \\
+    && apt-get install -y --no-install-recommends ca-certificates curl dbus python3 procps \\
+    && rm -rf /var/lib/apt/lists/*
+
+COPY earnapp-linux /usr/bin/earnapp
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY runtime-manifest.json /opt/cashpilot/runtime-manifest.json
+
+RUN chmod 0755 /usr/bin/earnapp /usr/local/bin/entrypoint.sh \\
+    && bash -n /usr/local/bin/entrypoint.sh \\
+    && rm -f /.dockerenv
+
+LABEL com.cashpilot.earnapp.runtime={earnapp_runtime.UBUNTU_RUNTIME_HOST} \\
+      com.cashpilot.earnapp.platform={earnapp_runtime.UBUNTU_PLATFORM} \\
+      com.cashpilot.earnapp.appid={earnapp_runtime.UBUNTU_APPID} \\
+      com.cashpilot.earnapp.device-prefix={earnapp_runtime.UBUNTU_DEVICE_PREFIX} \\
+      com.cashpilot.earnapp.assets-sha256={manifest_hash}
+
+VOLUME ["/etc/earnapp"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+"""
     if selected == "ios":
         binary_source = "earnapp-bootstrap"
         binary_target = "earnapp-ios"
@@ -170,8 +198,10 @@ def write_context(
             shutil.copy2(source / name, context / name)
     manifest_bytes = _manifest_bytes(manifest)
     (context / "runtime-manifest.json").write_bytes(manifest_bytes)
-    if selected == "ios":
+    if selected in {"ios", "ubuntu"}:
         generated = earnapp_runtime.generated_runtime_artifacts("ios")
+        if selected == "ubuntu":
+            generated = earnapp_runtime.generated_runtime_artifacts("ubuntu")
         for name, payload in generated.items():
             (context / name).write_bytes(payload)
     (context / "Dockerfile").write_text(render_dockerfile(manifest, platform=selected), encoding="utf-8")
@@ -180,21 +210,26 @@ def write_context(
 
 def image_reference(manifest_hash: str, *, platform: str = "macos") -> str:
     selected = str(platform or "macos").strip().lower()
-    repository = "cashpilot/earnapp-ios" if selected == "ios" else "cashpilot/earnapp-mac-canary"
+    repository = {
+        "ios": "cashpilot/earnapp-ios",
+        "ubuntu": "cashpilot/earnapp-ubuntu",
+    }.get(selected, "cashpilot/earnapp-mac-canary")
     return f"{repository}:asset-{str(manifest_hash)[:12]}"
 
 
 def default_source_dir(platform: str = "macos") -> Path:
     """Return the external operator-supplied runtime bundle path."""
-    selected = "ios" if str(platform or "macos").strip().lower() == "ios" else "mac"
-    return ROOT.parent / "earnapp_new_update" / "earnapp-runtime-files" / selected
+    selected = str(platform or "macos").strip().lower()
+    if selected == "ubuntu":
+        return ROOT / ".runtime-src" / "ubuntu"
+    return ROOT.parent / "earnapp_new_update" / "earnapp-runtime-files" / ("ios" if selected == "ios" else "mac")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-dir", type=Path, default=None)
     parser.add_argument("--context-dir", type=Path, default=None)
-    parser.add_argument("--platform", choices=("macos", "ios"), default="macos")
+    parser.add_argument("--platform", choices=("macos", "ios", "ubuntu"), default="macos")
     parser.add_argument("--build", action="store_true", help="run docker build after staging")
     args = parser.parse_args()
 

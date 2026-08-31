@@ -2,6 +2,27 @@
 
 Updated: 2026-08-31 (EarnApp Ubuntu canary 5 TLS/transport investigation)
 
+## EarnApp Ubuntu Docker migration (unreleased, 2026-08-31)
+
+- Source changes now route new Ubuntu EarnApp deployments through the dedicated
+  Docker lane using the pinned official Linux binary image
+  `cashpilot/earnapp-ubuntu:asset-f52fb20750d1`.
+- Ubuntu identity profiles generate unique `id`, `serial`, `machine_id`,
+  hostname and `sdk-node-<32 hex>` device IDs per logical node. The image
+  removes `/.dockerenv`, persists `/etc/machine-id` and `tracking_id`, validates
+  proxy egress, and retries `install_device`/`is_linked` before starting the
+  official runtime.
+- Existing Ubuntu LXD state remains readable and lifecycle-compatible. Backend
+  selection is taken from the persisted provider-instance spec; a missing spec
+  is treated as legacy LXD, while metadata lookup errors fail closed.
+- Regression evidence for this source change: Ruff, compileall and 513 focused
+  EarnApp/provider tests pass. No release, worker redeploy, VPS mutation,
+  proxy rotation, identity rewrite or existing node mutation has occurred yet.
+- Live canary remains pending on `test-sing`: remove/recreate only the Ubuntu
+  canary after release, preload the pinned image, then verify Docker runtime,
+  exact UUID/egress, `linked:true`, country, positive usage and restart/reboot
+  persistence. Protected nodes and providers remain untouched.
+
 ## EarnApp Ubuntu canary 5 investigation (2026-08-31)
 
 - Current target is only `earnapp-ubuntu-canary-test-sing-5`, LXD

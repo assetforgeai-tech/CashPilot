@@ -235,6 +235,26 @@ ws.addEventListener("message", (ev) => {
 await send("Page.enable");
 await send("Runtime.enable");
 
+// A file:// stylesheet can still be loading after Page.navigate resolves.
+// Measuring during that window makes anchor buttons look underlined because
+// only the browser's user-agent stylesheet is active. Wait for the document
+// and the real stylesheet to be parsed, but keep a bounded timeout so a broken
+// or missing stylesheet still produces the normal legibility failures below.
+const waitForStylesheet = async () => {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const probe = await send("Runtime.evaluate", {
+      expression: `document.readyState === "complete" &&
+        document.styleSheets.length > 0 &&
+        [...document.styleSheets].every((sheet) => {
+          try { return sheet.cssRules.length > 0; } catch (_) { return false; }
+        })`,
+      returnByValue: true,
+    });
+    if (probe?.result?.value === true) return;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+};
+
 let failures = 0;
 let checks = 0;
 const fail = (msg) => { failures++; console.error("FAIL  " + msg); };
@@ -243,7 +263,7 @@ const fail = (msg) => { failures++; console.error("FAIL  " + msg); };
 // other, and the light theme redefines every colour token.
 for (const theme of ["dark", "light"]) {
   await send("Page.navigate", { url: "file://" + fixturePaths[theme] });
-  await new Promise((r) => setTimeout(r, 400)); // let the stylesheet load
+  await waitForStylesheet();
   const res = await send("Runtime.evaluate", { expression: AUDIT(theme), returnByValue: true });
   const data = JSON.parse(res.result.value);
   checks += 1;

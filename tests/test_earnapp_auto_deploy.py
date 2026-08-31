@@ -538,7 +538,7 @@ async def test_server_earnapp_lane_dispatches_geo_platform_contract(monkeypatch)
     assert deploy.await_args.kwargs["lxd_settings"] == {"cpu": 2, "memory_mib": 2048}
 
 
-def test_earnapp_transport_spec_does_not_fall_back_to_nkn_lxd_settings():
+def test_earnapp_ubuntu_docker_transport_ignores_nkn_lxd_settings():
     node = earnapp_deploy.PreparedEarnAppNode(
         worker_id=3,
         slot_id="ipv4-001",
@@ -559,8 +559,9 @@ def test_earnapp_transport_spec_does_not_fall_back_to_nkn_lxd_settings():
         },
     )
 
-    assert spec["lxd_cpu"] == 1
-    assert spec["lxd_memory_mib"] == 1024
+    assert spec["runtime_backend"] == "docker"
+    assert "lxd_cpu" not in spec
+    assert "lxd_memory_mib" not in spec
 
 
 def test_auto_deploy_excludes_earnapp_from_generic_catalog_batch():

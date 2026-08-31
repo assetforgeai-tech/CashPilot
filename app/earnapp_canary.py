@@ -236,8 +236,65 @@ def build_runtime_spec(
             generation=generation,
             identity_asset_id=identity_asset_id,
         )
+    if selected == "ubuntu":
+        node_id = _safe_node_id(logical_node_id)
+        device = str(device_id or "")
+        if not re.fullmatch(r"sdk-node-[0-9a-f]{32}", device):
+            raise ValueError("EarnApp Ubuntu device_id must use the sdk-node- prefix")
+        proxy_meta = _redacted_proxy(proxy)
+        expected_egress_ip = str(proxy_meta.get("exit_ip") or "").strip()
+        if not expected_egress_ip:
+            raise ValueError("EarnApp Ubuntu runtime requires an authoritative proxy egress IP")
+        return {
+            "image": earnapp_runtime.UBUNTU_RUNTIME_IMAGE,
+            "image_delivery": "operator_preload",
+            "provider_slug": "earnapp",
+            "host_runtime": earnapp_runtime.UBUNTU_RUNTIME_HOST,
+            "env": {
+                "EARNAPP_PLATFORM": earnapp_runtime.UBUNTU_PLATFORM,
+                "EARNAPP_APPID": earnapp_runtime.UBUNTU_APPID,
+                "EARNAPP_DEVICE_ID": device,
+                "EARNAPP_LOGICAL_NODE_ID": node_id,
+                "EARNAPP_EXPECTED_EGRESS_IP": expected_egress_ip,
+            },
+            "volumes": {f"{node_id}-data": {"bind": "/etc/earnapp", "mode": "rw"}},
+            "labels": {
+                "cashpilot.provider": "earnapp",
+                "cashpilot.instance_mode": "proxy",
+                "cashpilot.earnapp.logical_node_id": node_id,
+                "cashpilot.earnapp.account_id": str(int(account_id)),
+                "cashpilot.earnapp.device_id": device,
+                "cashpilot.earnapp.platform": earnapp_runtime.UBUNTU_PLATFORM,
+                "cashpilot.earnapp.runtime_contract": earnapp_runtime.UBUNTU_APPID,
+                "cashpilot.earnapp.generation": str(max(1, int(generation))),
+            },
+            "privileged": False,
+            "cap_add": None,
+            "devices": None,
+            "network_mode": None,
+            "egress_mode": "proxy",
+            "egress_udp": "none",
+            "proxy": proxy_meta,
+            "resources": {"mem_limit": "1g", "oom_score_adj": 200},
+            "runtime_assets": [
+                {
+                    "provider": "earnapp",
+                    "asset_kind": "ubuntu_identity_profile",
+                    "asset_id": identity_asset_id or node_id,
+                    "target": "/run/cashpilot/identity.json",
+                    "encoding": "text",
+                }
+            ],
+            "runtime_contract": {
+                "platform": earnapp_runtime.UBUNTU_PLATFORM,
+                "appid": earnapp_runtime.UBUNTU_APPID,
+                "device_id_prefix": earnapp_runtime.UBUNTU_DEVICE_PREFIX,
+            },
+            "account_id": int(account_id),
+            "runtime_backend": "docker",
+        }
     if selected != "ios":
-        raise ValueError("Docker EarnApp runtime supports only MacOS or iOS")
+        raise ValueError("Docker EarnApp runtime supports only MacOS, iOS, or Ubuntu")
     node_id = _safe_node_id(logical_node_id)
     device = str(device_id or "").strip()
     if not re.fullmatch(r"sdk-ios-[A-Za-z0-9-]{4,96}", device):
@@ -438,7 +495,7 @@ async def deploy_platform_canary(
     worker_remove: PlatformWorkerRemove,
     lxd_settings: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Deploy one fresh iOS-Docker or Ubuntu-LXD canary without touching Mac nodes."""
+    """Deploy one fresh iOS-Docker or Ubuntu-Docker canary without touching Mac nodes."""
     from app import earnapp_deploy
 
     node_id = _mutable_node_id(logical_node_id)
@@ -497,7 +554,7 @@ async def deploy_platform_canary(
                 )
         raise ValueError("EarnApp canary platform selection changed during provisioning")
 
-    if selected == "ios":
+    if selected in {"ios", "ubuntu"}:
         transport_spec = build_runtime_spec(
             node_id,
             prepared.account_id,
@@ -508,19 +565,6 @@ async def deploy_platform_canary(
             identity_asset_id=prepared.identity_asset_id,
         )
         transport_spec["proxy"] = _proxy_metadata(prepared.proxy)
-    else:
-        limits = dict(lxd_settings or {})
-        transport_spec = {
-            "logical_node_id": node_id,
-            "generation": prepared.generation,
-            "account_id": prepared.account_id,
-            "device_id": prepared.device_id,
-            "identity": dict(prepared.identity),
-            "proxy_id": int(prepared.proxy["proxy_id"]),
-            "proxy": dict(prepared.proxy),
-            "lxd_cpu": int(limits.get("cpu", 1) or 1),
-            "lxd_memory_mib": int(limits.get("memory_mib", 1024) or 1024),
-        }
     persisted_spec = earnapp_runtime.redacted_evidence(json.loads(json.dumps(transport_spec)))
     try:
         result = await worker_deploy(int(worker_id), node_id, transport_spec)

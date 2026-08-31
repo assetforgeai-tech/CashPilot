@@ -30,6 +30,10 @@ IOS_PLATFORM = "ios"
 IOS_APPID = "com.brd.earnapp"
 IOS_INSTALL_APPID = "ios_com.brd.earnapp"
 IOS_DEVICE_PREFIX = "sdk-ios-"
+UBUNTU_PLATFORM = "linux"
+UBUNTU_APPID = "node_earnapp.com"
+UBUNTU_DEVICE_PREFIX = "sdk-node-"
+UBUNTU_RUNTIME_HOST = "earnapp_ubuntu"
 
 # These are the only runtime artifacts copied into the canary image.  The
 # binaries remain outside Git; the hashes pin the exact local source bundle
@@ -48,6 +52,10 @@ IOS_RUNTIME_ARTIFACT_HASHES = {
     "entrypoint.sh": "50b32e6f7280da75a7568cd25b6e4e43797f254517b1ee316f5b359f24e4144e",
 }
 
+UBUNTU_RUNTIME_ARTIFACT_HASHES = {
+    "earnapp-linux": "458e4776fadb75a109821be768b25ebbfc08186ff6a015aff77c923a40dcee07",
+}
+
 _PLATFORM_CONTRACTS = {
     "macos": {
         "artifact_hashes": MAC_RUNTIME_ARTIFACT_HASHES,
@@ -64,6 +72,14 @@ _PLATFORM_CONTRACTS = {
         "appid": IOS_APPID,
         "device_prefix": IOS_DEVICE_PREFIX,
         "image": "cashpilot/earnapp-ios",
+    },
+    "ubuntu": {
+        "artifact_hashes": UBUNTU_RUNTIME_ARTIFACT_HASHES,
+        "runtime": UBUNTU_RUNTIME_HOST,
+        "platform": UBUNTU_PLATFORM,
+        "appid": UBUNTU_APPID,
+        "device_prefix": UBUNTU_DEVICE_PREFIX,
+        "image": "cashpilot/earnapp-ubuntu",
     },
 }
 
@@ -209,12 +225,104 @@ def ios_entrypoint_script() -> bytes:
 def generated_runtime_artifacts(platform: str = "macos") -> dict[str, bytes]:
     """Return generated scripts that are part of the platform image digest."""
     selected = _image_platform(platform)
+    if selected == "ubuntu":
+        return {"entrypoint.sh": ubuntu_entrypoint_script()}
     if selected != "ios":
         return {}
     return {
         "ios-entrypoint": ios_entrypoint_script(),
         "ios-register-device": ios_registration_script(),
     }
+
+
+def ubuntu_entrypoint_script() -> bytes:
+    """Return the persistent official Linux runtime bootstrap."""
+    return b"""#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+STATE_DIR=/etc/earnapp
+IDENTITY_FILE=/run/cashpilot/identity.json
+HOST_ID_FILE="$STATE_DIR/host-machine-id"
+EXPECTED_DEVICE_ID="${EARNAPP_DEVICE_ID:?}"
+EXPECTED_EGRESS_IP="${EARNAPP_EXPECTED_EGRESS_IP:?}"
+mkdir -p "$STATE_DIR" /var/lib/dbus
+rm -f /.dockerenv
+
+read_identity() {
+    python3 - "$IDENTITY_FILE" "$1" <<'PY'
+import json, sys
+with open(sys.argv[1], encoding="utf-8") as handle:
+    value = json.load(handle)
+print(str(value.get(sys.argv[2]) or ""), end="")
+PY
+}
+
+PROFILE_DEVICE_ID=$(read_identity device_id)
+PROFILE_MACHINE_ID=$(read_identity machine_id | tr -d '-\r\n' | tr 'A-F' 'a-f')
+CONFIG_HOSTNAME=$(read_identity hostname)
+[[ "$PROFILE_DEVICE_ID" == "$EXPECTED_DEVICE_ID" ]]
+[[ "$PROFILE_MACHINE_ID" =~ ^[0-9a-f]{32}$ ]]
+
+if [[ -s "$STATE_DIR/tracking_id" ]]; then
+    tracking=$(tr -d '-\r\n' <"$STATE_DIR/tracking_id" | tr 'A-F' 'a-f')
+    [[ "$tracking" =~ ^[0-9a-f]{32}$ ]] || tracking="$PROFILE_MACHINE_ID"
+    printf '%s\n' "$tracking" >"$HOST_ID_FILE"
+elif [[ ! -s "$HOST_ID_FILE" ]]; then
+    printf '%s\n' "$PROFILE_MACHINE_ID" >"$HOST_ID_FILE"
+fi
+install -m 0444 "$HOST_ID_FILE" /etc/machine-id
+ln -sfn /etc/machine-id /var/lib/dbus/machine-id
+printf '%s\n' "${CONFIG_HOSTNAME:-earnapp-ubuntu}" >/etc/hostname
+
+printf '%s\n' "$EXPECTED_DEVICE_ID" >"$STATE_DIR/uuid"
+printf '%s\n' enabled >"$STATE_DIR/status"
+printf '%s\n' "$(cat /etc/machine-id)" >"$STATE_DIR/tracking_id"
+
+echo "[host] Hostname: $(cat /etc/hostname)"
+echo "[host] Machine ID: $(cat /etc/machine-id)"
+echo "[host] OS: $(. /etc/os-release && printf '%s' "$PRETTY_NAME")"
+echo "[host] Architecture: $(dpkg --print-architecture)"
+
+for _ in $(seq 1 30); do
+    observed=$(curl -fsS --connect-timeout 5 --max-time 15 https://api.ipify.org || true)
+    [[ "$observed" == "$EXPECTED_EGRESS_IP" ]] && break
+    sleep 2
+done
+[[ "${observed:-}" == "$EXPECTED_EGRESS_IP" ]]
+
+version=$(/usr/bin/earnapp --version | awk '{print $2}')
+printf '%s\n' "$version" >"$STATE_DIR/ver"
+serial=$(sha1sum /etc/machine-id | awk '{print $1}')
+for attempt in $(seq 1 10); do
+    install_body=$(mktemp)
+    linked_body=$(mktemp)
+    if curl -fsS --connect-timeout 15 --max-time 45 -H 'Content-Type: application/json' \
+        -o "$install_body" \
+        "https://client.earnapp.com/install_device?uuid=$EXPECTED_DEVICE_ID&version=$version&arch=x64&appid=node_earnapp.com&os=Ubuntu" \
+        --data "{\"serial\":\"$serial\"}" \
+      && curl -fsS --connect-timeout 15 --max-time 45 -o "$linked_body" \
+        "https://client.earnapp.com/is_linked?uuid=$EXPECTED_DEVICE_ID&version=$version&appid=node_earnapp.com" \
+      && python3 - "$install_body" "$linked_body" <<'PY'
+import json, sys
+with open(sys.argv[1], encoding="utf-8") as handle:
+    installed = json.load(handle)
+with open(sys.argv[2], encoding="utf-8") as handle:
+    linked = json.load(handle)
+raise SystemExit(0 if installed.get("ok") in (1, True, "1") and linked.get("linked") is True else 1)
+PY
+    then
+        rm -f "$install_body" "$linked_body"
+        break
+    fi
+    rm -f "$install_body" "$linked_body"
+    [[ "$attempt" -lt 10 ]] || exit 1
+    sleep 15
+done
+
+/usr/bin/earnapp autoupgrade &
+exec /usr/bin/earnapp run
+"""
 
 
 def runtime_asset_manifest(
@@ -259,6 +367,8 @@ MAC_RUNTIME_IMAGE = f"cashpilot/earnapp-mac-canary:asset-{MAC_RUNTIME_ASSET_MANI
 MAC_RUNTIME_HOST = "earnapp_mac_canary"
 IOS_RUNTIME_ASSET_MANIFEST_SHA256 = runtime_asset_manifest_sha256(platform="ios")
 IOS_RUNTIME_IMAGE = f"cashpilot/earnapp-ios:asset-{IOS_RUNTIME_ASSET_MANIFEST_SHA256[:12]}"
+UBUNTU_RUNTIME_ASSET_MANIFEST_SHA256 = runtime_asset_manifest_sha256(platform="ubuntu")
+UBUNTU_RUNTIME_IMAGE = f"cashpilot/earnapp-ubuntu:asset-{UBUNTU_RUNTIME_ASSET_MANIFEST_SHA256[:12]}"
 IOS_RUNTIME_HOST = "earnapp_ios"
 MAC_PROFILE_MAGIC = b"ESPF"
 MAC_PROFILE_VERSION = 1
@@ -351,12 +461,19 @@ def validate_canary_spec(spec: dict[str, Any]) -> None:
 def validate_runtime_spec(spec: dict[str, Any]) -> None:
     labels = spec.get("labels") or {}
     platform_label = str(labels.get("cashpilot.earnapp.platform") or "").strip().lower()
-    selected = "macos" if platform_label == MAC_PLATFORM else platform_label
+    selected = (
+        "macos"
+        if platform_label == MAC_PLATFORM
+        else ("ubuntu" if platform_label == UBUNTU_PLATFORM else platform_label)
+    )
     if selected == "macos":
         validate_canary_spec(spec)
         return
+    if selected == "ubuntu":
+        _validate_ubuntu_runtime_spec(spec)
+        return
     if selected != "ios":
-        raise ValueError("EarnApp Docker runtime supports only MacOS or iOS")
+        raise ValueError("EarnApp Docker runtime supports only MacOS, iOS, or Ubuntu")
     if str(spec.get("provider_slug") or "") != "earnapp":
         raise ValueError("EarnApp provider is required")
     if str(spec.get("host_runtime") or "") != IOS_RUNTIME_HOST:
@@ -412,6 +529,48 @@ def validate_runtime_spec(spec: dict[str, Any]) -> None:
         or not str(asset.get("asset_id") or "").strip()
     ):
         raise ValueError("EarnApp iOS identity asset is invalid")
+
+
+def _validate_ubuntu_runtime_spec(spec: dict[str, Any]) -> None:
+    if str(spec.get("provider_slug") or "") != "earnapp":
+        raise ValueError("EarnApp provider is required")
+    if str(spec.get("host_runtime") or "") != UBUNTU_RUNTIME_HOST:
+        raise ValueError("EarnApp Ubuntu runtime is required")
+    if str(spec.get("image") or "") != UBUNTU_RUNTIME_IMAGE:
+        raise ValueError("EarnApp image is not the verified Ubuntu image")
+    if spec.get("privileged") or spec.get("cap_add") or spec.get("devices"):
+        raise ValueError("EarnApp Ubuntu runtime cannot request host privilege")
+    if spec.get("network_mode") not in (None, "", "bridge") or str(spec.get("egress_mode") or "") != "proxy":
+        raise ValueError("EarnApp Ubuntu runtime must use proxy bridge egress")
+    if (spec.get("runtime_contract") or {}) != {
+        "platform": UBUNTU_PLATFORM,
+        "appid": UBUNTU_APPID,
+        "device_id_prefix": UBUNTU_DEVICE_PREFIX,
+    }:
+        raise ValueError("EarnApp Ubuntu runtime contract is not verified")
+    device_id = str((spec.get("env") or {}).get("EARNAPP_DEVICE_ID") or "")
+    if not re.fullmatch(r"sdk-node-[0-9a-f]{32}", device_id):
+        raise ValueError("EarnApp Ubuntu device identity is invalid")
+    labels = spec.get("labels") or {}
+    if str(labels.get("cashpilot.earnapp.device_id") or "") != device_id:
+        raise ValueError("EarnApp Ubuntu device label does not match")
+    expected_egress = str((spec.get("env") or {}).get("EARNAPP_EXPECTED_EGRESS_IP") or "").strip()
+    if not re.fullmatch(r"(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}", expected_egress):
+        raise ValueError("EarnApp Ubuntu runtime requires an authoritative egress IP")
+    proxy = spec.get("proxy") if isinstance(spec.get("proxy"), Mapping) else {}
+    if str(proxy.get("country_code") or "").strip().upper() == "VN":
+        raise ValueError("EarnApp Ubuntu runtime requires a non-VN residential proxy")
+    if str(proxy.get("ip_type") or "").strip().lower() != "residential":
+        raise ValueError("EarnApp Ubuntu runtime requires a residential proxy")
+    if str(proxy.get("exit_ip") or "").strip() != expected_egress:
+        raise ValueError("EarnApp Ubuntu runtime egress does not match proxy lease")
+    assets = spec.get("runtime_assets") or []
+    if (
+        len(assets) != 1
+        or str(assets[0].get("asset_kind") or "") != "ubuntu_identity_profile"
+        or str(assets[0].get("target") or "") != "/run/cashpilot/identity.json"
+    ):
+        raise ValueError("EarnApp Ubuntu runtime requires one identity profile")
 
 
 def encrypt_mac_profile(identity: dict[str, Any]) -> str:
