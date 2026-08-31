@@ -565,7 +565,12 @@ async def deploy_platform_canary(
             identity_asset_id=prepared.identity_asset_id,
         )
         transport_spec["proxy"] = _proxy_metadata(prepared.proxy)
-    persisted_spec = earnapp_runtime.redacted_evidence(json.loads(json.dumps(transport_spec)))
+    # Keep lifecycle metadata in the encrypted deployment record. Redaction is
+    # for credentials/evidence, but `runtime_backend` is required to dispatch
+    # later stop/remove operations to Docker instead of legacy LXD.
+    persisted_spec = json.loads(json.dumps(transport_spec))
+    persisted_spec = earnapp_runtime.redacted_evidence(persisted_spec)
+    persisted_spec["runtime_backend"] = "docker"
     try:
         result = await worker_deploy(int(worker_id), node_id, transport_spec)
     except Exception:

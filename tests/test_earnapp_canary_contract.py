@@ -2204,6 +2204,8 @@ async def test_platform_canary_uses_matching_transport_and_persists_redacted_sta
         assert transport["env"]["EARNAPP_DEVICE_ID"] == prepared.device_id
     persisted = save.await_args.kwargs["spec"]
     assert "proxy-secret" not in json.dumps(persisted, sort_keys=True)
+    if platform == "ubuntu":
+        assert persisted["runtime_backend"] == "docker"
     assert save.await_args.kwargs["proxy_id"] == 12
     assert save.await_args.kwargs["status"] == "running"
     assert result["device_id"] == prepared.device_id
