@@ -12,6 +12,17 @@ def test_earnapp_platform_policy_allows_dedicated_apple_and_ubuntu_lanes():
     assert provider_runtime.platform_deployment_allowed("earnapp", "ubuntu", "docker") is True
 
 
+def test_earnapp_policy_normalizes_ubuntu_wire_platform_for_docker_worker_guard():
+    assert provider_runtime.platform_deployment_allowed("earnapp", "linux", "docker") is True
+    assert (
+        provider_runtime.mutation_block(
+            "earnapp-ubuntu-docker-1",
+            {"provider_slug": "earnapp", "platform": "linux", "runtime_backend": "docker"},
+        )
+        is None
+    )
+
+
 @pytest.mark.parametrize(
     ("country_code", "ip_type", "expected"),
     [
