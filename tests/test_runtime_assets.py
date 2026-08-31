@@ -9,7 +9,24 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+from fastapi import HTTPException
+
 from app import database, main, runtime_assets, worker_api
+
+
+def test_runtime_asset_url_rejects_private_or_non_https_targets():
+    for value in ("http://assets.example/file", "https://127.0.0.1/file", "https://user:pass@assets.example/file"):
+        with pytest.raises(HTTPException):
+            worker_api._validated_runtime_asset_url(value)
+
+
+def test_runtime_asset_zip_rejects_path_traversal(tmp_path):
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as archive:
+        archive.writestr("../../escape.txt", "blocked")
+    with pytest.raises(HTTPException):
+        worker_api._extract_zip_safely(buf.getvalue(), tmp_path / "asset")
 
 
 def test_runtime_asset_path_uses_worker_data_mountpoint(monkeypatch):

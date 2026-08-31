@@ -17,6 +17,7 @@ import base64
 import contextlib
 import hashlib
 import hmac
+import ipaddress
 import io
 import json
 import logging
@@ -1840,6 +1841,34 @@ def _runtime_asset_url(asset: RuntimeAssetSpec, spec: DeploySpec, slug: str) -> 
     return ""
 
 
+def _validated_runtime_asset_url(value: str) -> str:
+    """Reject non-HTTPS and private runtime-asset download targets."""
+    raw = str(value or "").strip()
+    parsed = urllib.parse.urlsplit(raw)
+    if parsed.scheme.lower() != "https" or not parsed.hostname or parsed.username or parsed.password:
+        raise HTTPException(status_code=400, detail="Runtime asset URL must be a public HTTPS URL")
+    try:
+        address = ipaddress.ip_address(parsed.hostname)
+    except ValueError:
+        address = None
+    if address is not None and (
+        address.is_private or address.is_loopback or address.is_link_local or address.is_reserved
+    ):
+        raise HTTPException(status_code=400, detail="Runtime asset URL must not target a private address")
+    return raw
+
+
+def _extract_zip_safely(data: bytes, destination: Path) -> None:
+    """Extract an asset archive only when every member stays within destination."""
+    root = destination.resolve()
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        for member in archive.infolist():
+            target = (root / member.filename).resolve()
+            if target != root and root not in target.parents:
+                raise HTTPException(status_code=400, detail="Runtime asset archive contains an unsafe path")
+        archive.extractall(root)
+
+
 def _runtime_asset_decrypt_key(asset: RuntimeAssetSpec, spec: DeploySpec, slug: str) -> str:
     if asset.decrypt_key_arg:
         return str((spec.deploy_credentials or {}).get(asset.decrypt_key_arg) or "").strip()
@@ -1876,6 +1905,7 @@ async def _materialize_runtime_assets(slug: str, spec: DeploySpec) -> None:
         host_path.parent.mkdir(parents=True, exist_ok=True)
         download_url = _runtime_asset_url(asset, spec, slug)
         if download_url:
+            download_url = _validated_runtime_asset_url(download_url)
             download_path = host_path.parent / f"{asset_kind}.download"
             data = await _download_runtime_asset(download_url, download_path)
             expected_sha256 = str(asset.sha256 or "").strip()
@@ -1892,8 +1922,7 @@ async def _materialize_runtime_assets(slug: str, spec: DeploySpec) -> None:
         if encoding == "zip":
             host_path = host_path.parent / f"{asset_kind}-{int(time.time())}-{uuid.uuid4().hex[:8]}"
             host_path.mkdir(parents=True, exist_ok=True)
-            with zipfile.ZipFile(io.BytesIO(data)) as archive:
-                archive.extractall(host_path)
+            _extract_zip_safely(data, host_path)
             spec.volumes[str(_docker_host_path(host_path / "chromeprofiledata"))] = {"bind": target, "mode": "ro"}
             continue
         host_path.write_bytes(data)
