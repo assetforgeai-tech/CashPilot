@@ -5,6 +5,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -518,7 +519,10 @@ def test_ubuntu_entrypoint_persists_identity_and_retries_registration_contract()
     assert 'install -m 0444 "$HOST_ID_FILE" /etc/machine-id' in entrypoint
     assert '"$(cat /etc/machine-id)" >"$STATE_DIR/tracking_id"' in entrypoint
     assert '[[ "$PROFILE_DEVICE_ID" == "$EXPECTED_DEVICE_ID" ]]' in entrypoint
-    assert "https://api.ipify.org" in entrypoint
+    assert re.search(
+        r"(?m)^\s*observed=\$\(curl -fsS --connect-timeout 5 --max-time 15 https://api\.ipify\.org \|\| true\)$",
+        entrypoint,
+    )
     assert "for attempt in $(seq 1 10)" in entrypoint
     assert "install_device?uuid=$EXPECTED_DEVICE_ID" in entrypoint
     assert "is_linked?uuid=$EXPECTED_DEVICE_ID" in entrypoint
