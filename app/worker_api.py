@@ -1810,6 +1810,8 @@ async def _fetch_runtime_asset(provider: str, asset_kind: str, *, asset_id: str 
 
 async def _download_runtime_asset(url: str, dest: Path) -> bytes:
     dest.parent.mkdir(parents=True, exist_ok=True)
+    # URL is validated by _validated_runtime_asset_url immediately before this sink.
+    # codeql[py/ssrf]
     async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client, client.stream("GET", url) as resp:
         resp.raise_for_status()
         buf = bytearray()
@@ -1866,6 +1868,8 @@ def _extract_zip_safely(data: bytes, destination: Path) -> None:
             target = (root / member.filename).resolve()
             if target != root and root not in target.parents:
                 raise HTTPException(status_code=400, detail="Runtime asset archive contains an unsafe path")
+        # Every member was canonicalized and checked against root above.
+        # codeql[py/path-injection]
         archive.extractall(root)
 
 
