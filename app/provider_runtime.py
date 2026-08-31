@@ -106,6 +106,12 @@ def _runtime_platform(spec: object) -> tuple[str, str]:
             platform = str(contract.get("platform") or "").strip().lower()
     if platform == "darwin":
         platform = "macos"
+    if (
+        isinstance(spec, Mapping)
+        and str(spec.get("provider_slug") or "").strip().lower() == "earnapp"
+        and platform == "linux"
+    ):
+        platform = "ubuntu"
     return platform, backend
 
 
@@ -120,6 +126,10 @@ def platform_deployment_allowed(slug: str, platform: str, runtime_backend: str =
     backend = str(runtime_backend or "").strip().lower()
     if selected == "darwin":
         selected = "macos"
+    # EarnApp's Ubuntu wire contract identifies the OS as ``linux`` while
+    # CashPilot's orchestration policy names that lane ``ubuntu``.
+    if provider.slug == "earnapp" and selected == "linux":
+        selected = "ubuntu"
     if provider.allowed_platforms and selected not in provider.allowed_platforms:
         return False
     if provider.slug == "earnapp" and selected == "ubuntu":
