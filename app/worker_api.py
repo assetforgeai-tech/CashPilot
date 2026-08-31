@@ -16,7 +16,6 @@ import asyncio
 import base64
 import contextlib
 import hmac
-import io
 import json
 import logging
 import os
@@ -28,7 +27,6 @@ import subprocess
 import time
 import urllib.parse
 import uuid
-import zipfile
 from collections.abc import Mapping
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -1814,24 +1812,6 @@ def _runtime_asset_url(asset: RuntimeAssetSpec, spec: DeploySpec, slug: str) -> 
     return ""
 
 
-def _extract_zip_safely(data: bytes, destination: Path) -> None:
-    """Extract an asset archive only when every member stays within destination."""
-    root = destination.resolve()
-    with zipfile.ZipFile(io.BytesIO(data)) as archive:
-        for member in archive.infolist():
-            target = (root / member.filename).resolve()
-            if target != root and root not in target.parents:
-                raise HTTPException(status_code=400, detail="Runtime asset archive contains an unsafe path")
-        for member in archive.infolist():
-            target = root / member.filename
-            if member.is_dir():
-                target.mkdir(parents=True, exist_ok=True)
-                continue
-            target.parent.mkdir(parents=True, exist_ok=True)
-            with archive.open(member) as source, target.open("wb") as output:
-                shutil.copyfileobj(source, output)
-
-
 def _runtime_asset_scope(value: str, *, label: str) -> str:
     scope = str(value or "").strip()
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", scope):
@@ -1852,14 +1832,13 @@ async def _materialize_runtime_assets(slug: str, spec: DeploySpec) -> None:
         if not provider or not asset_kind:
             raise HTTPException(status_code=400, detail=f"Invalid runtime asset ref for {slug}")
         encoding = str(asset.encoding or "").lower()
-        scope_slug = _runtime_asset_scope(slug, label="slug")
+        _runtime_asset_scope(slug, label="slug")
         scope_asset = str(asset.asset_id or "").strip()
-        scope = _runtime_asset_scope(scope_asset, label="asset_id") if scope_asset else ""
-        asset_root = _RUNTIME_ASSET_DIR / scope_slug
-        if scope:
-            asset_root = asset_root / scope
-        host_path = asset_root / asset_kind
-        host_path.parent.mkdir(parents=True, exist_ok=True)
+        if scope_asset:
+            _runtime_asset_scope(scope_asset, label="asset_id")
+        asset_root = _RUNTIME_ASSET_DIR / uuid.uuid4().hex
+        asset_root.mkdir(parents=True, exist_ok=True)
+        host_path = asset_root / "asset"
         download_url = _runtime_asset_url(asset, spec, slug)
         if download_url:
             raise HTTPException(status_code=400, detail="Direct runtime asset downloads are disabled")
@@ -1867,11 +1846,7 @@ async def _materialize_runtime_assets(slug: str, spec: DeploySpec) -> None:
             payload = await _fetch_runtime_asset(provider, asset_kind, asset_id=str(asset.asset_id or ""))
             data = base64.b64decode(payload) if encoding in {"base64", "zip"} else payload.encode()
         if encoding == "zip":
-            host_path = host_path.parent / f"{asset_kind}-{int(time.time())}-{uuid.uuid4().hex[:8]}"
-            host_path.mkdir(parents=True, exist_ok=True)
-            _extract_zip_safely(data, host_path)
-            spec.volumes[str(_docker_host_path(host_path / "chromeprofiledata"))] = {"bind": target, "mode": "ro"}
-            continue
+            raise HTTPException(status_code=400, detail="ZIP runtime assets are disabled")
         host_path.write_bytes(data)
         with contextlib.suppress(OSError):
             host_path.chmod(0o644)
