@@ -518,7 +518,7 @@ def test_ubuntu_entrypoint_persists_identity_and_retries_registration_contract()
     assert 'install -m 0444 "$HOST_ID_FILE" /etc/machine-id' in entrypoint
     assert '"$(cat /etc/machine-id)" >"$STATE_DIR/tracking_id"' in entrypoint
     assert '[[ "$PROFILE_DEVICE_ID" == "$EXPECTED_DEVICE_ID" ]]' in entrypoint
-    assert "api.ipify.org" in entrypoint
+    assert "https://api.ipify.org" in entrypoint
     assert "for attempt in $(seq 1 10)" in entrypoint
     assert "install_device?uuid=$EXPECTED_DEVICE_ID" in entrypoint
     assert "is_linked?uuid=$EXPECTED_DEVICE_ID" in entrypoint
