@@ -3938,7 +3938,7 @@ async def list_earnapp_runtime_bindings(account_id: int) -> list[dict[str, Any]]
                    n.generation, n.device_id, n.assigned_worker_id, n.last_worker_id,
                    n.current_proxy_id,
                    pi.instance_id, pi.slug, pi.worker_id, pi.mode, pi.container_id,
-                   pi.proxy_id, pi.status AS runtime_status
+                   pi.proxy_id, pi.status AS runtime_status, pi.spec_encrypted
             FROM earnapp_logical_nodes n
             LEFT JOIN provider_instances pi
               ON pi.slug = 'earnapp' AND pi.instance_id = n.logical_node_id
@@ -3973,10 +3973,15 @@ async def list_earnapp_runtime_bindings(account_id: int) -> list[dict[str, Any]]
             # available and retain LXD as the legacy fallback.
             runtime_backend = ""
             if instance_id and data.get("instance_id"):
-                try:
-                    persisted_spec = await get_provider_instance_spec(instance_id)
-                except Exception:
-                    persisted_spec = None
+                persisted_spec = None
+                blob = str(data.get("spec_encrypted") or "")
+                if blob:
+                    try:
+                        raw_spec = decrypt_value(blob)
+                        parsed_spec = json.loads(raw_spec) if raw_spec else None
+                        persisted_spec = parsed_spec if isinstance(parsed_spec, dict) else None
+                    except (ValueError, TypeError, InvalidToken, json.JSONDecodeError):
+                        persisted_spec = None
                 candidate_backend = str((persisted_spec or {}).get("runtime_backend") or "").strip().lower()
                 if candidate_backend in {"docker", "lxd"}:
                     runtime_backend = candidate_backend
