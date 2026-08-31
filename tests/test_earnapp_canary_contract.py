@@ -513,8 +513,12 @@ def test_ubuntu_runtime_spec_is_dedicated_docker_and_persists_full_identity():
 
 
 def test_ubuntu_entrypoint_persists_identity_and_retries_registration_contract():
-    entrypoint = earnapp_runtime.ubuntu_entrypoint_script().decode("utf-8")
+    payload = earnapp_runtime.ubuntu_entrypoint_script()
+    entrypoint = payload.decode("utf-8")
 
+    assert b"\r" not in payload
+    assert "tr -d '-\\r\\n'" in entrypoint
+    assert "printf '%s\\n'" in entrypoint
     assert "rm -f /.dockerenv" in entrypoint
     assert 'install -m 0444 "$HOST_ID_FILE" /etc/machine-id' in entrypoint
     assert '"$(cat /etc/machine-id)" >"$STATE_DIR/tracking_id"' in entrypoint

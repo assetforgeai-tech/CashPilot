@@ -237,7 +237,7 @@ def generated_runtime_artifacts(platform: str = "macos") -> dict[str, bytes]:
 
 def ubuntu_entrypoint_script() -> bytes:
     """Return the persistent official Linux runtime bootstrap."""
-    return b"""#!/usr/bin/env bash
+    return rb"""#!/usr/bin/env bash
 set -euo pipefail
 umask 077
 
