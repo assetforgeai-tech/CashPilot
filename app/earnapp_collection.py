@@ -40,21 +40,33 @@ async def ensure_collection_route(account_id: int) -> dict[str, Any] | None:
     return {**route, "source": "account_control"} if route else None
 
 
+async def _collection_routes(account_id: int) -> list[dict[str, Any]]:
+    """Return ordered account-owned routes, retaining a control route fallback."""
+    node_routes = await database.get_earnapp_account_node_routes(account_id, healthy_only=True)
+    if node_routes:
+        return [{**route, "source": "node"} for route in node_routes]
+    route = await ensure_collection_route(account_id)
+    return [route] if route else []
+
+
 async def collect_account(account_id: int) -> dict[str, Any]:
     account = await database.get_earnapp_account_credentials(account_id)
     if not account:
         return {"status": "error", "error_kind": "auth", "error": "EarnApp account unavailable"}
-    route = await ensure_collection_route(account_id)
-    if not route:
+    routes = await _collection_routes(account_id)
+    if not routes:
         return {"status": "error", "error_kind": "route", "error": "EarnApp account proxy unavailable"}
-
-    collector = EarnAppAccountCollector(account.get("credentials") or {}, route)
-    snapshot = await collector.collect_snapshot()
-    if snapshot.get("status") == "ok":
-        await database.save_earnapp_snapshot(account_id, snapshot)
-    elif snapshot.get("error_kind") == "auth":
-        await database.set_earnapp_account_state(account_id, "AUTH_FAILED")
-    return snapshot
+    last_snapshot: dict[str, Any] = {"status": "error", "error_kind": "route", "error": "EarnApp route unavailable"}
+    for route in routes:
+        snapshot = await EarnAppAccountCollector(account.get("credentials") or {}, route).collect_snapshot()
+        if snapshot.get("status") == "ok":
+            await database.save_earnapp_snapshot(account_id, snapshot)
+            return snapshot
+        last_snapshot = snapshot
+        if snapshot.get("error_kind") == "auth":
+            await database.set_earnapp_account_state(account_id, "AUTH_FAILED")
+            return snapshot
+    return last_snapshot
 
 
 async def collect_active_accounts(*, concurrency: int = 4) -> dict[str, Any]:

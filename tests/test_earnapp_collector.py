@@ -1110,6 +1110,40 @@ def test_auth_failure_marks_account_but_proxy_route_failure_does_not(tmp_path):
     asyncio.run(run())
 
 
+def test_collect_account_fails_over_to_another_account_node_route_on_route_error():
+    account = {"credentials": {"cookies": {"oauth-refresh-token": "secret"}}}
+    routes = [
+        {"logical_node_id": "node-a", "proxy_id": 101, "exit_ip": "198.51.100.1"},
+        {"logical_node_id": "node-b", "proxy_id": 102, "exit_ip": "198.51.100.2"},
+    ]
+    calls: list[int] = []
+
+    class FakeCollector:
+        def __init__(self, _credentials, route):
+            self.proxy_id = int(route["proxy_id"])
+
+        async def collect_snapshot(self):
+            calls.append(self.proxy_id)
+            if self.proxy_id == 101:
+                return {"status": "error", "error_kind": "route", "error": "EarnApp route unavailable"}
+            return {"status": "ok", "online_nodes": 1, "devices": []}
+
+    async def run():
+        with (
+            patch.object(database, "get_earnapp_account_credentials", AsyncMock(return_value=account)),
+            patch.object(earnapp_collection, "_collection_routes", AsyncMock(return_value=routes)),
+            patch.object(earnapp_collection, "EarnAppAccountCollector", FakeCollector),
+            patch.object(database, "save_earnapp_snapshot", AsyncMock()) as save_snapshot,
+        ):
+            result = await earnapp_collection.collect_account(7)
+
+        assert result["status"] == "ok"
+        assert calls == [101, 102]
+        save_snapshot.assert_awaited_once_with(7, result)
+
+    asyncio.run(run())
+
+
 def test_collect_active_accounts_isolates_failures_and_skips_locked_accounts(monkeypatch):
     accounts = [
         {"id": 1, "state": "ACTIVE"},
