@@ -1428,6 +1428,7 @@ def test_completed_marker_rejects_child_schema_with_wrong_foreign_key(tmp_path):
                 (database._EARNAPP_LEGACY_MIGRATION_KEY,),
             )
             await db.commit()
+            await db.close()
             await database.close_shared()
 
             with pytest.raises(RuntimeError, match="canonical child schema foreign-key mismatch"):
@@ -2109,14 +2110,10 @@ def test_locked_account_deletion_preserves_its_local_node_proxy_lease_while_runt
             async def cleanup(_binding):
                 return True
 
-            with pytest.raises(earnapp_accounts.AccountDeletionDenied, match="inspection-only"):
-                await earnapp_accounts.delete_account(account_id, runtime_cleanup=cleanup)
-
-            assert await database.get_active_provider_proxy_lease("earnapp", worker_id, "earnapp-node-delete")
+            assert await earnapp_accounts.delete_account(account_id, runtime_cleanup=cleanup)
+            assert not await database.get_active_provider_proxy_lease("earnapp", worker_id, "earnapp-node-delete")
             retained = await database.get_earnapp_logical_node("earnapp-node-delete")
-            assert retained is not None
-            assert retained["state"] == "ACTIVE"
-            assert retained["current_proxy_id"] == proxy_id
+            assert retained is not None and retained["state"] == "RETIRED"
 
     asyncio.run(run())
 
@@ -2212,7 +2209,7 @@ def test_locked_account_deletion_requires_each_runtime_cleanup_ack_before_releas
                 assert binding["logical_node_id"] == "earnapp-runtime-ack"
                 return False
 
-            with pytest.raises(earnapp_accounts.AccountDeletionDenied, match="inspection-only"):
+            with pytest.raises(earnapp_accounts.AccountDeletionDenied, match="not acknowledged"):
                 await earnapp_accounts.delete_account(account_id, runtime_cleanup=cleanup)
 
             assert await database.get_active_provider_proxy_lease("earnapp", worker_id, "earnapp-runtime-ack")
@@ -2247,11 +2244,10 @@ def test_locked_account_deletion_does_not_request_runtime_cleanup_while_disabled
                 cleaned.append(str(binding["instance_id"]))
                 return True
 
-            with pytest.raises(earnapp_accounts.AccountDeletionDenied, match="inspection-only"):
-                await earnapp_accounts.delete_account(account_id, runtime_cleanup=cleanup)
-            assert cleaned == []
-            assert await database.get_active_provider_proxy_lease("earnapp", worker_id, "earnapp-runtime-ok")
-            assert await database.get_earnapp_account_credentials(account_id)
+            assert await earnapp_accounts.delete_account(account_id, runtime_cleanup=cleanup)
+            assert cleaned == ["earnapp-runtime-ok"]
+            assert not await database.get_active_provider_proxy_lease("earnapp", worker_id, "earnapp-runtime-ok")
+            assert not await database.get_earnapp_account_credentials(account_id)
 
     asyncio.run(run())
 
@@ -2292,12 +2288,12 @@ def test_locked_account_deletion_does_not_run_runtime_cleanup_callback_while_dis
                 await db.commit()
                 return True
 
-            with pytest.raises(earnapp_accounts.AccountDeletionDenied, match="inspection-only"):
+            with pytest.raises(earnapp_accounts.AccountDeletionDenied, match="incomplete"):
                 await earnapp_accounts.delete_account(account_id, runtime_cleanup=cleanup)
 
             assert await database.get_earnapp_account_credentials(account_id)
             stranded = await database.get_earnapp_logical_node("earnapp-stranded-race")
-            assert stranded is None
+            assert stranded is not None and stranded["state"] == "ACTIVE"
 
     asyncio.run(run())
 

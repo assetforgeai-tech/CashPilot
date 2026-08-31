@@ -5,6 +5,7 @@ import importlib.util
 import json
 import socket
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -325,6 +326,54 @@ def test_helper_proxy_setup_uses_official_installer_and_persists_identity_withou
     assert "cashpilot-earnapp-proxy.service" in script
     assert "redsocks" in script
     assert "proxy-secret" not in script
+
+
+def test_helper_register_retries_through_guest_relay_until_remote_link_state_is_confirmed():
+    agent = _module()
+    script = agent.guest_bootstrap_script(_payload())
+
+    assert "register_earnapp_device()" in script
+    assert "https://client.earnapp.com/is_linked?uuid=" in script
+    assert 'EARNAPP_REGISTER_ATTEMPTS="${EARNAPP_REGISTER_ATTEMPTS:-10}"' in script
+    assert 'EARNAPP_REGISTER_RETRY_SECONDS="${EARNAPP_REGISTER_RETRY_SECONDS:-15}"' in script
+    assert "&version=${earnapp_version}&appid=node_earnapp.com" in script
+    assert 'sleep "$EARNAPP_REGISTER_RETRY_SECONDS"' in script
+    assert "systemctl restart earnapp.service" in script
+    assert "install_device did not reach linked state" in script
+    assert "proxy-secret" not in script
+
+
+@pytest.mark.parametrize(
+    ("install", "linked", "expected_code"),
+    [
+        ({"ok": 0}, {"linked": True}, 1),
+        ({"ok": 1}, {"linked": False}, 1),
+        ({"ok": 1}, {"linked": True}, 0),
+    ],
+)
+def test_helper_registration_validator_requires_install_success_and_linked_true(
+    tmp_path, install, linked, expected_code
+):
+    agent = _module()
+    script = agent.guest_bootstrap_script(_payload())
+    start = script.index("import json\n", script.index("register_earnapp_device()"))
+    end = script.index("\nPY\n", start)
+    validator = script[start:end]
+    install_path = tmp_path / "install.json"
+    linked_path = tmp_path / "linked.json"
+    install_path.write_text(json.dumps(install), encoding="utf-8")
+    linked_path.write_text(json.dumps(linked), encoding="utf-8")
+
+    result = subprocess.run(
+        [sys.executable, "-c", validator, str(install_path), str(linked_path)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == expected_code
+    assert result.stdout == ""
+    assert result.stderr == ""
 
 
 def test_helper_embedded_proxy_script_is_valid_python():

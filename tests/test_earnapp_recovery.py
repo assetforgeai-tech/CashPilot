@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app import database, earnapp_accounts, earnapp_collection, earnapp_recovery, main
+from app import database, earnapp_accounts, earnapp_collection, earnapp_policy, earnapp_recovery, main
 
 
 def _account(profile: str) -> dict[str, object]:
@@ -111,6 +111,52 @@ def _db_patch(tmp_path):
 def test_recovery_constants_are_fifteen_minutes_then_exactly_one_hour():
     assert earnapp_recovery.STALE_WORKER_SECONDS == 15 * 60
     assert earnapp_recovery.RECOVERY_HOLD_SECONDS == 60 * 60
+
+
+def test_stale_sweep_excludes_protected_live_nodes(monkeypatch):
+    async def run():
+        sweep = AsyncMock(return_value={"held": [], "released": []})
+        monkeypatch.setattr(database, "sweep_stale_earnapp_nodes", sweep)
+
+        assert await earnapp_recovery.sweep_stale_nodes() == {"held": [], "released": []}
+
+        sweep.assert_awaited_once_with(
+            stale_after_seconds=earnapp_recovery.STALE_WORKER_SECONDS,
+            hold_seconds=earnapp_recovery.RECOVERY_HOLD_SECONDS,
+            platforms=("macos", "ios", "ubuntu"),
+            excluded_logical_node_ids=tuple(sorted(earnapp_policy.PROTECTED_LOGICAL_NODE_IDS)),
+        )
+
+    asyncio.run(run())
+
+
+def test_recovery_ticket_and_claim_refuse_protected_live_node(monkeypatch):
+    async def run():
+        node_id = "earnapp-ubuntu-canary-test-sing-4"
+        get_node = AsyncMock(
+            return_value={
+                "logical_node_id": node_id,
+                "platform": "ubuntu",
+                "state": "RECOVERABLE",
+                "generation": 2,
+            }
+        )
+        create_ticket = AsyncMock(return_value="created")
+        claim = AsyncMock(return_value={"logical_node_id": node_id})
+        monkeypatch.setattr(database, "get_earnapp_logical_node", get_node)
+        monkeypatch.setattr(database, "create_earnapp_replacement_ticket", create_ticket)
+        monkeypatch.setattr(database, "claim_earnapp_node", claim)
+
+        with pytest.raises(earnapp_recovery.RecoveryClaimDenied, match="protected"):
+            await earnapp_recovery.issue_replacement_ticket(node_id, 9)
+        with pytest.raises(earnapp_recovery.RecoveryClaimDenied, match="protected"):
+            await earnapp_recovery.claim_node(node_id, 9, expected_generation=2)
+
+        get_node.assert_not_awaited()
+        create_ticket.assert_not_awaited()
+        claim.assert_not_awaited()
+
+    asyncio.run(run())
 
 
 def test_stale_sweep_waits_fifteen_minutes_and_holds_proxy_for_one_hour(tmp_path):

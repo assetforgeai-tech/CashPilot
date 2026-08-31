@@ -236,7 +236,7 @@ ghi nhận ở v1.13.2; live deployment vẫn là thao tác riêng có approval.
 | `grass` | `RETIRED` | Không còn catalog/runtime; giữ legacy rows/secrets để tương thích |
 | `mysterium` | `PROTECTED_DONE` | Direct-only; không đưa vào Proxy Pool |
 | `nkn` | `PROTECTED_DONE` | Direct-only; giữ nguyên contract và canary thành công |
-| `earnapp` | `FOCUS_EARNAPP_UBUNTU` / `platform_restricted` | Chỉ official Linux x64 qua Ubuntu LXD; MacOS/iOS và generic Docker bị block |
+| `earnapp` | `FOCUS_EARNAPP_MULTIPLATFORM` / `platform_restricted` | VN residential qua MacOS/iOS lane chuyên dụng; non-VN residential qua Ubuntu LXD; generic Docker bị block |
 
 ## Retired Grass history
 

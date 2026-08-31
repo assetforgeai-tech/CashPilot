@@ -2,8 +2,8 @@
 
 # Service guides
 
-> EarnApp runtime is platform-restricted: official Linux x64 uses the dedicated
-> Ubuntu LXD lane; MacOS/iOS emulation and generic Docker deploy remain disabled.
+> EarnApp uses dedicated platform lanes: MacOS/iOS emulation for VN residential
+> proxies and official Linux x64 in LXD for non-VN residential proxies. Generic Docker deploy remains disabled.
 
 Setup and configuration for every service CashPilot supports.
 

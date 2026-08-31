@@ -9,7 +9,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
 from typing import Any
 
-from app import database, provider_runtime
+from app import database, earnapp_policy, provider_runtime
 
 COOKIE_ALLOWLIST = frozenset(
     {
@@ -53,13 +53,14 @@ async def _cleanup_account_runtimes(account_id: int, runtime_cleanup: RuntimeCle
 
     cleaned_ids: list[str] = []
     for binding in bindings:
+        logical_node_id = str(binding.get("logical_node_id") or "").strip()
         instance_id = str(binding.get("instance_id") or "").strip()
         if not instance_id:
             raise AccountDeletionDenied("EarnApp runtime binding has no instance id")
-        # The live canary is an explicit protected resource. Account deletion
-        # must never turn a generic account action into canary destruction.
-        if instance_id == "earnapp-canary-test-sing-1":
-            raise AccountDeletionDenied("protected EarnApp canary runtime cannot be deleted")
+        if earnapp_policy.is_protected_runtime_reference(
+            logical_node_id
+        ) or earnapp_policy.is_protected_runtime_reference(instance_id):
+            raise AccountDeletionDenied("protected EarnApp runtime cannot be deleted")
         try:
             result = runtime_cleanup(binding)
             acknowledged = await result if inspect.isawaitable(result) else result
@@ -195,4 +196,6 @@ async def delete_account(account_id: int, *, runtime_cleanup: RuntimeCleanup | N
         raise AccountDeletionDenied("EarnApp account must be ACCOUNT_LOCKED before deletion")
     if result == "RUNTIME_CLEANUP_REQUIRED":
         raise AccountDeletionDenied("EarnApp local runtime cleanup is incomplete")
+    if result == "PROTECTED_RUNTIME":
+        raise AccountDeletionDenied("protected EarnApp runtime cannot be deleted")
     return result == "DELETED"

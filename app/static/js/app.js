@@ -1028,7 +1028,7 @@ const CP = (() => {
 
   function dedicatedDeploymentNotice(svc) {
     if (dedicatedDeploymentLane(svc) !== 'earnapp') return '';
-    return `<div class="manual-notice" role="status"><strong>Ubuntu x64 / LXD dedicated lane</strong><br>CashPilot provisions official Linux x64 nodes through sequential Auto Deploy; generic Docker deploy is unavailable. MacOS/iOS emulation remains disabled.</div>`;
+    return `<div class="manual-notice" role="status"><strong>EarnApp dedicated platform lanes</strong><br>VN residential proxies use validated MacOS/iOS emulation; non-VN residential proxies use official Ubuntu x64 in LXD. Generic Docker deploy is unavailable.</div>`;
   }
 
   function renderServiceRow(svc, bk) {

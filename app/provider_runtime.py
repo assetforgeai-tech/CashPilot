@@ -18,9 +18,7 @@ VPS_RUNTIME_BLOCK_MESSAGE = (
     "EarnApp generic hosted deployment is disabled. Use the dedicated official Ubuntu x64 LXD runtime."
 )
 EARNAPP_PLATFORM_BLOCK_REASON = "platform_runtime_disabled"
-EARNAPP_PLATFORM_BLOCK_MESSAGE = (
-    "EarnApp MacOS/iOS emulation remains disabled; only the dedicated official Ubuntu x64 LXD runtime is enabled."
-)
+EARNAPP_PLATFORM_BLOCK_MESSAGE = "EarnApp requires a qualified residential proxy: VN uses the dedicated MacOS/iOS runtime and non-VN uses official Ubuntu x64 LXD."
 
 
 @dataclass(frozen=True)
@@ -65,8 +63,8 @@ PROVIDERS: dict[str, ProviderRuntime] = {
         deployment_allowed=True,
         deployment_policy="platform_restricted",
         policy_message=EARNAPP_PLATFORM_BLOCK_MESSAGE,
-        allowed_platforms=("ubuntu",),
-        blocked_platforms=("macos", "ios"),
+        allowed_platforms=("macos", "ios", "ubuntu"),
+        blocked_platforms=(),
     ),
     "iproyal": ProviderRuntime("iproyal", "pawns.py", "pawns.py", ("proxy",), "earnings"),
     "mysterium": ProviderRuntime("mysterium", "MYST.py", "MYST.py", ("direct",), "earnings"),
@@ -126,7 +124,22 @@ def platform_deployment_allowed(slug: str, platform: str, runtime_backend: str =
         return False
     if provider.slug == "earnapp" and selected == "ubuntu":
         return backend == "lxd"
+    if provider.slug == "earnapp" and selected in {"macos", "ios"}:
+        return backend == "docker"
     return bool(selected)
+
+
+def earnapp_platforms_for_proxy(country_code: str, ip_type: str) -> set[str]:
+    """Return platform lanes compatible with one qualified EarnApp proxy."""
+    country = str(country_code or "").strip().upper()
+    kind = str(ip_type or "").strip().lower().replace("-", "_")
+    if kind not in {"residential", "residential_proxy"}:
+        return set()
+    if country == "VN":
+        return {"macos", "ios"}
+    if len(country) == 2:
+        return {"ubuntu"}
+    return set()
 
 
 def deployment_block(slug: str, spec: object = None) -> ProviderRuntime | None:

@@ -6,7 +6,7 @@ import hashlib
 import secrets
 from typing import Any
 
-from app import database, provider_runtime
+from app import database, earnapp_policy, provider_runtime
 
 STALE_WORKER_SECONDS = 15 * 60
 RECOVERY_HOLD_SECONDS = 60 * 60
@@ -31,6 +31,8 @@ async def provision_node(
 ) -> dict[str, Any]:
     """Create a platform-bound node and acquire a compatible residential route."""
     node_id = str(logical_node_id or "").strip()
+    if earnapp_policy.is_protected_logical_node(node_id):
+        raise RecoveryClaimDenied("protected EarnApp node is inspection-only")
     selected_platform = str(platform or "").strip().lower()
     country_code = database.canonical_proxy_country_code(proxy_country_code)
     if selected_platform not in {"macos", "ios", "ubuntu"}:
@@ -86,11 +88,14 @@ async def sweep_stale_nodes(*, stale_after_seconds: int = STALE_WORKER_SECONDS) 
     return await database.sweep_stale_earnapp_nodes(
         stale_after_seconds=stale_after_seconds,
         hold_seconds=RECOVERY_HOLD_SECONDS,
-        platforms=("ubuntu",),
+        platforms=("macos", "ios", "ubuntu"),
+        excluded_logical_node_ids=tuple(sorted(earnapp_policy.PROTECTED_LOGICAL_NODE_IDS)),
     )
 
 
 async def issue_replacement_ticket(logical_node_id: str, target_worker_id: int) -> str:
+    if earnapp_policy.is_protected_logical_node(logical_node_id):
+        raise RecoveryClaimDenied("protected EarnApp node is inspection-only")
     node = await database.get_earnapp_logical_node(logical_node_id)
     if not node or str(node.get("state") or "") not in {"RECOVERY_HOLD", "RECOVERABLE"}:
         raise RecoveryClaimDenied("EarnApp node is not recoverable")
@@ -127,6 +132,8 @@ async def claim_node(
     expected_generation: int,
     replacement_ticket: str = "",
 ) -> dict[str, Any]:
+    if earnapp_policy.is_protected_logical_node(logical_node_id):
+        raise RecoveryClaimDenied("protected EarnApp node is inspection-only")
     node = await database.get_earnapp_logical_node(logical_node_id)
     if not node:
         raise RecoveryClaimDenied("EarnApp logical node not found")

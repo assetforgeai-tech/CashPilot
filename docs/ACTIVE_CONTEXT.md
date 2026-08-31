@@ -1,16 +1,65 @@
 # CashPilot Active Context
 
-Updated: 2026-08-29 (EarnApp official Ubuntu x64/LXD policy gate opened in source)
+Updated: 2026-08-31 (EarnApp Ubuntu canary 5 TLS/transport investigation)
+
+## EarnApp Ubuntu canary 5 investigation (2026-08-31)
+
+- Current target is only `earnapp-ubuntu-canary-test-sing-5`, LXD
+  `cashpilot-earnapp-earnapp-ubuntu-canary-test-sing-5`, device
+  `sdk-node-2a7f6d1a0695feb31485a559fc6f0137`, account `2`, generation `1`,
+  proxy `13746`, egress `64.52.28.108`. Do not mutate node 4, NKN, MYST or any
+  other protected provider/node/lease/identity/volume.
+- Fresh read-only checks show the LXD guest and both services running, the
+  exact UUID present in the authenticated five-device list, and the server
+  lease/observed egress unchanged. The node is not complete: authenticated
+  daily usage remains zero for 2026-08-24 through 2026-08-30, and the status
+  endpoint does not report the exact UUID online.
+- Chrome profile 40 confirms the authoritative remote symptom:
+  `sdk-node-fc6f0137` has blank country, `0s` usage and `$0`; the other Ubuntu
+  row `sdk-node-a4addc8f` is also at `0s`, while protected Mac/iOS devices have
+  positive usage. Local process/service health is not an online/usage proof.
+- The operator's earlier TLS failure is tracked as a valid hypothesis. Strict
+  TLS 1.3 CA/SNI checks and a strict WSS `101` handshake currently succeed
+  through proxy `13746`; the live SPKI matches the historical pin and the
+  current pin document. Guest CA/time state is valid. No general TLS failure
+  has been reproduced.
+- Proprietary binary pinning/handshake behavior is not fully observable, so
+  TLS remains residual uncertainty. Do not disable certificate verification,
+  remove pinning or treat `NODE_TLS_REJECT_UNAUTHORIZED` from the historical
+  Apple Docker build as applicable to the native Ubuntu ELF.
+- Proxy `13746` rejects SOCKS5 UDP ASSOCIATE (`reply=7`), its `udp_ok` is
+  unknown, the guest rejects non-DNS UDP, and the catalog says
+  `egress.udp: none`. No current non-VN residential EarnApp candidate has
+  verified `udp_ok=true`. UDP requirement remains an investigation hypothesis,
+  not a confirmed root cause or permission to rotate the lease.
+- sing-box supports UDP on SOCKS/TUN, including optional UDP-over-TCP, but the
+  current CashPilot guest deliberately blocks non-DNS UDP. This is a concrete
+  runtime/reference difference and the next bounded hypothesis to test only
+  after an impact map and a rollback-preserving node-5 A/B design.
+- Read-only UDP ASSOCIATE probes for candidates `13746`, `13751`, `13754`,
+  `13781`, `13752`, `13768` and `13773` all returned SOCKS reply `7`. Rotating
+  node 5 among them would not change UDP capability. sing-box UoT is
+  proprietary and requires a compatible server; do not enable it against this
+  ordinary third-party SOCKS pool without server-side proof.
+- Existing uncommitted retry code for `install_device` plus `is_linked` is not
+  sufficient to close the gate because the device is already registered while
+  usage is zero. Do not release/deploy it until the online/usage failure is
+  explained and the retry contract is re-reviewed against that evidence.
+- Protected rollback artifacts for node 5 are LXD snapshots
+  `pre-singbox-ab-20260830T185328Z` and
+  `pre-singbox-ab-20260830T195303Z`. No release, proxy rotation, identity
+  rewrite, recreate, account mutation or provider change occurred in this
+  investigation.
 
 ## Current source policy (unreleased, 2026-08-29)
 
-- The current worktree changes EarnApp from a provider-wide runtime block to
-  `deployment_policy=platform_restricted`. The only allowed runtime is the
-  official Linux x64 package inside the dedicated Ubuntu LXD lane.
-- MacOS/iOS emulation remains disabled. Generic catalog deploy, raw Docker
-  deploy and caller-supplied Ubuntu metadata on generic routes remain blocked;
-  only the dedicated server/worker Ubuntu LXD contract may deploy or mutate a
-  node.
+- The current worktree changes EarnApp to a geo-platform runtime policy:
+  qualified VN residential proxies use the dedicated MacOS/iOS Docker lanes;
+  qualified non-VN residential proxies use the official Linux x64 Ubuntu LXD
+  lane.
+- Generic catalog deploy, raw Docker deploy and caller-supplied platform
+  metadata on generic routes remain blocked; only dedicated server/worker
+  platform contracts may deploy or mutate a node.
 - Ubuntu nodes retain sequential auto-deploy, non-VN residential proxy
   selection, account binding, one-hour recovery hold, one-time replacement
   tickets, CAS lifecycle and proxy rotation/reconciliation. Settings
@@ -70,9 +119,12 @@ Updated: 2026-08-29 (EarnApp official Ubuntu x64/LXD policy gate opened in sourc
 
 ## v1.14.1 live EarnApp status (historical deployed baseline)
 
-- **Status:** `COMPLIANCE_BLOCKED` / `RUNTIME_DISABLED` for all new VPS
-  runtimes. EarnApp terms prohibit virtual machines, containers and hosting
-  services, so CashPilot does not create new Docker, LXD or other hosted nodes.
+- **Historical v1.14.1 status:** `COMPLIANCE_BLOCKED` / `RUNTIME_DISABLED` for
+  all new VPS runtimes. That released build treated EarnApp terms as prohibiting
+  virtual machines, containers and hosting services, so it did not create new
+  Docker, LXD or other hosted nodes. This paragraph records the deployed
+  v1.14.1 baseline; the unreleased source policy above now authorizes only the
+  dedicated official Ubuntu x64/LXD lane.
 - The Account Pool and collector remain enabled. The operator refreshed the
   account token; the server stores only encrypted credentials and exposes only
   expiry/status metadata. A token refresh restores collection only and does not
@@ -494,10 +546,11 @@ Updated: 2026-08-26 (EarnApp v1.11.2 legacy migration live closeout complete)
 - Current catalog metadata still contains 15 runtime-capable entries for
   historical compatibility; the one manual-only entry remains explicit. NKN
   direct slots stay outside the generic Docker queue. EarnApp also stays out of
-  that queue: only its dedicated Ubuntu x64/LXD lane is enabled, while Mac/iOS
-  and generic/raw Docker paths remain blocked.
+  that queue: VN residential proxies use dedicated MacOS/iOS Docker lanes,
+  while non-VN residential proxies use official Ubuntu x64/LXD; generic/raw
+  Docker paths remain blocked.
 - Fifteen provider runtimes are `PROTECTED_DONE`; EarnApp is separately
-  `FOCUS_EARNAPP_UBUNTU` / `platform_restricted`. Its Account Pool, collector
+  `FOCUS_EARNAPP_MULTIPLATFORM` / `platform_restricted`. Its Account Pool, collector
   and historical evidence remain available.
 - Mysterium remains direct-only. Its wallet inventory, lease, identity,
   WireGuard/TUN and runtime contracts are not altered by this branch.
@@ -896,9 +949,10 @@ stopped and must not be mistaken for the active node.
 `proxies-sx`, `proxybase`, `proxybase-xyz`, `proxyrack`, `repocket`, `spide`,
 `traffmonetizer`, `uprock`, `urnetwork`, `wipter`, `nkn`.
 
-EarnApp is `FOCUS_EARNAPP_UBUNTU` / `platform_restricted`. Only official Linux
-x64 through the dedicated Ubuntu LXD route may deploy or mutate; MacOS/iOS and
-generic/raw Docker remain blocked. The historical Apple runtime baseline and
+EarnApp is `FOCUS_EARNAPP_MULTIPLATFORM` / `platform_restricted`. VN residential
+proxies may deploy through dedicated validated MacOS/iOS Docker lanes; non-VN
+residential proxies use official Linux x64 through the dedicated Ubuntu LXD route.
+Generic/raw Docker remains blocked. The historical Apple runtime baseline and
 existing nodes remain protected. Account collection, token refresh, historical
 snapshots and read-only inspection stay available.
 

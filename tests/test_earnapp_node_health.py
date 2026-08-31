@@ -830,6 +830,385 @@ def test_server_heartbeat_records_scoped_health_without_rotating_when_runtime_di
     asyncio.run(run())
 
 
+def test_server_heartbeat_protects_every_listed_earnapp_node_from_rotation(monkeypatch):
+    protected_nodes = {
+        "earnapp-canary-test-sing-1",
+        "earnapp-ubuntu-canary-test-sing-4",
+        "earnapp-ubuntu-canary-test-sing-5",
+    }
+    monkeypatch.setattr(main.earnapp_policy, "PROTECTED_LOGICAL_NODE_IDS", frozenset(protected_nodes))
+
+    async def run():
+        instances = []
+        authoritative = []
+        for index, node_id in enumerate(sorted(protected_nodes), start=1):
+            device_id = "sdk-node-" + str(index) * 32
+            proxy_id = 13700 + index
+            instances.append(
+                {
+                    "logical_node_id": node_id,
+                    "generation": 1,
+                    "device_id": device_id,
+                    "proxy_id": proxy_id,
+                    "platform": "ubuntu" if "ubuntu" in node_id else "macos",
+                    "runtime_backend": "lxd" if "ubuntu" in node_id else "docker",
+                    "expected_egress_ip": f"198.51.100.{index}",
+                    "proxy_health": "unhealthy",
+                    "proxy_health_reason": "proxy_probe_failed",
+                }
+            )
+            authoritative.append(
+                {
+                    "logical_node_id": node_id,
+                    "assigned_worker_id": 11,
+                    "generation": 1,
+                    "device_id": device_id,
+                    "platform": instances[-1]["platform"],
+                    "current_proxy_id": proxy_id,
+                    "expected_egress_ip": f"198.51.100.{index}",
+                    "state": "ACTIVE",
+                }
+            )
+
+        body = main.WorkerHeartbeat(
+            name="worker-a",
+            client_id="worker-a",
+            provider_states={"earnapp": {"instances": instances}},
+        )
+
+        spawned = []
+
+        def capture(coro):
+            # This protected-node test only asserts that no mutation task is
+            # scheduled; close the fire-and-forget coroutine to avoid leaking
+            # an unawaited AsyncMock coroutine during teardown.
+            spawned.append(coro)
+            coro.close()
+
+        with (
+            patch.object(main, "_authenticate_worker_heartbeat", AsyncMock(return_value="ok")),
+            patch.object(database, "upsert_worker", AsyncMock(return_value=11)),
+            patch.object(main.earnapp_recovery, "heartbeat_node", AsyncMock(return_value=True)),
+            patch.object(database, "get_earnapp_logical_node", AsyncMock(side_effect=authoritative)),
+            patch.object(database, "record_earnapp_proxy_health", AsyncMock(return_value=True)) as record,
+            patch.object(main, "_rotate_unhealthy_earnapp_node", AsyncMock()) as rotate,
+            patch.object(database, "confirm_worker_key", AsyncMock()),
+            patch.object(main, "_earnings_for_worker", AsyncMock(return_value=None)),
+            patch.object(main, "_maybe_auto_deploy_after_heartbeat", AsyncMock(return_value=None)),
+            patch.object(main, "_spawn", side_effect=capture),
+            patch.object(main.metrics, "record_heartbeat"),
+        ):
+            await main.api_worker_heartbeat(type("Request", (), {"headers": {"authorization": "Bearer key"}})(), body)
+
+        assert record.await_count == len(protected_nodes)
+        rotate.assert_not_awaited()
+
+    asyncio.run(run())
+
+
+def test_server_heartbeat_rotates_only_after_consecutive_unhealthy_reports(monkeypatch):
+    monkeypatch.setattr(main.earnapp_policy, "PROTECTED_LOGICAL_NODE_IDS", frozenset())
+    main._EARNAPP_UNHEALTHY_STREAKS.clear()
+
+    async def run():
+        node_id = "earnapp-ubuntu-rotation-debounce"
+        device_id = "sdk-node-" + "d" * 32
+        proxy_id = 13746
+        body = main.WorkerHeartbeat(
+            name="worker-a",
+            client_id="worker-a",
+            provider_states={
+                "earnapp": {
+                    "instances": [
+                        {
+                            "logical_node_id": node_id,
+                            "generation": 1,
+                            "device_id": device_id,
+                            "proxy_id": proxy_id,
+                            "platform": "ubuntu",
+                            "runtime_backend": "lxd",
+                            "expected_egress_ip": "64.52.28.108",
+                            "proxy_health": "unhealthy",
+                            "proxy_health_reason": "proxy_probe_failed",
+                        }
+                    ]
+                }
+            },
+        )
+        authoritative = {
+            "logical_node_id": node_id,
+            "assigned_worker_id": 11,
+            "generation": 1,
+            "device_id": device_id,
+            "platform": "ubuntu",
+            "current_proxy_id": proxy_id,
+            "expected_egress_ip": "64.52.28.108",
+            "state": "ACTIVE",
+        }
+        spawned = []
+
+        def capture(coro):
+            spawned.append(coro)
+
+        with (
+            patch.object(main, "_authenticate_worker_heartbeat", AsyncMock(return_value="ok")),
+            patch.object(database, "upsert_worker", AsyncMock(return_value=11)),
+            patch.object(main.earnapp_recovery, "heartbeat_node", AsyncMock(return_value=True)),
+            patch.object(database, "get_earnapp_logical_node", AsyncMock(return_value=authoritative)),
+            patch.object(database, "record_earnapp_proxy_health", AsyncMock(return_value=True)),
+            patch.object(main, "_rotate_unhealthy_earnapp_node", AsyncMock(return_value=True)) as rotate,
+            patch.object(database, "confirm_worker_key", AsyncMock()),
+            patch.object(main, "_earnings_for_worker", AsyncMock(return_value=None)),
+            patch.object(main, "_maybe_auto_deploy_after_heartbeat", AsyncMock(return_value=None)),
+            patch.object(main, "_spawn", side_effect=capture) as spawn,
+            patch.object(main.metrics, "record_heartbeat"),
+        ):
+            request = type("Request", (), {"headers": {"authorization": "Bearer key"}})()
+            await main.api_worker_heartbeat(request, body)
+            await main.api_worker_heartbeat(request, body)
+            assert rotate.await_count == 0
+
+            await main.api_worker_heartbeat(request, body)
+            await asyncio.gather(*spawned)
+
+        assert spawn.call_count >= 3
+        rotate.assert_awaited_once_with(
+            node_id,
+            11,
+            generation=1,
+            expected_proxy_id=proxy_id,
+        )
+
+    try:
+        asyncio.run(run())
+    finally:
+        main._EARNAPP_UNHEALTHY_STREAKS.clear()
+
+
+def test_server_heartbeat_healthy_report_resets_unhealthy_rotation_streak(monkeypatch):
+    monkeypatch.setattr(main.earnapp_policy, "PROTECTED_LOGICAL_NODE_IDS", frozenset())
+    main._EARNAPP_UNHEALTHY_STREAKS.clear()
+
+    async def run():
+        node_id = "earnapp-ubuntu-rotation-reset"
+        device_id = "sdk-node-" + "e" * 32
+        proxy_id = 13751
+        instance = {
+            "logical_node_id": node_id,
+            "generation": 1,
+            "device_id": device_id,
+            "proxy_id": proxy_id,
+            "platform": "ubuntu",
+            "runtime_backend": "lxd",
+            "expected_egress_ip": "130.180.228.4",
+            "proxy_health": "unhealthy",
+            "proxy_health_reason": "proxy_probe_failed",
+        }
+        body = main.WorkerHeartbeat(
+            name="worker-a",
+            client_id="worker-a",
+            provider_states={"earnapp": {"instances": [instance]}},
+        )
+        authoritative = {
+            "logical_node_id": node_id,
+            "assigned_worker_id": 11,
+            "generation": 1,
+            "device_id": device_id,
+            "platform": "ubuntu",
+            "current_proxy_id": proxy_id,
+            "expected_egress_ip": "130.180.228.4",
+            "state": "ACTIVE",
+        }
+        spawned = []
+
+        def capture(coro):
+            spawned.append(coro)
+
+        with (
+            patch.object(main, "_authenticate_worker_heartbeat", AsyncMock(return_value="ok")),
+            patch.object(database, "upsert_worker", AsyncMock(return_value=11)),
+            patch.object(main.earnapp_recovery, "heartbeat_node", AsyncMock(return_value=True)),
+            patch.object(database, "get_earnapp_logical_node", AsyncMock(return_value=authoritative)),
+            patch.object(database, "record_earnapp_proxy_health", AsyncMock(return_value=True)),
+            patch.object(main, "_rotate_unhealthy_earnapp_node", AsyncMock(return_value=True)) as rotate,
+            patch.object(database, "confirm_worker_key", AsyncMock()),
+            patch.object(main, "_earnings_for_worker", AsyncMock(return_value=None)),
+            patch.object(main, "_maybe_auto_deploy_after_heartbeat", AsyncMock(return_value=None)),
+            patch.object(main, "_spawn", side_effect=capture),
+            patch.object(main.metrics, "record_heartbeat"),
+        ):
+            request = type("Request", (), {"headers": {"authorization": "Bearer key"}})()
+            await main.api_worker_heartbeat(request, body)
+            await main.api_worker_heartbeat(request, body)
+
+            instance["proxy_health"] = "healthy"
+            instance["proxy_health_reason"] = ""
+            await main.api_worker_heartbeat(request, body)
+
+            instance["proxy_health"] = "unhealthy"
+            instance["proxy_health_reason"] = "proxy_probe_failed"
+            await main.api_worker_heartbeat(request, body)
+            await main.api_worker_heartbeat(request, body)
+            assert rotate.await_count == 0
+
+            await main.api_worker_heartbeat(request, body)
+            await asyncio.gather(*spawned)
+
+        rotate.assert_awaited_once()
+
+    try:
+        asyncio.run(run())
+    finally:
+        main._EARNAPP_UNHEALTHY_STREAKS.clear()
+
+
+def test_server_heartbeat_does_not_count_unpersisted_unhealthy_report(monkeypatch):
+    monkeypatch.setattr(main.earnapp_policy, "PROTECTED_LOGICAL_NODE_IDS", frozenset())
+    main._EARNAPP_UNHEALTHY_STREAKS.clear()
+
+    async def run():
+        node_id = "earnapp-ubuntu-unpersisted-health"
+        device_id = "sdk-node-" + "f" * 32
+        proxy_id = 13761
+        body = main.WorkerHeartbeat(
+            name="worker-a",
+            client_id="worker-a",
+            provider_states={
+                "earnapp": {
+                    "instances": [
+                        {
+                            "logical_node_id": node_id,
+                            "generation": 1,
+                            "device_id": device_id,
+                            "proxy_id": proxy_id,
+                            "platform": "ubuntu",
+                            "runtime_backend": "lxd",
+                            "expected_egress_ip": "203.0.113.61",
+                            "proxy_health": "unhealthy",
+                            "proxy_health_reason": "proxy_probe_failed",
+                        }
+                    ]
+                }
+            },
+        )
+        authoritative = {
+            "logical_node_id": node_id,
+            "assigned_worker_id": 11,
+            "generation": 1,
+            "device_id": device_id,
+            "platform": "ubuntu",
+            "current_proxy_id": proxy_id,
+            "expected_egress_ip": "203.0.113.61",
+            "state": "ACTIVE",
+        }
+
+        spawned = []
+
+        def capture(coro):
+            spawned.append(coro)
+
+        with (
+            patch.object(main, "_authenticate_worker_heartbeat", AsyncMock(return_value="ok")),
+            patch.object(database, "upsert_worker", AsyncMock(return_value=11)),
+            patch.object(main.earnapp_recovery, "heartbeat_node", AsyncMock(return_value=True)),
+            patch.object(database, "get_earnapp_logical_node", AsyncMock(return_value=authoritative)),
+            patch.object(
+                database,
+                "record_earnapp_proxy_health",
+                AsyncMock(side_effect=[False, True, True, True]),
+            ),
+            patch.object(main, "_rotate_unhealthy_earnapp_node", AsyncMock(return_value=True)) as rotate,
+            patch.object(database, "confirm_worker_key", AsyncMock()),
+            patch.object(main, "_earnings_for_worker", AsyncMock(return_value=None)),
+            patch.object(main, "_maybe_auto_deploy_after_heartbeat", AsyncMock(return_value=None)),
+            patch.object(main, "_spawn", side_effect=capture),
+            patch.object(main.metrics, "record_heartbeat"),
+        ):
+            request = type("Request", (), {"headers": {"authorization": "Bearer key"}})()
+            for _ in range(3):
+                await main.api_worker_heartbeat(request, body)
+            rotate.assert_not_awaited()
+
+            await main.api_worker_heartbeat(request, body)
+            await asyncio.gather(*spawned)
+
+        rotate.assert_awaited_once()
+
+    try:
+        asyncio.run(run())
+    finally:
+        main._EARNAPP_UNHEALTHY_STREAKS.clear()
+
+
+def test_server_heartbeat_discards_stale_streak_when_assignment_changes(monkeypatch):
+    monkeypatch.setattr(main.earnapp_policy, "PROTECTED_LOGICAL_NODE_IDS", frozenset())
+    main._EARNAPP_UNHEALTHY_STREAKS.clear()
+
+    async def run():
+        node_id = "earnapp-ubuntu-new-assignment"
+        main._EARNAPP_UNHEALTHY_STREAKS[(node_id, 1, 13762)] = 2
+        device_id = "sdk-node-" + "a" * 32
+        body = main.WorkerHeartbeat(
+            name="worker-a",
+            client_id="worker-a",
+            provider_states={
+                "earnapp": {
+                    "instances": [
+                        {
+                            "logical_node_id": node_id,
+                            "generation": 2,
+                            "device_id": device_id,
+                            "proxy_id": 13763,
+                            "platform": "ubuntu",
+                            "runtime_backend": "lxd",
+                            "expected_egress_ip": "203.0.113.63",
+                            "proxy_health": "unhealthy",
+                            "proxy_health_reason": "proxy_probe_failed",
+                        }
+                    ]
+                }
+            },
+        )
+        authoritative = {
+            "logical_node_id": node_id,
+            "assigned_worker_id": 11,
+            "generation": 2,
+            "device_id": device_id,
+            "platform": "ubuntu",
+            "current_proxy_id": 13763,
+            "expected_egress_ip": "203.0.113.63",
+            "state": "ACTIVE",
+        }
+
+        def discard(coro):
+            coro.close()
+
+        with (
+            patch.object(main, "_authenticate_worker_heartbeat", AsyncMock(return_value="ok")),
+            patch.object(database, "upsert_worker", AsyncMock(return_value=11)),
+            patch.object(main.earnapp_recovery, "heartbeat_node", AsyncMock(return_value=True)),
+            patch.object(database, "get_earnapp_logical_node", AsyncMock(return_value=authoritative)),
+            patch.object(database, "record_earnapp_proxy_health", AsyncMock(return_value=True)),
+            patch.object(main, "_rotate_unhealthy_earnapp_node", AsyncMock(return_value=True)) as rotate,
+            patch.object(database, "confirm_worker_key", AsyncMock()),
+            patch.object(main, "_earnings_for_worker", AsyncMock(return_value=None)),
+            patch.object(main, "_maybe_auto_deploy_after_heartbeat", AsyncMock(return_value=None)),
+            patch.object(main, "_spawn", side_effect=discard),
+            patch.object(main.metrics, "record_heartbeat"),
+        ):
+            request = type("Request", (), {"headers": {"authorization": "Bearer key"}})()
+            await main.api_worker_heartbeat(request, body)
+
+        assert (node_id, 1, 13762) not in main._EARNAPP_UNHEALTHY_STREAKS
+        assert main._EARNAPP_UNHEALTHY_STREAKS[(node_id, 2, 13763)] == 1
+        rotate.assert_not_awaited()
+
+    try:
+        asyncio.run(run())
+    finally:
+        main._EARNAPP_UNHEALTHY_STREAKS.clear()
+
+
 def test_server_heartbeat_returns_authoritative_legacy_assignment():
     async def run():
         body = main.WorkerHeartbeat(

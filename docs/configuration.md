@@ -61,7 +61,7 @@ Provider credentials are grouped by purpose:
 - **Dashboard / session**: used for dashboard/API/session access and should not be echoed back to the browser.
 - **Credential health**: shows freshness/status only; raw secret values remain write-only.
 
-Auto deploy is off by default. When enabled, the server waits for three healthy worker heartbeats, then deploys NKN, generic catalog providers, and the dedicated EarnApp Ubuntu lane sequentially with the configured per-provider delay. EarnApp never enters the generic Docker queue: its lane requires the official Ubuntu x64/LXD contract and skips MacOS/iOS nodes. Keep this global switch operator-disabled until every provider-specific release and live gate intended for the target fleet has passed.
+Auto deploy is off by default. When enabled, the server waits for three healthy worker heartbeats, then deploys NKN, generic catalog providers, and the dedicated EarnApp platform lanes sequentially with the configured per-provider delay. EarnApp never enters the generic Docker queue: VN residential proxies use MacOS/iOS emulation and non-VN residential proxies use official Ubuntu x64/LXD. Keep this global switch operator-disabled until every provider-specific release and live gate intended for the target fleet has passed.
 
 EarnApp Ubuntu LXD limits are authoritative database-backed Settings values for newly created guests:
 
@@ -70,7 +70,7 @@ EarnApp Ubuntu LXD limits are authoritative database-backed Settings values for 
 | `earnapp_lxd_cpu` | `1` | `1`-`64` | CPU cores visible to each Ubuntu EarnApp LXD guest. |
 | `earnapp_lxd_memory_mib` | `1024` | `128`-`65536` | Memory limit in MiB for each Ubuntu EarnApp LXD guest. |
 
-The server validates these values before planning the dedicated lane. Existing guests are not resized automatically. MacOS/iOS identity and runtime contracts do not use the LXD limits and remain disabled.
+The server validates these values before planning the dedicated lane. Existing guests are not resized automatically. MacOS/iOS identity and runtime contracts use the dedicated Docker lane and do not use the LXD limits.
 
 Proxy Pool leases are currently worker-level. The server is the only pool and lease authority: it probes the pool, sends one exact candidate to the worker, and keeps the old database assignment until the worker has probed that candidate from the VPS, staged it in every named sing-box sidecar, restarted only those sidecars, and returned a redacted ACK with the binding token and observed exit IP. The server then CAS-commits the assignment and affected provider-instance rows in one transaction. Proxy assignment transactions are serialized on the server; a stale assignment generation, a candidate claimed by another worker, or mixed per-instance proxy rows loses the CAS/fails closed and the worker restores the previous sidecar configuration.
 

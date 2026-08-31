@@ -45,6 +45,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app import (
     earnapp_lxd_runtime,
+    earnapp_policy,
     earnapp_runtime,
     egress,
     fleet_key,
@@ -80,6 +81,8 @@ def _reject_earnapp_runtime_mutation(
     runtime_backend: str = "",
 ) -> None:
     """Fail closed before a disabled EarnApp platform is touched."""
+    if earnapp_policy.is_protected_runtime_reference(logical_node_id):
+        raise HTTPException(status_code=409, detail="Protected EarnApp node is inspection-only")
     # These routes are already provider-scoped; include the canonical slug so
     # legacy logical-node IDs cannot bypass the policy by lacking a prefix.
     policy = provider_runtime.mutation_block(
@@ -92,6 +95,12 @@ def _reject_earnapp_runtime_mutation(
     )
     if policy:
         raise HTTPException(status_code=409, detail=policy.policy_message)
+
+
+def _reject_protected_runtime_alias(value: str) -> None:
+    """Block exact protected aliases before any generic host mutation."""
+    if earnapp_policy.is_protected_runtime_reference(value):
+        raise HTTPException(status_code=409, detail="Protected EarnApp node is inspection-only")
 
 
 # ---------------------------------------------------------------------------
@@ -480,6 +489,8 @@ def _load_earnapp_states() -> list[dict[str, Any]]:
 
 def _remove_earnapp_state(logical_node_id: str) -> None:
     """Remove only one canary's local heartbeat marker after a confirmed remove."""
+    if earnapp_policy.is_protected_runtime_reference(logical_node_id):
+        raise ValueError("protected EarnApp node is inspection-only")
     path = _earnapp_state_path(logical_node_id)
     with contextlib.suppress(FileNotFoundError):
         path.unlink()
@@ -1711,6 +1722,12 @@ class ProxyBindingApplySpec(BaseModel):
     instances: list[str] = Field(min_length=1, max_length=256)
 
 
+def _reject_protected_proxy_binding_instances(instances: list[str]) -> None:
+    """Reject a batch before probing or mutating any worker-side sidecar."""
+    if any(earnapp_policy.is_protected_runtime_reference(instance) for instance in instances):
+        raise HTTPException(status_code=409, detail="Protected EarnApp node is inspection-only")
+
+
 def _probe_proxy_url(proxy: dict[str, Any]) -> str:
     scheme = str(proxy.get("protocol") or proxy.get("scheme") or "socks5").strip().lower()
     if scheme == "socks":
@@ -2493,6 +2510,7 @@ async def api_deploy_earnapp_lxd_node(
 ) -> dict[str, Any]:
     """Deploy one official Ubuntu EarnApp runtime through the restricted helper."""
     _verify_api_key(request)
+    _reject_earnapp_runtime_mutation(logical_node_id, platform="ubuntu", runtime_backend="lxd")
     if not earnapp_runtime.runtime_deployment_allowed("ubuntu", "lxd"):
         raise HTTPException(status_code=409, detail=provider_runtime.EARNAPP_PLATFORM_BLOCK_MESSAGE)
     try:
@@ -2661,6 +2679,72 @@ async def api_remove_earnapp_docker_node(
     with contextlib.suppress(ValueError):
         _remove_earnapp_state(slug)
     return {"status": "removed", **result}
+
+
+@app.post("/api/earnapp/docker-nodes/{slug}/deploy")
+async def api_deploy_earnapp_docker_node(request: Request, slug: str, spec: DeploySpec) -> dict[str, Any]:
+    """Deploy a validated MacOS/iOS EarnApp runtime through its dedicated lane."""
+    _verify_api_key(request)
+    platform = str((spec.runtime_contract or {}).get("platform") or "").strip().lower()
+    if platform == "darwin":
+        platform = "macos"
+    _reject_earnapp_runtime_mutation(slug, platform=platform, runtime_backend="docker")
+    if str(spec.provider_slug or "").strip().lower() != "earnapp":
+        raise HTTPException(status_code=400, detail="EarnApp provider is required")
+    if platform not in {"macos", "ios"}:
+        raise HTTPException(status_code=400, detail="Dedicated Docker route supports only MacOS or iOS")
+    try:
+        _validate_deploy_spec(spec, slug=slug)
+        await _materialize_runtime_assets(slug, spec)
+        container_id = await asyncio.to_thread(
+            orchestrator.deploy_raw,
+            slug=slug,
+            provider_slug="earnapp",
+            image=spec.image,
+            env=spec.env,
+            ports=spec.ports,
+            volumes=spec.volumes,
+            network_mode=spec.network_mode,
+            cap_add=spec.cap_add,
+            devices=spec.devices,
+            command=spec.command,
+            hostname=spec.hostname,
+            labels=spec.labels,
+            resources=spec.resources,
+            runtime=spec.runtime,
+            installer_manifest_url=spec.installer_manifest_url,
+            installer_platform=spec.installer_platform,
+            deploy_credentials=spec.deploy_credentials,
+            user=spec.user,
+            host_runtime=spec.host_runtime,
+            image_delivery=spec.image_delivery,
+            proxy=spec.proxy,
+            sysctls=spec.sysctls,
+            shm_size=spec.shm_size,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Dedicated EarnApp Docker deploy failed for %s", slug)
+        raise HTTPException(status_code=500, detail="EarnApp Docker deployment failed") from exc
+    proxy = dict(spec.proxy or {})
+    logical_node_id = str(spec.labels.get("cashpilot.earnapp.logical_node_id") or slug)
+    _save_earnapp_state(
+        logical_node_id,
+        {
+            "logical_node_id": logical_node_id,
+            "generation": int(spec.labels.get("cashpilot.earnapp.generation") or 0),
+            "device_id": str(spec.labels.get("cashpilot.earnapp.device_id") or ""),
+            "platform": platform,
+            "runtime_backend": "docker",
+            "proxy_id": int(proxy.get("proxy_id") or proxy.get("id") or 0),
+            "expected_egress_ip": str(proxy.get("exit_ip") or ""),
+            "runtime_status": "running",
+            "container_id": container_id,
+            "evidence": {"running": True, "online": False},
+        },
+    )
+    return {"status": "deployed", "container_id": container_id, "logical_node_id": logical_node_id}
 
 
 @app.post("/api/earnapp/nodes/{logical_node_id}/proxy/apply")
@@ -2947,6 +3031,7 @@ async def api_finalize_earnapp_node_proxy(
 async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) -> dict[str, str]:
     """Deploy a container from spec sent by UI."""
     _verify_api_key(request)
+    _reject_protected_runtime_alias(slug)
     runtime = provider_runtime.deployment_block(slug, spec.model_dump())
     if runtime:
         raise HTTPException(status_code=409, detail=runtime.policy_message)
@@ -3026,6 +3111,7 @@ async def api_probe_proxy_targets(request: Request, spec: ProxyTargetProbeSpec) 
 @app.post("/api/egress/bindings/apply")
 async def api_apply_proxy_binding(request: Request, spec: ProxyBindingApplySpec) -> dict[str, Any]:
     _verify_api_key(request)
+    _reject_protected_proxy_binding_instances(spec.instances)
     probe = await _probe_proxy_targets(spec.proxy, _PROXY_BINDING_PROBE_TARGETS)
     if not probe.get("ok"):
         raise HTTPException(
@@ -3072,6 +3158,7 @@ class ProxyBindingFinalizeSpec(BaseModel):
 @app.post("/api/egress/bindings/finalize")
 async def api_finalize_proxy_binding(request: Request, spec: ProxyBindingFinalizeSpec) -> dict[str, Any]:
     _verify_api_key(request)
+    _reject_protected_proxy_binding_instances(spec.instances)
     try:
         result = await asyncio.to_thread(
             orchestrator.finalize_proxy_binding_batch,
@@ -3095,6 +3182,7 @@ async def api_finalize_proxy_binding(request: Request, spec: ProxyBindingFinaliz
 @app.post("/api/containers/{slug}/restart")
 async def api_restart_container(request: Request, slug: str) -> dict[str, str]:
     _verify_api_key(request)
+    _reject_protected_runtime_alias(slug)
     if provider_runtime.is_runtime_instance(slug):
         raise HTTPException(status_code=409, detail="Existing EarnApp runtimes are inspection-only")
     try:
@@ -3109,6 +3197,7 @@ async def api_restart_container(request: Request, slug: str) -> dict[str, str]:
 @app.post("/api/containers/{slug}/stop")
 async def api_stop_container(request: Request, slug: str) -> dict[str, str]:
     _verify_api_key(request)
+    _reject_protected_runtime_alias(slug)
     if provider_runtime.is_runtime_instance(slug):
         raise HTTPException(status_code=409, detail="Existing EarnApp runtimes are inspection-only")
     try:
@@ -3123,6 +3212,7 @@ async def api_stop_container(request: Request, slug: str) -> dict[str, str]:
 @app.post("/api/containers/{slug}/start")
 async def api_start_container(request: Request, slug: str) -> dict[str, str]:
     _verify_api_key(request)
+    _reject_protected_runtime_alias(slug)
     if provider_runtime.is_runtime_instance(slug):
         raise HTTPException(status_code=409, detail="Existing EarnApp runtimes are inspection-only")
     try:
@@ -3142,6 +3232,7 @@ async def api_remove_container(
     allow_delete_critical: bool = False,
 ) -> dict[str, Any]:
     _verify_api_key(request)
+    _reject_protected_runtime_alias(slug)
     if provider_runtime.is_runtime_instance(slug):
         raise HTTPException(status_code=409, detail="Existing EarnApp runtimes are inspection-only")
     try:

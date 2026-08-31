@@ -22,9 +22,9 @@ Chi tiết quyết định, tương thích dữ liệu cũ và bằng chứng n�
 - `PROTECTED_DONE`: `earnfm`, `iproyal`, `mysterium`, `packetstream`,
   `proxies-sx`, `proxybase`, `proxybase-xyz`, `proxyrack`, `repocket`,
   `spide`, `traffmonetizer`, `uprock`, `urnetwork`, `wipter`, `nkn`.
-- `FOCUS_EARNAPP_UBUNTU` / `platform_restricted`: official Ubuntu x64/LXD is
-  enabled through its dedicated worker helper; MacOS/iOS and generic Docker
-  remain blocked.
+- `FOCUS_EARNAPP_MULTIPLATFORM` / `platform_restricted`: VN residential proxies
+  use dedicated MacOS/iOS emulation and non-VN residential proxies use official
+  Ubuntu x64/LXD; generic Docker remains blocked.
 - NKN được chốt direct-only sau khi canary hoàn tất `PERSIST_FINISHED`, worker
   heartbeat và Fleet đều xác nhận online; không provider nào mở để redesign.
 - Mysterium là direct-only; không suy ra proxy mode từ lịch sử cũ.

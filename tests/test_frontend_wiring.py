@@ -269,8 +269,8 @@ class TestEarnAppUbuntuDedicatedCatalogLane:
 
         for function in (catalog_card, detail, setup):
             assert "dedicatedDeploymentLane" in function
-        assert "Ubuntu x64 / LXD dedicated lane" in app_js
-        assert "generic Docker deploy is unavailable" in app_js
+        assert "EarnApp dedicated platform lanes" in app_js
+        assert "Generic Docker deploy is unavailable" in app_js
         assert "/api/admin/earnapp/accounts" in app_js
         assert "DELETE ACCOUNT" in app_js
         assert "recovery_hold_remaining_seconds" in app_js

@@ -452,13 +452,58 @@ test "$(cat /etc/earnapp/uuid)" = {device_id} || {{
   echo "EarnApp installer changed the persisted device identity" >&2
   exit 1
 }}
-stage install_device
-earnapp_version=$(cat /etc/earnapp/ver)
+stage register_retry
+earnapp_version=$(tr -d '\\r\\n' </etc/earnapp/ver)
 earnapp_serial=$(sha1sum /etc/machine-id | awk '{{print $1}}')
-curl --fail --silent --show-error \
-  -H 'Content-Type: application/json' \
-  "https://client.earnapp.com/install_device?uuid={device_id}&version=${{earnapp_version}}&arch=x64&appid=node_earnapp.com&os=Ubuntu" \
-  --data "$(printf '{{\"serial\":\"%s\"}}' "$earnapp_serial")" >/dev/null
+EARNAPP_REGISTER_ATTEMPTS="${{EARNAPP_REGISTER_ATTEMPTS:-10}}"
+EARNAPP_REGISTER_RETRY_SECONDS="${{EARNAPP_REGISTER_RETRY_SECONDS:-15}}"
+
+# Registration is deliberately performed inside the guest after the relay and
+# fail-closed firewall are ready.  A successful HTTP response alone is not
+# enough: the exact UUID must also be acknowledged by the registration API.
+register_earnapp_device() {{
+  local attempt install_body linked_body
+  for attempt in $(seq 1 "$EARNAPP_REGISTER_ATTEMPTS"); do
+    install_body=$(mktemp)
+    linked_body=$(mktemp)
+    if curl --fail --silent --show-error --connect-timeout 15 --max-time 45 \
+      -H 'Content-Type: application/json' \
+      -o "$install_body" \
+      "https://client.earnapp.com/install_device?uuid={device_id}&version=${{earnapp_version}}&arch=x64&appid=node_earnapp.com&os=Ubuntu" \
+      --data "$(printf '{{\"serial\":\"%s\"}}' "$earnapp_serial")" \
+      && curl --fail --silent --show-error --connect-timeout 15 --max-time 45 \
+      -o "$linked_body" \
+      "https://client.earnapp.com/is_linked?uuid={device_id}&version=${{earnapp_version}}&appid=node_earnapp.com" \
+      && python3 - "$install_body" "$linked_body" <<'PY'
+import json
+import sys
+
+def read(path):
+    with open(path, encoding="utf-8") as handle:
+        value = json.load(handle)
+    return value if isinstance(value, dict) else {{}}
+
+install = read(sys.argv[1])
+linked = read(sys.argv[2])
+install_ok = install.get("ok") in (True, 1, "1")
+linked_ok = linked.get("linked") is True
+raise SystemExit(0 if install_ok and linked_ok else 1)
+PY
+    then
+      rm -f "$install_body" "$linked_body"
+      return 0
+    fi
+    rm -f "$install_body" "$linked_body"
+    if [ "$attempt" -lt "$EARNAPP_REGISTER_ATTEMPTS" ]; then
+      sleep "$EARNAPP_REGISTER_RETRY_SECONDS"
+    fi
+  done
+  echo "install_device did not reach linked state" >&2
+  return 1
+}}
+
+register_earnapp_device
+systemctl restart earnapp.service
 stage service_start
 systemctl enable --now earnapp.service earnapp_upgrader.service
 stage complete

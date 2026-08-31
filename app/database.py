@@ -22,6 +22,8 @@ from typing import Any
 import aiosqlite
 from cryptography.fernet import Fernet, InvalidToken
 
+from app import earnapp_policy
+
 _logger = logging.getLogger(__name__)
 
 # ISO alpha-2 code is the stable location/filter key. Raw country names remain
@@ -84,6 +86,14 @@ class MystWalletPublicIpInUse(RuntimeError):
 
 class NknWalletLeaseActive(RuntimeError):
     """Raised when deleting a worker would strand an active NKN wallet lease."""
+
+
+class ProtectedEarnAppWorkerReference(RuntimeError):
+    """Raised when deleting a worker would mutate an inspection-only EarnApp node."""
+
+
+class ProtectedEarnAppProxyError(RuntimeError):
+    """Raised when a proxy mutation would affect an inspection-only node."""
 
 
 DB_DIR = Path(os.getenv("CASHPILOT_DATA_DIR", "/data"))
@@ -1253,6 +1263,9 @@ CREATE INDEX IF NOT EXISTS idx_alerts_created
 # handle's ``finally`` never actually tears down the shared connection.
 
 _shared_conns: dict[int, aiosqlite.Connection] = {}
+_shared_conn_locks: dict[int, asyncio.Lock] = {}
+_shared_conn_owners: dict[int, asyncio.Task[Any]] = {}
+_shared_conn_depths: dict[int, int] = {}
 _proxy_assignment_locks: dict[int, asyncio.Lock] = {}
 _nkn_wallet_locks: dict[int, asyncio.Lock] = {}
 _earnapp_locks: dict[int, asyncio.Lock] = {}
@@ -1298,10 +1311,12 @@ class _BorrowedConnection:
     connection stays open and shared for the lifetime of the event loop.
     """
 
-    __slots__ = ("_conn",)
+    __slots__ = ("_conn", "_key", "_released")
 
-    def __init__(self, conn: aiosqlite.Connection) -> None:
+    def __init__(self, conn: aiosqlite.Connection, key: int) -> None:
         object.__setattr__(self, "_conn", conn)
+        object.__setattr__(self, "_key", key)
+        object.__setattr__(self, "_released", False)
 
     def __getattr__(self, name: str) -> Any:
         return getattr(object.__getattribute__(self, "_conn"), name)
@@ -1310,8 +1325,24 @@ class _BorrowedConnection:
         setattr(object.__getattribute__(self, "_conn"), name, value)
 
     async def close(self) -> None:
-        """No-op: the shared connection outlives any individual borrow."""
-        return None
+        """Release this exclusive borrow while leaving the connection open."""
+        if object.__getattribute__(self, "_released"):
+            return
+        object.__setattr__(self, "_released", True)
+        key = object.__getattribute__(self, "_key")
+        depth = _shared_conn_depths.get(key, 0)
+        if depth > 1:
+            _shared_conn_depths[key] = depth - 1
+            return
+
+        conn = object.__getattribute__(self, "_conn")
+        try:
+            if conn.in_transaction:
+                await conn.rollback()
+        finally:
+            _shared_conn_depths.pop(key, None)
+            _shared_conn_owners.pop(key, None)
+            _shared_conn_locks[key].release()
 
     async def __aenter__(self) -> _BorrowedConnection:
         return self
@@ -1350,33 +1381,56 @@ async def _get_db() -> _BorrowedConnection:
     """
     loop = asyncio.get_running_loop()
     key = id(loop)
+    lock = _shared_conn_locks.get(key)
+    if lock is None:
+        lock = asyncio.Lock()
+        _shared_conn_locks[key] = lock
+    task = asyncio.current_task()
+    if task is None:
+        raise RuntimeError("shared SQLite connection requires an asyncio task")
+    if _shared_conn_owners.get(key) is task:
+        _shared_conn_depths[key] = _shared_conn_depths.get(key, 0) + 1
+    else:
+        await lock.acquire()
+        _shared_conn_owners[key] = task
+        _shared_conn_depths[key] = 1
     conn = _shared_conns.get(key)
+    try:
+        needs_open = conn is None
+        if conn is not None:
+            try:
+                needs_open = not conn._running
+            except AttributeError:
+                needs_open = False
 
-    needs_open = conn is None
-    if conn is not None:
-        try:
-            needs_open = not conn._running
-        except AttributeError:
-            needs_open = False
+        if needs_open:
+            conn = await _open_connection()
+            conn.row_factory = aiosqlite.Row
+            await conn.execute("PRAGMA journal_mode=WAL")
+            await conn.execute("PRAGMA foreign_keys=ON")
+            await conn.execute("PRAGMA busy_timeout=5000")
+            # In WAL mode NORMAL is durable across app crashes (only a power loss can lose
+            # the last transactions) and skips an fsync on every commit — a large win on the
+            # write-heavy health-check path that commits per service each cycle.
+            await conn.execute("PRAGMA synchronous=NORMAL")
+            _shared_conns[key] = conn
 
-    if needs_open:
-        conn = await _open_connection()
-        conn.row_factory = aiosqlite.Row
-        await conn.execute("PRAGMA journal_mode=WAL")
-        await conn.execute("PRAGMA foreign_keys=ON")
-        await conn.execute("PRAGMA busy_timeout=5000")
-        # In WAL mode NORMAL is durable across app crashes (only a power loss can lose
-        # the last transactions) and skips an fsync on every commit — a large win on the
-        # write-heavy health-check path that commits per service each cycle.
-        await conn.execute("PRAGMA synchronous=NORMAL")
-        _shared_conns[key] = conn
-
-    return _BorrowedConnection(conn)
+        return _BorrowedConnection(conn, key)
+    except BaseException:
+        depth = _shared_conn_depths.get(key, 0)
+        if depth > 1:
+            _shared_conn_depths[key] = depth - 1
+        else:
+            _shared_conn_depths.pop(key, None)
+            _shared_conn_owners.pop(key, None)
+            lock.release()
+        raise
 
 
 async def connect_shared() -> None:
     """Eagerly open the shared connection for the current event loop."""
-    await _get_db()
+    db = await _get_db()
+    await db.close()
 
 
 async def close_shared() -> None:
@@ -1385,9 +1439,22 @@ async def close_shared() -> None:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         return
-    conn = _shared_conns.pop(id(loop), None)
-    if conn is not None:
-        await conn.close()
+    key = id(loop)
+    lock = _shared_conn_locks.get(key)
+    if _shared_conn_owners.get(key) is asyncio.current_task():
+        raise RuntimeError("cannot close shared SQLite connection while it is borrowed")
+    if lock is not None:
+        await lock.acquire()
+    try:
+        conn = _shared_conns.pop(key, None)
+        if conn is not None:
+            await conn.close()
+    finally:
+        if lock is not None:
+            _shared_conn_locks.pop(key, None)
+            _shared_conn_owners.pop(key, None)
+            _shared_conn_depths.pop(key, None)
+            lock.release()
 
 
 async def _dedupe_earnings_before_indexing(db: Any) -> None:
@@ -3658,6 +3725,8 @@ async def assign_earnapp_account(logical_node_id: str, *, platform: str = "") ->
     node_id = str(logical_node_id or "").strip()
     if not node_id:
         raise ValueError("logical_node_id required")
+    if earnapp_policy.is_protected_logical_node(node_id):
+        raise ValueError("protected EarnApp node is inspection-only")
     requested_platform = str(platform or "").strip().lower()
     if requested_platform not in {"", "unknown", "macos", "ios", "ubuntu"}:
         raise ValueError("invalid EarnApp platform")
@@ -3738,6 +3807,8 @@ async def set_earnapp_logical_node_state(logical_node_id: str, state: str) -> bo
     normalized = str(state or "").strip().upper()
     if normalized not in allowed:
         raise ValueError("invalid EarnApp logical-node state")
+    if earnapp_policy.is_protected_runtime_reference(logical_node_id):
+        return False
     db = await _get_db()
     try:
         cursor = await db.execute(
@@ -3764,6 +3835,8 @@ async def save_earnapp_identity_profile(
 ) -> None:
     """Persist one encrypted/opaque identity profile per logical node."""
     node_id = str(logical_node_id or "").strip()
+    if earnapp_policy.is_protected_runtime_reference(node_id):
+        raise ValueError("protected EarnApp node is inspection-only")
     selected = str(platform or "").strip().lower()
     kind = str(asset_kind or "").strip().lower()
     if (
@@ -3926,6 +3999,10 @@ async def delete_locked_earnapp_account(account_id: int, *, runtime_instance_ids
     progress.  A missing argument deliberately fails closed when a runtime row
     still exists.
     """
+    if any(earnapp_policy.is_protected_runtime_reference(value) for value in (runtime_instance_ids or ())):
+        return "PROTECTED_RUNTIME"
+    if await _protected_earnapp_account_reference(int(account_id)):
+        return "PROTECTED_RUNTIME"
     async with _earnapp_lock():
         db = await _open_transaction_connection()
         try:
@@ -4095,6 +4172,136 @@ def _active_earnapp_reservation_exclusion_sql(
     """
 
 
+async def _protected_earnapp_proxy_reference(
+    db: Any,
+    *,
+    proxy_ids: Sequence[int] | None = None,
+    status: str = "",
+) -> str:
+    protected_ids = tuple(sorted(earnapp_policy.PROTECTED_LOGICAL_NODE_IDS))
+    if not protected_ids:
+        return ""
+    node_placeholders = ",".join("?" for _ in protected_ids)
+    runtime_refs = tuple(sorted(earnapp_policy.protected_runtime_references()))
+    runtime_placeholders = ",".join("?" for _ in runtime_refs)
+    proxy_clause = ""
+    selected_ids = [int(value) for value in (proxy_ids or ()) if int(value) > 0]
+    if selected_ids:
+        proxy_placeholders = ",".join("?" for _ in selected_ids)
+        proxy_clause = f"WHERE pe.id IN ({proxy_placeholders})"
+        filter_params: list[Any] = selected_ids
+    elif status:
+        proxy_clause = "WHERE lower(coalesce(pe.status, '')) = ?"
+        filter_params = [str(status).strip().lower()]
+    else:
+        filter_params = []
+    row = await (
+        await db.execute(
+            f"""
+            WITH targets AS (
+                SELECT pe.id, pe.exit_ip
+                FROM proxy_endpoints pe
+                {proxy_clause}
+            )
+            SELECT n.logical_node_id
+            FROM earnapp_logical_nodes n
+            JOIN proxy_endpoints source
+              ON source.id = n.current_proxy_id OR source.id = n.preferred_proxy_id
+            JOIN targets target
+              ON target.id = source.id
+              OR (
+                  trim(coalesce(source.exit_ip, '')) != ''
+                  AND target.exit_ip = source.exit_ip
+              )
+            WHERE n.logical_node_id IN ({node_placeholders})
+            UNION ALL
+            SELECT l.instance_id AS logical_node_id
+            FROM provider_proxy_leases l
+            JOIN proxy_endpoints source ON source.id = l.proxy_id
+            JOIN targets target
+              ON target.id = source.id
+              OR (
+                  trim(coalesce(source.exit_ip, '')) != ''
+                  AND target.exit_ip = source.exit_ip
+              )
+            WHERE l.provider_slug = 'earnapp'
+              AND l.instance_id IN ({runtime_placeholders})
+              AND l.released_at IS NULL
+            UNION ALL
+            SELECT r.logical_node_id
+            FROM earnapp_proxy_reservations r
+            JOIN proxy_endpoints source ON source.id = r.proxy_id
+            JOIN targets target
+              ON target.id = source.id
+              OR (
+                  trim(coalesce(source.exit_ip, '')) != ''
+                  AND target.exit_ip = source.exit_ip
+              )
+            WHERE r.logical_node_id IN ({node_placeholders})
+              AND r.state = 'ACTIVE'
+            UNION ALL
+            SELECT coalesce(nullif(r.assigned_logical_node_id, ''), n.logical_node_id)
+            FROM earnapp_account_control_routes r
+            JOIN earnapp_logical_nodes n ON n.account_id = r.account_id
+            JOIN proxy_endpoints source ON source.id = r.proxy_id
+            JOIN targets target
+              ON target.id = source.id
+              OR (
+                  trim(coalesce(source.exit_ip, '')) != ''
+                  AND target.exit_ip = source.exit_ip
+              )
+            WHERE n.logical_node_id IN ({node_placeholders})
+              AND r.state IN ('ACTIVE', 'TRANSFERRED')
+            UNION ALL
+            SELECT pi.instance_id
+            FROM provider_instances pi
+            JOIN proxy_endpoints source ON source.id = pi.proxy_id
+            JOIN targets target
+              ON target.id = source.id
+              OR (
+                  trim(coalesce(source.exit_ip, '')) != ''
+                  AND target.exit_ip = source.exit_ip
+              )
+            WHERE pi.slug = 'earnapp'
+              AND pi.instance_id IN ({runtime_placeholders})
+            LIMIT 1
+            """,
+            [
+                *filter_params,
+                *protected_ids,
+                *runtime_refs,
+                *protected_ids,
+                *protected_ids,
+                *runtime_refs,
+            ],
+        )
+    ).fetchone()
+    return str(row["logical_node_id"] or "") if row else ""
+
+
+async def _protected_earnapp_account_reference(account_id: int) -> str:
+    protected_ids = tuple(sorted(earnapp_policy.PROTECTED_LOGICAL_NODE_IDS))
+    if int(account_id or 0) <= 0 or not protected_ids:
+        return ""
+    placeholders = ",".join("?" for _ in protected_ids)
+    db = await _get_db()
+    try:
+        row = await (
+            await db.execute(
+                f"""
+                SELECT logical_node_id
+                FROM earnapp_logical_nodes
+                WHERE account_id = ? AND logical_node_id IN ({placeholders})
+                LIMIT 1
+                """,
+                (int(account_id), *protected_ids),
+            )
+        ).fetchone()
+        return str(row["logical_node_id"] or "") if row else ""
+    finally:
+        await db.close()
+
+
 async def get_earnapp_logical_node(logical_node_id: str) -> dict[str, Any] | None:
     db = await _get_db()
     try:
@@ -4231,6 +4438,8 @@ async def find_available_earnapp_proxy_for_node(
 ) -> dict[str, Any] | None:
     """Return a read-only rotation candidate for one exact EarnApp assignment."""
     node_id = str(logical_node_id or "").strip()
+    if earnapp_policy.is_protected_logical_node(node_id):
+        return None
     if not node_id or int(worker_id or 0) <= 0 or int(expected_proxy_id or 0) <= 0:
         return None
     db = await _get_db()
@@ -4330,6 +4539,8 @@ async def reserve_earnapp_proxy_candidate(
 ) -> dict[str, Any] | None:
     """Reserve one exact rotation candidate before any worker-side staging."""
     node_id = str(logical_node_id or "").strip()
+    if earnapp_policy.is_protected_logical_node(node_id):
+        return None
     version = str(binding_version or "").strip()
     ttl = max(60, min(int(ttl_seconds or 0), 60 * 60))
     if (
@@ -4477,6 +4688,8 @@ async def get_earnapp_proxy_reservation(logical_node_id: str, *, binding_version
 
 
 async def release_earnapp_proxy_reservation(logical_node_id: str, *, binding_version: str, reason: str) -> bool:
+    if earnapp_policy.is_protected_logical_node(logical_node_id):
+        return False
     safe_reason = re.sub(r"[^A-Za-z0-9_.:-]+", "_", str(reason or "").strip())[:160]
     async with _earnapp_lock():
         db = await _open_transaction_connection()
@@ -4514,6 +4727,8 @@ async def commit_earnapp_proxy_rotation(
 ) -> dict[str, Any] | None:
     """CAS-rotate exactly one EarnApp logical node and preserve its identity."""
     node_id = str(logical_node_id or "").strip()
+    if earnapp_policy.is_protected_logical_node(node_id):
+        return None
     if not node_id or int(new_proxy_id) <= 0 or int(new_proxy_id) == int(expected_proxy_id):
         return None
     async with _earnapp_lock():
@@ -4705,6 +4920,8 @@ async def bind_earnapp_node_runtime(
     proxy_id: int,
 ) -> dict[str, Any]:
     node_id = str(logical_node_id or "").strip()
+    if earnapp_policy.is_protected_logical_node(node_id):
+        raise ValueError("protected EarnApp node is inspection-only")
     async with _earnapp_lock():
         db = await _open_transaction_connection()
         try:
@@ -4814,6 +5031,8 @@ async def rollback_earnapp_canary_binding(
 ) -> bool:
     """CAS rollback for a failed first canary deploy without touching recovery nodes."""
     node_id = str(logical_node_id or "").strip()
+    if earnapp_policy.is_protected_logical_node(node_id):
+        return False
     async with _earnapp_lock():
         db = await _open_transaction_connection()
         try:
@@ -4873,6 +5092,8 @@ async def finalize_earnapp_node_removal(
 ) -> bool:
     """Release one removed runtime while preserving its reusable identity and proxy affinity."""
     node_id = str(logical_node_id or "").strip()
+    if earnapp_policy.is_protected_logical_node(node_id):
+        return False
     expected_device_id = str(device_id or "").strip()
     if not node_id or int(worker_id or 0) <= 0 or int(generation or 0) <= 0 or not expected_device_id:
         return False
@@ -4943,6 +5164,8 @@ async def finalize_earnapp_node_removal(
 
 async def begin_earnapp_recovery_hold(logical_node_id: str, *, hold_seconds: int) -> dict[str, Any] | None:
     node_id = str(logical_node_id or "").strip()
+    if earnapp_policy.is_protected_logical_node(node_id):
+        return None
     seconds = max(1, int(hold_seconds))
     db = await _get_db()
     try:
@@ -4968,6 +5191,7 @@ async def sweep_stale_earnapp_nodes(
     stale_after_seconds: int,
     hold_seconds: int,
     platforms: Sequence[str] | None = None,
+    excluded_logical_node_ids: Sequence[str] | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     held: list[dict[str, Any]] = []
     released: list[dict[str, Any]] = []
@@ -4982,6 +5206,24 @@ async def sweep_stale_earnapp_nodes(
         placeholders = ", ".join("?" for _ in selected_platforms)
         platform_clause = f" AND n.platform IN ({placeholders})"
         platform_params = selected_platforms
+    excluded_nodes = tuple(
+        sorted(
+            {
+                *earnapp_policy.PROTECTED_LOGICAL_NODE_IDS,
+                *(
+                    node_id
+                    for node_id in (str(value or "").strip() for value in (excluded_logical_node_ids or ()))
+                    if node_id
+                ),
+            }
+        )
+    )
+    excluded_clause = ""
+    excluded_params: tuple[str, ...] = ()
+    if excluded_nodes:
+        placeholders = ", ".join("?" for _ in excluded_nodes)
+        excluded_clause = f" AND n.logical_node_id NOT IN ({placeholders})"
+        excluded_params = excluded_nodes
     async with _earnapp_lock():
         db = await _open_transaction_connection()
         try:
@@ -4995,11 +5237,12 @@ async def sweep_stale_earnapp_nodes(
                     JOIN workers w ON w.id = n.assigned_worker_id
                     WHERE n.state = 'ACTIVE'
                       {platform_clause}
+                      {excluded_clause}
                       AND w.last_heartbeat IS NOT NULL
                       AND w.last_heartbeat < datetime('now', ?)
                     ORDER BY n.logical_node_id
                     """,
-                    (*platform_params, cutoff),
+                    (*platform_params, *excluded_params, cutoff),
                 )
             ).fetchall()
             for row in stale:
@@ -5020,11 +5263,12 @@ async def sweep_stale_earnapp_nodes(
                     SELECT * FROM earnapp_logical_nodes
                     WHERE state = 'RECOVERY_HOLD'
                       {platform_clause.replace("n.", "")}
+                      {excluded_clause.replace("n.", "")}
                       AND recovery_hold_until IS NOT NULL
                       AND recovery_hold_until <= datetime('now')
                     ORDER BY logical_node_id
                     """,
-                    platform_params,
+                    (*platform_params, *excluded_params),
                 )
             ).fetchall()
             for row in expired:
@@ -5066,6 +5310,8 @@ async def create_earnapp_replacement_ticket(
 ) -> str:
     """Create a ticket only while the requested recovery generation is current."""
     node_id = str(logical_node_id or "").strip()
+    if earnapp_policy.is_protected_logical_node(node_id):
+        return "protected_node"
     async with _earnapp_lock():
         db = await _open_transaction_connection()
         try:
@@ -5124,6 +5370,8 @@ async def claim_earnapp_node(
     ticket_hash: str = "",
 ) -> dict[str, Any] | None:
     node_id = str(logical_node_id or "").strip()
+    if earnapp_policy.is_protected_logical_node(node_id):
+        return None
     async with _earnapp_lock():
         db = await _open_transaction_connection()
         try:
@@ -5391,6 +5639,8 @@ async def release_earnapp_account_control_route(
     reason: str,
 ) -> bool:
     """CAS-release an unhealthy pre-node collector route."""
+    if await _protected_earnapp_account_reference(int(account_id)):
+        return False
     async with _earnapp_lock():
         db = await _open_transaction_connection()
         try:
@@ -5443,6 +5693,8 @@ async def get_earnapp_account_node_routes(account_id: int, *, healthy_only: bool
 
 
 async def lease_earnapp_account_control_proxy(account_id: int) -> dict[str, Any] | None:
+    if await _protected_earnapp_account_reference(int(account_id)):
+        return None
     async with _earnapp_lock():
         db = await _open_transaction_connection()
         try:
@@ -5549,6 +5801,10 @@ async def transfer_earnapp_control_route_to_node(
 ) -> dict[str, Any] | None:
     """Atomically turn an account-control route into the first node's provider lease."""
     node_id = str(logical_node_id or "").strip()
+    if earnapp_policy.is_protected_runtime_reference(node_id):
+        return None
+    if await _protected_earnapp_account_reference(int(account_id)):
+        return None
     async with _earnapp_lock():
         db = await _open_transaction_connection()
         try:
@@ -5891,6 +6147,8 @@ async def save_provider_instance(
     status: str = "planned",
     spec: dict[str, Any] | None = None,
 ) -> None:
+    if str(slug or "").strip().lower() == "earnapp" and earnapp_policy.is_protected_runtime_reference(instance_id):
+        raise ValueError("protected EarnApp node is inspection-only")
     spec_encrypted = ""
     if spec is not None:
         try:
@@ -5989,11 +6247,14 @@ async def list_provider_instances(*, slug: str | None = None, worker_id: int | N
         await db.close()
 
 
-async def remove_provider_instance(instance_id: str) -> None:
+async def remove_provider_instance(instance_id: str) -> bool:
+    if earnapp_policy.is_protected_runtime_reference(instance_id):
+        return False
     db = await _get_db()
     try:
-        await db.execute("DELETE FROM provider_instances WHERE instance_id = ?", (instance_id,))
+        cursor = await db.execute("DELETE FROM provider_instances WHERE instance_id = ?", (instance_id,))
         await db.commit()
+        return bool(cursor.rowcount)
     finally:
         await db.close()
 
@@ -6342,11 +6603,77 @@ async def count_worker_heartbeats(worker_id: int, *, healthy_only: bool = True) 
         await db.close()
 
 
+async def _protected_earnapp_worker_reference(db: Any, worker_id: int) -> str:
+    """Return the protected node/runtime that would be changed by a worker delete."""
+    protected_nodes = tuple(sorted(earnapp_policy.PROTECTED_LOGICAL_NODE_IDS))
+    protected_runtimes = tuple(sorted(earnapp_policy.protected_runtime_references()))
+    if not protected_nodes or not protected_runtimes:
+        return ""
+
+    node_placeholders = ",".join("?" for _ in protected_nodes)
+    runtime_placeholders = ",".join("?" for _ in protected_runtimes)
+    row = await (
+        await db.execute(
+            f"""
+            SELECT n.logical_node_id AS reference
+            FROM earnapp_logical_nodes n
+            WHERE n.logical_node_id IN ({node_placeholders})
+              AND (n.assigned_worker_id = ? OR n.last_worker_id = ?)
+            UNION ALL
+            SELECT l.instance_id AS reference
+            FROM provider_proxy_leases l
+            WHERE l.provider_slug = 'earnapp'
+              AND l.worker_id = ?
+              AND l.instance_id IN ({runtime_placeholders})
+              AND l.released_at IS NULL
+            UNION ALL
+            SELECT pi.instance_id AS reference
+            FROM provider_instances pi
+            WHERE pi.slug = 'earnapp'
+              AND pi.worker_id = ?
+              AND pi.instance_id IN ({runtime_placeholders})
+            UNION ALL
+            SELECT r.logical_node_id AS reference
+            FROM earnapp_proxy_reservations r
+            WHERE r.worker_id = ?
+              AND r.logical_node_id IN ({node_placeholders})
+              AND r.state = 'ACTIVE'
+            UNION ALL
+            SELECT t.logical_node_id AS reference
+            FROM earnapp_replacement_tickets t
+            WHERE t.target_worker_id = ?
+              AND t.logical_node_id IN ({node_placeholders})
+              AND t.used_at IS NULL
+            LIMIT 1
+            """,
+            (
+                *protected_nodes,
+                int(worker_id),
+                int(worker_id),
+                int(worker_id),
+                *protected_runtimes,
+                int(worker_id),
+                *protected_runtimes,
+                int(worker_id),
+                *protected_nodes,
+                int(worker_id),
+                *protected_nodes,
+            ),
+        )
+    ).fetchone()
+    return str(row["reference"] or "") if row else ""
+
+
 async def delete_worker(worker_id: int) -> None:
     async with _nkn_wallet_lock():
         db = await _open_transaction_connection()
         try:
             await db.execute("BEGIN IMMEDIATE")
+            protected_reference = await _protected_earnapp_worker_reference(db, worker_id)
+            if protected_reference:
+                raise ProtectedEarnAppWorkerReference(
+                    f"worker {worker_id} still references protected EarnApp runtime {protected_reference}"
+                )
             await _ensure_nkn_wallets_table(db)
             cursor = await db.execute(
                 "SELECT 1 FROM nkn_wallets WHERE state = 'LEASED' AND leased_to_worker_id = ? LIMIT 1",
@@ -6915,6 +7242,10 @@ async def delete_proxy_endpoints(proxy_ids: Sequence[int] | None = None, *, stat
         db = await _open_transaction_connection()
         try:
             await db.execute("BEGIN IMMEDIATE")
+            protected_node = await _protected_earnapp_proxy_reference(db, proxy_ids=ids, status=status)
+            if protected_node:
+                await db.rollback()
+                raise ProtectedEarnAppProxyError(f"proxy is referenced by protected EarnApp node {protected_node}")
             if ids:
                 placeholders = ",".join("?" for _ in ids)
                 await db.execute(
@@ -8474,6 +8805,8 @@ async def lease_proxy_for_provider_instance(
     """Lease one canonical egress to a provider instance without touching legacy assignments."""
     slug = str(provider_slug or "").strip().lower()
     instance = str(instance_id or "").strip()
+    if slug == "earnapp" and earnapp_policy.is_protected_runtime_reference(instance):
+        return None
     if not slug or int(worker_id or 0) <= 0 or not instance:
         return None
     requested_country = str(country_code or "").strip().upper()
@@ -8632,6 +8965,10 @@ async def lease_proxy_for_provider_instance(
 async def release_proxy_for_provider_instance(
     provider_slug: str, worker_id: int, instance_id: str, *, reason: str = "released"
 ) -> bool:
+    if str(provider_slug or "").strip().lower() == "earnapp" and earnapp_policy.is_protected_runtime_reference(
+        instance_id
+    ):
+        return False
     db = await _get_db()
     try:
         cursor = await db.execute(
@@ -8659,6 +8996,12 @@ async def delete_all_proxy_pool() -> int:
         db = await _open_transaction_connection()
         try:
             await db.execute("BEGIN IMMEDIATE")
+            protected_node = await _protected_earnapp_proxy_reference(db)
+            if protected_node:
+                await db.rollback()
+                raise ProtectedEarnAppProxyError(
+                    f"proxy pool contains a proxy referenced by protected EarnApp node {protected_node}"
+                )
             await db.execute("DELETE FROM proxy_assignments")
             await db.execute("DELETE FROM earnapp_account_control_routes")
             cursor = await db.execute("DELETE FROM proxy_endpoints")

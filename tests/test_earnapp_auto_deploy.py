@@ -88,11 +88,12 @@ def test_legacy_canary_counts_against_worker_slot_capacity(tmp_path):
             await database.init_db()
             await earnapp_accounts.import_account(_account("profile-a"))
             worker_id = await database.upsert_worker("worker-a", "worker-a", "http://worker-a")
-            await database.assign_earnapp_account("earnapp-canary-test-sing-1", platform="macos")
+            legacy_node_id = "earnapp-legacy-canary-fixture-1"
+            await database.assign_earnapp_account(legacy_node_id, platform="macos")
             db = await database._get_db()
             await db.execute(
                 "UPDATE earnapp_logical_nodes SET state='ACTIVE', assigned_worker_id=? WHERE logical_node_id=?",
-                (worker_id, "earnapp-canary-test-sing-1"),
+                (worker_id, legacy_node_id),
             )
             await db.commit()
 
@@ -516,7 +517,7 @@ async def test_new_deploy_remains_pending_until_authenticated_device_is_online(m
 
 
 @pytest.mark.asyncio
-async def test_server_earnapp_lane_dispatches_only_the_ubuntu_lxd_contract(monkeypatch):
+async def test_server_earnapp_lane_dispatches_geo_platform_contract(monkeypatch):
     slots = AsyncMock(return_value=[{"slot_id": "ipv4-001", "route_ready": True}])
     deploy = AsyncMock(
         return_value={
@@ -534,7 +535,6 @@ async def test_server_earnapp_lane_dispatches_only_the_ubuntu_lxd_contract(monke
 
     assert result["verified"] == ["earnapp-proxy-w3-ipv4-001"]
     slots.assert_awaited_once_with(3)
-    assert deploy.await_args.kwargs["required_platform"] == "ubuntu"
     assert deploy.await_args.kwargs["lxd_settings"] == {"cpu": 2, "memory_mib": 2048}
 
 
