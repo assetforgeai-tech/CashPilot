@@ -280,12 +280,16 @@ if [[ -s "$STATE_DIR/tracking_id" ]]; then
 elif [[ ! -s "$HOST_ID_FILE" ]]; then
     printf '%s\n' "$PROFILE_MACHINE_ID" >"$HOST_ID_FILE"
 fi
-install -m 0444 "$HOST_ID_FILE" /etc/machine-id
-ln -sfn /etc/machine-id /var/lib/dbus/machine-id
+if [[ -w /etc/machine-id ]]; then
+    install -m 0444 "$HOST_ID_FILE" /etc/machine-id
+    ln -sfn /etc/machine-id /var/lib/dbus/machine-id
+else
+    echo "[host] read-only machine-id; skip host helper apply"
+fi
 printf '%s\n' "${CONFIG_HOSTNAME:-earnapp-ubuntu}" >/etc/hostname
 read_identity serial >"$HOST_SERIAL_FILE"
 
-if command -v earnapp-host >/dev/null 2>&1; then
+if [[ -w /etc/machine-id ]] && command -v earnapp-host >/dev/null 2>&1; then
     earnapp-host ensure
     eval "$(earnapp-host apply)"
 fi
