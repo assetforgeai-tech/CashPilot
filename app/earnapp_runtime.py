@@ -245,7 +245,11 @@ STATE_DIR=/etc/earnapp
 IDENTITY_FILE=/run/cashpilot/identity.json
 HOST_ID_FILE="$STATE_DIR/host-machine-id"
 EXPECTED_DEVICE_ID="${EARNAPP_DEVICE_ID:?}"
-EXPECTED_EGRESS_IP="${EARNAPP_EXPECTED_EGRESS_IP:?}"
+EXPECTED_EGRESS_IP="${EARNAPP_EXPECTED_EGRESS_IP:-}"
+if [[ -s "$STATE_DIR/expected_egress_ip" ]]; then
+    EXPECTED_EGRESS_IP=$(tr -d '\r\n-' <"$STATE_DIR/expected_egress_ip")
+fi
+[[ -n "$EXPECTED_EGRESS_IP" ]]
 mkdir -p "$STATE_DIR" /var/lib/dbus
 rm -f /.dockerenv
 
