@@ -251,7 +251,7 @@ EXPECTED_DEVICE_ID="${EARNAPP_DEVICE_ID:?}"
 EXPECTED_EGRESS_IP="${EARNAPP_EXPECTED_EGRESS_IP:-}"
 REDSOCKS_PORT=12345
 REDSOCKS_CONF=/tmp/redsocks.conf
-if [[ -s "$STATE_DIR/expected_egress_ip" ]]; then
+if [[ -z "$EXPECTED_EGRESS_IP" && -s "$STATE_DIR/expected_egress_ip" ]]; then
     EXPECTED_EGRESS_IP=$(tr -d '\r\n-' <"$STATE_DIR/expected_egress_ip")
 fi
 [[ -n "$EXPECTED_EGRESS_IP" ]]
