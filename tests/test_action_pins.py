@@ -203,6 +203,12 @@ class TestTheShippedWorkflowsParse:
         assert len(uses) > 20
         assert all(use.repo.count("/") == 1 for use in uses)
 
+    def test_private_repo_codeql_can_read_its_triggering_workflow_run(self):
+        """CodeQL v4 reads workflow-run metadata while post-processing SARIF."""
+        workflow = (ROOT / ".github" / "workflows" / "codeql.yml").read_text(encoding="utf-8")
+
+        assert "      actions: read" in workflow
+
 
 class TestAHalfCheckedPinIsNotVerified:
     """CodeRabbit's catch: the ref resolved, its version claim did not.

@@ -11,6 +11,7 @@ from app import (
     earnapp_accounts,
     earnapp_canary,
     earnapp_deploy,
+    earnapp_identity,
     earnapp_policy,
     earnapp_recovery,
     earnapp_runtime,
@@ -90,17 +91,13 @@ def test_catalog_exposes_the_platform_restriction_without_hiding_ubuntu():
 
 def _ubuntu_spec() -> worker_api.EarnAppLxdDeploySpec:
     device_id = "sdk-node-" + "1" * 32
+    identity = earnapp_identity.generate_identity("earnapp-ubuntu-policy", "ubuntu")
+    identity["device_id"] = device_id
     return worker_api.EarnAppLxdDeploySpec(
         account_id=7,
         generation=3,
         device_id=device_id,
-        identity={
-            "platform": "ubuntu",
-            "machine_id": "2" * 32,
-            "device_id": device_id,
-            "hostname": "earnapp-ubuntu-policy",
-            "arch": "amd64",
-        },
+        identity=identity,
         proxy_id=12,
         proxy={
             "proxy_id": 12,

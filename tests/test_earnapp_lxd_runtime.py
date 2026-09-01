@@ -1138,6 +1138,8 @@ async def test_worker_accepts_new_earnapp_lxd_deploy_and_calls_host_helper(monke
     monkeypatch.setattr(worker_api.earnapp_lxd_runtime, "deploy_node", deploy)
 
     with patch.object(worker_api, "_verify_api_key"):
+        identity = earnapp_identity.generate_identity("earnapp-ubuntu-policy-block", "ubuntu")
+        identity["device_id"] = "sdk-node-" + "1" * 32
         result = await worker_api.api_deploy_earnapp_lxd_node(
             _request(),
             "earnapp-ubuntu-policy-block",
@@ -1146,12 +1148,7 @@ async def test_worker_accepts_new_earnapp_lxd_deploy_and_calls_host_helper(monke
                 account_id=2,
                 device_id="sdk-node-" + "1" * 32,
                 proxy_id=9,
-                identity={
-                    "platform": "ubuntu",
-                    "machine_id": "2" * 32,
-                    "device_id": "sdk-node-" + "1" * 32,
-                    "hostname": "earnapp-policy-block",
-                },
+                identity=identity,
                 proxy={
                     "proxy_id": 9,
                     "host": "proxy.example",

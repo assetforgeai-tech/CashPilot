@@ -6,7 +6,7 @@ import asyncio
 import logging
 from typing import Any
 
-from app import database
+from app import database, earnapp_canary
 from app.collectors.earnapp import EarnAppAccountCollector
 
 logger = logging.getLogger(__name__)
@@ -50,23 +50,24 @@ async def _collection_routes(account_id: int) -> list[dict[str, Any]]:
 
 
 async def collect_account(account_id: int) -> dict[str, Any]:
-    account = await database.get_earnapp_account_credentials(account_id)
-    if not account:
-        return {"status": "error", "error_kind": "auth", "error": "EarnApp account unavailable"}
-    routes = await _collection_routes(account_id)
-    if not routes:
-        return {"status": "error", "error_kind": "route", "error": "EarnApp account proxy unavailable"}
-    last_snapshot: dict[str, Any] = {"status": "error", "error_kind": "route", "error": "EarnApp route unavailable"}
-    for route in routes:
-        snapshot = await EarnAppAccountCollector(account.get("credentials") or {}, route).collect_snapshot()
-        if snapshot.get("status") == "ok":
-            await database.save_earnapp_snapshot(account_id, snapshot)
-            return snapshot
-        last_snapshot = snapshot
-        if snapshot.get("error_kind") == "auth":
-            await database.set_earnapp_account_state(account_id, "AUTH_FAILED")
-            return snapshot
-    return last_snapshot
+    async with earnapp_canary.account_api_lock(account_id):
+        account = await database.get_earnapp_account_credentials(account_id)
+        if not account:
+            return {"status": "error", "error_kind": "auth", "error": "EarnApp account unavailable"}
+        routes = await _collection_routes(account_id)
+        if not routes:
+            return {"status": "error", "error_kind": "route", "error": "EarnApp account proxy unavailable"}
+        last_snapshot: dict[str, Any] = {"status": "error", "error_kind": "route", "error": "EarnApp route unavailable"}
+        for route in routes:
+            snapshot = await EarnAppAccountCollector(account.get("credentials") or {}, route).collect_snapshot()
+            if snapshot.get("status") == "ok":
+                await database.save_earnapp_snapshot(account_id, snapshot)
+                return snapshot
+            last_snapshot = snapshot
+            if snapshot.get("error_kind") == "auth":
+                await database.set_earnapp_account_state(account_id, "AUTH_FAILED")
+                return snapshot
+        return last_snapshot
 
 
 async def collect_active_accounts(*, concurrency: int = 4) -> dict[str, Any]:

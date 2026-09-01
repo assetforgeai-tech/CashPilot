@@ -288,20 +288,34 @@ def _ios_identity(logical_node_id: str) -> dict[str, Any]:
 def _ubuntu_identity(logical_node_id: str) -> dict[str, Any]:
     suffix = _node_suffix(logical_node_id)
     machine_id = secrets.token_hex(16)
+    serial = secrets.token_hex(16)
     identity = {
         "platform": "ubuntu",
+        "appid": earnapp_runtime.UBUNTU_APPID,
         "id": secrets.token_hex(16),
-        "serial": secrets.token_hex(16),
+        "serial": serial,
         "machine_id": machine_id,
         "hostname": f"earnapp-{suffix}",
         "local_hostname": f"earnapp-{suffix}",
-        "os_version": "24.04",
+        "os_version": "22.04.5",
+        "os_release": "Ubuntu 22.04.5 LTS",
+        "release": "ubuntu_22.04_x64",
         "arch": "amd64",
+        "ifname": "enp2s0",
+        "mac_address": _local_unicast_mac(),
+        "lan_ip": PROXY_TUN_IP,
+        "conf_user": "victor",
+        "confdir": "/home/victor/.config/earnapp",
+        "device_model": "Beelink SER5",
+        "vendor": "AZW",
+        "product": "SER5",
+        "board": "SER5",
+        "soc": "Rembrandt",
+        "cpu_model": "AMD Ryzen 5 5560U with Radeon Graphics",
+        "cpu_cores": 12,
+        "memory_total": 1024 * 1024 * 1024,
     }
-    identity["device_id"] = (
-        UBUNTU_DEVICE_PREFIX
-        + hashlib.sha256((identity["id"] + identity["serial"] + machine_id).encode()).hexdigest()[:32]
-    )
+    identity["device_id"] = UBUNTU_DEVICE_PREFIX + uuid.uuid4().hex
     return identity
 
 
@@ -415,11 +429,48 @@ def validate_identity(identity: dict[str, Any], platform: str) -> None:
             raise ValueError("EarnApp iOS identity mixes a Mac or lab profile")
         _validate_reference_shape(identity, selected)
         return
+    required = {
+        "id",
+        "platform",
+        "appid",
+        "arch",
+        "release",
+        "ifname",
+        "serial",
+        "machine_id",
+        "hostname",
+        "local_hostname",
+        "os_version",
+        "os_release",
+        "device_model",
+        "vendor",
+        "product",
+        "board",
+        "soc",
+        "conf_user",
+        "confdir",
+        "lan_ip",
+        "mac_address",
+        "cpu_model",
+        "cpu_cores",
+        "memory_total",
+        "device_id",
+    }
+    missing = sorted(required - identity.keys())
+    if missing:
+        raise ValueError(f"EarnApp Ubuntu profile is missing: {', '.join(missing)}")
     if (
         identity.get("platform") != "ubuntu"
+        or identity.get("appid") != earnapp_runtime.UBUNTU_APPID
+        or identity.get("arch") != "amd64"
+        or identity.get("release") != "ubuntu_22.04_x64"
+        or identity.get("ifname") != "enp2s0"
+        or not re.fullmatch(r"[0-9a-f]{32}", str(identity.get("id") or ""))
+        or not re.fullmatch(r"[0-9a-f]{32}", str(identity.get("serial") or ""))
         or not re.fullmatch(r"[0-9a-f]{32}", str(identity.get("machine_id") or ""))
         or not re.fullmatch(r"sdk-node-[0-9a-f]{32}", str(identity.get("device_id") or ""))
         or not str(identity.get("hostname") or "").startswith("earnapp-")
+        or str(identity.get("local_hostname") or "") != str(identity.get("hostname") or "")
     ):
         raise ValueError("EarnApp Ubuntu identity is invalid")
 

@@ -509,6 +509,7 @@ def test_ubuntu_runtime_spec_is_dedicated_docker_and_persists_full_identity():
     assert spec["labels"]["cashpilot.earnapp.device_id"] == identity["device_id"]
     assert spec["env"]["EARNAPP_EXPECTED_EGRESS_IP"] == "203.0.113.10"
     assert spec["resources"]["mem_limit"] == "1g"
+    assert spec["cap_add"] == ["NET_ADMIN"]
     earnapp_runtime.validate_runtime_spec(spec)
 
 
@@ -520,6 +521,10 @@ def test_ubuntu_entrypoint_persists_identity_and_retries_registration_contract()
     assert "tr -d '\\r\\n-'" in entrypoint
     assert "printf '%s\\n'" in entrypoint
     assert "rm -f /.dockerenv" in entrypoint
+    assert 'HOST_JSON_FILE="$STATE_DIR/host.json"' in entrypoint
+    assert 'HOST_SERIAL_FILE="$STATE_DIR/host.serial"' in entrypoint
+    assert "earnapp-host ensure" in entrypoint
+    assert "earnapp-host apply" in entrypoint
     assert 'install -m 0444 "$HOST_ID_FILE" /etc/machine-id' in entrypoint
     assert '"$(cat /etc/machine-id)" >"$STATE_DIR/tracking_id"' in entrypoint
     assert '[[ "$PROFILE_DEVICE_ID" == "$EXPECTED_DEVICE_ID" ]]' in entrypoint
@@ -530,6 +535,18 @@ def test_ubuntu_entrypoint_persists_identity_and_retries_registration_contract()
     assert "for attempt in $(seq 1 10)" in entrypoint
     assert "install_device?uuid=$EXPECTED_DEVICE_ID" in entrypoint
     assert "is_linked?uuid=$EXPECTED_DEVICE_ID" in entrypoint
+
+
+def test_ubuntu_image_matches_the_verified_docker_runtime_contract():
+    manifest = earnapp_runtime.runtime_asset_manifest(platform="ubuntu")
+    recipe = build_earnapp_canary_image.render_dockerfile(manifest, platform="ubuntu")
+
+    assert "FROM ubuntu:22.04" in recipe
+    for package in ("ca-certificates", "curl", "dbus", "iproute2", "iptables", "procps", "redsocks"):
+        assert package in recipe
+    assert "COPY earnapp-host /usr/local/bin/earnapp-host" in recipe
+    assert "/usr/local/bin/earnapp-host" in recipe
+    assert "earnapp-host" in earnapp_runtime.UBUNTU_RUNTIME_ARTIFACT_HASHES
 
 
 def test_ios_runtime_spec_is_account_scoped_hardened_and_uses_the_persisted_profile():
@@ -1292,7 +1309,7 @@ async def test_verify_canary_cools_down_after_five_link_attempts(monkeypatch):
             await earnapp_canary.verify_canary("earnapp-ubuntu-cooldown", attempts=6, interval_seconds=1)
 
     assert collector.await_count == 6
-    assert sleeps == [5, 5, 5, 5, 60]
+    assert sleeps == [5, 5, 5, 5, 300]
 
 
 @pytest.mark.asyncio
@@ -2145,6 +2162,122 @@ def test_verify_canary_applies_retry_floor_to_unknown_billing(monkeypatch):
 
     assert result["workload_reason"] == "billing_unknown"
     assert sleeps == [5]
+
+
+def test_verify_canary_uses_five_minute_cooldown_after_each_retry_burst(monkeypatch):
+    device_id = "sdk-node-" + "d" * 32
+    samples = [
+        {
+            "status": "pending",
+            "authenticated": True,
+            "device_present": False,
+            "online": False,
+            "banned": False,
+            "device_id": device_id,
+        }
+        for _ in range(6)
+    ]
+
+    class Collector:
+        async def link_and_verify_device(self, *_args, **_kwargs):
+            return samples.pop(0)
+
+    sleeps = []
+
+    async def record_sleep(seconds):
+        sleeps.append(seconds)
+
+    with (
+        patch.object(
+            database,
+            "get_earnapp_logical_node",
+            AsyncMock(
+                return_value={
+                    "state": "ACTIVE",
+                    "account_id": 1,
+                    "current_proxy_id": 12,
+                    "device_id": device_id,
+                    "platform": "ubuntu",
+                }
+            ),
+        ),
+        patch.object(
+            database,
+            "get_earnapp_account_credentials",
+            AsyncMock(return_value={"state": "ACTIVE", "credentials": {}}),
+        ),
+        patch.object(
+            database,
+            "get_earnapp_account_node_routes",
+            AsyncMock(return_value=[{"logical_node_id": "earnapp-node-cooldown", "proxy_id": 12}]),
+        ),
+        patch.object(earnapp_canary, "EarnAppAccountCollector", return_value=Collector()),
+        patch("app.earnapp_canary.asyncio.sleep", side_effect=record_sleep),
+    ):
+        asyncio.run(earnapp_canary.verify_canary("earnapp-node-cooldown", attempts=6, interval_seconds=0))
+
+    assert sleeps == [5, 5, 5, 5, 300]
+
+
+@pytest.mark.asyncio
+async def test_verify_canary_serializes_link_loops_for_one_account(monkeypatch):
+    device_id = "sdk-node-" + "e" * 32
+    entered = 0
+    peak = 0
+    first_entered = asyncio.Event()
+    release = asyncio.Event()
+
+    class Collector:
+        async def link_and_verify_device(self, *_args, **_kwargs):
+            nonlocal entered, peak
+            entered += 1
+            peak = max(peak, entered)
+            first_entered.set()
+            await release.wait()
+            entered -= 1
+            return {
+                "status": "pending",
+                "authenticated": True,
+                "device_present": False,
+                "online": False,
+                "banned": False,
+                "device_id": device_id,
+            }
+
+    monkeypatch.setattr(
+        database,
+        "get_earnapp_logical_node",
+        AsyncMock(
+            return_value={
+                "state": "ACTIVE",
+                "account_id": 7,
+                "current_proxy_id": 12,
+                "device_id": device_id,
+                "platform": "ubuntu",
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        database, "get_earnapp_account_credentials", AsyncMock(return_value={"state": "ACTIVE", "credentials": {}})
+    )
+    monkeypatch.setattr(
+        database,
+        "get_earnapp_account_node_routes",
+        AsyncMock(return_value=[{"logical_node_id": "earnapp-node-lock", "proxy_id": 12}]),
+    )
+    monkeypatch.setattr(database, "get_provider_instance_spec", AsyncMock(return_value={}))
+    monkeypatch.setattr(earnapp_canary, "EarnAppAccountCollector", lambda *_args: Collector())
+
+    first = asyncio.create_task(earnapp_canary.verify_canary("earnapp-node-lock", attempts=1))
+    await first_entered.wait()
+    second = asyncio.create_task(earnapp_canary.verify_canary("earnapp-node-lock", attempts=1))
+    for _ in range(10):
+        await asyncio.sleep(0)
+
+    assert peak == 1
+    release.set()
+    await asyncio.gather(first, second)
+    assert peak == 1
 
 
 @pytest.mark.asyncio
