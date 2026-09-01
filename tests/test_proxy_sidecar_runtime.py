@@ -276,6 +276,43 @@ def test_apply_proxy_binding_restarts_only_sidecar_and_reports_config_hash():
     sidecar.restart.assert_called_once_with(timeout=30)
 
 
+def test_apply_earnapp_proxy_binding_updates_expected_egress_file_before_main_restart():
+    client = MagicMock()
+    sidecar = MagicMock()
+    sidecar.labels = {
+        "cashpilot.role": "egress-sidecar",
+        "cashpilot.provider": "earnapp",
+    }
+    sidecar.attrs = {"Mounts": [{"Destination": "/etc/sing-box", "RW": True}]}
+    sidecar.id = "sidecar-id"
+    sidecar.name = "earnapp-proxy-egress"
+    sidecar.exec_run.return_value = MagicMock(exit_code=0)
+    sidecar.status = "running"
+    main = MagicMock()
+    main.labels = {"cashpilot.role": "main"}
+    main.attrs = {"HostConfig": {"NetworkMode": "container:sidecar-id"}}
+    main.status = "running"
+    main.exec_run.return_value = MagicMock(exit_code=0)
+    client.containers.get.side_effect = [sidecar, main]
+
+    with (
+        patch.object(orchestrator, "_get_client", return_value=client),
+        patch.object(
+            orchestrator.singbox_config, "render_tun_proxy_config", return_value={"route": {"final": "proxy-out"}}
+        ),
+        patch.object(orchestrator, "_find_earnapp_runtime_container", return_value=main),
+    ):
+        orchestrator.apply_proxy_binding_batch(
+            ["earnapp-proxy"],
+            {"host": "2.2.2.2", "port": 1080, "protocol": "socks5", "exit_ip": "203.0.113.10"},
+            "rotation_1234567890",
+        )
+
+    assert main.exec_run.called
+    assert any("203.0.113.10" in repr(call.args) for call in main.exec_run.call_args_list)
+    main.restart.assert_called_once_with(timeout=30)
+
+
 def test_proxy_binding_status_reports_active_marker_and_artifacts():
     client = MagicMock()
     sidecar = MagicMock()

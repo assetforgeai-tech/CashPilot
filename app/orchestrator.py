@@ -262,14 +262,14 @@ def _earnapp_sidecar(slug: str, client: Any | None = None):
     return sidecar
 
 
-def _restart_earnapp_main_after_sidecar_restart(client: Any, slug: str, sidecar: Any) -> None:
+def _restart_earnapp_main_after_sidecar_restart(client: Any, slug: str, sidecar: Any, *, main: Any | None = None) -> None:
     """Reconnect an EarnApp process to the sidecar network namespace.
 
     Docker containers using ``network_mode=container:<sidecar>`` retain the old
     network namespace when the sidecar is restarted. Restarting the dependent
     main container makes Docker attach it to the sidecar's new namespace.
     """
-    main = _find_earnapp_runtime_container(client, slug, sidecar=False)
+    main = main or _find_earnapp_runtime_container(client, slug, sidecar=False)
     if main is None:
         raise RuntimeError(f"{slug} EarnApp main container is missing")
     network_mode = str(((getattr(main, "attrs", {}) or {}).get("HostConfig") or {}).get("NetworkMode") or "")
@@ -283,6 +283,28 @@ def _restart_earnapp_main_after_sidecar_restart(client: Any, slug: str, sidecar:
         main.reload()
     if str(getattr(main, "status", "") or "").lower() != "running":
         raise RuntimeError(f"{slug} EarnApp main container did not recover after sidecar restart")
+
+
+def _persist_earnapp_expected_egress(main: Any, expected_egress_ip: str) -> None:
+    """Persist the current lease in the node volume before restarting the main process."""
+    value = str(expected_egress_ip or "").strip()
+    try:
+        ipaddress.ip_address(value)
+    except ValueError as exc:
+        raise ValueError("EarnApp expected egress must be an IP address") from exc
+    result = main.exec_run(
+        [
+            "/bin/sh",
+            "-c",
+            "umask 077; mkdir -p /etc/earnapp; "
+            "printf '%s\\n' \"$1\" > /etc/earnapp/expected_egress_ip",
+            "cashpilot",
+            value,
+        ]
+    )
+    exit_code = int(getattr(result, "exit_code", result[0] if isinstance(result, tuple) else 1))
+    if exit_code != 0:
+        raise RuntimeError("EarnApp expected egress persistence failed")
 
 
 def _exec_output(result: Any) -> tuple[int, bytes]:
@@ -720,7 +742,13 @@ def apply_proxy_binding_batch(instance_slugs: list[str], proxy: dict[str, Any], 
             if str(sidecar.status or "").lower() != "running":
                 raise RuntimeError(f"{slug} egress sidecar did not restart")
             if (sidecar.labels or {}).get("cashpilot.provider") == "earnapp":
-                _restart_earnapp_main_after_sidecar_restart(client, slug, sidecar)
+                main = None
+                if str(proxy.get("exit_ip") or "").strip():
+                    main = _find_earnapp_runtime_container(client, slug, sidecar=False)
+                    if main is None:
+                        raise RuntimeError(f"{slug} EarnApp main container is missing")
+                    _persist_earnapp_expected_egress(main, str(proxy["exit_ip"]))
+                _restart_earnapp_main_after_sidecar_restart(client, slug, sidecar, main=main)
             verify = sidecar.exec_run(
                 [
                     "/bin/sh",
