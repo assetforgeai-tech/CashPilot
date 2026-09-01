@@ -316,8 +316,15 @@ class EarnAppAccountCollector:
             )
             if link_response.status_code in AUTH_FAILURE_CODES:
                 return {"status": "error", "error_kind": "auth", "error": "authentication rejected"}
-            link_response.raise_for_status()
-            link_result = link_response.json()
+            # A registered runtime may already be linked while EarnApp rate
+            # limits the explicit link call.  Continue with the authenticated
+            # device/status/usage refetch instead of misclassifying 429 as a
+            # transport failure.
+            if link_response.status_code == 429:
+                link_result = {}
+            else:
+                link_response.raise_for_status()
+                link_result = link_response.json()
             link_error = str(link_result.get("error") or "") if isinstance(link_result, Mapping) else ""
             already_linked = "already linked" in link_error.lower()
             if link_error and not already_linked:
