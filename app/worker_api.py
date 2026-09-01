@@ -2807,6 +2807,7 @@ async def api_apply_earnapp_node_proxy(
                 "observed_egress_ip": observed,
                 "probe_ok": True,
                 "applied_instances": list(applied.get("applied_instances") or []),
+                "recreated_main_ids": dict(applied.get("recreated_main_ids") or {}),
             }
     except HTTPException:
         raise

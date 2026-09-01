@@ -322,6 +322,57 @@ def test_worker_node_scoped_proxy_apply_and_finalize_update_only_matching_state(
     assert saved["expected_egress_ip"] == "203.0.113.13"
 
 
+def test_worker_docker_proxy_apply_persists_recreated_main_container_id(tmp_path, monkeypatch):
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    device_id = str(_identity()["device_id"])
+    worker_api._save_earnapp_state(
+        "earnapp-macos-1",
+        {
+            "logical_node_id": "earnapp-macos-1",
+            "generation": 1,
+            "device_id": device_id,
+            "platform": "macos",
+            "runtime_backend": "docker",
+            "proxy_id": 12,
+            "expected_egress_ip": "203.0.113.10",
+        },
+    )
+    spec = worker_api.EarnAppProxyApplySpec(
+        generation=1,
+        device_id=device_id,
+        expected_proxy_id=12,
+        binding_version="rotation_12345678",
+        proxy={**_proxy(), "proxy_id": 13, "exit_ip": "203.0.113.13"},
+    )
+    with (
+        patch.object(worker_api, "_verify_api_key"),
+        patch.object(
+            worker_api.orchestrator,
+            "apply_proxy_binding_batch",
+            return_value={
+                "applied_instances": ["earnapp-macos-1"],
+                "recreated_main_ids": {"earnapp-macos-1": "docker-recreated-main-id"},
+            },
+        ),
+        patch.object(
+            worker_api,
+            "_earnapp_proxy_runtime_snapshot",
+            return_value=(
+                {"binding_version": "rotation_12345678", "previous_present": False, "candidate_present": False},
+                {"running": True, "observed_egress_ip": "203.0.113.13", "probe_ok": True},
+            ),
+        ),
+        patch.object(
+            worker_api.orchestrator, "probe_service_egress", return_value={"observed_egress_ip": "203.0.113.13"}
+        ),
+    ):
+        result = __import__("asyncio").run(worker_api.api_apply_earnapp_node_proxy(_request(), "earnapp-macos-1", spec))
+
+    saved = json.loads(Path(tmp_path, "earnapp-nodes", "earnapp-macos-1.json").read_text(encoding="utf-8"))
+    assert result["container_id"] == "docker-recreated-main-id"
+    assert saved["container_id"] == "docker-recreated-main-id"
+
+
 def test_worker_proxy_finalize_is_idempotent_after_confirm_response_is_lost(tmp_path, monkeypatch):
     monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
     device_id = str(_identity()["device_id"])
