@@ -535,6 +535,7 @@ def test_ubuntu_entrypoint_persists_identity_and_retries_registration_contract()
     assert "setup_proxy" in entrypoint
     assert 'install -m 0444 "$HOST_ID_FILE" /etc/machine-id' in entrypoint
     assert '"$(cat /etc/machine-id)" >"$STATE_DIR/tracking_id"' in entrypoint
+    assert 'if [[ -z "$EXPECTED_EGRESS_IP" && -s "$STATE_DIR/expected_egress_ip" ]]; then' in entrypoint
 
 
 def test_ubuntu_entrypoint_skips_host_helper_when_machine_id_is_read_only():
