@@ -262,7 +262,9 @@ def _earnapp_sidecar(slug: str, client: Any | None = None):
     return sidecar
 
 
-def _restart_earnapp_main_after_sidecar_restart(client: Any, slug: str, sidecar: Any, *, main: Any | None = None) -> None:
+def _restart_earnapp_main_after_sidecar_restart(
+    client: Any, slug: str, sidecar: Any, *, main: Any | None = None
+) -> None:
     """Reconnect an EarnApp process to the sidecar network namespace.
 
     Docker containers using ``network_mode=container:<sidecar>`` retain the old
@@ -296,8 +298,7 @@ def _persist_earnapp_expected_egress(main: Any, expected_egress_ip: str) -> None
         [
             "/bin/sh",
             "-c",
-            "umask 077; mkdir -p /etc/earnapp; "
-            "printf '%s\\n' \"$1\" > /etc/earnapp/expected_egress_ip",
+            "umask 077; mkdir -p /etc/earnapp; printf '%s\\n' \"$1\" > /etc/earnapp/expected_egress_ip",
             "cashpilot",
             value,
         ]
