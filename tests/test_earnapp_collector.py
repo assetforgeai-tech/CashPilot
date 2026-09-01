@@ -379,6 +379,7 @@ class _CurrentShapeClient:
                     }
                 ],
             )
+
         if url.endswith("/usage"):
             assert kwargs["params"]["step"] == "daily"
             today = datetime.now(UTC).date().isoformat()
@@ -408,6 +409,41 @@ class _CurrentShapeClient:
 
     async def aclose(self):
         self.is_closed = True
+
+
+class _IpBlockedClient:
+    is_closed = False
+
+    def __init__(self, **kwargs):
+        self.cookies = dict(kwargs.get("cookies") or {})
+
+    async def get(self, url, **_kwargs):
+        response = _Response(200, {"ok": 1})
+        if url.endswith("/sec/rotate_xsrf"):
+            self.cookies["xsrf-token"] = "rotated-xsrf"
+            return response
+        response = _Response(406, {})
+        response.headers["location"] = "https://earnapp.com/dashboard/ip_block"
+        return response
+
+    async def aclose(self):
+        return None
+
+
+def test_link_classifies_dashboard_ip_block_as_proxy_blocked(monkeypatch):
+    monkeypatch.setattr(httpx, "AsyncClient", _IpBlockedClient)
+    collector = EarnAppAccountCollector(
+        {"cookies": {"xsrf-token": "xsrf"}},
+        {"protocol": "http", "host": "proxy.example", "port": 8080},
+    )
+
+    result = asyncio.run(collector.link_and_verify_device("sdk-mac-" + "a" * 32))
+
+    assert result == {
+        "status": "error",
+        "error_kind": "proxy_blocked",
+        "error": "EarnApp blocked the account proxy",
+    }
 
 
 def test_link_and_verify_device_exposes_current_workload_counters():

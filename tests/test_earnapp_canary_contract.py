@@ -2219,6 +2219,96 @@ def test_verify_canary_uses_five_minute_cooldown_after_each_retry_burst(monkeypa
     assert sleeps == [5, 5, 5, 5, 300]
 
 
+def test_verify_canary_stops_immediately_when_earnapp_blocks_the_proxy(monkeypatch):
+    device_id = "sdk-node-" + "f" * 32
+
+    class Collector:
+        async def link_and_verify_device(self, *_args, **_kwargs):
+            return {
+                "status": "error",
+                "error_kind": "proxy_blocked",
+                "error": "EarnApp blocked the account proxy",
+                "device_id": device_id,
+            }
+
+    monkeypatch.setattr(
+        database,
+        "get_earnapp_logical_node",
+        AsyncMock(
+            return_value={
+                "state": "ACTIVE",
+                "account_id": 7,
+                "current_proxy_id": 12,
+                "device_id": device_id,
+                "platform": "ubuntu",
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        database, "get_earnapp_account_credentials", AsyncMock(return_value={"state": "ACTIVE", "credentials": {}})
+    )
+    monkeypatch.setattr(
+        database,
+        "get_earnapp_account_node_routes",
+        AsyncMock(return_value=[{"logical_node_id": "earnapp-node-proxy-blocked", "proxy_id": 12}]),
+    )
+    monkeypatch.setattr(database, "get_provider_instance_spec", AsyncMock(return_value={}))
+    monkeypatch.setattr(earnapp_canary, "EarnAppAccountCollector", lambda *_args: Collector())
+    sleep = AsyncMock()
+    monkeypatch.setattr(earnapp_canary.asyncio, "sleep", sleep)
+
+    result = asyncio.run(earnapp_canary.verify_canary("earnapp-node-proxy-blocked", attempts=10))
+
+    assert result["error_kind"] == "proxy_blocked"
+    sleep.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_canary_verification_masks_blocked_proxy_and_rotates_inside_ui_process(monkeypatch):
+    node_id = "earnapp-node-dashboard-blocked"
+    verify = AsyncMock(
+        side_effect=[
+            {"status": "error", "error_kind": "proxy_blocked", "error": "EarnApp blocked the account proxy"},
+            {"status": "workload_verified", "workload_state": "workload_verified", "online": True},
+        ]
+    )
+    monkeypatch.setattr(earnapp_canary, "verify_canary", verify)
+    monkeypatch.setattr(
+        database,
+        "get_earnapp_logical_node",
+        AsyncMock(
+            return_value={
+                "logical_node_id": node_id,
+                "assigned_worker_id": 3,
+                "generation": 4,
+                "current_proxy_id": 12,
+                "device_id": "sdk-node-" + "1" * 32,
+            }
+        ),
+    )
+    mask = AsyncMock(return_value=True)
+    health = AsyncMock(return_value=True)
+    rotate = AsyncMock(return_value=True)
+    monkeypatch.setattr(database, "mask_proxy_for_provider", mask)
+    monkeypatch.setattr(database, "record_earnapp_proxy_health", health)
+    monkeypatch.setattr(main, "_rotate_unhealthy_earnapp_node", rotate)
+    monkeypatch.setattr(main.asyncio, "sleep", AsyncMock())
+
+    result = await main._verify_earnapp_canary_with_proxy_rotation(node_id)
+
+    assert result["workload_state"] == "workload_verified"
+    mask.assert_awaited_once_with(12, "earnapp", "dashboard_ip_block")
+    health.assert_awaited_once_with(
+        node_id,
+        3,
+        generation=4,
+        proxy_id=12,
+        health="unhealthy",
+        reason="dashboard_ip_block",
+    )
+    rotate.assert_awaited_once_with(node_id, 3, generation=4, expected_proxy_id=12)
+
+
 @pytest.mark.asyncio
 async def test_verify_canary_serializes_link_loops_for_one_account(monkeypatch):
     device_id = "sdk-node-" + "e" * 32

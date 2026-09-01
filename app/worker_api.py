@@ -2762,6 +2762,7 @@ async def api_apply_earnapp_node_proxy(
                 "binding_version": spec.binding_version,
                 "proxy_id": proxy_id,
                 "observed_egress_ip": observed,
+                "container_id": str(state.get("container_id") or ""),
                 "idempotent": True,
             }
         raise HTTPException(status_code=409, detail="EarnApp proxy binding reconciliation required")
@@ -2822,12 +2823,15 @@ async def api_apply_earnapp_node_proxy(
     recreated = result.get("recreated_main_ids") if isinstance(result, dict) else None
     if isinstance(recreated, dict) and recreated.get(logical_node_id):
         state["container_id"] = str(recreated[logical_node_id])
+    elif isinstance(result, dict) and result.get("container_id"):
+        state["container_id"] = str(result["container_id"])
     _save_earnapp_state(logical_node_id, state)
     return {
         "ok": True,
         "binding_version": spec.binding_version,
         "proxy_id": proxy_id,
         "observed_egress_ip": observed_egress_ip,
+        "container_id": str(state.get("container_id") or ""),
     }
 
 

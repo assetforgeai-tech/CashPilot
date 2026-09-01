@@ -4158,6 +4158,16 @@ def _earnapp_proxy_eligible_sql(alias: str = "pe") -> str:
     """
 
 
+async def _expire_earnapp_provider_masks(db: Any) -> None:
+    """Release EarnApp-only masks after the agreed 48-hour quarantine."""
+    await db.execute(
+        """
+        DELETE FROM proxy_provider_masks
+        WHERE provider_slug = 'earnapp' AND updated_at <= datetime('now', '-48 hours')
+        """
+    )
+
+
 def _active_earnapp_reservation_exclusion_sql(
     alias: str = "pe", reservation_alias: str = "reservation", reserved_proxy_alias: str = "reserved_proxy"
 ) -> str:
@@ -4459,6 +4469,8 @@ async def find_available_earnapp_proxy_for_node(
         return None
     db = await _get_db()
     try:
+        await _expire_earnapp_provider_masks(db)
+        await db.commit()
         node = await (
             await db.execute(
                 """
@@ -4572,6 +4584,7 @@ async def reserve_earnapp_proxy_candidate(
         db = await _open_transaction_connection()
         try:
             await db.execute("BEGIN IMMEDIATE")
+            await _expire_earnapp_provider_masks(db)
             await db.execute(
                 """
                 UPDATE earnapp_proxy_reservations
@@ -4750,6 +4763,7 @@ async def commit_earnapp_proxy_rotation(
         db = await _open_transaction_connection()
         try:
             await db.execute("BEGIN IMMEDIATE")
+            await _expire_earnapp_provider_masks(db)
             node = await (
                 await db.execute(
                     """
@@ -5391,6 +5405,7 @@ async def claim_earnapp_node(
         db = await _open_transaction_connection()
         try:
             await db.execute("BEGIN IMMEDIATE")
+            await _expire_earnapp_provider_masks(db)
             node = await (
                 await db.execute("SELECT * FROM earnapp_logical_nodes WHERE logical_node_id = ?", (node_id,))
             ).fetchone()
@@ -7239,6 +7254,9 @@ async def proxy_masked_for_provider(proxy_id: int, provider_slug: str) -> bool:
         return False
     db = await _get_db()
     try:
+        if provider_slug == "earnapp":
+            await _expire_earnapp_provider_masks(db)
+            await db.commit()
         cur = await db.execute(
             "SELECT 1 FROM proxy_provider_masks WHERE proxy_id = ? AND provider_slug = ? LIMIT 1",
             (int(proxy_id), provider_slug),
@@ -8834,6 +8852,8 @@ async def lease_proxy_for_provider_instance(
         db = await _open_transaction_connection()
         try:
             await db.execute("BEGIN IMMEDIATE")
+            if slug == "earnapp":
+                await _expire_earnapp_provider_masks(db)
             cursor = await db.execute(
                 """
                 SELECT leases.proxy_id, leases.exit_ip, pe.endpoint, pe.host, pe.port, pe.protocol,
@@ -9047,6 +9067,8 @@ async def lease_proxy_for_worker(worker_id: int, *, provider_slug: str | None = 
         db = await _open_transaction_connection()
         try:
             await db.execute("BEGIN IMMEDIATE")
+            if provider_slug == "earnapp":
+                await _expire_earnapp_provider_masks(db)
             await db.execute(
                 f"""
                 INSERT INTO proxy_assignments (worker_id, proxy_id, mode, fallback, assignment_version, applied_at)
@@ -9139,6 +9161,9 @@ async def find_available_proxy_for_worker(worker_id: int, *, provider_slug: str 
         params.append(provider_slug)
     db = await _get_db()
     try:
+        if provider_slug == "earnapp":
+            await _expire_earnapp_provider_masks(db)
+            await db.commit()
         cursor = await db.execute(
             f"""
             SELECT pe.id AS proxy_id, pe.endpoint, pe.host, pe.port, pe.protocol,
