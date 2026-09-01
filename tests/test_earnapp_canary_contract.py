@@ -1263,11 +1263,23 @@ async def test_verify_canary_cools_down_after_five_link_attempts(monkeypatch):
             }
         ),
     )
-    monkeypatch.setattr(database, "get_earnapp_account_credentials", AsyncMock(return_value={"state": "ACTIVE", "credentials": {}}))
+    monkeypatch.setattr(
+        database, "get_earnapp_account_credentials", AsyncMock(return_value={"state": "ACTIVE", "credentials": {}})
+    )
     monkeypatch.setattr(
         database,
         "get_earnapp_account_node_routes",
-        AsyncMock(return_value=[{"logical_node_id": "earnapp-ubuntu-cooldown", "proxy_id": 12, "protocol": "socks5", "host": "proxy.example", "port": 1080}]),
+        AsyncMock(
+            return_value=[
+                {
+                    "logical_node_id": "earnapp-ubuntu-cooldown",
+                    "proxy_id": 12,
+                    "protocol": "socks5",
+                    "host": "proxy.example",
+                    "port": 1080,
+                }
+            ]
+        ),
     )
     sleeps = []
 
