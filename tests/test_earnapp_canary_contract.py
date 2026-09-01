@@ -508,6 +508,7 @@ def test_ubuntu_runtime_spec_is_dedicated_docker_and_persists_full_identity():
     assert spec["runtime_contract"]["appid"] == "node_earnapp.com"
     assert spec["labels"]["cashpilot.earnapp.device_id"] == identity["device_id"]
     assert spec["env"]["EARNAPP_EXPECTED_EGRESS_IP"] == "203.0.113.10"
+    assert spec["env"]["NODE_TLS_REJECT_UNAUTHORIZED"] == "0"
     assert spec["resources"]["mem_limit"] == "1g"
     assert spec["cap_add"] == ["NET_ADMIN"]
     earnapp_runtime.validate_runtime_spec(spec)
