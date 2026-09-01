@@ -392,6 +392,7 @@ with open(sys.argv[2], encoding="utf-8") as handle:
 raise SystemExit(0 if installed.get("ok") in (1, True, "1") and linked.get("linked") is True else 1)
 PY
     then
+        printf '%s\n' "$EXPECTED_DEVICE_ID" >"$STATE_DIR/registered"
         rm -f "$install_body" "$linked_body"
         break
     fi
