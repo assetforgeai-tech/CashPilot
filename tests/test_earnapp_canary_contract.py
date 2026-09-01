@@ -1244,6 +1244,46 @@ async def test_verify_canary_retries_remote_link_error_until_attempt_budget_for_
 
 
 @pytest.mark.asyncio
+async def test_verify_canary_cools_down_after_five_link_attempts(monkeypatch):
+    device_id = "sdk-node-" + "b" * 32
+    collector = AsyncMock(
+        return_value={"status": "pending", "device_id": device_id, "device_present": False, "online": False}
+    )
+    monkeypatch.setattr(
+        database,
+        "get_earnapp_logical_node",
+        AsyncMock(
+            return_value={
+                "logical_node_id": "earnapp-ubuntu-cooldown",
+                "account_id": 7,
+                "device_id": device_id,
+                "platform": "ubuntu",
+                "current_proxy_id": 12,
+                "state": "ACTIVE",
+            }
+        ),
+    )
+    monkeypatch.setattr(database, "get_earnapp_account_credentials", AsyncMock(return_value={"state": "ACTIVE", "credentials": {}}))
+    monkeypatch.setattr(
+        database,
+        "get_earnapp_account_node_routes",
+        AsyncMock(return_value=[{"logical_node_id": "earnapp-ubuntu-cooldown", "proxy_id": 12, "protocol": "socks5", "host": "proxy.example", "port": 1080}]),
+    )
+    sleeps = []
+
+    async def record_sleep(seconds):
+        sleeps.append(seconds)
+
+    with patch("app.earnapp_canary.EarnAppAccountCollector") as collector_type:
+        collector_type.return_value.link_and_verify_device = collector
+        with patch("app.earnapp_canary.asyncio.sleep", side_effect=record_sleep):
+            await earnapp_canary.verify_canary("earnapp-ubuntu-cooldown", attempts=6, interval_seconds=1)
+
+    assert collector.await_count == 6
+    assert sleeps == [5, 5, 5, 5, 60]
+
+
+@pytest.mark.asyncio
 async def test_verify_canary_retries_remote_link_error_until_exact_device_is_online(monkeypatch):
     collector = AsyncMock(
         side_effect=[

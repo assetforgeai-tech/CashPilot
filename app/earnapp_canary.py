@@ -20,6 +20,9 @@ PlatformWorkerRemove = WorkerRemove
 
 LINK_VERIFY_ATTEMPTS = 10
 LINK_VERIFY_INTERVAL_SECONDS = 15
+LINK_VERIFY_MIN_INTERVAL_SECONDS = 5
+LINK_VERIFY_BURST = 5
+LINK_VERIFY_COOLDOWN_SECONDS = 60
 MAC_PROXY_TUN_IP = "172.31.255.1"
 _UPTIME_BILLING = frozenset({"uptime", "fixed", "qualified_uptime"})
 _BYTE_BILLING = frozenset({"bandwidth", "bytes", "byte", "traffic", "gb"})
@@ -744,5 +747,8 @@ async def verify_canary(
             terminal_error = True
         if terminal_error or last.get("banned") is True or attempt >= remaining:
             break
-        await asyncio.sleep(max(0, float(interval_seconds)))
+        delay = max(LINK_VERIFY_MIN_INTERVAL_SECONDS, float(interval_seconds))
+        if attempt % LINK_VERIFY_BURST == 0 and attempt < remaining:
+            delay = max(delay, LINK_VERIFY_COOLDOWN_SECONDS)
+        await asyncio.sleep(delay)
     return earnapp_runtime.redacted_evidence(last)
