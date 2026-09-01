@@ -135,12 +135,12 @@ def test_worker_reports_earnapp_instance_state_without_secrets(tmp_path, monkeyp
     assert "password" not in json.dumps(state)
 
 
-def test_worker_deploy_spec_has_no_host_privilege():
+def test_worker_deploy_spec_has_only_the_ubuntu_tunnel_capability():
     service = catalog.get_service("earnapp")
     assert service is not None
     assert service["docker"].get("privileged", False) is False
     assert not service["docker"].get("devices")
-    assert not service["docker"].get("cap_add")
+    assert service["docker"].get("cap_add") == ["NET_ADMIN"]
 
 
 def test_runtime_asset_kind_accepts_mac_identity_profile():
