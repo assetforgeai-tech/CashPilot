@@ -550,6 +550,7 @@ def test_ubuntu_entrypoint_skips_host_helper_when_machine_id_is_read_only():
     assert "for attempt in $(seq 1 10)" in entrypoint
     assert "install_device?uuid=$EXPECTED_DEVICE_ID" in entrypoint
     assert "is_linked?uuid=$EXPECTED_DEVICE_ID" in entrypoint
+    assert '"$EXPECTED_DEVICE_ID" >"$STATE_DIR/registered"' in entrypoint
 
 
 def test_ubuntu_image_matches_the_verified_docker_runtime_contract():
