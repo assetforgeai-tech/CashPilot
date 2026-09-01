@@ -2141,9 +2141,7 @@ def test_verify_canary_applies_retry_floor_to_unknown_billing(monkeypatch):
         patch.object(earnapp_canary, "EarnAppAccountCollector", return_value=Collector()),
         patch("app.earnapp_canary.asyncio.sleep", side_effect=record_sleep),
     ):
-        result = asyncio.run(
-            earnapp_canary.verify_canary("earnapp-node-unknown-floor", attempts=2, interval_seconds=0)
-        )
+        result = asyncio.run(earnapp_canary.verify_canary("earnapp-node-unknown-floor", attempts=2, interval_seconds=0))
 
     assert result["workload_reason"] == "billing_unknown"
     assert sleeps == [5]
