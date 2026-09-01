@@ -254,6 +254,17 @@ def build_runtime_spec(
         expected_egress_ip = str(proxy_meta.get("exit_ip") or "").strip()
         if not expected_egress_ip:
             raise ValueError("EarnApp Ubuntu runtime requires an authoritative proxy egress IP")
+        protocol = str(proxy.get("protocol") or "socks5").strip().upper()
+        if protocol not in {"HTTP", "SOCKS5"}:
+            raise ValueError("EarnApp Ubuntu proxy protocol is invalid")
+        proxy_credentials = ":".join(
+            (
+                str(proxy.get("host") or "").strip(),
+                str(proxy.get("port") or "").strip(),
+                str(proxy.get("username") or ""),
+                str(proxy.get("password") or ""),
+            )
+        )
         return {
             "image": earnapp_runtime.UBUNTU_RUNTIME_IMAGE,
             "image_delivery": "operator_preload",
@@ -266,6 +277,10 @@ def build_runtime_spec(
                 "EARNAPP_LOGICAL_NODE_ID": node_id,
                 "EARNAPP_EXPECTED_EGRESS_IP": expected_egress_ip,
                 "NODE_TLS_REJECT_UNAUTHORIZED": "0",
+                # Ubuntu's verified runtime owns its redsocks/iptables route;
+                # do not put this node behind CashPilot's generic sidecar.
+                "PROXY_TYPE": protocol,
+                "PROXY_CREDENTIALS": proxy_credentials,
             },
             "volumes": {f"{node_id}-data": {"bind": "/etc/earnapp", "mode": "rw"}},
             "labels": {
@@ -281,7 +296,7 @@ def build_runtime_spec(
             "privileged": False,
             "cap_add": ["NET_ADMIN"],
             "devices": None,
-            "network_mode": None,
+            "network_mode": "bridge",
             "egress_mode": "proxy",
             "egress_udp": "none",
             "proxy": proxy_meta,
