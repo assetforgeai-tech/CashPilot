@@ -425,6 +425,25 @@ def test_link_and_verify_device_exposes_current_workload_counters():
     assert result["usage_points"] == 1
 
 
+class _RateLimitedLinkClient(_CurrentShapeClient):
+    async def post(self, url, **kwargs):
+        if url.endswith("/link_device"):
+            return _Response(429, {"error": "Too many requests"})
+        return await super().post(url, **kwargs)
+
+
+def test_link_and_verify_device_treats_link_rate_limit_as_pending_after_runtime_registered():
+    credentials = {"cookies": {"oauth-refresh-token": "refresh-secret", "xsrf-token": "xsrf-secret"}}
+    proxy = {"protocol": "http", "host": "proxy.example", "port": 8080}
+
+    with patch("app.collectors.earnapp.httpx.AsyncClient", side_effect=_RateLimitedLinkClient):
+        result = asyncio.run(EarnAppAccountCollector(credentials, proxy).link_and_verify_device("device-a"))
+
+    assert result["status"] == "online"
+    assert result["device_present"] is True
+    assert result["link_attempted"] is True
+
+
 def test_normalize_snapshot_reads_current_and_legacy_bandwidth_counters():
     result = earnapp.normalize_snapshot(
         {},
