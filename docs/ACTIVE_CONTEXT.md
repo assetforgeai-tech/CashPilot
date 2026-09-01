@@ -1,5 +1,29 @@
 # CashPilot Active Context
 
+## EarnApp multi-platform production hardening (2026-09-01, source gate)
+
+- Current branch `feat/earnapp-production-hardening` adds the approved geo
+  matrix: VN residential -> dedicated macOS/iOS Docker lanes; non-VN
+  residential -> dedicated Ubuntu Docker lane. Generic/raw EarnApp deploy
+  remains fail-closed.
+- Proxy changes now recreate only the EarnApp main container. The existing
+  identity volume, env, labels, UUID/device ID and resource limits are copied
+  from the live inspect contract; the old container is restored on failed
+  replacement. Non-EarnApp sidecars retain their prior restart behavior.
+- Link verification is serialized per account, has a 5-second minimum relay,
+  and uses a 300-second cooldown after every five-attempt burst.
+- Ubuntu fresh identity now matches the audited 22.04.5 profile contract:
+  `host.json`, `host.serial`, machine-id, release/interface/model/CPU/memory
+  fields, unique `sdk-node-<32 hex>` ID, and optional `earnapp-host ensure/apply`.
+- Fresh source evidence: focused EarnApp/proxy tests `411 passed`; full suite
+  `2435 passed, 8 skipped`; Ruff, compileall and `git diff --check` passed.
+  No release, deploy, VPS mutation, account change, protected-node mutation or
+  provider outside EarnApp has occurred in this source gate.
+- Next authorized live step is sequential canary only: 3 macOS + 3 iOS on
+  distinct VN residential leases, then 3 Ubuntu on distinct non-VN residential
+  leases. Each node must prove exact UUID, account link, online state and
+  positive usage before closeout.
+
 Updated: 2026-08-31 (EarnApp Ubuntu canary 5 TLS/transport investigation)
 
 ## EarnApp Ubuntu Docker migration (unreleased, 2026-08-31)

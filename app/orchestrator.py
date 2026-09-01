@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import tarfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -262,16 +263,38 @@ def _earnapp_sidecar(slug: str, client: Any | None = None):
     return sidecar
 
 
-def _restart_earnapp_main_after_sidecar_restart(
-    client: Any, slug: str, sidecar: Any, *, main: Any | None = None
-) -> None:
-    """Reconnect an EarnApp process to the sidecar network namespace.
+def _docker_environment(values: Any) -> dict[str, str]:
+    environment: dict[str, str] = {}
+    for value in values if isinstance(values, list) else []:
+        key, separator, item = str(value).partition("=")
+        if key and separator:
+            environment[key] = item
+    return environment
 
-    Docker containers using ``network_mode=container:<sidecar>`` retain the old
-    network namespace when the sidecar is restarted. Restarting the dependent
-    main container makes Docker attach it to the sidecar's new namespace.
+
+def _docker_volumes(mounts: Any) -> dict[str, dict[str, str]]:
+    volumes: dict[str, dict[str, str]] = {}
+    for mount in mounts if isinstance(mounts, list) else []:
+        destination = str(mount.get("Destination") or "").strip()
+        source = str(mount.get("Name") or mount.get("Source") or "").strip()
+        if not destination or not source:
+            continue
+        volumes[source] = {"bind": destination, "mode": "rw" if mount.get("RW", True) else "ro"}
+    return volumes
+
+
+def _recreate_earnapp_main_after_sidecar_restart(
+    client: Any, slug: str, sidecar: Any, *, main: Any | None = None
+) -> str:
+    """Recreate an EarnApp process on the sidecar while preserving its identity state.
+
+    EarnApp binds a proxy route to a device session. A route change therefore
+    recreates the main container instead of merely restarting it. The live
+    container is authoritative for image, identity labels, environment and
+    mounts; copying that contract keeps the named identity volume byte-for-byte.
     """
-    main = main or _find_earnapp_runtime_container(client, slug, sidecar=False)
+    if main is None:
+        main = _find_earnapp_runtime_container(client, slug, sidecar=False)
     if main is None:
         raise RuntimeError(f"{slug} EarnApp main container is missing")
     network_mode = str(((getattr(main, "attrs", {}) or {}).get("HostConfig") or {}).get("NetworkMode") or "")
@@ -280,11 +303,62 @@ def _restart_earnapp_main_after_sidecar_restart(
     accepted_modes = {f"container:{identifier}" for identifier in (sidecar_id, sidecar_name) if identifier}
     if network_mode not in accepted_modes:
         raise RuntimeError(f"{slug} EarnApp main container has an unexpected network namespace")
-    main.restart(timeout=30)
+    attrs = getattr(main, "attrs", {}) or {}
+    config = attrs.get("Config") or {}
+    host_config = attrs.get("HostConfig") or {}
+    image = str(config.get("Image") or "").strip()
+    if not image:
+        raise RuntimeError(f"{slug} EarnApp main container image is unavailable")
+    name = str(getattr(main, "name", "") or _container_name(slug)).strip().lstrip("/")
+    create_kwargs: dict[str, Any] = {
+        "image": image,
+        "name": name,
+        "environment": _docker_environment(config.get("Env")),
+        "volumes": _docker_volumes(attrs.get("Mounts")),
+        "network_mode": f"container:{sidecar_id or sidecar_name}",
+        "labels": dict(config.get("Labels") or getattr(main, "labels", {}) or {}),
+        "command": config.get("Cmd") or None,
+        "entrypoint": config.get("Entrypoint") or None,
+        "user": str(config.get("User") or "") or None,
+        "working_dir": str(config.get("WorkingDir") or "") or None,
+        "restart_policy": dict(host_config.get("RestartPolicy") or {"Name": "always"}),
+        "cap_drop": list(host_config.get("CapDrop") or []),
+        "cap_add": list(host_config.get("CapAdd") or []),
+        "security_opt": list(host_config.get("SecurityOpt") or []),
+        "pids_limit": host_config.get("PidsLimit"),
+        "mem_limit": host_config.get("Memory") or None,
+        "mem_reservation": host_config.get("MemoryReservation") or None,
+        "oom_score_adj": host_config.get("OomScoreAdj"),
+    }
+    create_kwargs = {key: value for key, value in create_kwargs.items() if value not in (None, [], {})}
+    backup_name = f"{name}-cashpilot-recreate-{secrets.token_hex(4)}"
+    replacement = None
+    main.stop(timeout=30)
+    main.rename(backup_name)
+    try:
+        replacement = client.containers.create(**create_kwargs)
+        replacement.start()
+    except Exception:
+        if replacement is not None:
+            with contextlib.suppress(Exception):
+                replacement.remove(force=True)
+        with contextlib.suppress(Exception):
+            main.rename(name)
+        with contextlib.suppress(Exception):
+            main.start()
+        raise
     with contextlib.suppress(Exception):
-        main.reload()
-    if str(getattr(main, "status", "") or "").lower() != "running":
-        raise RuntimeError(f"{slug} EarnApp main container did not recover after sidecar restart")
+        replacement.reload()
+    if str(getattr(replacement, "status", "") or "").lower() != "running":
+        with contextlib.suppress(Exception):
+            replacement.remove(force=True)
+        with contextlib.suppress(Exception):
+            main.rename(name)
+        with contextlib.suppress(Exception):
+            main.start()
+        raise RuntimeError(f"{slug} EarnApp main container did not recover after proxy recreation")
+    main.remove(force=True)
+    return str(getattr(replacement, "id", "") or "")
 
 
 def _persist_earnapp_expected_egress(main: Any, expected_egress_ip: str) -> None:
@@ -306,6 +380,12 @@ def _persist_earnapp_expected_egress(main: Any, expected_egress_ip: str) -> None
     exit_code = int(getattr(result, "exit_code", result[0] if isinstance(result, tuple) else 1))
     if exit_code != 0:
         raise RuntimeError("EarnApp expected egress persistence failed")
+
+
+def _read_earnapp_expected_egress(main: Any) -> str:
+    result = main.exec_run(["/bin/sh", "-c", "cat /etc/earnapp/expected_egress_ip 2>/dev/null || true"])
+    _exit_code, output = _exec_output(result)
+    return output.decode("utf-8", errors="ignore").strip()
 
 
 def _exec_output(result: Any) -> tuple[int, bytes]:
@@ -670,7 +750,8 @@ def apply_proxy_binding_batch(instance_slugs: list[str], proxy: dict[str, Any], 
         raise ValueError("binding_version is required")
 
     client = _get_client()
-    prepared: list[tuple[str, Any, bytes, str]] = []
+    prepared: list[tuple[str, Any, bytes, str, str]] = []
+    earnapp_mains: dict[str, Any] = {}
     for slug in slugs:
         sidecar = client.containers.get(_sidecar_name(slug))
         labels = sidecar.labels or {}
@@ -687,7 +768,14 @@ def apply_proxy_binding_batch(instance_slugs: list[str], proxy: dict[str, Any], 
             interface_name="cpegress" if provider == "repocket" else "cp-egress",
         )
         raw = json.dumps(config, sort_keys=True).encode()
-        prepared.append((slug, sidecar, raw, hashlib.sha256(raw).hexdigest()))
+        previous_egress = ""
+        if labels.get("cashpilot.provider") == "earnapp":
+            main = _find_earnapp_runtime_container(client, slug, sidecar=False)
+            if main is None:
+                raise RuntimeError(f"{slug} EarnApp main container is missing")
+            earnapp_mains[slug] = main
+            previous_egress = _read_earnapp_expected_egress(main)
+        prepared.append((slug, sidecar, raw, hashlib.sha256(raw).hexdigest(), previous_egress))
 
     staged: list[tuple[str, Any, bytes, str]] = []
 
@@ -696,7 +784,7 @@ def apply_proxy_binding_batch(instance_slugs: list[str], proxy: dict[str, Any], 
             with contextlib.suppress(Exception):
                 staged_sidecar.exec_run(["/bin/sh", "-c", "rm -f /etc/sing-box/config.json.cashpilot-new"])
 
-    for slug, sidecar, raw, config_hash in prepared:
+    for slug, sidecar, raw, config_hash, _previous_egress in prepared:
         try:
             archive_buffer = io.BytesIO()
             with tarfile.open(fileobj=archive_buffer, mode="w") as archive:
@@ -730,6 +818,7 @@ def apply_proxy_binding_batch(instance_slugs: list[str], proxy: dict[str, Any], 
         "rm -f /etc/sing-box/config.json.cashpilot-new /etc/sing-box/.cashpilot-binding-version"
     )
 
+    recreated_main_ids: dict[str, str] = {}
     try:
         for slug, sidecar, _raw, _config_hash in staged:
             result = sidecar.exec_run(["/bin/sh", "-c", activate_command])
@@ -743,13 +832,14 @@ def apply_proxy_binding_batch(instance_slugs: list[str], proxy: dict[str, Any], 
             if str(sidecar.status or "").lower() != "running":
                 raise RuntimeError(f"{slug} egress sidecar did not restart")
             if (sidecar.labels or {}).get("cashpilot.provider") == "earnapp":
-                main = None
+                main = earnapp_mains.get(slug)
                 if str(proxy.get("exit_ip") or "").strip():
-                    main = _find_earnapp_runtime_container(client, slug, sidecar=False)
                     if main is None:
                         raise RuntimeError(f"{slug} EarnApp main container is missing")
                     _persist_earnapp_expected_egress(main, str(proxy["exit_ip"]))
-                _restart_earnapp_main_after_sidecar_restart(client, slug, sidecar, main=main)
+                recreated_main_ids[slug] = _recreate_earnapp_main_after_sidecar_restart(
+                    client, slug, sidecar, main=main
+                )
             verify = sidecar.exec_run(
                 [
                     "/bin/sh",
@@ -762,6 +852,7 @@ def apply_proxy_binding_batch(instance_slugs: list[str], proxy: dict[str, Any], 
             if verify_exit != 0:
                 raise RuntimeError(f"{slug} did not acknowledge the candidate egress config")
     except Exception:
+        previous_egress_by_slug = {slug: previous for slug, _sidecar, _raw, _hash, previous in prepared}
         for _slug, sidecar, _raw, _config_hash in staged:
             with contextlib.suppress(Exception):
                 sidecar.exec_run(["/bin/sh", "-c", rollback_command])
@@ -769,7 +860,13 @@ def apply_proxy_binding_batch(instance_slugs: list[str], proxy: dict[str, Any], 
                 sidecar.restart(timeout=30)
             if (sidecar.labels or {}).get("cashpilot.provider") == "earnapp":
                 with contextlib.suppress(Exception):
-                    _restart_earnapp_main_after_sidecar_restart(client, _slug, sidecar)
+                    current_main = _find_earnapp_runtime_container(client, _slug, sidecar=False)
+                    previous_egress = previous_egress_by_slug.get(_slug, "")
+                    if previous_egress:
+                        _persist_earnapp_expected_egress(current_main, previous_egress)
+                    recreated_main_ids[_slug] = _recreate_earnapp_main_after_sidecar_restart(
+                        client, _slug, sidecar, main=current_main
+                    )
         raise
 
     hashes = {config_hash for _slug, _sidecar, _raw, config_hash in staged}
@@ -777,10 +874,17 @@ def apply_proxy_binding_batch(instance_slugs: list[str], proxy: dict[str, Any], 
     return {
         "applied_instances": [slug for slug, _sidecar, _raw, _hash in staged],
         "config_sha256": hashes.pop() if len(hashes) == 1 else "",
+        "recreated_main_ids": recreated_main_ids,
     }
 
 
-def finalize_proxy_binding_batch(instance_slugs: list[str], binding_version: str, *, commit: bool) -> dict[str, Any]:
+def finalize_proxy_binding_batch(
+    instance_slugs: list[str],
+    binding_version: str,
+    *,
+    commit: bool,
+    expected_egress_ip: str = "",
+) -> dict[str, Any]:
     """Confirm or roll back a previously acknowledged sidecar binding."""
     slugs = list(dict.fromkeys(str(slug or "").strip() for slug in instance_slugs if str(slug or "").strip()))
     version = str(binding_version or "").strip()
@@ -835,7 +939,10 @@ def finalize_proxy_binding_batch(instance_slugs: list[str], binding_version: str
         if str(sidecar.status or "").lower() != "running":
             raise RuntimeError(f"{slug} egress sidecar did not recover after rollback")
         if (sidecar.labels or {}).get("cashpilot.provider") == "earnapp":
-            _restart_earnapp_main_after_sidecar_restart(client, slug, sidecar)
+            main = _find_earnapp_runtime_container(client, slug, sidecar=False)
+            if expected_egress_ip:
+                _persist_earnapp_expected_egress(main, expected_egress_ip)
+            _recreate_earnapp_main_after_sidecar_restart(client, slug, sidecar, main=main)
     return {"finalized_instances": slugs, "action": "rolled_back"}
 
 

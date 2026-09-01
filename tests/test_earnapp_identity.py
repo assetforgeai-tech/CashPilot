@@ -57,6 +57,33 @@ IOS_REFERENCE_FIELDS = {
     "mobile_type",
     "soc",
 }
+UBUNTU_REQUIRED_FIELDS = {
+    "id",
+    "platform",
+    "appid",
+    "arch",
+    "release",
+    "ifname",
+    "serial",
+    "machine_id",
+    "hostname",
+    "local_hostname",
+    "os_version",
+    "os_release",
+    "device_model",
+    "vendor",
+    "product",
+    "board",
+    "soc",
+    "conf_user",
+    "confdir",
+    "lan_ip",
+    "mac_address",
+    "cpu_model",
+    "cpu_cores",
+    "memory_total",
+    "device_id",
+}
 
 
 def test_generate_macos_identity_is_complete_and_unique():
@@ -113,6 +140,20 @@ def test_generate_ubuntu_identity_is_stable_shape_and_unique():
     assert first["platform"] == "ubuntu"
     assert first["device_id"].startswith("sdk-node-")
     assert first["machine_id"] != second["machine_id"]
+    assert first["device_id"] != second["device_id"]
+    assert first.keys() >= UBUNTU_REQUIRED_FIELDS
+    assert first["os_version"] == "22.04.5"
+    assert first["release"] == "ubuntu_22.04_x64"
+    assert first["appid"] == "node_earnapp.com"
+    assert first["ifname"] == "enp2s0"
+
+
+@pytest.mark.parametrize("field", sorted(UBUNTU_REQUIRED_FIELDS))
+def test_ubuntu_validation_rejects_each_missing_profile_field(field):
+    identity = earnapp_identity.generate_identity(f"ubuntu-missing-{field.replace('_', '-')}", "ubuntu")
+    identity.pop(field)
+    with pytest.raises(ValueError, match="invalid|missing"):
+        earnapp_identity.validate_identity(identity, "ubuntu")
 
 
 def test_identity_profile_round_trip_supports_mac_and_ios_without_secrets():

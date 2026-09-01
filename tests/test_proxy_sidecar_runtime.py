@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from app import earnapp_runtime, orchestrator
 
 
@@ -276,7 +278,7 @@ def test_apply_proxy_binding_restarts_only_sidecar_and_reports_config_hash():
     sidecar.restart.assert_called_once_with(timeout=30)
 
 
-def test_apply_earnapp_proxy_binding_updates_expected_egress_file_before_main_restart():
+def test_apply_earnapp_proxy_binding_recreates_main_with_same_identity_volume_and_new_proxy():
     client = MagicMock()
     sidecar = MagicMock()
     sidecar.labels = {
@@ -289,10 +291,42 @@ def test_apply_earnapp_proxy_binding_updates_expected_egress_file_before_main_re
     sidecar.exec_run.return_value = MagicMock(exit_code=0)
     sidecar.status = "running"
     main = MagicMock()
-    main.labels = {"cashpilot.role": "main"}
-    main.attrs = {"HostConfig": {"NetworkMode": "container:sidecar-id"}}
+    main.id = "old-main-id"
+    main.name = "cashpilot-earnapp-proxy"
+    main.labels = {
+        orchestrator.LABEL_MANAGED: "true",
+        orchestrator.LABEL_SERVICE: "earnapp-proxy",
+        "cashpilot.provider": "earnapp",
+        "cashpilot.role": "main",
+        "cashpilot.earnapp.device_id": "sdk-node-" + "a" * 32,
+    }
+    main.attrs = {
+        "Config": {
+            "Image": "cashpilot/earnapp-ubuntu:asset-test",
+            "Env": ["EARNAPP_DEVICE_ID=sdk-node-" + "a" * 32],
+            "Cmd": ["/usr/local/bin/entrypoint.sh"],
+            "Entrypoint": None,
+            "Labels": main.labels,
+            "Hostname": "earnapp-ubuntu-a",
+            "User": "",
+        },
+        "HostConfig": {
+            "NetworkMode": "container:sidecar-id",
+            "Binds": ["earnapp-state:/etc/earnapp:rw"],
+            "CapAdd": [],
+            "Devices": [],
+            "RestartPolicy": {"Name": "always"},
+            "SecurityOpt": ["no-new-privileges:true"],
+            "PidsLimit": 256,
+        },
+        "Mounts": [{"Type": "volume", "Name": "earnapp-state", "Destination": "/etc/earnapp", "RW": True}],
+    }
     main.status = "running"
     main.exec_run.return_value = MagicMock(exit_code=0)
+    replacement = MagicMock()
+    replacement.id = "new-main-id"
+    replacement.status = "running"
+    client.containers.create.return_value = replacement
     client.containers.get.side_effect = [sidecar, main]
 
     with (
@@ -302,7 +336,7 @@ def test_apply_earnapp_proxy_binding_updates_expected_egress_file_before_main_re
         ),
         patch.object(orchestrator, "_find_earnapp_runtime_container", return_value=main),
     ):
-        orchestrator.apply_proxy_binding_batch(
+        result = orchestrator.apply_proxy_binding_batch(
             ["earnapp-proxy"],
             {"host": "2.2.2.2", "port": 1080, "protocol": "socks5", "exit_ip": "203.0.113.10"},
             "rotation_1234567890",
@@ -310,7 +344,40 @@ def test_apply_earnapp_proxy_binding_updates_expected_egress_file_before_main_re
 
     assert main.exec_run.called
     assert any("203.0.113.10" in repr(call.args) for call in main.exec_run.call_args_list)
-    main.restart.assert_called_once_with(timeout=30)
+    main.stop.assert_called_once_with(timeout=30)
+    main.rename.assert_called_once()
+    main.remove.assert_called_once_with(force=True)
+    client.containers.create.assert_called_once()
+    create_kwargs = client.containers.create.call_args.kwargs
+    assert create_kwargs["volumes"] == {"earnapp-state": {"bind": "/etc/earnapp", "mode": "rw"}}
+    assert create_kwargs["environment"]["EARNAPP_DEVICE_ID"] == "sdk-node-" + "a" * 32
+    assert create_kwargs["network_mode"] == "container:sidecar-id"
+    assert result["recreated_main_ids"] == {"earnapp-proxy": "new-main-id"}
+
+
+def test_failed_earnapp_main_recreate_restores_the_previous_container():
+    client = MagicMock()
+    sidecar = MagicMock(id="sidecar-id", name="cashpilot-earnapp-node-egress")
+    main = MagicMock(id="old-main-id", name="cashpilot-earnapp-node", status="running")
+    main.labels = {
+        orchestrator.LABEL_MANAGED: "true",
+        orchestrator.LABEL_SERVICE: "earnapp-node",
+        "cashpilot.provider": "earnapp",
+    }
+    main.attrs = {
+        "Config": {"Image": "cashpilot/earnapp-ubuntu:asset-test", "Env": [], "Labels": main.labels},
+        "HostConfig": {"NetworkMode": "container:sidecar-id", "RestartPolicy": {"Name": "always"}},
+        "Mounts": [{"Type": "volume", "Name": "earnapp-state", "Destination": "/etc/earnapp", "RW": True}],
+    }
+    client.containers.create.side_effect = RuntimeError("create failed")
+
+    with pytest.raises(RuntimeError, match="create failed"):
+        orchestrator._recreate_earnapp_main_after_sidecar_restart(client, "earnapp-node", sidecar, main=main)
+
+    main.stop.assert_called_once_with(timeout=30)
+    assert main.rename.call_count == 2
+    main.start.assert_called_once()
+    main.remove.assert_not_called()
 
 
 def test_proxy_binding_status_reports_active_marker_and_artifacts():
@@ -516,8 +583,8 @@ def test_proxy_binding_finalize_rolls_back_matching_version_and_restarts_sidecar
     sidecar.restart.assert_called_once_with(timeout=30)
 
 
-def test_earnapp_proxy_binding_restart_reconnects_main_container_after_sidecar_restart():
-    """A container sharing a sidecar network namespace must be restarted after rotation."""
+def test_earnapp_proxy_binding_recreates_main_container_after_sidecar_restart():
+    """A route change must recreate the EarnApp process on the new namespace."""
     client = MagicMock()
     sidecar = MagicMock()
     sidecar.labels = {
@@ -537,9 +604,21 @@ def test_earnapp_proxy_binding_restart_reconnects_main_container_after_sidecar_r
         orchestrator.LABEL_SERVICE: "earnapp-node-1",
         "cashpilot.provider": "earnapp",
     }
-    main.attrs = {"HostConfig": {"NetworkMode": "container:sidecar-container-id"}}
+    main.id = "old-main-id"
+    main.name = "cashpilot-earnapp-node-1"
+    main.attrs = {
+        "Config": {
+            "Image": "cashpilot/earnapp-ubuntu:asset-test",
+            "Env": ["EARNAPP_DEVICE_ID=sdk-node-" + "a" * 32],
+            "Labels": main.labels,
+        },
+        "HostConfig": {"NetworkMode": "container:sidecar-container-id", "RestartPolicy": {"Name": "always"}},
+        "Mounts": [{"Type": "volume", "Name": "earnapp-state", "Destination": "/etc/earnapp", "RW": True}],
+    }
     client.containers.get.side_effect = [sidecar, main]
     main.status = "running"
+    replacement = MagicMock(id="new-main-id", status="running")
+    client.containers.create.return_value = replacement
 
     with patch.object(orchestrator, "_get_client", return_value=client):
         result = orchestrator.apply_proxy_binding_batch(
@@ -549,11 +628,13 @@ def test_earnapp_proxy_binding_restart_reconnects_main_container_after_sidecar_r
         )
 
     assert result["applied_instances"] == ["earnapp-node-1"]
-    main.restart.assert_called_once_with(timeout=30)
+    assert result["recreated_main_ids"] == {"earnapp-node-1": "new-main-id"}
+    main.stop.assert_called_once_with(timeout=30)
+    main.remove.assert_called_once_with(force=True)
 
 
-def test_earnapp_proxy_rollback_reconnects_main_container_after_sidecar_restart():
-    """Rollback must also repair the dependent network namespace."""
+def test_earnapp_proxy_rollback_recreates_main_container_after_sidecar_restart():
+    """Rollback must also recreate the process on the restored namespace."""
     client = MagicMock()
     sidecar = MagicMock()
     sidecar.name = "cashpilot-earnapp-node-1-egress"
@@ -574,14 +655,22 @@ def test_earnapp_proxy_rollback_reconnects_main_container_after_sidecar_restart(
         orchestrator.LABEL_SERVICE: "earnapp-node-1",
         "cashpilot.provider": "earnapp",
     }
-    main.attrs = {"HostConfig": {"NetworkMode": "container:sidecar-container-id"}}
+    main.id = "candidate-main-id"
+    main.name = "cashpilot-earnapp-node-1"
+    main.attrs = {
+        "Config": {"Image": "cashpilot/earnapp-ubuntu:asset-test", "Env": [], "Labels": main.labels},
+        "HostConfig": {"NetworkMode": "container:sidecar-container-id", "RestartPolicy": {"Name": "always"}},
+        "Mounts": [{"Type": "volume", "Name": "earnapp-state", "Destination": "/etc/earnapp", "RW": True}],
+    }
     client.containers.get.side_effect = [sidecar, main]
+    client.containers.create.return_value = MagicMock(id="rollback-main-id", status="running")
 
     with patch.object(orchestrator, "_get_client", return_value=client):
         result = orchestrator.finalize_proxy_binding_batch(["earnapp-node-1"], "rotation_1234567890", commit=False)
 
     assert result["action"] == "rolled_back"
-    main.restart.assert_called_once_with(timeout=30)
+    main.stop.assert_called_once_with(timeout=30)
+    main.remove.assert_called_once_with(force=True)
 
 
 def test_earnapp_failed_proxy_apply_reconnects_main_after_internal_rollback():
@@ -611,8 +700,18 @@ def test_earnapp_failed_proxy_apply_reconnects_main_after_internal_rollback():
         orchestrator.LABEL_SERVICE: "earnapp-node-1",
         "cashpilot.provider": "earnapp",
     }
-    main.attrs = {"HostConfig": {"NetworkMode": "container:sidecar-container-id"}}
+    main.id = "candidate-main-id"
+    main.name = "cashpilot-earnapp-node-1"
+    main.attrs = {
+        "Config": {"Image": "cashpilot/earnapp-ubuntu:asset-test", "Env": [], "Labels": main.labels},
+        "HostConfig": {"NetworkMode": "container:sidecar-container-id", "RestartPolicy": {"Name": "always"}},
+        "Mounts": [{"Type": "volume", "Name": "earnapp-state", "Destination": "/etc/earnapp", "RW": True}],
+    }
     client.containers.get.side_effect = [sidecar, main, main]
+    client.containers.create.side_effect = [
+        MagicMock(id="candidate-new-id", status="running"),
+        MagicMock(id="rollback-new-id", status="running"),
+    ]
 
     with patch.object(orchestrator, "_get_client", return_value=client):
         try:
@@ -627,4 +726,5 @@ def test_earnapp_failed_proxy_apply_reconnects_main_after_internal_rollback():
             raise AssertionError("a failed candidate verification must roll back")
 
     assert sidecar.restart.call_count == 2
-    assert main.restart.call_count == 2
+    assert main.stop.call_count == 1
+    assert main.remove.call_count == 1

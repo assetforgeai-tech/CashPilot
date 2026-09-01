@@ -2819,6 +2819,9 @@ async def api_apply_earnapp_node_proxy(
     ):
         raise HTTPException(status_code=409, detail="EarnApp proxy apply acknowledgement mismatch")
     state["pending_observed_egress_ip"] = observed_egress_ip
+    recreated = result.get("recreated_main_ids") if isinstance(result, dict) else None
+    if isinstance(recreated, dict) and recreated.get(logical_node_id):
+        state["container_id"] = str(recreated[logical_node_id])
     _save_earnapp_state(logical_node_id, state)
     return {
         "ok": True,
@@ -2882,6 +2885,9 @@ async def api_finalize_earnapp_node_proxy(
                 [logical_node_id],
                 spec.binding_version,
                 commit=spec.commit,
+                expected_egress_ip=(
+                    spec.expected_egress_ip if spec.commit else str(state.get("expected_egress_ip") or "")
+                ),
             )
             result = {
                 "binding_version": spec.binding_version,

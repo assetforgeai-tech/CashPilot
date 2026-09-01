@@ -22,10 +22,16 @@ LINK_VERIFY_ATTEMPTS = 10
 LINK_VERIFY_INTERVAL_SECONDS = 15
 LINK_VERIFY_MIN_INTERVAL_SECONDS = 5
 LINK_VERIFY_BURST = 5
-LINK_VERIFY_COOLDOWN_SECONDS = 60
+LINK_VERIFY_COOLDOWN_SECONDS = 300
 MAC_PROXY_TUN_IP = "172.31.255.1"
 _UPTIME_BILLING = frozenset({"uptime", "fixed", "qualified_uptime"})
 _BYTE_BILLING = frozenset({"bandwidth", "bytes", "byte", "traffic", "gb"})
+_ACCOUNT_VERIFY_LOCKS: dict[int, asyncio.Lock] = {}
+
+
+def account_api_lock(account_id: int) -> asyncio.Lock:
+    """Share one account-scoped lock between verification and collection calls."""
+    return _ACCOUNT_VERIFY_LOCKS.setdefault(int(account_id), asyncio.Lock())
 
 
 def _workload_metric_names(evidence: Mapping[str, Any], billing: str) -> tuple[str, ...]:
@@ -272,7 +278,7 @@ def build_runtime_spec(
                 "cashpilot.earnapp.generation": str(max(1, int(generation))),
             },
             "privileged": False,
-            "cap_add": None,
+            "cap_add": ["NET_ADMIN"],
             "devices": None,
             "network_mode": None,
             "egress_mode": "proxy",
@@ -643,6 +649,26 @@ async def verify_canary(
     account = await database.get_earnapp_account_credentials(int(node.get("account_id") or 0))
     if not account or str(account.get("state") or "") != "ACTIVE":
         raise ValueError("EarnApp canary account is not active")
+    account_id = int(node["account_id"])
+    lock = account_api_lock(account_id)
+    async with lock:
+        return await _verify_canary_locked(
+            node_id,
+            node,
+            account,
+            attempts=attempts,
+            interval_seconds=interval_seconds,
+        )
+
+
+async def _verify_canary_locked(
+    node_id: str,
+    node: Mapping[str, Any],
+    account: Mapping[str, Any],
+    *,
+    attempts: int,
+    interval_seconds: float,
+) -> dict[str, Any]:
     routes = await database.get_earnapp_account_node_routes(int(node["account_id"]), healthy_only=True)
     route = next(
         (

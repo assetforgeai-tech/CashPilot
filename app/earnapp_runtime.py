@@ -54,6 +54,7 @@ IOS_RUNTIME_ARTIFACT_HASHES = {
 
 UBUNTU_RUNTIME_ARTIFACT_HASHES = {
     "earnapp-linux": "458e4776fadb75a109821be768b25ebbfc08186ff6a015aff77c923a40dcee07",
+    "earnapp-host": "52b3eb7cdf1edbd18bb79f1f643529b7be2b66eaf3e591f3c72e325bcd457ede",
 }
 
 _PLATFORM_CONTRACTS = {
@@ -244,6 +245,8 @@ umask 077
 STATE_DIR=/etc/earnapp
 IDENTITY_FILE=/run/cashpilot/identity.json
 HOST_ID_FILE="$STATE_DIR/host-machine-id"
+HOST_JSON_FILE="$STATE_DIR/host.json"
+HOST_SERIAL_FILE="$STATE_DIR/host.serial"
 EXPECTED_DEVICE_ID="${EARNAPP_DEVICE_ID:?}"
 EXPECTED_EGRESS_IP="${EARNAPP_EXPECTED_EGRESS_IP:-}"
 if [[ -s "$STATE_DIR/expected_egress_ip" ]]; then
@@ -262,6 +265,8 @@ print(str(value.get(sys.argv[2]) or ""), end="")
 PY
 }
 
+install -m 0600 "$IDENTITY_FILE" "$HOST_JSON_FILE"
+
 PROFILE_DEVICE_ID=$(read_identity device_id)
 PROFILE_MACHINE_ID=$(read_identity machine_id | tr -d '\r\n-' | tr 'A-F' 'a-f')
 CONFIG_HOSTNAME=$(read_identity hostname)
@@ -278,6 +283,12 @@ fi
 install -m 0444 "$HOST_ID_FILE" /etc/machine-id
 ln -sfn /etc/machine-id /var/lib/dbus/machine-id
 printf '%s\n' "${CONFIG_HOSTNAME:-earnapp-ubuntu}" >/etc/hostname
+read_identity serial >"$HOST_SERIAL_FILE"
+
+if command -v earnapp-host >/dev/null 2>&1; then
+    earnapp-host ensure
+    eval "$(earnapp-host apply)"
+fi
 
 printf '%s\n' "$EXPECTED_DEVICE_ID" >"$STATE_DIR/uuid"
 printf '%s\n' enabled >"$STATE_DIR/status"
@@ -542,8 +553,11 @@ def _validate_ubuntu_runtime_spec(spec: dict[str, Any]) -> None:
         raise ValueError("EarnApp Ubuntu runtime is required")
     if str(spec.get("image") or "") != UBUNTU_RUNTIME_IMAGE:
         raise ValueError("EarnApp image is not the verified Ubuntu image")
-    if spec.get("privileged") or spec.get("cap_add") or spec.get("devices"):
+    if spec.get("privileged") or spec.get("devices"):
         raise ValueError("EarnApp Ubuntu runtime cannot request host privilege")
+    cap_add = {str(value).upper() for value in (spec.get("cap_add") or [])}
+    if cap_add - {"NET_ADMIN"}:
+        raise ValueError("EarnApp Ubuntu runtime only permits NET_ADMIN")
     if spec.get("network_mode") not in (None, "", "bridge") or str(spec.get("egress_mode") or "") != "proxy":
         raise ValueError("EarnApp Ubuntu runtime must use proxy bridge egress")
     if (spec.get("runtime_contract") or {}) != {

@@ -14,7 +14,7 @@ proxy.
 EarnApp runtime deployment is **geo-platform restricted**. CashPilot permits
 MacOS/iOS emulation through the dedicated Docker runtime for qualified VN
 residential proxies, and the official Linux x64 package through the dedicated
-Ubuntu LXD lane for qualified non-VN residential proxies. The official
+Ubuntu Docker lane for qualified non-VN residential proxies. The official
 installation guide says EarnApp supports x64 Linux on a 64-bit OS, identifies
 Ubuntu 20.04 as its tested distribution, and installs a service that starts
 automatically after reboot.
@@ -23,7 +23,7 @@ The encrypted Account Pool, collector, token-expiry metadata, historical
 earnings and read-only inspection of existing Apple nodes remain available.
 The generic catalog/Docker route and raw worker Docker deploy remain blocked;
 Apple runtimes are available only through the dedicated platform contract, and
-Ubuntu is available only through the dedicated LXD contract. This source policy
+Ubuntu is available only through the dedicated Docker contract. This source policy
 change does not release, deploy, migrate, rotate or otherwise alter the existing
 live baseline.
 
@@ -40,7 +40,7 @@ live baseline.
 | Requirement | Value |
 |-------------|-------|
 | Residential IP required | Yes |
-| CashPilot runtime | Official Linux x64 in dedicated Ubuntu LXD only |
+| CashPilot runtime | Official Linux x64 in dedicated Ubuntu Docker only |
 | Devices per account | Not documented |
 | Devices per IP | 1 |
 
@@ -57,19 +57,23 @@ deploy endpoint or the generic worker Docker endpoint.
 3. Ensure the Proxy Pool has a latest `earnapp_wss` probe with verdict
    `CID_SET`/`eligible`, a non-empty egress IP, `alive` status, `residential`
    IP type, and a non-VN country for an Ubuntu node.
-4. Configure `earnapp_lxd_cpu` and `earnapp_lxd_memory_mib`; defaults are `1`
-   CPU and `1024 MiB`.
+4. Configure the Ubuntu resource settings if needed; defaults are `1` CPU and
+   `1024 MiB`.
 5. Use only the dedicated server/worker platform contract. The official
    installer remains pinned and verified by the restricted host helper.
 
 Current platform selection is immutable after a logical node is created:
 
-- Non-VN residential egress selects Ubuntu in LXD and uses the official EarnApp
-  package.
-- Settings values `earnapp_lxd_cpu` and `earnapp_lxd_memory_mib` are
-  authoritative for Ubuntu LXD limits; defaults are `1` CPU and `1024 MiB`.
-- The worker accesses Ubuntu LXD only through the restricted
-  `cashpilot-earnapp-agent` socket. It is never mounted to the raw LXD socket.
+- Non-VN residential egress selects Ubuntu in Docker and uses the official
+  EarnApp package/profile.
+- Ubuntu identity is persisted as `host.json`, `host.serial`, machine-id,
+  UUID and registration marker in the dedicated `/etc/earnapp` volume. Fresh
+  profiles use Ubuntu 22.04.5 metadata and unique `sdk-node-<32 hex>` IDs.
+- A proxy change is transactional but must recreate the EarnApp main container;
+  the same identity volume, environment, labels and device ID are retained,
+  while the new sidecar route is the only changed assignment.
+- Link verification is account-serialized, enforces a 5-second minimum relay,
+  and sleeps 300 seconds after each five-attempt burst before retrying.
 
 MacOS and iOS artifacts are retained only as historical forensic evidence. They
 are not deployment-authorized by the current source policy. Their historical
@@ -118,8 +122,8 @@ live-closed by this gate change.
 - EarnApp runs in `proxy` mode only; one node owns one residential egress.
 - NKN, Mysterium, and other protected provider identities are outside this
   lane and are never recreated as part of an EarnApp retry.
-- Ubuntu lifecycle, recovery, removal and proxy rotation use the dedicated LXD
-  endpoints plus generation/device CAS. Removal must complete at the worker
+- Ubuntu lifecycle, recovery, removal and proxy rotation use the dedicated
+  Docker endpoint plus generation/device CAS. Removal must complete at the worker
   before the server releases the scoped lease and finalizes bookkeeping.
 - The Ubuntu identity and `/etc/earnapp` guest state remain identity-critical;
   suspend, resume and proxy rotation preserve them.
