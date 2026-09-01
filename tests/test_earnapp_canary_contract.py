@@ -517,7 +517,7 @@ def test_ubuntu_entrypoint_persists_identity_and_retries_registration_contract()
     entrypoint = payload.decode("utf-8")
 
     assert b"\r" not in payload
-    assert "tr -d '-\\r\\n'" in entrypoint
+    assert "tr -d '\\r\\n-'" in entrypoint
     assert "printf '%s\\n'" in entrypoint
     assert "rm -f /.dockerenv" in entrypoint
     assert 'install -m 0444 "$HOST_ID_FILE" /etc/machine-id' in entrypoint
