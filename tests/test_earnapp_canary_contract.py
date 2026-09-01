@@ -531,7 +531,7 @@ def test_ubuntu_entrypoint_persists_identity_and_retries_registration_contract()
 
 def test_ubuntu_entrypoint_skips_host_helper_when_machine_id_is_read_only():
     entrypoint = earnapp_runtime.ubuntu_entrypoint_script().decode()
-    assert 'if [[ -w /etc/machine-id ]]; then' in entrypoint
+    assert "if [[ -w /etc/machine-id ]]; then" in entrypoint
     assert 'echo "[host] read-only machine-id; skip host helper apply"' in entrypoint
     assert '[[ "$PROFILE_DEVICE_ID" == "$EXPECTED_DEVICE_ID" ]]' in entrypoint
     assert re.search(
