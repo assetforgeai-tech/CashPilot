@@ -527,6 +527,12 @@ def test_ubuntu_entrypoint_persists_identity_and_retries_registration_contract()
     assert "earnapp-host apply" in entrypoint
     assert 'install -m 0444 "$HOST_ID_FILE" /etc/machine-id' in entrypoint
     assert '"$(cat /etc/machine-id)" >"$STATE_DIR/tracking_id"' in entrypoint
+
+
+def test_ubuntu_entrypoint_skips_host_helper_when_machine_id_is_read_only():
+    entrypoint = earnapp_runtime.ubuntu_entrypoint_script().decode()
+    assert 'if [[ -w /etc/machine-id ]]; then' in entrypoint
+    assert 'echo "[host] read-only machine-id; skip host helper apply"' in entrypoint
     assert '[[ "$PROFILE_DEVICE_ID" == "$EXPECTED_DEVICE_ID" ]]' in entrypoint
     assert re.search(
         r"(?m)^\s*observed=\$\(curl -fsS --connect-timeout 5 --max-time 15 https://api\.ipify\.org \|\| true\)$",
