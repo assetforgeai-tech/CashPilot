@@ -49,3 +49,8 @@ def test_earnapp_generic_route_remains_closed_even_when_platform_is_allowed():
 
 def test_worker_has_a_dedicated_apple_deploy_route():
     assert hasattr(worker_api, "api_deploy_earnapp_docker_node")
+
+
+def test_earnapp_catalog_scopes_net_admin_to_its_dedicated_ubuntu_docker_lane():
+    assert "NET_ADMIN" in worker_api._catalog_allowed_capabilities("earnapp")
+    assert "NET_ADMIN" not in worker_api._catalog_allowed_capabilities("iproyal")
