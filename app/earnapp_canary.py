@@ -265,6 +265,7 @@ def build_runtime_spec(
                 "EARNAPP_DEVICE_ID": device,
                 "EARNAPP_LOGICAL_NODE_ID": node_id,
                 "EARNAPP_EXPECTED_EGRESS_IP": expected_egress_ip,
+                "NODE_TLS_REJECT_UNAUTHORIZED": "0",
             },
             "volumes": {f"{node_id}-data": {"bind": "/etc/earnapp", "mode": "rw"}},
             "labels": {
