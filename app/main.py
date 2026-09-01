@@ -2558,6 +2558,45 @@ class EarnAppCanaryDeployRequest(BaseModel):
     platform: str = Field(default="ubuntu", pattern=r"^(macos|ios|ubuntu)$")
 
 
+async def _verify_earnapp_canary_with_proxy_rotation(
+    logical_node_id: str,
+    *,
+    max_rotations: int = 5,
+) -> dict[str, Any]:
+    """Verify one canary and rotate only proxies rejected by EarnApp's dashboard."""
+    node_id = str(logical_node_id or "").strip()
+    for rotation_attempt in range(max(0, int(max_rotations)) + 1):
+        verification = await earnapp_canary.verify_canary(node_id)
+        if str(verification.get("error_kind") or "") != "proxy_blocked":
+            return verification
+        node = await database.get_earnapp_logical_node(node_id)
+        if not node:
+            return verification
+        worker_id = int(node.get("assigned_worker_id") or 0)
+        generation = int(node.get("generation") or 0)
+        proxy_id = int(node.get("current_proxy_id") or 0)
+        if worker_id <= 0 or generation <= 0 or proxy_id <= 0:
+            return verification
+        await database.mask_proxy_for_provider(proxy_id, "earnapp", "dashboard_ip_block")
+        await database.record_earnapp_proxy_health(
+            node_id,
+            worker_id,
+            generation=generation,
+            proxy_id=proxy_id,
+            health="unhealthy",
+            reason="dashboard_ip_block",
+        )
+        if rotation_attempt >= max_rotations or not await _rotate_unhealthy_earnapp_node(
+            node_id,
+            worker_id,
+            generation=generation,
+            expected_proxy_id=proxy_id,
+        ):
+            return verification
+        await asyncio.sleep(earnapp_canary.LINK_VERIFY_MIN_INTERVAL_SECONDS)
+    return verification
+
+
 def _resolve_deploy_credentials(
     slug: str,
     svc: dict[str, Any] | None,
@@ -3293,7 +3332,7 @@ async def api_deploy_earnapp_canary(
         raise HTTPException(status_code=502, detail="EarnApp canary deployment failed") from exc
     verification = await _persist_earnapp_canary_verification(
         body.logical_node_id,
-        await earnapp_canary.verify_canary(body.logical_node_id),
+        await _verify_earnapp_canary_with_proxy_rotation(body.logical_node_id),
     )
     if str(verification.get("workload_state") or "").strip().lower() != "workload_verified":
         await database.record_health_event(
@@ -3318,7 +3357,7 @@ async def api_verify_earnapp_canary(
     try:
         result = await _persist_earnapp_canary_verification(
             logical_node_id,
-            await earnapp_canary.verify_canary(logical_node_id),
+            await _verify_earnapp_canary_with_proxy_rotation(logical_node_id),
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -4221,10 +4260,35 @@ async def _rotate_unhealthy_earnapp_node(
                     node_id, binding_version=binding_version, reason="EARNAPP_PROXY_CAS_LOST"
                 )
             return False
+
+        provider_instance = None
+        with contextlib.suppress(Exception):
+            provider_instance = await database.get_provider_instance(node_id)
+        recreated_container_id = str((ack or {}).get("container_id") or "").strip()
+        if not recreated_container_id and provider_instance:
+            recreated_container_id = str(provider_instance.get("container_id") or "").strip()
+
+        async def persist_rotation_metadata() -> None:
+            if not provider_instance and not recreated_container_id:
+                return
+            await database.save_provider_instance(
+                "earnapp",
+                node_id,
+                worker_id=int(worker_id),
+                mode=str((provider_instance or {}).get("mode") or "proxy"),
+                container_id=recreated_container_id,
+                sidecar_id=str((provider_instance or {}).get("sidecar_id") or ""),
+                proxy_id=candidate_id,
+                status=str((provider_instance or {}).get("status") or "verification_pending"),
+            )
+
         if await finalize(commit=True, observed_egress_ip=observed_egress_ip):
+            await persist_rotation_metadata()
             return True
         if await finalize(commit=True, observed_egress_ip=observed_egress_ip):
+            await persist_rotation_metadata()
             return True
+        await persist_rotation_metadata()
         logger.warning(
             "EarnApp node %s proxy DB CAS committed; worker finalization remains pending",
             node_id,

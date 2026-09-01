@@ -285,6 +285,7 @@ def test_worker_node_scoped_proxy_apply_and_finalize_update_only_matching_state(
                 "binding_version": "rotation_12345678",
                 "proxy_id": 13,
                 "observed_egress_ip": "203.0.113.13",
+                "container_id": "recreated-main-id",
             },
         ),
         patch.object(
@@ -314,6 +315,7 @@ def test_worker_node_scoped_proxy_apply_and_finalize_update_only_matching_state(
 
     saved = json.loads(Path(tmp_path, "earnapp-nodes", "earnapp-ubuntu-1.json").read_text(encoding="utf-8"))
     assert applied["observed_egress_ip"] == "203.0.113.13"
+    assert applied["container_id"] == "recreated-main-id"
     assert finalized["action"] == "confirmed"
     assert saved["proxy_id"] == 13
     assert saved["proxy_health"] == "healthy"

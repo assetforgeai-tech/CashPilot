@@ -4591,6 +4591,41 @@ def test_proxy_mask_is_provider_specific_for_pawns(tmp_path):
     asyncio.run(run())
 
 
+def test_earnapp_provider_mask_expires_after_48_hours_without_affecting_other_providers(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            await database.upsert_proxy_endpoints(
+                provider_id,
+                [
+                    {
+                        "provider_proxy_id": "expiry-test",
+                        "endpoint": "1.1.1.1:1000",
+                        "host": "1.1.1.1",
+                        "port": 1000,
+                        "status": "alive",
+                        "exit_ip": "8.8.8.8",
+                    }
+                ],
+            )
+            assert await database.mask_proxy_for_provider(1, "earnapp", "dashboard_ip_block")
+            assert await database.mask_proxy_for_provider(1, "iproyal", "ip_used")
+            db = await database._get_db()
+            try:
+                await db.execute(
+                    "UPDATE proxy_provider_masks SET updated_at = datetime('now', '-49 hours') WHERE proxy_id = 1"
+                )
+                await db.commit()
+            finally:
+                await db.close()
+
+            assert await database.proxy_masked_for_provider(1, "earnapp") is False
+            assert await database.proxy_masked_for_provider(1, "iproyal") is True
+
+    asyncio.run(run())
+
+
 def test_proxy_pool_export_can_filter_by_protocol(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):

@@ -293,6 +293,8 @@ class EarnAppAccountCollector:
             user_response = await client.get(f"{API_BASE}/user_data", params=API_PARAMS, headers=headers)
             if user_response.status_code in AUTH_FAILURE_CODES:
                 return {"status": "error", "error_kind": "auth", "error": "authentication rejected"}
+            if user_response.status_code == 406 and "ip_block" in str(user_response.headers.get("location") or ""):
+                return {"status": "error", "error_kind": "proxy_blocked", "error": "EarnApp blocked the account proxy"}
             user_response.raise_for_status()
 
             devices_response = await client.get(f"{API_BASE}/devices", params=API_PARAMS, headers=headers)
@@ -434,6 +436,12 @@ class EarnAppAccountCollector:
                 for response in (user_response, money_response, devices_response, usage_response):
                     if response.status_code in AUTH_FAILURE_CODES:
                         return {"status": "error", "error_kind": "auth", "error": "authentication rejected"}
+                    if response.status_code == 406 and "ip_block" in str(response.headers.get("location") or ""):
+                        return {
+                            "status": "error",
+                            "error_kind": "proxy_blocked",
+                            "error": "EarnApp blocked the account proxy",
+                        }
                     response.raise_for_status()
                 devices = _payload_devices(devices_response.json())
                 device_ids = [_device_id(item) for item in devices]

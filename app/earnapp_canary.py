@@ -774,7 +774,7 @@ async def _verify_canary_locked(
                 "workload_state": "online_pending_usage",
                 "workload_reason": "awaiting_metric_delta",
             }
-        terminal_error = last.get("error_kind") in {"auth", "shape", "identity"}
+        terminal_error = last.get("error_kind") in {"auth", "shape", "identity", "proxy_blocked"}
         if platform != "ubuntu" and last.get("error_kind") == "remote":
             terminal_error = True
         if terminal_error or last.get("banned") is True or attempt >= remaining:
