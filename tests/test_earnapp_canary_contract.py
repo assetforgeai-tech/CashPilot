@@ -2082,6 +2082,73 @@ def test_verify_canary_keeps_unknown_billing_pending_without_guessing(monkeypatc
     assert result["workload_reason"] == "billing_unknown"
 
 
+def test_verify_canary_applies_retry_floor_to_unknown_billing(monkeypatch):
+    device_id = "sdk-mac-" + "c" * 32
+    samples = [
+        {
+            "status": "online",
+            "authenticated": True,
+            "device_present": True,
+            "online": True,
+            "banned": False,
+            "device_id": device_id,
+            "billing": "",
+        },
+        {
+            "status": "online",
+            "authenticated": True,
+            "device_present": True,
+            "online": True,
+            "banned": False,
+            "device_id": device_id,
+            "billing": "",
+        },
+    ]
+
+    class Collector:
+        async def link_and_verify_device(self, *_args, **_kwargs):
+            return samples.pop(0)
+
+    sleeps = []
+
+    async def record_sleep(seconds):
+        sleeps.append(seconds)
+
+    with (
+        patch.object(
+            database,
+            "get_earnapp_logical_node",
+            AsyncMock(
+                return_value={
+                    "state": "ACTIVE",
+                    "account_id": 1,
+                    "current_proxy_id": 12,
+                    "device_id": device_id,
+                    "platform": "macos",
+                }
+            ),
+        ),
+        patch.object(
+            database,
+            "get_earnapp_account_credentials",
+            AsyncMock(return_value={"state": "ACTIVE", "credentials": {}}),
+        ),
+        patch.object(
+            database,
+            "get_earnapp_account_node_routes",
+            AsyncMock(return_value=[{"logical_node_id": "earnapp-node-unknown-floor", "proxy_id": 12}]),
+        ),
+        patch.object(earnapp_canary, "EarnAppAccountCollector", return_value=Collector()),
+        patch("app.earnapp_canary.asyncio.sleep", side_effect=record_sleep),
+    ):
+        result = asyncio.run(
+            earnapp_canary.verify_canary("earnapp-node-unknown-floor", attempts=2, interval_seconds=0)
+        )
+
+    assert result["workload_reason"] == "billing_unknown"
+    assert sleeps == [5]
+
+
 @pytest.mark.asyncio
 async def test_canary_deploy_route_defaults_to_authorized_ubuntu_lane(monkeypatch):
     routes = {route.path for route in main.app.routes}
