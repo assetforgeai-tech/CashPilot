@@ -259,13 +259,13 @@ PY
 }
 
 PROFILE_DEVICE_ID=$(read_identity device_id)
-PROFILE_MACHINE_ID=$(read_identity machine_id | tr -d '-\r\n' | tr 'A-F' 'a-f')
+PROFILE_MACHINE_ID=$(read_identity machine_id | tr -d '\r\n-' | tr 'A-F' 'a-f')
 CONFIG_HOSTNAME=$(read_identity hostname)
 [[ "$PROFILE_DEVICE_ID" == "$EXPECTED_DEVICE_ID" ]]
 [[ "$PROFILE_MACHINE_ID" =~ ^[0-9a-f]{32}$ ]]
 
 if [[ -s "$STATE_DIR/tracking_id" ]]; then
-    tracking=$(tr -d '-\r\n' <"$STATE_DIR/tracking_id" | tr 'A-F' 'a-f')
+    tracking=$(tr -d '\r\n-' <"$STATE_DIR/tracking_id" | tr 'A-F' 'a-f')
     [[ "$tracking" =~ ^[0-9a-f]{32}$ ]] || tracking="$PROFILE_MACHINE_ID"
     printf '%s\n' "$tracking" >"$HOST_ID_FILE"
 elif [[ ! -s "$HOST_ID_FILE" ]]; then
