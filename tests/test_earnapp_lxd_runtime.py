@@ -354,15 +354,19 @@ def test_worker_docker_proxy_apply_persists_recreated_main_container_id(tmp_path
                 "recreated_main_ids": {"earnapp-macos-1": "docker-recreated-main-id"},
             },
         ),
-        patch.object(worker_api, "_earnapp_proxy_runtime_snapshot", return_value=(
-            {"binding_version": "rotation_12345678", "previous_present": False, "candidate_present": False},
-            {"running": True, "observed_egress_ip": "203.0.113.13", "probe_ok": True},
-        )),
-        patch.object(worker_api.orchestrator, "probe_service_egress", return_value={"observed_egress_ip": "203.0.113.13"}),
+        patch.object(
+            worker_api,
+            "_earnapp_proxy_runtime_snapshot",
+            return_value=(
+                {"binding_version": "rotation_12345678", "previous_present": False, "candidate_present": False},
+                {"running": True, "observed_egress_ip": "203.0.113.13", "probe_ok": True},
+            ),
+        ),
+        patch.object(
+            worker_api.orchestrator, "probe_service_egress", return_value={"observed_egress_ip": "203.0.113.13"}
+        ),
     ):
-        result = __import__("asyncio").run(
-            worker_api.api_apply_earnapp_node_proxy(_request(), "earnapp-macos-1", spec)
-        )
+        result = __import__("asyncio").run(worker_api.api_apply_earnapp_node_proxy(_request(), "earnapp-macos-1", spec))
 
     saved = json.loads(Path(tmp_path, "earnapp-nodes", "earnapp-macos-1.json").read_text(encoding="utf-8"))
     assert result["container_id"] == "docker-recreated-main-id"
