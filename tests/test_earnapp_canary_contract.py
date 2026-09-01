@@ -509,6 +509,9 @@ def test_ubuntu_runtime_spec_is_dedicated_docker_and_persists_full_identity():
     assert spec["labels"]["cashpilot.earnapp.device_id"] == identity["device_id"]
     assert spec["env"]["EARNAPP_EXPECTED_EGRESS_IP"] == "203.0.113.10"
     assert spec["env"]["NODE_TLS_REJECT_UNAUTHORIZED"] == "0"
+    assert spec["env"]["PROXY_TYPE"] == "SOCKS5"
+    assert spec["env"]["PROXY_CREDENTIALS"] == "proxy.example:1080::"
+    assert spec["network_mode"] == "bridge"
     assert spec["resources"]["mem_limit"] == "1g"
     assert spec["cap_add"] == ["NET_ADMIN"]
     earnapp_runtime.validate_runtime_spec(spec)
@@ -526,6 +529,10 @@ def test_ubuntu_entrypoint_persists_identity_and_retries_registration_contract()
     assert 'HOST_SERIAL_FILE="$STATE_DIR/host.serial"' in entrypoint
     assert "earnapp-host ensure" in entrypoint
     assert "earnapp-host apply" in entrypoint
+    assert "REDSOCKS_PORT=12345" in entrypoint
+    assert "redsocks route installed" in entrypoint
+    assert "iptables -t nat -A OUTPUT -p tcp -j REDSOCKS" in entrypoint
+    assert "setup_proxy" in entrypoint
     assert 'install -m 0444 "$HOST_ID_FILE" /etc/machine-id' in entrypoint
     assert '"$(cat /etc/machine-id)" >"$STATE_DIR/tracking_id"' in entrypoint
 

@@ -249,6 +249,8 @@ HOST_JSON_FILE="$STATE_DIR/host.json"
 HOST_SERIAL_FILE="$STATE_DIR/host.serial"
 EXPECTED_DEVICE_ID="${EARNAPP_DEVICE_ID:?}"
 EXPECTED_EGRESS_IP="${EARNAPP_EXPECTED_EGRESS_IP:-}"
+REDSOCKS_PORT=12345
+REDSOCKS_CONF=/tmp/redsocks.conf
 if [[ -s "$STATE_DIR/expected_egress_ip" ]]; then
     EXPECTED_EGRESS_IP=$(tr -d '\r\n-' <"$STATE_DIR/expected_egress_ip")
 fi
@@ -263,6 +265,63 @@ with open(sys.argv[1], encoding="utf-8") as handle:
     value = json.load(handle)
 print(str(value.get(sys.argv[2]) or ""), end="")
 PY
+}
+
+parse_proxy() {
+    local raw="${PROXY_CREDENTIALS:-}"
+    PROXY_HOST="${raw%%:*}"
+    raw="${raw#*:}"
+    PROXY_PORT="${raw%%:*}"
+    raw="${raw#*:}"
+    PROXY_USER="${raw%%:*}"
+    PROXY_PASS="${raw#*:}"
+    [[ "$PROXY_HOST" != "$raw" ]] || PROXY_PASS=""
+    PROXY_TYPE=$(printf '%s' "${PROXY_TYPE:-SOCKS5}" | tr '[:lower:]' '[:upper:]')
+    case "$PROXY_TYPE" in
+        SOCKS5) REDSOCKS_TYPE=socks5 ;;
+        HTTP) REDSOCKS_TYPE=http-connect ;;
+        *) echo '[proxy] unsupported proxy type' >&2; return 1 ;;
+    esac
+}
+
+setup_proxy() {
+    [[ -n "${PROXY_CREDENTIALS:-}" ]] || return 0
+    parse_proxy
+    local proxy_ip
+    proxy_ip=$(getent ahostsv4 "$PROXY_HOST" 2>/dev/null | awk 'NR==1 {print $1}')
+    [[ -n "$proxy_ip" && "$PROXY_PORT" =~ ^[0-9]+$ ]] || { echo '[proxy] cannot resolve proxy' >&2; return 1; }
+    pkill -x redsocks 2>/dev/null || true
+    iptables -t nat -D OUTPUT -p tcp -j REDSOCKS 2>/dev/null || true
+    iptables -t nat -F REDSOCKS 2>/dev/null || true
+    iptables -t nat -N REDSOCKS 2>/dev/null || true
+    cat >"$REDSOCKS_CONF" <<EOF
+base {
+    log_debug = off;
+    log_info = off;
+    log = "file:/tmp/redsocks.log";
+    daemon = off;
+    redirector = iptables;
+}
+redsocks {
+    local_ip = 127.0.0.1;
+    local_port = $REDSOCKS_PORT;
+    ip = $proxy_ip;
+    port = $PROXY_PORT;
+    type = $REDSOCKS_TYPE;
+EOF
+    if [[ -n "${PROXY_USER:-}" && -n "${PROXY_PASS:-}" ]]; then
+        printf '    login = "%s";\n    password = "%s";\n' "$PROXY_USER" "$PROXY_PASS" >>"$REDSOCKS_CONF"
+    fi
+    printf '}\n' >>"$REDSOCKS_CONF"
+    /usr/sbin/redsocks -c "$REDSOCKS_CONF" &
+    sleep 1
+    iptables -t nat -F REDSOCKS
+    for cidr in 0.0.0.0/8 10.0.0.0/8 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 "$proxy_ip/32"; do
+        iptables -t nat -A REDSOCKS -d "$cidr" -j RETURN
+    done
+    iptables -t nat -A REDSOCKS -p tcp -j REDIRECT --to-ports "$REDSOCKS_PORT"
+    iptables -t nat -A OUTPUT -p tcp -j REDSOCKS
+    echo '[proxy] redsocks route installed'
 }
 
 install -m 0600 "$IDENTITY_FILE" "$HOST_JSON_FILE"
@@ -302,6 +361,8 @@ echo "[host] Hostname: $(cat /etc/hostname)"
 echo "[host] Machine ID: $(cat /etc/machine-id)"
 echo "[host] OS: $(. /etc/os-release && printf '%s' "$PRETTY_NAME")"
 echo "[host] Architecture: $(dpkg --print-architecture)"
+
+setup_proxy
 
 for _ in $(seq 1 30); do
     observed=$(curl -fsS --connect-timeout 5 --max-time 15 https://api.ipify.org || true)
@@ -701,6 +762,7 @@ def redacted_evidence(value: dict[str, Any] | None = None) -> dict[str, Any]:
         "password",
         "proxy_password",
         "proxy_username",
+        "proxy_credentials",
         "username",
         "oauth-refresh-token",
         "xsrf-token",
