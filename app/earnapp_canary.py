@@ -708,7 +708,13 @@ async def verify_canary(
                 }
                 if attempt >= remaining:
                     break
-                await asyncio.sleep(max(0, float(interval_seconds)))
+                # Unknown billing is still a retryable state; enforce the same
+                # relay floor as link/status retries so callers cannot hammer
+                # EarnApp by passing interval_seconds=0.
+                delay = max(LINK_VERIFY_MIN_INTERVAL_SECONDS, float(interval_seconds))
+                if attempt % LINK_VERIFY_BURST == 0 and attempt < remaining:
+                    delay = max(delay, LINK_VERIFY_COOLDOWN_SECONDS)
+                await asyncio.sleep(delay)
                 continue
 
             current = {key: max(0.0, float(last[key])) for key in metric_names if last.get(key) is not None}
