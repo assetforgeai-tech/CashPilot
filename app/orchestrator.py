@@ -221,6 +221,70 @@ def earnapp_service_presence(slug: str, *, client: Any | None = None) -> dict[st
     }
 
 
+def assert_fresh_earnapp_runtime(
+    slug: str,
+    volumes: dict[str, dict[str, str]] | None,
+    *,
+    client: Any | None = None,
+) -> None:
+    """Refuse a fresh Ubuntu identity bootstrap over any existing state.
+
+    This check is deliberately read-only.  A fresh deployment may create a
+    named identity volume, but it must never silently reuse one left by an
+    earlier UUID or a partially failed canary.
+    """
+    if not re.fullmatch(r"earnapp-[a-z0-9][a-z0-9-]{1,112}", str(slug or "")):
+        raise ValueError("invalid EarnApp Docker runtime id")
+    docker_client = client or _get_client()
+    for sidecar in (False, True):
+        if _find_earnapp_runtime_container(docker_client, slug, sidecar=sidecar) is not None:
+            raise RuntimeError(f"EarnApp fresh runtime state already exists for {slug}")
+
+    named_volumes: list[str] = []
+    identity_volume_found = False
+    for source, mount in (volumes or {}).items():
+        source_name = str(source or "").strip()
+        if not source_name or source_name.startswith(("/", ".", "~")):
+            continue
+        named_volumes.append(source_name)
+        if isinstance(mount, dict) and str(mount.get("bind") or "").rstrip("/") == "/etc/earnapp":
+            identity_volume_found = True
+    if not identity_volume_found:
+        raise RuntimeError("EarnApp fresh runtime requires a named /etc/earnapp identity volume")
+    for volume_name in named_volumes:
+        try:
+            docker_client.volumes.get(volume_name)
+        except NotFound:
+            continue
+        raise RuntimeError(f"EarnApp fresh runtime state already exists in volume {volume_name}")
+
+
+def wait_for_earnapp_device_id(
+    slug: str,
+    *,
+    timeout_seconds: float = 300,
+    poll_interval_seconds: float = 2,
+    client: Any | None = None,
+) -> str:
+    """Wait for the reference Ubuntu runtime to persist its generated UUID."""
+    docker_client = client or _get_client()
+    deadline = time.monotonic() + max(0.0, float(timeout_seconds))
+    while True:
+        container = _find_earnapp_runtime_container(docker_client, slug, sidecar=False)
+        if container is None:
+            raise RuntimeError("EarnApp runtime container disappeared before identity bootstrap")
+        result = container.exec_run(["/bin/sh", "-c", "test -s /etc/earnapp/uuid && cat /etc/earnapp/uuid"])
+        if int(getattr(result, "exit_code", 1)) == 0:
+            raw = getattr(result, "output", b"")
+            value = raw.decode("utf-8", errors="replace").strip() if isinstance(raw, bytes) else str(raw or "").strip()
+            if not re.fullmatch(r"sdk-node-[0-9a-f]{32}", value):
+                raise RuntimeError("EarnApp reference runtime generated an invalid device identity")
+            return value
+        if time.monotonic() >= deadline:
+            raise RuntimeError("EarnApp reference runtime did not generate a device identity in time")
+        time.sleep(max(0.0, float(poll_interval_seconds)))
+
+
 def probe_service_egress(slug: str) -> dict[str, Any]:
     """Probe one managed container's actual network namespace without mutation."""
     container = _find_container(slug)

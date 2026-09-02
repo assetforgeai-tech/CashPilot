@@ -1584,6 +1584,8 @@ class DeploySpec(BaseModel):
     runtime_contract: dict[str, str] = Field(default_factory=dict)
     image_contract_sha256: str = ""
     image_delivery: str = "registry"
+    expected_device_id: str = ""
+    require_fresh_volume: bool = False
     sysctls: dict[str, str] | None = None
     shm_size: str | None = None
     # Advanced and unsupported. Absent means Docker's default runtime, which is
@@ -2651,48 +2653,88 @@ async def api_deploy_earnapp_docker_node(request: Request, slug: str, spec: Depl
         raise HTTPException(status_code=400, detail="EarnApp provider is required")
     if platform not in {"macos", "ios", "linux"}:
         raise HTTPException(status_code=400, detail="Dedicated Docker route supports only MacOS, iOS, or Ubuntu")
+    logical_node_id = str(spec.labels.get("cashpilot.earnapp.logical_node_id") or slug)
+    if logical_node_id != slug:
+        raise HTTPException(status_code=409, detail="EarnApp logical node does not match the Docker route")
     try:
         _validate_deploy_spec(spec, slug=slug)
+        if platform == "linux" and spec.require_fresh_volume:
+            await asyncio.to_thread(orchestrator.assert_fresh_earnapp_runtime, slug, spec.volumes)
         await _materialize_runtime_assets(slug, spec)
-        container_id = await asyncio.to_thread(
-            orchestrator.deploy_raw,
-            slug=slug,
-            provider_slug="earnapp",
-            image=spec.image,
-            env=spec.env,
-            ports=spec.ports,
-            volumes=spec.volumes,
-            network_mode=spec.network_mode,
-            cap_add=spec.cap_add,
-            devices=spec.devices,
-            command=spec.command,
-            hostname=spec.hostname,
-            labels=spec.labels,
-            resources=spec.resources,
-            runtime=spec.runtime,
-            installer_manifest_url=spec.installer_manifest_url,
-            installer_platform=spec.installer_platform,
-            deploy_credentials=spec.deploy_credentials,
-            user=spec.user,
-            host_runtime=spec.host_runtime,
-            image_delivery=spec.image_delivery,
-            proxy=spec.proxy,
-            sysctls=spec.sysctls,
-            shm_size=spec.shm_size,
-        )
+        try:
+            container_id = await asyncio.to_thread(
+                orchestrator.deploy_raw,
+                slug=slug,
+                provider_slug="earnapp",
+                image=spec.image,
+                env=spec.env,
+                ports=spec.ports,
+                volumes=spec.volumes,
+                network_mode=spec.network_mode,
+                cap_add=spec.cap_add,
+                devices=spec.devices,
+                command=spec.command,
+                hostname=spec.hostname,
+                labels=spec.labels,
+                resources=spec.resources,
+                runtime=spec.runtime,
+                installer_manifest_url=spec.installer_manifest_url,
+                installer_platform=spec.installer_platform,
+                deploy_credentials=spec.deploy_credentials,
+                user=spec.user,
+                host_runtime=spec.host_runtime,
+                image_delivery=spec.image_delivery,
+                proxy=spec.proxy,
+                sysctls=spec.sysctls,
+                shm_size=spec.shm_size,
+            )
+        except Exception as exc:
+            # The fresh-state guard ran before mutation. If Docker failed after
+            # creating a component, remove only this fresh Ubuntu service and
+            # retain its named identity volume for diagnosis/retry.
+            if platform == "linux" and spec.require_fresh_volume:
+                with contextlib.suppress(Exception):
+                    await asyncio.to_thread(orchestrator.remove_earnapp_service, slug)
+                with contextlib.suppress(ValueError):
+                    _remove_earnapp_state(logical_node_id)
+                if isinstance(exc, RuntimeError):
+                    raise HTTPException(status_code=409, detail=str(exc)) from exc
+                logger.exception("Dedicated EarnApp Docker deployment failed for %s", slug)
+                raise HTTPException(status_code=500, detail="EarnApp Docker deployment failed") from exc
+            raise
     except HTTPException:
         raise
+    except RuntimeError as exc:
+        if platform == "linux" and spec.require_fresh_volume:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        logger.exception("Dedicated EarnApp Docker deploy failed for %s", slug)
+        raise HTTPException(status_code=500, detail="EarnApp Docker deployment failed") from exc
     except Exception as exc:
         logger.exception("Dedicated EarnApp Docker deploy failed for %s", slug)
         raise HTTPException(status_code=500, detail="EarnApp Docker deployment failed") from exc
     proxy = dict(spec.proxy or {})
-    logical_node_id = str(spec.labels.get("cashpilot.earnapp.logical_node_id") or slug)
+    device_id = str(spec.labels.get("cashpilot.earnapp.device_id") or "")
+    if platform == "linux":
+        try:
+            device_id = await asyncio.to_thread(orchestrator.wait_for_earnapp_device_id, slug)
+            expected_device_id = str(spec.expected_device_id or "")
+            if expected_device_id and expected_device_id != device_id:
+                raise RuntimeError("EarnApp Ubuntu runtime identity does not match assignment")
+        except RuntimeError as exc:
+            # The exact Docker runtime was created by this request, but its UUID
+            # never became authoritative. Remove only its containers and retain
+            # the named volume for diagnosis; never delete identity state here.
+            with contextlib.suppress(Exception):
+                await asyncio.to_thread(orchestrator.remove_earnapp_service, slug)
+            with contextlib.suppress(ValueError):
+                _remove_earnapp_state(logical_node_id)
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
     _save_earnapp_state(
         logical_node_id,
         {
             "logical_node_id": logical_node_id,
             "generation": int(spec.labels.get("cashpilot.earnapp.generation") or 0),
-            "device_id": str(spec.labels.get("cashpilot.earnapp.device_id") or ""),
+            "device_id": device_id,
             "platform": platform,
             "runtime_backend": "docker",
             "proxy_id": int(proxy.get("proxy_id") or proxy.get("id") or 0),
@@ -2702,7 +2744,12 @@ async def api_deploy_earnapp_docker_node(request: Request, slug: str, spec: Depl
             "evidence": {"running": True, "online": False},
         },
     )
-    return {"status": "deployed", "container_id": container_id, "logical_node_id": logical_node_id}
+    return {
+        "status": "deployed",
+        "container_id": container_id,
+        "logical_node_id": logical_node_id,
+        "device_id": device_id,
+    }
 
 
 @app.post("/api/earnapp/nodes/{logical_node_id}/proxy/apply")

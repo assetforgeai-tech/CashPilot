@@ -5,9 +5,8 @@ import base64
 import hashlib
 import json
 import os
-import re
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -22,6 +21,7 @@ from app import (
     earnapp_identity,
     earnapp_runtime,
     main,
+    orchestrator,
     provider_runtime,
     singbox_config,
     worker_api,
@@ -485,13 +485,12 @@ def test_non_ios_runtime_paths_do_not_install_or_invoke_ios_registration():
     assert "COPY entrypoint.sh /usr/local/bin/entrypoint.sh" in recipe
 
 
-def test_ubuntu_runtime_spec_is_dedicated_docker_and_persists_full_identity():
-    identity = earnapp_identity.generate_identity("earnapp-ubuntu-docker-1", "ubuntu")
+def test_ubuntu_runtime_spec_lets_the_reference_image_generate_the_device_identity():
     spec = earnapp_canary.build_runtime_spec(
         logical_node_id="earnapp-ubuntu-docker-1",
         account_id=7,
         platform="ubuntu",
-        device_id=identity["device_id"],
+        device_id="",
         proxy={
             "proxy_id": 12,
             "host": "proxy.example",
@@ -506,7 +505,9 @@ def test_ubuntu_runtime_spec_is_dedicated_docker_and_persists_full_identity():
     assert spec["runtime_backend"] == "docker"
     assert spec["runtime_contract"]["platform"] == "linux"
     assert spec["runtime_contract"]["appid"] == "node_earnapp.com"
-    assert spec["labels"]["cashpilot.earnapp.device_id"] == identity["device_id"]
+    assert "cashpilot.earnapp.device_id" not in spec["labels"]
+    assert "EARNAPP_DEVICE_ID" not in spec["env"]
+    assert spec["runtime_assets"] == []
     assert spec["env"]["EARNAPP_EXPECTED_EGRESS_IP"] == "203.0.113.10"
     assert spec["env"]["NODE_TLS_REJECT_UNAUTHORIZED"] == "0"
     assert spec["env"]["PROXY_TYPE"] == "SOCKS5"
@@ -517,52 +518,376 @@ def test_ubuntu_runtime_spec_is_dedicated_docker_and_persists_full_identity():
     earnapp_runtime.validate_runtime_spec(spec)
 
 
-def test_ubuntu_entrypoint_persists_identity_and_retries_registration_contract():
-    payload = earnapp_runtime.ubuntu_entrypoint_script()
-    entrypoint = payload.decode("utf-8")
-
-    assert b"\r" not in payload
-    assert "tr -d '\\r\\n-'" in entrypoint
-    assert "printf '%s\\n'" in entrypoint
-    assert "rm -f /.dockerenv" in entrypoint
-    assert 'HOST_JSON_FILE="$STATE_DIR/host.json"' in entrypoint
-    assert 'HOST_SERIAL_FILE="$STATE_DIR/host.serial"' in entrypoint
-    assert "earnapp-host ensure" in entrypoint
-    assert "earnapp-host apply" in entrypoint
-    assert "REDSOCKS_PORT=12345" in entrypoint
-    assert "redsocks route installed" in entrypoint
-    assert "iptables -t nat -A OUTPUT -p tcp -j REDSOCKS" in entrypoint
-    assert "setup_proxy" in entrypoint
-    assert 'install -m 0444 "$HOST_ID_FILE" /etc/machine-id' in entrypoint
-    assert '"$(cat /etc/machine-id)" >"$STATE_DIR/tracking_id"' in entrypoint
-    assert 'if [[ -z "$EXPECTED_EGRESS_IP" && -s "$STATE_DIR/expected_egress_ip" ]]; then' in entrypoint
+def test_ubuntu_reference_runtime_has_no_cashpilot_generated_entrypoint():
+    assert earnapp_runtime.generated_runtime_artifacts("ubuntu") == {}
 
 
-def test_ubuntu_entrypoint_skips_host_helper_when_machine_id_is_read_only():
-    entrypoint = earnapp_runtime.ubuntu_entrypoint_script().decode()
-    assert "if [[ -w /etc/machine-id ]]; then" in entrypoint
-    assert 'echo "[host] read-only machine-id; skip host helper apply"' in entrypoint
-    assert '[[ "$PROFILE_DEVICE_ID" == "$EXPECTED_DEVICE_ID" ]]' in entrypoint
-    assert re.search(
-        r"(?m)^\s*observed=\$\(curl -fsS --connect-timeout 5 --max-time 15 https://api\.ipify\.org \|\| true\)$",
-        entrypoint,
-    )
-    assert "for attempt in $(seq 1 10)" in entrypoint
-    assert "install_device?uuid=$EXPECTED_DEVICE_ID" in entrypoint
-    assert "is_linked?uuid=$EXPECTED_DEVICE_ID" in entrypoint
-    assert '"$EXPECTED_DEVICE_ID" >"$STATE_DIR/registered"' in entrypoint
-
-
-def test_ubuntu_image_matches_the_verified_docker_runtime_contract():
+def test_ubuntu_image_is_a_thin_wrapper_around_the_pinned_reference_runtime():
     manifest = earnapp_runtime.runtime_asset_manifest(platform="ubuntu")
     recipe = build_earnapp_canary_image.render_dockerfile(manifest, platform="ubuntu")
 
-    assert "FROM ubuntu:22.04" in recipe
-    for package in ("ca-certificates", "curl", "dbus", "iproute2", "iptables", "procps", "redsocks"):
-        assert package in recipe
-    assert "COPY earnapp-host /usr/local/bin/earnapp-host" in recipe
-    assert "/usr/local/bin/earnapp-host" in recipe
-    assert "earnapp-host" in earnapp_runtime.UBUNTU_RUNTIME_ARTIFACT_HASHES
+    assert manifest["base_image"] == earnapp_runtime.UBUNTU_REFERENCE_IMAGE_PIN
+    assert f"FROM {earnapp_runtime.UBUNTU_REFERENCE_IMAGE_PIN}" in recipe
+    for forbidden in ("COPY ", "RUN ", "ENTRYPOINT", "CMD ", "earnapp-linux", "earnapp-host"):
+        assert forbidden not in recipe
+    assert earnapp_runtime.UBUNTU_RUNTIME_ARTIFACT_HASHES == {}
+
+
+def test_ubuntu_thin_wrapper_tag_changes_when_the_reference_manifest_changes(monkeypatch):
+    before = earnapp_runtime.runtime_asset_manifest_sha256(platform="ubuntu")
+    monkeypatch.setattr(earnapp_runtime, "UBUNTU_REFERENCE_DIGEST", "sha256:" + "f" * 64)
+
+    assert earnapp_runtime.runtime_asset_manifest_sha256(platform="ubuntu") != before
+
+
+def test_ubuntu_reference_image_uses_the_verified_manifest_digest():
+    assert earnapp_runtime.UBUNTU_REFERENCE_DIGEST == (
+        "sha256:55fc019a70b269cc1023dd9a323640129298439f6b902e30e34c24b9bdc4d0ae"
+    )
+    assert earnapp_runtime.UBUNTU_REFERENCE_IMAGE_PIN == (
+        "ghcr.io/s0ckd3/earnapp-2movn@sha256:55fc019a70b269cc1023dd9a323640129298439f6b902e30e34c24b9bdc4d0ae"
+    )
+
+
+def test_worker_waits_for_the_uuid_generated_inside_the_ubuntu_volume(monkeypatch):
+    container = MagicMock()
+    container.exec_run.side_effect = [
+        MagicMock(exit_code=1, output=b""),
+        MagicMock(exit_code=0, output=b"sdk-node-" + b"a" * 32 + b"\n"),
+    ]
+    monkeypatch.setattr(orchestrator, "_get_client", MagicMock(return_value=MagicMock()))
+    monkeypatch.setattr(orchestrator, "_find_earnapp_runtime_container", lambda *_args, **_kwargs: container)
+
+    device_id = orchestrator.wait_for_earnapp_device_id(
+        "earnapp-ubuntu-reference-1",
+        timeout_seconds=1,
+        poll_interval_seconds=0,
+    )
+
+    assert device_id == "sdk-node-" + "a" * 32
+    assert container.exec_run.call_count == 2
+
+
+def test_worker_rejects_a_malformed_uuid_from_the_ubuntu_volume(monkeypatch):
+    container = MagicMock()
+    container.exec_run.return_value = MagicMock(exit_code=0, output=b"sdk-node-not-a-uuid\n")
+    monkeypatch.setattr(orchestrator, "_get_client", MagicMock(return_value=MagicMock()))
+    monkeypatch.setattr(orchestrator, "_find_earnapp_runtime_container", lambda *_args, **_kwargs: container)
+
+    with pytest.raises(RuntimeError, match="invalid device identity"):
+        orchestrator.wait_for_earnapp_device_id(
+            "earnapp-ubuntu-reference-1",
+            timeout_seconds=1,
+            poll_interval_seconds=0,
+        )
+
+
+@pytest.mark.asyncio
+async def test_worker_deploy_returns_and_persists_the_runtime_generated_ubuntu_uuid(tmp_path, monkeypatch):
+    device_id = "sdk-node-" + "b" * 32
+    spec = worker_api.DeploySpec(
+        **earnapp_canary.build_runtime_spec(
+            logical_node_id="earnapp-ubuntu-reference-1",
+            account_id=7,
+            platform="ubuntu",
+            device_id="",
+            proxy={
+                "proxy_id": 12,
+                "host": "proxy.example",
+                "port": 1080,
+                "protocol": "socks5",
+                "exit_ip": "203.0.113.10",
+                "country_code": "US",
+                "ip_type": "residential",
+            },
+            generation=4,
+        )
+    )
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(worker_api, "_verify_api_key", lambda _request: None)
+    monkeypatch.setattr(worker_api.orchestrator, "assert_fresh_earnapp_runtime", MagicMock(), raising=False)
+    monkeypatch.setattr(worker_api.orchestrator, "deploy_raw", MagicMock(return_value="container-id"))
+    monkeypatch.setattr(
+        worker_api.orchestrator, "wait_for_earnapp_device_id", MagicMock(return_value=device_id), raising=False
+    )
+
+    result = await worker_api.api_deploy_earnapp_docker_node(
+        _request("/api/earnapp/docker-nodes/earnapp-ubuntu-reference-1/deploy"),
+        "earnapp-ubuntu-reference-1",
+        spec,
+    )
+
+    assert result["device_id"] == device_id
+    state = json.loads((tmp_path / "earnapp-nodes" / "earnapp-ubuntu-reference-1.json").read_text())
+    assert state["device_id"] == device_id
+
+
+@pytest.mark.asyncio
+async def test_worker_fresh_ubuntu_deploy_refuses_an_existing_runtime_or_volume_before_mutation(tmp_path, monkeypatch):
+    spec = worker_api.DeploySpec(
+        **earnapp_canary.build_runtime_spec(
+            logical_node_id="earnapp-ubuntu-reference-1",
+            account_id=7,
+            platform="ubuntu",
+            device_id="",
+            proxy={
+                "proxy_id": 12,
+                "host": "proxy.example",
+                "port": 1080,
+                "protocol": "socks5",
+                "exit_ip": "203.0.113.10",
+                "country_code": "US",
+                "ip_type": "residential",
+            },
+            generation=4,
+        )
+    )
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(worker_api, "_verify_api_key", lambda _request: None)
+    fresh = MagicMock(side_effect=RuntimeError("EarnApp fresh runtime state already exists"), raising=False)
+    deploy = MagicMock(return_value="must-not-deploy")
+    monkeypatch.setattr(worker_api.orchestrator, "assert_fresh_earnapp_runtime", fresh, raising=False)
+    monkeypatch.setattr(worker_api.orchestrator, "deploy_raw", deploy)
+
+    with pytest.raises(HTTPException) as exc:
+        await worker_api.api_deploy_earnapp_docker_node(
+            _request("/api/earnapp/docker-nodes/earnapp-ubuntu-reference-1/deploy"),
+            "earnapp-ubuntu-reference-1",
+            spec,
+        )
+
+    assert exc.value.status_code == 409
+    fresh.assert_called_once_with("earnapp-ubuntu-reference-1", spec.volumes)
+    deploy.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_worker_ubuntu_identity_timeout_cleans_the_new_runtime_without_deleting_its_volume(tmp_path, monkeypatch):
+    spec = worker_api.DeploySpec(
+        **earnapp_canary.build_runtime_spec(
+            logical_node_id="earnapp-ubuntu-reference-1",
+            account_id=7,
+            platform="ubuntu",
+            device_id="",
+            proxy={
+                "proxy_id": 12,
+                "host": "proxy.example",
+                "port": 1080,
+                "protocol": "socks5",
+                "exit_ip": "203.0.113.10",
+                "country_code": "US",
+                "ip_type": "residential",
+            },
+            generation=4,
+        )
+    )
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(worker_api, "_verify_api_key", lambda _request: None)
+    monkeypatch.setattr(worker_api.orchestrator, "assert_fresh_earnapp_runtime", MagicMock(), raising=False)
+    monkeypatch.setattr(worker_api.orchestrator, "deploy_raw", MagicMock(return_value="container-id"))
+    monkeypatch.setattr(
+        worker_api.orchestrator,
+        "wait_for_earnapp_device_id",
+        MagicMock(side_effect=RuntimeError("identity timeout")),
+    )
+    remove = MagicMock(return_value={"main_present": False, "sidecar_present": False})
+    monkeypatch.setattr(worker_api.orchestrator, "remove_earnapp_service", remove)
+
+    with pytest.raises(HTTPException) as exc:
+        await worker_api.api_deploy_earnapp_docker_node(
+            _request("/api/earnapp/docker-nodes/earnapp-ubuntu-reference-1/deploy"),
+            "earnapp-ubuntu-reference-1",
+            spec,
+        )
+
+    assert exc.value.status_code == 409
+    remove.assert_called_once_with("earnapp-ubuntu-reference-1")
+    assert not (tmp_path / "earnapp-nodes" / "earnapp-ubuntu-reference-1.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_worker_fresh_ubuntu_deploy_raw_failure_cleans_runtime_but_keeps_volume(tmp_path, monkeypatch):
+    spec = worker_api.DeploySpec(
+        **earnapp_canary.build_runtime_spec(
+            logical_node_id="earnapp-ubuntu-reference-1",
+            account_id=7,
+            platform="ubuntu",
+            device_id="",
+            proxy={
+                "proxy_id": 12,
+                "host": "proxy.example",
+                "port": 1080,
+                "protocol": "socks5",
+                "exit_ip": "203.0.113.10",
+                "country_code": "US",
+                "ip_type": "residential",
+            },
+            generation=4,
+        )
+    )
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(worker_api, "_verify_api_key", lambda _request: None)
+    monkeypatch.setattr(worker_api.orchestrator, "assert_fresh_earnapp_runtime", MagicMock(), raising=False)
+    deploy = MagicMock(side_effect=RuntimeError("main container create failed"))
+    monkeypatch.setattr(worker_api.orchestrator, "deploy_raw", deploy)
+    remove = MagicMock(return_value={"main_present": False, "sidecar_present": False})
+    monkeypatch.setattr(worker_api.orchestrator, "remove_earnapp_service", remove)
+
+    with pytest.raises(HTTPException) as exc:
+        await worker_api.api_deploy_earnapp_docker_node(
+            _request("/api/earnapp/docker-nodes/earnapp-ubuntu-reference-1/deploy"),
+            "earnapp-ubuntu-reference-1",
+            spec,
+        )
+
+    assert exc.value.status_code == 409
+    deploy.assert_called_once()
+    remove.assert_called_once_with("earnapp-ubuntu-reference-1")
+    assert not (tmp_path / "earnapp-nodes" / "earnapp-ubuntu-reference-1.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_worker_fresh_ubuntu_guard_failure_does_not_cleanup_before_mutation(tmp_path, monkeypatch):
+    spec = worker_api.DeploySpec(
+        **earnapp_canary.build_runtime_spec(
+            logical_node_id="earnapp-ubuntu-reference-1",
+            account_id=7,
+            platform="ubuntu",
+            device_id="",
+            proxy={
+                "proxy_id": 12,
+                "host": "proxy.example",
+                "port": 1080,
+                "protocol": "socks5",
+                "exit_ip": "203.0.113.10",
+                "country_code": "US",
+                "ip_type": "residential",
+            },
+            generation=4,
+        )
+    )
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(worker_api, "_verify_api_key", lambda _request: None)
+    monkeypatch.setattr(
+        worker_api.orchestrator,
+        "assert_fresh_earnapp_runtime",
+        MagicMock(side_effect=RuntimeError("runtime state already exists")),
+        raising=False,
+    )
+    deploy = MagicMock(return_value="must-not-deploy")
+    monkeypatch.setattr(worker_api.orchestrator, "deploy_raw", deploy)
+    remove = MagicMock()
+    monkeypatch.setattr(worker_api.orchestrator, "remove_earnapp_service", remove)
+
+    with pytest.raises(HTTPException) as exc:
+        await worker_api.api_deploy_earnapp_docker_node(
+            _request("/api/earnapp/docker-nodes/earnapp-ubuntu-reference-1/deploy"),
+            "earnapp-ubuntu-reference-1",
+            spec,
+        )
+
+    assert exc.value.status_code == 409
+    deploy.assert_not_called()
+    remove.assert_not_called()
+
+
+def test_fresh_ubuntu_runtime_guard_rejects_existing_container_or_named_volume():
+    slug = "earnapp-ubuntu-reference-1"
+    volume = f"{slug}-data"
+
+    client_with_container = MagicMock()
+    container = MagicMock()
+    container.labels = {
+        orchestrator.LABEL_MANAGED: "true",
+        orchestrator.LABEL_SERVICE: slug,
+        "cashpilot.provider": "earnapp",
+    }
+    client_with_container.containers.get.return_value = container
+    with pytest.raises(RuntimeError, match="runtime state already exists"):
+        orchestrator.assert_fresh_earnapp_runtime(
+            slug,
+            {volume: {"bind": "/etc/earnapp", "mode": "rw"}},
+            client=client_with_container,
+        )
+
+    client_with_volume = MagicMock()
+    client_with_volume.containers.get.side_effect = orchestrator.NotFound("missing container")
+    client_with_volume.containers.list.return_value = []
+    client_with_volume.volumes.get.return_value = MagicMock()
+    with pytest.raises(RuntimeError, match="runtime state already exists"):
+        orchestrator.assert_fresh_earnapp_runtime(
+            slug,
+            {volume: {"bind": "/etc/earnapp", "mode": "rw"}},
+            client=client_with_volume,
+        )
+
+
+@pytest.mark.asyncio
+async def test_database_binds_generated_uuid_only_to_the_exact_blank_assignment(tmp_path, monkeypatch):
+    monkeypatch.setattr(database, "DB_DIR", tmp_path)
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "cashpilot.db")
+    await database.init_db()
+    worker_id = await database.upsert_worker("worker-reference", "Reference worker", "http://worker")
+    account_id = await database.upsert_earnapp_account(
+        profile_key="profile-reference",
+        account_name="reference@example.com",
+        email="reference@example.com",
+        auth_method="google",
+        credentials={"cookies": {"oauth-refresh-token": "oauth", "xsrf-token": "xsrf"}},
+        credential_keys=["oauth-refresh-token", "xsrf-token"],
+        token_expires_at=None,
+        cookie_expires_at=None,
+    )
+    db = await database._get_db()
+    try:
+        await db.execute(
+            """
+            INSERT INTO proxy_endpoints
+                (endpoint, host, port, protocol, status, exit_ip, ip_type, country_code)
+            VALUES ('proxy-reference.example:1080', 'proxy-reference.example', 1080, 'socks5',
+                    'alive', '203.0.113.20', 'residential', 'US')
+            """
+        )
+        proxy_id = int((await (await db.execute("SELECT id FROM proxy_endpoints")).fetchone())["id"])
+        await db.execute(
+            """
+            INSERT INTO earnapp_logical_nodes
+                (logical_node_id, account_id, platform, state, generation, assigned_worker_id,
+                 last_worker_id, device_id, current_proxy_id, preferred_proxy_id)
+            VALUES (?, ?, 'ubuntu', 'ACTIVE', 4, ?, ?, '', ?, ?)
+            """,
+            ("earnapp-ubuntu-reference-1", account_id, worker_id, worker_id, proxy_id, proxy_id),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+    device_id = "sdk-node-" + "c" * 32
+    bound = await database.bind_earnapp_generated_device_id(
+        "earnapp-ubuntu-reference-1",
+        worker_id,
+        generation=4,
+        proxy_id=proxy_id,
+        device_id=device_id,
+    )
+    replay = await database.bind_earnapp_generated_device_id(
+        "earnapp-ubuntu-reference-1",
+        worker_id,
+        generation=4,
+        proxy_id=proxy_id,
+        device_id=device_id,
+    )
+    stale = await database.bind_earnapp_generated_device_id(
+        "earnapp-ubuntu-reference-1",
+        worker_id,
+        generation=5,
+        proxy_id=proxy_id,
+        device_id="sdk-node-" + "d" * 32,
+    )
+
+    assert bound and bound["device_id"] == device_id
+    assert replay and replay["device_id"] == device_id
+    assert stale is None
 
 
 def test_ios_runtime_spec_is_account_scoped_hardened_and_uses_the_persisted_profile():
@@ -2534,14 +2859,26 @@ async def test_platform_canary_uses_matching_transport_and_persists_redacted_sta
         else {},
         identity_asset_id=f"earnapp-{platform}-canary",
     )
+    generated_device_id = "sdk-node-" + "9" * 32
     deploy = AsyncMock(
-        return_value={"instance_id": "lxd-node"} if platform == "ubuntu" else {"container_id": "ios-node"}
+        return_value={"container_id": "ubuntu-node", "device_id": generated_device_id}
+        if platform == "ubuntu"
+        else {"container_id": "ios-node"}
     )
     save = AsyncMock()
+    bind_generated = AsyncMock(
+        return_value={
+            "logical_node_id": prepared.logical_node_id,
+            "device_id": generated_device_id,
+            "generation": prepared.generation,
+            "current_proxy_id": 12,
+        }
+    )
     monkeypatch.setattr(database, "get_provider_instance", AsyncMock(return_value=None))
     monkeypatch.setattr(database, "get_earnapp_logical_node", AsyncMock(return_value=None))
     monkeypatch.setattr(database, "assign_earnapp_account", AsyncMock())
     monkeypatch.setattr(earnapp_deploy, "prepare_node", AsyncMock(return_value=prepared))
+    monkeypatch.setattr(database, "bind_earnapp_generated_device_id", bind_generated, raising=False)
     monkeypatch.setattr(database, "save_provider_instance", save)
 
     result = await earnapp_canary.deploy_platform_canary(
@@ -2561,14 +2898,22 @@ async def test_platform_canary_uses_matching_transport_and_persists_redacted_sta
         assert transport["image"] == earnapp_runtime.UBUNTU_RUNTIME_IMAGE
         assert transport["runtime_backend"] == "docker"
         assert transport["runtime_contract"]["platform"] == "linux"
-        assert transport["env"]["EARNAPP_DEVICE_ID"] == prepared.device_id
+        assert "EARNAPP_DEVICE_ID" not in transport["env"]
     persisted = save.await_args.kwargs["spec"]
     assert "proxy-secret" not in json.dumps(persisted, sort_keys=True)
     if platform == "ubuntu":
         assert persisted["runtime_backend"] == "docker"
     assert save.await_args.kwargs["proxy_id"] == 12
     assert save.await_args.kwargs["status"] == "running"
-    assert result["device_id"] == prepared.device_id
+    assert result["device_id"] == (generated_device_id if platform == "ubuntu" else prepared.device_id)
+    if platform == "ubuntu":
+        bind_generated.assert_awaited_once_with(
+            prepared.logical_node_id,
+            3,
+            generation=4,
+            proxy_id=12,
+            device_id=generated_device_id,
+        )
 
 
 @pytest.mark.asyncio
@@ -2623,6 +2968,159 @@ async def test_failed_ubuntu_canary_cleanup_is_cas_scoped_to_its_own_node(monkey
         generation=5,
         proxy_id=14,
         reason="EARNAPP_CANARY_DEPLOY_FAILED",
+    )
+
+
+@pytest.mark.asyncio
+async def test_ubuntu_canary_bind_conflict_cleans_with_the_worker_generated_uuid(monkeypatch):
+    node_id = "earnapp-ubuntu-bind-conflict"
+    generated = "sdk-node-" + "6" * 32
+    prepared = earnapp_deploy.PreparedEarnAppNode.from_plan(
+        earnapp_deploy.EarnAppNodePlan(3, "ipv4-001", node_id),
+        platform="ubuntu",
+        account_id=7,
+        device_id="",
+        generation=5,
+        proxy={
+            "proxy_id": 14,
+            "host": "proxy.example",
+            "port": 1080,
+            "protocol": "socks5",
+            "exit_ip": "203.0.113.14",
+            "country_code": "US",
+            "ip_type": "residential",
+        },
+    )
+    remove = AsyncMock(return_value={"status": "removed"})
+    rollback = AsyncMock(return_value=True)
+    monkeypatch.setattr(database, "get_provider_instance", AsyncMock(return_value=None))
+    monkeypatch.setattr(database, "get_earnapp_logical_node", AsyncMock(return_value=None))
+    monkeypatch.setattr(database, "assign_earnapp_account", AsyncMock())
+    monkeypatch.setattr(earnapp_deploy, "prepare_node", AsyncMock(return_value=prepared))
+    monkeypatch.setattr(database, "bind_earnapp_generated_device_id", AsyncMock(return_value=None), raising=False)
+    monkeypatch.setattr(database, "rollback_earnapp_canary_binding", rollback)
+
+    with pytest.raises(RuntimeError, match="assignment conflict"):
+        await earnapp_canary.deploy_platform_canary(
+            node_id,
+            3,
+            platform="ubuntu",
+            worker_deploy=AsyncMock(return_value={"container_id": "ubuntu-container", "device_id": generated}),
+            worker_remove=remove,
+        )
+
+    remove.assert_awaited_once_with(3, node_id, 5, generated)
+    rollback.assert_awaited_once_with(
+        node_id,
+        3,
+        generation=5,
+        proxy_id=14,
+        reason="EARNAPP_CANARY_BIND_FAILED",
+    )
+
+
+@pytest.mark.asyncio
+async def test_ubuntu_canary_bind_exception_cleans_valid_runtime_and_rolls_back(monkeypatch):
+    node_id = "earnapp-ubuntu-bind-error"
+    generated = "sdk-node-" + "7" * 32
+    prepared = earnapp_deploy.PreparedEarnAppNode.from_plan(
+        earnapp_deploy.EarnAppNodePlan(3, "ipv4-001", node_id),
+        platform="ubuntu",
+        account_id=7,
+        device_id="",
+        generation=6,
+        proxy={
+            "proxy_id": 15,
+            "host": "proxy.example",
+            "port": 1080,
+            "protocol": "socks5",
+            "exit_ip": "203.0.113.15",
+            "country_code": "US",
+            "ip_type": "residential",
+        },
+    )
+    remove = AsyncMock(return_value={"status": "removed"})
+    rollback = AsyncMock(return_value=True)
+    monkeypatch.setattr(database, "get_provider_instance", AsyncMock(return_value=None))
+    monkeypatch.setattr(database, "get_earnapp_logical_node", AsyncMock(return_value=None))
+    monkeypatch.setattr(database, "assign_earnapp_account", AsyncMock())
+    monkeypatch.setattr(earnapp_deploy, "prepare_node", AsyncMock(return_value=prepared))
+    monkeypatch.setattr(
+        database,
+        "bind_earnapp_generated_device_id",
+        AsyncMock(side_effect=ValueError("database bind failed")),
+        raising=False,
+    )
+    monkeypatch.setattr(database, "rollback_earnapp_canary_binding", rollback)
+
+    with pytest.raises(ValueError, match="database bind failed"):
+        await earnapp_canary.deploy_platform_canary(
+            node_id,
+            3,
+            platform="ubuntu",
+            worker_deploy=AsyncMock(return_value={"container_id": "ubuntu-container", "device_id": generated}),
+            worker_remove=remove,
+        )
+
+    remove.assert_awaited_once_with(3, node_id, 6, generated)
+    rollback.assert_awaited_once_with(
+        node_id,
+        3,
+        generation=6,
+        proxy_id=15,
+        reason="EARNAPP_CANARY_BIND_FAILED",
+    )
+
+
+@pytest.mark.asyncio
+async def test_ubuntu_canary_bind_exception_does_not_delete_with_invalid_runtime_uuid(monkeypatch):
+    node_id = "earnapp-ubuntu-bind-invalid"
+    prepared = earnapp_deploy.PreparedEarnAppNode.from_plan(
+        earnapp_deploy.EarnAppNodePlan(3, "ipv4-001", node_id),
+        platform="ubuntu",
+        account_id=7,
+        device_id="",
+        generation=7,
+        proxy={
+            "proxy_id": 16,
+            "host": "proxy.example",
+            "port": 1080,
+            "protocol": "socks5",
+            "exit_ip": "203.0.113.16",
+            "country_code": "US",
+            "ip_type": "residential",
+        },
+    )
+    remove = AsyncMock()
+    rollback = AsyncMock(return_value=True)
+    monkeypatch.setattr(database, "get_provider_instance", AsyncMock(return_value=None))
+    monkeypatch.setattr(database, "get_earnapp_logical_node", AsyncMock(return_value=None))
+    monkeypatch.setattr(database, "assign_earnapp_account", AsyncMock())
+    monkeypatch.setattr(earnapp_deploy, "prepare_node", AsyncMock(return_value=prepared))
+    monkeypatch.setattr(
+        database,
+        "bind_earnapp_generated_device_id",
+        AsyncMock(side_effect=ValueError("invalid device identity")),
+        raising=False,
+    )
+    monkeypatch.setattr(database, "rollback_earnapp_canary_binding", rollback)
+
+    with pytest.raises(ValueError, match="invalid device identity"):
+        await earnapp_canary.deploy_platform_canary(
+            node_id,
+            3,
+            platform="ubuntu",
+            worker_deploy=AsyncMock(return_value={"container_id": "ubuntu-container", "device_id": "not-a-uuid"}),
+            worker_remove=remove,
+        )
+
+    remove.assert_not_awaited()
+    rollback.assert_awaited_once_with(
+        node_id,
+        3,
+        generation=7,
+        proxy_id=16,
+        reason="EARNAPP_CANARY_BIND_FAILED",
     )
 
 

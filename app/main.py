@@ -4329,6 +4329,20 @@ async def _deploy_earnapp_nodes(worker_id: int, *, config: Mapping[str, Any] | N
     async def docker_deploy(target_worker_id: int, node_id: str, spec: dict[str, Any]) -> dict[str, Any]:
         return await _proxy_worker_earnapp_docker_deploy(target_worker_id, node_id, spec)
 
+    async def docker_remove(
+        target_worker_id: int,
+        node_id: str,
+        generation: int,
+        device_id: str,
+    ) -> dict[str, Any]:
+        return await _proxy_to_worker(
+            target_worker_id,
+            "DELETE",
+            f"/api/earnapp/docker-nodes/{node_id}",
+            json={"generation": int(generation), "device_id": str(device_id)},
+            timeout=180,
+        )
+
     lock = _EARNAPP_DEPLOY_LOCKS.setdefault(int(worker_id), asyncio.Lock())
     if int(worker_id) in _EARNAPP_DEPLOY_ACTIVE:
         return {"deployed": [], "verified": [], "skipped": [], "pending": [], "failed": []}
@@ -4339,6 +4353,7 @@ async def _deploy_earnapp_nodes(worker_id: int, *, config: Mapping[str, Any] | N
                 int(worker_id),
                 slots,
                 docker_deploy=docker_deploy,
+                docker_remove=docker_remove,
                 lxd_deploy=None,
                 lxd_settings=limits,
             )

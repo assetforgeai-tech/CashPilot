@@ -80,31 +80,13 @@ def render_dockerfile(manifest: Mapping[str, object], *, platform: str = "macos"
         raise ValueError("unsupported EarnApp image platform")
     manifest_hash = hashlib.sha256(_manifest_bytes(manifest)).hexdigest()
     if selected == "ubuntu":
-        return f"""FROM ubuntu:22.04
-
-ENV DEBIAN_FRONTEND=noninteractive
-
-RUN apt-get update \\
-    && apt-get install -y --no-install-recommends ca-certificates curl dbus iproute2 iptables procps python3 redsocks \\
-    && rm -rf /var/lib/apt/lists/*
-
-COPY earnapp-linux /usr/bin/earnapp
-COPY earnapp-host /usr/local/bin/earnapp-host
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-COPY runtime-manifest.json /opt/cashpilot/runtime-manifest.json
-
-RUN chmod 0755 /usr/bin/earnapp /usr/local/bin/earnapp-host /usr/local/bin/entrypoint.sh \\
-    && bash -n /usr/local/bin/entrypoint.sh \\
-    && rm -f /.dockerenv
+        return f"""FROM {earnapp_runtime.UBUNTU_REFERENCE_IMAGE_PIN}
 
 LABEL com.cashpilot.earnapp.runtime={earnapp_runtime.UBUNTU_RUNTIME_HOST} \\
       com.cashpilot.earnapp.platform={earnapp_runtime.UBUNTU_PLATFORM} \\
       com.cashpilot.earnapp.appid={earnapp_runtime.UBUNTU_APPID} \\
       com.cashpilot.earnapp.device-prefix={earnapp_runtime.UBUNTU_DEVICE_PREFIX} \\
       com.cashpilot.earnapp.assets-sha256={manifest_hash}
-
-VOLUME ["/etc/earnapp"]
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 """
     if selected == "ios":
         binary_source = "earnapp-bootstrap"

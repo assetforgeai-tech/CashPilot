@@ -5050,6 +5050,75 @@ async def bind_earnapp_node_runtime(
             await db.close()
 
 
+async def reserve_earnapp_node_runtime(
+    logical_node_id: str,
+    worker_id: int,
+    *,
+    device_id: str = "",
+    proxy_id: int,
+) -> dict[str, Any]:
+    """Reserve an Ubuntu assignment without inventing its runtime UUID."""
+    return await bind_earnapp_node_runtime(
+        logical_node_id,
+        worker_id,
+        device_id=str(device_id or ""),
+        proxy_id=proxy_id,
+    )
+
+
+async def bind_earnapp_generated_device_id(
+    logical_node_id: str,
+    worker_id: int,
+    *,
+    generation: int,
+    proxy_id: int,
+    device_id: str,
+) -> dict[str, Any] | None:
+    """CAS-bind the UUID generated inside one fresh Ubuntu runtime volume."""
+    node_id = str(logical_node_id or "").strip()
+    generated = str(device_id or "").strip()
+    if earnapp_policy.is_protected_logical_node(node_id):
+        raise ValueError("protected EarnApp node is inspection-only")
+    if not re.fullmatch(r"sdk-node-[0-9a-f]{32}", generated):
+        raise ValueError("EarnApp generated device identity is invalid")
+    async with _earnapp_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            collision = await (
+                await db.execute(
+                    "SELECT logical_node_id FROM earnapp_logical_nodes WHERE device_id = ? AND logical_node_id != ?",
+                    (generated, node_id),
+                )
+            ).fetchone()
+            if collision:
+                await db.rollback()
+                raise ValueError("EarnApp generated device identity is already assigned")
+            updated = await db.execute(
+                """
+                UPDATE earnapp_logical_nodes
+                SET device_id = ?, updated_at = datetime('now')
+                WHERE logical_node_id = ? AND platform = 'ubuntu'
+                  AND assigned_worker_id = ? AND generation = ? AND current_proxy_id = ?
+                  AND (device_id = '' OR device_id = ?)
+                """,
+                (generated, node_id, int(worker_id), int(generation), int(proxy_id), generated),
+            )
+            if int(updated.rowcount or 0) != 1:
+                await db.rollback()
+                return None
+            row = await (
+                await db.execute("SELECT * FROM earnapp_logical_nodes WHERE logical_node_id = ?", (node_id,))
+            ).fetchone()
+            await db.commit()
+            return dict(row) if row else None
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
+
+
 async def rollback_earnapp_canary_binding(
     logical_node_id: str,
     worker_id: int,

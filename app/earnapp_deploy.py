@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import secrets
 from collections.abc import Awaitable, Callable, Mapping
 from contextlib import suppress
@@ -17,6 +18,12 @@ DockerDeploy = Callable[[int, str, dict[str, Any]], Awaitable[dict[str, Any]]]
 LxdDeploy = Callable[[int, str, dict[str, Any]], Awaitable[dict[str, Any]]]
 VerifyNode = Callable[[str], Awaitable[Mapping[str, Any]]]
 PlatformChoice = Callable[[], str]
+
+
+def _valid_ubuntu_device_id(value: Any) -> str:
+    """Return a runtime UUID only when it is safe to use for CAS cleanup."""
+    device_id = str(value or "").strip()
+    return device_id if re.fullmatch(r"sdk-node-[0-9a-f]{32}", device_id) else ""
 
 
 @dataclass(frozen=True)
@@ -38,6 +45,7 @@ class PreparedEarnAppNode:
     proxy: dict[str, Any] = field(repr=False)
     identity: dict[str, Any] = field(default_factory=dict, repr=False)
     identity_asset_id: str = ""
+    created_binding: bool = False
 
     @classmethod
     def from_plan(
@@ -51,6 +59,7 @@ class PreparedEarnAppNode:
         generation: int = 1,
         identity: Mapping[str, Any] | None = None,
         identity_asset_id: str = "",
+        created_binding: bool = False,
     ) -> PreparedEarnAppNode:
         return cls(
             worker_id=plan.worker_id,
@@ -63,6 +72,7 @@ class PreparedEarnAppNode:
             proxy=dict(proxy),
             identity=dict(identity or {}),
             identity_asset_id=identity_asset_id or plan.logical_node_id,
+            created_binding=bool(created_binding),
         )
 
 
@@ -187,6 +197,11 @@ async def prepare_node(
         node = await database.get_earnapp_logical_node(plan.logical_node_id)
     if not node:
         raise RuntimeError("EarnApp logical node could not be created")
+    # Refresh the authoritative row before deciding whether this is a fresh
+    # runtime or a retry of an identity already persisted by the reference image.
+    current = await database.get_earnapp_logical_node(plan.logical_node_id)
+    if not current:
+        raise RuntimeError("EarnApp logical node disappeared during preparation")
     existing_platform = str(node.get("platform") or "").strip().lower()
     if existing_platform == "unknown":
         existing_platform = ""
@@ -255,20 +270,35 @@ async def prepare_node(
     if existing_platform and existing_platform != platform:
         raise RuntimeError("EarnApp logical node platform is immutable")
     await database.assign_earnapp_account(plan.logical_node_id, platform=platform)
-    profile = await earnapp_identity.ensure_identity_profile(plan.logical_node_id, platform)
     if platform == "ubuntu":
-        identity = earnapp_identity.validate_and_decode_ubuntu_profile(profile["value"])
+        # The reference image owns UUID creation. On retries, retain the UUID
+        # already bound to this logical node as an expectation; fresh nodes use
+        # an empty value so the image creates it in its own volume.
+        persisted_device_id = str(current.get("device_id") or "").strip()
+        if persisted_device_id and not re.fullmatch(r"sdk-node-[0-9a-f]{32}", persisted_device_id):
+            raise RuntimeError("EarnApp Ubuntu persisted device identity is invalid")
+        profile = {"device_id": persisted_device_id, "asset_id": "", "value": ""}
+        identity: dict[str, Any] = {}
     else:
+        profile = await earnapp_identity.ensure_identity_profile(plan.logical_node_id, platform)
         identity = earnapp_identity.decrypt_profile(profile["value"], platform)
-    current = await database.get_earnapp_logical_node(plan.logical_node_id)
     generation = int(current.get("generation") or 1) if current else 1
+    created_binding = not bool(int(current.get("current_proxy_id") or 0)) if current else True
     if not current or int(current.get("current_proxy_id") or 0) != int(lease["proxy_id"]):
-        await database.bind_earnapp_node_runtime(
-            plan.logical_node_id,
-            plan.worker_id,
-            device_id=profile["device_id"],
-            proxy_id=int(lease["proxy_id"]),
-        )
+        if platform == "ubuntu":
+            await database.reserve_earnapp_node_runtime(
+                plan.logical_node_id,
+                plan.worker_id,
+                device_id=profile["device_id"],
+                proxy_id=int(lease["proxy_id"]),
+            )
+        else:
+            await database.bind_earnapp_node_runtime(
+                plan.logical_node_id,
+                plan.worker_id,
+                device_id=profile["device_id"],
+                proxy_id=int(lease["proxy_id"]),
+            )
         current = await database.get_earnapp_logical_node(plan.logical_node_id)
         generation = int(current.get("generation") or generation) if current else generation
     return PreparedEarnAppNode.from_plan(
@@ -280,6 +310,7 @@ async def prepare_node(
         generation=generation,
         identity=identity,
         identity_asset_id=profile["asset_id"],
+        created_binding=created_binding,
     )
 
 
@@ -349,6 +380,7 @@ async def deploy_worker_nodes_sequentially(
     public_ipv4_slots: int | list[Any] | tuple[Any, ...],
     *,
     docker_deploy: DockerDeploy,
+    docker_remove: Callable[[int, str, int, str], Awaitable[Any]] | None = None,
     lxd_deploy: LxdDeploy | None = None,
     lxd_settings: Mapping[str, Any] | None = None,
     vn_platform_choice: PlatformChoice | None = None,
@@ -366,6 +398,7 @@ async def deploy_worker_nodes_sequentially(
     }
     for plan in await target_worker_plans(worker_id, public_ipv4_slots):
         prepared_node: PreparedEarnAppNode | None = None
+        runtime_device_id = ""
         required = str(required_platform or "").strip().lower()
         if required:
             logical_node = await database.get_earnapp_logical_node(plan.logical_node_id)
@@ -422,14 +455,67 @@ async def deploy_worker_nodes_sequentially(
             spec = _transport_spec(node, lxd_settings=lxd_settings)
             result = await docker_deploy(worker_id, node.logical_node_id, spec)
             container_id = str(result.get("container_id") or result.get("instance_id") or "remote")
+            runtime_device_id = node.device_id
+            if node.platform == "ubuntu":
+                runtime_device_id = str(result.get("device_id") or "").strip()
+                try:
+                    bound = await database.bind_earnapp_generated_device_id(
+                        node.logical_node_id,
+                        worker_id,
+                        generation=node.generation,
+                        proxy_id=int(node.proxy["proxy_id"]),
+                        device_id=runtime_device_id,
+                    )
+                except Exception:
+                    valid_runtime_id = _valid_ubuntu_device_id(runtime_device_id)
+                    if docker_remove and valid_runtime_id:
+                        with suppress(Exception):
+                            await docker_remove(
+                                int(worker_id),
+                                node.logical_node_id,
+                                int(node.generation),
+                                valid_runtime_id,
+                            )
+                    if node.created_binding:
+                        with suppress(Exception):
+                            await database.rollback_earnapp_canary_binding(
+                                node.logical_node_id,
+                                worker_id,
+                                generation=node.generation,
+                                proxy_id=int(node.proxy["proxy_id"]),
+                                reason="EARNAPP_DEPLOY_BIND_FAILED",
+                            )
+                    raise
+                if not bound:
+                    valid_runtime_id = _valid_ubuntu_device_id(runtime_device_id)
+                    if docker_remove and valid_runtime_id:
+                        with suppress(Exception):
+                            await docker_remove(
+                                int(worker_id),
+                                node.logical_node_id,
+                                int(node.generation),
+                                valid_runtime_id,
+                            )
+                    if node.created_binding:
+                        with suppress(Exception):
+                            await database.rollback_earnapp_canary_binding(
+                                node.logical_node_id,
+                                worker_id,
+                                generation=node.generation,
+                                proxy_id=int(node.proxy["proxy_id"]),
+                                reason="EARNAPP_DEPLOY_BIND_FAILED",
+                            )
+                    raise RuntimeError("EarnApp Ubuntu generated identity assignment conflict")
             try:
                 evidence = earnapp_runtime.redacted_evidence(dict(await verifier(node.logical_node_id)))
             except Exception as exc:  # noqa: BLE001 - verification is retryable
                 logger.warning("EarnApp node %s verification unavailable: %s", node.logical_node_id, type(exc).__name__)
                 evidence = {"status": "pending", "error_kind": "verification_unavailable"}
             persisted_spec = _persisted_spec(spec)
+            if runtime_device_id:
+                persisted_spec["device_id"] = runtime_device_id
             persisted_spec["earnapp_device_verification"] = evidence
-            verified = _verification_ok(evidence, device_id=node.device_id)
+            verified = _verification_ok(evidence, device_id=runtime_device_id)
             await database.save_provider_instance(
                 "earnapp",
                 node.logical_node_id,
@@ -458,7 +544,7 @@ async def deploy_worker_nodes_sequentially(
                 with_context.update(
                     platform=prepared_node.platform,
                     account_id=prepared_node.account_id,
-                    device_id=prepared_node.device_id,
+                    device_id=runtime_device_id or prepared_node.device_id,
                     generation=prepared_node.generation,
                     proxy_id=proxy_id or 0,
                 )
