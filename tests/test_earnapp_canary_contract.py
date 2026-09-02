@@ -2647,7 +2647,7 @@ async def test_canary_verification_masks_blocked_proxy_and_rotates_inside_ui_pro
         health="unhealthy",
         reason="dashboard_ip_block",
     )
-    rotate.assert_awaited_once_with(node_id, 3, generation=4, expected_proxy_id=12)
+    rotate.assert_awaited_once_with(node_id, 3, generation=4, expected_proxy_id=12, dashboard_blocked=True)
 
 
 @pytest.mark.asyncio
