@@ -572,6 +572,63 @@ async def test_pending_rotation_reconciliation_refuses_database_egress_mismatch(
     finalize.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+async def test_pending_rotation_reconciliation_uses_persisted_backend_when_heartbeat_omits_it(monkeypatch):
+    node_id = "earnapp-ubuntu-reconcile-backend"
+    device_id = "sdk-node-" + "f" * 32
+    instance = {
+        "logical_node_id": node_id,
+        "generation": 8,
+        "device_id": device_id,
+        "proxy_id": 51,
+        "pending_binding_version": "rotation_pending_888888",
+        "pending_proxy_id": 52,
+        "pending_expected_egress_ip": "198.51.100.52",
+        "pending_observed_egress_ip": "198.51.100.52",
+        # A legacy/just-restarted worker may omit the backend field.
+    }
+    monkeypatch.setattr(
+        database,
+        "get_earnapp_logical_node",
+        AsyncMock(
+            return_value={
+                "logical_node_id": node_id,
+                "assigned_worker_id": 11,
+                "generation": 8,
+                "device_id": device_id,
+                "current_proxy_id": 52,
+                "preferred_proxy_id": 51,
+                "expected_egress_ip": "198.51.100.52",
+                "state": "ACTIVE",
+                "platform": "ubuntu",
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        database,
+        "get_provider_instance",
+        AsyncMock(return_value={"instance_id": node_id, "runtime_backend": ""}),
+    )
+    monkeypatch.setattr(database, "get_provider_instance_spec", AsyncMock(return_value={"runtime_backend": "docker"}))
+
+    def mutation_block(_node_id, spec):
+        return object() if spec.get("runtime_backend") == "lxd" else None
+
+    monkeypatch.setattr(main.provider_runtime, "mutation_block", mutation_block)
+    finalize = AsyncMock(
+        return_value={
+            "ok": True,
+            "binding_version": "rotation_pending_888888",
+            "action": "confirmed",
+            "proxy_id": 52,
+        }
+    )
+    monkeypatch.setattr(main, "_proxy_to_worker", finalize)
+
+    assert await main._reconcile_earnapp_pending_proxy_binding(instance, 11)
+    assert finalize.await_args.kwargs["json"]["commit"] is True
+
+
 def test_server_heartbeat_keeps_pending_binding_inspection_only_when_runtime_disabled():
     async def run():
         body = main.WorkerHeartbeat(
@@ -1803,6 +1860,241 @@ async def test_unhealthy_node_rotation_commits_only_after_matching_worker_ack(mo
         expected_proxy_id=11,
         new_proxy_id=22,
         binding_version=calls[0][1]["binding_version"],
+    )
+
+
+@pytest.mark.asyncio
+async def test_dashboard_blocked_rotation_survives_heartbeat_health_race(monkeypatch):
+    """An authenticated dashboard block must not be erased by a healthy local probe."""
+    monkeypatch.setattr(main.provider_runtime, "mutation_block", lambda *_args, **_kwargs: None)
+    node_id = "earnapp-macos-dashboard-blocked-race"
+    device_id = "sdk-mac-" + "r" * 32
+    candidate = {
+        "proxy_id": 23,
+        "host": "candidate.example",
+        "port": 1080,
+        "protocol": "http",
+        "exit_ip": "198.51.100.23",
+        "country_code": "VN",
+        "ip_type": "residential",
+    }
+
+    async def worker_call(_worker_id, _method, path, *, json=None, **_kwargs):
+        if path.endswith("/proxy/apply"):
+            return {
+                "ok": True,
+                "binding_version": json["binding_version"],
+                "proxy_id": candidate["proxy_id"],
+                "observed_egress_ip": candidate["exit_ip"],
+            }
+        return {
+            "ok": True,
+            "binding_version": json["binding_version"],
+            "action": "confirmed",
+            "proxy_id": candidate["proxy_id"],
+        }
+
+    monkeypatch.setattr(
+        database,
+        "get_earnapp_logical_node",
+        AsyncMock(
+            return_value={
+                "logical_node_id": node_id,
+                "assigned_worker_id": 11,
+                "generation": 4,
+                "current_proxy_id": 11,
+                # The worker heartbeat may have overwritten the dashboard
+                # failure before the rotation task acquired its lock.
+                "proxy_health": "healthy",
+                "state": "ACTIVE",
+                "device_id": device_id,
+                "platform": "macos",
+            }
+        ),
+    )
+    monkeypatch.setattr(database, "get_provider_instance", AsyncMock(return_value=None))
+    monkeypatch.setattr(database, "find_available_earnapp_proxy_for_node", AsyncMock(return_value=candidate))
+    monkeypatch.setattr(database, "reserve_earnapp_proxy_candidate", AsyncMock(return_value=candidate))
+    monkeypatch.setattr(database, "release_earnapp_proxy_reservation", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        database,
+        "commit_earnapp_proxy_rotation",
+        AsyncMock(return_value={"logical_node_id": node_id, "current_proxy_id": candidate["proxy_id"]}),
+    )
+    monkeypatch.setattr(main, "_proxy_to_worker", worker_call)
+
+    assert not await main._rotate_unhealthy_earnapp_node(
+        node_id,
+        11,
+        generation=4,
+        expected_proxy_id=11,
+    )
+    assert await main._rotate_unhealthy_earnapp_node(
+        node_id,
+        11,
+        generation=4,
+        expected_proxy_id=11,
+        dashboard_blocked=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_unhealthy_ubuntu_rotation_uses_persisted_docker_backend_for_policy(monkeypatch):
+    node_id = "earnapp-ubuntu-reference"
+    device_id = "sdk-node-" + "e" * 32
+    candidate = {
+        "proxy_id": 22,
+        "host": "candidate.example",
+        "port": 1080,
+        "protocol": "socks5",
+        "exit_ip": "198.51.100.22",
+        "country_code": "US",
+        "ip_type": "residential",
+    }
+    policy_specs: list[dict[str, object]] = []
+
+    def mutation_block(_node_id, spec):
+        policy_specs.append(dict(spec))
+        return None if spec.get("runtime_backend") == "docker" else object()
+
+    async def worker_call(_worker_id, _method, path, *, json=None, **_kwargs):
+        if path.endswith("/proxy/apply"):
+            return {
+                "ok": True,
+                "binding_version": json["binding_version"],
+                "proxy_id": 22,
+                "observed_egress_ip": "198.51.100.22",
+            }
+        return {
+            "ok": True,
+            "binding_version": json["binding_version"],
+            "action": "confirmed",
+            "proxy_id": 22,
+        }
+
+    monkeypatch.setattr(main.provider_runtime, "mutation_block", mutation_block)
+    monkeypatch.setattr(
+        database,
+        "get_earnapp_logical_node",
+        AsyncMock(
+            return_value={
+                "logical_node_id": node_id,
+                "assigned_worker_id": 11,
+                "generation": 4,
+                "current_proxy_id": 11,
+                "proxy_health": "unhealthy",
+                "state": "ACTIVE",
+                "device_id": device_id,
+                "platform": "ubuntu",
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        database,
+        "get_provider_instance",
+        AsyncMock(
+            return_value={
+                "instance_id": node_id,
+                "worker_id": 11,
+                "mode": "proxy",
+                "container_id": "old-main-id",
+                "sidecar_id": "",
+                "proxy_id": 11,
+                "status": "verification_pending",
+            }
+        ),
+    )
+    monkeypatch.setattr(database, "get_provider_instance_spec", AsyncMock(return_value={"runtime_backend": "docker"}))
+    monkeypatch.setattr(database, "find_available_earnapp_proxy_for_node", AsyncMock(return_value=candidate))
+    monkeypatch.setattr(database, "reserve_earnapp_proxy_candidate", AsyncMock(return_value=candidate))
+    monkeypatch.setattr(database, "release_earnapp_proxy_reservation", AsyncMock(return_value=True))
+    monkeypatch.setattr(database, "commit_earnapp_proxy_rotation", AsyncMock(return_value={"current_proxy_id": 22}))
+    monkeypatch.setattr(database, "save_provider_instance", AsyncMock())
+    monkeypatch.setattr(main, "_proxy_to_worker", worker_call)
+
+    assert await main._rotate_unhealthy_earnapp_node(node_id, 11, generation=4, expected_proxy_id=11)
+    assert policy_specs == [{"provider_slug": "earnapp", "platform": "ubuntu", "runtime_backend": "docker"}]
+
+
+@pytest.mark.asyncio
+async def test_non_ubuntu_rotation_keeps_existing_instance_metadata_when_ack_omits_container(monkeypatch):
+    monkeypatch.setattr(main.provider_runtime, "mutation_block", lambda *_args, **_kwargs: None)
+    node_id = "earnapp-proxy-w11-ipv4-metadata"
+    device_id = "sdk-mac-" + "a" * 32
+    candidate = {
+        "proxy_id": 22,
+        "host": "candidate.example",
+        "port": 1080,
+        "protocol": "socks5",
+        "exit_ip": "198.51.100.22",
+        "country_code": "VN",
+        "ip_type": "residential",
+    }
+
+    async def worker_call(_worker_id, _method, path, *, json=None, **_kwargs):
+        if path.endswith("/proxy/apply"):
+            return {
+                "ok": True,
+                "binding_version": json["binding_version"],
+                "proxy_id": 22,
+                "observed_egress_ip": "198.51.100.22",
+            }
+        return {
+            "ok": True,
+            "binding_version": json["binding_version"],
+            "action": "confirmed",
+            "proxy_id": 22,
+        }
+
+    monkeypatch.setattr(
+        database,
+        "get_earnapp_logical_node",
+        AsyncMock(
+            return_value={
+                "logical_node_id": node_id,
+                "assigned_worker_id": 11,
+                "generation": 4,
+                "current_proxy_id": 11,
+                "proxy_health": "unhealthy",
+                "state": "ACTIVE",
+                "device_id": device_id,
+                "platform": "macos",
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        database,
+        "get_provider_instance",
+        AsyncMock(
+            return_value={
+                "instance_id": node_id,
+                "worker_id": 11,
+                "mode": "proxy",
+                "container_id": "old-main-id",
+                "sidecar_id": "old-sidecar-id",
+                "proxy_id": 11,
+                "status": "verification_pending",
+            }
+        ),
+    )
+    monkeypatch.setattr(database, "find_available_earnapp_proxy_for_node", AsyncMock(return_value=candidate))
+    monkeypatch.setattr(database, "reserve_earnapp_proxy_candidate", AsyncMock(return_value=candidate))
+    monkeypatch.setattr(database, "release_earnapp_proxy_reservation", AsyncMock(return_value=True))
+    monkeypatch.setattr(database, "commit_earnapp_proxy_rotation", AsyncMock(return_value={"current_proxy_id": 22}))
+    save = AsyncMock()
+    monkeypatch.setattr(database, "save_provider_instance", save)
+    monkeypatch.setattr(main, "_proxy_to_worker", worker_call)
+
+    assert await main._rotate_unhealthy_earnapp_node(node_id, 11, generation=4, expected_proxy_id=11)
+    save.assert_awaited_once_with(
+        "earnapp",
+        node_id,
+        worker_id=11,
+        mode="proxy",
+        container_id="old-main-id",
+        sidecar_id="old-sidecar-id",
+        proxy_id=22,
+        status="verification_pending",
     )
 
 

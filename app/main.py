@@ -2591,6 +2591,7 @@ async def _verify_earnapp_canary_with_proxy_rotation(
             worker_id,
             generation=generation,
             expected_proxy_id=proxy_id,
+            dashboard_blocked=True,
         ):
             return verification
         await asyncio.sleep(earnapp_canary.LINK_VERIFY_MIN_INTERVAL_SECONDS)
@@ -4032,7 +4033,28 @@ async def _reconcile_earnapp_pending_proxy_binding(instance: Mapping[str, Any], 
         if not node:
             return False
         platform = str(node.get("platform") or "").strip().lower()
-        backend = str(instance.get("runtime_backend") or ("lxd" if platform == "ubuntu" else "docker")).strip().lower()
+        if platform == "ubuntu":
+            # The persisted deployment spec is authoritative; heartbeat state
+            # may be stale or omit the backend after a worker restart.
+            try:
+                persisted_instance = await database.get_provider_instance(node_id)
+                persisted_spec = await database.get_provider_instance_spec(node_id) if persisted_instance else None
+            except Exception as exc:  # noqa: BLE001 - fail closed for Ubuntu reconciliation
+                logger.warning(
+                    "Could not inspect EarnApp runtime backend for pending binding %s: %s",
+                    node_id,
+                    type(exc).__name__,
+                )
+                return False
+            backend = str((persisted_spec or {}).get("runtime_backend") or "").strip().lower()
+            if persisted_instance and backend not in {"docker", "lxd"}:
+                return False
+            if not persisted_instance:
+                # Pre-migration Ubuntu assignments without a persisted spec
+                # used the legacy LXD helper.
+                backend = "lxd"
+        else:
+            backend = str(instance.get("runtime_backend") or "docker").strip().lower()
         if provider_runtime.mutation_block(
             node_id,
             {"provider_slug": "earnapp", "platform": platform, "runtime_backend": backend},
@@ -4097,8 +4119,16 @@ async def _rotate_unhealthy_earnapp_node(
     *,
     generation: int,
     expected_proxy_id: int,
+    dashboard_blocked: bool = False,
 ) -> bool:
-    """Rotate one explicit EarnApp failure; the protected live canary is inspect-only."""
+    """Rotate one explicit EarnApp failure; protected nodes remain inspect-only.
+
+    ``dashboard_blocked`` is only set by the authenticated canary verifier.  A
+    local heartbeat can race with that verifier and overwrite ``unhealthy`` with
+    ``healthy`` even though EarnApp has rejected the egress; the explicit flag
+    preserves that authoritative dashboard evidence without weakening ordinary
+    heartbeat-triggered rotation.
+    """
     node_id = str(logical_node_id or "").strip()
     if not node_id or earnapp_policy.is_protected_logical_node(node_id):
         return False
@@ -4110,7 +4140,29 @@ async def _rotate_unhealthy_earnapp_node(
         if not node:
             return False
         platform = str(node.get("platform") or "").strip().lower()
-        backend = "lxd" if platform == "ubuntu" else "docker"
+        backend = "docker"
+        instance = None
+        try:
+            instance = await database.get_provider_instance(node_id)
+            if platform == "ubuntu":
+                spec = await database.get_provider_instance_spec(node_id) if instance else None
+            else:
+                spec = None
+        except Exception as exc:  # noqa: BLE001 - fail closed for Ubuntu, preserve legacy non-Ubuntu behavior
+            if platform != "ubuntu":
+                instance = None
+                spec = None
+            else:
+                logger.warning("EarnApp runtime backend lookup failed for %s: %s", node_id, type(exc).__name__)
+                return False
+        if platform == "ubuntu":
+            if instance:
+                backend = str((spec or {}).get("runtime_backend") or "").strip().lower()
+                if backend not in {"docker", "lxd"}:
+                    return False
+            else:
+                # Pre-migration Ubuntu assignments without an instance record used LXD.
+                backend = "lxd"
         if provider_runtime.mutation_block(
             node_id,
             {"provider_slug": "earnapp", "platform": platform, "runtime_backend": backend},
@@ -4123,15 +4175,16 @@ async def _rotate_unhealthy_earnapp_node(
             str(node.get("state") or "").upper(),
             str(node.get("proxy_health") or "").lower(),
         )
-        expected = (
+        expected_prefix = (
             int(worker_id),
             int(generation),
             int(expected_proxy_id),
             "ACTIVE",
-            "unhealthy",
         )
         device_id = str(node.get("device_id") or "")
-        if current != expected or not device_id:
+        if current[:4] != expected_prefix or not device_id:
+            return False
+        if not dashboard_blocked and current[4] != "unhealthy":
             return False
         candidate = await database.find_available_earnapp_proxy_for_node(
             node_id,
@@ -4261,9 +4314,7 @@ async def _rotate_unhealthy_earnapp_node(
                 )
             return False
 
-        provider_instance = None
-        with contextlib.suppress(Exception):
-            provider_instance = await database.get_provider_instance(node_id)
+        provider_instance = instance
         recreated_container_id = str((ack or {}).get("container_id") or "").strip()
         if not recreated_container_id and provider_instance:
             recreated_container_id = str(provider_instance.get("container_id") or "").strip()

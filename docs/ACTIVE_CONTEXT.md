@@ -24,6 +24,24 @@
   leases. Each node must prove exact UUID, account link, online state and
   positive usage before closeout.
 
+## EarnApp Ubuntu reference canary restart verification (2026-09-02)
+
+- Canary `earnapp-ubuntu-reference-20260902-01` was restarted in place only;
+  no node, account, lease, proxy, volume or provider outside this canary was
+  changed. The container stayed `running` with restart count `0`.
+- Restart persistence proof: the container ID, named volume
+  `earnapp-ubuntu-reference-20260902-01-data`, and generated device UUID
+  `sdk-node-335d82dec8be4388bf643267bc32846c` were unchanged. The worker-side
+  egress remained `207.228.29.7` (US residential), matching proxy lease `13801`.
+- Fresh authenticated collector evidence after restart reports the exact UUID
+  present, `online=true`, `banned=false`, `country_code=US`,
+  `billing=qualified_uptime`, `usage_current=845068`, `usage_total=845068`,
+  `usage_points=7`, and `earned_total=0.003`. Persisted workload state remains
+  `workload_verified`; no new link or identity operation was needed.
+- This closes the bounded restart-persistence check for the reference canary.
+  It does not authorize the planned 3+3+3 production canary rollout; that
+  remains a separate, explicitly approved operation.
+
 Updated: 2026-08-31 (EarnApp Ubuntu canary 5 TLS/transport investigation)
 
 ## EarnApp Ubuntu Docker migration (unreleased, 2026-08-31)
