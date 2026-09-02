@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import importlib
 import importlib.util
 import json
+import threading
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -371,6 +373,307 @@ def test_worker_docker_proxy_apply_persists_recreated_main_container_id(tmp_path
     saved = json.loads(Path(tmp_path, "earnapp-nodes", "earnapp-macos-1.json").read_text(encoding="utf-8"))
     assert result["container_id"] == "docker-recreated-main-id"
     assert saved["container_id"] == "docker-recreated-main-id"
+
+
+@pytest.mark.asyncio
+async def test_worker_serializes_same_node_proxy_apply_before_runtime_recreate(tmp_path, monkeypatch):
+    """Only one request may recreate a logical node's named Docker container at a time."""
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    device_id = str(_identity()["device_id"])
+    node_id = "earnapp-macos-serialized"
+    worker_api._save_earnapp_state(
+        node_id,
+        {
+            "logical_node_id": node_id,
+            "generation": 1,
+            "device_id": device_id,
+            "platform": "macos",
+            "runtime_backend": "docker",
+            "proxy_id": 12,
+            "expected_egress_ip": "203.0.113.10",
+        },
+    )
+    first_apply_started = threading.Event()
+    release_first_apply = threading.Event()
+    apply_calls = 0
+
+    def apply_binding(*_args, **_kwargs):
+        nonlocal apply_calls
+        apply_calls += 1
+        if apply_calls == 1:
+            first_apply_started.set()
+            release_first_apply.wait(timeout=5)
+        return {
+            "applied_instances": [node_id],
+            "recreated_main_ids": {node_id: f"docker-recreated-{apply_calls}"},
+        }
+
+    def runtime_snapshot(*_args, **_kwargs):
+        state = worker_api._earnapp_node_state(node_id)
+        return (
+            {
+                "binding_version": str(state.get("pending_binding_version") or ""),
+                "previous_present": False,
+                "candidate_present": False,
+            },
+            {
+                "running": True,
+                "observed_egress_ip": str(state.get("pending_expected_egress_ip") or "203.0.113.13"),
+                "probe_ok": True,
+            },
+        )
+
+    first_spec = worker_api.EarnAppProxyApplySpec(
+        generation=1,
+        device_id=device_id,
+        expected_proxy_id=12,
+        binding_version="rotation_serial_111111",
+        proxy={**_proxy(), "proxy_id": 13, "exit_ip": "203.0.113.13"},
+    )
+    second_spec = worker_api.EarnAppProxyApplySpec(
+        generation=1,
+        device_id=device_id,
+        expected_proxy_id=12,
+        binding_version="rotation_serial_222222",
+        proxy={**_proxy(), "proxy_id": 14, "exit_ip": "203.0.113.14"},
+    )
+
+    worker_api._EARNAPP_NODE_MUTATION_LOCKS.clear()
+    try:
+        with (
+            patch.object(worker_api, "_verify_api_key"),
+            patch.object(worker_api.orchestrator, "apply_proxy_binding_batch", side_effect=apply_binding),
+            patch.object(
+                worker_api.orchestrator, "probe_service_egress", return_value={"observed_egress_ip": "203.0.113.13"}
+            ),
+            patch.object(worker_api, "_earnapp_proxy_runtime_snapshot", side_effect=runtime_snapshot),
+        ):
+            first = asyncio.create_task(worker_api.api_apply_earnapp_node_proxy(_request(), node_id, first_spec))
+            assert await asyncio.to_thread(first_apply_started.wait, 5)
+            second = asyncio.create_task(worker_api.api_apply_earnapp_node_proxy(_request(), node_id, second_spec))
+            await asyncio.sleep(0)
+            assert apply_calls == 1
+            release_first_apply.set()
+            assert (await first)["binding_version"] == first_spec.binding_version
+            with pytest.raises(HTTPException, match="binding already in progress"):
+                await second
+    finally:
+        worker_api._EARNAPP_NODE_MUTATION_LOCKS.clear()
+
+
+@pytest.mark.asyncio
+async def test_worker_serializes_apply_with_finalize_for_same_node(tmp_path, monkeypatch):
+    """A finalize request cannot mutate Docker while its apply is still running."""
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    device_id = str(_identity()["device_id"])
+    node_id = "earnapp-macos-apply-finalize"
+    binding_version = "rotation_serial_333333"
+    new_proxy_id = 13
+    new_egress_ip = "203.0.113.13"
+    worker_api._save_earnapp_state(
+        node_id,
+        {
+            "logical_node_id": node_id,
+            "generation": 1,
+            "device_id": device_id,
+            "platform": "macos",
+            "runtime_backend": "docker",
+            "proxy_id": 12,
+            "expected_egress_ip": "203.0.113.10",
+        },
+    )
+    first_apply_started = threading.Event()
+    release_first_apply = threading.Event()
+    finalize_calls = 0
+
+    def apply_binding(*_args, **_kwargs):
+        first_apply_started.set()
+        release_first_apply.wait(timeout=5)
+        return {
+            "applied_instances": [node_id],
+            "recreated_main_ids": {node_id: "docker-recreated-apply-finalize"},
+        }
+
+    def finalize_binding(*_args, **_kwargs):
+        nonlocal finalize_calls
+        finalize_calls += 1
+        return {"finalized_instances": [node_id], "action": "confirmed"}
+
+    def runtime_snapshot(*_args, **_kwargs):
+        return (
+            {
+                "binding_version": binding_version,
+                "previous_present": False,
+                "candidate_present": False,
+            },
+            {
+                "running": True,
+                "observed_egress_ip": new_egress_ip,
+                "probe_ok": True,
+            },
+        )
+
+    apply_spec = worker_api.EarnAppProxyApplySpec(
+        generation=1,
+        device_id=device_id,
+        expected_proxy_id=12,
+        binding_version=binding_version,
+        proxy={**_proxy(), "proxy_id": new_proxy_id, "exit_ip": new_egress_ip},
+    )
+    finalize_spec = worker_api.EarnAppProxyFinalizeSpec(
+        generation=1,
+        device_id=device_id,
+        expected_proxy_id=12,
+        new_proxy_id=new_proxy_id,
+        binding_version=binding_version,
+        expected_egress_ip=new_egress_ip,
+        observed_egress_ip=new_egress_ip,
+        commit=True,
+    )
+
+    worker_api._EARNAPP_NODE_MUTATION_LOCKS.clear()
+    try:
+        with (
+            patch.object(worker_api, "_verify_api_key"),
+            patch.object(worker_api.orchestrator, "apply_proxy_binding_batch", side_effect=apply_binding),
+            patch.object(
+                worker_api.orchestrator, "probe_service_egress", return_value={"observed_egress_ip": new_egress_ip}
+            ),
+            patch.object(worker_api.orchestrator, "finalize_proxy_binding_batch", side_effect=finalize_binding),
+            patch.object(worker_api, "_earnapp_proxy_runtime_snapshot", side_effect=runtime_snapshot),
+        ):
+            apply_task = asyncio.create_task(worker_api.api_apply_earnapp_node_proxy(_request(), node_id, apply_spec))
+            assert await asyncio.to_thread(first_apply_started.wait, 5)
+            finalize_task = asyncio.create_task(
+                worker_api.api_finalize_earnapp_node_proxy(_request(), node_id, finalize_spec)
+            )
+            await asyncio.sleep(0)
+            assert finalize_calls == 0
+            release_first_apply.set()
+            assert (await apply_task)["binding_version"] == binding_version
+            assert (await finalize_task)["action"] == "confirmed"
+            assert finalize_calls == 1
+    finally:
+        worker_api._EARNAPP_NODE_MUTATION_LOCKS.clear()
+
+
+@pytest.mark.asyncio
+async def test_worker_runtime_refresh_skips_same_node_proxy_apply(tmp_path, monkeypatch):
+    """Heartbeat evidence must not delay or overwrite an in-flight proxy mutation."""
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    device_id = str(_identity()["device_id"])
+    node_id = "earnapp-macos-refresh-serialized"
+    new_egress_ip = "203.0.113.13"
+    worker_api._save_earnapp_state(
+        node_id,
+        {
+            "logical_node_id": node_id,
+            "generation": 1,
+            "device_id": device_id,
+            "platform": "macos",
+            "runtime_backend": "docker",
+            "proxy_id": 12,
+            "expected_egress_ip": "203.0.113.10",
+        },
+    )
+    first_apply_started = threading.Event()
+    release_first_apply = threading.Event()
+    probe_calls = 0
+
+    def apply_binding(*_args, **_kwargs):
+        first_apply_started.set()
+        release_first_apply.wait(timeout=5)
+        return {
+            "applied_instances": [node_id],
+            "recreated_main_ids": {node_id: "docker-recreated-refresh"},
+        }
+
+    def probe(*_args, **_kwargs):
+        nonlocal probe_calls
+        probe_calls += 1
+        return {"running": True, "observed_egress_ip": new_egress_ip, "probe_ok": True}
+
+    apply_spec = worker_api.EarnAppProxyApplySpec(
+        generation=1,
+        device_id=device_id,
+        expected_proxy_id=12,
+        binding_version="rotation_serial_444444",
+        proxy={**_proxy(), "proxy_id": 13, "exit_ip": new_egress_ip},
+    )
+
+    worker_api._EARNAPP_NODE_MUTATION_LOCKS.clear()
+    try:
+        with (
+            patch.object(worker_api, "_verify_api_key"),
+            patch.object(worker_api.orchestrator, "apply_proxy_binding_batch", side_effect=apply_binding),
+            patch.object(worker_api.orchestrator, "probe_service_egress", side_effect=probe),
+        ):
+            apply_task = asyncio.create_task(worker_api.api_apply_earnapp_node_proxy(_request(), node_id, apply_spec))
+            assert await asyncio.to_thread(first_apply_started.wait, 5)
+            refresh_task = asyncio.create_task(worker_api._refresh_earnapp_runtime_evidence())
+            await asyncio.sleep(0)
+            assert probe_calls == 0
+            await asyncio.wait_for(refresh_task, timeout=0.5)
+            pending = worker_api._earnapp_node_state(node_id)
+            assert pending["pending_binding_version"] == apply_spec.binding_version
+            assert pending["pending_proxy_id"] == 13
+            assert pending["pending_expected_egress_ip"] == new_egress_ip
+            release_first_apply.set()
+            assert (await apply_task)["binding_version"] == apply_spec.binding_version
+
+        saved = worker_api._earnapp_node_state(node_id)
+        assert saved["pending_binding_version"] == apply_spec.binding_version
+        assert saved["pending_proxy_id"] == 13
+        assert saved["pending_expected_egress_ip"] == new_egress_ip
+        assert saved["pending_observed_egress_ip"] == new_egress_ip
+        assert saved["container_id"] == "docker-recreated-refresh"
+    finally:
+        worker_api._EARNAPP_NODE_MUTATION_LOCKS.clear()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("route_name", "spec"),
+    [
+        (
+            "api_apply_earnapp_node_proxy",
+            worker_api.EarnAppProxyApplySpec(
+                generation=1,
+                device_id=str(_identity()["device_id"]),
+                expected_proxy_id=12,
+                binding_version="rotation_serial_555555",
+                proxy={**_proxy(), "proxy_id": 13, "exit_ip": "203.0.113.13"},
+            ),
+        ),
+        (
+            "api_finalize_earnapp_node_proxy",
+            worker_api.EarnAppProxyFinalizeSpec(
+                generation=1,
+                device_id=str(_identity()["device_id"]),
+                expected_proxy_id=12,
+                new_proxy_id=13,
+                binding_version="rotation_serial_555555",
+                expected_egress_ip="203.0.113.13",
+                observed_egress_ip="203.0.113.13",
+                commit=True,
+            ),
+        ),
+    ],
+)
+async def test_worker_rejects_proxy_mutation_before_allocating_node_lock(monkeypatch, route_name, spec):
+    node_id = "earnapp-macos-unauthorized"
+    worker_api._EARNAPP_NODE_MUTATION_LOCKS.clear()
+    monkeypatch.setattr(
+        worker_api,
+        "_verify_api_key",
+        Mock(side_effect=HTTPException(status_code=401, detail="Unauthorized")),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await getattr(worker_api, route_name)(_request(), node_id, spec)
+
+    assert exc.value.status_code == 401
+    assert worker_api._EARNAPP_NODE_MUTATION_LOCKS == {}
 
 
 def test_worker_proxy_finalize_is_idempotent_after_confirm_response_is_lost(tmp_path, monkeypatch):

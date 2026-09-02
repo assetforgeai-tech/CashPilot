@@ -30,6 +30,7 @@ import uuid
 from collections.abc import Mapping
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from functools import wraps
 from html import escape as _esc
 from pathlib import Path
 from typing import Any
@@ -132,6 +133,29 @@ _AUTH_FAILURE_DISCARD_AFTER = 10
 # shared /fleet volume) and use for all subsequent auth in both directions. Until
 # enrollment we authenticate with the shared bootstrap key.
 _WORKER_KEY_FILE = Path(os.getenv("CASHPILOT_DATA_DIR", "/data")) / ".worker_key"
+
+# A proxy rotation recreates a Docker container under its stable name. The
+# server serializes most rotations, but a retry can still arrive while the
+# first request is mutating Docker. Keep the worker-side boundary as well so
+# later requests observe the pending CAS marker instead of racing the name.
+_EARNAPP_NODE_MUTATION_LOCKS: dict[tuple[int, str], asyncio.Lock] = {}
+
+
+def _earnapp_node_mutation_lock(logical_node_id: str) -> asyncio.Lock:
+    loop_key = (id(asyncio.get_running_loop()), str(logical_node_id or "").strip())
+    return _EARNAPP_NODE_MUTATION_LOCKS.setdefault(loop_key, asyncio.Lock())
+
+
+def _serialize_earnapp_node_mutation(handler):
+    """Serialize apply/finalize calls for one logical node on this worker."""
+
+    @wraps(handler)
+    async def guarded(request, logical_node_id, *args, **kwargs):
+        _verify_api_key(request)
+        async with _earnapp_node_mutation_lock(logical_node_id):
+            return await handler(request, logical_node_id, *args, **kwargs)
+
+    return guarded
 
 
 def _load_worker_key() -> str | None:
@@ -600,57 +624,68 @@ async def _refresh_earnapp_runtime_evidence() -> None:
         logical_node_id = str(state.get("logical_node_id") or "").strip()
         if not logical_node_id:
             return
-        backend = str(state.get("runtime_backend") or "docker").strip().lower()
-        generation = int(state.get("generation") or 0)
-        device_id = str(state.get("device_id") or "")
-        try:
-            async with semaphore:
-                if backend == "lxd":
-                    evidence = await asyncio.wait_for(
-                        asyncio.to_thread(
-                            earnapp_lxd_runtime.node_evidence,
-                            logical_node_id,
-                            generation=generation,
-                            device_id=device_id,
-                        ),
-                        timeout=20,
-                    )
-                else:
-                    evidence = await asyncio.wait_for(
-                        asyncio.to_thread(orchestrator.probe_service_egress, logical_node_id),
-                        timeout=20,
-                    )
-        except (TimeoutError, ValueError, RuntimeError, OSError):
-            # An inspection failure is inconclusive; never rotate on it alone.
-            state["proxy_health"] = "unknown"
-            state["proxy_health_reason"] = "runtime_probe_unavailable"
-            _save_earnapp_state(logical_node_id, state)
+        mutation_lock = _earnapp_node_mutation_lock(logical_node_id)
+        if mutation_lock.locked():
             return
+        async with mutation_lock:
+            # The inventory snapshot can predate a proxy apply that was already
+            # waiting on Docker. Reload after acquiring the same node lock so a
+            # heartbeat cannot erase its journal or recreated container ID.
+            try:
+                state = _earnapp_node_state(logical_node_id)
+            except HTTPException:
+                return
+            backend = str(state.get("runtime_backend") or "docker").strip().lower()
+            generation = int(state.get("generation") or 0)
+            device_id = str(state.get("device_id") or "")
+            try:
+                async with semaphore:
+                    if backend == "lxd":
+                        evidence = await asyncio.wait_for(
+                            asyncio.to_thread(
+                                earnapp_lxd_runtime.node_evidence,
+                                logical_node_id,
+                                generation=generation,
+                                device_id=device_id,
+                            ),
+                            timeout=20,
+                        )
+                    else:
+                        evidence = await asyncio.wait_for(
+                            asyncio.to_thread(orchestrator.probe_service_egress, logical_node_id),
+                            timeout=20,
+                        )
+            except (TimeoutError, ValueError, RuntimeError, OSError):
+                # An inspection failure is inconclusive; never rotate on it alone.
+                state["proxy_health"] = "unknown"
+                state["proxy_health_reason"] = "runtime_probe_unavailable"
+                _save_earnapp_state(logical_node_id, state)
+                return
 
-        evidence = earnapp_runtime.redacted_evidence(evidence)
-        running = evidence.get("running") is True
-        observed = str(evidence.get("observed_egress_ip") or "").strip()
-        expected = str(state.get("expected_egress_ip") or "").strip()
-        probe_ok = evidence.get("probe_ok") is True
-        pending_version = str(state.get("pending_binding_version") or "").strip()
-        if pending_version:
-            pending_expected = str(state.get("pending_expected_egress_ip") or "").strip()
-            state["pending_observed_egress_ip"] = observed if probe_ok and observed == pending_expected else ""
-            health, reason = "unknown", "proxy_binding_pending"
-        elif not running:
-            health, reason = "unknown", "runtime_stopped"
-        elif not probe_ok or not observed:
-            health, reason = "unhealthy", "proxy_probe_failed"
-        elif expected and observed != expected:
-            health, reason = "unhealthy", "egress_mismatch"
-        else:
-            health, reason = "healthy", ""
-        state["runtime_status"] = "running" if running else "stopped"
-        state["observed_egress_ip"] = observed
-        state["proxy_health"] = health
-        state["proxy_health_reason"] = reason
-        state["evidence"] = evidence
-        _save_earnapp_state(logical_node_id, state)
+            evidence = earnapp_runtime.redacted_evidence(evidence)
+            running = evidence.get("running") is True
+            observed = str(evidence.get("observed_egress_ip") or "").strip()
+            expected = str(state.get("expected_egress_ip") or "").strip()
+            probe_ok = evidence.get("probe_ok") is True
+            pending_version = str(state.get("pending_binding_version") or "").strip()
+            if pending_version:
+                pending_expected = str(state.get("pending_expected_egress_ip") or "").strip()
+                state["pending_observed_egress_ip"] = observed if probe_ok and observed == pending_expected else ""
+                health, reason = "unknown", "proxy_binding_pending"
+            elif not running:
+                health, reason = "unknown", "runtime_stopped"
+            elif not probe_ok or not observed:
+                health, reason = "unhealthy", "proxy_probe_failed"
+            elif expected and observed != expected:
+                health, reason = "unhealthy", "egress_mismatch"
+            else:
+                health, reason = "healthy", ""
+            state["runtime_status"] = "running" if running else "stopped"
+            state["observed_egress_ip"] = observed
+            state["proxy_health"] = health
+            state["proxy_health_reason"] = reason
+            state["evidence"] = evidence
+            _save_earnapp_state(logical_node_id, state)
 
     await asyncio.gather(*(refresh(state) for state in states))
 
@@ -2753,11 +2788,11 @@ async def api_deploy_earnapp_docker_node(request: Request, slug: str, spec: Depl
 
 
 @app.post("/api/earnapp/nodes/{logical_node_id}/proxy/apply")
+@_serialize_earnapp_node_mutation
 async def api_apply_earnapp_node_proxy(
     request: Request, logical_node_id: str, spec: EarnAppProxyApplySpec
 ) -> dict[str, Any]:
     """Stage one candidate proxy and require egress evidence before server CAS."""
-    _verify_api_key(request)
     state = _earnapp_node_state(logical_node_id)
     _reject_earnapp_runtime_mutation(
         logical_node_id,
@@ -2884,11 +2919,11 @@ async def api_apply_earnapp_node_proxy(
 
 
 @app.post("/api/earnapp/nodes/{logical_node_id}/proxy/finalize")
+@_serialize_earnapp_node_mutation
 async def api_finalize_earnapp_node_proxy(
     request: Request, logical_node_id: str, spec: EarnAppProxyFinalizeSpec
 ) -> dict[str, Any]:
     """Confirm or roll back the exact proxy binding staged for one node."""
-    _verify_api_key(request)
     state = _earnapp_node_state(logical_node_id)
     _reject_earnapp_runtime_mutation(
         logical_node_id,

@@ -80,6 +80,10 @@ def _reset_shared_db():
         proxies._proxy_rotation_locks.clear()
         proxies._proxy_recheck_jobs.clear()
         proxies._proxy_recheck_tasks.clear()
+    with contextlib.suppress(Exception):
+        from app import worker_api
+
+        worker_api._EARNAPP_NODE_MUTATION_LOCKS.clear()
     if not conns:
         return
 
