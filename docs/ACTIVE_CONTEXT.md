@@ -1,5 +1,38 @@
 # CashPilot Active Context
 
+## EarnApp Ubuntu reference closeout and worker mutation gate (2026-09-03)
+
+- Fresh authenticated account evidence confirms all three Ubuntu reference
+  nodes are now `online=true`, country `US`, and have positive qualified usage
+  and earnings. Reference 01 reports `35,318,878 ms` / `$0.136`; reference 02
+  reports `25,188,345 ms` / `$0.097`; reference 03 reports `16,328,630 ms` /
+  `$0.062`.
+- Reference 03 is `earnapp-ubuntu-reference-20260902-03`, device
+  `sdk-node-371434603e7548fdb10c18935829181c`, proxy `13848`, and egress
+  `130.180.232.61`. Its container remains running with restart count `0`, the
+  named volume `earnapp-ubuntu-reference-20260902-03-data`, the same UUID, and
+  matching observed egress. References 01/02/03 are successful protected
+  baseline and must not be recreated, rotated, or used for further canaries.
+- The production iOS trio is also online with positive usage. For the production
+  MacOS trio, node 01 is online with positive usage, node 02's assigned UUID is
+  absent from the authenticated account snapshot, and node 03 is present but
+  offline with zero usage. Only MacOS 02/03 remain eligible for bounded repair;
+  all nodes with positive usage are inspection-only.
+- The MacOS 02 failure was traced to overlapping proxy-recreate requests. Docker
+  returned `409 Conflict` for the stable container name after a heartbeat loaded
+  pre-mutation state and later overwrote the new pending binding/container ID,
+  allowing another request to enter the same recreate path.
+- The source fix serializes EarnApp proxy apply/finalize per logical node,
+  authenticates before allocating a lock, and makes heartbeat evidence refresh
+  skip or reload around the same mutation boundary. Regression coverage includes
+  concurrent apply, apply/finalize ordering, heartbeat stale-write protection,
+  and unauthenticated request rejection.
+- Fresh source verification on Python 3.14: focused EarnApp/proxy suite
+  `439 passed`; full suite `2473 passed, 8 skipped`; Ruff check, changed-file
+  format check, compileall, and `git diff --check` pass. This is still a source
+  gate: the live worker remains on `v1.17.10`; no worker redeploy or live MacOS
+  mutation has occurred for this fix yet.
+
 ## EarnApp multi-platform production hardening (2026-09-01, source gate)
 
 - Current branch `feat/earnapp-production-hardening` adds the approved geo
