@@ -68,6 +68,12 @@ def _mutable_node_id(value: str) -> str:
     return node_id
 
 
+def _valid_ubuntu_device_id(value: Any) -> str:
+    """Return a runtime UUID only when it is safe to use for CAS cleanup."""
+    device_id = str(value or "").strip()
+    return device_id if re.fullmatch(r"sdk-node-[0-9a-f]{32}", device_id) else ""
+
+
 def _identity_value(node_id: str) -> dict[str, Any]:
     digest = hashlib.sha256(node_id.encode("utf-8")).hexdigest()
     suffix = digest[:12]
@@ -247,8 +253,8 @@ def build_runtime_spec(
         )
     if selected == "ubuntu":
         node_id = _safe_node_id(logical_node_id)
-        device = str(device_id or "")
-        if not re.fullmatch(r"sdk-node-[0-9a-f]{32}", device):
+        device = str(device_id or "").strip()
+        if device and not re.fullmatch(r"sdk-node-[0-9a-f]{32}", device):
             raise ValueError("EarnApp Ubuntu device_id must use the sdk-node- prefix")
         proxy_meta = _redacted_proxy(proxy)
         expected_egress_ip = str(proxy_meta.get("exit_ip") or "").strip()
@@ -273,7 +279,6 @@ def build_runtime_spec(
             "env": {
                 "EARNAPP_PLATFORM": earnapp_runtime.UBUNTU_PLATFORM,
                 "EARNAPP_APPID": earnapp_runtime.UBUNTU_APPID,
-                "EARNAPP_DEVICE_ID": device,
                 "EARNAPP_LOGICAL_NODE_ID": node_id,
                 "EARNAPP_EXPECTED_EGRESS_IP": expected_egress_ip,
                 "NODE_TLS_REJECT_UNAUTHORIZED": "0",
@@ -288,7 +293,6 @@ def build_runtime_spec(
                 "cashpilot.instance_mode": "proxy",
                 "cashpilot.earnapp.logical_node_id": node_id,
                 "cashpilot.earnapp.account_id": str(int(account_id)),
-                "cashpilot.earnapp.device_id": device,
                 "cashpilot.earnapp.platform": earnapp_runtime.UBUNTU_PLATFORM,
                 "cashpilot.earnapp.runtime_contract": earnapp_runtime.UBUNTU_APPID,
                 "cashpilot.earnapp.generation": str(max(1, int(generation))),
@@ -301,15 +305,7 @@ def build_runtime_spec(
             "egress_udp": "none",
             "proxy": proxy_meta,
             "resources": {"mem_limit": "1g", "oom_score_adj": 200},
-            "runtime_assets": [
-                {
-                    "provider": "earnapp",
-                    "asset_kind": "ubuntu_identity_profile",
-                    "asset_id": identity_asset_id or node_id,
-                    "target": "/run/cashpilot/identity.json",
-                    "encoding": "text",
-                }
-            ],
+            "runtime_assets": [],
             "runtime_contract": {
                 "platform": earnapp_runtime.UBUNTU_PLATFORM,
                 "appid": earnapp_runtime.UBUNTU_APPID,
@@ -317,6 +313,8 @@ def build_runtime_spec(
             },
             "account_id": int(account_id),
             "runtime_backend": "docker",
+            "expected_device_id": device,
+            "require_fresh_volume": not bool(device),
         }
     if selected != "ios":
         raise ValueError("Docker EarnApp runtime supports only MacOS, iOS, or Ubuntu")
@@ -600,8 +598,9 @@ async def deploy_platform_canary(
         result = await worker_deploy(int(worker_id), node_id, transport_spec)
     except Exception:
         if created_binding:
-            with contextlib.suppress(Exception):
-                await worker_remove(int(worker_id), node_id, prepared.generation, prepared.device_id)
+            if prepared.device_id:
+                with contextlib.suppress(Exception):
+                    await worker_remove(int(worker_id), node_id, prepared.generation, prepared.device_id)
             with contextlib.suppress(Exception):
                 await database.rollback_earnapp_canary_binding(
                     node_id,
@@ -613,6 +612,50 @@ async def deploy_platform_canary(
         raise
 
     container_id = str(result.get("container_id") or result.get("instance_id") or "remote")
+    runtime_device_id = prepared.device_id
+    if selected == "ubuntu":
+        runtime_device_id = str(result.get("device_id") or "").strip()
+        try:
+            bound = await database.bind_earnapp_generated_device_id(
+                node_id,
+                int(worker_id),
+                generation=prepared.generation,
+                proxy_id=int(prepared.proxy["proxy_id"]),
+                device_id=runtime_device_id,
+            )
+        except Exception:
+            # A bind failure must not leave a fresh runtime orphaned. The
+            # worker-side delete is CAS-scoped, so only pass a valid UUID.
+            valid_runtime_id = _valid_ubuntu_device_id(runtime_device_id)
+            if valid_runtime_id:
+                with contextlib.suppress(Exception):
+                    await worker_remove(int(worker_id), node_id, prepared.generation, valid_runtime_id)
+            if created_binding:
+                with contextlib.suppress(Exception):
+                    await database.rollback_earnapp_canary_binding(
+                        node_id,
+                        int(worker_id),
+                        generation=prepared.generation,
+                        proxy_id=int(prepared.proxy["proxy_id"]),
+                        reason="EARNAPP_CANARY_BIND_FAILED",
+                    )
+            raise
+        if not bound:
+            valid_runtime_id = _valid_ubuntu_device_id(runtime_device_id)
+            if valid_runtime_id:
+                with contextlib.suppress(Exception):
+                    await worker_remove(int(worker_id), node_id, prepared.generation, valid_runtime_id)
+            if created_binding:
+                with contextlib.suppress(Exception):
+                    await database.rollback_earnapp_canary_binding(
+                        node_id,
+                        int(worker_id),
+                        generation=prepared.generation,
+                        proxy_id=int(prepared.proxy["proxy_id"]),
+                        reason="EARNAPP_CANARY_BIND_FAILED",
+                    )
+            raise RuntimeError("EarnApp Ubuntu generated identity assignment conflict")
+        persisted_spec["device_id"] = runtime_device_id
     try:
         await database.save_provider_instance(
             "earnapp",
@@ -625,9 +668,15 @@ async def deploy_platform_canary(
             spec=persisted_spec,
         )
     except Exception:
-        with contextlib.suppress(Exception):
-            await worker_remove(int(worker_id), node_id, prepared.generation, prepared.device_id)
-        if created_binding:
+        cleanup_device_id = (
+            _valid_ubuntu_device_id(runtime_device_id) if selected == "ubuntu" else str(runtime_device_id or "")
+        )
+        if cleanup_device_id:
+            with contextlib.suppress(Exception):
+                await worker_remove(int(worker_id), node_id, prepared.generation, cleanup_device_id)
+        # Once the reference Ubuntu UUID is CAS-bound, retaining that exact
+        # assignment is the only safe way to reuse the preserved identity volume.
+        if created_binding and selected != "ubuntu":
             with contextlib.suppress(Exception):
                 await database.rollback_earnapp_canary_binding(
                     node_id,
@@ -644,7 +693,7 @@ async def deploy_platform_canary(
         "platform": selected,
         "account_id": prepared.account_id,
         "worker_id": int(worker_id),
-        "device_id": prepared.device_id,
+        "device_id": runtime_device_id,
         "proxy_id": int(prepared.proxy["proxy_id"]),
         "generation": prepared.generation,
         "container_id": container_id,

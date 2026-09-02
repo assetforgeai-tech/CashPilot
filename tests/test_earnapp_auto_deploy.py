@@ -181,7 +181,7 @@ def test_failed_assigned_deterministic_node_remains_in_retry_queue(tmp_path):
     asyncio.run(run())
 
 
-def test_prepare_node_derives_platform_from_proxy_country_and_persists_unique_identity(tmp_path):
+def test_prepare_node_derives_platform_and_leaves_fresh_ubuntu_identity_to_the_runtime(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
             await database.init_db()
@@ -207,9 +207,45 @@ def test_prepare_node_derives_platform_from_proxy_country_and_persists_unique_id
             assert second.platform == "ubuntu"
             assert second.proxy["proxy_id"] == us_proxy
             assert first.account_id != second.account_id
-            assert first.device_id != second.device_id
+            assert first.device_id.startswith("sdk-ios-")
+            assert second.device_id == ""
+            assert second.identity == {}
+            assert await database.get_earnapp_identity_profile(second.logical_node_id) is None
             assert (await database.get_earnapp_logical_node(first.logical_node_id))["platform"] == "ios"
-            assert (await database.get_earnapp_logical_node(second.logical_node_id))["platform"] == "ubuntu"
+            ubuntu_node = await database.get_earnapp_logical_node(second.logical_node_id)
+            assert ubuntu_node["platform"] == "ubuntu"
+            assert ubuntu_node["device_id"] == ""
+
+    asyncio.run(run())
+
+
+def test_prepare_node_reuses_the_uuid_already_persisted_for_an_ubuntu_retry(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            await database.init_db()
+            await earnapp_accounts.import_account(_account("profile-a"))
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            proxy_id = await _seed_proxy(provider_id, 1, "US")
+            worker_id = await database.upsert_worker("worker-a", "worker-a", "http://worker-a")
+            plan = earnapp_deploy.plan_worker_nodes(worker_id, 1)[0]
+            generated = "sdk-node-" + "7" * 32
+
+            await database.assign_earnapp_account(plan.logical_node_id, platform="ubuntu")
+            await database.bind_earnapp_node_runtime(
+                plan.logical_node_id,
+                worker_id,
+                device_id=generated,
+                proxy_id=proxy_id,
+            )
+
+            prepared = await earnapp_deploy.prepare_node(plan, required_platform="ubuntu")
+            spec = earnapp_deploy._transport_spec(prepared)
+
+            assert prepared.device_id == generated
+            assert prepared.identity == {}
+            assert spec["expected_device_id"] == generated
+            assert spec["require_fresh_volume"] is False
+            assert "EARNAPP_DEVICE_ID" not in spec["env"]
 
     asyncio.run(run())
 
@@ -517,8 +553,229 @@ async def test_new_deploy_remains_pending_until_authenticated_device_is_online(m
 
 
 @pytest.mark.asyncio
+async def test_sequential_ubuntu_deploy_verifies_the_worker_generated_uuid(monkeypatch):
+    plan = earnapp_deploy.EarnAppNodePlan(3, "ipv4-001", "earnapp-proxy-w3-ipv4-001")
+    prepared = earnapp_deploy.PreparedEarnAppNode.from_plan(
+        plan,
+        platform="ubuntu",
+        account_id=1,
+        device_id="",
+        proxy={"proxy_id": 11, "country_code": "US", "ip_type": "residential", "exit_ip": "203.0.113.11"},
+    )
+    generated = "sdk-node-" + "8" * 32
+    bind_generated = AsyncMock(return_value={"device_id": generated})
+    verify = AsyncMock(
+        return_value={
+            "authenticated": True,
+            "device_present": True,
+            "online": True,
+            "banned": False,
+            "device_id": generated,
+            "workload_state": "workload_verified",
+        }
+    )
+    save = AsyncMock()
+    monkeypatch.setattr(earnapp_deploy, "target_worker_plans", AsyncMock(return_value=[plan]))
+    monkeypatch.setattr(earnapp_deploy, "prepare_node", AsyncMock(return_value=prepared))
+    monkeypatch.setattr(database, "bind_earnapp_generated_device_id", bind_generated, raising=False)
+    monkeypatch.setattr(database, "save_provider_instance", save)
+    monkeypatch.setattr(database, "get_provider_instance", AsyncMock(return_value=None))
+
+    result = await earnapp_deploy.deploy_worker_nodes_sequentially(
+        3,
+        1,
+        docker_deploy=AsyncMock(return_value={"container_id": "ubuntu-container", "device_id": generated}),
+        verify_node=verify,
+    )
+
+    assert result["verified"] == [plan.logical_node_id]
+    bind_generated.assert_awaited_once_with(
+        plan.logical_node_id,
+        3,
+        generation=1,
+        proxy_id=11,
+        device_id=generated,
+    )
+    assert save.await_args.kwargs["spec"]["device_id"] == generated
+
+
+@pytest.mark.asyncio
+async def test_sequential_ubuntu_bind_conflict_removes_only_the_runtime_uuid_returned_by_the_worker(monkeypatch):
+    plan = earnapp_deploy.EarnAppNodePlan(3, "ipv4-001", "earnapp-proxy-w3-ipv4-001")
+    prepared = earnapp_deploy.PreparedEarnAppNode.from_plan(
+        plan,
+        platform="ubuntu",
+        account_id=1,
+        device_id="",
+        proxy={"proxy_id": 11, "country_code": "US", "ip_type": "residential", "exit_ip": "203.0.113.11"},
+        created_binding=True,
+    )
+    generated = "sdk-node-" + "9" * 32
+    remove = AsyncMock(return_value={"status": "removed"})
+    rollback = AsyncMock(return_value=True)
+    save = AsyncMock()
+    monkeypatch.setattr(earnapp_deploy, "target_worker_plans", AsyncMock(return_value=[plan]))
+    monkeypatch.setattr(earnapp_deploy, "prepare_node", AsyncMock(return_value=prepared))
+    monkeypatch.setattr(database, "bind_earnapp_generated_device_id", AsyncMock(return_value=None), raising=False)
+    monkeypatch.setattr(database, "rollback_earnapp_canary_binding", rollback)
+    monkeypatch.setattr(database, "save_provider_instance", save)
+    monkeypatch.setattr(database, "get_provider_instance", AsyncMock(return_value=None))
+
+    result = await earnapp_deploy.deploy_worker_nodes_sequentially(
+        3,
+        1,
+        docker_deploy=AsyncMock(return_value={"container_id": "ubuntu-container", "device_id": generated}),
+        docker_remove=remove,
+        verify_node=AsyncMock(),
+    )
+
+    assert result["failed"] == [plan.logical_node_id]
+    remove.assert_awaited_once_with(3, plan.logical_node_id, 1, generated)
+    rollback.assert_awaited_once_with(
+        plan.logical_node_id,
+        3,
+        generation=1,
+        proxy_id=11,
+        reason="EARNAPP_DEPLOY_BIND_FAILED",
+    )
+    assert save.await_args.kwargs["spec"]["device_id"] == generated
+
+
+@pytest.mark.asyncio
+async def test_sequential_ubuntu_bind_exception_cleans_valid_runtime_and_marks_failure(monkeypatch):
+    plan = earnapp_deploy.EarnAppNodePlan(3, "ipv4-001", "earnapp-proxy-w3-ipv4-001")
+    prepared = earnapp_deploy.PreparedEarnAppNode.from_plan(
+        plan,
+        platform="ubuntu",
+        account_id=1,
+        device_id="",
+        proxy={"proxy_id": 12, "country_code": "US", "ip_type": "residential", "exit_ip": "203.0.113.12"},
+        created_binding=True,
+    )
+    generated = "sdk-node-" + "a" * 32
+    remove = AsyncMock(return_value={"status": "removed"})
+    rollback = AsyncMock(return_value=True)
+    save = AsyncMock()
+    monkeypatch.setattr(earnapp_deploy, "target_worker_plans", AsyncMock(return_value=[plan]))
+    monkeypatch.setattr(earnapp_deploy, "prepare_node", AsyncMock(return_value=prepared))
+    monkeypatch.setattr(database, "get_provider_instance", AsyncMock(return_value=None))
+    monkeypatch.setattr(database, "save_provider_instance", save)
+    monkeypatch.setattr(
+        database,
+        "bind_earnapp_generated_device_id",
+        AsyncMock(side_effect=ValueError("database bind failed")),
+        raising=False,
+    )
+    monkeypatch.setattr(database, "rollback_earnapp_canary_binding", rollback)
+
+    result = await earnapp_deploy.deploy_worker_nodes_sequentially(
+        3,
+        1,
+        docker_deploy=AsyncMock(return_value={"container_id": "ubuntu-container", "device_id": generated}),
+        docker_remove=remove,
+        verify_node=AsyncMock(),
+    )
+
+    assert result["failed"] == [plan.logical_node_id]
+    remove.assert_awaited_once_with(3, plan.logical_node_id, 1, generated)
+    rollback.assert_awaited_once_with(
+        plan.logical_node_id,
+        3,
+        generation=1,
+        proxy_id=12,
+        reason="EARNAPP_DEPLOY_BIND_FAILED",
+    )
+    assert save.await_args.kwargs["spec"]["device_id"] == generated
+
+
+@pytest.mark.asyncio
+async def test_sequential_ubuntu_bind_exception_does_not_delete_invalid_runtime_uuid(monkeypatch):
+    plan = earnapp_deploy.EarnAppNodePlan(3, "ipv4-001", "earnapp-proxy-w3-ipv4-001")
+    prepared = earnapp_deploy.PreparedEarnAppNode.from_plan(
+        plan,
+        platform="ubuntu",
+        account_id=1,
+        device_id="",
+        proxy={"proxy_id": 13, "country_code": "US", "ip_type": "residential", "exit_ip": "203.0.113.13"},
+        created_binding=True,
+    )
+    remove = AsyncMock()
+    rollback = AsyncMock(return_value=True)
+    save = AsyncMock()
+    monkeypatch.setattr(earnapp_deploy, "target_worker_plans", AsyncMock(return_value=[plan]))
+    monkeypatch.setattr(earnapp_deploy, "prepare_node", AsyncMock(return_value=prepared))
+    monkeypatch.setattr(database, "get_provider_instance", AsyncMock(return_value=None))
+    monkeypatch.setattr(database, "save_provider_instance", save)
+    monkeypatch.setattr(
+        database,
+        "bind_earnapp_generated_device_id",
+        AsyncMock(side_effect=ValueError("invalid device identity")),
+        raising=False,
+    )
+    monkeypatch.setattr(database, "rollback_earnapp_canary_binding", rollback)
+
+    result = await earnapp_deploy.deploy_worker_nodes_sequentially(
+        3,
+        1,
+        docker_deploy=AsyncMock(return_value={"container_id": "ubuntu-container", "device_id": "bad"}),
+        docker_remove=remove,
+        verify_node=AsyncMock(),
+    )
+
+    assert result["failed"] == [plan.logical_node_id]
+    remove.assert_not_awaited()
+    rollback.assert_awaited_once_with(
+        plan.logical_node_id,
+        3,
+        generation=1,
+        proxy_id=13,
+        reason="EARNAPP_DEPLOY_BIND_FAILED",
+    )
+
+
+@pytest.mark.asyncio
+async def test_sequential_ubuntu_retry_bind_exception_preserves_existing_assignment(monkeypatch):
+    plan = earnapp_deploy.EarnAppNodePlan(3, "ipv4-001", "earnapp-proxy-w3-ipv4-001")
+    persisted = "sdk-node-" + "b" * 32
+    prepared = earnapp_deploy.PreparedEarnAppNode.from_plan(
+        plan,
+        platform="ubuntu",
+        account_id=1,
+        device_id=persisted,
+        proxy={"proxy_id": 14, "country_code": "US", "ip_type": "residential", "exit_ip": "203.0.113.14"},
+        created_binding=False,
+    )
+    remove = AsyncMock(return_value={"status": "removed"})
+    rollback = AsyncMock()
+    monkeypatch.setattr(earnapp_deploy, "target_worker_plans", AsyncMock(return_value=[plan]))
+    monkeypatch.setattr(earnapp_deploy, "prepare_node", AsyncMock(return_value=prepared))
+    monkeypatch.setattr(database, "get_provider_instance", AsyncMock(return_value=None))
+    monkeypatch.setattr(database, "save_provider_instance", AsyncMock())
+    monkeypatch.setattr(
+        database,
+        "bind_earnapp_generated_device_id",
+        AsyncMock(side_effect=ValueError("database bind failed")),
+        raising=False,
+    )
+    monkeypatch.setattr(database, "rollback_earnapp_canary_binding", rollback)
+
+    result = await earnapp_deploy.deploy_worker_nodes_sequentially(
+        3,
+        1,
+        docker_deploy=AsyncMock(return_value={"container_id": "ubuntu-container", "device_id": persisted}),
+        docker_remove=remove,
+        verify_node=AsyncMock(),
+    )
+
+    assert result["failed"] == [plan.logical_node_id]
+    remove.assert_awaited_once_with(3, plan.logical_node_id, 1, persisted)
+    rollback.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_server_earnapp_lane_dispatches_geo_platform_contract(monkeypatch):
     slots = AsyncMock(return_value=[{"slot_id": "ipv4-001", "route_ready": True}])
+    remove = AsyncMock(return_value={"status": "removed"})
     deploy = AsyncMock(
         return_value={
             "deployed": ["earnapp-proxy-w3-ipv4-001"],
@@ -530,12 +787,22 @@ async def test_server_earnapp_lane_dispatches_geo_platform_contract(monkeypatch)
     )
     monkeypatch.setattr(main, "_worker_public_ip_slots", slots)
     monkeypatch.setattr(main.earnapp_deploy, "deploy_worker_nodes_sequentially", deploy)
+    monkeypatch.setattr(main, "_proxy_to_worker", remove)
 
     result = await main._deploy_earnapp_nodes(3, config={"earnapp_lxd_cpu": "2", "earnapp_lxd_memory_mib": "2048"})
 
     assert result["verified"] == ["earnapp-proxy-w3-ipv4-001"]
     slots.assert_awaited_once_with(3)
     assert deploy.await_args.kwargs["lxd_settings"] == {"cpu": 2, "memory_mib": 2048}
+    generated = "sdk-node-" + "5" * 32
+    await deploy.await_args.kwargs["docker_remove"](3, "earnapp-proxy-w3-ipv4-001", 4, generated)
+    remove.assert_awaited_once_with(
+        3,
+        "DELETE",
+        "/api/earnapp/docker-nodes/earnapp-proxy-w3-ipv4-001",
+        json={"generation": 4, "device_id": generated},
+        timeout=180,
+    )
 
 
 def test_earnapp_ubuntu_docker_transport_ignores_nkn_lxd_settings():
