@@ -283,7 +283,7 @@ def test_verified_image_labels_are_fail_closed():
 
 def test_mac_runtime_manifest_is_derived_from_authoritative_artifact_hashes():
     assert earnapp_runtime.runtime_asset_manifest_sha256() == (
-        "e6cfb29a16288e3c7ad094e7c27b5d6ac40973f83bd3bdf65ab877d8f941ad70"
+        "653f2834bc66c5d5e831c5294402b13dec52fa0c895614abc37aa0575bb6e0b7"
     )
     assert earnapp_runtime.runtime_asset_manifest_sha256() == earnapp_runtime.MAC_RUNTIME_ASSET_MANIFEST_SHA256
 
@@ -505,6 +505,7 @@ def test_proxy_wrapper_leaves_proxy_process_to_reference_runtime(platform):
     wrapper = earnapp_runtime.generated_runtime_artifacts(platform)["cashpilot-proxy-entrypoint"].decode("utf-8")
 
     assert "/usr/sbin/redsocks -c /tmp/redsocks.conf" not in wrapper
+    assert "-t nat -A CP_EARNAPP_REDSOCKS -p tcp -j REDIRECT" not in wrapper
     assert "CP_EARNAPP_OUT" in wrapper
 
 
