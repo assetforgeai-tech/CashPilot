@@ -87,9 +87,9 @@ Updated: 2026-08-31 (EarnApp Ubuntu canary 5 TLS/transport investigation)
   removes `/.dockerenv`, persists `/etc/machine-id` and `tracking_id`, validates
   proxy egress, and retries `install_device`/`is_linked` before starting the
   official runtime.
-- Existing Ubuntu LXD state remains readable and lifecycle-compatible. Backend
-  selection is taken from the persisted provider-instance spec; a missing spec
-  is treated as legacy LXD, while metadata lookup errors fail closed.
+- New and replacement EarnApp nodes are Docker-only across Ubuntu, macOS and
+  iOS. Legacy LXD heartbeat records remain readable as evidence only; deploy,
+  recreate, recovery and proxy mutation reject LXD.
 - Regression evidence for this source change: Ruff, compileall and 513 focused
   EarnApp/provider tests pass. No release, worker redeploy, VPS mutation,
   proxy rotation, identity rewrite or existing node mutation has occurred yet.
@@ -1047,10 +1047,10 @@ stopped and must not be mistaken for the active node.
 
 EarnApp is `FOCUS_EARNAPP_MULTIPLATFORM` / `platform_restricted`. VN residential
 proxies may deploy through dedicated validated MacOS/iOS Docker lanes; non-VN
-residential proxies use official Linux x64 through the dedicated Ubuntu LXD route.
-Generic/raw Docker remains blocked. The historical Apple runtime baseline and
-existing nodes remain protected. Account collection, token refresh, historical
-snapshots and read-only inspection stay available.
+residential proxies use official Linux x64 through the dedicated Ubuntu Docker
+route. Generic/raw Docker remains blocked. The historical Apple runtime baseline
+and existing nodes remain protected. Account collection, token refresh,
+historical snapshots and read-only inspection stay available.
 
 ## Verification status
 

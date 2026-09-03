@@ -220,7 +220,25 @@ def normalize_snapshot(
     )
     online = sum(1 for device in devices if device["online"])
     available = [device for device in devices if device.get("usage_available")]
-    return {
+    payment = {
+        key: value
+        for key, value in {**user, **balances}.items()
+        if str(key).lower()
+        in {
+            "payment_method",
+            "payment_methods",
+            "payout_method",
+            "payout_methods",
+            "payout_threshold",
+            "minimum_payout",
+            "currency",
+            "payment_currency",
+            "paypal_email",
+            "payment_email",
+            "payout_status",
+        }
+    }
+    snapshot = {
         "status": "ok",
         "money_balance": _float(balance),
         "money_total": _float(total),
@@ -232,6 +250,9 @@ def normalize_snapshot(
         "usage_missing_nodes": len(devices) - len(available),
         "devices": devices,
     }
+    if payment:
+        snapshot["payment"] = payment
+    return snapshot
 
 
 class EarnAppAccountCollector:

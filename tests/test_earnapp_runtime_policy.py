@@ -118,7 +118,7 @@ async def test_worker_apple_mutation_routes_fail_closed_before_runtime_calls(mon
 
 
 @pytest.mark.asyncio
-async def test_worker_ubuntu_mutation_route_does_not_depend_on_node_id_prefix(monkeypatch):
+async def test_worker_ubuntu_lxd_mutation_route_is_retired_for_any_node_id(monkeypatch):
     monkeypatch.setattr(worker_api, "_verify_api_key", lambda _request: None)
     monkeypatch.setattr(
         worker_api,
@@ -134,12 +134,12 @@ async def test_worker_ubuntu_mutation_route_does_not_depend_on_node_id_prefix(mo
     monkeypatch.setattr(worker_api.earnapp_lxd_runtime, "suspend_node", suspend)
     spec = worker_api.EarnAppNodeCasSpec(generation=1, device_id="sdk-node-" + "1" * 32)
 
-    result = await worker_api.api_suspend_earnapp_lxd_node(
-        _request("/api/earnapp/nodes/legacy-node/suspend"), "legacy-node", spec
-    )
-
-    assert result["status"] == "suspended"
-    suspend.assert_called_once()
+    with pytest.raises(HTTPException) as exc:
+        await worker_api.api_suspend_earnapp_lxd_node(
+            _request("/api/earnapp/nodes/legacy-node/suspend"), "legacy-node", spec
+        )
+    assert exc.value.status_code == 409
+    suspend.assert_not_called()
 
 
 def test_locked_account_with_existing_runtime_cannot_be_deleted_under_disabled_policy(tmp_path, monkeypatch):

@@ -100,7 +100,8 @@ async def issue_replacement_ticket(logical_node_id: str, target_worker_id: int) 
     if not node or str(node.get("state") or "") not in {"RECOVERY_HOLD", "RECOVERABLE"}:
         raise RecoveryClaimDenied("EarnApp node is not recoverable")
     platform = str(node.get("platform") or "").strip().lower()
-    backend = "lxd" if platform == "ubuntu" else "docker"
+    # EarnApp uses the same Docker contract for every supported platform.
+    backend = "docker"
     if provider_runtime.mutation_block(
         logical_node_id,
         {"provider_slug": "earnapp", "platform": platform, "runtime_backend": backend},
@@ -138,7 +139,7 @@ async def claim_node(
     if not node:
         raise RecoveryClaimDenied("EarnApp logical node not found")
     platform = str(node.get("platform") or "").strip().lower()
-    backend = "lxd" if platform == "ubuntu" else "docker"
+    backend = "docker"
     if provider_runtime.mutation_block(
         logical_node_id,
         {"provider_slug": "earnapp", "platform": platform, "runtime_backend": backend},

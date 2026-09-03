@@ -998,7 +998,7 @@ def test_worker_ubuntu_deploy_model_defaults_to_one_cpu_and_1024_mib():
         )
 
 
-def test_worker_lxd_deploy_is_enabled_and_persists_redacted_state(tmp_path, monkeypatch):
+def test_worker_lxd_deploy_is_retired(tmp_path, monkeypatch):
     assert hasattr(worker_api, "api_deploy_earnapp_lxd_node")
     runtime = _runtime()
     monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
@@ -1023,13 +1023,10 @@ def test_worker_lxd_deploy_is_enabled_and_persists_redacted_state(tmp_path, monk
                 "runtime_backend": "lxd",
             },
         ),
+        pytest.raises(HTTPException) as exc,
     ):
-        result = __import__("asyncio").run(worker_api.api_deploy_earnapp_lxd_node(_request(), "earnapp-ubuntu-1", spec))
-
-    assert result["status"] == "deployed"
-    saved = json.loads(Path(tmp_path, "earnapp-nodes", "earnapp-ubuntu-1.json").read_text(encoding="utf-8"))
-    assert saved["platform"] == "ubuntu"
-    assert saved["runtime_backend"] == "lxd"
+        __import__("asyncio").run(worker_api.api_deploy_earnapp_lxd_node(_request(), "earnapp-ubuntu-1", spec))
+    assert exc.value.status_code == 409
 
 
 def test_worker_proxy_apply_writes_ahead_journal_before_runtime_mutation_and_survives_save_crash(tmp_path, monkeypatch):
@@ -1482,7 +1479,7 @@ def test_worker_lxd_remove_is_idempotent_after_helper_already_removed_the_guest(
 
 
 @pytest.mark.asyncio
-async def test_worker_accepts_new_earnapp_lxd_deploy_and_calls_host_helper(monkeypatch):
+async def test_worker_rejects_new_earnapp_lxd_deploy_without_calling_host_helper(monkeypatch):
     deploy = Mock(
         return_value={
             "instance_id": "cashpilot-earnapp-earnapp-ubuntu-policy",
@@ -1496,29 +1493,29 @@ async def test_worker_accepts_new_earnapp_lxd_deploy_and_calls_host_helper(monke
     with patch.object(worker_api, "_verify_api_key"):
         identity = earnapp_identity.generate_identity("earnapp-ubuntu-policy-block", "ubuntu")
         identity["device_id"] = "sdk-node-" + "1" * 32
-        result = await worker_api.api_deploy_earnapp_lxd_node(
-            _request(),
-            "earnapp-ubuntu-policy-block",
-            worker_api.EarnAppLxdDeploySpec(
-                generation=1,
-                account_id=2,
-                device_id="sdk-node-" + "1" * 32,
-                proxy_id=9,
-                identity=identity,
-                proxy={
-                    "proxy_id": 9,
-                    "host": "proxy.example",
-                    "port": 1080,
-                    "protocol": "socks5",
-                    "exit_ip": "203.0.113.9",
-                    "country_code": "US",
-                    "ip_type": "residential",
-                },
-            ),
-        )
-
-    assert result["status"] == "deployed"
-    deploy.assert_called_once()
+        with pytest.raises(HTTPException) as exc:
+            await worker_api.api_deploy_earnapp_lxd_node(
+                _request(),
+                "earnapp-ubuntu-policy-block",
+                worker_api.EarnAppLxdDeploySpec(
+                    generation=1,
+                    account_id=2,
+                    device_id="sdk-node-" + "1" * 32,
+                    proxy_id=9,
+                    identity=identity,
+                    proxy={
+                        "proxy_id": 9,
+                        "host": "proxy.example",
+                        "port": 1080,
+                        "protocol": "socks5",
+                        "exit_ip": "203.0.113.9",
+                        "country_code": "US",
+                        "ip_type": "residential",
+                    },
+                ),
+            )
+    assert exc.value.status_code == 409
+    deploy.assert_not_called()
 
 
 def test_worker_lxd_remove_never_treats_helper_assignment_conflict_as_absence(tmp_path, monkeypatch):

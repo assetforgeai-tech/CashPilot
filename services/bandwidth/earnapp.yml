@@ -6,12 +6,12 @@ website: https://earnapp.com
 description: >
   EarnApp proxy-only runtime with account-scoped identity and an explicit
   platform-aware canary lane. VN residential egress selects MacOS or iOS;
-  non-VN residential egress selects the official Ubuntu runtime in LXD. Each
+  non-VN residential egress selects the official Ubuntu Docker runtime. Each
   node owns one exclusive residential proxy.
 short_description: Proxy-only EarnApp runtime with platform-aware canary provisioning
 
 docker:
-  image: cashpilot/earnapp-mac-canary:asset-4a1e80cbb95d
+  image: cashpilot/earnapp-mac-canary:asset-3ed8681017ab
   platforms: [linux/amd64]
   env: []
   ports: []
@@ -45,7 +45,7 @@ deploy:
       asset_kind: ios_identity_profile
     - platform: ubuntu
       country_policy: non-VN
-      runtime_backend: lxd
+      runtime_backend: docker
       asset_kind: ubuntu_identity_profile
   credentials: []
 
@@ -54,7 +54,7 @@ egress:
   udp: none
   reason: >-
     EarnApp nodes use one account-scoped, exclusive residential proxy through
-    the existing CashPilot sing-box sidecar. The worker public IP is not used.
+    an in-container redsocks/iptables fail-closed route. The worker public IP is not used.
 
 requirements:
   residential_ip: true

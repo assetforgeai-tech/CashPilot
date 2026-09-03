@@ -33,11 +33,11 @@ def test_earnapp_policy_allows_geo_platform_lanes():
     assert policy.deployment_allowed is True
     assert policy.deployment_policy == "platform_restricted"
     assert policy.allowed_platforms == ("macos", "ios", "ubuntu")
-    assert provider_runtime.platform_deployment_allowed("earnapp", "ubuntu", "lxd") is True
+    assert provider_runtime.platform_deployment_allowed("earnapp", "ubuntu", "lxd") is False
     assert provider_runtime.platform_deployment_allowed("earnapp", "ubuntu", "docker") is True
     assert provider_runtime.platform_deployment_allowed("earnapp", "macos", "docker") is True
     assert provider_runtime.platform_deployment_allowed("earnapp", "ios", "docker") is True
-    assert earnapp_runtime.runtime_deployment_allowed("ubuntu", "lxd") is True
+    assert earnapp_runtime.runtime_deployment_allowed("ubuntu", "lxd") is False
     assert earnapp_runtime.runtime_deployment_allowed("ubuntu", "docker") is True
     assert earnapp_runtime.runtime_deployment_allowed("macos", "docker") is True
 
@@ -68,7 +68,7 @@ def test_earnapp_mutation_policy_is_platform_scoped():
             "earnapp-ubuntu-canary",
             {"provider_slug": "earnapp", "platform": "ubuntu", "runtime_backend": "lxd"},
         )
-        is None
+        is not None
     )
     assert (
         provider_runtime.mutation_block(
@@ -112,29 +112,25 @@ def _ubuntu_spec() -> worker_api.EarnAppLxdDeploySpec:
 
 
 @pytest.mark.asyncio
-async def test_worker_accepts_the_dedicated_ubuntu_lxd_deploy_endpoint(tmp_path, monkeypatch):
+async def test_worker_rejects_retired_ubuntu_lxd_deploy_endpoint(tmp_path, monkeypatch):
     monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
     deploy = Mock(
         return_value={
             "instance_id": "cashpilot-earnapp-ubuntu-policy",
             "running": True,
             "online": False,
-            "runtime_backend": "lxd",
+            "runtime_backend": "docker",
         }
     )
 
-    with (
-        patch.object(worker_api, "_verify_api_key"),
-        patch.object(worker_api.earnapp_lxd_runtime, "deploy_node", deploy),
-    ):
-        result = await worker_api.api_deploy_earnapp_lxd_node(
+    with patch.object(worker_api, "_verify_api_key"), pytest.raises(HTTPException) as exc:
+        await worker_api.api_deploy_earnapp_lxd_node(
             _request("/api/earnapp/nodes/earnapp-ubuntu-policy/deploy"),
             "earnapp-ubuntu-policy",
             _ubuntu_spec(),
         )
-
-    assert result["status"] == "deployed"
-    deploy.assert_called_once()
+    assert exc.value.status_code == 409
+    deploy.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -209,7 +205,7 @@ async def test_account_cleanup_preflights_every_binding_by_platform(monkeypatch)
                     "logical_node_id": "earnapp-ubuntu",
                     "instance_id": "earnapp-ubuntu",
                     "platform": "ubuntu",
-                    "runtime_backend": "lxd",
+                    "runtime_backend": "docker",
                 },
                 {
                     "logical_node_id": "earnapp-ios",
@@ -238,7 +234,7 @@ async def test_account_cleanup_refuses_every_protected_live_node(node_id, monkey
                     "logical_node_id": node_id,
                     "instance_id": node_id,
                     "platform": "ubuntu",
-                    "runtime_backend": "lxd",
+                    "runtime_backend": "docker",
                 }
             ]
         ),
@@ -263,7 +259,7 @@ async def test_account_cleanup_uses_logical_node_id_when_runtime_instance_id_dif
                     "logical_node_id": node_id,
                     "instance_id": "cashpilot-earnapp-ubuntu-canary-test-sing-4",
                     "platform": "ubuntu",
-                    "runtime_backend": "lxd",
+                    "runtime_backend": "docker",
                 }
             ]
         ),
@@ -536,19 +532,18 @@ def _authoritative_node(
 @pytest.mark.parametrize(
     ("action", "expected_calls"),
     [
-        ("stop", [("POST", "/api/earnapp/nodes/earnapp-ubuntu-policy/suspend")]),
-        ("start", [("POST", "/api/earnapp/nodes/earnapp-ubuntu-policy/resume")]),
+        ("stop", [("POST", "/api/containers/earnapp-ubuntu-policy/stop")]),
+        ("start", [("POST", "/api/containers/earnapp-ubuntu-policy/start")]),
         (
             "restart",
             [
-                ("POST", "/api/earnapp/nodes/earnapp-ubuntu-policy/suspend"),
-                ("POST", "/api/earnapp/nodes/earnapp-ubuntu-policy/resume"),
+                ("POST", "/api/containers/earnapp-ubuntu-policy/restart"),
             ],
         ),
-        ("remove", [("DELETE", "/api/earnapp/nodes/earnapp-ubuntu-policy")]),
+        ("remove", [("DELETE", "/api/earnapp/docker-nodes/earnapp-ubuntu-policy")]),
     ],
 )
-async def test_server_lifecycle_dispatches_authoritative_ubuntu_lxd_node(monkeypatch, action, expected_calls):
+async def test_server_lifecycle_dispatches_authoritative_ubuntu_docker_node(monkeypatch, action, expected_calls):
     device_id = "sdk-node-" + "4" * 32
     proxy = AsyncMock(return_value={"status": "ok"})
     monkeypatch.setattr(main, "_require_writer", lambda _request: {"r": "writer"})
@@ -582,8 +577,8 @@ async def test_server_lifecycle_dispatches_authoritative_ubuntu_lxd_node(monkeyp
         )
 
     assert [(call.args[1], call.args[2]) for call in proxy.await_args_list] == expected_calls
-    for call in proxy.await_args_list:
-        assert call.kwargs["json"] == {"generation": 4, "device_id": device_id}
+    if action == "remove":
+        assert proxy.await_args.kwargs["json"] == {"generation": 4, "device_id": device_id}
 
 
 @pytest.mark.asyncio
@@ -876,7 +871,7 @@ async def test_server_lifecycle_keeps_bare_earnapp_slug_blocked(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_raw_worker_lifecycle_dispatches_ubuntu_lxd_without_trusting_body_spec(monkeypatch):
+async def test_raw_worker_lifecycle_dispatches_ubuntu_docker_without_trusting_body_spec(monkeypatch):
     device_id = "sdk-node-" + "5" * 32
     proxy = AsyncMock(return_value={"status": "resumed"})
     monkeypatch.setattr(main, "_require_writer", lambda _request: {"r": "writer"})
@@ -902,9 +897,7 @@ async def test_raw_worker_lifecycle_dispatches_ubuntu_lxd_without_trusting_body_
     proxy.assert_awaited_once_with(
         3,
         "POST",
-        "/api/earnapp/nodes/earnapp-ubuntu-policy/resume",
-        json={"generation": 5, "device_id": device_id},
-        timeout=180,
+        "/api/containers/earnapp-ubuntu-policy/start",
     )
 
 

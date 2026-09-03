@@ -166,6 +166,23 @@ def _redacted_proxy(proxy: Mapping[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in _proxy_metadata(proxy).items() if key not in {"username", "password"}}
 
 
+def _in_container_proxy_env(proxy: Mapping[str, Any]) -> dict[str, str]:
+    protocol = str(proxy.get("protocol") or "socks5").strip().upper()
+    if protocol not in {"HTTP", "SOCKS5"}:
+        raise ValueError("EarnApp proxy protocol is invalid")
+    return {
+        "PROXY_TYPE": protocol,
+        "PROXY_CREDENTIALS": ":".join(
+            (
+                str(proxy.get("host") or "").strip(),
+                str(proxy.get("port") or "").strip(),
+                str(proxy.get("username") or ""),
+                str(proxy.get("password") or ""),
+            )
+        ),
+    }
+
+
 def build_canary_spec(
     logical_node_id: str,
     account_id: int,
@@ -192,6 +209,8 @@ def build_canary_spec(
             "EARNAPP_APPID": earnapp_runtime.MAC_APPID,
             "EARNAPP_DEVICE_ID": device,
             "EARNAPP_LOGICAL_NODE_ID": node_id,
+            "EARNAPP_EXPECTED_EGRESS_IP": str(proxy_meta.get("exit_ip") or ""),
+            **_in_container_proxy_env(proxy),
         },
         "volumes": {f"{node_id}-data": {"bind": "/etc/earnapp", "mode": "rw"}},
         "labels": {
@@ -205,9 +224,9 @@ def build_canary_spec(
             "cashpilot.earnapp.generation": str(max(1, int(generation))),
         },
         "privileged": False,
-        "cap_add": None,
+        "cap_add": ["NET_ADMIN"],
         "devices": None,
-        "network_mode": None,
+        "network_mode": "bridge",
         "egress_mode": "proxy",
         "egress_udp": "none",
         "proxy": proxy_meta,
@@ -227,6 +246,7 @@ def build_canary_spec(
             "device_id_prefix": earnapp_runtime.MAC_DEVICE_PREFIX,
         },
         "account_id": int(account_id),
+        "runtime_backend": "docker",
     }
 
 
@@ -339,6 +359,7 @@ def build_runtime_spec(
             "EARNAPP_DEVICE_ID": device,
             "EARNAPP_LOGICAL_NODE_ID": node_id,
             "EARNAPP_EXPECTED_EGRESS_IP": expected_egress_ip,
+            **_in_container_proxy_env(proxy),
         },
         "volumes": {f"{node_id}-data": {"bind": "/etc/earnapp", "mode": "rw"}},
         "labels": {
@@ -352,9 +373,9 @@ def build_runtime_spec(
             "cashpilot.earnapp.generation": str(max(1, int(generation))),
         },
         "privileged": False,
-        "cap_add": None,
+        "cap_add": ["NET_ADMIN"],
         "devices": None,
-        "network_mode": None,
+        "network_mode": "bridge",
         "egress_mode": "proxy",
         "egress_udp": "none",
         "proxy": proxy_meta,
@@ -374,6 +395,7 @@ def build_runtime_spec(
             "device_id_prefix": earnapp_runtime.IOS_DEVICE_PREFIX,
         },
         "account_id": int(account_id),
+        "runtime_backend": "docker",
     }
 
 
@@ -435,6 +457,7 @@ async def deploy_canary(
         )
         transport_spec["proxy"] = _proxy_metadata(proxy)
         persisted_spec = json.loads(json.dumps(transport_spec))
+        persisted_spec = earnapp_runtime.redacted_evidence(persisted_spec)
         persisted_spec["proxy"] = _redacted_proxy(proxy)
     except Exception:
         if provisioned.get("created_binding"):

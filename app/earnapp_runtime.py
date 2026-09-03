@@ -225,17 +225,68 @@ def ios_entrypoint_script() -> bytes:
     )
 
 
+def proxy_entrypoint_script(platform: str = "macos") -> bytes:
+    """Route one EarnApp container through its assigned proxy and fail closed."""
+    selected = _image_platform(platform)
+    next_entrypoint = "/usr/local/bin/ios-entrypoint" if selected == "ios" else "/usr/local/bin/entrypoint-original.sh"
+    return f"""#!/usr/bin/env bash
+set -euo pipefail
+REDSOCKS_PORT=12345
+PROXY_TYPE=$(printf '%s' "${{PROXY_TYPE:-SOCKS5}}" | tr '[:lower:]' '[:upper:]')
+IFS=: read -r PROXY_HOST PROXY_PORT PROXY_USER PROXY_PASS <<<"${{PROXY_CREDENTIALS:?}}"
+[[ -n "$PROXY_HOST" && "$PROXY_PORT" =~ ^[0-9]+$ ]]
+PROXY_IP=$(getent ahostsv4 "$PROXY_HOST" | awk 'NR==1 {{print $1}}')
+[[ -n "$PROXY_IP" ]]
+case "$PROXY_TYPE" in
+  SOCKS5) REDSOCKS_TYPE=socks5 ;;
+  HTTP) REDSOCKS_TYPE=http-connect ;;
+  *) exit 64 ;;
+esac
+cat >/tmp/redsocks.conf <<EOF
+base {{ log_debug = off; log_info = off; log = "stderr"; daemon = off; redirector = iptables; }}
+redsocks {{ local_ip = 127.0.0.1; local_port = $REDSOCKS_PORT; ip = $PROXY_IP; port = $PROXY_PORT; type = $REDSOCKS_TYPE;
+EOF
+if [[ -n "${{PROXY_USER:-}}" ]]; then
+  printf '  login = "%s";\n  password = "%s";\n' "$PROXY_USER" "${{PROXY_PASS:-}}" >>/tmp/redsocks.conf
+fi
+printf '}}\n' >>/tmp/redsocks.conf
+/usr/sbin/redsocks -c /tmp/redsocks.conf &
+sleep 1
+iptables -t nat -N CP_EARNAPP_REDSOCKS 2>/dev/null || iptables -t nat -F CP_EARNAPP_REDSOCKS
+iptables -t nat -A CP_EARNAPP_REDSOCKS -d 127.0.0.0/8 -j RETURN
+iptables -t nat -A CP_EARNAPP_REDSOCKS -d "$PROXY_IP"/32 -j RETURN
+iptables -t nat -A CP_EARNAPP_REDSOCKS -p tcp -j REDIRECT --to-ports "$REDSOCKS_PORT"
+iptables -t nat -C OUTPUT -p tcp -j CP_EARNAPP_REDSOCKS 2>/dev/null || iptables -t nat -A OUTPUT -p tcp -j CP_EARNAPP_REDSOCKS
+iptables -N CP_EARNAPP_OUT 2>/dev/null || iptables -F CP_EARNAPP_OUT
+iptables -A CP_EARNAPP_OUT -o lo -j ACCEPT
+iptables -A CP_EARNAPP_OUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+iptables -A CP_EARNAPP_OUT -d "$PROXY_IP"/32 -p tcp --dport "$PROXY_PORT" -j ACCEPT
+iptables -A CP_EARNAPP_OUT -p udp --dport 53 -j ACCEPT
+iptables -A CP_EARNAPP_OUT -p tcp --dport 53 -j ACCEPT
+iptables -A CP_EARNAPP_OUT -j DROP
+iptables -C OUTPUT -j CP_EARNAPP_OUT 2>/dev/null || iptables -I OUTPUT 1 -j CP_EARNAPP_OUT
+if command -v ip6tables >/dev/null 2>&1; then
+  ip6tables -N CP_EARNAPP6_OUT 2>/dev/null || ip6tables -F CP_EARNAPP6_OUT
+  ip6tables -A CP_EARNAPP6_OUT -o lo -j ACCEPT
+  ip6tables -A CP_EARNAPP6_OUT -j DROP
+  ip6tables -C OUTPUT -j CP_EARNAPP6_OUT 2>/dev/null || ip6tables -I OUTPUT 1 -j CP_EARNAPP6_OUT
+fi
+exec {next_entrypoint} "$@"
+        """.encode()
+
+
 def generated_runtime_artifacts(platform: str = "macos") -> dict[str, bytes]:
     """Return generated scripts that are part of the platform image digest."""
     selected = _image_platform(platform)
-    if selected == "ubuntu":
-        return {}
-    if selected != "ios":
-        return {}
-    return {
-        "ios-entrypoint": ios_entrypoint_script(),
-        "ios-register-device": ios_registration_script(),
-    }
+    generated = {"cashpilot-proxy-entrypoint": proxy_entrypoint_script(selected)}
+    if selected == "ios":
+        generated.update(
+            {
+                "ios-entrypoint": ios_entrypoint_script(),
+                "ios-register-device": ios_registration_script(),
+            }
+        )
+    return generated
 
 
 def ubuntu_entrypoint_script() -> bytes:
@@ -500,9 +551,11 @@ def validate_canary_spec(spec: dict[str, Any]) -> None:
         raise ValueError("EarnApp Mac canary host runtime is required")
     if str(spec.get("image") or "") != MAC_RUNTIME_IMAGE:
         raise ValueError("EarnApp image is not the verified Mac canary image")
-    if spec.get("privileged") or spec.get("cap_add") or spec.get("devices"):
-        raise ValueError("EarnApp canary cannot request privilege, capabilities, or devices")
-    if spec.get("network_mode") not in (None, "", "bridge"):
+    if spec.get("privileged") or spec.get("devices"):
+        raise ValueError("EarnApp canary cannot request privilege or devices")
+    if {str(value).upper() for value in (spec.get("cap_add") or [])} != {"NET_ADMIN"}:
+        raise ValueError("EarnApp canary requires NET_ADMIN for its fail-closed proxy route")
+    if spec.get("network_mode") != "bridge":
         raise ValueError("EarnApp canary network mode is invalid")
     if str(spec.get("egress_mode") or "") != "proxy":
         raise ValueError("EarnApp canary must use proxy egress")
@@ -566,9 +619,11 @@ def validate_runtime_spec(spec: dict[str, Any]) -> None:
         raise ValueError("EarnApp iOS runtime is required")
     if str(spec.get("image") or "") != IOS_RUNTIME_IMAGE:
         raise ValueError("EarnApp image is not the verified iOS image")
-    if spec.get("privileged") or spec.get("cap_add") or spec.get("devices"):
+    if spec.get("privileged") or spec.get("devices"):
         raise ValueError("EarnApp iOS runtime cannot request host privilege")
-    if spec.get("network_mode") not in (None, "", "bridge") or str(spec.get("egress_mode") or "") != "proxy":
+    if {str(value).upper() for value in (spec.get("cap_add") or [])} != {"NET_ADMIN"}:
+        raise ValueError("EarnApp iOS runtime requires NET_ADMIN for its fail-closed proxy route")
+    if spec.get("network_mode") != "bridge" or str(spec.get("egress_mode") or "") != "proxy":
         raise ValueError("EarnApp iOS runtime must use proxy bridge egress")
     contract = spec.get("runtime_contract") or {}
     expected_contract = {

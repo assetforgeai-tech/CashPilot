@@ -43,8 +43,8 @@
       <h3 class="settings-section-title" id="earnapp-account-title">EarnApp Account Pool</h3>
       <p class="settings-section-desc">
         One Chrome profile maps to one EarnApp account. Credentials are encrypted at rest and never shown again;
-        collectors use a proxy already owned by that account. <strong>Ubuntu x64 in LXD is enabled:</strong>
-        VN residential proxies use validated MacOS/iOS emulation; non-VN residential proxies use official Ubuntu x64 in LXD.
+        collectors use a proxy already owned by that account. <strong>EarnApp Docker runtime is enabled:</strong>
+        VN residential proxies use validated MacOS/iOS emulation; non-VN residential proxies use official Ubuntu x64 in Docker.
       </p>
     </div>
     <button class="btn btn-ghost btn-sm" data-action="loadEarnAppAccounts">Refresh</button>
@@ -53,21 +53,21 @@
   <div id="earnapp-token-alerts" class="earnapp-token-alerts" aria-live="assertive"></div>
 
   <div class="earnapp-capacity-strip" id="earnapp-proxy-capacity">
-    <div><span>Eligible residential</span><strong>&mdash;</strong></div>
-    <div><span>Leaseable now</span><strong>&mdash;</strong></div>
+    <div><span>Used</span><strong>&mdash;</strong></div>
+    <div><span>Ready</span><strong>&mdash;</strong></div>
+    <div><span>Eligible</span><strong>&mdash;</strong></div>
     <div><span>Active nodes</span><strong>&mdash;</strong></div>
-    <div><span>Recovery hold</span><strong>&mdash;</strong></div>
   </div>
 
   <div class="earnapp-runtime-settings">
     <div>
-      <h4>Ubuntu LXD runtime</h4>
-      <p>Authoritative limits for new official EarnApp Linux x64 guests. Existing guests are not resized automatically.</p>
+      <h4>EarnApp Docker runtime</h4>
+      <p>Authoritative limits for new EarnApp containers. Existing nodes are not resized automatically.</p>
     </div>
-    <label class="form-label" for="earnapp-lxd-cpu">CPU cores</label>
+    <label class="form-label" for="earnapp-lxd-cpu">CPU cores (Docker limit)</label>
     <input class="form-input settings-config-input" type="number" min="1" max="64" step="1"
            id="earnapp-lxd-cpu" data-config="earnapp_lxd_cpu" value="1">
-    <label class="form-label" for="earnapp-lxd-memory">Memory (MiB)</label>
+    <label class="form-label" for="earnapp-lxd-memory">Memory (MiB, Docker limit)</label>
     <input class="form-input settings-config-input" type="number" min="128" max="65536" step="128"
            id="earnapp-lxd-memory" data-config="earnapp_lxd_memory_mib" value="1024">
     <button class="btn btn-ghost" data-action="saveEnvSettings">Save EarnApp runtime</button>
@@ -125,7 +125,7 @@
     <div class="earnapp-panel-title">
       <div>
         <h4>Node recovery</h4>
-        <p>Ubuntu LXD nodes support the one-hour recovery hold and one-time replacement tickets. MacOS/iOS nodes remain inspection-only.</p>
+        <p>EarnApp Docker nodes support the one-hour recovery hold and one-time replacement tickets. Recreate preserves identity and does not link.</p>
       </div>
     </div>
     <div class="earnapp-table-scroll">

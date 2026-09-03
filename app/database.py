@@ -462,6 +462,12 @@ CREATE TABLE IF NOT EXISTS earnapp_logical_nodes (
     last_heartbeat_at  TEXT,
     recovery_started_at TEXT,
     recovery_hold_until TEXT,
+    usage_baseline      REAL NOT NULL DEFAULT 0,
+    window_started_at   TEXT,
+    same_proxy_recreates INTEGER NOT NULL DEFAULT 0,
+    rotate_count        INTEGER NOT NULL DEFAULT 0,
+    lifecycle_action    TEXT NOT NULL DEFAULT 'observe',
+    quarantine_reason   TEXT NOT NULL DEFAULT '',
     created_at         TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_at         TEXT    NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY(account_id) REFERENCES earnapp_accounts(id) ON DELETE RESTRICT,
@@ -541,6 +547,7 @@ CREATE TABLE IF NOT EXISTS earnapp_account_snapshots (
     online_nodes   INTEGER NOT NULL DEFAULT 0,
     offline_nodes  INTEGER NOT NULL DEFAULT 0,
     devices_json   TEXT    NOT NULL DEFAULT '[]',
+    payment_json   TEXT    NOT NULL DEFAULT '{}',
     collected_at   TEXT    NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY(account_id) REFERENCES earnapp_accounts(id) ON DELETE CASCADE
 );
@@ -614,6 +621,12 @@ _EARNAPP_CHILD_COLUMNS = {
         "last_heartbeat_at",
         "recovery_started_at",
         "recovery_hold_until",
+        "usage_baseline",
+        "window_started_at",
+        "same_proxy_recreates",
+        "rotate_count",
+        "lifecycle_action",
+        "quarantine_reason",
         "created_at",
         "updated_at",
     },
@@ -635,6 +648,7 @@ _EARNAPP_CHILD_COLUMNS = {
         "online_nodes",
         "offline_nodes",
         "devices_json",
+        "payment_json",
         "collected_at",
     },
     "earnapp_replacement_tickets": {
@@ -1907,6 +1921,12 @@ async def _ensure_earnapp_logical_node_proxy_health_schema(db: Any, applied: lis
         "expected_egress_ip": "TEXT NOT NULL DEFAULT ''",
         "proxy_checked_at": "TEXT",
         "proxy_health_reason": "TEXT NOT NULL DEFAULT ''",
+        "usage_baseline": "REAL NOT NULL DEFAULT 0",
+        "window_started_at": "TEXT",
+        "same_proxy_recreates": "INTEGER NOT NULL DEFAULT 0",
+        "rotate_count": "INTEGER NOT NULL DEFAULT 0",
+        "lifecycle_action": "TEXT NOT NULL DEFAULT 'observe'",
+        "quarantine_reason": "TEXT NOT NULL DEFAULT ''",
     }
     for column, declaration in additions.items():
         if column not in columns:
@@ -2169,6 +2189,12 @@ async def _create_earnapp_current_schema(db: Any) -> None:
             last_heartbeat_at  TEXT,
             recovery_started_at TEXT,
             recovery_hold_until TEXT,
+            usage_baseline      REAL NOT NULL DEFAULT 0,
+            window_started_at   TEXT,
+            same_proxy_recreates INTEGER NOT NULL DEFAULT 0,
+            rotate_count        INTEGER NOT NULL DEFAULT 0,
+            lifecycle_action    TEXT NOT NULL DEFAULT 'observe',
+            quarantine_reason   TEXT NOT NULL DEFAULT '',
             created_at         TEXT    NOT NULL DEFAULT (datetime('now')),
             updated_at         TEXT    NOT NULL DEFAULT (datetime('now')),
             FOREIGN KEY(account_id) REFERENCES earnapp_accounts(id) ON DELETE RESTRICT,
@@ -2308,6 +2334,7 @@ async def _rebuild_earnapp_child_table(db: Any, table_name: str) -> None:
                 money_balance REAL NOT NULL DEFAULT 0, money_total REAL NOT NULL DEFAULT 0,
                 online_nodes INTEGER NOT NULL DEFAULT 0, offline_nodes INTEGER NOT NULL DEFAULT 0,
                 devices_json TEXT NOT NULL DEFAULT '[]',
+                payment_json TEXT NOT NULL DEFAULT '{}',
                 collected_at TEXT NOT NULL DEFAULT (datetime('now')),
                 FOREIGN KEY(account_id) REFERENCES earnapp_accounts(id) ON DELETE CASCADE
             )
@@ -2700,6 +2727,18 @@ async def init_db() -> None:
     try:
         await _dedupe_earnings_before_indexing(db)
         await db.executescript(_SCHEMA)
+        # Add snapshot payment metadata before the completed-migration validator
+        # compares the canonical child schema.
+        if await _table_exists(db, "earnapp_account_snapshots"):
+            snapshot_cols = {
+                row["name"]
+                for row in await (await db.execute("PRAGMA table_info(earnapp_account_snapshots)")).fetchall()
+            }
+            if "payment_json" not in snapshot_cols:
+                await db.execute(
+                    "ALTER TABLE earnapp_account_snapshots ADD COLUMN payment_json TEXT NOT NULL DEFAULT '{}'"
+                )
+                applied.append("earnapp_account_snapshots.payment_json")
         await _migrate_legacy_earnapp_accounts(db, applied)
         await db.executescript(_EARNAPP_ACCOUNTS_SCHEMA)
         await _quarantine_synthetic_legacy_accounts(db, applied)
@@ -3968,9 +4007,8 @@ async def list_earnapp_runtime_bindings(account_id: int) -> list[dict[str, Any]]
                 worker_id = data.get("assigned_worker_id")
             if worker_id is None:
                 worker_id = data.get("last_worker_id")
-            # Ubuntu historically implied LXD. New Docker nodes persist their
-            # backend in provider_instances.spec_encrypted; prefer it when
-            # available and retain LXD as the legacy fallback.
+            # EarnApp is Docker-only. Legacy LXD rows remain readable but are
+            # never selected as the mutation/deployment backend.
             runtime_backend = ""
             if instance_id and data.get("instance_id"):
                 persisted_spec = None
@@ -3983,10 +4021,10 @@ async def list_earnapp_runtime_bindings(account_id: int) -> list[dict[str, Any]]
                     except (ValueError, TypeError, InvalidToken, json.JSONDecodeError):
                         persisted_spec = None
                 candidate_backend = str((persisted_spec or {}).get("runtime_backend") or "").strip().lower()
-                if candidate_backend in {"docker", "lxd"}:
+                if candidate_backend == "docker":
                     runtime_backend = candidate_backend
             if not runtime_backend:
-                runtime_backend = "lxd" if platform == "ubuntu" else "docker" if platform in {"macos", "ios"} else ""
+                runtime_backend = "docker" if platform in {"macos", "ios", "ubuntu"} else ""
             data.update(
                 {
                     "logical_node_id": logical_node_id,
@@ -6007,6 +6045,35 @@ async def get_earnapp_account_control_route(
         await db.close()
 
 
+async def update_earnapp_lifecycle(
+    logical_node_id: str, decision: Any, *, usage: float | None = None, window_started_at: str | None = None
+) -> bool:
+    """Persist the pure lifecycle decision without touching identity or leases."""
+    db = await _get_db()
+    try:
+        fields = [
+            "lifecycle_action = ?",
+            "same_proxy_recreates = ?",
+            "rotate_count = ?",
+            "updated_at = datetime('now')",
+        ]
+        values: list[Any] = [str(decision.action), int(decision.same_proxy_recreates), int(decision.rotate_count)]
+        if usage is not None:
+            fields.append("usage_baseline = ?")
+            values.append(float(usage))
+        if window_started_at is not None:
+            fields.append("window_started_at = ?")
+            values.append(str(window_started_at))
+        values.append(str(logical_node_id))
+        cursor = await db.execute(
+            f"UPDATE earnapp_logical_nodes SET {', '.join(fields)} WHERE logical_node_id = ?", values
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+    finally:
+        await db.close()
+
+
 async def release_earnapp_account_control_route(
     account_id: int,
     *,
@@ -6237,8 +6304,8 @@ async def save_earnapp_snapshot(account_id: int, snapshot: Mapping[str, Any]) ->
         cursor = await db.execute(
             """
             INSERT INTO earnapp_account_snapshots
-                (account_id, money_balance, money_total, online_nodes, offline_nodes, devices_json)
-            VALUES (?, ?, ?, ?, ?, ?)
+                (account_id, money_balance, money_total, online_nodes, offline_nodes, devices_json, payment_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 int(account_id),
@@ -6247,6 +6314,11 @@ async def save_earnapp_snapshot(account_id: int, snapshot: Mapping[str, Any]) ->
                 int(snapshot.get("online_nodes") or 0),
                 int(snapshot.get("offline_nodes") or 0),
                 json.dumps(sanitized_devices, sort_keys=True, separators=(",", ":")),
+                json.dumps(
+                    snapshot.get("payment") if isinstance(snapshot.get("payment"), Mapping) else {},
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
             ),
         )
         await db.commit()
@@ -6349,6 +6421,8 @@ async def get_earnapp_proxy_capacity() -> dict[str, int]:
         return {
             "eligible": int(row["eligible"] or 0),
             "leaseable": int(row["leaseable"] or 0),
+            "ready": int(row["leaseable"] or 0),
+            "used": int(row["occupied"] or 0) + int(row["control_routes"] or 0),
             "occupied": int(row["occupied"] or 0),
             "control_routes": int(row["control_routes"] or 0),
             "active_nodes": int(nodes["active_nodes"] or 0),

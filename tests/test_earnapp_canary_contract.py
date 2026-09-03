@@ -74,7 +74,7 @@ def test_canary_spec_is_account_scoped_and_hardened():
     assert spec["labels"]["cashpilot.earnapp.account_id"] == "7"
     assert spec["volumes"]["earnapp-canary-1-data"]["bind"] == "/etc/earnapp"
     assert spec["privileged"] is False
-    assert spec["cap_add"] is None
+    assert spec["cap_add"] == ["NET_ADMIN"]
     assert spec["devices"] is None
     assert spec["image"] == earnapp_runtime.MAC_RUNTIME_IMAGE
     assert "/var/run/docker.sock" not in str(spec)
@@ -283,7 +283,7 @@ def test_verified_image_labels_are_fail_closed():
 
 def test_mac_runtime_manifest_is_derived_from_authoritative_artifact_hashes():
     assert earnapp_runtime.runtime_asset_manifest_sha256() == (
-        "4a1e80cbb95da585c8e902fb2f0f118b634d51ee62b92454862e9457797b6f43"
+        "3ed8681017abe64edd3c3d2917276dbae8d3f26910ba443ed95df59b2b0de8b0"
     )
     assert earnapp_runtime.runtime_asset_manifest_sha256() == earnapp_runtime.MAC_RUNTIME_ASSET_MANIFEST_SHA256
 
@@ -411,7 +411,7 @@ def test_ios_image_builder_installs_idempotent_control_plane_registration_wrappe
     assert (
         "RUN chmod 0755 /opt/earnapp-ios /usr/local/bin/earn-supervisor "
         "/usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-original.sh "
-        "/usr/local/bin/ios-register-device"
+        "/usr/local/bin/ios-entrypoint /usr/local/bin/ios-register-device"
     ) in recipe
     assert (
         "bash -n /usr/local/bin/earn-supervisor /usr/local/bin/entrypoint.sh "
@@ -469,20 +469,34 @@ def test_ios_manifest_hash_covers_every_generated_runtime_script():
     manifest = earnapp_runtime.runtime_asset_manifest(platform="ios")
     hashes = build_earnapp_canary_image.manifest_hashes(manifest)
 
-    assert set(generated) == {"ios-entrypoint", "ios-register-device"}
+    assert set(generated) == {"cashpilot-proxy-entrypoint", "ios-entrypoint", "ios-register-device"}
     for path, payload in generated.items():
         assert hashes[path] == hashlib.sha256(payload).hexdigest()
 
 
-def test_non_ios_runtime_paths_do_not_install_or_invoke_ios_registration():
+def test_non_ios_runtime_paths_install_the_shared_fail_closed_proxy_wrapper():
     manifest = earnapp_runtime.runtime_asset_manifest(platform="macos")
     recipe = build_earnapp_canary_image.render_dockerfile(manifest, platform="macos")
 
-    assert earnapp_runtime.generated_runtime_artifacts("macos") == {}
+    assert set(earnapp_runtime.generated_runtime_artifacts("macos")) == {"cashpilot-proxy-entrypoint"}
     assert "ios-register-device" not in recipe
     assert "ios-entrypoint" not in recipe
-    assert "entrypoint-original.sh" not in recipe
-    assert "COPY entrypoint.sh /usr/local/bin/entrypoint.sh" in recipe
+    assert "COPY entrypoint.sh /usr/local/bin/entrypoint-original.sh" in recipe
+    assert "COPY cashpilot-proxy-entrypoint /usr/local/bin/entrypoint.sh" in recipe
+
+
+@pytest.mark.parametrize("platform", ["macos", "ios", "ubuntu"])
+def test_every_platform_image_installs_a_fail_closed_proxy_wrapper(platform):
+    generated = earnapp_runtime.generated_runtime_artifacts(platform)
+    wrapper = generated["cashpilot-proxy-entrypoint"].decode("utf-8")
+
+    assert "CP_EARNAPP_OUT" in wrapper
+    assert "iptables -I OUTPUT 1 -j CP_EARNAPP_OUT" in wrapper
+    assert "ip6tables -I OUTPUT 1 -j CP_EARNAPP6_OUT" in wrapper
+    assert "-p udp --dport 53 -j ACCEPT" in wrapper
+    assert "-p tcp --dport 53 -j ACCEPT" in wrapper
+    assert '"$PROXY_IP"/32' in wrapper
+    assert "-j DROP" in wrapper
 
 
 def test_ubuntu_runtime_spec_lets_the_reference_image_generate_the_device_identity():
@@ -518,18 +532,19 @@ def test_ubuntu_runtime_spec_lets_the_reference_image_generate_the_device_identi
     earnapp_runtime.validate_runtime_spec(spec)
 
 
-def test_ubuntu_reference_runtime_has_no_cashpilot_generated_entrypoint():
-    assert earnapp_runtime.generated_runtime_artifacts("ubuntu") == {}
+def test_ubuntu_reference_runtime_uses_the_shared_fail_closed_proxy_entrypoint():
+    assert set(earnapp_runtime.generated_runtime_artifacts("ubuntu")) == {"cashpilot-proxy-entrypoint"}
 
 
-def test_ubuntu_image_is_a_thin_wrapper_around_the_pinned_reference_runtime():
+def test_ubuntu_image_wraps_the_pinned_reference_runtime_with_fail_closed_proxying():
     manifest = earnapp_runtime.runtime_asset_manifest(platform="ubuntu")
     recipe = build_earnapp_canary_image.render_dockerfile(manifest, platform="ubuntu")
 
     assert manifest["base_image"] == earnapp_runtime.UBUNTU_REFERENCE_IMAGE_PIN
     assert f"FROM {earnapp_runtime.UBUNTU_REFERENCE_IMAGE_PIN}" in recipe
-    for forbidden in ("COPY ", "RUN ", "ENTRYPOINT", "CMD ", "earnapp-linux", "earnapp-host"):
-        assert forbidden not in recipe
+    assert "RUN mv /usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-original.sh" in recipe
+    assert "COPY cashpilot-proxy-entrypoint /usr/local/bin/entrypoint.sh" in recipe
+    assert 'ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]' in recipe
     assert earnapp_runtime.UBUNTU_RUNTIME_ARTIFACT_HASHES == {}
 
 
@@ -925,8 +940,38 @@ def test_ios_runtime_spec_is_account_scoped_hardened_and_uses_the_persisted_prof
     assert spec["labels"]["cashpilot.earnapp.generation"] == "4"
     assert spec["env"]["EARNAPP_EXPECTED_EGRESS_IP"] == "203.0.113.10"
     assert spec["privileged"] is False
-    assert spec["cap_add"] is None
+    assert spec["cap_add"] == ["NET_ADMIN"]
+    assert spec["network_mode"] == "bridge"
+    assert spec["env"]["PROXY_TYPE"] == "SOCKS5"
+    assert spec["env"]["PROXY_CREDENTIALS"] == "proxy.example:1080::"
     assert spec["devices"] is None
+    earnapp_runtime.validate_runtime_spec(spec)
+
+
+def test_macos_runtime_uses_the_same_in_container_proxy_contract_as_ios_and_ubuntu():
+    identity = earnapp_identity.generate_identity("earnapp-macos-proxy-contract", "macos")
+    spec = earnapp_canary.build_runtime_spec(
+        logical_node_id="earnapp-macos-proxy-contract",
+        account_id=7,
+        platform="macos",
+        device_id=identity["device_id"],
+        proxy={
+            "proxy_id": 12,
+            "host": "proxy.example",
+            "port": 1080,
+            "protocol": "socks5",
+            "exit_ip": "203.0.113.10",
+            "country_code": "VN",
+            "ip_type": "residential",
+        },
+    )
+
+    assert spec["runtime_backend"] == "docker"
+    assert spec["network_mode"] == "bridge"
+    assert spec["cap_add"] == ["NET_ADMIN"]
+    assert spec["env"]["PROXY_TYPE"] == "SOCKS5"
+    assert spec["env"]["PROXY_CREDENTIALS"] == "proxy.example:1080::"
+    assert spec["egress_udp"] == "none"
     earnapp_runtime.validate_runtime_spec(spec)
 
 
