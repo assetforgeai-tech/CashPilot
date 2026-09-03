@@ -2941,6 +2941,15 @@ async def api_apply_earnapp_node_proxy(
                         spec.binding_version,
                         commit=False,
                     )
+                for key in (
+                    "pending_binding_version",
+                    "pending_proxy_id",
+                    "pending_expected_egress_ip",
+                    "pending_observed_egress_ip",
+                ):
+                    state.pop(key, None)
+                state.update(proxy_health="unhealthy", proxy_health_reason="candidate_egress_mismatch")
+                _save_earnapp_state(logical_node_id, state)
                 raise HTTPException(status_code=409, detail="EarnApp candidate proxy egress mismatch")
             result = {
                 "binding_version": spec.binding_version,
