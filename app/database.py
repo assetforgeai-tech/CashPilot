@@ -4941,6 +4941,271 @@ async def commit_earnapp_proxy_rotation(
             await db.close()
 
 
+async def adopt_earnapp_runtime_proxy(
+    logical_node_id: str,
+    worker_id: int,
+    *,
+    expected_generation: int,
+    device_id: str,
+    expected_database_proxy_id: int,
+    runtime_proxy_id: int,
+    expected_runtime_egress_ip: str,
+    observed_runtime_egress_ip: str,
+    container_id: str,
+    sidecar_id: str,
+) -> dict[str, Any] | None:
+    """CAS-adopt a verified live EarnApp route after server/worker split-brain."""
+    node_id = str(logical_node_id or "").strip()
+    identity = str(device_id or "").strip()
+    expected_egress = str(expected_runtime_egress_ip or "").strip()
+    observed_egress = str(observed_runtime_egress_ip or "").strip()
+    live_container_id = str(container_id or "").strip()
+    live_sidecar_id = str(sidecar_id or "").strip()
+    database_proxy_id = int(expected_database_proxy_id or 0)
+    live_proxy_id = int(runtime_proxy_id or 0)
+    if (
+        earnapp_policy.is_protected_logical_node(node_id)
+        or not node_id
+        or int(worker_id or 0) <= 0
+        or int(expected_generation or 0) <= 0
+        or not re.fullmatch(r"sdk-(?:mac|ios|node)-[A-Za-z0-9-]{4,96}", identity)
+        or database_proxy_id <= 0
+        or live_proxy_id <= 0
+        or not expected_egress
+        or observed_egress != expected_egress
+        or not live_container_id
+        or not live_sidecar_id
+    ):
+        return None
+    async with _earnapp_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            node = await (
+                await db.execute(
+                    """
+                    SELECT * FROM earnapp_logical_nodes
+                    WHERE logical_node_id = ? AND assigned_worker_id = ? AND generation = ?
+                      AND device_id = ? AND current_proxy_id = ? AND state = 'ACTIVE'
+                    """,
+                    (
+                        node_id,
+                        int(worker_id),
+                        int(expected_generation),
+                        identity,
+                        database_proxy_id,
+                    ),
+                )
+            ).fetchone()
+            if not node:
+                await db.rollback()
+                return None
+            platform = str(node["platform"] or "").strip().lower()
+            if platform in {"macos", "ios"}:
+                country_clause = "upper(trim(coalesce(country_code, ''))) = 'VN'"
+            elif platform == "ubuntu":
+                country_clause = (
+                    "length(trim(coalesce(country_code, ''))) = 2 "
+                    "AND upper(trim(country_code)) GLOB '[A-Z][A-Z]' "
+                    "AND upper(trim(country_code)) != 'VN'"
+                )
+            else:
+                await db.rollback()
+                return None
+            proxy = await (
+                await db.execute(
+                    f"""
+                    SELECT id, exit_ip, country_code, ip_type
+                    FROM proxy_endpoints
+                    WHERE id = ? AND exit_ip = ? AND lower(coalesce(status, 'unknown')) = 'alive'
+                      AND lower(trim(coalesce(ip_type, ''))) = 'residential'
+                      AND {country_clause}
+                      AND coalesce(duplicate_egress, 0) = 0
+                      AND EXISTS (
+                          SELECT 1 FROM proxy_probe_results earnapp
+                          WHERE earnapp.proxy_id = proxy_endpoints.id
+                            AND earnapp.profile = 'earnapp_wss'
+                            AND earnapp.verdict = 'CID_SET'
+                            AND earnapp.eligibility = 'eligible'
+                            AND trim(coalesce(earnapp.exit_ip, '')) != ''
+                            AND earnapp.exit_ip = proxy_endpoints.exit_ip
+                            AND earnapp.id = (
+                                SELECT MAX(latest.id) FROM proxy_probe_results latest
+                                WHERE latest.proxy_id = proxy_endpoints.id AND latest.profile = 'earnapp_wss'
+                            )
+                      )
+                    """,
+                    (live_proxy_id, expected_egress),
+                )
+            ).fetchone()
+            if not proxy:
+                await db.rollback()
+                return None
+            mask = await (
+                await db.execute(
+                    """
+                    SELECT reason FROM proxy_provider_masks
+                    WHERE proxy_id = ? AND provider_slug = 'earnapp'
+                    LIMIT 1
+                    """,
+                    (live_proxy_id,),
+                )
+            ).fetchone()
+            mask_reason = str(mask["reason"] or "dashboard_ip_block") if mask else ""
+            conflict = await (
+                await db.execute(
+                    """
+                    SELECT 1 FROM provider_proxy_leases
+                    WHERE released_at IS NULL
+                      AND NOT (provider_slug = 'earnapp' AND worker_id = ? AND instance_id = ?)
+                      AND (proxy_id = ? OR (trim(coalesce(exit_ip, '')) != '' AND exit_ip = ?))
+                    LIMIT 1
+                    """,
+                    (int(worker_id), node_id, live_proxy_id, expected_egress),
+                )
+            ).fetchone()
+            if conflict:
+                await db.rollback()
+                return None
+            ownership_conflict = await (
+                await db.execute(
+                    """
+                    SELECT 1
+                    FROM (
+                        SELECT legacy.proxy_id
+                        FROM proxy_assignments legacy
+                        JOIN proxy_endpoints legacy_proxy ON legacy_proxy.id = legacy.proxy_id
+                        WHERE legacy.proxy_id = ?
+                           OR (trim(coalesce(legacy_proxy.exit_ip, '')) != '' AND legacy_proxy.exit_ip = ?)
+                        UNION ALL
+                        SELECT control.proxy_id
+                        FROM earnapp_account_control_routes control
+                        JOIN proxy_endpoints control_proxy ON control_proxy.id = control.proxy_id
+                        WHERE control.state = 'ACTIVE'
+                          AND (control.proxy_id = ?
+                               OR (trim(coalesce(control_proxy.exit_ip, '')) != '' AND control_proxy.exit_ip = ?))
+                        UNION ALL
+                        SELECT reservation.proxy_id
+                        FROM earnapp_proxy_reservations reservation
+                        JOIN proxy_endpoints reserved_proxy ON reserved_proxy.id = reservation.proxy_id
+                        WHERE reservation.state = 'ACTIVE' AND reservation.expires_at > datetime('now')
+                          AND (reservation.proxy_id = ?
+                               OR (trim(coalesce(reserved_proxy.exit_ip, '')) != '' AND reserved_proxy.exit_ip = ?))
+                    ) occupied
+                    LIMIT 1
+                    """,
+                    (
+                        live_proxy_id,
+                        expected_egress,
+                        live_proxy_id,
+                        expected_egress,
+                        live_proxy_id,
+                        expected_egress,
+                    ),
+                )
+            ).fetchone()
+            if ownership_conflict:
+                await db.rollback()
+                return None
+
+            own_leases = await (
+                await db.execute(
+                    """
+                    SELECT id, proxy_id, exit_ip FROM provider_proxy_leases
+                    WHERE provider_slug = 'earnapp' AND worker_id = ? AND instance_id = ?
+                      AND released_at IS NULL
+                    ORDER BY id
+                    """,
+                    (int(worker_id), node_id),
+                )
+            ).fetchall()
+            if len(own_leases) != 1:
+                await db.rollback()
+                return None
+            own_lease = own_leases[0]
+            if int(own_lease["proxy_id"] or 0) != database_proxy_id:
+                await db.rollback()
+                return None
+            if database_proxy_id != live_proxy_id:
+                released = await db.execute(
+                    """
+                    UPDATE provider_proxy_leases
+                    SET released_at = datetime('now'), release_reason = 'EARNAPP_RUNTIME_PROXY_ADOPTED'
+                    WHERE id = ? AND released_at IS NULL
+                    """,
+                    (int(own_lease["id"]),),
+                )
+                if int(released.rowcount or 0) != 1:
+                    await db.rollback()
+                    return None
+                await db.execute(
+                    """
+                    INSERT INTO provider_proxy_leases
+                        (provider_slug, worker_id, instance_id, proxy_id, exit_ip)
+                    VALUES ('earnapp', ?, ?, ?, ?)
+                    """,
+                    (int(worker_id), node_id, live_proxy_id, expected_egress),
+                )
+
+            updated_node = await db.execute(
+                """
+                UPDATE earnapp_logical_nodes
+                SET current_proxy_id = ?, preferred_proxy_id = ?, proxy_health = ?,
+                    observed_egress_ip = ?, expected_egress_ip = ?, proxy_checked_at = datetime('now'),
+                    proxy_health_reason = ?, updated_at = datetime('now')
+                WHERE logical_node_id = ? AND assigned_worker_id = ? AND generation = ?
+                  AND device_id = ? AND current_proxy_id = ? AND state = 'ACTIVE'
+                """,
+                (
+                    live_proxy_id,
+                    database_proxy_id if database_proxy_id != live_proxy_id else int(node["preferred_proxy_id"] or 0),
+                    "unhealthy" if mask else "healthy",
+                    observed_egress,
+                    expected_egress,
+                    mask_reason,
+                    node_id,
+                    int(worker_id),
+                    int(expected_generation),
+                    identity,
+                    database_proxy_id,
+                ),
+            )
+            if int(updated_node.rowcount or 0) != 1:
+                await db.rollback()
+                return None
+            updated_instance = await db.execute(
+                """
+                UPDATE provider_instances
+                SET proxy_id = ?, container_id = ?, sidecar_id = ?, updated_at = datetime('now')
+                WHERE slug = 'earnapp' AND instance_id = ? AND worker_id = ? AND proxy_id = ?
+                """,
+                (
+                    live_proxy_id,
+                    live_container_id,
+                    live_sidecar_id,
+                    node_id,
+                    int(worker_id),
+                    database_proxy_id,
+                ),
+            )
+            if int(updated_instance.rowcount or 0) != 1:
+                await db.rollback()
+                return None
+            updated = await (
+                await db.execute("SELECT * FROM earnapp_logical_nodes WHERE logical_node_id = ?", (node_id,))
+            ).fetchone()
+            await db.commit()
+            return dict(updated) if updated else None
+        except aiosqlite.IntegrityError:
+            await db.rollback()
+            return None
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
+
+
 async def bind_earnapp_node_runtime(
     logical_node_id: str,
     worker_id: int,
