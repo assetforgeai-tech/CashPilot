@@ -293,6 +293,8 @@ if command -v ip6tables >/dev/null 2>&1; then
   ip6tables -C OUTPUT -j CP_EARNAPP6_OUT 2>/dev/null || ip6tables -I OUTPUT 1 -j CP_EARNAPP6_OUT
 fi
 {ios_route}
+export NO_PROXY='*'
+export no_proxy='*'
 exec {next_entrypoint} "$@"
         """.encode()
 
