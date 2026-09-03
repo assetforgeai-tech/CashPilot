@@ -303,6 +303,7 @@ def test_canary_image_build_recipe_validates_artifacts_and_emits_pinned_labels(t
     recipe = build_earnapp_canary_image.render_dockerfile(manifest)
     manifest_hash = earnapp_runtime.runtime_asset_manifest_sha256(expected)
     assert f"com.cashpilot.earnapp.assets-sha256={manifest_hash}" in recipe
+    assert "chmod 0755" in recipe and "/usr/local/bin/entrypoint-original.sh" in recipe
     assert 'ENTRYPOINT ["/usr/local/bin/earn-supervisor"]' in recipe
 
 

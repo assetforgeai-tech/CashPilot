@@ -107,9 +107,7 @@ ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
             "COPY ios-register-device /usr/local/bin/ios-register-device\n"
             "COPY cashpilot-proxy-entrypoint /usr/local/bin/entrypoint.sh\n"
         )
-        registration_mode = (
-            " /usr/local/bin/entrypoint-original.sh /usr/local/bin/ios-entrypoint /usr/local/bin/ios-register-device"
-        )
+        registration_mode = " /usr/local/bin/ios-entrypoint /usr/local/bin/ios-register-device"
         entrypoint_copy = ""
         shellcheck = " /usr/local/bin/entrypoint-original.sh /usr/local/bin/ios-register-device"
     else:
@@ -141,7 +139,7 @@ COPY boot.js /usr/local/lib/node/boot.js
 COPY earn-supervisor /usr/local/bin/earn-supervisor
 {entrypoint_copy}{registration_copy}COPY runtime-manifest.json /opt/cashpilot/runtime-manifest.json
 
-RUN chmod 0755 /opt/{binary_target} /usr/local/bin/earn-supervisor /usr/local/bin/entrypoint.sh{registration_mode} \\
+RUN chmod 0755 /opt/{binary_target} /usr/local/bin/earn-supervisor /usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-original.sh{registration_mode} \\
     && node --check /usr/local/lib/node/boot.js \\
     && bash -n /usr/local/bin/earn-supervisor /usr/local/bin/entrypoint.sh{shellcheck}
 
