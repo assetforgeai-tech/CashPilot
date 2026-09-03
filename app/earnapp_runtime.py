@@ -242,16 +242,6 @@ case "$PROXY_TYPE" in
   HTTP) REDSOCKS_TYPE=http-connect ;;
   *) exit 64 ;;
 esac
-cat >/tmp/redsocks.conf <<EOF
-base {{ log_debug = off; log_info = off; log = "stderr"; daemon = off; redirector = iptables; }}
-redsocks {{ local_ip = 127.0.0.1; local_port = $REDSOCKS_PORT; ip = $PROXY_IP; port = $PROXY_PORT; type = $REDSOCKS_TYPE;
-EOF
-if [[ -n "${{PROXY_USER:-}}" ]]; then
-  printf '  login = "%s";\n  password = "%s";\n' "$PROXY_USER" "${{PROXY_PASS:-}}" >>/tmp/redsocks.conf
-fi
-printf '}}\n' >>/tmp/redsocks.conf
-/usr/sbin/redsocks -c /tmp/redsocks.conf &
-sleep 1
 iptables -t nat -N CP_EARNAPP_REDSOCKS 2>/dev/null || iptables -t nat -F CP_EARNAPP_REDSOCKS
 iptables -t nat -A CP_EARNAPP_REDSOCKS -d 127.0.0.0/8 -j RETURN
 iptables -t nat -A CP_EARNAPP_REDSOCKS -d "$PROXY_IP"/32 -j RETURN
