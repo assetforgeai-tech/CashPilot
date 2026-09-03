@@ -513,6 +513,8 @@ def test_ios_proxy_wrapper_installs_route_before_control_plane_registration():
     wrapper = earnapp_runtime.generated_runtime_artifacts("ios")["cashpilot-proxy-entrypoint"].decode("utf-8")
 
     assert '/usr/sbin/redsocks -c "$REDSOCKS_CONF" &' in wrapper
+    assert "iptables -t nat -N REDSOCKS" in wrapper
+    assert "iptables -t nat -A REDSOCKS -p tcp -j REDIRECT" in wrapper
     assert "iptables -I OUTPUT 1 -p tcp -j REDSOCKS" in wrapper
     assert "unset PROXY_CREDENTIALS PROXY_HOST PROXY_PORT PROXY_USER PROXY_PASS" in wrapper
     assert wrapper.index('/usr/sbin/redsocks -c "$REDSOCKS_CONF" &') < wrapper.index(
