@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -19,6 +21,557 @@ def test_earnapp_egress_probe_decodes_docker_exec_bytes_before_ip_validation(mon
         "observed_egress_ip": "171.251.97.103",
         "probe_ok": True,
     }
+
+
+def test_earnapp_runtime_authority_reports_exact_identity_proxy_and_components(monkeypatch):
+    main_container = MagicMock(
+        id="main-id",
+        status="running",
+        labels={
+            "cashpilot.managed": "true",
+            "cashpilot.service": "earnapp-runtime-authority",
+            "cashpilot.provider": "earnapp",
+            "cashpilot.earnapp.logical_node_id": "earnapp-runtime-authority",
+            "cashpilot.earnapp.device_id": "sdk-mac-" + "1" * 32,
+            "cashpilot.earnapp.platform": "darwin",
+            "cashpilot.earnapp.generation": "3",
+        },
+    )
+    sidecar_container = MagicMock(
+        id="sidecar-id",
+        status="running",
+        labels={
+            "cashpilot.managed": "true",
+            "cashpilot.service": "earnapp-runtime-authority",
+            "cashpilot.provider": "earnapp",
+            "cashpilot.role": "egress-sidecar",
+        },
+    )
+    main_container.attrs = {"HostConfig": {"NetworkMode": "container:sidecar-id"}}
+    sidecar_container.attrs = {
+        "Mounts": [{"Destination": "/etc/sing-box", "RW": True}],
+    }
+    client = MagicMock()
+    monkeypatch.setattr(
+        orchestrator,
+        "_find_earnapp_runtime_container",
+        lambda _client, _slug, *, sidecar: sidecar_container if sidecar else main_container,
+    )
+    monkeypatch.setattr(orchestrator, "_get_client", lambda: client)
+    monkeypatch.setattr(
+        orchestrator,
+        "probe_service_egress",
+        lambda _slug: {"running": True, "probe_ok": True, "observed_egress_ip": "198.51.100.61"},
+    )
+
+    assert orchestrator.earnapp_runtime_authority("earnapp-runtime-authority") == {
+        "logical_node_id": "earnapp-runtime-authority",
+        "generation": 3,
+        "platform": "macos",
+        "device_id": "sdk-mac-" + "1" * 32,
+        "main_container_id": "main-id",
+        "sidecar_container_id": "sidecar-id",
+        "main_running": True,
+        "sidecar_running": True,
+        "observed_egress_ip": "198.51.100.61",
+        "probe_ok": True,
+    }
+
+
+def test_worker_runtime_authority_is_cas_scoped_and_read_only(tmp_path, monkeypatch):
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    node_id = "earnapp-runtime-authority"
+    device_id = "sdk-mac-" + "1" * 32
+    worker_api._save_earnapp_state(
+        node_id,
+        {
+            "logical_node_id": node_id,
+            "generation": 3,
+            "device_id": device_id,
+            "platform": "macos",
+            "runtime_backend": "docker",
+            "proxy_id": 61,
+            "expected_egress_ip": "198.51.100.61",
+        },
+    )
+    authority = {
+        "logical_node_id": node_id,
+        "generation": 3,
+        "platform": "macos",
+        "device_id": device_id,
+        "main_container_id": "main-id",
+        "sidecar_container_id": "sidecar-id",
+        "main_running": True,
+        "sidecar_running": True,
+        "observed_egress_ip": "198.51.100.61",
+        "probe_ok": True,
+    }
+    with (
+        patch.object(worker_api, "_verify_api_key"),
+        patch.object(orchestrator, "earnapp_runtime_authority", return_value=authority),
+    ):
+        result = asyncio.run(
+            worker_api.api_earnapp_node_runtime_authority(
+                MagicMock(),
+                node_id,
+                generation=3,
+                device_id=device_id,
+                expected_proxy_id=61,
+            )
+        )
+        with pytest.raises(worker_api.HTTPException) as exc:
+            asyncio.run(
+                worker_api.api_earnapp_node_runtime_authority(
+                    MagicMock(),
+                    node_id,
+                    generation=3,
+                    device_id=device_id,
+                    expected_proxy_id=60,
+                )
+            )
+
+    assert result["proxy_id"] == 61
+    assert result["expected_egress_ip"] == "198.51.100.61"
+    assert result["observed_egress_ip"] == "198.51.100.61"
+    assert exc.value.status_code == 409
+    saved = json.loads(Path(tmp_path, "earnapp-nodes", f"{node_id}.json").read_text(encoding="utf-8"))
+    assert saved["proxy_id"] == 61
+
+
+def test_worker_runtime_authority_normalizes_matching_linux_platform(tmp_path, monkeypatch):
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    node_id = "earnapp-runtime-platform"
+    device_id = "sdk-node-" + "a" * 32
+    worker_api._save_earnapp_state(
+        node_id,
+        {
+            "logical_node_id": node_id,
+            "generation": 4,
+            "device_id": device_id,
+            "platform": "linux",
+            "runtime_backend": "docker",
+            "proxy_id": 71,
+            "expected_egress_ip": "198.51.100.71",
+        },
+    )
+    authority = {
+        "logical_node_id": node_id,
+        "generation": 4,
+        "platform": "ubuntu",
+        "device_id": device_id,
+        "main_container_id": "main-id",
+        "sidecar_container_id": "sidecar-id",
+        "main_running": True,
+        "sidecar_running": True,
+        "observed_egress_ip": "198.51.100.71",
+        "probe_ok": True,
+    }
+    with (
+        patch.object(worker_api, "_verify_api_key"),
+        patch.object(orchestrator, "earnapp_runtime_authority", return_value=authority),
+    ):
+        result = asyncio.run(
+            worker_api.api_earnapp_node_runtime_authority(
+                MagicMock(),
+                node_id,
+                generation=4,
+                device_id=device_id,
+                expected_proxy_id=71,
+            )
+        )
+
+    assert result["platform"] == "ubuntu"
+
+
+def test_worker_runtime_authority_rejects_normalized_platform_mismatch(tmp_path, monkeypatch):
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    node_id = "earnapp-runtime-platform-mismatch"
+    device_id = "sdk-node-" + "b" * 32
+    worker_api._save_earnapp_state(
+        node_id,
+        {
+            "logical_node_id": node_id,
+            "generation": 4,
+            "device_id": device_id,
+            "platform": "linux",
+            "runtime_backend": "docker",
+            "proxy_id": 72,
+            "expected_egress_ip": "198.51.100.72",
+        },
+    )
+    authority = {
+        "logical_node_id": node_id,
+        "generation": 4,
+        "platform": "macos",
+        "device_id": device_id,
+        "main_container_id": "main-id",
+        "sidecar_container_id": "sidecar-id",
+        "main_running": True,
+        "sidecar_running": True,
+        "observed_egress_ip": "198.51.100.72",
+        "probe_ok": True,
+    }
+    with (
+        patch.object(worker_api, "_verify_api_key"),
+        patch.object(orchestrator, "earnapp_runtime_authority", return_value=authority),
+        pytest.raises(worker_api.HTTPException) as exc,
+    ):
+        asyncio.run(
+            worker_api.api_earnapp_node_runtime_authority(
+                MagicMock(),
+                node_id,
+                generation=4,
+                device_id=device_id,
+                expected_proxy_id=72,
+            )
+        )
+
+    assert exc.value.status_code == 409
+
+
+def test_worker_runtime_authority_serializes_concurrent_reads_with_node_mutations(tmp_path, monkeypatch):
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    node_id = "earnapp-runtime-serialized"
+    device_id = "sdk-mac-" + "c" * 32
+    worker_api._save_earnapp_state(
+        node_id,
+        {
+            "logical_node_id": node_id,
+            "generation": 4,
+            "device_id": device_id,
+            "platform": "macos",
+            "runtime_backend": "docker",
+            "proxy_id": 73,
+            "expected_egress_ip": "198.51.100.73",
+        },
+    )
+    authority = {
+        "logical_node_id": node_id,
+        "generation": 4,
+        "platform": "macos",
+        "device_id": device_id,
+        "main_container_id": "main-id",
+        "sidecar_container_id": "sidecar-id",
+        "main_running": True,
+        "sidecar_running": True,
+        "observed_egress_ip": "198.51.100.73",
+        "probe_ok": True,
+    }
+    started = threading.Event()
+    release = threading.Event()
+    calls = 0
+
+    def blocking_authority(_slug):
+        nonlocal calls
+        calls += 1
+        started.set()
+        if not release.wait(2):
+            raise AssertionError("authority probe did not get released")
+        return authority
+
+    async def run():
+        with (
+            patch.object(worker_api, "_verify_api_key"),
+            patch.object(orchestrator, "earnapp_runtime_authority", side_effect=blocking_authority),
+        ):
+            first = asyncio.create_task(
+                worker_api.api_earnapp_node_runtime_authority(
+                    MagicMock(), node_id, generation=4, device_id=device_id, expected_proxy_id=73
+                )
+            )
+            assert await asyncio.to_thread(started.wait, 1)
+            second = asyncio.create_task(
+                worker_api.api_earnapp_node_runtime_authority(
+                    MagicMock(), node_id, generation=4, device_id=device_id, expected_proxy_id=73
+                )
+            )
+            await asyncio.sleep(0.05)
+            assert calls == 1
+            release.set()
+            await asyncio.gather(first, second)
+
+    asyncio.run(run())
+    assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_server_runtime_adoption_requires_matching_worker_authority(monkeypatch):
+    node_id = "earnapp-runtime-authority"
+    device_id = "sdk-mac-" + "1" * 32
+    node = {
+        "logical_node_id": node_id,
+        "assigned_worker_id": 11,
+        "generation": 3,
+        "device_id": device_id,
+        "platform": "macos",
+        "state": "ACTIVE",
+        "current_proxy_id": 60,
+    }
+    authority = {
+        "logical_node_id": node_id,
+        "generation": 3,
+        "platform": "macos",
+        "device_id": device_id,
+        "proxy_id": 61,
+        "expected_egress_ip": "198.51.100.61",
+        "observed_egress_ip": "198.51.100.61",
+        "main_container_id": "main-id",
+        "sidecar_container_id": "sidecar-id",
+        "main_running": True,
+        "sidecar_running": True,
+        "probe_ok": True,
+    }
+    monkeypatch.setattr(main.provider_runtime, "mutation_block", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(database, "get_earnapp_logical_node", AsyncMock(return_value=node))
+    monkeypatch.setattr(main, "_proxy_to_worker", AsyncMock(return_value=authority))
+    adopt = AsyncMock(return_value={**node, "current_proxy_id": 61})
+    monkeypatch.setattr(database, "adopt_earnapp_runtime_proxy", adopt)
+    monkeypatch.setattr(database, "record_health_event", AsyncMock())
+
+    result = await main._adopt_earnapp_runtime_proxy(
+        node_id,
+        11,
+        generation=3,
+        device_id=device_id,
+        expected_database_proxy_id=60,
+        expected_runtime_proxy_id=61,
+        expected_runtime_egress_ip="198.51.100.61",
+    )
+
+    assert result and result["current_proxy_id"] == 61
+    adopt.assert_awaited_once_with(
+        node_id,
+        11,
+        expected_generation=3,
+        device_id=device_id,
+        expected_database_proxy_id=60,
+        runtime_proxy_id=61,
+        expected_runtime_egress_ip="198.51.100.61",
+        observed_runtime_egress_ip="198.51.100.61",
+        container_id="main-id",
+        sidecar_id="sidecar-id",
+    )
+
+
+@pytest.mark.asyncio
+async def test_server_runtime_adoption_serializes_with_rotation_for_same_node(monkeypatch):
+    node_id = "earnapp-runtime-adoption-serialized"
+    device_id = "sdk-mac-" + "d" * 32
+    node = {
+        "logical_node_id": node_id,
+        "assigned_worker_id": 11,
+        "generation": 3,
+        "device_id": device_id,
+        "platform": "macos",
+        "state": "ACTIVE",
+        "current_proxy_id": 60,
+    }
+    authority = {
+        "logical_node_id": node_id,
+        "generation": 3,
+        "platform": "macos",
+        "device_id": device_id,
+        "proxy_id": 61,
+        "expected_egress_ip": "198.51.100.61",
+        "observed_egress_ip": "198.51.100.61",
+        "main_container_id": "main-id",
+        "sidecar_container_id": "sidecar-id",
+        "main_running": True,
+        "sidecar_running": True,
+        "probe_ok": True,
+    }
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def blocking_worker(*_args, **_kwargs):
+        started.set()
+        await release.wait()
+        return authority
+
+    monkeypatch.setattr(main.provider_runtime, "mutation_block", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(database, "get_earnapp_logical_node", AsyncMock(return_value=node))
+    worker_call = AsyncMock(side_effect=blocking_worker)
+    monkeypatch.setattr(main, "_proxy_to_worker", worker_call)
+    monkeypatch.setattr(
+        database, "adopt_earnapp_runtime_proxy", AsyncMock(return_value={**node, "current_proxy_id": 61})
+    )
+    monkeypatch.setattr(database, "record_health_event", AsyncMock())
+
+    first = asyncio.create_task(
+        main._adopt_earnapp_runtime_proxy(
+            node_id,
+            11,
+            generation=3,
+            device_id=device_id,
+            expected_database_proxy_id=60,
+            expected_runtime_proxy_id=61,
+            expected_runtime_egress_ip="198.51.100.61",
+        )
+    )
+    await started.wait()
+    second = asyncio.create_task(
+        main._adopt_earnapp_runtime_proxy(
+            node_id,
+            11,
+            generation=3,
+            device_id=device_id,
+            expected_database_proxy_id=60,
+            expected_runtime_proxy_id=61,
+            expected_runtime_egress_ip="198.51.100.61",
+        )
+    )
+    await asyncio.sleep(0)
+    assert worker_call.await_count == 1
+    release.set()
+    first_result, second_result = await asyncio.gather(first, second)
+    assert first_result and second_result is None
+
+
+@pytest.mark.asyncio
+async def test_server_runtime_adoption_rejects_worker_identity_or_egress_mismatch(monkeypatch):
+    node_id = "earnapp-runtime-authority-reject"
+    device_id = "sdk-mac-" + "2" * 32
+    node = {
+        "logical_node_id": node_id,
+        "assigned_worker_id": 11,
+        "generation": 3,
+        "device_id": device_id,
+        "platform": "macos",
+        "state": "ACTIVE",
+        "current_proxy_id": 60,
+    }
+    monkeypatch.setattr(main.provider_runtime, "mutation_block", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(database, "get_earnapp_logical_node", AsyncMock(return_value=node))
+    adopt = AsyncMock()
+    monkeypatch.setattr(database, "adopt_earnapp_runtime_proxy", adopt)
+    monkeypatch.setattr(
+        main,
+        "_proxy_to_worker",
+        AsyncMock(
+            return_value={
+                "logical_node_id": node_id,
+                "generation": 3,
+                "device_id": "sdk-mac-" + "3" * 32,
+                "proxy_id": 61,
+                "expected_egress_ip": "198.51.100.61",
+                "observed_egress_ip": "203.0.113.10",
+                "main_container_id": "main-id",
+                "sidecar_container_id": "sidecar-id",
+                "main_running": True,
+                "sidecar_running": True,
+                "probe_ok": True,
+            }
+        ),
+    )
+
+    assert not await main._adopt_earnapp_runtime_proxy(
+        node_id,
+        11,
+        generation=3,
+        device_id=device_id,
+        expected_database_proxy_id=60,
+        expected_runtime_proxy_id=61,
+        expected_runtime_egress_ip="198.51.100.61",
+    )
+    adopt.assert_not_awaited()
+
+
+def test_earnapp_runtime_authority_reads_ubuntu_uuid_from_identity_volume(monkeypatch):
+    main_container = MagicMock(id="ubuntu-main", status="running")
+    main_container.labels = {
+        "cashpilot.earnapp.logical_node_id": "earnapp-ubuntu-authority",
+        "cashpilot.earnapp.generation": "4",
+        "cashpilot.earnapp.platform": "linux",
+    }
+    main_container.attrs = {"HostConfig": {"NetworkMode": "container:ubuntu-sidecar"}}
+    main_container.exec_run.return_value = MagicMock(exit_code=0, output=b"sdk-node-" + b"a" * 32)
+    sidecar_container = MagicMock(id="ubuntu-sidecar", status="running")
+    sidecar_container.labels = {
+        "cashpilot.managed": "true",
+        "cashpilot.service": "earnapp-ubuntu-authority",
+        "cashpilot.provider": "earnapp",
+        "cashpilot.role": "egress-sidecar",
+    }
+    sidecar_container.attrs = {"Mounts": [{"Destination": "/etc/sing-box", "RW": True}]}
+    client = MagicMock()
+    monkeypatch.setattr(
+        orchestrator,
+        "_find_earnapp_runtime_container",
+        lambda _client, _slug, *, sidecar: sidecar_container if sidecar else main_container,
+    )
+    monkeypatch.setattr(orchestrator, "_get_client", lambda: client)
+    monkeypatch.setattr(
+        orchestrator,
+        "probe_service_egress",
+        lambda _slug: {"running": True, "probe_ok": True, "observed_egress_ip": "198.51.100.80"},
+    )
+
+    result = orchestrator.earnapp_runtime_authority("earnapp-ubuntu-authority")
+
+    assert result["device_id"] == "sdk-node-" + "a" * 32
+    assert result["platform"] == "ubuntu"
+
+
+def test_earnapp_runtime_authority_rejects_unrelated_network_namespace(monkeypatch):
+    main_container = MagicMock(
+        id="main-id",
+        status="running",
+        labels={
+            "cashpilot.earnapp.logical_node_id": "earnapp-runtime-authority",
+            "cashpilot.earnapp.generation": "3",
+            "cashpilot.earnapp.platform": "darwin",
+            "cashpilot.earnapp.device_id": "sdk-mac-" + "1" * 32,
+        },
+        attrs={"HostConfig": {"NetworkMode": "bridge"}},
+    )
+    sidecar_container = MagicMock(
+        id="sidecar-id",
+        status="running",
+        labels={"cashpilot.provider": "earnapp", "cashpilot.role": "egress-sidecar"},
+        attrs={"Mounts": [{"Destination": "/etc/sing-box", "RW": True}]},
+    )
+    monkeypatch.setattr(
+        orchestrator,
+        "_find_earnapp_runtime_container",
+        lambda _client, _slug, *, sidecar: sidecar_container if sidecar else main_container,
+    )
+    monkeypatch.setattr(orchestrator, "_get_client", lambda: MagicMock())
+
+    with pytest.raises(RuntimeError, match="network namespace"):
+        orchestrator.earnapp_runtime_authority("earnapp-runtime-authority")
+
+
+@pytest.mark.asyncio
+async def test_owner_runtime_adoption_endpoint_forwards_explicit_preconditions(monkeypatch):
+    node_id = "earnapp-runtime-authority-endpoint"
+    device_id = "sdk-mac-" + "4" * 32
+    adopt = AsyncMock(return_value={"logical_node_id": node_id, "current_proxy_id": 61})
+    monkeypatch.setattr(main, "_adopt_earnapp_runtime_proxy", adopt)
+
+    result = await main.api_adopt_earnapp_runtime_proxy(
+        MagicMock(),
+        node_id,
+        main.EarnAppRuntimeProxyAdoptRequest(
+            worker_id=11,
+            generation=3,
+            device_id=device_id,
+            expected_database_proxy_id=60,
+            expected_runtime_proxy_id=61,
+            expected_runtime_egress_ip="198.51.100.61",
+        ),
+        {"r": "owner"},
+    )
+
+    assert result["current_proxy_id"] == 61
+    adopt.assert_awaited_once_with(
+        node_id,
+        11,
+        generation=3,
+        device_id=device_id,
+        expected_database_proxy_id=60,
+        expected_runtime_proxy_id=61,
+        expected_runtime_egress_ip="198.51.100.61",
+    )
 
 
 def _account(profile: str = "profile-a") -> dict[str, object]:
@@ -126,6 +679,254 @@ def test_node_scoped_health_evidence_and_atomic_rotation_preserve_preference(tmp
             assert await database.get_active_provider_proxy_lease("earnapp", worker_id, "earnapp-node-health")
             old_lease = await database.list_provider_proxy_leases(provider_slug="earnapp")
             assert any(row["proxy_id"] == old_proxy and row["released_at"] for row in old_lease)
+
+    asyncio.run(run())
+
+
+def test_adopt_earnapp_runtime_proxy_repairs_only_matching_split_brain_assignment(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "adopt.db"):
+            await database.init_db()
+            await earnapp_accounts.import_account(_account())
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            database_proxy = await _proxy(provider_id, 60)
+            runtime_proxy = await _proxy(provider_id, 61)
+            worker_id = await database.upsert_worker("worker-adopt", "worker-adopt", "http://worker")
+            node_id = "earnapp-runtime-adopt"
+            identity = "sdk-mac-" + "6" * 32
+            await database.assign_earnapp_account(node_id, platform="macos")
+            await database.bind_earnapp_node_runtime(node_id, worker_id, device_id=identity, proxy_id=database_proxy)
+            await database.save_provider_instance(
+                "earnapp",
+                node_id,
+                worker_id=worker_id,
+                mode="proxy",
+                container_id="stale-container",
+                sidecar_id="",
+                proxy_id=database_proxy,
+                status="verification_pending",
+            )
+
+            adopted = await database.adopt_earnapp_runtime_proxy(
+                node_id,
+                worker_id,
+                expected_generation=1,
+                device_id=identity,
+                expected_database_proxy_id=database_proxy,
+                runtime_proxy_id=runtime_proxy,
+                expected_runtime_egress_ip="198.51.100.61",
+                observed_runtime_egress_ip="198.51.100.61",
+                container_id="live-container",
+                sidecar_id="live-sidecar",
+            )
+
+            assert adopted and adopted["current_proxy_id"] == runtime_proxy
+            assert adopted["preferred_proxy_id"] == database_proxy
+            node = await database.get_earnapp_logical_node(node_id)
+            assert node["proxy_health"] == "healthy"
+            assert node["expected_egress_ip"] == "198.51.100.61"
+            assert node["observed_egress_ip"] == "198.51.100.61"
+            instance = await database.get_provider_instance(node_id)
+            assert instance["proxy_id"] == runtime_proxy
+            assert instance["container_id"] == "live-container"
+            assert instance["sidecar_id"] == "live-sidecar"
+            leases = await database.list_provider_proxy_leases(provider_slug="earnapp")
+            assert len([row for row in leases if row["instance_id"] == node_id and not row["released_at"]]) == 1
+            assert any(
+                row["instance_id"] == node_id
+                and row["proxy_id"] == database_proxy
+                and row["release_reason"] == "EARNAPP_RUNTIME_PROXY_ADOPTED"
+                for row in leases
+            )
+
+            # Exact replay is idempotent and cannot create a duplicate lease.
+            replay = await database.adopt_earnapp_runtime_proxy(
+                node_id,
+                worker_id,
+                expected_generation=1,
+                device_id=identity,
+                expected_database_proxy_id=runtime_proxy,
+                runtime_proxy_id=runtime_proxy,
+                expected_runtime_egress_ip="198.51.100.61",
+                observed_runtime_egress_ip="198.51.100.61",
+                container_id="live-container",
+                sidecar_id="live-sidecar",
+            )
+            assert replay and replay["current_proxy_id"] == runtime_proxy
+            leases = await database.list_provider_proxy_leases(provider_slug="earnapp")
+            assert len([row for row in leases if row["instance_id"] == node_id and not row["released_at"]]) == 1
+
+    asyncio.run(run())
+
+
+def test_adopt_earnapp_runtime_proxy_rejects_stale_or_conflicting_preconditions(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "reject.db"):
+            await database.init_db()
+            await earnapp_accounts.import_account(_account())
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            database_proxy = await _proxy(provider_id, 62)
+            runtime_proxy = await _proxy(provider_id, 63)
+            conflicting_proxy = await _proxy(provider_id, 64)
+            worker_id = await database.upsert_worker("worker-adopt", "worker-adopt", "http://worker")
+            other_worker = await database.upsert_worker("worker-other", "worker-other", "http://other")
+            node_id = "earnapp-runtime-adopt-reject"
+            identity = "sdk-mac-" + "7" * 32
+            await database.assign_earnapp_account(node_id, platform="macos")
+            await database.bind_earnapp_node_runtime(node_id, worker_id, device_id=identity, proxy_id=database_proxy)
+            db = await database._get_db()
+            await db.execute(
+                """
+                INSERT INTO provider_proxy_leases
+                    (provider_slug, worker_id, instance_id, proxy_id, exit_ip)
+                VALUES ('other-provider', ?, 'other-node', ?, '198.51.100.64')
+                """,
+                (other_worker, conflicting_proxy),
+            )
+            await db.commit()
+
+            common = {
+                "logical_node_id": node_id,
+                "worker_id": worker_id,
+                "expected_generation": 1,
+                "device_id": identity,
+                "expected_database_proxy_id": database_proxy,
+                "runtime_proxy_id": runtime_proxy,
+                "expected_runtime_egress_ip": "198.51.100.63",
+                "observed_runtime_egress_ip": "198.51.100.63",
+                "container_id": "live-container",
+                "sidecar_id": "live-sidecar",
+            }
+            assert await database.adopt_earnapp_runtime_proxy(**{**common, "expected_generation": 2}) is None
+            assert await database.adopt_earnapp_runtime_proxy(**{**common, "device_id": "sdk-mac-" + "8" * 32}) is None
+            assert (
+                await database.adopt_earnapp_runtime_proxy(
+                    **{
+                        **common,
+                        "runtime_proxy_id": conflicting_proxy,
+                        "expected_runtime_egress_ip": "198.51.100.64",
+                        "observed_runtime_egress_ip": "198.51.100.64",
+                    }
+                )
+                is None
+            )
+            assert (
+                await database.adopt_earnapp_runtime_proxy(**{**common, "observed_runtime_egress_ip": "203.0.113.10"})
+                is None
+            )
+            node = await database.get_earnapp_logical_node(node_id)
+            assert node["current_proxy_id"] == database_proxy
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("conflict_kind", ["legacy", "control", "reservation"])
+def test_adopt_earnapp_runtime_proxy_rejects_other_active_proxy_ownership(tmp_path, conflict_kind):
+    async def run():
+        with (
+            patch.object(database, "DB_DIR", tmp_path),
+            patch.object(database, "DB_PATH", tmp_path / f"{conflict_kind}.db"),
+        ):
+            await database.init_db()
+            account_id = await earnapp_accounts.import_account(_account("profile-target"))
+            control_account_id = await earnapp_accounts.import_account(_account("profile-control"))
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            database_proxy = await _proxy(provider_id, 74)
+            runtime_proxy = await _proxy(provider_id, 75)
+            conflict_proxy = await _proxy(provider_id, 76)
+            db = await database._get_db()
+            await db.execute(
+                "UPDATE proxy_endpoints SET exit_ip = ? WHERE id = ?",
+                ("198.51.100.75", conflict_proxy),
+            )
+            worker_id = await database.upsert_worker("worker-adopt-conflict", "worker-adopt-conflict", "http://worker")
+            other_worker = await database.upsert_worker("worker-adopt-other", "worker-adopt-other", "http://other")
+            node_id = f"earnapp-runtime-adopt-{conflict_kind}"
+            identity = "sdk-mac-" + "e" * 32
+            assigned = await database.assign_earnapp_account(node_id, platform="macos")
+            assert int(assigned["id"]) == account_id
+            await database.bind_earnapp_node_runtime(node_id, worker_id, device_id=identity, proxy_id=database_proxy)
+            await database.save_provider_instance(
+                "earnapp", node_id, worker_id=worker_id, mode="proxy", proxy_id=database_proxy, status="running"
+            )
+            if conflict_kind == "legacy":
+                await db.execute(
+                    "INSERT INTO proxy_assignments (worker_id, proxy_id, mode, fallback) VALUES (?, ?, 'proxy', 'hold')",
+                    (other_worker, conflict_proxy),
+                )
+            elif conflict_kind == "control":
+                await db.execute(
+                    """
+                    INSERT INTO earnapp_account_control_routes (account_id, proxy_id, state, assigned_logical_node_id)
+                    VALUES (?, ?, 'ACTIVE', '')
+                    """,
+                    (control_account_id, conflict_proxy),
+                )
+            else:
+                await db.execute(
+                    """
+                    INSERT INTO earnapp_proxy_reservations
+                        (logical_node_id, worker_id, generation, expected_proxy_id, proxy_id,
+                         binding_version, expires_at)
+                    VALUES (?, ?, 99, ?, ?, ?, datetime('now', '+1 hour'))
+                    """,
+                    (node_id, other_worker, database_proxy, conflict_proxy, f"conflict_{conflict_kind}"),
+                )
+            await db.commit()
+
+            adopted = await database.adopt_earnapp_runtime_proxy(
+                node_id,
+                worker_id,
+                expected_generation=1,
+                device_id=identity,
+                expected_database_proxy_id=database_proxy,
+                runtime_proxy_id=runtime_proxy,
+                expected_runtime_egress_ip="198.51.100.75",
+                observed_runtime_egress_ip="198.51.100.75",
+                container_id="live-container",
+                sidecar_id="live-sidecar",
+            )
+            assert adopted is None
+            assert (await database.get_earnapp_logical_node(node_id))["current_proxy_id"] == database_proxy
+
+    asyncio.run(run())
+
+
+def test_adopt_earnapp_runtime_proxy_preserves_dashboard_mask_as_unhealthy(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "masked.db"):
+            await database.init_db()
+            await earnapp_accounts.import_account(_account())
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            database_proxy = await _proxy(provider_id, 65)
+            runtime_proxy = await _proxy(provider_id, 66)
+            worker_id = await database.upsert_worker("worker-masked", "worker-masked", "http://worker")
+            node_id = "earnapp-runtime-adopt-masked"
+            identity = "sdk-mac-" + "9" * 32
+            await database.assign_earnapp_account(node_id, platform="macos")
+            await database.bind_earnapp_node_runtime(node_id, worker_id, device_id=identity, proxy_id=database_proxy)
+            await database.save_provider_instance(
+                "earnapp", node_id, worker_id=worker_id, mode="proxy", proxy_id=database_proxy, status="running"
+            )
+            assert await database.mask_proxy_for_provider(runtime_proxy, "earnapp", "dashboard_ip_block")
+
+            adopted = await database.adopt_earnapp_runtime_proxy(
+                node_id,
+                worker_id,
+                expected_generation=1,
+                device_id=identity,
+                expected_database_proxy_id=database_proxy,
+                runtime_proxy_id=runtime_proxy,
+                expected_runtime_egress_ip="198.51.100.66",
+                observed_runtime_egress_ip="198.51.100.66",
+                container_id="live-container",
+                sidecar_id="live-sidecar",
+            )
+
+            assert adopted and adopted["current_proxy_id"] == runtime_proxy
+            node = await database.get_earnapp_logical_node(node_id)
+            assert node["proxy_health"] == "unhealthy"
+            assert node["proxy_health_reason"] == "dashboard_ip_block"
 
     asyncio.run(run())
 

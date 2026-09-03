@@ -315,6 +315,65 @@ def probe_service_egress(slug: str) -> dict[str, Any]:
     }
 
 
+def earnapp_runtime_authority(slug: str) -> dict[str, Any]:
+    """Return the exact Docker identity and egress needed for a guarded repair."""
+    node_id = str(slug or "").strip()
+    if not re.fullmatch(r"earnapp-[a-z0-9][a-z0-9-]{1,112}", node_id):
+        raise ValueError("invalid EarnApp Docker runtime id")
+    client = _get_client()
+    main = _find_earnapp_runtime_container(client, node_id, sidecar=False)
+    sidecar = _find_earnapp_runtime_container(client, node_id, sidecar=True)
+    if main is None or sidecar is None:
+        raise RuntimeError(f"EarnApp runtime for {node_id} is incomplete")
+    labels = getattr(main, "labels", {}) or {}
+    if str(labels.get("cashpilot.earnapp.logical_node_id") or "").strip() != node_id:
+        raise RuntimeError(f"EarnApp runtime for {node_id} has a conflicting logical node identity")
+    try:
+        generation = int(labels.get("cashpilot.earnapp.generation") or 0)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(f"EarnApp runtime for {node_id} has an invalid generation") from exc
+    if generation <= 0:
+        raise RuntimeError(f"EarnApp runtime for {node_id} has no valid generation")
+    sidecar_id = str(getattr(sidecar, "id", "") or "").strip()
+    sidecar_name = str(getattr(sidecar, "name", "") or "").strip().lstrip("/")
+    network_mode = str(((getattr(main, "attrs", {}) or {}).get("HostConfig") or {}).get("NetworkMode") or "").strip()
+    if network_mode not in {f"container:{value}" for value in (sidecar_id, sidecar_name) if value}:
+        raise RuntimeError(f"EarnApp runtime for {node_id} has an unexpected network namespace")
+    sidecar_mounts = (getattr(sidecar, "attrs", {}) or {}).get("Mounts", []) or []
+    if not any(
+        str(mount.get("Destination") or "").rstrip("/") == "/etc/sing-box" and mount.get("RW", True)
+        for mount in sidecar_mounts
+        if isinstance(mount, dict)
+    ):
+        raise RuntimeError(f"EarnApp runtime for {node_id} has no persistent egress sidecar volume")
+    platform = str(labels.get("cashpilot.earnapp.platform") or "").strip().lower()
+    if platform == "darwin":
+        platform = "macos"
+    elif platform == "linux":
+        platform = "ubuntu"
+    device_id = str(labels.get("cashpilot.earnapp.device_id") or "").strip()
+    if not device_id and platform == "ubuntu":
+        result = main.exec_run(["/bin/sh", "-c", "test -s /etc/earnapp/uuid && cat /etc/earnapp/uuid"])
+        exit_code, output = _exec_output(result)
+        if exit_code == 0:
+            device_id = output.decode("utf-8", errors="replace").strip().splitlines()[0] if output else ""
+    if not re.fullmatch(r"sdk-(?:mac|ios|node)-[A-Za-z0-9-]{4,96}", device_id):
+        raise RuntimeError(f"EarnApp runtime for {node_id} has no valid device identity")
+    evidence = probe_service_egress(node_id)
+    return {
+        "logical_node_id": node_id,
+        "generation": generation,
+        "platform": platform,
+        "device_id": device_id,
+        "main_container_id": str(getattr(main, "id", "") or ""),
+        "sidecar_container_id": sidecar_id,
+        "main_running": str(getattr(main, "status", "") or "").lower() == "running",
+        "sidecar_running": str(getattr(sidecar, "status", "") or "").lower() == "running",
+        "observed_egress_ip": str(evidence.get("observed_egress_ip") or ""),
+        "probe_ok": evidence.get("probe_ok") is True,
+    }
+
+
 def _earnapp_sidecar(slug: str, client: Any | None = None):
     if not re.fullmatch(r"earnapp-[a-z0-9][a-z0-9-]{1,112}", str(slug or "")):
         raise ValueError("invalid EarnApp Docker runtime id")

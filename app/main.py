@@ -10,6 +10,7 @@ import asyncio
 import contextlib
 import hmac
 import io
+import ipaddress
 import json
 import logging
 import math
@@ -2558,6 +2559,24 @@ class EarnAppCanaryDeployRequest(BaseModel):
     platform: str = Field(default="ubuntu", pattern=r"^(macos|ios|ubuntu)$")
 
 
+class EarnAppRuntimeProxyAdoptRequest(BaseModel):
+    worker_id: int = Field(gt=0)
+    generation: int = Field(gt=0)
+    device_id: str = Field(min_length=8, max_length=128, pattern=r"^sdk-(?:mac|ios|node)-[A-Za-z0-9-]{4,96}$")
+    expected_database_proxy_id: int = Field(gt=0)
+    expected_runtime_proxy_id: int = Field(gt=0)
+    expected_runtime_egress_ip: str = Field(min_length=3, max_length=64)
+
+    @field_validator("expected_runtime_egress_ip")
+    @classmethod
+    def validate_runtime_egress(cls, value: str) -> str:
+        try:
+            ipaddress.ip_address(value)
+        except ValueError as exc:
+            raise ValueError("EarnApp runtime egress must be an IP address") from exc
+        return value
+
+
 async def _verify_earnapp_canary_with_proxy_rotation(
     logical_node_id: str,
     *,
@@ -3368,6 +3387,28 @@ async def api_verify_earnapp_canary(
     return result
 
 
+@app.post("/api/admin/earnapp/nodes/{logical_node_id}/proxy/adopt-runtime")
+async def api_adopt_earnapp_runtime_proxy(
+    request: Request,
+    logical_node_id: str,
+    body: EarnAppRuntimeProxyAdoptRequest,
+    _auth: dict[str, Any] = Depends(_require_owner),
+) -> dict[str, Any]:
+    """Repair one exact server/worker EarnApp proxy split-brain by dual CAS."""
+    result = await _adopt_earnapp_runtime_proxy(
+        logical_node_id,
+        body.worker_id,
+        generation=body.generation,
+        device_id=body.device_id,
+        expected_database_proxy_id=body.expected_database_proxy_id,
+        expected_runtime_proxy_id=body.expected_runtime_proxy_id,
+        expected_runtime_egress_ip=body.expected_runtime_egress_ip,
+    )
+    if not result:
+        raise HTTPException(status_code=409, detail="EarnApp runtime proxy adoption preconditions changed")
+    return result
+
+
 async def _run_post_deploy_automation(slug: str, worker_id: int, hostname: str, modes: list[str] | None = None) -> None:
     svc = catalog.get_service(slug)
     deploy = (svc or {}).get("deploy") or {}
@@ -3993,6 +4034,114 @@ async def _proxy_worker_earnapp_docker_deploy(
         json=spec,
         timeout=60 * 60,
     )
+
+
+async def _adopt_earnapp_runtime_proxy(
+    logical_node_id: str,
+    worker_id: int,
+    *,
+    generation: int,
+    device_id: str,
+    expected_database_proxy_id: int,
+    expected_runtime_proxy_id: int,
+    expected_runtime_egress_ip: str,
+) -> dict[str, Any] | None:
+    """Serialize adoption with normal proxy rotation for one logical node."""
+    node_id = str(logical_node_id or "").strip()
+    if not node_id:
+        return None
+    lock = _EARNAPP_ROTATION_LOCKS.setdefault(node_id, asyncio.Lock())
+    if lock.locked():
+        return None
+    async with lock:
+        return await _adopt_earnapp_runtime_proxy_locked(
+            node_id,
+            worker_id,
+            generation=generation,
+            device_id=device_id,
+            expected_database_proxy_id=expected_database_proxy_id,
+            expected_runtime_proxy_id=expected_runtime_proxy_id,
+            expected_runtime_egress_ip=expected_runtime_egress_ip,
+        )
+
+
+async def _adopt_earnapp_runtime_proxy_locked(
+    logical_node_id: str,
+    worker_id: int,
+    *,
+    generation: int,
+    device_id: str,
+    expected_database_proxy_id: int,
+    expected_runtime_proxy_id: int,
+    expected_runtime_egress_ip: str,
+) -> dict[str, Any] | None:
+    """Adopt one exact worker-authoritative Docker route after split-brain."""
+    node_id = str(logical_node_id or "").strip()
+    node = await database.get_earnapp_logical_node(node_id)
+    if not node or earnapp_policy.is_protected_logical_node(node_id):
+        return None
+    if (
+        int(node.get("assigned_worker_id") or 0) != int(worker_id)
+        or int(node.get("generation") or 0) != int(generation)
+        or str(node.get("device_id") or "") != str(device_id or "")
+        or int(node.get("current_proxy_id") or 0) != int(expected_database_proxy_id)
+        or str(node.get("state") or "").upper() != "ACTIVE"
+    ):
+        return None
+    platform = str(node.get("platform") or "").strip().lower()
+    if provider_runtime.mutation_block(
+        node_id,
+        {"provider_slug": "earnapp", "platform": platform, "runtime_backend": "docker"},
+    ):
+        return None
+    try:
+        authority = await _proxy_to_worker(
+            int(worker_id),
+            "GET",
+            f"/api/earnapp/docker-nodes/{node_id}/runtime-authority",
+            params={
+                "generation": str(int(generation)),
+                "device_id": str(device_id),
+                "expected_proxy_id": str(int(expected_runtime_proxy_id)),
+            },
+            timeout=90,
+        )
+    except Exception as exc:  # noqa: BLE001 - operator repair remains fail-closed
+        logger.warning("EarnApp node %s runtime authority lookup failed: %s", node_id, type(exc).__name__)
+        return None
+    expected_egress = str(expected_runtime_egress_ip or "").strip()
+    if (
+        str(authority.get("logical_node_id") or "") != node_id
+        or int(authority.get("generation") or 0) != int(generation)
+        or str(authority.get("device_id") or "") != str(device_id)
+        or int(authority.get("proxy_id") or 0) != int(expected_runtime_proxy_id)
+        or str(authority.get("expected_egress_ip") or "").strip() != expected_egress
+        or str(authority.get("observed_egress_ip") or "").strip() != expected_egress
+        or authority.get("main_running") is not True
+        or authority.get("sidecar_running") is not True
+        or authority.get("probe_ok") is not True
+        or not str(authority.get("main_container_id") or "").strip()
+    ):
+        return None
+    adopted = await database.adopt_earnapp_runtime_proxy(
+        node_id,
+        int(worker_id),
+        expected_generation=int(generation),
+        device_id=str(device_id),
+        expected_database_proxy_id=int(expected_database_proxy_id),
+        runtime_proxy_id=int(expected_runtime_proxy_id),
+        expected_runtime_egress_ip=expected_egress,
+        observed_runtime_egress_ip=expected_egress,
+        container_id=str(authority.get("main_container_id") or ""),
+        sidecar_id=str(authority.get("sidecar_container_id") or ""),
+    )
+    if adopted:
+        await database.record_health_event(
+            "earnapp",
+            "runtime_proxy_adopted",
+            f"adopted worker route for {node_id}",
+        )
+    return adopted
 
 
 async def _reconcile_earnapp_pending_proxy_binding(instance: Mapping[str, Any], worker_id: int) -> bool:

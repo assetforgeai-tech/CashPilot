@@ -150,10 +150,11 @@ def _serialize_earnapp_node_mutation(handler):
     """Serialize apply/finalize calls for one logical node on this worker."""
 
     @wraps(handler)
-    async def guarded(request, logical_node_id, *args, **kwargs):
+    async def guarded(request, *args, **kwargs):
         _verify_api_key(request)
+        logical_node_id = args[0] if args else kwargs.get("logical_node_id", kwargs.get("slug", ""))
         async with _earnapp_node_mutation_lock(logical_node_id):
-            return await handler(request, logical_node_id, *args, **kwargs)
+            return await handler(request, *args, **kwargs)
 
     return guarded
 
@@ -2674,6 +2675,50 @@ async def api_remove_earnapp_docker_node(
     with contextlib.suppress(ValueError):
         _remove_earnapp_state(slug)
     return {"status": "removed", **result}
+
+
+@app.get("/api/earnapp/docker-nodes/{slug}/runtime-authority")
+@_serialize_earnapp_node_mutation
+async def api_earnapp_node_runtime_authority(
+    request: Request,
+    slug: str,
+    generation: int,
+    device_id: str,
+    expected_proxy_id: int,
+) -> dict[str, Any]:
+    """Return a read-only, CAS-scoped snapshot for server-side repair."""
+    state = _earnapp_node_state(slug)
+    _validate_earnapp_proxy_cas(
+        state,
+        generation=generation,
+        device_id=device_id,
+        expected_proxy_id=expected_proxy_id,
+    )
+    if str(state.get("runtime_backend") or "").strip().lower() != "docker":
+        raise HTTPException(status_code=409, detail="EarnApp runtime authority supports Docker nodes only")
+    try:
+        authority = await asyncio.to_thread(orchestrator.earnapp_runtime_authority, slug)
+    except (ValueError, RuntimeError, OSError) as exc:
+        raise HTTPException(status_code=409, detail="EarnApp runtime authority is unavailable") from exc
+    state_platform = str(state.get("platform") or "").strip().lower()
+    authority_platform = str(authority.get("platform") or "").strip().lower()
+    state_platform = {"darwin": "macos", "linux": "ubuntu"}.get(state_platform, state_platform)
+    authority_platform = {"darwin": "macos", "linux": "ubuntu"}.get(authority_platform, authority_platform)
+    if (
+        str(authority.get("logical_node_id") or "") != slug
+        or int(authority.get("generation") or 0) != generation
+        or str(authority.get("device_id") or "") != device_id
+        or state_platform not in {"macos", "ios", "ubuntu"}
+        or authority_platform != state_platform
+    ):
+        raise HTTPException(status_code=409, detail="EarnApp runtime authority conflicts with worker state")
+    return {
+        **authority,
+        "platform": authority_platform,
+        "generation": int(state.get("generation") or 0),
+        "proxy_id": int(state.get("proxy_id") or 0),
+        "expected_egress_ip": str(state.get("expected_egress_ip") or ""),
+    }
 
 
 @app.post("/api/earnapp/docker-nodes/{slug}/deploy")
