@@ -9,7 +9,7 @@ release và live gates đã được xác minh.
 ## EarnApp current source policy (2026-08-29)
 
 EarnApp is now `platform_restricted`: the official Linux x64 package may run
-only through CashPilot's dedicated Ubuntu LXD helper. The official help article
+only through CashPilot's dedicated Ubuntu Docker helper. The official help article
 states Linux x64/64-bit support, identifies Ubuntu 20.04 as tested, publishes
 the Bright Data installer command, and states the service starts after reboot.
 The host helper pins that same installer and its current SHA-256 was verified.
@@ -34,7 +34,7 @@ This evidence does not prove Docker is the root cause. Node 1 has repeated WSS
 timeouts and proxy `502` responses; node 2 has a clean route but little
 workload, so control-plane allocation/eligibility remains an open hypothesis.
 The proposed lanes were a new iOS Docker node on a VN residential proxy and a
-new official Ubuntu LXD node on a non-VN residential proxy. The current source
+new official Ubuntu Docker node on a non-VN residential proxy. The current source
 policy enables only the Ubuntu lane; the iOS proposal remains blocked. Existing
 containers, sidecars, volumes, identities, account bindings and leases remain
 immutable.

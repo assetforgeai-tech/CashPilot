@@ -161,6 +161,10 @@ def _public_account(
         except (TypeError, ValueError, __import__("json").JSONDecodeError):
             devices = []
     usage_devices = [device for device in devices if device.get("usage_available")]
+    try:
+        payment = __import__("json").loads(str(snapshot.get("payment_json") or "{}")) if snapshot else {}
+    except (TypeError, ValueError, __import__("json").JSONDecodeError):
+        payment = {}
     return {
         "id": int(row["id"]),
         "profile_key": str(row.get("profile_key") or ""),
@@ -184,6 +188,7 @@ def _public_account(
             "usage_total": sum(float(device.get("usage_total") or 0) for device in usage_devices) if snapshot else None,
             "usage_available_nodes": len(usage_devices) if snapshot else None,
             "usage_missing_nodes": len(devices) - len(usage_devices) if snapshot else None,
+            "payment": payment if isinstance(payment, dict) else {},
             "collected_at": snapshot.get("collected_at") if snapshot else None,
         },
         "route": route

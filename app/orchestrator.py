@@ -484,6 +484,59 @@ def _recreate_earnapp_main_after_sidecar_restart(
     return str(getattr(replacement, "id", "") or "")
 
 
+def stage_earnapp_main_proxy(slug: str, proxy: dict[str, Any], binding_version: str) -> dict[str, Any]:
+    """Stage a proxy on the main EarnApp container and retain the old one."""
+    client = _get_client()
+    main = _find_earnapp_runtime_container(client, slug, sidecar=False)
+    if main is None:
+        raise RuntimeError(f"{slug} EarnApp main container is missing")
+    attrs = getattr(main, "attrs", {}) or {}
+    config, host = attrs.get("Config") or {}, attrs.get("HostConfig") or {}
+    env = _docker_environment(config.get("Env"))
+    env.update({
+        "PROXY_TYPE": str(proxy.get("protocol") or "socks5"),
+        "PROXY_CREDENTIALS": ":".join(str(proxy.get(k) or "") for k in ("host", "port", "username", "password")),
+        "EARNAPP_EXPECTED_EGRESS_IP": str(proxy.get("exit_ip") or ""),
+    })
+    name = str(getattr(main, "name", "") or _container_name(slug)).lstrip("/")
+    backup = f"{name}-cashpilot-prev-{binding_version}"
+    main.stop(timeout=30)
+    main.rename(backup)
+    try:
+        replacement = client.containers.create(
+            image=str(config.get("Image") or ""), name=name, environment=env,
+            volumes=_docker_volumes(attrs.get("Mounts")), network_mode=str(host.get("NetworkMode") or "bridge"),
+            labels=dict(config.get("Labels") or getattr(main, "labels", {}) or {}),
+            command=config.get("Cmd") or None, entrypoint=config.get("Entrypoint") or None,
+            restart_policy=dict(host.get("RestartPolicy") or {"Name": "always"}),
+            cap_drop=list(host.get("CapDrop") or []), cap_add=list(host.get("CapAdd") or []),
+            security_opt=list(host.get("SecurityOpt") or []), pids_limit=host.get("PidsLimit"),
+            mem_limit=host.get("Memory") or None,
+        )
+        replacement.start()
+        return {"container_id": str(replacement.id), "backup_name": backup, "binding_version": str(binding_version)}
+    except Exception:
+        with contextlib.suppress(Exception):
+            main.rename(name)
+        with contextlib.suppress(Exception):
+            main.start()
+        raise
+
+
+def finalize_earnapp_main_proxy(slug: str, binding_version: str, *, commit: bool) -> dict[str, Any]:
+    """Commit the staged main container or restore the retained predecessor."""
+    client = _get_client()
+    name, backup = _container_name(slug), f"{_container_name(slug)}-cashpilot-prev-{binding_version}"
+    current, previous = client.containers.get(name), client.containers.get(backup)
+    if commit:
+        previous.remove(force=True)
+        return {"action": "confirmed", "binding_version": str(binding_version)}
+    current.remove(force=True)
+    previous.rename(name)
+    previous.start()
+    return {"action": "rolled_back", "binding_version": str(binding_version)}
+
+
 def _persist_earnapp_expected_egress(main: Any, expected_egress_ip: str) -> None:
     """Persist the current lease in the node volume before restarting the main process."""
     value = str(expected_egress_ip or "").strip()

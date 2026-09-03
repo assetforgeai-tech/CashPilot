@@ -82,11 +82,17 @@ def render_dockerfile(manifest: Mapping[str, object], *, platform: str = "macos"
     if selected == "ubuntu":
         return f"""FROM {earnapp_runtime.UBUNTU_REFERENCE_IMAGE_PIN}
 
+RUN mv /usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-original.sh
+COPY cashpilot-proxy-entrypoint /usr/local/bin/entrypoint.sh
+RUN chmod 0755 /usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-original.sh
+
 LABEL com.cashpilot.earnapp.runtime={earnapp_runtime.UBUNTU_RUNTIME_HOST} \\
       com.cashpilot.earnapp.platform={earnapp_runtime.UBUNTU_PLATFORM} \\
       com.cashpilot.earnapp.appid={earnapp_runtime.UBUNTU_APPID} \\
       com.cashpilot.earnapp.device-prefix={earnapp_runtime.UBUNTU_DEVICE_PREFIX} \\
       com.cashpilot.earnapp.assets-sha256={manifest_hash}
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 """
     if selected == "ios":
         binary_source = "earnapp-bootstrap"
@@ -97,10 +103,11 @@ LABEL com.cashpilot.earnapp.runtime={earnapp_runtime.UBUNTU_RUNTIME_HOST} \\
         device_prefix = earnapp_runtime.IOS_DEVICE_PREFIX
         registration_copy = (
             "COPY entrypoint.sh /usr/local/bin/entrypoint-original.sh\n"
-            "COPY ios-entrypoint /usr/local/bin/entrypoint.sh\n"
+            "COPY ios-entrypoint /usr/local/bin/ios-entrypoint\n"
             "COPY ios-register-device /usr/local/bin/ios-register-device\n"
+            "COPY cashpilot-proxy-entrypoint /usr/local/bin/entrypoint.sh\n"
         )
-        registration_mode = " /usr/local/bin/entrypoint-original.sh /usr/local/bin/ios-register-device"
+        registration_mode = " /usr/local/bin/entrypoint-original.sh /usr/local/bin/ios-entrypoint /usr/local/bin/ios-register-device"
         entrypoint_copy = ""
         shellcheck = " /usr/local/bin/entrypoint-original.sh /usr/local/bin/ios-register-device"
     else:
@@ -112,7 +119,10 @@ LABEL com.cashpilot.earnapp.runtime={earnapp_runtime.UBUNTU_RUNTIME_HOST} \\
         device_prefix = earnapp_runtime.MAC_DEVICE_PREFIX
         registration_copy = ""
         registration_mode = ""
-        entrypoint_copy = "COPY entrypoint.sh /usr/local/bin/entrypoint.sh\n"
+        entrypoint_copy = (
+            "COPY entrypoint.sh /usr/local/bin/entrypoint-original.sh\n"
+            "COPY cashpilot-proxy-entrypoint /usr/local/bin/entrypoint.sh\n"
+        )
         shellcheck = ""
     return f"""FROM ubuntu:22.04
 
@@ -181,12 +191,8 @@ def write_context(
             shutil.copy2(source / name, context / name)
     manifest_bytes = _manifest_bytes(manifest)
     (context / "runtime-manifest.json").write_bytes(manifest_bytes)
-    if selected in {"ios", "ubuntu"}:
-        generated = earnapp_runtime.generated_runtime_artifacts("ios")
-        if selected == "ubuntu":
-            generated = earnapp_runtime.generated_runtime_artifacts("ubuntu")
-        for name, payload in generated.items():
-            (context / name).write_bytes(payload)
+    for name, payload in earnapp_runtime.generated_runtime_artifacts(selected).items():
+        (context / name).write_bytes(payload)
     (context / "Dockerfile").write_text(render_dockerfile(manifest, platform=selected), encoding="utf-8")
     return context, hashlib.sha256(manifest_bytes).hexdigest()
 

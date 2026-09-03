@@ -47,6 +47,7 @@ from app import (
     earnapp_canary,
     earnapp_collection,
     earnapp_deploy,  # noqa: F401 - retained for historical canary helpers/tests
+    earnapp_lifecycle,
     earnapp_policy,
     earnapp_recovery,
     earnapp_runtime,
@@ -705,6 +706,26 @@ async def _run_proxy_pool_recheck_scheduler() -> None:
         result.get("rotated", 0),
         result.get("rotate_errors", 0),
     )
+
+
+async def _run_earnapp_lifecycle_scheduler() -> None:
+    """Persist uniform EarnApp health decisions from the latest evidence."""
+    for node in await database.list_earnapp_logical_nodes():
+        if str(node.get("state") or "").upper() == "RETIRED":
+            continue
+        try:
+            spec = await database.get_provider_instance_spec(str(node.get("logical_node_id") or ""))
+            evidence = (spec or {}).get("earnapp_device_verification") if isinstance(spec, Mapping) else None
+            if not isinstance(evidence, Mapping):
+                continue
+            usage = evidence.get("usage_current", evidence.get("usage_total", 0))
+            decision = earnapp_lifecycle.evaluate_node(
+                {"usage": usage or 0, "banned": bool(evidence.get("banned")), "egress_ok": str(node.get("proxy_health") or "") != "unhealthy"},
+                node,
+            )
+            await database.update_earnapp_lifecycle(str(node.get("logical_node_id") or ""), decision, usage=float(usage or 0))
+        except Exception as exc:  # noqa: BLE001 - one node cannot block peers
+            logger.debug("EarnApp lifecycle evaluation skipped: %s", type(exc).__name__)
 
 
 # Login rate limiting moved to app.login_rate_limit (bead sux) — it was the last
@@ -1803,6 +1824,15 @@ async def lifespan(app: FastAPI):
         "interval",
         minutes=15,
         id="proxy_pool_recheck",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=300,
+    )
+    scheduler.add_job(
+        _run_earnapp_lifecycle_scheduler,
+        "interval",
+        minutes=5,
+        id="earnapp_lifecycle",
         max_instances=1,
         coalesce=True,
         misfire_grace_time=300,
@@ -3621,8 +3651,8 @@ async def _resolve_earnapp_ubuntu_lifecycle(
             raise HTTPException(status_code=409, detail="EarnApp runtime metadata is unavailable") from exc
     else:
         spec = {}
-    backend = str((spec or {}).get("runtime_backend") or "lxd").strip().lower()
-    if backend not in {"docker", "lxd"}:
+    backend = str((spec or {}).get("runtime_backend") or "docker").strip().lower()
+    if backend != "docker":
         raise HTTPException(status_code=409, detail="EarnApp Ubuntu runtime backend is invalid")
     return assigned_worker_id, {"generation": generation, "device_id": device_id}, backend
 
@@ -4307,11 +4337,10 @@ async def _rotate_unhealthy_earnapp_node(
         if platform == "ubuntu":
             if instance:
                 backend = str((spec or {}).get("runtime_backend") or "").strip().lower()
-                if backend not in {"docker", "lxd"}:
+                if backend != "docker":
                     return False
             else:
-                # Pre-migration Ubuntu assignments without an instance record used LXD.
-                backend = "lxd"
+                backend = "docker"
         if provider_runtime.mutation_block(
             node_id,
             {"provider_slug": "earnapp", "platform": platform, "runtime_backend": backend},
@@ -7303,13 +7332,17 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
             continue
         instance_platform = str(instance.get("platform") or "").strip().lower()
         instance_backend = str(instance.get("runtime_backend") or "").strip().lower()
+        # Heartbeats from pre-migration Ubuntu workers may still carry the old
+        # LXD marker. Normalize that marker for policy evaluation; mutation
+        # endpoints remain Docker-only and reject LXD explicitly.
+        policy_backend = "docker" if instance_backend == "lxd" else instance_backend
         instance_mutations_blocked = (
             provider_runtime.mutation_block(
                 logical_node_id,
                 {
                     "provider_slug": "earnapp",
                     "platform": instance_platform,
-                    "runtime_backend": instance_backend,
+                    "runtime_backend": policy_backend,
                 },
             )
             is not None
@@ -7319,7 +7352,7 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
             _spawn(_reconcile_earnapp_pending_proxy_binding(dict(instance), worker_id))
         reported_token = _earnapp_hydration_state_token(instance)
         proxy_id = int(reported_token["proxy_id"])
-        # Legacy workers may report a running canary before their local state
+            # Legacy workers may report a running canary before their local state
         # file contains the lease fields.  Hydrate from the exact server-side
         # assignment before performing the normal heartbeat CAS.
         hydration: dict[str, Any] | None = None
@@ -7338,8 +7371,7 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
             authoritative_expected = (
                 str(authoritative_token["expected_egress_ip"] or "").strip() if authoritative else ""
             )
-            # The persisted instance spec is authoritative for Ubuntu because
-            # both Docker (new) and LXD (legacy) nodes remain readable.
+            # The persisted instance spec is authoritative for all Docker nodes.
             try:
                 authoritative_instance = await database.get_provider_instance(logical_node_id)
                 authoritative_spec = (
@@ -7355,7 +7387,13 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
                 )
             authoritative_backend = str((authoritative_spec or {}).get("runtime_backend") or "").strip().lower()
             if authoritative_backend not in {"docker", "lxd"}:
-                authoritative_backend = "lxd" if authoritative_platform == "ubuntu" else "docker"
+                # A read-only heartbeat from a pre-migration worker may arrive
+                # while its provider-instance row is unavailable. Preserve its
+                # label for evidence compatibility; deploy/mutation endpoints
+                # still reject LXD explicitly.
+                authoritative_backend = str(reported_token.get("runtime_backend") or "docker").strip().lower()
+            if authoritative_backend not in {"docker", "lxd"}:
+                authoritative_backend = "docker"
             authoritative_token = {
                 "proxy_id": authoritative_proxy_id,
                 "platform": authoritative_platform,
@@ -7375,9 +7413,15 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
                 and authoritative_proxy_id > 0
                 and authoritative_expected
             )
+            # Legacy workers may still report the retired LXD label; accept it
+            # only as read-only evidence while the authoritative mutation route
+            # remains Docker-only.
+            reported_for_compare = dict(reported_token)
+            if reported_for_compare.get("runtime_backend") == "lxd":
+                reported_for_compare["runtime_backend"] = authoritative_backend
             if (
                 authoritative_valid
-                and reported_token != authoritative_token
+                and reported_for_compare != authoritative_token
                 and proxy_id in {0, authoritative_proxy_id}
             ):
                 proxy_id = authoritative_proxy_id
@@ -7390,7 +7434,7 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
                     "hydrate_state": True,
                     "hydrate_expected": reported_token,
                 }
-            elif authoritative_valid and reported_token == authoritative_token:
+            elif authoritative_valid and (reported_for_compare == authoritative_token or instance_backend == "lxd"):
                 authoritative_verified = True
         heartbeat_synced = await earnapp_recovery.heartbeat_node(
             logical_node_id,
@@ -7428,7 +7472,10 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
             for key in stale_streaks:
                 _EARNAPP_UNHEALTHY_STREAKS.pop(key, None)
             protected_node = earnapp_policy.is_protected_logical_node(logical_node_id)
-            if protected_node or instance_mutations_blocked or not recorded:
+            # Legacy LXD is accepted as read-only heartbeat evidence so old
+            # nodes remain observable; it is never eligible for mutation.
+            legacy_lxd = instance_backend == "lxd"
+            if protected_node or (instance_mutations_blocked and not legacy_lxd) or not recorded:
                 _EARNAPP_UNHEALTHY_STREAKS.pop(streak_key, None)
                 unhealthy_streak = 0
             elif proxy_health == "unhealthy":
@@ -7439,7 +7486,8 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
                 unhealthy_streak = 0
             if (
                 recorded
-                and not instance_mutations_blocked
+                and (not instance_mutations_blocked or legacy_lxd is False)
+                and not legacy_lxd
                 and proxy_health == "unhealthy"
                 and unhealthy_streak >= _EARNAPP_UNHEALTHY_ROTATION_THRESHOLD
                 and not protected_node

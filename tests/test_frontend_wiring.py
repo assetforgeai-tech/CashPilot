@@ -245,8 +245,8 @@ class TestEarnAppAccountPoolIsReachable:
         assert 'id="earnapp-account-rows"' in page
         assert 'id="earnapp-recovery-rows"' in page
         assert "Credentials are encrypted" in page
-        assert "Ubuntu x64 in LXD is enabled" in page
-        assert "MacOS/iOS nodes remain inspection-only" in page
+        assert "EarnApp Docker runtime" in page
+        assert "EarnApp Docker nodes support" in page
 
     def test_settings_loader_and_actions_are_exported(self):
         app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")

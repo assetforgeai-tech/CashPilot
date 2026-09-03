@@ -1862,7 +1862,7 @@ def test_server_heartbeat_rotates_only_after_consecutive_unhealthy_reports(monke
                             "device_id": device_id,
                             "proxy_id": proxy_id,
                             "platform": "ubuntu",
-                            "runtime_backend": "lxd",
+                            "runtime_backend": "docker",
                             "expected_egress_ip": "64.52.28.108",
                             "proxy_health": "unhealthy",
                             "proxy_health_reason": "proxy_probe_failed",
@@ -1935,7 +1935,7 @@ def test_server_heartbeat_healthy_report_resets_unhealthy_rotation_streak(monkey
             "device_id": device_id,
             "proxy_id": proxy_id,
             "platform": "ubuntu",
-            "runtime_backend": "lxd",
+                                "runtime_backend": "docker",
             "expected_egress_ip": "130.180.228.4",
             "proxy_health": "unhealthy",
             "proxy_health_reason": "proxy_probe_failed",
@@ -2018,7 +2018,7 @@ def test_server_heartbeat_does_not_count_unpersisted_unhealthy_report(monkeypatc
                             "device_id": device_id,
                             "proxy_id": proxy_id,
                             "platform": "ubuntu",
-                            "runtime_backend": "lxd",
+                                "runtime_backend": "docker",
                             "expected_egress_ip": "203.0.113.61",
                             "proxy_health": "unhealthy",
                             "proxy_health_reason": "proxy_probe_failed",
@@ -2420,7 +2420,7 @@ def test_server_hydrates_valid_but_stale_runtime_metadata_from_authority():
         record.assert_not_awaited()
         ack = response["earnapp_assignment_acks"][0]
         assert ack["platform"] == "ubuntu"
-        assert ack["runtime_backend"] == "lxd"
+        assert ack["runtime_backend"] == "docker"
         assert ack["expected_egress_ip"] == "198.51.100.206"
 
     asyncio.run(run())

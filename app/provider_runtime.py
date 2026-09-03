@@ -18,7 +18,7 @@ VPS_RUNTIME_BLOCK_MESSAGE = (
     "EarnApp generic hosted deployment is disabled. Use the dedicated official Ubuntu x64 LXD runtime."
 )
 EARNAPP_PLATFORM_BLOCK_REASON = "platform_runtime_disabled"
-EARNAPP_PLATFORM_BLOCK_MESSAGE = "EarnApp requires a qualified residential proxy: VN uses the dedicated MacOS/iOS runtime and non-VN uses official Ubuntu x64 LXD."
+EARNAPP_PLATFORM_BLOCK_MESSAGE = "EarnApp requires a qualified residential proxy and its dedicated Docker runtime: VN uses MacOS/iOS and non-VN uses Ubuntu."
 
 
 @dataclass(frozen=True)
@@ -133,7 +133,7 @@ def platform_deployment_allowed(slug: str, platform: str, runtime_backend: str =
     if provider.allowed_platforms and selected not in provider.allowed_platforms:
         return False
     if provider.slug == "earnapp" and selected == "ubuntu":
-        return backend in {"lxd", "docker"}
+        return backend == "docker"
     if provider.slug == "earnapp" and selected in {"macos", "ios"}:
         return backend == "docker"
     return bool(selected)

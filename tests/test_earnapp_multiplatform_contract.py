@@ -8,7 +8,7 @@ from app import provider_runtime, worker_api
 def test_earnapp_platform_policy_allows_dedicated_apple_and_ubuntu_lanes():
     assert provider_runtime.platform_deployment_allowed("earnapp", "macos", "docker") is True
     assert provider_runtime.platform_deployment_allowed("earnapp", "ios", "docker") is True
-    assert provider_runtime.platform_deployment_allowed("earnapp", "ubuntu", "lxd") is True
+    assert provider_runtime.platform_deployment_allowed("earnapp", "ubuntu", "lxd") is False
     assert provider_runtime.platform_deployment_allowed("earnapp", "ubuntu", "docker") is True
 
 

@@ -301,7 +301,7 @@ def test_earnapp_catalog_describes_each_platform_runtime_without_changing_other_
         "ubuntu": {
             "platform": "ubuntu",
             "country_policy": "non-VN",
-            "runtime_backend": "lxd",
+                "runtime_backend": "docker",
             "asset_kind": "ubuntu_identity_profile",
         },
     }

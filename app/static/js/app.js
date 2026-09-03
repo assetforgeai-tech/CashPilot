@@ -3496,10 +3496,10 @@ const CP = (() => {
     const container = document.getElementById('earnapp-proxy-capacity');
     if (!container) return;
     const values = [
+      capacity.used || 0,
+      capacity.ready ?? capacity.leaseable ?? 0,
       capacity.eligible || 0,
-      capacity.leaseable || 0,
       capacity.active_nodes || 0,
-      capacity.recovery_hold_nodes || 0,
     ];
     container.querySelectorAll('strong').forEach((node, index) => {
       node.textContent = String(values[index] ?? 0);
@@ -3532,7 +3532,9 @@ const CP = (() => {
       const usageCoverage = collector.usage_available_nodes == null
         ? ''
         : `${Number(collector.usage_available_nodes) || 0} measured / ${Math.max(0, (Number(collector.usage_available_nodes) || 0) + (Number(collector.usage_missing_nodes) || 0))} devices`;
-      const canDelete = account.state === 'ACCOUNT_LOCKED';
+      // The API still enforces state/runtime safety; keep the action visible so
+      // an operator gets the precise refusal reason instead of a hidden control.
+      const canDelete = true;
       return `<tr>
         <td><strong>${escapeHtml(account.account_name || account.email || `Account ${account.id}`)}</strong><small>${escapeHtml(account.auth_method || '')} · ${escapeHtml(account.profile_key || '')}</small><span class="badge badge-category">${escapeHtml(account.state || '')}</span></td>
         <td><span class="earnapp-token-state ${escapeHtml(token.css)}">${escapeHtml(token.label)}</span><small>${account.token_expires_at ? escapeHtml(fmtTimestamp(account.token_expires_at).text) : 'No expiry metadata'}</small></td>

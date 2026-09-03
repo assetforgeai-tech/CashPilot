@@ -38,7 +38,7 @@ def test_settings_exposes_authoritative_earnapp_lxd_values():
 
     assert 'data-config="earnapp_lxd_cpu"' in template
     assert 'data-config="earnapp_lxd_memory_mib"' in template
-    assert "Ubuntu x64 in LXD is enabled" in template
+    assert "EarnApp Docker runtime" in template
     assert 'id="earnapp-lxd-cpu" data-config="earnapp_lxd_cpu" value="1"' in template
     assert 'id="earnapp-lxd-memory" data-config="earnapp_lxd_memory_mib" value="1024"' in template
     assert "Save EarnApp runtime" in template
@@ -48,6 +48,6 @@ def test_settings_scopes_recovery_to_ubuntu_and_keeps_apple_inspection_only():
     template = SETTINGS.read_text(encoding="utf-8")
     javascript = APP_JS.read_text(encoding="utf-8")
 
-    assert "Ubuntu LXD nodes support" in template
+    assert "EarnApp Docker nodes support" in template
     assert "Issue ticket" in javascript
     assert "MacOS/iOS runtime is inspection-only" in javascript
