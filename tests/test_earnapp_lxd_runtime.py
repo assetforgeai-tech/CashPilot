@@ -425,6 +425,9 @@ def test_worker_proxy_apply_main_only_mismatch_rolls_back_main_container(tmp_pat
     assert exc_info.value.status_code == 409
     rollback_main.assert_called_once_with(node_id, spec.binding_version, commit=False)
     rollback_sidecar.assert_not_called()
+    saved = worker_api._earnapp_node_state(node_id)
+    assert not saved.get("pending_binding_version")
+    assert not saved.get("pending_proxy_id")
 
 
 @pytest.mark.asyncio
