@@ -734,7 +734,7 @@ async def _verify_canary_locked(
     attempts: int,
     interval_seconds: float,
 ) -> dict[str, Any]:
-    routes = await database.get_earnapp_account_node_routes(int(node["account_id"]), healthy_only=True)
+    routes = await database.get_earnapp_account_node_routes(int(node["account_id"]), healthy_only=False)
     route = next(
         (
             item
