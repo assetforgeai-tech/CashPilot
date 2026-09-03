@@ -229,6 +229,41 @@ def proxy_entrypoint_script(platform: str = "macos") -> bytes:
     """Route one EarnApp container through its assigned proxy and fail closed."""
     selected = _image_platform(platform)
     next_entrypoint = "/usr/local/bin/ios-entrypoint" if selected == "ios" else "/usr/local/bin/entrypoint-original.sh"
+    ios_route = (
+        """
+REDSOCKS_CONF=/tmp/cashpilot-redsocks.conf
+cat >"$REDSOCKS_CONF" <<EOF
+base {
+    log_debug = off;
+    log_info = off;
+    log = "file:/tmp/redsocks.log";
+    daemon = off;
+    redirector = iptables;
+}
+redsocks {
+    local_ip = 127.0.0.1;
+    local_port = $REDSOCKS_PORT;
+    ip = $PROXY_IP;
+    port = $PROXY_PORT;
+    type = $REDSOCKS_TYPE;
+EOF
+if [[ -n "${PROXY_USER:-}" && -n "${PROXY_PASS:-}" ]]; then
+  printf '    login = "%s";\\n    password = "%s";\\n' "$PROXY_USER" "$PROXY_PASS" >>"$REDSOCKS_CONF"
+fi
+printf '}\\n' >>"$REDSOCKS_CONF"
+/usr/sbin/redsocks -c "$REDSOCKS_CONF" &
+sleep 1
+iptables -N REDSOCKS 2>/dev/null || iptables -F REDSOCKS
+for cidr in 0.0.0.0/8 10.0.0.0/8 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 "$PROXY_IP/32"; do
+  iptables -A REDSOCKS -d "$cidr" -j RETURN
+done
+iptables -A REDSOCKS -p tcp -j REDIRECT --to-ports "$REDSOCKS_PORT"
+iptables -C OUTPUT -p tcp -j REDSOCKS 2>/dev/null || iptables -I OUTPUT 1 -p tcp -j REDSOCKS
+unset PROXY_CREDENTIALS PROXY_HOST PROXY_PORT PROXY_USER PROXY_PASS
+"""
+        if selected == "ios"
+        else ""
+    )
     return f"""#!/usr/bin/env bash
 set -euo pipefail
 REDSOCKS_PORT=12345
@@ -256,6 +291,7 @@ if command -v ip6tables >/dev/null 2>&1; then
   ip6tables -A CP_EARNAPP6_OUT -j DROP
   ip6tables -C OUTPUT -j CP_EARNAPP6_OUT 2>/dev/null || ip6tables -I OUTPUT 1 -j CP_EARNAPP6_OUT
 fi
+{ios_route}
 exec {next_entrypoint} "$@"
         """.encode()
 
