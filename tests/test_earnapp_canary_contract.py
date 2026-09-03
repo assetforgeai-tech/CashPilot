@@ -283,7 +283,7 @@ def test_verified_image_labels_are_fail_closed():
 
 def test_mac_runtime_manifest_is_derived_from_authoritative_artifact_hashes():
     assert earnapp_runtime.runtime_asset_manifest_sha256() == (
-        "ce9bab11ee217ae92e376edbd2caa59b9469b66e8ba2064d858ca9ad981beb9a"
+        "a00e60cdff781995a967dbf72ad1b6478c1e5cbb8a968fdaadd067e80be959ca"
     )
     assert earnapp_runtime.runtime_asset_manifest_sha256() == earnapp_runtime.MAC_RUNTIME_ASSET_MANIFEST_SHA256
 
@@ -512,6 +512,15 @@ def test_proxy_wrapper_leaves_proxy_process_to_reference_runtime(platform):
     assert "/usr/sbin/redsocks -c /tmp/redsocks.conf" not in wrapper
     assert "-t nat -A CP_EARNAPP_REDSOCKS -p tcp -j REDIRECT" not in wrapper
     assert "CP_EARNAPP_OUT" in wrapper
+
+
+@pytest.mark.parametrize("platform", ["macos", "ubuntu"])
+def test_transparent_proxy_runtime_disables_application_level_proxying(platform):
+    wrapper = earnapp_runtime.generated_runtime_artifacts(platform)["cashpilot-proxy-entrypoint"].decode("utf-8")
+
+    assert "export NO_PROXY='*'" in wrapper
+    assert "export no_proxy='*'" in wrapper
+    assert wrapper.index("export NO_PROXY='*'") < wrapper.index('exec /usr/local/bin/entrypoint-original.sh "$@"')
 
 
 def test_ios_proxy_wrapper_installs_route_before_control_plane_registration():
