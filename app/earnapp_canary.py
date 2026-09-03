@@ -863,8 +863,6 @@ async def _verify_canary_locked(
                 "workload_reason": "awaiting_metric_delta",
             }
         terminal_error = last.get("error_kind") in {"auth", "shape", "identity", "proxy_blocked"}
-        if platform != "ubuntu" and last.get("error_kind") == "remote":
-            terminal_error = True
         if terminal_error or last.get("banned") is True or attempt >= remaining:
             break
         delay = max(LINK_VERIFY_MIN_INTERVAL_SECONDS, float(interval_seconds))
