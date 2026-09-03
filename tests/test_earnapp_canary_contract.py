@@ -1571,7 +1571,7 @@ async def test_verify_canary_uses_the_bound_account_proxy_and_returns_only_sanit
 
 
 @pytest.mark.asyncio
-async def test_verify_canary_stops_remote_link_error_for_macos(monkeypatch):
+async def test_verify_canary_retries_remote_link_error_until_attempt_budget_for_macos(monkeypatch):
     collector = AsyncMock(
         return_value={
             "status": "error",
@@ -1618,7 +1618,8 @@ async def test_verify_canary_stops_remote_link_error_for_macos(monkeypatch):
 
     assert result["status"] == "error"
     assert result["error_kind"] == "remote"
-    collector.assert_awaited_once_with("sdk-mac-test", platform="macos")
+    assert collector.await_count == 3
+    assert all(call == (("sdk-mac-test",), {"platform": "macos"}) for call in collector.await_args_list)
 
 
 @pytest.mark.asyncio
