@@ -279,6 +279,7 @@ case "$PROXY_TYPE" in
 esac
 iptables -N CP_EARNAPP_OUT 2>/dev/null || iptables -F CP_EARNAPP_OUT
 iptables -A CP_EARNAPP_OUT -o lo -j ACCEPT
+iptables -A CP_EARNAPP_OUT -d 127.0.0.0/8 -j ACCEPT
 iptables -A CP_EARNAPP_OUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 iptables -A CP_EARNAPP_OUT -d "$PROXY_IP"/32 -p tcp --dport "$PROXY_PORT" -j ACCEPT
 iptables -A CP_EARNAPP_OUT -p udp --dport 53 -j ACCEPT

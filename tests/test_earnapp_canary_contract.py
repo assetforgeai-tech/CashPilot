@@ -283,7 +283,7 @@ def test_verified_image_labels_are_fail_closed():
 
 def test_mac_runtime_manifest_is_derived_from_authoritative_artifact_hashes():
     assert earnapp_runtime.runtime_asset_manifest_sha256() == (
-        "f3dfce66904dc02e0c4bb769aad7a8e18ffd205f23c93981a558f1b5e09a3b56"
+        "ce9bab11ee217ae92e376edbd2caa59b9469b66e8ba2064d858ca9ad981beb9a"
     )
     assert earnapp_runtime.runtime_asset_manifest_sha256() == earnapp_runtime.MAC_RUNTIME_ASSET_MANIFEST_SHA256
 
@@ -484,6 +484,11 @@ def test_non_ios_runtime_paths_install_the_shared_fail_closed_proxy_wrapper():
     assert "ios-entrypoint" not in recipe
     assert "COPY entrypoint.sh /usr/local/bin/entrypoint-original.sh" in recipe
     assert "COPY cashpilot-proxy-entrypoint /usr/local/bin/entrypoint.sh" in recipe
+
+
+def test_fail_closed_proxy_wrapper_allows_redirected_loopback_destination():
+    wrapper = earnapp_runtime.generated_runtime_artifacts("ubuntu")["cashpilot-proxy-entrypoint"].decode("utf-8")
+    assert "iptables -A CP_EARNAPP_OUT -d 127.0.0.0/8 -j ACCEPT" in wrapper
 
 
 @pytest.mark.parametrize("platform", ["macos", "ios", "ubuntu"])
