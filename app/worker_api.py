@@ -2900,6 +2900,7 @@ async def api_apply_earnapp_node_proxy(
         pending_observed_egress_ip="",
     )
     _save_earnapp_state(logical_node_id, state)
+    main_proxy_staged = False
     try:
         if backend == "lxd":
             result = await asyncio.to_thread(
@@ -2919,18 +2920,27 @@ async def api_apply_earnapp_node_proxy(
             except Exception as exc:  # noqa: BLE001 - Docker NotFound is the main-only signal
                 if "sidecar" not in str(exc).lower() and exc.__class__.__name__.lower() != "notfound":
                     raise
+                main_proxy_staged = True
                 applied = await asyncio.to_thread(
                     orchestrator.stage_earnapp_main_proxy, logical_node_id, spec.proxy, spec.binding_version
                 )
             evidence = await asyncio.to_thread(orchestrator.probe_service_egress, logical_node_id)
             observed = str(evidence.get("observed_egress_ip") or "")
             if observed != expected_egress_ip:
-                await asyncio.to_thread(
-                    orchestrator.finalize_proxy_binding_batch,
-                    [logical_node_id],
-                    spec.binding_version,
-                    commit=False,
-                )
+                if main_proxy_staged:
+                    await asyncio.to_thread(
+                        orchestrator.finalize_earnapp_main_proxy,
+                        logical_node_id,
+                        spec.binding_version,
+                        commit=False,
+                    )
+                else:
+                    await asyncio.to_thread(
+                        orchestrator.finalize_proxy_binding_batch,
+                        [logical_node_id],
+                        spec.binding_version,
+                        commit=False,
+                    )
                 raise HTTPException(status_code=409, detail="EarnApp candidate proxy egress mismatch")
             result = {
                 "binding_version": spec.binding_version,

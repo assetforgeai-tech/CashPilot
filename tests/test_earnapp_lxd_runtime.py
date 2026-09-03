@@ -375,6 +375,58 @@ def test_worker_docker_proxy_apply_persists_recreated_main_container_id(tmp_path
     assert saved["container_id"] == "docker-recreated-main-id"
 
 
+def test_worker_proxy_apply_main_only_mismatch_rolls_back_main_container(tmp_path, monkeypatch):
+    """In-container proxy runtimes must not call the retired sidecar rollback path."""
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    device_id = str(_identity()["device_id"])
+    node_id = "earnapp-macos-main-only"
+    worker_api._save_earnapp_state(
+        node_id,
+        {
+            "logical_node_id": node_id,
+            "generation": 1,
+            "device_id": device_id,
+            "platform": "macos",
+            "runtime_backend": "docker",
+            "proxy_id": 12,
+            "expected_egress_ip": "203.0.113.10",
+        },
+    )
+    spec = worker_api.EarnAppProxyApplySpec(
+        generation=1,
+        device_id=device_id,
+        expected_proxy_id=12,
+        binding_version="rotation_mainonly_12345678",
+        proxy={**_proxy(), "proxy_id": 13, "exit_ip": "203.0.113.13"},
+    )
+    with (
+        patch.object(worker_api, "_verify_api_key"),
+        patch.object(
+            worker_api.orchestrator,
+            "apply_proxy_binding_batch",
+            side_effect=RuntimeError("has no managed egress sidecar"),
+        ),
+        patch.object(
+            worker_api.orchestrator,
+            "stage_earnapp_main_proxy",
+            return_value={"container_id": "candidate", "binding_version": spec.binding_version},
+        ),
+        patch.object(
+            worker_api.orchestrator,
+            "probe_service_egress",
+            return_value={"observed_egress_ip": "203.0.113.99"},
+        ),
+        patch.object(worker_api.orchestrator, "finalize_earnapp_main_proxy") as rollback_main,
+        patch.object(worker_api.orchestrator, "finalize_proxy_binding_batch") as rollback_sidecar,
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        __import__("asyncio").run(worker_api.api_apply_earnapp_node_proxy(_request(), node_id, spec))
+
+    assert exc_info.value.status_code == 409
+    rollback_main.assert_called_once_with(node_id, spec.binding_version, commit=False)
+    rollback_sidecar.assert_not_called()
+
+
 @pytest.mark.asyncio
 async def test_worker_serializes_same_node_proxy_apply_before_runtime_recreate(tmp_path, monkeypatch):
     """Only one request may recreate a logical node's named Docker container at a time."""
