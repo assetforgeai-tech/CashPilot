@@ -253,12 +253,12 @@ fi
 printf '}\\n' >>"$REDSOCKS_CONF"
 /usr/sbin/redsocks -c "$REDSOCKS_CONF" &
 sleep 1
-        iptables -t nat -N REDSOCKS 2>/dev/null || iptables -t nat -F REDSOCKS
+        iptables -t nat -N CP_EARNAPP_IOS_REDSOCKS 2>/dev/null || iptables -t nat -F CP_EARNAPP_IOS_REDSOCKS
 for cidr in 0.0.0.0/8 10.0.0.0/8 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 "$PROXY_IP/32"; do
-          iptables -t nat -A REDSOCKS -d "$cidr" -j RETURN
+          iptables -t nat -A CP_EARNAPP_IOS_REDSOCKS -d "$cidr" -j RETURN
 done
-        iptables -t nat -A REDSOCKS -p tcp -j REDIRECT --to-ports "$REDSOCKS_PORT"
-iptables -C OUTPUT -p tcp -j REDSOCKS 2>/dev/null || iptables -I OUTPUT 1 -p tcp -j REDSOCKS
+        iptables -t nat -A CP_EARNAPP_IOS_REDSOCKS -p tcp -j REDIRECT --to-ports "$REDSOCKS_PORT"
+        iptables -t nat -C OUTPUT -p tcp -j CP_EARNAPP_IOS_REDSOCKS 2>/dev/null || iptables -t nat -I OUTPUT 1 -p tcp -j CP_EARNAPP_IOS_REDSOCKS
 unset PROXY_CREDENTIALS PROXY_HOST PROXY_PORT PROXY_USER PROXY_PASS
 """
         if selected == "ios"
