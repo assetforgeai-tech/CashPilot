@@ -253,11 +253,11 @@ fi
 printf '}\\n' >>"$REDSOCKS_CONF"
 /usr/sbin/redsocks -c "$REDSOCKS_CONF" &
 sleep 1
-iptables -N REDSOCKS 2>/dev/null || iptables -F REDSOCKS
+        iptables -t nat -N REDSOCKS 2>/dev/null || iptables -t nat -F REDSOCKS
 for cidr in 0.0.0.0/8 10.0.0.0/8 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 "$PROXY_IP/32"; do
-  iptables -A REDSOCKS -d "$cidr" -j RETURN
+          iptables -t nat -A REDSOCKS -d "$cidr" -j RETURN
 done
-iptables -A REDSOCKS -p tcp -j REDIRECT --to-ports "$REDSOCKS_PORT"
+        iptables -t nat -A REDSOCKS -p tcp -j REDIRECT --to-ports "$REDSOCKS_PORT"
 iptables -C OUTPUT -p tcp -j REDSOCKS 2>/dev/null || iptables -I OUTPUT 1 -p tcp -j REDSOCKS
 unset PROXY_CREDENTIALS PROXY_HOST PROXY_PORT PROXY_USER PROXY_PASS
 """
