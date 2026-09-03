@@ -5002,12 +5002,12 @@ async def adopt_earnapp_runtime_proxy(
                 return None
             platform = str(node["platform"] or "").strip().lower()
             if platform in {"macos", "ios"}:
-                country_clause = "upper(trim(coalesce(country_code, ''))) = 'VN'"
+                country_clause = "upper(trim(coalesce(proxy_endpoints.country_code, ''))) = 'VN'"
             elif platform == "ubuntu":
                 country_clause = (
-                    "length(trim(coalesce(country_code, ''))) = 2 "
-                    "AND upper(trim(country_code)) GLOB '[A-Z][A-Z]' "
-                    "AND upper(trim(country_code)) != 'VN'"
+                    "length(trim(coalesce(proxy_endpoints.country_code, ''))) = 2 "
+                    "AND upper(trim(proxy_endpoints.country_code)) GLOB '[A-Z][A-Z]' "
+                    "AND upper(trim(proxy_endpoints.country_code)) != 'VN'"
                 )
             else:
                 await db.rollback()
@@ -5015,25 +5015,21 @@ async def adopt_earnapp_runtime_proxy(
             proxy = await (
                 await db.execute(
                     f"""
-                    SELECT id, exit_ip, country_code, ip_type
+                    SELECT proxy_endpoints.id, proxy_endpoints.exit_ip, proxy_endpoints.country_code,
+                           proxy_endpoints.ip_type, earnapp.probe_status, earnapp.verdict,
+                           earnapp.eligibility, earnapp.reason AS probe_reason
                     FROM proxy_endpoints
-                    WHERE id = ? AND exit_ip = ? AND lower(coalesce(status, 'unknown')) = 'alive'
-                      AND lower(trim(coalesce(ip_type, ''))) = 'residential'
+                    JOIN proxy_probe_results earnapp ON earnapp.id = (
+                        SELECT MAX(latest.id) FROM proxy_probe_results latest
+                        WHERE latest.proxy_id = proxy_endpoints.id AND latest.profile = 'earnapp_wss'
+                    )
+                    WHERE proxy_endpoints.id = ? AND proxy_endpoints.exit_ip = ?
+                      AND lower(coalesce(proxy_endpoints.status, 'unknown')) = 'alive'
+                      AND lower(trim(coalesce(proxy_endpoints.ip_type, ''))) = 'residential'
                       AND {country_clause}
-                      AND coalesce(duplicate_egress, 0) = 0
-                      AND EXISTS (
-                          SELECT 1 FROM proxy_probe_results earnapp
-                          WHERE earnapp.proxy_id = proxy_endpoints.id
-                            AND earnapp.profile = 'earnapp_wss'
-                            AND earnapp.verdict = 'CID_SET'
-                            AND earnapp.eligibility = 'eligible'
-                            AND trim(coalesce(earnapp.exit_ip, '')) != ''
-                            AND earnapp.exit_ip = proxy_endpoints.exit_ip
-                            AND earnapp.id = (
-                                SELECT MAX(latest.id) FROM proxy_probe_results latest
-                                WHERE latest.proxy_id = proxy_endpoints.id AND latest.profile = 'earnapp_wss'
-                            )
-                      )
+                      AND coalesce(proxy_endpoints.duplicate_egress, 0) = 0
+                      AND trim(coalesce(earnapp.exit_ip, '')) != ''
+                      AND earnapp.exit_ip = proxy_endpoints.exit_ip
                     """,
                     (live_proxy_id, expected_egress),
                 )
@@ -5051,7 +5047,22 @@ async def adopt_earnapp_runtime_proxy(
                     (live_proxy_id,),
                 )
             ).fetchone()
-            mask_reason = str(mask["reason"] or "dashboard_ip_block") if mask else ""
+            raw_mask_reason = str(mask["reason"] or "").strip() if mask else ""
+            probe_alive = str(proxy["probe_status"] or "").strip().lower() == "alive"
+            probe_eligible = (
+                str(proxy["verdict"] or "").strip().upper() == "CID_SET"
+                and str(proxy["eligibility"] or "").strip().lower() == "eligible"
+            )
+            dashboard_blocked = (
+                str(proxy["verdict"] or "").strip().upper() == "BLACKLIST"
+                and str(proxy["eligibility"] or "").strip().lower() == "blocked"
+                and str(proxy["probe_reason"] or "").strip().lower() == "earnapp_blacklist"
+                and raw_mask_reason == "dashboard_ip_block"
+            )
+            if not probe_alive or not (probe_eligible or dashboard_blocked):
+                await db.rollback()
+                return None
+            mask_reason = raw_mask_reason or ("dashboard_ip_block" if mask else "")
             conflict = await (
                 await db.execute(
                     """

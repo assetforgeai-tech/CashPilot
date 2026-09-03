@@ -909,6 +909,17 @@ def test_adopt_earnapp_runtime_proxy_preserves_dashboard_mask_as_unhealthy(tmp_p
                 "earnapp", node_id, worker_id=worker_id, mode="proxy", proxy_id=database_proxy, status="running"
             )
             assert await database.mask_proxy_for_provider(runtime_proxy, "earnapp", "dashboard_ip_block")
+            await database.save_proxy_probe_result(
+                runtime_proxy,
+                profile="earnapp_wss",
+                probe_status="alive",
+                verdict="BLACKLIST",
+                eligibility="blocked",
+                reason="earnapp_blacklist",
+                exit_ip="198.51.100.66",
+                latency_ms=10,
+                probe_version="test",
+            )
 
             adopted = await database.adopt_earnapp_runtime_proxy(
                 node_id,
@@ -927,6 +938,73 @@ def test_adopt_earnapp_runtime_proxy_preserves_dashboard_mask_as_unhealthy(tmp_p
             node = await database.get_earnapp_logical_node(node_id)
             assert node["proxy_health"] == "unhealthy"
             assert node["proxy_health_reason"] == "dashboard_ip_block"
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    ("mask_reason", "probe_status", "verdict", "eligibility", "reason", "probe_exit_ip"),
+    [
+        (None, "alive", "BLACKLIST", "blocked", "earnapp_blacklist", "198.51.100.68"),
+        ("proxy_dead", "alive", "BLACKLIST", "blocked", "earnapp_blacklist", "198.51.100.68"),
+        ("dashboard_ip_block", "dead", "BLACKLIST", "blocked", "earnapp_blacklist", "198.51.100.68"),
+        ("dashboard_ip_block", "alive", "QUALITY_REJECTED", "blocked", "residential_required", "198.51.100.68"),
+        ("dashboard_ip_block", "alive", "BLACKLIST", "blocked", "earnapp_blacklist", "203.0.113.68"),
+    ],
+)
+def test_adopt_earnapp_runtime_proxy_rejects_blacklist_without_exact_dashboard_evidence(
+    tmp_path,
+    mask_reason,
+    probe_status,
+    verdict,
+    eligibility,
+    reason,
+    probe_exit_ip,
+):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "blocked.db"):
+            await database.init_db()
+            await earnapp_accounts.import_account(_account())
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            database_proxy = await _proxy(provider_id, 67)
+            runtime_proxy = await _proxy(provider_id, 68)
+            worker_id = await database.upsert_worker("worker-blocked", "worker-blocked", "http://worker")
+            node_id = "earnapp-runtime-adopt-blocked"
+            identity = "sdk-mac-" + "a" * 32
+            await database.assign_earnapp_account(node_id, platform="macos")
+            await database.bind_earnapp_node_runtime(node_id, worker_id, device_id=identity, proxy_id=database_proxy)
+            await database.save_provider_instance(
+                "earnapp", node_id, worker_id=worker_id, mode="proxy", proxy_id=database_proxy, status="running"
+            )
+            if mask_reason:
+                assert await database.mask_proxy_for_provider(runtime_proxy, "earnapp", mask_reason)
+            await database.save_proxy_probe_result(
+                runtime_proxy,
+                profile="earnapp_wss",
+                probe_status=probe_status,
+                verdict=verdict,
+                eligibility=eligibility,
+                reason=reason,
+                exit_ip=probe_exit_ip,
+                latency_ms=10,
+                probe_version="test",
+            )
+
+            adopted = await database.adopt_earnapp_runtime_proxy(
+                node_id,
+                worker_id,
+                expected_generation=1,
+                device_id=identity,
+                expected_database_proxy_id=database_proxy,
+                runtime_proxy_id=runtime_proxy,
+                expected_runtime_egress_ip="198.51.100.68",
+                observed_runtime_egress_ip="198.51.100.68",
+                container_id="live-container",
+                sidecar_id="live-sidecar",
+            )
+
+            assert adopted is None
+            assert (await database.get_earnapp_logical_node(node_id))["current_proxy_id"] == database_proxy
 
     asyncio.run(run())
 
