@@ -2604,6 +2604,57 @@ def test_verify_canary_stops_immediately_when_earnapp_blocks_the_proxy(monkeypat
     sleep.assert_not_awaited()
 
 
+def test_verify_canary_observes_the_assigned_route_even_when_its_latest_probe_is_blocked(monkeypatch):
+    device_id = "sdk-mac-" + "a" * 32
+
+    class Collector:
+        async def link_and_verify_device(self, *_args, **_kwargs):
+            return {
+                "status": "error",
+                "error_kind": "proxy_blocked",
+                "error": "EarnApp blocked the assigned proxy",
+                "device_id": device_id,
+            }
+
+    async def load_routes(account_id, *, healthy_only=True):
+        assert account_id == 7
+        if healthy_only:
+            return []
+        return [
+            {
+                "logical_node_id": "earnapp-node-assigned-blocked",
+                "proxy_id": 12,
+                "protocol": "http",
+                "host": "proxy.example",
+                "port": 8080,
+            }
+        ]
+
+    monkeypatch.setattr(
+        database,
+        "get_earnapp_logical_node",
+        AsyncMock(
+            return_value={
+                "state": "ACTIVE",
+                "account_id": 7,
+                "current_proxy_id": 12,
+                "device_id": device_id,
+                "platform": "macos",
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        database, "get_earnapp_account_credentials", AsyncMock(return_value={"state": "ACTIVE", "credentials": {}})
+    )
+    monkeypatch.setattr(database, "get_earnapp_account_node_routes", load_routes)
+    monkeypatch.setattr(database, "get_provider_instance_spec", AsyncMock(return_value={}))
+    monkeypatch.setattr(earnapp_canary, "EarnAppAccountCollector", lambda *_args: Collector())
+
+    result = asyncio.run(earnapp_canary.verify_canary("earnapp-node-assigned-blocked", attempts=1))
+
+    assert result["error_kind"] == "proxy_blocked"
+
+
 @pytest.mark.asyncio
 async def test_canary_verification_masks_blocked_proxy_and_rotates_inside_ui_process(monkeypatch):
     node_id = "earnapp-node-dashboard-blocked"
