@@ -242,11 +242,6 @@ case "$PROXY_TYPE" in
   HTTP) REDSOCKS_TYPE=http-connect ;;
   *) exit 64 ;;
 esac
-iptables -t nat -N CP_EARNAPP_REDSOCKS 2>/dev/null || iptables -t nat -F CP_EARNAPP_REDSOCKS
-iptables -t nat -A CP_EARNAPP_REDSOCKS -d 127.0.0.0/8 -j RETURN
-iptables -t nat -A CP_EARNAPP_REDSOCKS -d "$PROXY_IP"/32 -j RETURN
-iptables -t nat -A CP_EARNAPP_REDSOCKS -p tcp -j REDIRECT --to-ports "$REDSOCKS_PORT"
-iptables -t nat -C OUTPUT -p tcp -j CP_EARNAPP_REDSOCKS 2>/dev/null || iptables -t nat -A OUTPUT -p tcp -j CP_EARNAPP_REDSOCKS
 iptables -N CP_EARNAPP_OUT 2>/dev/null || iptables -F CP_EARNAPP_OUT
 iptables -A CP_EARNAPP_OUT -o lo -j ACCEPT
 iptables -A CP_EARNAPP_OUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
