@@ -409,9 +409,9 @@ def test_ios_image_builder_installs_idempotent_control_plane_registration_wrappe
 
     assert "COPY ios-register-device /usr/local/bin/ios-register-device" in recipe
     assert (
-            "RUN chmod 0755 /opt/earnapp-ios /usr/local/bin/earn-supervisor "
-            "/usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-original.sh "
-            "/usr/local/bin/ios-entrypoint /usr/local/bin/ios-register-device"
+        "RUN chmod 0755 /opt/earnapp-ios /usr/local/bin/earn-supervisor "
+        "/usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-original.sh "
+        "/usr/local/bin/ios-entrypoint /usr/local/bin/ios-register-device"
     ) in recipe
     assert (
         "bash -n /usr/local/bin/earn-supervisor /usr/local/bin/entrypoint.sh "
@@ -493,8 +493,8 @@ def test_every_platform_image_installs_a_fail_closed_proxy_wrapper(platform):
     assert "CP_EARNAPP_OUT" in wrapper
     assert "iptables -I OUTPUT 1 -j CP_EARNAPP_OUT" in wrapper
     assert "ip6tables -I OUTPUT 1 -j CP_EARNAPP6_OUT" in wrapper
-    assert '-p udp --dport 53 -j ACCEPT' in wrapper
-    assert '-p tcp --dport 53 -j ACCEPT' in wrapper
+    assert "-p udp --dport 53 -j ACCEPT" in wrapper
+    assert "-p tcp --dport 53 -j ACCEPT" in wrapper
     assert '"$PROXY_IP"/32' in wrapper
     assert "-j DROP" in wrapper
 

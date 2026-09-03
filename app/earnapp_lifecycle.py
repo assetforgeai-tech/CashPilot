@@ -31,7 +31,9 @@ def _when(value: Any, default: datetime) -> datetime:
         return default
 
 
-def evaluate_node(snapshot: Mapping[str, Any], runtime: Mapping[str, Any], now: datetime | None = None) -> LifecycleDecision:
+def evaluate_node(
+    snapshot: Mapping[str, Any], runtime: Mapping[str, Any], now: datetime | None = None
+) -> LifecycleDecision:
     """Return one simple action for a node snapshot without mutating state."""
     current = now or datetime.now(UTC)
     same = max(0, int(runtime.get("same_proxy_recreates") or 0))

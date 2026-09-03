@@ -33,5 +33,8 @@ def test_flat_usage_recreates_same_proxy_twice_then_rotates():
 
 def test_proxy_failure_rotates_immediately_and_auth_failure_is_deferred():
     now = datetime.now(UTC)
-    assert evaluate_node({"usage": 10, "banned": False}, _runtime(proxy_health="unhealthy"), now).action == "rotate_recreate"
+    assert (
+        evaluate_node({"usage": 10, "banned": False}, _runtime(proxy_health="unhealthy"), now).action
+        == "rotate_recreate"
+    )
     assert evaluate_node({"usage": 10, "banned": False, "auth_failed": True}, _runtime(), now).action == "defer_auth"

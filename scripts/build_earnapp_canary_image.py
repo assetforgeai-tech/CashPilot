@@ -107,7 +107,9 @@ ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
             "COPY ios-register-device /usr/local/bin/ios-register-device\n"
             "COPY cashpilot-proxy-entrypoint /usr/local/bin/entrypoint.sh\n"
         )
-        registration_mode = " /usr/local/bin/entrypoint-original.sh /usr/local/bin/ios-entrypoint /usr/local/bin/ios-register-device"
+        registration_mode = (
+            " /usr/local/bin/entrypoint-original.sh /usr/local/bin/ios-entrypoint /usr/local/bin/ios-register-device"
+        )
         entrypoint_copy = ""
         shellcheck = " /usr/local/bin/entrypoint-original.sh /usr/local/bin/ios-register-device"
     else:

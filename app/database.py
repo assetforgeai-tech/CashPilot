@@ -2730,9 +2730,14 @@ async def init_db() -> None:
         # Add snapshot payment metadata before the completed-migration validator
         # compares the canonical child schema.
         if await _table_exists(db, "earnapp_account_snapshots"):
-            snapshot_cols = {row["name"] for row in await (await db.execute("PRAGMA table_info(earnapp_account_snapshots)")).fetchall()}
+            snapshot_cols = {
+                row["name"]
+                for row in await (await db.execute("PRAGMA table_info(earnapp_account_snapshots)")).fetchall()
+            }
             if "payment_json" not in snapshot_cols:
-                await db.execute("ALTER TABLE earnapp_account_snapshots ADD COLUMN payment_json TEXT NOT NULL DEFAULT '{}'")
+                await db.execute(
+                    "ALTER TABLE earnapp_account_snapshots ADD COLUMN payment_json TEXT NOT NULL DEFAULT '{}'"
+                )
                 applied.append("earnapp_account_snapshots.payment_json")
         await _migrate_legacy_earnapp_accounts(db, applied)
         await db.executescript(_EARNAPP_ACCOUNTS_SCHEMA)
@@ -6040,12 +6045,18 @@ async def get_earnapp_account_control_route(
         await db.close()
 
 
-async def update_earnapp_lifecycle(logical_node_id: str, decision: Any, *, usage: float | None = None,
-                                   window_started_at: str | None = None) -> bool:
+async def update_earnapp_lifecycle(
+    logical_node_id: str, decision: Any, *, usage: float | None = None, window_started_at: str | None = None
+) -> bool:
     """Persist the pure lifecycle decision without touching identity or leases."""
     db = await _get_db()
     try:
-        fields = ["lifecycle_action = ?", "same_proxy_recreates = ?", "rotate_count = ?", "updated_at = datetime('now')"]
+        fields = [
+            "lifecycle_action = ?",
+            "same_proxy_recreates = ?",
+            "rotate_count = ?",
+            "updated_at = datetime('now')",
+        ]
         values: list[Any] = [str(decision.action), int(decision.same_proxy_recreates), int(decision.rotate_count)]
         if usage is not None:
             fields.append("usage_baseline = ?")
@@ -6054,7 +6065,9 @@ async def update_earnapp_lifecycle(logical_node_id: str, decision: Any, *, usage
             fields.append("window_started_at = ?")
             values.append(str(window_started_at))
         values.append(str(logical_node_id))
-        cursor = await db.execute(f"UPDATE earnapp_logical_nodes SET {', '.join(fields)} WHERE logical_node_id = ?", values)
+        cursor = await db.execute(
+            f"UPDATE earnapp_logical_nodes SET {', '.join(fields)} WHERE logical_node_id = ?", values
+        )
         await db.commit()
         return bool(cursor.rowcount)
     finally:
@@ -6301,7 +6314,11 @@ async def save_earnapp_snapshot(account_id: int, snapshot: Mapping[str, Any]) ->
                 int(snapshot.get("online_nodes") or 0),
                 int(snapshot.get("offline_nodes") or 0),
                 json.dumps(sanitized_devices, sort_keys=True, separators=(",", ":")),
-                json.dumps(snapshot.get("payment") if isinstance(snapshot.get("payment"), Mapping) else {}, sort_keys=True, separators=(",", ":")),
+                json.dumps(
+                    snapshot.get("payment") if isinstance(snapshot.get("payment"), Mapping) else {},
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
             ),
         )
         await db.commit()

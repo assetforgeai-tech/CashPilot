@@ -223,10 +223,19 @@ def normalize_snapshot(
     payment = {
         key: value
         for key, value in {**user, **balances}.items()
-        if str(key).lower() in {
-            "payment_method", "payment_methods", "payout_method", "payout_methods",
-            "payout_threshold", "minimum_payout", "currency", "payment_currency",
-            "paypal_email", "payment_email", "payout_status",
+        if str(key).lower()
+        in {
+            "payment_method",
+            "payment_methods",
+            "payout_method",
+            "payout_methods",
+            "payout_threshold",
+            "minimum_payout",
+            "currency",
+            "payment_currency",
+            "paypal_email",
+            "payment_email",
+            "payout_status",
         }
     }
     snapshot = {

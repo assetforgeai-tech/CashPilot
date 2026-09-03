@@ -2919,7 +2919,9 @@ async def api_apply_earnapp_node_proxy(
             except Exception as exc:  # noqa: BLE001 - Docker NotFound is the main-only signal
                 if "sidecar" not in str(exc).lower() and exc.__class__.__name__.lower() != "notfound":
                     raise
-                applied = await asyncio.to_thread(orchestrator.stage_earnapp_main_proxy, logical_node_id, spec.proxy, spec.binding_version)
+                applied = await asyncio.to_thread(
+                    orchestrator.stage_earnapp_main_proxy, logical_node_id, spec.proxy, spec.binding_version
+                )
             evidence = await asyncio.to_thread(orchestrator.probe_service_egress, logical_node_id)
             observed = str(evidence.get("observed_egress_ip") or "")
             if observed != expected_egress_ip:
@@ -3017,8 +3019,12 @@ async def api_finalize_earnapp_node_proxy(
             try:
                 finalized = await asyncio.to_thread(
                     orchestrator.finalize_proxy_binding_batch,
-                    [logical_node_id], spec.binding_version, commit=spec.commit,
-                    expected_egress_ip=spec.expected_egress_ip if spec.commit else str(state.get("expected_egress_ip") or ""),
+                    [logical_node_id],
+                    spec.binding_version,
+                    commit=spec.commit,
+                    expected_egress_ip=spec.expected_egress_ip
+                    if spec.commit
+                    else str(state.get("expected_egress_ip") or ""),
                 )
             except Exception as exc:  # noqa: BLE001 - Docker NotFound is the main-only signal
                 if "sidecar" not in str(exc).lower() and exc.__class__.__name__.lower() != "notfound":

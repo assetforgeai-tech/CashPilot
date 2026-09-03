@@ -720,10 +720,16 @@ async def _run_earnapp_lifecycle_scheduler() -> None:
                 continue
             usage = evidence.get("usage_current", evidence.get("usage_total", 0))
             decision = earnapp_lifecycle.evaluate_node(
-                {"usage": usage or 0, "banned": bool(evidence.get("banned")), "egress_ok": str(node.get("proxy_health") or "") != "unhealthy"},
+                {
+                    "usage": usage or 0,
+                    "banned": bool(evidence.get("banned")),
+                    "egress_ok": str(node.get("proxy_health") or "") != "unhealthy",
+                },
                 node,
             )
-            await database.update_earnapp_lifecycle(str(node.get("logical_node_id") or ""), decision, usage=float(usage or 0))
+            await database.update_earnapp_lifecycle(
+                str(node.get("logical_node_id") or ""), decision, usage=float(usage or 0)
+            )
         except Exception as exc:  # noqa: BLE001 - one node cannot block peers
             logger.debug("EarnApp lifecycle evaluation skipped: %s", type(exc).__name__)
 
@@ -7352,7 +7358,7 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
             _spawn(_reconcile_earnapp_pending_proxy_binding(dict(instance), worker_id))
         reported_token = _earnapp_hydration_state_token(instance)
         proxy_id = int(reported_token["proxy_id"])
-            # Legacy workers may report a running canary before their local state
+        # Legacy workers may report a running canary before their local state
         # file contains the lease fields.  Hydrate from the exact server-side
         # assignment before performing the normal heartbeat CAS.
         hydration: dict[str, Any] | None = None

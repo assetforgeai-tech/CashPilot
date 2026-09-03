@@ -493,24 +493,32 @@ def stage_earnapp_main_proxy(slug: str, proxy: dict[str, Any], binding_version: 
     attrs = getattr(main, "attrs", {}) or {}
     config, host = attrs.get("Config") or {}, attrs.get("HostConfig") or {}
     env = _docker_environment(config.get("Env"))
-    env.update({
-        "PROXY_TYPE": str(proxy.get("protocol") or "socks5"),
-        "PROXY_CREDENTIALS": ":".join(str(proxy.get(k) or "") for k in ("host", "port", "username", "password")),
-        "EARNAPP_EXPECTED_EGRESS_IP": str(proxy.get("exit_ip") or ""),
-    })
+    env.update(
+        {
+            "PROXY_TYPE": str(proxy.get("protocol") or "socks5"),
+            "PROXY_CREDENTIALS": ":".join(str(proxy.get(k) or "") for k in ("host", "port", "username", "password")),
+            "EARNAPP_EXPECTED_EGRESS_IP": str(proxy.get("exit_ip") or ""),
+        }
+    )
     name = str(getattr(main, "name", "") or _container_name(slug)).lstrip("/")
     backup = f"{name}-cashpilot-prev-{binding_version}"
     main.stop(timeout=30)
     main.rename(backup)
     try:
         replacement = client.containers.create(
-            image=str(config.get("Image") or ""), name=name, environment=env,
-            volumes=_docker_volumes(attrs.get("Mounts")), network_mode=str(host.get("NetworkMode") or "bridge"),
+            image=str(config.get("Image") or ""),
+            name=name,
+            environment=env,
+            volumes=_docker_volumes(attrs.get("Mounts")),
+            network_mode=str(host.get("NetworkMode") or "bridge"),
             labels=dict(config.get("Labels") or getattr(main, "labels", {}) or {}),
-            command=config.get("Cmd") or None, entrypoint=config.get("Entrypoint") or None,
+            command=config.get("Cmd") or None,
+            entrypoint=config.get("Entrypoint") or None,
             restart_policy=dict(host.get("RestartPolicy") or {"Name": "always"}),
-            cap_drop=list(host.get("CapDrop") or []), cap_add=list(host.get("CapAdd") or []),
-            security_opt=list(host.get("SecurityOpt") or []), pids_limit=host.get("PidsLimit"),
+            cap_drop=list(host.get("CapDrop") or []),
+            cap_add=list(host.get("CapAdd") or []),
+            security_opt=list(host.get("SecurityOpt") or []),
+            pids_limit=host.get("PidsLimit"),
             mem_limit=host.get("Memory") or None,
         )
         replacement.start()

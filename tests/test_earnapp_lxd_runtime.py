@@ -1022,7 +1022,8 @@ def test_worker_lxd_deploy_is_retired(tmp_path, monkeypatch):
                 "online": False,
                 "runtime_backend": "lxd",
             },
-        ),pytest.raises(HTTPException) as exc
+        ),
+        pytest.raises(HTTPException) as exc,
     ):
         __import__("asyncio").run(worker_api.api_deploy_earnapp_lxd_node(_request(), "earnapp-ubuntu-1", spec))
     assert exc.value.status_code == 409
@@ -1494,21 +1495,23 @@ async def test_worker_rejects_new_earnapp_lxd_deploy_without_calling_host_helper
         identity["device_id"] = "sdk-node-" + "1" * 32
         with pytest.raises(HTTPException) as exc:
             await worker_api.api_deploy_earnapp_lxd_node(
-                _request(), "earnapp-ubuntu-policy-block", worker_api.EarnAppLxdDeploySpec(
-                generation=1,
-                account_id=2,
-                device_id="sdk-node-" + "1" * 32,
-                proxy_id=9,
-                identity=identity,
-                proxy={
-                    "proxy_id": 9,
-                    "host": "proxy.example",
-                    "port": 1080,
-                    "protocol": "socks5",
-                    "exit_ip": "203.0.113.9",
-                    "country_code": "US",
-                    "ip_type": "residential",
-                },
+                _request(),
+                "earnapp-ubuntu-policy-block",
+                worker_api.EarnAppLxdDeploySpec(
+                    generation=1,
+                    account_id=2,
+                    device_id="sdk-node-" + "1" * 32,
+                    proxy_id=9,
+                    identity=identity,
+                    proxy={
+                        "proxy_id": 9,
+                        "host": "proxy.example",
+                        "port": 1080,
+                        "protocol": "socks5",
+                        "exit_ip": "203.0.113.9",
+                        "country_code": "US",
+                        "ip_type": "residential",
+                    },
                 ),
             )
     assert exc.value.status_code == 409

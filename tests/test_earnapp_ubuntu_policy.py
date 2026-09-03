@@ -63,10 +63,13 @@ def test_earnapp_generic_route_stays_blocked_but_apple_lane_is_allowed():
 
 
 def test_earnapp_mutation_policy_is_platform_scoped():
-    assert provider_runtime.mutation_block(
-        "earnapp-ubuntu-canary",
-        {"provider_slug": "earnapp", "platform": "ubuntu", "runtime_backend": "lxd"},
-    ) is not None
+    assert (
+        provider_runtime.mutation_block(
+            "earnapp-ubuntu-canary",
+            {"provider_slug": "earnapp", "platform": "ubuntu", "runtime_backend": "lxd"},
+        )
+        is not None
+    )
     assert (
         provider_runtime.mutation_block(
             "earnapp-ios-canary",
@@ -116,7 +119,7 @@ async def test_worker_rejects_retired_ubuntu_lxd_deploy_endpoint(tmp_path, monke
             "instance_id": "cashpilot-earnapp-ubuntu-policy",
             "running": True,
             "online": False,
-                        "runtime_backend": "docker",
+            "runtime_backend": "docker",
         }
     )
 
@@ -256,7 +259,7 @@ async def test_account_cleanup_uses_logical_node_id_when_runtime_instance_id_dif
                     "logical_node_id": node_id,
                     "instance_id": "cashpilot-earnapp-ubuntu-canary-test-sing-4",
                     "platform": "ubuntu",
-                        "runtime_backend": "docker",
+                    "runtime_backend": "docker",
                 }
             ]
         ),
