@@ -535,7 +535,16 @@ def finalize_earnapp_main_proxy(slug: str, binding_version: str, *, commit: bool
     """Commit the staged main container or restore the retained predecessor."""
     client = _get_client()
     name, backup = _container_name(slug), f"{_container_name(slug)}-cashpilot-prev-{binding_version}"
-    current, previous = client.containers.get(name), client.containers.get(backup)
+    current = client.containers.get(name)
+    try:
+        previous = client.containers.get(backup)
+    except NotFound:
+        if commit:
+            # A Docker restart or an already-completed retry may have removed
+            # the predecessor. The live replacement is authoritative; commit
+            # must remain idempotent instead of turning into a false failure.
+            return {"action": "confirmed", "binding_version": str(binding_version), "backup_missing": True}
+        raise RuntimeError(f"{slug} previous EarnApp container is unavailable for rollback")
     if commit:
         previous.remove(force=True)
         return {"action": "confirmed", "binding_version": str(binding_version)}
