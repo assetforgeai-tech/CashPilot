@@ -283,7 +283,7 @@ def test_verified_image_labels_are_fail_closed():
 
 def test_mac_runtime_manifest_is_derived_from_authoritative_artifact_hashes():
     assert earnapp_runtime.runtime_asset_manifest_sha256() == (
-        "f09741cb578ca824f47ec7488f88195ffaae3f20ad5074cd4ec0572c6be08bc7"
+        "1a8520b9b342ea739868982b9b9b6d3167a1118f5b05d2b7e46f04defcd8b2c8"
     )
     assert earnapp_runtime.runtime_asset_manifest_sha256() == earnapp_runtime.MAC_RUNTIME_ASSET_MANIFEST_SHA256
 
