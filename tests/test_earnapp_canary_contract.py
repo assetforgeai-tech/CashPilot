@@ -697,6 +697,36 @@ async def test_worker_deploy_returns_and_persists_the_runtime_generated_ubuntu_u
 
 
 @pytest.mark.asyncio
+async def test_worker_recreate_uses_live_runtime_contract_without_linking(tmp_path, monkeypatch):
+    slug = "earnapp-mac-recover"
+    device_id = "sdk-mac-" + "a" * 32
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(worker_api, "_verify_api_key", lambda _request: None)
+    worker_api._save_earnapp_state(
+        slug,
+        {
+            "logical_node_id": slug,
+            "generation": 3,
+            "device_id": device_id,
+            "platform": "macos",
+            "runtime_backend": "docker",
+            "proxy_id": 17,
+        },
+    )
+    recreate = MagicMock(return_value="replacement-container")
+    monkeypatch.setattr(worker_api.orchestrator, "recreate_earnapp_main", recreate, raising=False)
+
+    result = await worker_api.api_recreate_earnapp_docker_node(
+        _request(f"/api/earnapp/docker-nodes/{slug}/recreate"),
+        slug,
+        worker_api.EarnAppDockerNodeCasSpec(generation=3, device_id=device_id),
+    )
+
+    assert result == {"status": "recreated", "container_id": "replacement-container"}
+    recreate.assert_called_once_with(slug)
+
+
+@pytest.mark.asyncio
 async def test_worker_fresh_ubuntu_deploy_refuses_an_existing_runtime_or_volume_before_mutation(tmp_path, monkeypatch):
     spec = worker_api.DeploySpec(
         **earnapp_canary.build_runtime_spec(

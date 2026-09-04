@@ -95,7 +95,9 @@ async def test_scheduler_uses_latest_account_snapshot_when_spec_has_no_evidence(
     )
     update = AsyncMock(return_value=True)
     monkeypatch.setattr(main.database, "update_earnapp_lifecycle", update)
+
     await main._run_earnapp_lifecycle_scheduler()
+
     assert update.await_count == 1
 
 
@@ -116,22 +118,106 @@ async def test_scheduler_prefers_latest_account_snapshot_over_stale_spec_evidenc
     monkeypatch.setattr(
         main.database,
         "get_provider_instance_spec",
-        AsyncMock(
-            return_value={
-                "earnapp_device_verification": {"device_id": "sdk-mac-2", "error_kind": "remote"},
-            }
-        ),
+        AsyncMock(return_value={"earnapp_device_verification": {"device_id": "sdk-mac-2", "error_kind": "remote"}}),
     )
     monkeypatch.setattr(
         main.database,
         "get_latest_earnapp_snapshot",
         AsyncMock(
             return_value={
-                "devices_json": '[{"device_id":"sdk-mac-2","online":true,"country_code":"VN","usage_current":1}]',
+                "devices_json": '[{"device_id":"sdk-mac-2","online":true,"country_code":"VN","usage_current":1}]'
             }
         ),
     )
     update = AsyncMock(return_value=True)
     monkeypatch.setattr(main.database, "update_earnapp_lifecycle", update)
+
     await main._run_earnapp_lifecycle_scheduler()
+
+    assert update.await_count == 1
     assert update.await_args.args[1].action == "healthy"
+
+
+@pytest.mark.asyncio
+async def test_scheduler_executes_recreate_decision_for_mutable_node(monkeypatch):
+    node = {
+        "logical_node_id": "earnapp-mac-recover",
+        "account_id": 2,
+        "assigned_worker_id": 3098,
+        "device_id": "sdk-mac-recover",
+        "state": "ACTIVE",
+        "proxy_health": "healthy",
+        "usage_baseline": 0.0,
+        "window_started_at": (datetime.now(UTC) - timedelta(minutes=121)).isoformat(),
+        "same_proxy_recreates": 0,
+        "rotate_count": 0,
+    }
+    monkeypatch.setattr(main.database, "list_earnapp_logical_nodes", AsyncMock(return_value=[node]))
+    monkeypatch.setattr(main.database, "get_provider_instance_spec", AsyncMock(return_value={"image": "img"}))
+    monkeypatch.setattr(
+        main.database,
+        "get_latest_earnapp_snapshot",
+        AsyncMock(return_value={"devices_json": '[{"device_id":"sdk-mac-recover","online":true,"usage_current":0}]'}),
+    )
+    update = AsyncMock(return_value=True)
+    deploy = AsyncMock(return_value={"status": "deployed"})
+    monkeypatch.setattr(main.database, "update_earnapp_lifecycle", update)
+    monkeypatch.setattr(main, "_execute_earnapp_lifecycle_action", deploy)
+
+    await main._run_earnapp_lifecycle_scheduler()
+
+    deploy.assert_awaited_once_with(node, "recreate")
+    persisted = update.await_args.kwargs["window_started_at"]
+    assert datetime.now(UTC) - datetime.fromisoformat(persisted) < timedelta(seconds=5)
+
+
+@pytest.mark.asyncio
+async def test_scheduler_does_not_advance_recovery_after_failed_mutation(monkeypatch):
+    node = {
+        "logical_node_id": "earnapp-mac-recover",
+        "account_id": 2,
+        "assigned_worker_id": 3098,
+        "device_id": "sdk-mac-recover",
+        "state": "ACTIVE",
+        "proxy_health": "healthy",
+        "usage_baseline": 0.0,
+        "window_started_at": (datetime.now(UTC) - timedelta(minutes=121)).isoformat(),
+        "same_proxy_recreates": 0,
+        "rotate_count": 0,
+    }
+    monkeypatch.setattr(main.database, "list_earnapp_logical_nodes", AsyncMock(return_value=[node]))
+    monkeypatch.setattr(main.database, "get_provider_instance_spec", AsyncMock(return_value={"image": "img"}))
+    monkeypatch.setattr(
+        main.database,
+        "get_latest_earnapp_snapshot",
+        AsyncMock(return_value={"devices_json": '[{"device_id":"sdk-mac-recover","usage_current":0}]'}),
+    )
+    update = AsyncMock(return_value=True)
+    monkeypatch.setattr(main.database, "update_earnapp_lifecycle", update)
+    monkeypatch.setattr(main, "_execute_earnapp_lifecycle_action", AsyncMock(return_value=False))
+
+    await main._run_earnapp_lifecycle_scheduler()
+
+    update.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_recreate_action_calls_cas_scoped_worker_route(monkeypatch):
+    node = {
+        "logical_node_id": "earnapp-mac-recover",
+        "assigned_worker_id": 3098,
+        "generation": 3,
+        "device_id": "sdk-mac-" + "a" * 32,
+        "platform": "macos",
+    }
+    proxy = AsyncMock(return_value={"status": "recreated", "container_id": "new-container"})
+    monkeypatch.setattr(main, "_proxy_to_worker", proxy)
+
+    assert await main._execute_earnapp_lifecycle_action(node, "recreate") is True
+    proxy.assert_awaited_once_with(
+        3098,
+        "POST",
+        "/api/earnapp/docker-nodes/earnapp-mac-recover/recreate",
+        json={"generation": 3, "device_id": "sdk-mac-" + "a" * 32},
+        timeout=180,
+    )

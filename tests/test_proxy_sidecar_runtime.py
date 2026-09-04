@@ -380,6 +380,34 @@ def test_failed_earnapp_main_recreate_restores_the_previous_container():
     main.remove.assert_not_called()
 
 
+def test_recreate_earnapp_main_supports_bridge_runtime_without_sidecar():
+    client = MagicMock()
+    main = MagicMock(id="old-main-id", name="cashpilot-earnapp-node", status="running")
+    main.labels = {
+        orchestrator.LABEL_MANAGED: "true",
+        orchestrator.LABEL_SERVICE: "earnapp-node",
+        "cashpilot.provider": "earnapp",
+    }
+    main.attrs = {
+        "Config": {"Image": "cashpilot/earnapp-mac:asset-test", "Env": [], "Labels": main.labels},
+        "HostConfig": {"NetworkMode": "bridge", "RestartPolicy": {"Name": "always"}},
+        "Mounts": [{"Type": "volume", "Name": "earnapp-state", "Destination": "/etc/earnapp", "RW": True}],
+    }
+    replacement = MagicMock(id="new-main-id", status="running")
+    client.containers.create.return_value = replacement
+    client.containers.get.side_effect = orchestrator.NotFound("missing")
+
+    with (
+        patch.object(orchestrator, "_get_client", return_value=client),
+        patch.object(orchestrator, "_find_earnapp_runtime_container", return_value=main),
+    ):
+        result = orchestrator.recreate_earnapp_main("earnapp-node")
+
+    assert result == "new-main-id"
+    client.containers.get.assert_called_once()
+    assert client.containers.create.call_args.kwargs["network_mode"] == "bridge"
+
+
 def test_proxy_binding_status_reports_active_marker_and_artifacts():
     client = MagicMock()
     sidecar = MagicMock()

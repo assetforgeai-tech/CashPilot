@@ -730,18 +730,6 @@ async def _run_earnapp_lifecycle_scheduler() -> None:
             if isinstance(snapshot_evidence, Mapping):
                 evidence = snapshot_evidence
             if not isinstance(evidence, Mapping):
-                snapshot = await database.get_latest_earnapp_snapshot(int(node.get("account_id") or 0))
-                devices = _safe_json((snapshot or {}).get("devices_json") or "[]") if snapshot else []
-                device_id = str(node.get("device_id") or "")
-                evidence = next(
-                    (
-                        item
-                        for item in devices
-                        if isinstance(item, Mapping) and str(item.get("device_id") or "") == device_id
-                    ),
-                    None,
-                )
-            if not isinstance(evidence, Mapping):
                 continue
             usage = evidence.get("usage_current", evidence.get("usage_total", 0))
             decision = earnapp_lifecycle.evaluate_node(
@@ -757,6 +745,10 @@ async def _run_earnapp_lifecycle_scheduler() -> None:
             window_started_at = str(node.get("window_started_at") or datetime.now(UTC).isoformat())
             if decision.action == "healthy":
                 window_started_at = datetime.now(UTC).isoformat()
+            if decision.action in {"recreate", "rotate_recreate"}:
+                if not await _execute_earnapp_lifecycle_action(node, decision.action):
+                    continue
+                window_started_at = datetime.now(UTC).isoformat()
             await database.update_earnapp_lifecycle(
                 str(node.get("logical_node_id") or ""),
                 decision,
@@ -765,6 +757,38 @@ async def _run_earnapp_lifecycle_scheduler() -> None:
             )
         except Exception as exc:  # noqa: BLE001 - one node cannot block peers
             logger.debug("EarnApp lifecycle evaluation skipped: %s", type(exc).__name__)
+
+
+async def _execute_earnapp_lifecycle_action(node: Mapping[str, Any], action: str) -> bool:
+    """Execute one durable recovery decision without linking or touching peers."""
+    node_id = str(node.get("logical_node_id") or "").strip()
+    worker_id = int(node.get("assigned_worker_id") or 0)
+    if not node_id or worker_id <= 0 or earnapp_policy.is_protected_logical_node(node_id):
+        return False
+    if action == "rotate_recreate":
+        return await _rotate_unhealthy_earnapp_node(
+            node_id,
+            worker_id,
+            generation=int(node.get("generation") or 0),
+            expected_proxy_id=int(node.get("current_proxy_id") or 0),
+            dashboard_blocked=True,
+        )
+    if action != "recreate":
+        return False
+    platform = str(node.get("platform") or "").strip().lower()
+    if platform not in {"macos", "ios", "ubuntu"}:
+        return False
+    result = await _proxy_to_worker(
+        worker_id,
+        "POST",
+        f"/api/earnapp/docker-nodes/{node_id}/recreate",
+        json={
+            "generation": int(node.get("generation") or 0),
+            "device_id": str(node.get("device_id") or ""),
+        },
+        timeout=180,
+    )
+    return isinstance(result, Mapping) and str(result.get("status") or "").lower() == "recreated"
 
 
 # Login rate limiting moved to app.login_rate_limit (bead sux) — it was the last
