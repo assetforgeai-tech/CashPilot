@@ -283,9 +283,24 @@ def test_verified_image_labels_are_fail_closed():
 
 def test_mac_runtime_manifest_is_derived_from_authoritative_artifact_hashes():
     assert earnapp_runtime.runtime_asset_manifest_sha256() == (
-        "b34754d558a12bd4bb62d12704baa6d390af9987e570bf5d74b3d13afc8b31d3"
+        "769bc08f7fc5f819aed2453bc68f542382bdb32a6b7b1821cfedd1bccd86847f"
     )
     assert earnapp_runtime.runtime_asset_manifest_sha256() == earnapp_runtime.MAC_RUNTIME_ASSET_MANIFEST_SHA256
+
+
+def test_macos_runtime_contract_tracks_verified_1660577_upgrade():
+    assert earnapp_runtime.MAC_RUNTIME_ARTIFACT_HASHES == {
+        "boot.js": "7b52a4bc06ec63bdb90f79b841af2d370ab9ed9665d5f0c786b1ad3207ac7eb9",
+        "earn-supervisor": "550204505e47a29ca7d4b3853aefb8d05982a566744809fa65c10edf6c2531a2",
+        "earnapp-mac": "d140b41ad1d7e851e2775aed4a77dc72fc306a206287c440829d6b47f35d6911",
+        "entrypoint.sh": "eb1668a670f7e7b576975ddd77b29068074bea4bf7ff490a72657ce4d77d6dfd",
+    }
+    identity = earnapp_identity.generate_identity("earnapp-macos-upgrade", "macos")
+    assert identity["version"] == "1.660.577"
+    assert identity["sdk_version"] == "1.660.577"
+    assert identity["bat_platform"] == "app_macr_mac_sdk"
+    assert "IS_MAC_BVPN" not in identity["makeflags"]
+    assert identity["ua"].startswith("brdsdk/1.660.577 ")
 
 
 def test_canary_image_build_recipe_validates_artifacts_and_emits_pinned_labels(tmp_path):
@@ -293,7 +308,7 @@ def test_canary_image_build_recipe_validates_artifacts_and_emits_pinned_labels(t
     source.mkdir()
     expected = {}
     for name in earnapp_runtime.MAC_RUNTIME_ARTIFACT_HASHES:
-        content = '[[ ! -s "$STATE_DIR/registered" || ! -x /usr/bin/earnapp ]]' if name == "entrypoint.sh" else name
+        content = '[[ ! -f "$STATE_DIR/uuid" || ! -x /usr/bin/earnapp ]]' if name == "entrypoint.sh" else name
         payload = (content + "\n").encode()
         (source / name).write_bytes(payload)
         expected[name] = hashlib.sha256(payload).hexdigest()
@@ -310,11 +325,11 @@ def test_canary_image_build_recipe_validates_artifacts_and_emits_pinned_labels(t
 @pytest.mark.parametrize(
     ("platform", "wrong_marker"),
     [
-        ("macos", '[[ ! -f "$STATE_DIR/uuid" || ! -x /usr/bin/earnapp ]]'),
+        ("macos", '[[ ! -s "$STATE_DIR/registered" || ! -x /usr/bin/earnapp ]]'),
         ("ios", '[[ ! -s "$STATE_DIR/registered" || ! -x /usr/bin/earnapp ]]'),
     ],
 )
-def test_image_builder_rejects_entrypoint_with_the_other_platform_install_marker(tmp_path, platform, wrong_marker):
+def test_image_builder_rejects_unsupported_entrypoint_install_marker(tmp_path, platform, wrong_marker):
     source = tmp_path / platform
     source.mkdir()
     artifact_names = (

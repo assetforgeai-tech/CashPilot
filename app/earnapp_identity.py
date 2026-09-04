@@ -173,8 +173,8 @@ def _mac_identity(logical_node_id: str) -> dict[str, Any]:
         "id": f"cp-macos-{os_version.replace('.', '')}-x64-{codename.lower().replace(' ', '-')}-{secrets.token_hex(4)}",
         "platform": earnapp_runtime.MAC_PLATFORM,
         "appid": earnapp_runtime.MAC_APPID,
-        "version": "1.605.415",
-        "sdk_version": "1.605.415",
+        "version": "1.660.577",
+        "sdk_version": "1.660.577",
         "arch": "x64",
         "release": f"Version {os_version} (Build {os_build})",
         "ifname": "en0",
@@ -199,8 +199,8 @@ def _mac_identity(logical_node_id: str) -> dict[str, Any]:
         "gw_ip": "0.0.0.0",
         "lan_ip": PROXY_TUN_IP,
         "is_swift": True,
-        "makeflags": "DIST=APP RELEASE=y AUTO_SIGN=y IS_MACOS=y MACOS_SDK=y IS_MAC_BVPN=y",
-        "bat_platform": "app_macr_mac",
+        "makeflags": "DIST=APP RELEASE=y AUTO_SIGN=y IS_MACOS=y MACOS_SDK=y CONFIG_BATREQ=y CONFIG_BAT_CYCLE=y",
+        "bat_platform": "app_macr_mac_sdk",
         "new_state": _runtime_state(mobile=False, battery_percentage=-1),
         "perf": {
             "cpu": "0.0",
@@ -210,7 +210,7 @@ def _mac_identity(logical_node_id: str) -> dict[str, Any]:
             "mem_max": "8192",
         },
         "perr_os_version": f"OS version: macOS {os_version}",
-        "ua": f"brdsdk/1.605.415 CFNetwork/{cfnetwork} Darwin/{uname_r}",
+        "ua": f"brdsdk/1.660.577 CFNetwork/{cfnetwork} Darwin/{uname_r}",
     }
     identity["usage"] = _usage_state(mobile=False, battery_percentage=-1)
     identity["device_id"] = _device_id(earnapp_runtime.MAC_DEVICE_PREFIX, identity)
