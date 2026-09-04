@@ -437,9 +437,7 @@ def test_recreate_earnapp_main_replaces_only_identity_asset_bind():
         patch.object(orchestrator, "_get_client", return_value=client),
         patch.object(orchestrator, "_find_earnapp_runtime_container", return_value=main),
     ):
-        result = orchestrator.recreate_earnapp_main(
-            "earnapp-node", identity_asset_host_path="/new/profile"
-        )
+        result = orchestrator.recreate_earnapp_main("earnapp-node", identity_asset_host_path="/new/profile")
 
     assert result == "new-main-id"
     volumes = client.containers.create.call_args.kwargs["volumes"]
