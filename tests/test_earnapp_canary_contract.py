@@ -283,7 +283,7 @@ def test_verified_image_labels_are_fail_closed():
 
 def test_mac_runtime_manifest_is_derived_from_authoritative_artifact_hashes():
     assert earnapp_runtime.runtime_asset_manifest_sha256() == (
-        "769bc08f7fc5f819aed2453bc68f542382bdb32a6b7b1821cfedd1bccd86847f"
+        "e949d13d786131b5a4de8472cabc1c5780016aa163f80d768bfbc18f0160f1c8"
     )
     assert earnapp_runtime.runtime_asset_manifest_sha256() == earnapp_runtime.MAC_RUNTIME_ASSET_MANIFEST_SHA256
 
@@ -546,7 +546,7 @@ def test_transparent_proxy_runtime_disables_application_level_proxying(platform)
 def test_macos_proxy_wrapper_restores_binary_but_does_not_forge_registration_marker():
     wrapper = earnapp_runtime.generated_runtime_artifacts("macos")["cashpilot-proxy-entrypoint"].decode()
 
-    assert "MAC_BINARY_SHA256=977483ef03f1967c2a6fda07e978000a12218c46855c5d86ccb1e09b2fefe757" in wrapper
+    assert "MAC_BINARY_SHA256=d140b41ad1d7e851e2775aed4a77dc72fc306a206287c440829d6b47f35d6911" in wrapper
     assert "sha256sum /usr/bin/earnapp" in wrapper
     assert '"$STATE_DIR/uuid"' in wrapper and '"$STATE_DIR/com.earnapp.cid"' in wrapper
     assert "install -m 0755 /opt/earnapp-mac /usr/bin/earnapp" in wrapper

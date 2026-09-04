@@ -23,6 +23,35 @@ profile material, or live addresses.
   during install/startup. The limit must not be copied into a broad rollout
   without a canary resource check.
 
+## Exhaustive binary scope
+
+The supplied verifier report confirms a complete comparison of the old and new
+macOS binaries: both are `52,730,204` bytes, with `17,330` changed bytes in
+`104` contiguous ranges. All differences are confined to seven pkg
+`STORE_CONTENT` records (`client.js`, SDK/package metadata and duplicated
+`zon_config`/package records); ELF headers, 14 program headers, 31 sections,
+BuildID, native Node runtime, VFS, dictionary and pkg prelude are unchanged.
+
+The seven-record diff is material for runtime compatibility but is not an
+identity or account-link change. In particular, the new client:
+
+- returns no LAN address when `skip_local_addr` is active, and resolves the
+  interface from the supplied address with `_id.ifname`/`en0` and
+  `_id.iface_type`/`eth` fallback;
+- derives the `tunnel_init` response alias from `appid` and
+  `tv_platform || node`, removes proxy/address and several installer/debug
+  fields from the response, and forces the safe status flags;
+- caps SDK tunnel-decline cooldown at two hours (the wrapper separately uses a
+  bounded 60-3,600 second restart cooldown); and
+- filters the complete Docker bridge range `172.16.0.0/12`, rather than only
+  `172.17.*`.
+
+Build metadata moves from `1.605.415` to `1.660.577` and from
+`app_macr_mac` to `app_macr_mac_sdk`; installer/DMG makeflags are removed.
+The verifier found no changes to UUID, serial, platform UUID, hostname, OS
+fingerprint, proxy policy, OAuth/link flow or certificate pins. Those values
+remain owned by the per-node profile and `boot.js` state.
+
 ## CashPilot application
 
 These findings are compatible with the existing Docker-only EarnApp runtime:

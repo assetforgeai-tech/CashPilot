@@ -8,6 +8,13 @@
   cooldown. It did not change UUID generation, OAuth/link behavior, or provide
   a blacklist bypass. The observed 100 MiB image also recorded cgroup OOMs and
   is not a safe default.
+- The exhaustive verifier compared equal-size binaries and found `17,330`
+  changed bytes across `104` ranges, all inside seven pkg `STORE_CONTENT`
+  records. ELF/pkg structure, native runtime, VFS, BuildID and all identity/link
+  surfaces are unchanged. The relevant behavior is limited to safe local
+  address/interface fallback, a derived `tunnel_init` alias and reduced payload,
+  full Docker bridge filtering (`172.16.0.0/12`), and a two-hour decline cap;
+  wrapper restart cooldown remains bounded to 60-3,600 seconds.
 - CashPilot release `v1.18.23` is deployed UI-only. The UI is healthy at the
   pinned digest and database integrity is `ok`; worker `1.18.16` and all
   non-UI containers remained unchanged.
@@ -30,6 +37,13 @@
   `vps-test-us` and passed Dockerfile/syntax checks, but has not replaced a
   live node yet. Adoption remains limited to a bounded macOS canary with
   memory monitoring.
+- During the bounded canary, the first image rollout exposed a stale wrapper
+  checksum for the previous macOS binary, which removed the new binary and
+  caused `/usr/bin/earnapp` exit `127`. The checksum contract was corrected to
+  `d140b41a...d6911`, tests pass, and the test-US canary image was rebuilt with
+  manifest `e949d13d7861`. mac-01 and mac-02 now run SDK `1.660.577` with
+  unchanged UUIDs, volumes, account assignments, proxy egress and no OOM;
+  usage verification remains pending.
 
 ## EarnApp v1.18.17 multi-platform canary reboot checkpoint (2026-09-04)
 
