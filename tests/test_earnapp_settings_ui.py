@@ -25,6 +25,23 @@ def test_settings_prioritizes_token_and_proxy_route_health_without_secret_fields
     assert "credentials_enc" not in javascript
 
 
+def test_settings_renders_sanitized_earnapp_payment_sync_state():
+    template = SETTINGS.read_text(encoding="utf-8")
+    javascript = APP_JS.read_text(encoding="utf-8")
+
+    assert "Payment" in template
+    assert "collector.payment" in javascript
+    assert "Auto-redeem" in javascript
+    assert "Available methods" in javascript
+    assert "destination_masked" in javascript
+    assert "transactions" in javascript
+    assert "configureEarnAppPayment" in javascript
+    assert "disableEarnAppPayment" in javascript
+    assert "Set auto-redeem" in javascript
+    assert "Disable auto-redeem" in javascript
+    assert "paypal_email" not in javascript
+
+
 def test_fleet_renders_earnapp_node_health_from_worker_provider_state():
     template = FLEET.read_text(encoding="utf-8")
 

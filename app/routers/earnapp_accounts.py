@@ -27,6 +27,11 @@ class EarnAppDeleteIn(BaseModel):
     confirm_phrase: str = Field(default="")
 
 
+class EarnAppPaymentIn(BaseModel):
+    payment_method: str = Field(min_length=1, max_length=100)
+    destination: str = Field(min_length=3, max_length=320)
+
+
 class ReplacementTicketIn(BaseModel):
     target_worker_id: int = Field(gt=0)
 
@@ -270,6 +275,28 @@ async def api_earnapp_account_collect(request: Request, account_id: int) -> dict
     if result.get("status") != "ok":
         raise HTTPException(status_code=502, detail=str(result.get("error") or "EarnApp collection failed"))
     return {key: result.get(key) for key in ("status", "money_balance", "money_total", "online_nodes", "offline_nodes")}
+
+
+@router.post("/api/admin/earnapp/accounts/{account_id}/payment")
+async def api_earnapp_account_payment(request: Request, account_id: int, body: EarnAppPaymentIn) -> dict[str, Any]:
+    deps._require_owner(request)
+    try:
+        return await earnapp_collection.configure_payment(
+            account_id,
+            payment_method=body.payment_method.strip(),
+            destination=body.destination.strip(),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.delete("/api/admin/earnapp/accounts/{account_id}/payment")
+async def api_earnapp_account_payment_disable(request: Request, account_id: int) -> dict[str, Any]:
+    deps._require_owner(request)
+    try:
+        return await earnapp_collection.disable_payment(account_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.delete("/api/admin/earnapp/accounts/{account_id}")

@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import httpx
+import pytest
 
 from app import database, earnapp_accounts, earnapp_collection, earnapp_recovery, main
 from app.collectors import COLLECTOR_MAP, earnapp
@@ -699,6 +700,18 @@ class _Client:
         if url.endswith("/usage"):
             assert kwargs["params"]["step"] == "daily"
             return _Response(200, [])
+        if url.endswith("/payment_methods"):
+            return _Response(
+                200,
+                {
+                    "paypal.com": {"value": "paypal.com", "min_redeem": 10, "percentage_fee": 2.0},
+                    "wise.com": {"value": "wise.com", "min_redeem": 10, "fixed_fee": 0.5, "disabled": False},
+                },
+            )
+        if url.endswith("/redeem_details"):
+            return _Response(404, {"error": "not configured"})
+        if url.endswith("/transactions"):
+            return _Response(200, [])
         raise AssertionError(url)
 
     async def post(self, url, **kwargs):
@@ -748,6 +761,9 @@ def test_collector_rotates_xsrf_routes_every_request_through_account_proxy_and_n
         ("GET", "https://earnapp.com/dashboard/api/money"),
         ("GET", "https://earnapp.com/dashboard/api/devices"),
         ("GET", "https://earnapp.com/dashboard/api/usage"),
+        ("GET", "https://earnapp.com/dashboard/api/payment_methods"),
+        ("GET", "https://earnapp.com/dashboard/api/redeem_details"),
+        ("GET", "https://earnapp.com/dashboard/api/transactions"),
         ("POST", "https://earnapp.com/dashboard/api/device_statuses"),
     ]
     assert snapshot == {
@@ -760,6 +776,32 @@ def test_collector_rotates_xsrf_routes_every_request_through_account_proxy_and_n
         "usage_total": 0,
         "usage_available_nodes": 0,
         "usage_missing_nodes": 2,
+        "payment": {
+            "configured": False,
+            "method": "",
+            "destination_masked": "",
+            "methods": [
+                {
+                    "id": "paypal.com",
+                    "label": "paypal.com",
+                    "minimum": 10.0,
+                    "fee_fixed": None,
+                    "fee_percent": 2.0,
+                    "disabled": False,
+                    "parent": "",
+                },
+                {
+                    "id": "wise.com",
+                    "label": "wise.com",
+                    "minimum": 10.0,
+                    "fee_fixed": 0.5,
+                    "fee_percent": None,
+                    "disabled": False,
+                    "parent": "",
+                },
+            ],
+            "transactions": [],
+        },
         "devices": [
             {
                 "device_id": "device-a",
@@ -803,6 +845,94 @@ def test_collector_rotates_xsrf_routes_every_request_through_account_proxy_and_n
     }
     assert "refresh-secret" not in json.dumps(snapshot)
     assert "old-xsrf-secret" not in json.dumps(snapshot)
+
+
+class _PaymentClient:
+    is_closed = False
+
+    def __init__(self, calls, **kwargs):
+        self.calls = calls
+        self.cookies = dict(kwargs.get("cookies") or {})
+
+    async def get(self, url, **kwargs):
+        self.calls.append(("GET", url, None))
+        if url.endswith("/sec/rotate_xsrf"):
+            self.cookies["xsrf-token"] = "rotated-xsrf"
+            return _Response(200, {"ok": 1})
+        if url.endswith("/payment_methods"):
+            return _Response(200, {"paypal.com": {"value": "paypal.com", "min_redeem": 10}})
+        if url.endswith("/redeem_details"):
+            return _Response(200, {"payment_method": "paypal.com", "email": "owner@example.com"})
+        if url.endswith("/transactions"):
+            return _Response(200, [])
+        raise AssertionError(url)
+
+    async def post(self, url, **kwargs):
+        self.calls.append(("POST", url, kwargs.get("json")))
+        return _Response(200, {"ok": 1})
+
+    async def delete(self, url, **kwargs):
+        self.calls.append(("DELETE", url, None))
+        return _Response(200, {"ok": 1})
+
+    async def aclose(self):
+        self.is_closed = True
+
+
+class _RejectedPaymentMethodClient(_PaymentClient):
+    async def get(self, url, **kwargs):
+        if url.endswith("/payment_methods"):
+            self.calls.append(("GET", url, None))
+            return _Response(
+                200,
+                {
+                    "paypal.com": {"value": "paypal.com", "disabled": False},
+                    "wise.com": {"value": "wise.com", "disabled": True},
+                },
+            )
+        return await super().get(url, **kwargs)
+
+
+@pytest.mark.parametrize("payment_method", ["wise.com", "unknown.example"])
+def test_payment_configuration_rejects_disabled_or_unknown_method_before_mutation(payment_method):
+    calls = []
+    credentials = {"cookies": {"oauth-refresh-token": "refresh-secret", "xsrf-token": "old-xsrf-secret"}}
+    proxy = {"protocol": "socks5", "host": "proxy.example", "port": 1080}
+    with patch(
+        "app.collectors.earnapp.httpx.AsyncClient",
+        side_effect=lambda **kwargs: _RejectedPaymentMethodClient(calls, **kwargs),
+    ):
+        collector = EarnAppAccountCollector(credentials, proxy)
+        with pytest.raises(ValueError, match="payment method is unavailable"):
+            asyncio.run(collector.configure_payment(payment_method=payment_method, destination="owner@example.com"))
+
+    assert not any(method == "POST" for method, _url, _body in calls)
+
+
+def test_payment_configuration_uses_account_proxy_and_never_returns_raw_destination():
+    calls = []
+    credentials = {"cookies": {"oauth-refresh-token": "refresh-secret", "xsrf-token": "old-xsrf-secret"}}
+    proxy = {"protocol": "socks5", "host": "proxy.example", "port": 1080}
+    with patch(
+        "app.collectors.earnapp.httpx.AsyncClient", side_effect=lambda **kwargs: _PaymentClient(calls, **kwargs)
+    ):
+        collector = EarnAppAccountCollector(credentials, proxy)
+        configured = asyncio.run(
+            collector.configure_payment(payment_method="paypal.com", destination="owner@example.com")
+        )
+        disabled = asyncio.run(collector.disable_payment())
+
+    assert (
+        "POST",
+        "https://earnapp.com/dashboard/api/redeem_details",
+        {"to": "owner@example.com", "payment_method": "paypal.com"},
+    ) in calls
+    assert ("DELETE", "https://earnapp.com/dashboard/api/redeem_details", None) in calls
+    assert configured["configured"] is True
+    assert configured["destination_masked"] == "o***@example.com"
+    assert disabled["configured"] is False
+    assert "owner@example.com" not in json.dumps(configured)
+    assert "refresh-secret" not in json.dumps(configured)
 
 
 class _LinkClient:

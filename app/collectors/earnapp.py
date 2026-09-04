@@ -183,6 +183,63 @@ def _banned(device: Mapping[str, Any] | None) -> bool:
     return bool(device.get("banned") or device.get("is_banned"))
 
 
+def _mask_destination(value: Any) -> str:
+    """Keep payment snapshots useful without persisting a payout address."""
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if "@" in text:
+        local, domain = text.split("@", 1)
+        return f"{local[:1]}***@{domain}"
+    return f"{text[:2]}***"
+
+
+def _normalize_payment_methods(payload: Any) -> list[dict[str, Any]]:
+    if not isinstance(payload, Mapping):
+        return []
+    rows: list[dict[str, Any]] = []
+    for method_id, raw in sorted(payload.items(), key=lambda item: str(item[0])):
+        if not isinstance(raw, Mapping):
+            continue
+        rows.append(
+            {
+                "id": str(method_id),
+                "label": str(raw.get("value") or method_id),
+                "minimum": _optional_float(raw.get("min_redeem")),
+                "fee_fixed": _optional_float(raw.get("fixed_fee")),
+                "fee_percent": _optional_float(raw.get("percentage_fee")),
+                "disabled": bool(raw.get("disabled")),
+                "parent": str(raw.get("parent") or ""),
+            }
+        )
+    return rows
+
+
+def _normalize_transactions(payload: Any) -> list[dict[str, Any]]:
+    rows = payload if isinstance(payload, list) else payload.get("list", []) if isinstance(payload, Mapping) else []
+    if not isinstance(rows, list):
+        return []
+    allowed = {"id", "date", "payment_date", "money_amount", "fee_amount", "payment_method", "status"}
+    return [
+        {str(key): value for key, value in row.items() if str(key) in allowed}
+        for row in rows
+        if isinstance(row, Mapping)
+    ]
+
+
+def normalize_payment(methods: Any, redeem_details: Any, transactions: Any) -> dict[str, Any]:
+    details = redeem_details if isinstance(redeem_details, Mapping) else {}
+    method = details.get("payment_method") or details.get("method") or ""
+    destination = details.get("email") or details.get("to") or details.get("paypal_email") or ""
+    return {
+        "configured": bool(method and destination),
+        "method": str(method),
+        "destination_masked": _mask_destination(destination),
+        "methods": _normalize_payment_methods(methods),
+        "transactions": _normalize_transactions(transactions),
+    }
+
+
 def normalize_snapshot(
     user_data: Any,
     money: Any,
@@ -285,6 +342,52 @@ class EarnAppAccountCollector:
         if xsrf:
             headers["xsrf-token"] = xsrf
         return headers
+
+    async def _payment_state(self, client: httpx.AsyncClient, headers: Mapping[str, str]) -> dict[str, Any]:
+        methods = await client.get(f"{API_BASE}/payment_methods", params=API_PARAMS, headers=headers)
+        details = await client.get(f"{API_BASE}/redeem_details", params=API_PARAMS, headers=headers)
+        transactions = await client.get(f"{API_BASE}/transactions", params=API_PARAMS, headers=headers)
+        return normalize_payment(
+            methods.json() if methods.status_code == 200 else {},
+            details.json() if details.status_code == 200 else {},
+            transactions.json() if transactions.status_code == 200 else [],
+        )
+
+    async def configure_payment(self, *, payment_method: str, destination: str) -> dict[str, Any]:
+        client = self._client()
+        try:
+            rotate = await client.get(f"{API_BASE}/sec/rotate_xsrf", params=API_PARAMS)
+            rotate.raise_for_status()
+            headers = self._headers(client, self.cookies)
+            methods_response = await client.get(f"{API_BASE}/payment_methods", params=API_PARAMS, headers=headers)
+            methods_response.raise_for_status()
+            methods = _normalize_payment_methods(methods_response.json())
+            selected = next((item for item in methods if item["id"] == payment_method), None)
+            if not selected or selected["disabled"]:
+                raise ValueError("payment method is unavailable")
+            response = await client.post(
+                f"{API_BASE}/redeem_details",
+                params=API_PARAMS,
+                headers=headers,
+                json={"to": destination, "payment_method": payment_method},
+            )
+            response.raise_for_status()
+            return await self._payment_state(client, headers)
+        finally:
+            await client.aclose()
+
+    async def disable_payment(self) -> dict[str, Any]:
+        client = self._client()
+        try:
+            rotate = await client.get(f"{API_BASE}/sec/rotate_xsrf", params=API_PARAMS)
+            rotate.raise_for_status()
+            headers = self._headers(client, self.cookies)
+            response = await client.delete(f"{API_BASE}/redeem_details", params=API_PARAMS, headers=headers)
+            response.raise_for_status()
+            state = await self._payment_state(client, headers)
+            return {**state, "configured": False, "method": "", "destination_masked": ""}
+        finally:
+            await client.aclose()
 
     @staticmethod
     def _link_contract(device_id: str, platform: str, xsrf: str) -> tuple[dict[str, str], dict[str, str]]:
@@ -454,6 +557,13 @@ class EarnAppAccountCollector:
                     params={**API_PARAMS, "step": "daily"},
                     headers=headers,
                 )
+                payment_methods_response = await client.get(
+                    f"{API_BASE}/payment_methods", params=API_PARAMS, headers=headers
+                )
+                redeem_details_response = await client.get(
+                    f"{API_BASE}/redeem_details", params=API_PARAMS, headers=headers
+                )
+                transactions_response = await client.get(f"{API_BASE}/transactions", params=API_PARAMS, headers=headers)
                 for response in (user_response, money_response, devices_response, usage_response):
                     if response.status_code in AUTH_FAILURE_CODES:
                         return {"status": "error", "error_kind": "auth", "error": "authentication rejected"}
@@ -485,7 +595,13 @@ class EarnAppAccountCollector:
                     devices_response.json(),
                     statuses,
                     usage_response.json(),
-                )
+                ) | {
+                    "payment": normalize_payment(
+                        payment_methods_response.json() if payment_methods_response.status_code == 200 else {},
+                        redeem_details_response.json() if redeem_details_response.status_code == 200 else {},
+                        transactions_response.json() if transactions_response.status_code == 200 else [],
+                    )
+                }
             finally:
                 await client.aclose()
         except (httpx.TimeoutException, httpx.NetworkError, httpx.ProxyError):

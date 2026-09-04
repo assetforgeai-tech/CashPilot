@@ -51,6 +51,7 @@ def test_account_routes_are_registered_and_owner_only(client):
     assert "/api/admin/earnapp/accounts" in routes
     assert "/api/admin/earnapp/accounts/import" in routes
     assert "/api/admin/earnapp/accounts/{account_id}/collect" in routes
+    assert "/api/admin/earnapp/accounts/{account_id}/payment" in routes
     assert "/api/admin/earnapp/nodes/{logical_node_id}/replacement-ticket" in routes
 
     with patch("app.deps.auth.get_current_user", return_value=None):
@@ -259,6 +260,35 @@ def test_collect_endpoint_returns_sanitized_result_and_replacement_delegates_pla
     assert ticket.status_code == 200
     assert ticket.json()["replacement_ticket"] == "one-time-ticket"
     issue_ticket.assert_awaited_once_with("earnapp-node-a", 9)
+
+
+def test_payment_routes_are_owner_only_and_return_only_sanitized_state(client):
+    configured = {
+        "configured": True,
+        "method": "paypal.com",
+        "destination_masked": "o***@example.com",
+        "methods": [],
+        "transactions": [],
+    }
+    disabled = {**configured, "configured": False, "method": "", "destination_masked": ""}
+    with (
+        patch("app.deps.auth.get_current_user", return_value=_owner()),
+        patch.object(earnapp_collection, "configure_payment", AsyncMock(return_value=configured)) as configure,
+        patch.object(earnapp_collection, "disable_payment", AsyncMock(return_value=disabled)) as disable,
+    ):
+        response = client.post(
+            "/api/admin/earnapp/accounts/7/payment",
+            json={"payment_method": "paypal.com", "destination": "owner@example.com"},
+        )
+        removed = client.delete("/api/admin/earnapp/accounts/7/payment")
+
+    assert response.status_code == 200
+    assert response.json() == configured
+    assert "owner@example.com" not in response.text
+    configure.assert_awaited_once_with(7, payment_method="paypal.com", destination="owner@example.com")
+    assert removed.status_code == 200
+    assert removed.json() == disabled
+    disable.assert_awaited_once_with(7)
 
 
 @pytest.mark.asyncio
