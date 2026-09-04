@@ -273,7 +273,7 @@ unset PROXY_CREDENTIALS PROXY_HOST PROXY_PORT PROXY_USER PROXY_PASS
 # execute a sanitized copy without those variables so sockets use transparent
 # routing and retain origin-form requests.
 SANITIZED_ENTRYPOINT=/tmp/cashpilot-entrypoint-original.sh
-sed -E '/^[[:space:]]*export (HTTP_PROXY|HTTPS_PROXY|http_proxy|https_proxy|NO_PROXY|no_proxy)=/d' \
+sed '/# ANTI-DETECTION: Docker \/ VM/i unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy NO_PROXY no_proxy' \
   /usr/local/bin/entrypoint-original.sh >"$SANITIZED_ENTRYPOINT"
 chmod 0755 "$SANITIZED_ENTRYPOINT"
 exec "$SANITIZED_ENTRYPOINT" "$@"'''
