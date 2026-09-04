@@ -487,6 +487,34 @@ def validate_and_decode_ubuntu_profile(value: str) -> dict[str, Any]:
     return identity
 
 
+def _upgrade_macos_runtime_metadata(identity: dict[str, Any]) -> bool:
+    """Migrate legacy persisted profiles to the audited SDK metadata in place."""
+    version = str(identity.get("version") or identity.get("sdk_version") or "")
+    if version == "1.660.577" and str(identity.get("sdk_version") or "") == "1.660.577":
+        return False
+    if not version.startswith("1."):
+        return False
+    identity["version"] = "1.660.577"
+    identity["sdk_version"] = "1.660.577"
+    ua = str(identity.get("ua") or "")
+    if ua.startswith("brdsdk/"):
+        identity["ua"] = re.sub(r"^brdsdk/[0-9.]+", "brdsdk/1.660.577", ua)
+    identity["bat_platform"] = "app_macr_mac_sdk"
+    flags = str(identity.get("makeflags") or "")
+    removed = {
+        "IS_MAC_BVPN",
+        "CONFIG_NOTARIZE_NET_UPDATER",
+        "CONFIG_NOTARIZE_EARNAPP_INSTALLER",
+        "MAC_MAKE_DMG",
+    }
+    tokens = [token for token in flags.split() if token and token.split("=", 1)[0] not in removed]
+    for required in ("DIST=APP", "RELEASE=y", "AUTO_SIGN=y", "IS_MACOS=y", "MACOS_SDK=y"):
+        if required not in tokens:
+            tokens.append(required)
+    identity["makeflags"] = " ".join(tokens)
+    return True
+
+
 def encrypt_profile(identity: dict[str, Any]) -> str:
     if identity.get("tv_platform") == "ios":
         validate_identity(identity, "ios")
@@ -537,6 +565,15 @@ async def ensure_identity_profile(logical_node_id: str, platform: str) -> dict[s
             validate_identity(identity, selected)
         if device_id_for_identity(identity, selected) != str(existing["device_id"]):
             raise ValueError("EarnApp persisted device identity changed")
+        if selected == "macos" and _upgrade_macos_runtime_metadata(identity):
+            value = encrypt_profile(identity)
+            await database.save_earnapp_identity_profile(
+                node_id,
+                platform=selected,
+                asset_kind=stored_kind or earnapp_runtime.MAC_IDENTITY_ASSET_KIND,
+                device_id=str(existing["device_id"]),
+                value=value,
+            )
         return {
             "asset_id": node_id,
             "asset_kind": stored_kind or earnapp_runtime.MAC_IDENTITY_ASSET_KIND,
