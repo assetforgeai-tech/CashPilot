@@ -514,6 +514,7 @@ def stage_earnapp_main_proxy(slug: str, proxy: dict[str, Any], binding_version: 
             "PROXY_TYPE": str(proxy.get("protocol") or "socks5"),
             "PROXY_CREDENTIALS": ":".join(str(proxy.get(k) or "") for k in ("host", "port", "username", "password")),
             "EARNAPP_EXPECTED_EGRESS_IP": str(proxy.get("exit_ip") or ""),
+            "EARNAPP_PROXY_BINDING_VERSION": str(binding_version),
         }
     )
     name = str(getattr(main, "name", "") or _container_name(slug)).lstrip("/")
@@ -633,7 +634,29 @@ def _exec_output(result: Any) -> tuple[int, bytes]:
 
 def proxy_binding_status(slug: str) -> dict[str, Any]:
     """Read the staged-binding marker without changing a sidecar."""
-    sidecar = _earnapp_sidecar(slug)
+    client = _get_client()
+    try:
+        sidecar = _earnapp_sidecar(slug, client)
+    except RuntimeError as exc:
+        if "not found" not in str(exc):
+            raise
+        main = _find_earnapp_runtime_container(client, slug, sidecar=False)
+        if main is None:
+            raise
+        environment = _docker_environment(((getattr(main, "attrs", {}) or {}).get("Config") or {}).get("Env"))
+        version = str(environment.get("EARNAPP_PROXY_BINDING_VERSION") or "")
+        previous_present = False
+        if version:
+            try:
+                client.containers.get(f"{_container_name(slug)}-cashpilot-prev-{version}")
+                previous_present = True
+            except NotFound:
+                pass
+        return {
+            "binding_version": version,
+            "previous_present": previous_present,
+            "candidate_present": False,
+        }
     result = sidecar.exec_run(
         [
             "/bin/sh",
