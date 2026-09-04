@@ -716,6 +716,19 @@ async def _run_earnapp_lifecycle_scheduler() -> None:
         try:
             spec = await database.get_provider_instance_spec(str(node.get("logical_node_id") or ""))
             evidence = (spec or {}).get("earnapp_device_verification") if isinstance(spec, Mapping) else None
+            snapshot = await database.get_latest_earnapp_snapshot(int(node.get("account_id") or 0))
+            devices = _safe_json((snapshot or {}).get("devices_json") or "[]") if snapshot else []
+            device_id = str(node.get("device_id") or "")
+            snapshot_evidence = next(
+                (
+                    item
+                    for item in devices
+                    if isinstance(item, Mapping) and str(item.get("device_id") or "") == device_id
+                ),
+                None,
+            )
+            if isinstance(snapshot_evidence, Mapping):
+                evidence = snapshot_evidence
             if not isinstance(evidence, Mapping):
                 snapshot = await database.get_latest_earnapp_snapshot(int(node.get("account_id") or 0))
                 devices = _safe_json((snapshot or {}).get("devices_json") or "[]") if snapshot else []
