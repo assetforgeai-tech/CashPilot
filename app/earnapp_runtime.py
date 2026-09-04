@@ -267,7 +267,7 @@ unset PROXY_CREDENTIALS PROXY_HOST PROXY_PORT PROXY_USER PROXY_PASS
     runtime_handoff = (
         f'exec {next_entrypoint} "$@"'
         if selected == "ios"
-else r'''# The reference entrypoint starts redsocks and also exports application-level
+        else r'''# The reference entrypoint starts redsocks and also exports application-level
 # proxy variables. EarnApp's Axios client then sends absolute-form requests
 # that some leased HTTP proxies reject with 400. Keep redsocks/iptables, but
 # execute a sanitized copy without those variables so sockets use transparent

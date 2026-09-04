@@ -532,9 +532,9 @@ def test_macos_proxy_wrapper_adopts_a_complete_installed_binary_before_handoff()
     wrapper = earnapp_runtime.generated_runtime_artifacts("macos")["cashpilot-proxy-entrypoint"].decode()
 
     assert "MAC_BINARY_SHA256=977483ef03f1967c2a6fda07e978000a12218c46855c5d86ccb1e09b2fefe757" in wrapper
-    assert 'sha256sum /usr/bin/earnapp' in wrapper
+    assert "sha256sum /usr/bin/earnapp" in wrapper
     assert '"$STATE_DIR/uuid"' in wrapper and '"$STATE_DIR/com.earnapp.cid"' in wrapper
-    assert 'install -m 0755 /opt/earnapp-mac /usr/bin/earnapp' in wrapper
+    assert "install -m 0755 /opt/earnapp-mac /usr/bin/earnapp" in wrapper
     assert 'printf \'%s\\n\' "complete" >"$STATE_DIR/registered"' in wrapper
 
 
