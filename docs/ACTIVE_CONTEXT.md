@@ -32,11 +32,21 @@
   live lease rather than treating the redacted provider-instance spec as a
   replayable secret-bearing transport spec.
 - Follow-up snapshots keep both exact UUIDs `online=true`, `banned=false`, and
-  country `VN`; both remain at zero usage. macOS-02 had one transient proxy TLS
+  country `VN`. macOS-02 has now recorded positive usage `141` and therefore
+  proves that the corrected profile can carry qualified workload; macOS-01
+  remains online at zero usage and its observation window remains open.
+  macOS-02 had one transient proxy TLS
   reset and recovered its proxy/agent WebSockets without a lease change. Its
   container remains running with restart count `0` and no OOM. The 120-minute
-  post-recovery usage window therefore remains open; this is not sufficient
-  evidence to mark the provider complete.
+  post-recovery usage window for macOS-01 therefore remains open; this is not
+  sufficient evidence to mark the provider complete.
+- PR #120 merged as `bf71f09`; Auto Release published and verified `v1.19.4`.
+  Only test-US worker `3098` was upgraded to the `v1.19.4` worker digest. The
+  worker is healthy with restart count `0`, and all six EarnApp canary
+  containers retained their IDs/runtime state across the worker-only upgrade.
+  The released recreate route now fetches the latest assigned MacOS/iOS
+  identity asset and replaces only that read-only bind; it does not link,
+  rotate, rewrite the UUID, or replace the persistent identity volume.
 
 ## EarnApp macOS-upgrade evidence and lifecycle gate (2026-09-04)
 
