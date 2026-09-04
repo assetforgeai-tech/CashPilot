@@ -283,7 +283,7 @@ def test_verified_image_labels_are_fail_closed():
 
 def test_mac_runtime_manifest_is_derived_from_authoritative_artifact_hashes():
     assert earnapp_runtime.runtime_asset_manifest_sha256() == (
-        "561a2da789977f5c399ec09a01c1d7d2f64d145c79903b4b2ec07f17a962fcd2"
+        "b34754d558a12bd4bb62d12704baa6d390af9987e570bf5d74b3d13afc8b31d3"
     )
     assert earnapp_runtime.runtime_asset_manifest_sha256() == earnapp_runtime.MAC_RUNTIME_ASSET_MANIFEST_SHA256
 
@@ -536,6 +536,8 @@ def test_macos_proxy_wrapper_restores_binary_but_does_not_forge_registration_mar
     assert '"$STATE_DIR/uuid"' in wrapper and '"$STATE_DIR/com.earnapp.cid"' in wrapper
     assert "install -m 0755 /opt/earnapp-mac /usr/bin/earnapp" in wrapper
     assert 'printf \'%s\\n\' "complete" >"$STATE_DIR/registered"' not in wrapper
+    assert '"$(cat "$STATE_DIR/registered")" == "complete"' in wrapper
+    assert 'rm -f "$STATE_DIR/registered"' in wrapper
 
 
 def test_macos_proxy_wrapper_declares_state_dir_before_identity_recovery_guard():
