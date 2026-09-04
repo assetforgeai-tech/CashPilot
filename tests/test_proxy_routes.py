@@ -3696,6 +3696,76 @@ def test_provider_scoped_lease_is_idempotent_for_the_same_instance(tmp_path):
     asyncio.run(run())
 
 
+def test_earnapp_lease_skips_proxy_still_referenced_by_runtime_instance(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(
+            database, "DB_PATH", tmp_path / "proxy.db"
+        ):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            proxy_ids = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id,
+                [
+                    {"provider_proxy_id": "runtime", "host": "1.1.1.1", "port": 1000},
+                    {"provider_proxy_id": "free", "host": "2.2.2.2", "port": 2000},
+                ],
+            )
+            for proxy_id, exit_ip in zip(proxy_ids, ("8.8.8.8", "9.9.9.9"), strict=True):
+                await database.update_proxy_endpoint_intelligence(
+                    proxy_id,
+                    {
+                        "ip_type": "residential",
+                        "ip_type_source": "test",
+                        "ip_type_confidence": "high",
+                        "country_code": "VN",
+                        "country_name": "Vietnam",
+                        "geo_source": "test",
+                        "geo_confidence": "high",
+                    },
+                )
+                await database.save_proxy_probe_result(
+                    proxy_id,
+                    profile="generic",
+                    probe_status="alive",
+                    verdict="ALIVE",
+                    eligibility="eligible",
+                    reason="",
+                    exit_ip=exit_ip,
+                    latency_ms=10,
+                    probe_version="test",
+                )
+                await database.save_proxy_probe_result(
+                    proxy_id,
+                    profile="earnapp_wss",
+                    probe_status="alive",
+                    verdict="CID_SET",
+                    eligibility="eligible",
+                    reason="cid",
+                    exit_ip=exit_ip,
+                    latency_ms=10,
+                    probe_version="test",
+                )
+            old_worker = await database.upsert_worker("old-worker", "old", "http://old")
+            new_worker = await database.upsert_worker("new-worker", "new", "http://new")
+            await database.save_provider_instance(
+                "earnapp",
+                "legacy-runtime",
+                worker_id=old_worker,
+                mode="proxy",
+                container_id="still-running",
+                proxy_id=proxy_ids[0],
+                status="verification_pending",
+            )
+
+            lease = await database.lease_proxy_for_provider_instance(
+                "earnapp", new_worker, "fresh-canary", country_code="VN"
+            )
+
+            assert lease and lease["proxy_id"] == proxy_ids[1]
+
+    asyncio.run(run())
+
+
 def test_new_scoped_leases_never_share_an_egress_ip_across_providers(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):

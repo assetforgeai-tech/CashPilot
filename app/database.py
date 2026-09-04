@@ -4558,6 +4558,14 @@ async def find_available_earnapp_proxy_for_node(
                         ))
                   )
                   AND NOT EXISTS (
+                      SELECT 1 FROM provider_instances runtime
+                      JOIN proxy_endpoints runtime_proxy ON runtime_proxy.id = runtime.proxy_id
+                      WHERE runtime.proxy_id = pe.id OR (
+                          trim(coalesce(runtime_proxy.exit_ip, '')) != ''
+                          AND runtime_proxy.exit_ip = pe.exit_ip
+                      )
+                  )
+                  AND NOT EXISTS (
                       SELECT 1 FROM earnapp_account_control_routes control
                       JOIN proxy_endpoints control_proxy ON control_proxy.id = control.proxy_id
                       WHERE control.state = 'ACTIVE'
@@ -4675,6 +4683,14 @@ async def reserve_earnapp_proxy_candidate(
                             AND (occupied.proxy_id = pe.id OR (
                                 trim(coalesce(occupied.exit_ip, '')) != '' AND occupied.exit_ip = pe.exit_ip
                             ))
+                      )
+                      AND NOT EXISTS (
+                          SELECT 1 FROM provider_instances runtime
+                          JOIN proxy_endpoints runtime_proxy ON runtime_proxy.id = runtime.proxy_id
+                          WHERE runtime.proxy_id = pe.id OR (
+                              trim(coalesce(runtime_proxy.exit_ip, '')) != ''
+                              AND runtime_proxy.exit_ip = pe.exit_ip
+                          )
                       )
                       AND NOT EXISTS (
                           SELECT 1 FROM earnapp_account_control_routes control
@@ -9339,6 +9355,18 @@ async def lease_proxy_for_provider_instance(
                       SELECT 1 FROM provider_proxy_leases used
                       WHERE used.released_at IS NULL AND used.exit_ip = pe.exit_ip
                   )
+                  AND (
+                      ? != 'earnapp'
+                      OR NOT EXISTS (
+                          SELECT 1 FROM provider_instances runtime
+                          JOIN proxy_endpoints runtime_proxy ON runtime_proxy.id = runtime.proxy_id
+                          WHERE runtime.proxy_id = pe.id
+                             OR (
+                                 trim(coalesce(runtime_proxy.exit_ip, '')) != ''
+                                 AND runtime_proxy.exit_ip = pe.exit_ip
+                             )
+                      )
+                  )
                    AND NOT EXISTS (
                        SELECT 1 FROM earnapp_account_control_routes control
                        JOIN proxy_endpoints control_proxy ON control_proxy.id = control.proxy_id
@@ -9380,6 +9408,7 @@ async def lease_proxy_for_provider_instance(
                 LIMIT 1
                 """,
                 (
+                    slug,
                     slug,
                     slug,
                     slug,
