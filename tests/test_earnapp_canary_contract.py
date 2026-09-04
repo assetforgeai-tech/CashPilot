@@ -195,7 +195,8 @@ def test_server_profile_routes_mac_lan_ip_through_sidecar_tun(tmp_path):
             worker_name="earnapp-canary-1",
         )
         tun_ip = config["inbounds"][0]["address"][0].split("/", 1)[0]
-        assert identity["lan_ip"] == tun_ip
+        assert identity["lan_ip"] == earnapp_identity.PROXY_TUN_IP
+        assert identity["lan_ip"] != tun_ip
 
     asyncio.run(run())
 
