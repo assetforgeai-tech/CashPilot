@@ -186,7 +186,10 @@ async def test_scheduler_refreshes_stale_account_snapshot_before_flatline_recrea
     monkeypatch.setattr(main.database, "get_provider_instance_spec", AsyncMock(return_value={}))
     old = (datetime.now(UTC) - timedelta(minutes=20)).isoformat()
     stale = {"collected_at": old, "devices_json": '[{"device_id":"sdk-mac-refresh","online":true,"usage_current":100}]'}
-    fresh = {"collected_at": datetime.now(UTC).isoformat(), "devices_json": '[{"device_id":"sdk-mac-refresh","online":true,"usage_current":160}]'}
+    fresh = {
+        "collected_at": datetime.now(UTC).isoformat(),
+        "devices_json": '[{"device_id":"sdk-mac-refresh","online":true,"usage_current":160}]',
+    }
     monkeypatch.setattr(main.database, "get_latest_earnapp_snapshot", AsyncMock(side_effect=[stale, fresh]))
     collect = AsyncMock(return_value={"status": "ok", "usage_current": 60})
     monkeypatch.setattr(main.earnapp_collection, "collect_account", collect)
