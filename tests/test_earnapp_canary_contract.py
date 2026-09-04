@@ -308,7 +308,7 @@ def test_canary_image_build_recipe_validates_artifacts_and_emits_pinned_labels(t
     source.mkdir()
     expected = {}
     for name in earnapp_runtime.MAC_RUNTIME_ARTIFACT_HASHES:
-        content = '[[ ! -s "$STATE_DIR/registered" || ! -x /usr/bin/earnapp ]]' if name == "entrypoint.sh" else name
+        content = '[[ ! -f "$STATE_DIR/uuid" || ! -x /usr/bin/earnapp ]]' if name == "entrypoint.sh" else name
         payload = (content + "\n").encode()
         (source / name).write_bytes(payload)
         expected[name] = hashlib.sha256(payload).hexdigest()
@@ -325,11 +325,11 @@ def test_canary_image_build_recipe_validates_artifacts_and_emits_pinned_labels(t
 @pytest.mark.parametrize(
     ("platform", "wrong_marker"),
     [
-        ("macos", '[[ ! -f "$STATE_DIR/uuid" || ! -x /usr/bin/earnapp ]]'),
+        ("macos", '[[ ! -s "$STATE_DIR/registered" || ! -x /usr/bin/earnapp ]]'),
         ("ios", '[[ ! -s "$STATE_DIR/registered" || ! -x /usr/bin/earnapp ]]'),
     ],
 )
-def test_image_builder_rejects_entrypoint_with_the_other_platform_install_marker(tmp_path, platform, wrong_marker):
+def test_image_builder_rejects_unsupported_entrypoint_install_marker(tmp_path, platform, wrong_marker):
     source = tmp_path / platform
     source.mkdir()
     artifact_names = (
