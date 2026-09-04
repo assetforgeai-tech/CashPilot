@@ -264,6 +264,20 @@ unset PROXY_CREDENTIALS PROXY_HOST PROXY_PORT PROXY_USER PROXY_PASS
         if selected == "ios"
         else ""
     )
+    runtime_handoff = (
+        f'exec {next_entrypoint} "$@"'
+        if selected == "ios"
+        else r'''# The reference entrypoint starts redsocks and also exports application-level
+# proxy variables. EarnApp's Axios client then sends absolute-form requests
+# that some leased HTTP proxies reject with 400. Keep redsocks/iptables, but
+# execute a sanitized copy without those variables so sockets use transparent
+# routing and retain origin-form requests.
+SANITIZED_ENTRYPOINT=/tmp/cashpilot-entrypoint-original.sh
+sed -E '/^[[:space:]]*export (HTTP_PROXY|HTTPS_PROXY|http_proxy|https_proxy|NO_PROXY|no_proxy)=/d' \
+  /usr/local/bin/entrypoint-original.sh >"$SANITIZED_ENTRYPOINT"
+chmod 0755 "$SANITIZED_ENTRYPOINT"
+exec "$SANITIZED_ENTRYPOINT" "$@"'''
+    )
     return f"""#!/usr/bin/env bash
 set -euo pipefail
 REDSOCKS_PORT=12345
@@ -293,9 +307,7 @@ if command -v ip6tables >/dev/null 2>&1; then
   ip6tables -C OUTPUT -j CP_EARNAPP6_OUT 2>/dev/null || ip6tables -I OUTPUT 1 -j CP_EARNAPP6_OUT
 fi
 {ios_route}
-export NO_PROXY='*'
-export no_proxy='*'
-exec {next_entrypoint} "$@"
+{runtime_handoff}
         """.encode()
 
 
