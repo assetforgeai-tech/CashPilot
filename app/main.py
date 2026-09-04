@@ -746,6 +746,9 @@ async def _run_earnapp_lifecycle_scheduler() -> None:
             if decision.action == "healthy":
                 window_started_at = datetime.now(UTC).isoformat()
             if decision.action in {"recreate", "rotate_recreate"}:
+                worker = await database.get_worker(int(node.get("assigned_worker_id") or 0))
+                if not _worker_supports_earnapp_lifecycle(worker):
+                    continue
                 if not await _execute_earnapp_lifecycle_action(node, decision.action):
                     continue
                 window_started_at = datetime.now(UTC).isoformat()
@@ -757,6 +760,18 @@ async def _run_earnapp_lifecycle_scheduler() -> None:
             )
         except Exception as exc:  # noqa: BLE001 - one node cannot block peers
             logger.debug("EarnApp lifecycle evaluation skipped: %s", type(exc).__name__)
+
+
+def _worker_supports_earnapp_lifecycle(worker: Mapping[str, Any] | None) -> bool:
+    """Fail closed unless an online worker reports the lifecycle API release."""
+    if not worker or str(worker.get("status") or "").strip().lower() != "online":
+        return False
+    system_info = worker.get("system_info") or {}
+    if isinstance(system_info, str):
+        system_info = _safe_json(system_info, {})
+    if not isinstance(system_info, Mapping):
+        return False
+    return version.at_least(str(system_info.get("version") or ""), "1.18.21")
 
 
 async def _execute_earnapp_lifecycle_action(node: Mapping[str, Any], action: str) -> bool:
