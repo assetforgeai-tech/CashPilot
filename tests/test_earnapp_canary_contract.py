@@ -523,7 +523,7 @@ def test_transparent_proxy_runtime_disables_application_level_proxying(platform)
     assert "HTTPS_PROXY" in wrapper
     assert "http_proxy" in wrapper
     assert "https_proxy" in wrapper
-    assert "exec \"$SANITIZED_ENTRYPOINT\" \"$@\"" in wrapper
+    assert 'exec "$SANITIZED_ENTRYPOINT" "$@"' in wrapper
 
 
 def test_ios_proxy_wrapper_installs_route_before_control_plane_registration():
