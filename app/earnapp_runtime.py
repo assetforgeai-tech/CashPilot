@@ -285,6 +285,38 @@ fi
 if [[ -f "$STATE_DIR/registered" && "$(cat "$STATE_DIR/registered")" == "complete" ]]; then
   rm -f "$STATE_DIR/registered"
 fi
+EXPECTED_DEVICE_ID="${EARNAPP_DEVICE_ID:?}"
+[[ -s "$STATE_DIR/uuid" && "$(cat "$STATE_DIR/uuid")" == "$EXPECTED_DEVICE_ID" ]]
+if [[ ! -s "$STATE_DIR/registered" || "$(cat "$STATE_DIR/registered")" != "$EXPECTED_DEVICE_ID" ]]; then
+  version=$(/usr/bin/earnapp --version | awk '{print $2}')
+  serial=${EXPECTED_DEVICE_ID#sdk-mac-}
+  register_body=$(mktemp)
+  trap 'rm -f "$register_body"' EXIT
+  case "$PROXY_TYPE" in
+    SOCKS5) register_proxy=(--socks5-hostname "$PROXY_HOST:$PROXY_PORT") ;;
+    HTTP) register_proxy=(--proxy "http://$PROXY_HOST:$PROXY_PORT") ;;
+  esac
+  if [[ -n "${PROXY_USER:-}" || -n "${PROXY_PASS:-}" ]]; then
+    register_proxy+=(--proxy-user "$PROXY_USER:$PROXY_PASS")
+  fi
+  registered=false
+  for attempt in $(seq 1 10); do
+    if curl -fsS --http1.1 --connect-timeout 15 --max-time 45 \
+        "${register_proxy[@]}" -H 'Content-Type: application/json' \
+        -o "$register_body" \
+        "https://client.earnapp.com/install_device?uuid=$EXPECTED_DEVICE_ID&version=$version&arch=x64&appid=node_earnapp.com&os=macOS" \
+        --data "{\"serial\":\"$serial\"}" \
+      && grep -Eq '"ok"[[:space:]]*:[[:space:]]*(1|true|"1")' "$register_body"; then
+      printf '%s' "$EXPECTED_DEVICE_ID" >"$STATE_DIR/registered"
+      registered=true
+      break
+    fi
+    [[ "$attempt" -lt 10 ]] && sleep 15
+  done
+  [[ "$registered" == true ]]
+  rm -f "$register_body"
+  trap - EXIT
+fi
 SANITIZED_ENTRYPOINT=/tmp/cashpilot-entrypoint-original.sh
 sed '/# ANTI-DETECTION: Docker \/ VM/i unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy NO_PROXY no_proxy' \
   /usr/local/bin/entrypoint-original.sh >"$SANITIZED_ENTRYPOINT"
