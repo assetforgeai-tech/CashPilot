@@ -86,3 +86,24 @@ def test_generated_service_index_removes_earnapp_policy_notice_when_runtime_is_r
 
     assert "Hosted Docker/LXD deployment is currently disabled" not in rendered
     assert "| [EarnApp](earnapp.md) | — | Docker | — | active |" in rendered
+
+
+def test_generated_service_index_describes_current_earnapp_docker_platform_matrix():
+    rendered = sync_docs_nav.render_index(
+        [
+            {
+                "slug": "earnapp",
+                "name": "EarnApp",
+                "category": "bandwidth",
+                "status": "active",
+                "requirements": {"residential_ip": True},
+                "payment": {"minimum_payout": "$2"},
+                "dockerised": True,
+            }
+        ]
+    )
+
+    assert "MacOS/iOS for VN residential proxies" in rendered
+    assert "Ubuntu Docker for non-VN residential proxies" in rendered
+    assert "| [EarnApp](earnapp.md) | Residential IP | Docker | $2 | platform restricted |" in rendered
+    assert "Ubuntu LXD" not in rendered

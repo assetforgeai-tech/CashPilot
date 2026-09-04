@@ -136,8 +136,8 @@ def render_index(services: list[dict]) -> str:
     ]
     if "earnapp" in restricted_slugs:
         out += [
-            "> EarnApp runtime is platform-restricted: official Linux x64 uses the dedicated",
-            "> Ubuntu LXD lane; MacOS/iOS emulation and generic Docker deploy remain disabled.",
+            "> EarnApp uses dedicated Docker lanes: MacOS/iOS for VN residential proxies",
+            "> and Ubuntu Docker for non-VN residential proxies. Generic Docker deploy remains disabled.",
             "",
         ]
     out += [
@@ -169,7 +169,7 @@ def render_index(services: list[dict]) -> str:
                 runs = "Collector only"
                 status = "runtime disabled"
             elif str(svc["slug"]) in restricted_slugs:
-                runs = "Ubuntu LXD"
+                runs = "Docker"
                 status = "platform restricted"
             else:
                 runs = "Docker" if svc["dockerised"] else "App only"
