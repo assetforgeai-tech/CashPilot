@@ -1,5 +1,9 @@
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock
 
+import pytest
+
+from app import main
 from app.earnapp_lifecycle import evaluate_node
 
 
@@ -38,3 +42,31 @@ def test_proxy_failure_rotates_immediately_and_auth_failure_is_deferred():
         == "rotate_recreate"
     )
     assert evaluate_node({"usage": 10, "banned": False, "auth_failed": True}, _runtime(), now).action == "defer_auth"
+
+
+@pytest.mark.asyncio
+async def test_scheduler_persists_initial_flatline_window(monkeypatch):
+    node = {
+        "logical_node_id": "earnapp-mac-1",
+        "state": "ACTIVE",
+        "proxy_health": "healthy",
+        "usage_baseline": 0.0,
+        "window_started_at": None,
+        "same_proxy_recreates": 0,
+        "rotate_count": 0,
+    }
+    monkeypatch.setattr(main.database, "list_earnapp_logical_nodes", AsyncMock(return_value=[node]))
+    monkeypatch.setattr(
+        main.database,
+        "get_provider_instance_spec",
+        AsyncMock(return_value={"earnapp_device_verification": {"usage_current": 0.0, "banned": False}}),
+    )
+    update = AsyncMock(return_value=True)
+    monkeypatch.setattr(main.database, "update_earnapp_lifecycle", update)
+
+    before = datetime.now(UTC)
+    await main._run_earnapp_lifecycle_scheduler()
+    after = datetime.now(UTC)
+
+    persisted = update.await_args.kwargs["window_started_at"]
+    assert before <= datetime.fromisoformat(persisted) <= after

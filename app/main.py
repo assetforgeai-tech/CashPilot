@@ -727,8 +727,16 @@ async def _run_earnapp_lifecycle_scheduler() -> None:
                 },
                 node,
             )
+            # Anchor the 120-minute observation window on first evidence; without
+            # this persisted timestamp, every scheduler pass starts the clock over.
+            window_started_at = str(node.get("window_started_at") or datetime.now(UTC).isoformat())
+            if decision.action == "healthy":
+                window_started_at = datetime.now(UTC).isoformat()
             await database.update_earnapp_lifecycle(
-                str(node.get("logical_node_id") or ""), decision, usage=float(usage or 0)
+                str(node.get("logical_node_id") or ""),
+                decision,
+                usage=float(usage or 0),
+                window_started_at=window_started_at,
             )
         except Exception as exc:  # noqa: BLE001 - one node cannot block peers
             logger.debug("EarnApp lifecycle evaluation skipped: %s", type(exc).__name__)
