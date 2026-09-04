@@ -290,6 +290,7 @@ exec "$SANITIZED_ENTRYPOINT" "$@"'''
     )
     return f"""#!/usr/bin/env bash
 set -euo pipefail
+STATE_DIR=/etc/earnapp
 REDSOCKS_PORT=12345
 PROXY_TYPE=$(printf '%s' "${{PROXY_TYPE:-SOCKS5}}" | tr '[:lower:]' '[:upper:]')
 IFS=: read -r PROXY_HOST PROXY_PORT PROXY_USER PROXY_PASS <<<"${{PROXY_CREDENTIALS:?}}"

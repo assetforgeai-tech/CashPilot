@@ -538,6 +538,11 @@ def test_macos_proxy_wrapper_adopts_a_complete_installed_binary_before_handoff()
     assert 'printf \'%s\\n\' "complete" >"$STATE_DIR/registered"' in wrapper
 
 
+def test_macos_proxy_wrapper_declares_state_dir_before_identity_recovery_guard():
+    wrapper = earnapp_runtime.generated_runtime_artifacts("macos")["cashpilot-proxy-entrypoint"].decode()
+    assert wrapper.index("STATE_DIR=/etc/earnapp") < wrapper.index('"$STATE_DIR/uuid"')
+
+
 def test_ios_proxy_wrapper_installs_route_before_control_plane_registration():
     wrapper = earnapp_runtime.generated_runtime_artifacts("ios")["cashpilot-proxy-entrypoint"].decode("utf-8")
 
