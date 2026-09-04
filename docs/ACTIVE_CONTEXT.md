@@ -37,6 +37,13 @@
   `vps-test-us` and passed Dockerfile/syntax checks, but has not replaced a
   live node yet. Adoption remains limited to a bounded macOS canary with
   memory monitoring.
+- During the bounded canary, the first image rollout exposed a stale wrapper
+  checksum for the previous macOS binary, which removed the new binary and
+  caused `/usr/bin/earnapp` exit `127`. The checksum contract was corrected to
+  `d140b41a...d6911`, tests pass, and the test-US canary image was rebuilt with
+  manifest `e949d13d7861`. mac-01 and mac-02 now run SDK `1.660.577` with
+  unchanged UUIDs, volumes, account assignments, proxy egress and no OOM;
+  usage verification remains pending.
 
 ## EarnApp v1.18.17 multi-platform canary reboot checkpoint (2026-09-04)
 

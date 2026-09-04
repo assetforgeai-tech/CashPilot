@@ -274,7 +274,7 @@ unset PROXY_CREDENTIALS PROXY_HOST PROXY_PORT PROXY_USER PROXY_PASS
 # routing and retain origin-form requests.
 # A failed first install can leave a complete binary without the reference
 # marker. Adopt only the content-addressed binary; partial installs must retry.
-MAC_BINARY_SHA256=977483ef03f1967c2a6fda07e978000a12218c46855c5d86ccb1e09b2fefe757
+MAC_BINARY_SHA256=d140b41ad1d7e851e2775aed4a77dc72fc306a206287c440829d6b47f35d6911
 if [[ -s "$STATE_DIR/uuid" && -s "$STATE_DIR/com.earnapp.cid" && -x /opt/earnapp-mac \
       && "$(sha256sum /opt/earnapp-mac | awk '{print $1}')" == "$MAC_BINARY_SHA256" ]]; then
   install -m 0755 /opt/earnapp-mac /usr/bin/earnapp
