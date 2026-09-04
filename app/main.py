@@ -717,6 +717,18 @@ async def _run_earnapp_lifecycle_scheduler() -> None:
             spec = await database.get_provider_instance_spec(str(node.get("logical_node_id") or ""))
             evidence = (spec or {}).get("earnapp_device_verification") if isinstance(spec, Mapping) else None
             if not isinstance(evidence, Mapping):
+                snapshot = await database.get_latest_earnapp_snapshot(int(node.get("account_id") or 0))
+                devices = _safe_json((snapshot or {}).get("devices_json") or "[]") if snapshot else []
+                device_id = str(node.get("device_id") or "")
+                evidence = next(
+                    (
+                        item
+                        for item in devices
+                        if isinstance(item, Mapping) and str(item.get("device_id") or "") == device_id
+                    ),
+                    None,
+                )
+            if not isinstance(evidence, Mapping):
                 continue
             usage = evidence.get("usage_current", evidence.get("usage_total", 0))
             decision = earnapp_lifecycle.evaluate_node(
