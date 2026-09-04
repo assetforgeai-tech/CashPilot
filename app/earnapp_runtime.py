@@ -272,6 +272,16 @@ unset PROXY_CREDENTIALS PROXY_HOST PROXY_PORT PROXY_USER PROXY_PASS
 # that some leased HTTP proxies reject with 400. Keep redsocks/iptables, but
 # execute a sanitized copy without those variables so sockets use transparent
 # routing and retain origin-form requests.
+# A failed first install can leave a complete binary without the reference
+# marker. Adopt only the content-addressed binary; partial installs must retry.
+MAC_BINARY_SHA256=977483ef03f1967c2a6fda07e978000a12218c46855c5d86ccb1e09b2fefe757
+if [[ -s "$STATE_DIR/uuid" && -s "$STATE_DIR/com.earnapp.cid" && -x /opt/earnapp-mac \
+      && "$(sha256sum /opt/earnapp-mac | awk '{print $1}')" == "$MAC_BINARY_SHA256" ]]; then
+  install -m 0755 /opt/earnapp-mac /usr/bin/earnapp
+fi
+if [[ -x /usr/bin/earnapp && "$(sha256sum /usr/bin/earnapp | awk '{print $1}')" == "$MAC_BINARY_SHA256" ]]; then
+  printf '%s\n' "complete" >"$STATE_DIR/registered"
+fi
 SANITIZED_ENTRYPOINT=/tmp/cashpilot-entrypoint-original.sh
 sed '/# ANTI-DETECTION: Docker \/ VM/i unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy NO_PROXY no_proxy' \
   /usr/local/bin/entrypoint-original.sh >"$SANITIZED_ENTRYPOINT"
