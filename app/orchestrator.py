@@ -407,7 +407,12 @@ def _docker_volumes(mounts: Any) -> dict[str, dict[str, str]]:
 
 
 def _recreate_earnapp_main_after_sidecar_restart(
-    client: Any, slug: str, sidecar: Any | None, *, main: Any | None = None
+    client: Any,
+    slug: str,
+    sidecar: Any | None,
+    *,
+    main: Any | None = None,
+    identity_asset_host_path: str | None = None,
 ) -> str:
     """Recreate an EarnApp process on the sidecar while preserving its identity state.
 
@@ -439,11 +444,16 @@ def _recreate_earnapp_main_after_sidecar_restart(
     if not image:
         raise RuntimeError(f"{slug} EarnApp main container image is unavailable")
     name = str(getattr(main, "name", "") or _container_name(slug)).strip().lstrip("/")
+    volumes = _docker_volumes(attrs.get("Mounts"))
+    if identity_asset_host_path:
+        identity_target = "/etc/earnapp-spoof/profile.json.enc"
+        volumes = {source: mount for source, mount in volumes.items() if mount.get("bind") != identity_target}
+        volumes[str(identity_asset_host_path)] = {"bind": identity_target, "mode": "ro"}
     create_kwargs: dict[str, Any] = {
         "image": image,
         "name": name,
         "environment": _docker_environment(config.get("Env")),
-        "volumes": _docker_volumes(attrs.get("Mounts")),
+        "volumes": volumes,
         "network_mode": replacement_network_mode,
         "labels": dict(config.get("Labels") or getattr(main, "labels", {}) or {}),
         "command": config.get("Cmd") or None,
@@ -537,7 +547,12 @@ def stage_earnapp_main_proxy(slug: str, proxy: dict[str, Any], binding_version: 
         raise
 
 
-def recreate_earnapp_main(slug: str, *, proxy: dict[str, Any] | None = None) -> str:
+def recreate_earnapp_main(
+    slug: str,
+    *,
+    proxy: dict[str, Any] | None = None,
+    identity_asset_host_path: str | None = None,
+) -> str:
     """Recreate one EarnApp main container while retaining its identity volume."""
     client = _get_client()
     try:
@@ -547,7 +562,13 @@ def recreate_earnapp_main(slug: str, *, proxy: dict[str, Any] | None = None) -> 
     main = _find_earnapp_runtime_container(client, slug, sidecar=False)
     if proxy and main is not None:
         _persist_earnapp_expected_egress(main, str(proxy.get("exit_ip") or ""))
-    return _recreate_earnapp_main_after_sidecar_restart(client, slug, sidecar, main=main)
+    return _recreate_earnapp_main_after_sidecar_restart(
+        client,
+        slug,
+        sidecar,
+        main=main,
+        identity_asset_host_path=identity_asset_host_path,
+    )
 
 
 def finalize_earnapp_main_proxy(slug: str, binding_version: str, *, commit: bool) -> dict[str, Any]:

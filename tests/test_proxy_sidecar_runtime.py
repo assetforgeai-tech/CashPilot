@@ -408,6 +408,47 @@ def test_recreate_earnapp_main_supports_bridge_runtime_without_sidecar():
     assert client.containers.create.call_args.kwargs["network_mode"] == "bridge"
 
 
+def test_recreate_earnapp_main_replaces_only_identity_asset_bind():
+    client = MagicMock()
+    main = MagicMock(id="old-main-id", name="cashpilot-earnapp-node", status="running")
+    main.labels = {
+        orchestrator.LABEL_MANAGED: "true",
+        orchestrator.LABEL_SERVICE: "earnapp-node",
+        "cashpilot.provider": "earnapp",
+    }
+    main.attrs = {
+        "Config": {"Image": "cashpilot/earnapp-mac:asset-test", "Env": [], "Labels": main.labels},
+        "HostConfig": {"NetworkMode": "bridge", "RestartPolicy": {"Name": "always"}},
+        "Mounts": [
+            {"Type": "volume", "Name": "earnapp-state", "Destination": "/etc/earnapp", "RW": True},
+            {
+                "Type": "bind",
+                "Source": "/old/profile",
+                "Destination": "/etc/earnapp-spoof/profile.json.enc",
+                "RW": False,
+            },
+        ],
+    }
+    replacement = MagicMock(id="new-main-id", status="running")
+    client.containers.create.return_value = replacement
+    client.containers.get.side_effect = orchestrator.NotFound("missing")
+
+    with (
+        patch.object(orchestrator, "_get_client", return_value=client),
+        patch.object(orchestrator, "_find_earnapp_runtime_container", return_value=main),
+    ):
+        result = orchestrator.recreate_earnapp_main("earnapp-node", identity_asset_host_path="/new/profile")
+
+    assert result == "new-main-id"
+    volumes = client.containers.create.call_args.kwargs["volumes"]
+    assert volumes["earnapp-state"] == {"bind": "/etc/earnapp", "mode": "rw"}
+    assert "/old/profile" not in volumes
+    assert volumes["/new/profile"] == {
+        "bind": "/etc/earnapp-spoof/profile.json.enc",
+        "mode": "ro",
+    }
+
+
 def test_proxy_binding_status_reports_active_marker_and_artifacts():
     client = MagicMock()
     sidecar = MagicMock()

@@ -736,6 +736,8 @@ async def test_worker_recreate_uses_live_runtime_contract_without_linking(tmp_pa
         },
     )
     recreate = MagicMock(return_value="replacement-container")
+    fetch = AsyncMock(return_value=base64.b64encode(b"fresh-profile").decode())
+    monkeypatch.setattr(worker_api, "_fetch_runtime_asset", fetch)
     monkeypatch.setattr(worker_api.orchestrator, "recreate_earnapp_main", recreate, raising=False)
 
     result = await worker_api.api_recreate_earnapp_docker_node(
@@ -745,7 +747,12 @@ async def test_worker_recreate_uses_live_runtime_contract_without_linking(tmp_pa
     )
 
     assert result == {"status": "recreated", "container_id": "replacement-container"}
-    recreate.assert_called_once_with(slug)
+    fetch.assert_awaited_once_with("earnapp", "mac_identity_profile", asset_id=slug)
+    recreate.assert_called_once()
+    assert recreate.call_args.args == (slug,)
+    refreshed_path = Path(recreate.call_args.kwargs["identity_asset_host_path"])
+    assert refreshed_path.name == "asset"
+    assert refreshed_path.read_bytes() == b"fresh-profile"
 
 
 @pytest.mark.asyncio

@@ -1,5 +1,43 @@
 # CashPilot Active Context
 
+## EarnApp macOS LAN-profile recovery (2026-09-04)
+
+- PR #119 merged as `92eb0e1` and release `v1.19.3` completed successfully.
+  The server UI and only test-US worker `3098` were upgraded to `1.19.3`;
+  both are healthy. No protected provider container, iOS node, Ubuntu node,
+  proxy lease, account assignment, identity volume or UUID was changed.
+- The two macOS nodes were already linked to their intended accounts. Repeated
+  authenticated link checks returned the exact device UUIDs, so missing link
+  was not the root cause of their offline state.
+- The root cause was the persisted `lan_ip=172.31.255.1`. SDK `1.660.577`
+  deliberately filters the full Docker bridge range `172.16.0.0/12`, producing
+  `devs changed: found 0 devs`. The profile migration changed only runtime
+  metadata to `lan_ip=10.255.255.1`; device UUID, serial, platform UUID,
+  account, volume and proxy assignment stayed unchanged.
+- `earnapp-v1182-us-mac-01` retains UUID
+  `sdk-mac-e769907c101b5e1f4789794fccfd76b7`, account `2`, proxy `12709` and
+  egress `116.98.185.18`. `earnapp-v1182-us-mac-02` retains UUID
+  `sdk-mac-60e6ff13760ba2c72c56d8d25bc31ec5`, account `470`, proxy `12737` and
+  egress `116.105.109.101`.
+- Both exact runtimes now report `found 1 devs`, interface `en0
+  (10.255.255.1)`, connected agent WebSockets and successful `tunnel_init`.
+  A fresh authenticated account verification reports both exact UUIDs as
+  `online=true`, `banned=false`, country `VN`, and the expected proxy egress.
+  Usage remains zero immediately after recovery, so their status is
+  `online_pending_usage`; do not mark EarnApp `PROTECTED_DONE` until positive
+  usage/earnings is observed.
+- The recovery exposed a stale persisted spec for macOS-02 with redacted proxy
+  credentials. It was restored from the same authoritative proxy lease without
+  rotation. Future full redeploy code must always rebuild credentials from the
+  live lease rather than treating the redacted provider-instance spec as a
+  replayable secret-bearing transport spec.
+- Follow-up snapshots keep both exact UUIDs `online=true`, `banned=false`, and
+  country `VN`; both remain at zero usage. macOS-02 had one transient proxy TLS
+  reset and recovered its proxy/agent WebSockets without a lease change. Its
+  container remains running with restart count `0` and no OOM. The 120-minute
+  post-recovery usage window therefore remains open; this is not sufficient
+  evidence to mark the provider complete.
+
 ## EarnApp macOS-upgrade evidence and lifecycle gate (2026-09-04)
 
 - Forensic review of `earnapp_macos_upgrade_20260904` confirms the upstream
