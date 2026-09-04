@@ -710,13 +710,34 @@ async def _run_proxy_pool_recheck_scheduler() -> None:
 
 async def _run_earnapp_lifecycle_scheduler() -> None:
     """Persist uniform EarnApp health decisions from the latest evidence."""
+    refreshed_accounts: set[int] = set()
     for node in await database.list_earnapp_logical_nodes():
         if str(node.get("state") or "").upper() == "RETIRED":
             continue
         try:
             spec = await database.get_provider_instance_spec(str(node.get("logical_node_id") or ""))
             evidence = (spec or {}).get("earnapp_device_verification") if isinstance(spec, Mapping) else None
-            snapshot = await database.get_latest_earnapp_snapshot(int(node.get("account_id") or 0))
+            account_id = int(node.get("account_id") or 0)
+            snapshot = await database.get_latest_earnapp_snapshot(account_id)
+            # The collector normally runs hourly, while flatline recovery is
+            # intentionally short. Refresh an old account snapshot at the
+            # recovery boundary so a delayed collector cannot recreate a node
+            # that has already started earning.
+            if snapshot and account_id not in refreshed_accounts:
+                collected_at = str(snapshot.get("collected_at") or "")
+                try:
+                    collected_when = datetime.fromisoformat(collected_at.replace("Z", "+00:00"))
+                    if collected_when.tzinfo is None:
+                        collected_when = collected_when.replace(tzinfo=UTC)
+                except (TypeError, ValueError):
+                    collected_when = None
+                if collected_when and datetime.now(UTC) - collected_when >= timedelta(
+                    minutes=earnapp_lifecycle.FLATLINE_MINUTES
+                ):
+                    refreshed_accounts.add(account_id)
+                    with contextlib.suppress(Exception):
+                        await earnapp_collection.collect_account(account_id)
+                    snapshot = await database.get_latest_earnapp_snapshot(account_id)
             devices = _safe_json((snapshot or {}).get("devices_json") or "[]") if snapshot else []
             device_id = str(node.get("device_id") or "")
             snapshot_evidence = next(

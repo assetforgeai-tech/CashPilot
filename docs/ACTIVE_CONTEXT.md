@@ -1233,6 +1233,45 @@ historical snapshots and read-only inspection stay available.
   unchanged. This does not override the current hosted-runtime compliance gate.
 ## EarnApp macOS zero-usage investigation (2026-09-05)
 
+### Restart A/B follow-up (2026-09-05)
+
+- Canary mac-08 was restarted in place only. UUID
+  `sdk-mac-77bfdb9a1e16332af80e763e9cca7f00`, identity volume, account 470 and
+  proxy lease remained unchanged. It returned `running`, `OOMKilled=false`,
+  SDK `1.660.577`, proxy/WSS connection and successful `tunnel_init`.
+- After restart, mac-08 produced repeated `cmd_tun_close` workload markers
+  and about `923 kB/861 kB` container network I/O. This proves runtime
+  activity, but not authoritative EarnApp usage.
+- Canary mac-09 was then restarted in place with UUID
+  `sdk-mac-c86a2fed5d1871e41436fff05e8eed9b`, account 2, its existing volume
+  and proxy preserved. It returned `running`, `OOMKilled=false`, SDK
+  `1.660.577`, and successful `tunnel_init`, but only about `59.8 kB/20 kB`
+  network I/O and no `cmd_tun_close` in the first window.
+- Restart-only remains an insufficient, non-authoritative remedy: mac-08 has
+  local workload signals without confirmed account usage, while mac-09 has
+  control-plane success without workload signals. No recreate, proxy rotation,
+  account mutation, identity rewrite, volume deletion or positive-control
+  mutation was performed in this A/B test.
+- A fresh authenticated collector run after the restarts changed the result:
+  mac-08 now reports `online=true`, `country_code=VN`, usage `1,957,596` and
+  earnings `0.003`, proving that a controlled restart can restore usage for
+  this preserved identity/proxy combination after propagation. mac-09 remains
+  `online=true` but has blank country/IP and usage `0` after the same restart
+  and a further short observation window; its receive traffic stayed near
+  `83.6 kB/29.7 kB` with no workload markers. The two outcomes confirm that
+  restart is a viable first recovery action, not a universal fix.
+- UI-only lifecycle release `v1.20.4` was deployed to the server container
+  `cashpilot-ui`; it is healthy with SQLite `integrity_check=ok`, while the
+  worker and other provider containers were not restarted. This activates the
+  approved 10-minute flatline observation policy without changing node state.
+- A fresh macOS canary `earnapp-v1204-us-mac-10` was deployed on worker 92161
+  with a new identity UUID/profile and distinct VN residential proxy. It
+  started on SDK `1.660.577`, completed proxy/WSS/`tunnel_init`, and remained
+  running without OOM. After one controlled restart it still had no country,
+  workload marker or authoritative usage in the short window, so the fresh
+  identity experiment is inconclusive rather than a production proof. It was
+  not recreated or rotated further.
+
 - Canary `earnapp-v1202-us-mac-08` (`sdk-mac-77bfdb9a1e16332af80e763e9cca7f00`)
   was restarted in place with its UUID, volume, account and proxy unchanged.
   The runtime reconnected proxy/WSS and sent successful `tunnel_init` payloads,
