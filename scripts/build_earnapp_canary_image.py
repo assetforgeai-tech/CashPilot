@@ -26,7 +26,7 @@ if str(ROOT) not in sys.path:
 from app import earnapp_runtime  # noqa: E402
 
 _ENTRYPOINT_INSTALL_MARKERS = {
-    "macos": '[[ ! -s "$STATE_DIR/registered" || ! -x /usr/bin/earnapp ]]',
+    "macos": '[[ ! -f "$STATE_DIR/uuid" || ! -x /usr/bin/earnapp ]]',
     "ios": '[[ ! -f "$STATE_DIR/uuid" || ! -x /usr/bin/earnapp ]]',
 }
 

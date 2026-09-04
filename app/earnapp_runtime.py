@@ -44,10 +44,10 @@ UBUNTU_REFERENCE_IMAGE_PIN = f"{UBUNTU_REFERENCE_IMAGE}@{UBUNTU_REFERENCE_DIGEST
 # binaries remain outside Git; the hashes pin the exact local source bundle
 # used by the image build helper.
 MAC_RUNTIME_ARTIFACT_HASHES = {
-    "boot.js": "c58e9f8276e4cc25a94f73fb6b11048477792e57d2f3839445982626bb8a77c2",
+    "boot.js": "7b52a4bc06ec63bdb90f79b841af2d370ab9ed9665d5f0c786b1ad3207ac7eb9",
     "earn-supervisor": "550204505e47a29ca7d4b3853aefb8d05982a566744809fa65c10edf6c2531a2",
-    "earnapp-mac": "977483ef03f1967c2a6fda07e978000a12218c46855c5d86ccb1e09b2fefe757",
-    "entrypoint.sh": "c7b922bc4e47c2b87bfee3fdbfc32ac4582bcb6b3d7db54ab78be2d212a02af9",
+    "earnapp-mac": "d140b41ad1d7e851e2775aed4a77dc72fc306a206287c440829d6b47f35d6911",
+    "entrypoint.sh": "eb1668a670f7e7b576975ddd77b29068074bea4bf7ff490a72657ce4d77d6dfd",
 }
 
 IOS_RUNTIME_ARTIFACT_HASHES = {

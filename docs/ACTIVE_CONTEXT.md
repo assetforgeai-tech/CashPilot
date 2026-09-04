@@ -23,10 +23,13 @@
   propagation window, while macOS-02 is online in the authenticated snapshot
   but its persisted worker evidence is stale/error. No automatic mutation was
   run during this verification checkpoint.
-- The `1.660.577` binary is not present as a verified repository artifact;
-  therefore it was not silently substituted into the runtime image. Adoption
-  requires a separately verified artifact/image and a bounded canary with
-  memory monitoring before any broader rollout.
+- The verified operator artifact bundle is available outside Git at
+  `earnapp_new_update/earnapp-runtime-files/mac-1.660.577`; its binary,
+  boot script, and entrypoint hashes match the forensic report. A dedicated
+  image `cashpilot/earnapp-mac-canary:asset-769bc08f7fc5` was built on
+  `vps-test-us` and passed Dockerfile/syntax checks, but has not replaced a
+  live node yet. Adoption remains limited to a bounded macOS canary with
+  memory monitoring.
 
 ## EarnApp v1.18.17 multi-platform canary reboot checkpoint (2026-09-04)
 
