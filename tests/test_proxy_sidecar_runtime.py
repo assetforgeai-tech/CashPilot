@@ -475,6 +475,75 @@ def test_proxy_binding_status_reports_active_marker_and_artifacts():
     }
 
 
+def test_proxy_binding_status_supports_main_only_earnapp_runtime():
+    client = MagicMock()
+    main = MagicMock(name="cashpilot-earnapp-main-only")
+    main.attrs = {
+        "Config": {
+            "Env": ["EARNAPP_PROXY_BINDING_VERSION=rotation_mainonly_12345678"],
+        }
+    }
+    previous = MagicMock(name="cashpilot-earnapp-main-only-cashpilot-prev-rotation_mainonly_12345678")
+
+    def get_container(name):
+        if name == "cashpilot-earnapp-main-only-egress":
+            raise orchestrator.NotFound("missing sidecar")
+        if name == "cashpilot-earnapp-main-only-cashpilot-prev-rotation_mainonly_12345678":
+            return previous
+        raise orchestrator.NotFound(name)
+
+    client.containers.get.side_effect = get_container
+
+    with (
+        patch.object(orchestrator, "_get_client", return_value=client),
+        patch.object(
+            orchestrator,
+            "_find_earnapp_runtime_container",
+            side_effect=lambda _client, _slug, *, sidecar: None if sidecar else main,
+        ),
+    ):
+        result = orchestrator.proxy_binding_status("earnapp-main-only")
+
+    assert result == {
+        "binding_version": "rotation_mainonly_12345678",
+        "previous_present": True,
+        "candidate_present": False,
+    }
+
+
+def test_stage_earnapp_main_proxy_persists_binding_version_in_replacement_env():
+    client = MagicMock()
+    main = MagicMock(name="cashpilot-earnapp-main-only")
+    main.attrs = {
+        "Config": {"Image": "cashpilot/earnapp-mac:asset-test", "Env": []},
+        "HostConfig": {"NetworkMode": "bridge", "RestartPolicy": {"Name": "always"}},
+        "Mounts": [],
+    }
+    replacement = MagicMock(id="replacement-id")
+    client.containers.create.return_value = replacement
+
+    with (
+        patch.object(orchestrator, "_get_client", return_value=client),
+        patch.object(orchestrator, "_find_earnapp_runtime_container", return_value=main),
+    ):
+        orchestrator.stage_earnapp_main_proxy(
+            "earnapp-main-only",
+            {
+                "protocol": "socks5",
+                "host": "proxy.example",
+                "port": 1080,
+                "username": "user",
+                "password": "pass",
+                "exit_ip": "203.0.113.13",
+            },
+            "rotation_mainonly_12345678",
+        )
+
+    assert client.containers.create.call_args.kwargs["environment"]["EARNAPP_PROXY_BINDING_VERSION"] == (
+        "rotation_mainonly_12345678"
+    )
+
+
 def test_discard_proxy_binding_removes_only_inactive_candidate_artifacts():
     client = MagicMock()
     sidecar = MagicMock()
