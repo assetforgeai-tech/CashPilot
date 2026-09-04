@@ -283,7 +283,7 @@ def test_verified_image_labels_are_fail_closed():
 
 def test_mac_runtime_manifest_is_derived_from_authoritative_artifact_hashes():
     assert earnapp_runtime.runtime_asset_manifest_sha256() == (
-        "b1c582f9c89eab358e006815b443c2be21b6b81eee2162d622358de034eeaafe"
+        "6683c6a0cc317e28702ef8d4a0d51985a37838254d607e9d330cc5fd84844707"
     )
     assert earnapp_runtime.runtime_asset_manifest_sha256() == earnapp_runtime.MAC_RUNTIME_ASSET_MANIFEST_SHA256
 
@@ -523,6 +523,8 @@ def test_transparent_proxy_runtime_disables_application_level_proxying(platform)
     assert "HTTPS_PROXY" in wrapper
     assert "http_proxy" in wrapper
     assert "https_proxy" in wrapper
+    assert "unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy NO_PROXY no_proxy" in wrapper
+    assert "# ANTI-DETECTION: Docker \\/ VM" in wrapper
     assert 'exec "$SANITIZED_ENTRYPOINT" "$@"' in wrapper
 
 
