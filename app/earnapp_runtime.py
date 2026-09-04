@@ -282,6 +282,9 @@ fi
 if [[ -x /usr/bin/earnapp && "$(sha256sum /usr/bin/earnapp | awk '{print $1}')" != "$MAC_BINARY_SHA256" ]]; then
   rm -f /usr/bin/earnapp
 fi
+if [[ -f "$STATE_DIR/registered" && "$(cat "$STATE_DIR/registered")" == "complete" ]]; then
+  rm -f "$STATE_DIR/registered"
+fi
 SANITIZED_ENTRYPOINT=/tmp/cashpilot-entrypoint-original.sh
 sed '/# ANTI-DETECTION: Docker \/ VM/i unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy NO_PROXY no_proxy' \
   /usr/local/bin/entrypoint-original.sh >"$SANITIZED_ENTRYPOINT"
