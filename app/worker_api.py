@@ -2832,6 +2832,29 @@ async def api_deploy_earnapp_docker_node(request: Request, slug: str, spec: Depl
     }
 
 
+@app.post("/api/earnapp/docker-nodes/{slug}/recreate")
+async def api_recreate_earnapp_docker_node(
+    request: Request,
+    slug: str,
+    spec: EarnAppDockerNodeCasSpec,
+) -> dict[str, Any]:
+    """Recreate one assigned main runtime without linking or changing identity."""
+    _verify_api_key(request)
+    state = _earnapp_node_state(slug)
+    platform = str(state.get("platform") or "").strip().lower()
+    _reject_earnapp_runtime_mutation(slug, platform=platform, runtime_backend="docker")
+    expected = (int(state.get("generation") or 0), str(state.get("device_id") or ""))
+    if expected != (spec.generation, spec.device_id):
+        raise HTTPException(status_code=409, detail="EarnApp node assignment conflict")
+    try:
+        container_id = await asyncio.to_thread(orchestrator.recreate_earnapp_main, slug)
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    state.update(container_id=container_id, runtime_status="running")
+    _save_earnapp_state(slug, state)
+    return {"status": "recreated", "container_id": container_id}
+
+
 @app.post("/api/earnapp/nodes/{logical_node_id}/proxy/apply")
 @_serialize_earnapp_node_mutation
 async def api_apply_earnapp_node_proxy(

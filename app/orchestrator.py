@@ -407,7 +407,7 @@ def _docker_volumes(mounts: Any) -> dict[str, dict[str, str]]:
 
 
 def _recreate_earnapp_main_after_sidecar_restart(
-    client: Any, slug: str, sidecar: Any, *, main: Any | None = None
+    client: Any, slug: str, sidecar: Any | None, *, main: Any | None = None
 ) -> str:
     """Recreate an EarnApp process on the sidecar while preserving its identity state.
 
@@ -424,7 +424,13 @@ def _recreate_earnapp_main_after_sidecar_restart(
     sidecar_id = str(getattr(sidecar, "id", "") or "").strip()
     sidecar_name = str(getattr(sidecar, "name", "") or "").strip().lstrip("/")
     accepted_modes = {f"container:{identifier}" for identifier in (sidecar_id, sidecar_name) if identifier}
-    if network_mode not in accepted_modes:
+    if sidecar is None:
+        if network_mode != "bridge":
+            raise RuntimeError(f"{slug} EarnApp main container has an unexpected network namespace")
+        replacement_network_mode = network_mode
+    elif network_mode in accepted_modes:
+        replacement_network_mode = f"container:{sidecar_id or sidecar_name}"
+    else:
         raise RuntimeError(f"{slug} EarnApp main container has an unexpected network namespace")
     attrs = getattr(main, "attrs", {}) or {}
     config = attrs.get("Config") or {}
@@ -438,7 +444,7 @@ def _recreate_earnapp_main_after_sidecar_restart(
         "name": name,
         "environment": _docker_environment(config.get("Env")),
         "volumes": _docker_volumes(attrs.get("Mounts")),
-        "network_mode": f"container:{sidecar_id or sidecar_name}",
+        "network_mode": replacement_network_mode,
         "labels": dict(config.get("Labels") or getattr(main, "labels", {}) or {}),
         "command": config.get("Cmd") or None,
         "entrypoint": config.get("Entrypoint") or None,
@@ -529,6 +535,19 @@ def stage_earnapp_main_proxy(slug: str, proxy: dict[str, Any], binding_version: 
         with contextlib.suppress(Exception):
             main.start()
         raise
+
+
+def recreate_earnapp_main(slug: str, *, proxy: dict[str, Any] | None = None) -> str:
+    """Recreate one EarnApp main container while retaining its identity volume."""
+    client = _get_client()
+    try:
+        sidecar = client.containers.get(_sidecar_name(slug))
+    except NotFound:
+        sidecar = None
+    main = _find_earnapp_runtime_container(client, slug, sidecar=False)
+    if proxy and main is not None:
+        _persist_earnapp_expected_egress(main, str(proxy.get("exit_ip") or ""))
+    return _recreate_earnapp_main_after_sidecar_restart(client, slug, sidecar, main=main)
 
 
 def finalize_earnapp_main_proxy(slug: str, binding_version: str, *, commit: bool) -> dict[str, Any]:
