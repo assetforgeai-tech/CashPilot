@@ -290,7 +290,7 @@ def test_verified_image_labels_are_fail_closed():
 
 def test_mac_runtime_manifest_is_derived_from_authoritative_artifact_hashes():
     assert earnapp_runtime.runtime_asset_manifest_sha256() == (
-        "e949d13d786131b5a4de8472cabc1c5780016aa163f80d768bfbc18f0160f1c8"
+        "7f16a58797b3dadd569f03a2b00e3d6cb59d06eb23ab54b1ad5bcef95f8d7e5a"
     )
     assert earnapp_runtime.runtime_asset_manifest_sha256() == earnapp_runtime.MAC_RUNTIME_ASSET_MANIFEST_SHA256
 
@@ -560,6 +560,16 @@ def test_macos_proxy_wrapper_restores_binary_but_does_not_forge_registration_mar
     assert 'printf \'%s\\n\' "complete" >"$STATE_DIR/registered"' not in wrapper
     assert '"$(cat "$STATE_DIR/registered")" == "complete"' in wrapper
     assert 'rm -f "$STATE_DIR/registered"' in wrapper
+
+
+def test_macos_proxy_wrapper_registers_seeded_uuid_before_runtime_handoff():
+    wrapper = earnapp_runtime.generated_runtime_artifacts("macos")["cashpilot-proxy-entrypoint"].decode()
+
+    assert "https://client.earnapp.com/install_device" in wrapper
+    assert "appid=node_earnapp.com&os=macOS" in wrapper
+    assert '"$STATE_DIR/registered"' in wrapper
+    assert 'printf \'%s\' "$EXPECTED_DEVICE_ID" >"$STATE_DIR/registered"' in wrapper
+    assert '"$(cat "$STATE_DIR/registered")" != "$EXPECTED_DEVICE_ID"' in wrapper
 
 
 def test_macos_proxy_wrapper_declares_state_dir_before_identity_recovery_guard():
