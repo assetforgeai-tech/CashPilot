@@ -1,5 +1,33 @@
 # CashPilot Active Context
 
+## EarnApp macOS-upgrade evidence and lifecycle gate (2026-09-04)
+
+- Forensic review of `earnapp_macos_upgrade_20260904` confirms the upstream
+  image changed SDK `1.605.415` to `1.660.577`, improved interface/local-address
+  handling, filtered Docker bridge addresses, and added bounded tunnel-decline
+  cooldown. It did not change UUID generation, OAuth/link behavior, or provide
+  a blacklist bypass. The observed 100 MiB image also recorded cgroup OOMs and
+  is not a safe default.
+- CashPilot release `v1.18.23` is deployed UI-only. The UI is healthy at the
+  pinned digest and database integrity is `ok`; worker `1.18.16` and all
+  non-UI containers remained unchanged.
+- PR #114 adds fail-closed capability checks to heartbeat pending-proxy
+  reconciliation and unhealthy-node rotation. Automatic EarnApp mutation now
+  requires an online worker reporting `>=1.18.21`; lookup errors, old,
+  unknown-version, and offline workers remain observation-only.
+- Live test-US worker `3098` reports `1.18.21`. Historical test-sing worker
+  `43406` reports `1.17.13`; post-deploy log sweep found no new proxy apply,
+  finalize, or rotation request to that worker.
+- Six test-US canaries remain unchanged and within scope. iOS (2) and Ubuntu
+  (2) have positive usage; macOS-01 is online with zero usage during the
+  propagation window, while macOS-02 is online in the authenticated snapshot
+  but its persisted worker evidence is stale/error. No automatic mutation was
+  run during this verification checkpoint.
+- The `1.660.577` binary is not present as a verified repository artifact;
+  therefore it was not silently substituted into the runtime image. Adoption
+  requires a separately verified artifact/image and a bounded canary with
+  memory monitoring before any broader rollout.
+
 ## EarnApp v1.18.17 multi-platform canary reboot checkpoint (2026-09-04)
 
 - `vps-test-us` was rebooted in isolation. All six canary containers returned
