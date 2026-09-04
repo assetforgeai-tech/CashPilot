@@ -10,7 +10,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-FLATLINE_MINUTES = 120
+# A short flatline window lets the worker recover promptly; the account API
+# can lag, so this is still long enough to avoid reacting to one poll.
+FLATLINE_MINUTES = 10
 
 
 @dataclass(frozen=True)

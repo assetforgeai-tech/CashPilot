@@ -1257,3 +1257,33 @@ historical snapshots and read-only inspection stay available.
   rotation-candidate and reservation queries now exclude proxies referenced by
   any provider runtime instance, matching both endpoint ID and egress IP. The
   new test fails against the old allocator and passes with the guard.
+
+- On 2026-09-05, canaries mac-08 and mac-09 were restarted in place with UUID,
+  volume, account and proxy preserved. Both reconnected through redsocks and
+  completed certificate-pin/WSS/tunnel-init handshakes. mac-08 restored
+  `country_code=VN` and its egress IP but remained at zero usage; mac-09 stayed
+  `online=true` without country/IP and remained at zero usage. Restart alone
+  is therefore not a sufficient usage remedy.
+- As a one-variable experiment, mac-09 was recreated with the positive-control
+  image `asset-e949d13d7861` instead of `asset-2e78b472799b`; UUID, identity
+  volume, account and egress `116.105.109.204` were preserved. The replacement
+  completed the same proxy/WSS/tunnel-init path, but after an additional poll
+  still had no country/IP/usage. The former container remains stopped as
+  `...-pre-image-switch` for rollback; it was not deleted.
+- Runtime network counters show mac-08 has substantial bidirectional traffic,
+  while mac-09 has near-zero receive traffic and neither canary produces the
+  sustained `cmd_tun_close` workload pattern seen on positive-control mac-02.
+  This points away from a basic proxy or startup failure and toward backend
+  workload eligibility/assignment (or account-side policy). Do not mass
+  recreate, rotate proxies, or mutate protected controls based on zero usage
+  alone; the next experiment must capture account-side assignment evidence or
+  use an explicitly approved fresh canary.
+- After the controlled image switch, the two canary worker state files were
+  reconciled atomically to the replacement container IDs; UUID, proxy, egress,
+  generation and runtime status were unchanged. The stopped old-image backup
+  remains available for inspection/rollback.
+- The provider-wide lifecycle flatline window was reduced from 120 minutes to
+  10 minutes. A node is still observed before recovery, then recreated twice
+  with the same proxy before rotation, while proxy/egress failures rotate
+  immediately and account-auth failures remain deferred. The lifecycle and
+  canary contract suites pass with the new threshold.

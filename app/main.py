@@ -740,7 +740,7 @@ async def _run_earnapp_lifecycle_scheduler() -> None:
                 },
                 node,
             )
-            # Anchor the 120-minute observation window on first evidence; without
+            # Anchor the short observation window on first evidence; without
             # this persisted timestamp, every scheduler pass starts the clock over.
             window_started_at = str(node.get("window_started_at") or datetime.now(UTC).isoformat())
             if decision.action == "healthy":

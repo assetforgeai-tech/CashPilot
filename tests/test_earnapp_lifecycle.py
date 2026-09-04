@@ -49,6 +49,22 @@ def test_flat_usage_recreates_same_proxy_twice_then_rotates():
     assert third.action == "rotate_recreate"
 
 
+def test_flat_usage_uses_short_observation_window_instead_of_two_hours():
+    now = datetime.now(UTC)
+    observe = evaluate_node(
+        {"usage": 10.0, "banned": False},
+        _runtime(window_started_at=(now - timedelta(minutes=9)).isoformat()),
+        now,
+    )
+    recover = evaluate_node(
+        {"usage": 10.0, "banned": False},
+        _runtime(window_started_at=(now - timedelta(minutes=10)).isoformat()),
+        now,
+    )
+    assert observe.action == "observe"
+    assert recover.action == "recreate"
+
+
 def test_proxy_failure_rotates_immediately_and_auth_failure_is_deferred():
     now = datetime.now(UTC)
     assert (
