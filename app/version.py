@@ -80,3 +80,23 @@ def skewed(ui: str | None, worker: str | None) -> bool:
     if ui_series is None or worker_series is None:
         return False
     return ui_series != worker_series
+
+
+def at_least(value: str | None, minimum: str) -> bool:
+    """Return whether a known numeric release meets a capability cutover."""
+
+    def numeric_parts(raw: str | None) -> tuple[int, ...] | None:
+        text = (raw or "").strip().lstrip("v")
+        if not is_release(text):
+            return None
+        parts = text.split(".")
+        if not parts or not all(part.isdigit() for part in parts):
+            return None
+        return tuple(int(part) for part in parts)
+
+    actual = numeric_parts(value)
+    required = numeric_parts(minimum)
+    if actual is None or required is None:
+        return False
+    width = max(len(actual), len(required))
+    return actual + (0,) * (width - len(actual)) >= required + (0,) * (width - len(required))

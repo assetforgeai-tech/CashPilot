@@ -5,6 +5,7 @@ import pytest
 
 from app import main
 from app.earnapp_lifecycle import evaluate_node
+from app.version import at_least
 
 
 def _runtime(**overrides):
@@ -18,6 +19,19 @@ def _runtime(**overrides):
     }
     value.update(overrides)
     return value
+
+
+@pytest.mark.parametrize(
+    "actual, minimum, expected",
+    [
+        ("1.18.21", "1.18.21", True),
+        ("v1.18.22", "1.18.21", True),
+        ("1.18.20", "1.18.21", False),
+        ("dev", "1.18.21", False),
+    ],
+)
+def test_worker_capability_version_comparison_fails_closed(actual, minimum, expected):
+    assert at_least(actual, minimum) is expected
 
 
 def test_positive_usage_resets_recovery_counters():
@@ -153,6 +167,11 @@ async def test_scheduler_executes_recreate_decision_for_mutable_node(monkeypatch
         "rotate_count": 0,
     }
     monkeypatch.setattr(main.database, "list_earnapp_logical_nodes", AsyncMock(return_value=[node]))
+    monkeypatch.setattr(
+        main.database,
+        "get_worker",
+        AsyncMock(return_value={"status": "online", "system_info": '{"version":"1.18.21"}'}),
+    )
     monkeypatch.setattr(main.database, "get_provider_instance_spec", AsyncMock(return_value={"image": "img"}))
     monkeypatch.setattr(
         main.database,
@@ -186,6 +205,11 @@ async def test_scheduler_does_not_advance_recovery_after_failed_mutation(monkeyp
         "rotate_count": 0,
     }
     monkeypatch.setattr(main.database, "list_earnapp_logical_nodes", AsyncMock(return_value=[node]))
+    monkeypatch.setattr(
+        main.database,
+        "get_worker",
+        AsyncMock(return_value={"status": "online", "system_info": '{"version":"1.18.21"}'}),
+    )
     monkeypatch.setattr(main.database, "get_provider_instance_spec", AsyncMock(return_value={"image": "img"}))
     monkeypatch.setattr(
         main.database,
@@ -199,6 +223,49 @@ async def test_scheduler_does_not_advance_recovery_after_failed_mutation(monkeyp
     await main._run_earnapp_lifecycle_scheduler()
 
     update.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "worker, should_execute",
+    [
+        ({"status": "online", "system_info": '{"version":"1.18.21"}'}, True),
+        ({"status": "online", "system_info": '{"version":"1.18.20"}'}, False),
+        ({"status": "online", "system_info": "{}"}, False),
+        ({"status": "offline", "system_info": '{"version":"1.18.21"}'}, False),
+    ],
+)
+async def test_scheduler_mutates_only_workers_supporting_lifecycle_api(monkeypatch, worker, should_execute):
+    node = {
+        "logical_node_id": "earnapp-mac-capability-gate",
+        "account_id": 2,
+        "assigned_worker_id": 3098,
+        "device_id": "sdk-mac-capability-gate",
+        "state": "ACTIVE",
+        "proxy_health": "healthy",
+        "usage_baseline": 0.0,
+        "window_started_at": (datetime.now(UTC) - timedelta(minutes=121)).isoformat(),
+        "same_proxy_recreates": 0,
+        "rotate_count": 0,
+    }
+    monkeypatch.setattr(main.database, "list_earnapp_logical_nodes", AsyncMock(return_value=[node]))
+    monkeypatch.setattr(main.database, "get_worker", AsyncMock(return_value=worker))
+    monkeypatch.setattr(main.database, "get_provider_instance_spec", AsyncMock(return_value={"image": "img"}))
+    monkeypatch.setattr(
+        main.database,
+        "get_latest_earnapp_snapshot",
+        AsyncMock(return_value={"devices_json": '[{"device_id":"sdk-mac-capability-gate","usage_current":0}]'}),
+    )
+    update = AsyncMock(return_value=True)
+    execute = AsyncMock(return_value=True)
+    monkeypatch.setattr(main.database, "update_earnapp_lifecycle", update)
+    monkeypatch.setattr(main, "_execute_earnapp_lifecycle_action", execute)
+
+    await main._run_earnapp_lifecycle_scheduler()
+
+    assert execute.await_count == (1 if should_execute else 0)
+    if not should_execute:
+        update.assert_not_awaited()
 
 
 @pytest.mark.asyncio
