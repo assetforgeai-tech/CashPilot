@@ -2,8 +2,8 @@
 
 # Service guides
 
-> EarnApp uses dedicated platform lanes: MacOS/iOS emulation for VN residential
-> proxies and official Linux x64 in LXD for non-VN residential proxies. Generic Docker deploy remains disabled.
+> EarnApp uses dedicated Docker lanes: MacOS/iOS for VN residential proxies
+> and Ubuntu Docker for non-VN residential proxies. Generic Docker deploy remains disabled.
 
 Setup and configuration for every service CashPilot supports.
 
@@ -20,7 +20,7 @@ Setup and configuration for every service CashPilot supports.
 | Service | Needs | Runs as | Minimum payout | Status |
 |---|---|---|---|---|
 | [Earn.fm](earnfm.md) | Residential IP | Docker | $3 | active |
-| [EarnApp](earnapp.md) | Residential IP | Ubuntu LXD | $2 | platform restricted |
+| [EarnApp](earnapp.md) | Residential IP | Docker | $2 | platform restricted |
 | [IPRoyal Pawns](iproyal.md) | Residential IP | Docker | $5 | active |
 | [MystNodes](mysterium.md) | — | Docker | 4 MYST | active |
 | [NKN](nkn.md) | — | Docker | 0 NKN | active |

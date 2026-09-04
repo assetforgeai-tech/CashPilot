@@ -15,7 +15,8 @@ DeploymentPolicy = Literal["enabled", "platform_restricted", "vps_runtime_prohib
 # image or from historical deployments.
 VPS_RUNTIME_BLOCK_REASON = "vps_runtime_prohibited"
 VPS_RUNTIME_BLOCK_MESSAGE = (
-    "EarnApp generic hosted deployment is disabled. Use the dedicated official Ubuntu x64 LXD runtime."
+    "EarnApp generic hosted deployment is disabled. Use a dedicated Docker runtime: "
+    "MacOS/iOS for VN residential proxies or Ubuntu for non-VN residential proxies."
 )
 EARNAPP_PLATFORM_BLOCK_REASON = "platform_runtime_disabled"
 EARNAPP_PLATFORM_BLOCK_MESSAGE = "EarnApp requires a qualified residential proxy and its dedicated Docker runtime: VN uses MacOS/iOS and non-VN uses Ubuntu."
