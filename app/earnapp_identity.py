@@ -492,7 +492,9 @@ def validate_and_decode_ubuntu_profile(value: str) -> dict[str, Any]:
 def _upgrade_macos_runtime_metadata(identity: dict[str, Any]) -> bool:
     """Migrate legacy persisted profiles to the audited SDK metadata in place."""
     version = str(identity.get("version") or identity.get("sdk_version") or "")
-    if version == "1.660.577" and str(identity.get("sdk_version") or "") == "1.660.577":
+    current_metadata = version == "1.660.577" and str(identity.get("sdk_version") or "") == "1.660.577"
+    current_lan = str(identity.get("lan_ip") or "") == PROXY_TUN_IP
+    if current_metadata and current_lan:
         return False
     if not version.startswith("1."):
         return False
