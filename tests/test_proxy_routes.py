@@ -3698,9 +3698,7 @@ def test_provider_scoped_lease_is_idempotent_for_the_same_instance(tmp_path):
 
 def test_earnapp_lease_skips_proxy_still_referenced_by_runtime_instance(tmp_path):
     async def run():
-        with patch.object(database, "DB_DIR", tmp_path), patch.object(
-            database, "DB_PATH", tmp_path / "proxy.db"
-        ):
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
             await database.init_db()
             provider_id = await database.upsert_proxy_provider("manual", "manual")
             proxy_ids = await database.upsert_proxy_endpoints_returning_ids(
