@@ -2846,8 +2846,26 @@ async def api_recreate_earnapp_docker_node(
     expected = (int(state.get("generation") or 0), str(state.get("device_id") or ""))
     if expected != (spec.generation, spec.device_id):
         raise HTTPException(status_code=409, detail="EarnApp node assignment conflict")
+    identity_asset_host_path: str | None = None
+    if platform in {"macos", "ios"}:
+        asset_kind = "mac_identity_profile" if platform == "macos" else "ios_identity_profile"
+        payload = await _fetch_runtime_asset("earnapp", asset_kind, asset_id=slug)
+        asset_root = _RUNTIME_ASSET_DIR / uuid.uuid4().hex
+        asset_root.mkdir(parents=True, exist_ok=True)
+        asset_path = asset_root / "asset"
+        try:
+            asset_path.write_bytes(base64.b64decode(payload, validate=True))
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(status_code=409, detail="EarnApp identity asset is invalid") from exc
+        with contextlib.suppress(OSError):
+            asset_path.chmod(0o644)
+        identity_asset_host_path = str(_docker_host_path(asset_path))
     try:
-        container_id = await asyncio.to_thread(orchestrator.recreate_earnapp_main, slug)
+        container_id = await asyncio.to_thread(
+            orchestrator.recreate_earnapp_main,
+            slug,
+            identity_asset_host_path=identity_asset_host_path,
+        )
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     state.update(container_id=container_id, runtime_status="running")
