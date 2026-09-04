@@ -35,6 +35,12 @@
   country `VN`. macOS-02 has now recorded positive usage `141` and therefore
   proves that the corrected profile can carry qualified workload; macOS-01
   remains online at zero usage and its observation window remains open.
+  A controlled restart of macOS-01 preserved its container ID, UUID, account 2,
+  proxy `12709`, volume, and image; the post-restart log again showed one
+  detected `en0`, connected proxy/agent WebSockets, and successful
+  `tunnel_init`. Authenticated link/collection immediately afterward still
+  reported the exact UUID `online=true`, `country=VN`, and usage `0`, so link
+  presence is confirmed but restart alone has not yet produced positive usage.
   macOS-02 had one transient proxy TLS
   reset and recovered its proxy/agent WebSockets without a lease change. Its
   container remains running with restart count `0` and no OOM. The 120-minute
