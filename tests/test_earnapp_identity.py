@@ -191,6 +191,45 @@ def test_persisted_identity_profile_is_stable_and_platform_immutable(tmp_path):
     asyncio.run(run())
 
 
+def test_persisted_legacy_macos_profile_upgrades_runtime_metadata_without_changing_device_identity(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            await database.init_db()
+            identity = earnapp_identity.generate_identity("persisted-mac-node", "macos")
+            identity.update(
+                version="1.605.415",
+                sdk_version="1.605.415",
+                ua=identity["ua"].replace("1.660.577", "1.605.415"),
+                lan_ip="172.31.255.1",
+                bat_platform="app_macr_mac",
+                makeflags="DIST=APP RELEASE=y AUTO_SIGN=y IS_MACOS=y MACOS_SDK=y IS_MAC_BVPN=y",
+            )
+            device_id = identity["device_id"]
+            await database.save_earnapp_identity_profile(
+                "persisted-mac-node",
+                platform="macos",
+                asset_kind="mac_identity_profile",
+                device_id=device_id,
+                value=earnapp_identity.encrypt_profile(identity),
+            )
+
+            profile = await earnapp_identity.ensure_identity_profile("persisted-mac-node", "macos")
+            upgraded = earnapp_identity.decrypt_profile(profile["value"], "macos")
+
+            assert profile["device_id"] == device_id
+            assert upgraded["id"] == identity["id"]
+            assert upgraded["serial"] == identity["serial"]
+            assert upgraded["platform_uuid"] == identity["platform_uuid"]
+            assert upgraded["version"] == "1.660.577"
+            assert upgraded["sdk_version"] == "1.660.577"
+            assert upgraded["ua"].startswith("brdsdk/1.660.577 ")
+            assert upgraded["lan_ip"] == earnapp_identity.PROXY_TUN_IP
+            assert upgraded["bat_platform"] == "app_macr_mac_sdk"
+            assert "IS_MAC_BVPN" not in upgraded["makeflags"]
+
+    asyncio.run(run())
+
+
 def test_generated_macos_profile_matches_reference_runtime_state_shape():
     identity = earnapp_identity.generate_identity("parity-mac-node", "macos")
 
