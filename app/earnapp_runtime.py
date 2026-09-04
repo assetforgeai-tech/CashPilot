@@ -279,8 +279,8 @@ if [[ -s "$STATE_DIR/uuid" && -s "$STATE_DIR/com.earnapp.cid" && -x /opt/earnapp
       && "$(sha256sum /opt/earnapp-mac | awk '{print $1}')" == "$MAC_BINARY_SHA256" ]]; then
   install -m 0755 /opt/earnapp-mac /usr/bin/earnapp
 fi
-if [[ -x /usr/bin/earnapp && "$(sha256sum /usr/bin/earnapp | awk '{print $1}')" == "$MAC_BINARY_SHA256" ]]; then
-  printf '%s\n' "complete" >"$STATE_DIR/registered"
+if [[ -x /usr/bin/earnapp && "$(sha256sum /usr/bin/earnapp | awk '{print $1}')" != "$MAC_BINARY_SHA256" ]]; then
+  rm -f /usr/bin/earnapp
 fi
 SANITIZED_ENTRYPOINT=/tmp/cashpilot-entrypoint-original.sh
 sed '/# ANTI-DETECTION: Docker \/ VM/i unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy NO_PROXY no_proxy' \
