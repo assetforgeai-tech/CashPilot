@@ -11,6 +11,16 @@ import pytest
 from app import database, earnapp_accounts, main, orchestrator, worker_api
 
 
+@pytest.fixture(autouse=True)
+def _supported_lifecycle_worker(monkeypatch):
+    """Keep direct helper tests independent from the production worker DB."""
+    monkeypatch.setattr(
+        database,
+        "get_worker",
+        AsyncMock(return_value={"status": "online", "system_info": {"version": "1.18.21"}}),
+    )
+
+
 def test_earnapp_egress_probe_decodes_docker_exec_bytes_before_ip_validation(monkeypatch):
     container = MagicMock(status="running")
     container.exec_run.return_value = MagicMock(exit_code=0, output=b"171.251.97.103")

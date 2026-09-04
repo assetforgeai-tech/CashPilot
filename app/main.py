@@ -774,6 +774,16 @@ def _worker_supports_earnapp_lifecycle(worker: Mapping[str, Any] | None) -> bool
     return version.at_least(str(system_info.get("version") or ""), "1.18.21")
 
 
+async def _assigned_worker_supports_earnapp_lifecycle(worker_id: int) -> bool:
+    """Look up lifecycle capability without allowing DB errors to enable writes."""
+    try:
+        worker = await database.get_worker(int(worker_id))
+    except Exception as exc:  # noqa: BLE001 - fail closed on transient lookup errors
+        logger.warning("Could not verify EarnApp worker %s lifecycle capability: %s", worker_id, type(exc).__name__)
+        return False
+    return _worker_supports_earnapp_lifecycle(worker)
+
+
 async def _execute_earnapp_lifecycle_action(node: Mapping[str, Any], action: str) -> bool:
     """Execute one durable recovery decision without linking or touching peers."""
     node_id = str(node.get("logical_node_id") or "").strip()
@@ -4264,6 +4274,8 @@ async def _reconcile_earnapp_pending_proxy_binding(instance: Mapping[str, Any], 
     node_id = str(instance.get("logical_node_id") or "").strip()
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]{2,120}", node_id) or earnapp_policy.is_protected_logical_node(node_id):
         return False
+    if not await _assigned_worker_supports_earnapp_lifecycle(int(worker_id)):
+        return False
     try:
         generation = int(instance.get("generation") or 0)
         old_proxy_id = int(instance.get("proxy_id") or 0)
@@ -4388,6 +4400,8 @@ async def _rotate_unhealthy_earnapp_node(
     """
     node_id = str(logical_node_id or "").strip()
     if not node_id or earnapp_policy.is_protected_logical_node(node_id):
+        return False
+    if not await _assigned_worker_supports_earnapp_lifecycle(int(worker_id)):
         return False
     lock = _EARNAPP_ROTATION_LOCKS.setdefault(node_id, asyncio.Lock())
     if lock.locked():
