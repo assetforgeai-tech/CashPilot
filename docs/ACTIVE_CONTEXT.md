@@ -1231,3 +1231,29 @@ historical snapshots and read-only inspection stay available.
   namespace persistence and two isolated proxy rotations passed on
   `earnapp-recovery-test-sing-2`, while `earnapp-canary-test-sing-1` remained
   unchanged. This does not override the current hosted-runtime compliance gate.
+## EarnApp macOS zero-usage investigation (2026-09-05)
+
+- Canary `earnapp-v1202-us-mac-08` (`sdk-mac-77bfdb9a1e16332af80e763e9cca7f00`)
+  was restarted in place with its UUID, volume, account and proxy unchanged.
+  The runtime reconnected proxy/WSS and sent successful `tunnel_init` payloads,
+  but the authoritative account API still reported no device status and zero
+  usage. Restart alone is therefore not a verified usage remedy.
+- A backup container named `cashpilot-earnapp-v1202-us-mac-08-pre-old-image`
+  was running concurrently with the canary and carried the same UUID, account,
+  proxy and logical-node identity. It was stopped without deleting its volume.
+- A second duplicate backup, `cashpilot-earnapp-v1201-us-mac-05-pre-appid-fix`,
+  was also running with the same UUID as mac-05; it was stopped without deleting
+  the node or volume. Backup artifacts must remain stopped and inspection-only.
+- A fresh canary attempt for logical node 07 exposed a separate allocator issue:
+  proxy `12709` was assigned even though the legacy positive-control mac-01
+  runtime was already using that egress. The canary was removed and its binding
+  rolled back; mac-01 was not changed. Future canary allocation must reconcile
+  live worker runtime leases with database leases before deployment.
+- The account usage API contains positive usage for other macOS/iOS/Ubuntu
+  devices, while canary 08 remains at zero. This rules out a general collector
+  outage. Do not recreate or rotate more nodes until runtime/proxy collision
+  reconciliation and authoritative dashboard status are resolved.
+- A regression guard was added (source-only, not yet released): EarnApp lease,
+  rotation-candidate and reservation queries now exclude proxies referenced by
+  any provider runtime instance, matching both endpoint ID and egress IP. The
+  new test fails against the old allocator and passes with the guard.
