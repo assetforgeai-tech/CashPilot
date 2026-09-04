@@ -1,5 +1,28 @@
 # CashPilot Active Context
 
+## EarnApp v1.18.17 multi-platform canary reboot checkpoint (2026-09-04)
+
+- `vps-test-us` was rebooted in isolation. All six canary containers returned
+  automatically with restart policy `always`, restart count `0`, unchanged
+  UUIDs, volumes, image lanes and DB proxy assignments. Worker `3098` remains
+  on `1.18.17`; UI/worker key hashes still match and heartbeat remains healthy.
+- Exact egress remained correct through the proxy sidecars. mac-01/mac-02,
+  iOS-01/iOS-02 and Ubuntu-01/02 retained their expected proxy egress; mac
+  runtime logs show Bright SDK proxy and agent WebSockets connected.
+- mac-02's earlier `install_device` `504` was transient: proxy `12737` now
+  probes alive over HTTP with expected egress `116.105.109.101`, while SOCKS5
+  is not supported. A direct link retry returns `HTTP 200 / This device was
+  already linked`, so no proxy rotation or identity change was performed.
+- Fresh authenticated snapshots show all six canaries `online=true`; iOS and
+  Ubuntu have positive usage/earnings, and both mac nodes now have
+  `country_code=VN` but usage remains `0` during the initial propagation
+  window. EarnApp is therefore not yet `PROTECTED_DONE`; continue the 120-minute
+  usage gate before any recreate decision.
+- Lifecycle scheduler fix is now covered by a regression test: every node with
+  first zero-usage evidence persists `window_started_at`, so the 120-minute
+  flatline gate cannot reset on each scheduler pass; positive usage resets the
+  window and recovery counters.
+
 ## EarnApp Ubuntu reference closeout and worker mutation gate (2026-09-03)
 
 - Fresh authenticated account evidence confirms all three Ubuntu reference
