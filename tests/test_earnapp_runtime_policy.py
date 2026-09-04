@@ -11,6 +11,16 @@ from starlette.requests import Request
 from app import database, earnapp_accounts, main, provider_runtime, worker_api
 
 
+@pytest.fixture(autouse=True)
+def _supported_lifecycle_worker(monkeypatch):
+    """Provide the capability record expected by direct lifecycle tests."""
+    monkeypatch.setattr(
+        database,
+        "get_worker",
+        AsyncMock(return_value={"status": "online", "system_info": {"version": "1.18.21"}}),
+    )
+
+
 def _request(path: str) -> Request:
     return Request({"type": "http", "method": "POST", "path": path, "headers": []})
 
@@ -73,6 +83,55 @@ async def test_unhealthy_rotation_blocks_apple_after_authoritative_lookup(monkey
     assert result is False
     authority.assert_awaited_once_with("earnapp-node-1")
     worker.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "worker",
+    [
+        {"status": "online", "system_info": {"version": "1.18.20"}},
+        {"status": "online", "system_info": {}},
+        {"status": "offline", "system_info": {"version": "1.18.21"}},
+        None,
+    ],
+)
+async def test_pending_reconciliation_never_mutates_unsupported_worker(monkeypatch, worker):
+    monkeypatch.setattr(database, "get_worker", AsyncMock(return_value=worker))
+    finalize = AsyncMock()
+    monkeypatch.setattr(main, "_proxy_to_worker", finalize)
+
+    result = await main._reconcile_earnapp_pending_proxy_binding(
+        {
+            "logical_node_id": "earnapp-node-capability-gate",
+            "generation": 1,
+            "proxy_id": 11,
+            "pending_proxy_id": 12,
+            "device_id": "sdk-mac-12345678",
+            "pending_binding_version": "rotation_12345678",
+            "pending_expected_egress_ip": "198.51.100.12",
+        },
+        7,
+    )
+
+    assert result is False
+    finalize.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_unhealthy_rotation_never_mutates_when_worker_lookup_fails(monkeypatch):
+    monkeypatch.setattr(database, "get_worker", AsyncMock(side_effect=RuntimeError("database unavailable")))
+    worker_call = AsyncMock()
+    monkeypatch.setattr(main, "_proxy_to_worker", worker_call)
+
+    result = await main._rotate_unhealthy_earnapp_node(
+        "earnapp-node-capability-gate",
+        7,
+        generation=1,
+        expected_proxy_id=11,
+    )
+
+    assert result is False
+    worker_call.assert_not_awaited()
 
 
 @pytest.mark.asyncio
