@@ -76,7 +76,9 @@ async def test_scheduler_persists_initial_flatline_window(monkeypatch):
 @pytest.mark.asyncio
 async def test_scheduler_uses_latest_account_snapshot_when_spec_has_no_evidence(monkeypatch):
     node = {
-        "logical_node_id": "earnapp-mac-1", "account_id": 2, "device_id": "sdk-mac-1",
+        "logical_node_id": "earnapp-mac-1",
+        "account_id": 2,
+        "device_id": "sdk-mac-1",
         "state": "ACTIVE",
         "proxy_health": "healthy",
         "usage_baseline": 0.0,
@@ -84,8 +86,13 @@ async def test_scheduler_uses_latest_account_snapshot_when_spec_has_no_evidence(
         "same_proxy_recreates": 0,
         "rotate_count": 0,
     }
+    monkeypatch.setattr(main.database, "list_earnapp_logical_nodes", AsyncMock(return_value=[node]))
     monkeypatch.setattr(main.database, "get_provider_instance_spec", AsyncMock(return_value={}))
-    monkeypatch.setattr(main.database, "get_latest_earnapp_snapshot", AsyncMock(return_value={"devices_json": '[{"device_id":"sdk-mac-1","online":true,"usage_current":0}]'}))
+    monkeypatch.setattr(
+        main.database,
+        "get_latest_earnapp_snapshot",
+        AsyncMock(return_value={"devices_json": '[{"device_id":"sdk-mac-1","online":true,"usage_current":0}]'}),
+    )
     update = AsyncMock(return_value=True)
     monkeypatch.setattr(main.database, "update_earnapp_lifecycle", update)
     await main._run_earnapp_lifecycle_scheduler()
@@ -95,9 +102,15 @@ async def test_scheduler_uses_latest_account_snapshot_when_spec_has_no_evidence(
 @pytest.mark.asyncio
 async def test_scheduler_prefers_latest_account_snapshot_over_stale_spec_evidence(monkeypatch):
     node = {
-        "logical_node_id": "earnapp-mac-2", "account_id": 470, "device_id": "sdk-mac-2",
-        "state": "ACTIVE", "proxy_health": "healthy", "usage_baseline": 0.0,
-        "window_started_at": None, "same_proxy_recreates": 0, "rotate_count": 0,
+        "logical_node_id": "earnapp-mac-2",
+        "account_id": 470,
+        "device_id": "sdk-mac-2",
+        "state": "ACTIVE",
+        "proxy_health": "healthy",
+        "usage_baseline": 0.0,
+        "window_started_at": None,
+        "same_proxy_recreates": 0,
+        "rotate_count": 0,
     }
     monkeypatch.setattr(main.database, "list_earnapp_logical_nodes", AsyncMock(return_value=[node]))
     monkeypatch.setattr(
