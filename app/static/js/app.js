@@ -3515,7 +3515,7 @@ const CP = (() => {
     renderEarnAppCapacity(payload.proxy_capacity || {});
     if (!rows) return;
     if (!accounts.length) {
-      rows.innerHTML = '<tr><td colspan="6"><div class="empty-state-text">No EarnApp account has been imported.</div></td></tr>';
+      rows.innerHTML = '<tr><td colspan="7"><div class="empty-state-text">No EarnApp account has been imported.</div></td></tr>';
       return;
     }
     rows.innerHTML = accounts.map(account => {
@@ -3532,6 +3532,21 @@ const CP = (() => {
       const usageCoverage = collector.usage_available_nodes == null
         ? ''
         : `${Number(collector.usage_available_nodes) || 0} measured / ${Math.max(0, (Number(collector.usage_available_nodes) || 0) + (Number(collector.usage_missing_nodes) || 0))} devices`;
+      const payment = collector.payment || {};
+      const paymentState = payment.configured
+        ? `Auto-redeem: ${payment.method || 'configured'}`
+        : 'Auto-redeem: not set';
+      const paymentDestination = payment.destination_masked
+        ? `Destination ${payment.destination_masked}`
+        : 'No payout destination stored';
+      const paymentMethods = Array.isArray(payment.methods) ? payment.methods.filter(method => !method.disabled) : [];
+      const paymentMethodSummary = paymentMethods.length
+        ? `Available methods: ${paymentMethods.map(method => `${method.label || method.id}${method.minimum == null ? '' : ` (min $${Number(method.minimum).toFixed(0)})`}`).join(', ')}`
+        : 'Available methods unavailable';
+      const transactions = Array.isArray(payment.transactions) ? payment.transactions : [];
+      const transactionSummary = transactions.length
+        ? `${transactions.length} recent transaction${transactions.length === 1 ? '' : 's'}`
+        : 'No recent transactions';
       // The API still enforces state/runtime safety; keep the action visible so
       // an operator gets the precise refusal reason instead of a hidden control.
       const canDelete = true;
@@ -3541,8 +3556,11 @@ const CP = (() => {
         <td><strong>${escapeHtml(route.status || 'unavailable')}</strong><small>${route.source === 'node' ? 'Account node proxy' : (route.source === 'account_control' ? 'Pre-node control proxy' : 'No collector route')}</small><small>${route.egress_ip ? `${escapeHtml(route.country_code || '—')} · ${escapeHtml(route.egress_ip)} · proxy #${escapeHtml(route.proxy_id || '—')}` : 'No healthy account-owned egress'}</small><small>${route.checked_at ? `Checked ${escapeHtml(fmtTimestamp(route.checked_at).text)}` : 'Check time unavailable'}</small></td>
         <td><strong>${balance}</strong><small>${collector.money_total == null ? 'Lifetime unavailable' : `${Number(collector.money_total).toFixed(2)} USD lifetime`}</small><small>${collector.collected_at ? `Last collected ${escapeHtml(fmtTimestamp(collector.collected_at).text)}` : 'No successful collection yet'}</small></td>
         <td>${escapeHtml(nodes)}<small>${escapeHtml(usage)}</small>${usageCoverage ? `<small>${escapeHtml(usageCoverage)}</small>` : ''}</td>
+        <td><strong>${escapeHtml(paymentState)}</strong><small>${escapeHtml(paymentDestination)}</small><small>${escapeHtml(paymentMethodSummary)}</small><small>${escapeHtml(transactionSummary)}</small></td>
         <td><div class="earnapp-row-actions">
           <button class="btn btn-ghost btn-sm" data-action="collectEarnAppAccount" data-a1="${escapeHtml(account.id)}">Collect now</button>
+          <button class="btn btn-ghost btn-sm" data-action="configureEarnAppPayment" data-a1="${escapeHtml(account.id)}" data-a2="${escapeHtml(JSON.stringify(paymentMethods.map(method => ({ id: method.id, label: method.label, disabled: Boolean(method.disabled) }))))}">Set auto-redeem</button>
+          ${payment.configured ? `<button class="btn btn-ghost btn-sm danger-action" data-action="disableEarnAppPayment" data-a1="${escapeHtml(account.id)}">Disable auto-redeem</button>` : ''}
           ${canDelete ? `<button class="btn btn-ghost btn-sm danger-action" data-action="deleteEarnAppAccount" data-a1="${escapeHtml(account.id)}" data-a2="${escapeHtml(account.account_name)}">Delete local account</button>` : ''}
         </div></td>
       </tr>`;
@@ -3588,7 +3606,7 @@ const CP = (() => {
       renderEarnAppAccounts(payload);
       renderEarnAppRecovery(payload);
     } catch (err) {
-      rows.innerHTML = `<tr><td colspan="6" style="color:var(--error);">Could not load EarnApp accounts: ${escapeHtml(err.message)}</td></tr>`;
+      rows.innerHTML = `<tr><td colspan="7" style="color:var(--error);">Could not load EarnApp accounts: ${escapeHtml(err.message)}</td></tr>`;
       const recovery = document.getElementById('earnapp-recovery-rows');
       if (recovery) recovery.innerHTML = '<tr><td colspan="7" style="color:var(--error);">Recovery state unavailable.</td></tr>';
     }
@@ -3636,6 +3654,49 @@ const CP = (() => {
       await loadEarnAppAccounts();
     } catch (err) {
       toast(`EarnApp collection failed: ${err.message}`, 'error');
+    }
+  }
+
+  async function configureEarnAppPayment(accountId, methodsJson) {
+    let methods = [];
+    try { methods = JSON.parse(methodsJson || '[]'); } catch (_) { methods = []; }
+    const available = methods.filter(method => method && method.id && !method.disabled);
+    if (!available.length) {
+      toast('Collect the account first to load available payment methods', 'warning');
+      return;
+    }
+    const choices = available.map(method => `${method.id}: ${method.label || method.id}`).join('\n');
+    const paymentMethod = window.prompt(`Payment method ID:\n${choices}`, available[0].id);
+    if (paymentMethod === null) return;
+    if (!available.some(method => method.id === paymentMethod)) {
+      toast('Choose an available payment method ID exactly as listed', 'warning');
+      return;
+    }
+    const destination = window.prompt('Payment destination email or account identifier. CashPilot sends it to EarnApp but stores only a masked value:');
+    if (destination === null || destination.trim().length < 3) {
+      if (destination !== null) toast('Payment destination is required', 'warning');
+      return;
+    }
+    try {
+      await api(`/api/admin/earnapp/accounts/${encodeURIComponent(accountId)}/payment`, {
+        method: 'POST',
+        body: { payment_method: paymentMethod, destination: destination.trim() },
+      });
+      toast('EarnApp auto-redeem settings updated', 'success');
+      await collectEarnAppAccount(accountId);
+    } catch (err) {
+      toast(`EarnApp payment update failed: ${err.message}`, 'error');
+    }
+  }
+
+  async function disableEarnAppPayment(accountId) {
+    if (!window.confirm('Disable EarnApp auto-redeem for this account? This does not request a payout.')) return;
+    try {
+      await api(`/api/admin/earnapp/accounts/${encodeURIComponent(accountId)}/payment`, { method: 'DELETE' });
+      toast('EarnApp auto-redeem disabled', 'success');
+      await collectEarnAppAccount(accountId);
+    } catch (err) {
+      toast(`Could not disable EarnApp auto-redeem: ${err.message}`, 'error');
     }
   }
 
@@ -4555,6 +4616,8 @@ const CP = (() => {
     loadEarnAppAccounts,
     importEarnAppAccount,
     collectEarnAppAccount,
+    configureEarnAppPayment,
+    disableEarnAppPayment,
     deleteEarnAppAccount,
     issueEarnAppReplacementTicket,
     toggleEnvSecret,

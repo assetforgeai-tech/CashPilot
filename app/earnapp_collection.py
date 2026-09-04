@@ -70,6 +70,28 @@ async def collect_account(account_id: int) -> dict[str, Any]:
         return last_snapshot
 
 
+async def _payment_collector(account_id: int) -> EarnAppAccountCollector:
+    account = await database.get_earnapp_account_credentials(account_id)
+    if not account:
+        raise ValueError("EarnApp account unavailable")
+    routes = await _collection_routes(account_id)
+    if not routes:
+        raise ValueError("EarnApp account proxy unavailable")
+    return EarnAppAccountCollector(account.get("credentials") or {}, routes[0])
+
+
+async def configure_payment(account_id: int, *, payment_method: str, destination: str) -> dict[str, Any]:
+    async with earnapp_canary.account_api_lock(account_id):
+        collector = await _payment_collector(account_id)
+        return await collector.configure_payment(payment_method=payment_method, destination=destination)
+
+
+async def disable_payment(account_id: int) -> dict[str, Any]:
+    async with earnapp_canary.account_api_lock(account_id):
+        collector = await _payment_collector(account_id)
+        return await collector.disable_payment()
+
+
 async def collect_active_accounts(*, concurrency: int = 4) -> dict[str, Any]:
     """Collect every operable account without allowing one failure to stop peers."""
     rows = [
