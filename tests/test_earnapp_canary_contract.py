@@ -195,12 +195,13 @@ def test_server_profile_routes_mac_lan_ip_through_sidecar_tun(tmp_path):
             worker_name="earnapp-canary-1",
         )
         tun_ip = config["inbounds"][0]["address"][0].split("/", 1)[0]
-        assert identity["lan_ip"] == tun_ip
+        assert identity["lan_ip"] == earnapp_identity.PROXY_TUN_IP
+        assert identity["lan_ip"] != tun_ip
 
     asyncio.run(run())
 
 
-def test_existing_profile_with_wrong_tun_lan_ip_fails_closed_without_rewrite(tmp_path):
+def test_existing_profile_migrates_filtered_lan_ip_without_rewriting_identity(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
             await database.init_db()
@@ -215,13 +216,19 @@ def test_existing_profile_with_wrong_tun_lan_ip_fails_closed_without_rewrite(tmp
                 device_id=device_id,
                 value=earnapp_runtime.encrypt_mac_profile(original),
             )
-            before = await database.get_earnapp_identity_profile("earnapp-canary-1")
-            with pytest.raises(ValueError, match="lan_ip"):
-                await earnapp_canary.get_or_create_mac_identity_profile("earnapp-canary-1")
+            before = earnapp_runtime.decrypt_mac_profile(
+                (await database.get_earnapp_identity_profile("earnapp-canary-1"))["value"]
+            )
+            profile = await earnapp_canary.get_or_create_mac_identity_profile("earnapp-canary-1")
             after = await database.get_earnapp_identity_profile("earnapp-canary-1")
+            migrated = earnapp_runtime.decrypt_mac_profile(after["value"])
 
+        assert profile["device_id"] == device_id
         assert after["device_id"] == device_id
-        assert after["value"] == before["value"]
+        assert migrated["id"] == before["id"]
+        assert migrated["serial"] == before["serial"]
+        assert migrated["platform_uuid"] == before["platform_uuid"]
+        assert migrated["lan_ip"] == earnapp_identity.PROXY_TUN_IP
 
     asyncio.run(run())
 

@@ -23,7 +23,9 @@ UBUNTU_IDENTITY_ASSET_KIND = "ubuntu_identity_profile"
 IOS_DEVICE_PREFIX = "sdk-ios-"
 IOS_CP_ID = earnapp_runtime.IOS_INSTALL_APPID
 UBUNTU_DEVICE_PREFIX = "sdk-node-"
-PROXY_TUN_IP = "172.31.255.1"
+# The SDK 1.660.577 filters 172.16.0.0/12 as Docker bridge space. Keep the
+# provider's identity metadata outside that range so its interface survives.
+PROXY_TUN_IP = "10.255.255.1"
 
 _IOS_CATALOG = (
     ("iPhone14,5", "17.4.1", "21E237", "23.4.0", "CFNetwork/1496.0.7", "iPhone 13", "A15"),
@@ -490,12 +492,15 @@ def validate_and_decode_ubuntu_profile(value: str) -> dict[str, Any]:
 def _upgrade_macos_runtime_metadata(identity: dict[str, Any]) -> bool:
     """Migrate legacy persisted profiles to the audited SDK metadata in place."""
     version = str(identity.get("version") or identity.get("sdk_version") or "")
-    if version == "1.660.577" and str(identity.get("sdk_version") or "") == "1.660.577":
+    current_metadata = version == "1.660.577" and str(identity.get("sdk_version") or "") == "1.660.577"
+    current_lan = str(identity.get("lan_ip") or "") == PROXY_TUN_IP
+    if current_metadata and current_lan:
         return False
     if not version.startswith("1."):
         return False
     identity["version"] = "1.660.577"
     identity["sdk_version"] = "1.660.577"
+    identity["lan_ip"] = PROXY_TUN_IP
     ua = str(identity.get("ua") or "")
     if ua.startswith("brdsdk/"):
         identity["ua"] = re.sub(r"^brdsdk/[0-9.]+", "brdsdk/1.660.577", ua)

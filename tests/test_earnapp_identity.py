@@ -230,6 +230,16 @@ def test_persisted_legacy_macos_profile_upgrades_runtime_metadata_without_changi
     asyncio.run(run())
 
 
+def test_persisted_current_macos_profile_migrates_filtered_bridge_lan_ip(tmp_path):
+    identity = earnapp_identity.generate_identity("current-mac-old-lan", "macos")
+    identity["lan_ip"] = "172.31.255.1"
+
+    changed = earnapp_identity._upgrade_macos_runtime_metadata(identity)
+
+    assert changed is True
+    assert identity["lan_ip"] == earnapp_identity.PROXY_TUN_IP
+
+
 def test_generated_macos_profile_matches_reference_runtime_state_shape():
     identity = earnapp_identity.generate_identity("parity-mac-node", "macos")
 
