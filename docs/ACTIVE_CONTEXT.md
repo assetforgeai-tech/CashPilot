@@ -8,6 +8,13 @@
   cooldown. It did not change UUID generation, OAuth/link behavior, or provide
   a blacklist bypass. The observed 100 MiB image also recorded cgroup OOMs and
   is not a safe default.
+- The exhaustive verifier compared equal-size binaries and found `17,330`
+  changed bytes across `104` ranges, all inside seven pkg `STORE_CONTENT`
+  records. ELF/pkg structure, native runtime, VFS, BuildID and all identity/link
+  surfaces are unchanged. The relevant behavior is limited to safe local
+  address/interface fallback, a derived `tunnel_init` alias and reduced payload,
+  full Docker bridge filtering (`172.16.0.0/12`), and a two-hour decline cap;
+  wrapper restart cooldown remains bounded to 60-3,600 seconds.
 - CashPilot release `v1.18.23` is deployed UI-only. The UI is healthy at the
   pinned digest and database integrity is `ok`; worker `1.18.16` and all
   non-UI containers remained unchanged.
