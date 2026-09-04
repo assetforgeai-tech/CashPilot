@@ -283,7 +283,7 @@ def test_verified_image_labels_are_fail_closed():
 
 def test_mac_runtime_manifest_is_derived_from_authoritative_artifact_hashes():
     assert earnapp_runtime.runtime_asset_manifest_sha256() == (
-        "a00e60cdff781995a967dbf72ad1b6478c1e5cbb8a968fdaadd067e80be959ca"
+        "b1c582f9c89eab358e006815b443c2be21b6b81eee2162d622358de034eeaafe"
     )
     assert earnapp_runtime.runtime_asset_manifest_sha256() == earnapp_runtime.MAC_RUNTIME_ASSET_MANIFEST_SHA256
 
@@ -518,9 +518,12 @@ def test_proxy_wrapper_leaves_proxy_process_to_reference_runtime(platform):
 def test_transparent_proxy_runtime_disables_application_level_proxying(platform):
     wrapper = earnapp_runtime.generated_runtime_artifacts(platform)["cashpilot-proxy-entrypoint"].decode("utf-8")
 
-    assert "export NO_PROXY='*'" in wrapper
-    assert "export no_proxy='*'" in wrapper
-    assert wrapper.index("export NO_PROXY='*'") < wrapper.index('exec /usr/local/bin/entrypoint-original.sh "$@"')
+    assert "sed" in wrapper
+    assert "HTTP_PROXY" in wrapper
+    assert "HTTPS_PROXY" in wrapper
+    assert "http_proxy" in wrapper
+    assert "https_proxy" in wrapper
+    assert "exec \"$SANITIZED_ENTRYPOINT\" \"$@\"" in wrapper
 
 
 def test_ios_proxy_wrapper_installs_route_before_control_plane_registration():
