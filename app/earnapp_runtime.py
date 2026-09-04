@@ -304,7 +304,7 @@ if [[ ! -s "$STATE_DIR/registered" || "$(cat "$STATE_DIR/registered")" != "$EXPE
     if curl -fsS --http1.1 --connect-timeout 15 --max-time 45 \
         "${register_proxy[@]}" -H 'Content-Type: application/json' \
         -o "$register_body" \
-        "https://client.earnapp.com/install_device?uuid=$EXPECTED_DEVICE_ID&version=$version&arch=x64&appid=node_earnapp.com&os=macOS" \
+        "https://client.earnapp.com/install_device?uuid=$EXPECTED_DEVICE_ID&version=$version&arch=x64&appid=mac_com.earnapp&os=macOS" \
         --data "{\"serial\":\"$serial\"}" \
       && grep -Eq '"ok"[[:space:]]*:[[:space:]]*(1|true|"1")' "$register_body"; then
       printf '%s' "$EXPECTED_DEVICE_ID" >"$STATE_DIR/registered"
