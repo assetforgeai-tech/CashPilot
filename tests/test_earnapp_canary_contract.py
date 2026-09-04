@@ -283,7 +283,7 @@ def test_verified_image_labels_are_fail_closed():
 
 def test_mac_runtime_manifest_is_derived_from_authoritative_artifact_hashes():
     assert earnapp_runtime.runtime_asset_manifest_sha256() == (
-        "f09741cb578ca824f47ec7488f88195ffaae3f20ad5074cd4ec0572c6be08bc7"
+        "1a8520b9b342ea739868982b9b9b6d3167a1118f5b05d2b7e46f04defcd8b2c8"
     )
     assert earnapp_runtime.runtime_asset_manifest_sha256() == earnapp_runtime.MAC_RUNTIME_ASSET_MANIFEST_SHA256
 
@@ -536,6 +536,11 @@ def test_macos_proxy_wrapper_adopts_a_complete_installed_binary_before_handoff()
     assert '"$STATE_DIR/uuid"' in wrapper and '"$STATE_DIR/com.earnapp.cid"' in wrapper
     assert "install -m 0755 /opt/earnapp-mac /usr/bin/earnapp" in wrapper
     assert 'printf \'%s\\n\' "complete" >"$STATE_DIR/registered"' in wrapper
+
+
+def test_macos_proxy_wrapper_declares_state_dir_before_identity_recovery_guard():
+    wrapper = earnapp_runtime.generated_runtime_artifacts("macos")["cashpilot-proxy-entrypoint"].decode()
+    assert wrapper.index("STATE_DIR=/etc/earnapp") < wrapper.index('"$STATE_DIR/uuid"')
 
 
 def test_ios_proxy_wrapper_installs_route_before_control_plane_registration():
