@@ -293,6 +293,7 @@ def build_runtime_spec(
         )
         return {
             "image": earnapp_runtime.UBUNTU_RUNTIME_IMAGE,
+            "image_contract_sha256": earnapp_runtime.UBUNTU_RUNTIME_ASSET_MANIFEST_SHA256,
             "image_delivery": "operator_preload",
             "provider_slug": "earnapp",
             "host_runtime": earnapp_runtime.UBUNTU_RUNTIME_HOST,
@@ -555,11 +556,17 @@ async def deploy_platform_canary(
         raise ValueError("EarnApp canary platform is immutable")
 
     existing = await database.get_provider_instance(node_id)
+    # A running node is normally idempotent, but a changed runtime contract
+    # must be rolled forward in place so a canary can adopt a verified image
+    # without changing its identity, volume, account, or proxy lease.
+    current_spec = await database.get_provider_instance_spec(node_id)
+    expected_contract = earnapp_runtime.runtime_asset_manifest_sha256(platform=selected)
+    existing_contract = str((current_spec or {}).get("image_contract_sha256") or "")
     if existing and str(existing.get("status") or "").lower() in {
         "running",
         "deployed",
         "verification_pending",
-    }:
+    } and existing_contract == expected_contract:
         existing_worker = int(existing.get("worker_id") or 0)
         if existing_worker and existing_worker != int(worker_id):
             raise ValueError("EarnApp canary is already assigned to another worker")
