@@ -40,29 +40,32 @@ def test_positive_usage_resets_recovery_counters():
     assert decision.same_proxy_recreates == 0
 
 
-def test_flat_usage_recreates_same_proxy_twice_then_rotates():
+def test_flat_usage_restarts_without_recreate_or_proxy_rotation():
     now = datetime.now(UTC)
-    first = evaluate_node({"usage": 10.0, "banned": False}, _runtime(same_proxy_recreates=0), now)
-    second = evaluate_node({"usage": 10.0, "banned": False}, _runtime(same_proxy_recreates=1), now)
-    third = evaluate_node({"usage": 10.0, "banned": False}, _runtime(same_proxy_recreates=2), now)
-    assert first.action == second.action == "recreate"
-    assert third.action == "rotate_recreate"
+    decision = evaluate_node(
+        {"usage": 10.0, "online": False, "banned": True},
+        _runtime(same_proxy_recreates=2, rotate_count=3),
+        now,
+    )
+    assert decision.action == "restart"
+    assert decision.same_proxy_recreates == 0
+    assert decision.rotate_count == 3
 
 
-def test_flat_usage_uses_short_observation_window_instead_of_two_hours():
+def test_new_or_restarted_node_gets_a_sixty_minute_admission_window():
     now = datetime.now(UTC)
     observe = evaluate_node(
         {"usage": 10.0, "banned": False},
-        _runtime(window_started_at=(now - timedelta(minutes=9)).isoformat()),
+        _runtime(window_started_at=(now - timedelta(minutes=59)).isoformat()),
         now,
     )
     recover = evaluate_node(
         {"usage": 10.0, "banned": False},
-        _runtime(window_started_at=(now - timedelta(minutes=10)).isoformat()),
+        _runtime(window_started_at=(now - timedelta(minutes=60)).isoformat()),
         now,
     )
     assert observe.action == "observe"
-    assert recover.action == "recreate"
+    assert recover.action == "restart"
 
 
 def test_qualified_uptime_without_country_or_ip_waits_for_backend_assignment():
@@ -243,7 +246,7 @@ async def test_scheduler_refreshes_stale_account_snapshot_before_flatline_recrea
     }
     monkeypatch.setattr(main.database, "list_earnapp_logical_nodes", AsyncMock(return_value=[node]))
     monkeypatch.setattr(main.database, "get_provider_instance_spec", AsyncMock(return_value={}))
-    old = (datetime.now(UTC) - timedelta(minutes=20)).isoformat()
+    old = (datetime.now(UTC) - timedelta(minutes=70)).isoformat()
     stale = {"collected_at": old, "devices_json": '[{"device_id":"sdk-mac-refresh","online":true,"usage_current":100}]'}
     fresh = {
         "collected_at": datetime.now(UTC).isoformat(),
@@ -265,7 +268,7 @@ async def test_scheduler_refreshes_stale_account_snapshot_before_flatline_recrea
 
 
 @pytest.mark.asyncio
-async def test_scheduler_executes_recreate_decision_for_mutable_node(monkeypatch):
+async def test_scheduler_executes_restart_decision_for_mutable_node(monkeypatch):
     node = {
         "logical_node_id": "earnapp-mac-recover",
         "account_id": 2,
@@ -291,13 +294,13 @@ async def test_scheduler_executes_recreate_decision_for_mutable_node(monkeypatch
         AsyncMock(return_value={"devices_json": '[{"device_id":"sdk-mac-recover","online":true,"usage_current":0}]'}),
     )
     update = AsyncMock(return_value=True)
-    deploy = AsyncMock(return_value={"status": "deployed"})
+    deploy = AsyncMock(return_value={"status": "restarted"})
     monkeypatch.setattr(main.database, "update_earnapp_lifecycle", update)
     monkeypatch.setattr(main, "_execute_earnapp_lifecycle_action", deploy)
 
     await main._run_earnapp_lifecycle_scheduler()
 
-    deploy.assert_awaited_once_with(node, "recreate")
+    deploy.assert_awaited_once_with(node, "restart")
     persisted = update.await_args.kwargs["window_started_at"]
     assert datetime.now(UTC) - datetime.fromisoformat(persisted) < timedelta(seconds=5)
 
@@ -381,7 +384,7 @@ async def test_scheduler_mutates_only_workers_supporting_lifecycle_api(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_recreate_action_calls_cas_scoped_worker_route(monkeypatch):
+async def test_restart_action_calls_cas_scoped_worker_route(monkeypatch):
     node = {
         "logical_node_id": "earnapp-mac-recover",
         "assigned_worker_id": 3098,
@@ -389,14 +392,14 @@ async def test_recreate_action_calls_cas_scoped_worker_route(monkeypatch):
         "device_id": "sdk-mac-" + "a" * 32,
         "platform": "macos",
     }
-    proxy = AsyncMock(return_value={"status": "recreated", "container_id": "new-container"})
+    proxy = AsyncMock(return_value={"status": "restarted"})
     monkeypatch.setattr(main, "_proxy_to_worker", proxy)
 
-    assert await main._execute_earnapp_lifecycle_action(node, "recreate") is True
+    assert await main._execute_earnapp_lifecycle_action(node, "restart") is True
     proxy.assert_awaited_once_with(
         3098,
         "POST",
-        "/api/earnapp/docker-nodes/earnapp-mac-recover/recreate",
+        "/api/earnapp/docker-nodes/earnapp-mac-recover/restart",
         json={"generation": 3, "device_id": "sdk-mac-" + "a" * 32},
         timeout=180,
     )

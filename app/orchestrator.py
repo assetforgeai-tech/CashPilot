@@ -591,6 +591,16 @@ def recreate_earnapp_main(
     )
 
 
+def restart_earnapp_main(slug: str) -> str:
+    """Restart the assigned main container without changing its identity."""
+    client = _get_client()
+    main = _find_earnapp_runtime_container(client, slug, sidecar=False)
+    if main is None:
+        raise ValueError(f"EarnApp main container for {slug} is unavailable")
+    main.restart(timeout=30)
+    return str(main.id)
+
+
 def finalize_earnapp_main_proxy(slug: str, binding_version: str, *, commit: bool) -> dict[str, Any]:
     """Commit the staged main container or restore the retained predecessor."""
     client = _get_client()

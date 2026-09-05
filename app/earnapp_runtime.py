@@ -267,10 +267,19 @@ unset PROXY_CREDENTIALS PROXY_HOST PROXY_PORT PROXY_USER PROXY_PASS
         if selected == "ios"
         else ""
     )
-    runtime_handoff = (
-        f'exec {next_entrypoint} "$@"'
-        if selected == "ios"
-        else r'''# The reference entrypoint starts redsocks and also exports application-level
+    if selected == "ios":
+        runtime_handoff = f'exec {next_entrypoint} "$@"'
+    elif selected == "ubuntu":
+        # The pinned official Linux image owns first-boot installation and UUID
+        # generation. The outer wrapper only installs the fail-closed firewall;
+        # requiring a control-plane UUID here would deadlock fresh deployment.
+        runtime_handoff = r'''SANITIZED_ENTRYPOINT=/tmp/cashpilot-entrypoint-original.sh
+sed '/^set -euo pipefail/a unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy NO_PROXY no_proxy' \
+  /usr/local/bin/entrypoint-original.sh >"$SANITIZED_ENTRYPOINT"
+chmod 0755 "$SANITIZED_ENTRYPOINT"
+exec "$SANITIZED_ENTRYPOINT" "$@"'''
+    else:
+        runtime_handoff = r'''# The reference entrypoint starts redsocks and also exports application-level
 # proxy variables. EarnApp's Axios client then sends absolute-form requests
 # that some leased HTTP proxies reject with 400. Keep redsocks/iptables, but
 # execute a sanitized copy without those variables so sockets use transparent
@@ -331,7 +340,6 @@ sed '/# ANTI-DETECTION: Docker \/ VM/i unset HTTP_PROXY HTTPS_PROXY http_proxy h
   /usr/local/bin/entrypoint-original.sh >"$SANITIZED_ENTRYPOINT"
 chmod 0755 "$SANITIZED_ENTRYPOINT"
 exec "$SANITIZED_ENTRYPOINT" "$@"'''
-    )
     return f"""#!/usr/bin/env bash
 set -euo pipefail
 STATE_DIR=/etc/earnapp

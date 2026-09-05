@@ -766,7 +766,7 @@ async def _run_earnapp_lifecycle_scheduler() -> None:
             window_started_at = str(node.get("window_started_at") or datetime.now(UTC).isoformat())
             if decision.action == "healthy":
                 window_started_at = datetime.now(UTC).isoformat()
-            if decision.action in {"recreate", "rotate_recreate"}:
+            if decision.action in {"restart", "recreate", "rotate_recreate"}:
                 worker = await database.get_worker(int(node.get("assigned_worker_id") or 0))
                 if not _worker_supports_earnapp_lifecycle(worker):
                     continue
@@ -819,6 +819,18 @@ async def _execute_earnapp_lifecycle_action(node: Mapping[str, Any], action: str
             expected_proxy_id=int(node.get("current_proxy_id") or 0),
             dashboard_blocked=True,
         )
+    if action == "restart":
+        result = await _proxy_to_worker(
+            worker_id,
+            "POST",
+            f"/api/earnapp/docker-nodes/{node_id}/restart",
+            json={
+                "generation": int(node.get("generation") or 0),
+                "device_id": str(node.get("device_id") or ""),
+            },
+            timeout=180,
+        )
+        return isinstance(result, Mapping) and str(result.get("status") or "").lower() == "restarted"
     if action != "recreate":
         return False
     platform = str(node.get("platform") or "").strip().lower()

@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $sourceBase = Join-Path ([IO.Path]::GetTempPath()) ('earnapp-publish-' + [guid]::NewGuid().ToString('N'))
 $remoteRoot = '/tmp/cashpilot-earnapp-generic-20260905'
-$publishTag = if ($env:EARNAPP_PUBLISH_TAG) { $env:EARNAPP_PUBLISH_TAG } else { '20260905-gap2' }
+$publishTag = if ($env:EARNAPP_PUBLISH_TAG) { $env:EARNAPP_PUBLISH_TAG } else { '20260906-ubuntu-fix' }
 $vpsFile = 'D:\1. WORK_true\CashPilot\earnapp_update_05092026\vps.txt'
 $credential = @{}
 Get-Content -LiteralPath $vpsFile | ForEach-Object {
