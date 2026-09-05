@@ -2965,7 +2965,14 @@ async def api_apply_earnapp_node_proxy(
                 applied = await asyncio.to_thread(
                     orchestrator.stage_earnapp_main_proxy, logical_node_id, spec.proxy, spec.binding_version
                 )
-            evidence = await asyncio.to_thread(orchestrator.probe_service_egress, logical_node_id)
+            if main_proxy_staged:
+                evidence = await asyncio.to_thread(
+                    orchestrator.wait_for_service_egress,
+                    logical_node_id,
+                    expected_egress_ip,
+                )
+            else:
+                evidence = await asyncio.to_thread(orchestrator.probe_service_egress, logical_node_id)
             observed = str(evidence.get("observed_egress_ip") or "")
             if observed != expected_egress_ip:
                 if main_proxy_staged:

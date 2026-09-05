@@ -430,6 +430,55 @@ def test_worker_proxy_apply_main_only_mismatch_rolls_back_main_container(tmp_pat
     assert not saved.get("pending_proxy_id")
 
 
+def test_worker_proxy_apply_waits_for_main_only_egress_readiness(tmp_path, monkeypatch):
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    device_id = str(_identity()["device_id"])
+    node_id = "earnapp-macos-main-ready"
+    worker_api._save_earnapp_state(
+        node_id,
+        {
+            "logical_node_id": node_id,
+            "generation": 1,
+            "device_id": device_id,
+            "platform": "macos",
+            "runtime_backend": "docker",
+            "proxy_id": 12,
+            "expected_egress_ip": "203.0.113.10",
+        },
+    )
+    spec = worker_api.EarnAppProxyApplySpec(
+        generation=1,
+        device_id=device_id,
+        expected_proxy_id=12,
+        binding_version="rotation_mainready_12345678",
+        proxy={**_proxy(), "proxy_id": 13, "exit_ip": "203.0.113.13"},
+    )
+    with (
+        patch.object(worker_api, "_verify_api_key"),
+        patch.object(
+            worker_api.orchestrator,
+            "apply_proxy_binding_batch",
+            side_effect=RuntimeError("has no managed egress sidecar"),
+        ),
+        patch.object(
+            worker_api.orchestrator,
+            "stage_earnapp_main_proxy",
+            return_value={"container_id": "candidate", "binding_version": spec.binding_version},
+        ),
+        patch.object(
+            worker_api.orchestrator,
+            "wait_for_service_egress",
+            return_value={"running": True, "observed_egress_ip": "203.0.113.13", "probe_ok": True},
+        ) as wait_egress,
+        patch.object(worker_api.orchestrator, "probe_service_egress") as immediate_probe,
+    ):
+        result = __import__("asyncio").run(worker_api.api_apply_earnapp_node_proxy(_request(), node_id, spec))
+
+    assert result["ok"] is True
+    wait_egress.assert_called_once_with(node_id, "203.0.113.13")
+    immediate_probe.assert_not_called()
+
+
 @pytest.mark.asyncio
 async def test_worker_serializes_same_node_proxy_apply_before_runtime_recreate(tmp_path, monkeypatch):
     """Only one request may recreate a logical node's named Docker container at a time."""
