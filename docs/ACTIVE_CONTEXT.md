@@ -1363,3 +1363,11 @@ historical snapshots and read-only inspection stay available.
   Lifecycle now selects the workload counter by billing mode; a regression
   test failed before the fix and passes after it. The lifecycle and canary
   contract suites pass (`205 passed, 1 skipped`).
+- After `v1.20.9`, mac-12 reached `lum_sdk_mac_22_svc_tun_1b` and
+  `lum_sdk_mac_tun_1b`, but the account API still had not assigned country/IP
+  or uptime. The scheduler then rotated/recreated the node, invalidating the
+  observation window. A second lifecycle guard now keeps an online,
+  non-banned `qualified_uptime` device in `observe` while both account-side
+  country and IP are absent; explicit proxy-health failures still rotate
+  immediately. The expanded lifecycle/canary suite passes (`206 passed, 1
+  skipped`).

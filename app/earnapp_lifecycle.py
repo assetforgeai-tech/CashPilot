@@ -68,6 +68,15 @@ def evaluate_node(
     rotates = max(0, int(runtime.get("rotate_count") or 0))
     if bool(snapshot.get("auth_failed")):
         return LifecycleDecision("defer_auth", same, rotates, "account authentication requires retry")
+    billing = str(snapshot.get("billing") or "").strip().lower()
+    if (
+        billing in _UPTIME_BILLING
+        and snapshot.get("online") is True
+        and not str(snapshot.get("country_code") or snapshot.get("country") or "").strip()
+        and not str(snapshot.get("ip") or snapshot.get("public_ip") or "").strip()
+        and not snapshot.get("banned")
+    ):
+        return LifecycleDecision("observe", same, rotates, "awaiting account-side country assignment")
     if str(runtime.get("proxy_health") or "").lower() == "unhealthy" or snapshot.get("egress_ok") is False:
         return LifecycleDecision("rotate_recreate", same, rotates + 1, "proxy health or egress mismatch")
     baseline = float(runtime.get("usage_baseline") or 0)
