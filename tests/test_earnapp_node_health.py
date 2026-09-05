@@ -2753,6 +2753,61 @@ async def test_unhealthy_node_rotation_commits_only_after_matching_worker_ack(mo
 
 
 @pytest.mark.asyncio
+async def test_unhealthy_node_rotation_reports_pending_when_worker_finalize_never_acks(monkeypatch):
+    """A committed DB CAS is not a completed rotation while worker ACK is pending."""
+    monkeypatch.setattr(main.provider_runtime, "mutation_block", lambda *_args, **_kwargs: None)
+    node_id = "earnapp-proxy-w11-finalize-pending"
+    device_id = "sdk-mac-" + "p" * 32
+    candidate = {
+        "proxy_id": 22,
+        "host": "candidate.example",
+        "port": 1080,
+        "protocol": "socks5",
+        "exit_ip": "198.51.100.22",
+        "country_code": "VN",
+        "ip_type": "residential",
+    }
+
+    async def worker_call(_worker_id, _method, path, *, json=None, **_kwargs):
+        if path.endswith("/proxy/apply"):
+            return {
+                "ok": True,
+                "binding_version": json["binding_version"],
+                "proxy_id": 22,
+                "observed_egress_ip": candidate["exit_ip"],
+            }
+        return {"ok": False, "binding_version": json["binding_version"]}
+
+    monkeypatch.setattr(
+        database,
+        "get_earnapp_logical_node",
+        AsyncMock(
+            return_value={
+                "logical_node_id": node_id,
+                "assigned_worker_id": 11,
+                "generation": 4,
+                "current_proxy_id": 11,
+                "proxy_health": "unhealthy",
+                "state": "ACTIVE",
+                "device_id": device_id,
+                "platform": "macos",
+            }
+        ),
+    )
+    monkeypatch.setattr(database, "find_available_earnapp_proxy_for_node", AsyncMock(return_value=candidate))
+    monkeypatch.setattr(database, "reserve_earnapp_proxy_candidate", AsyncMock(return_value=candidate))
+    monkeypatch.setattr(database, "release_earnapp_proxy_reservation", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        database,
+        "commit_earnapp_proxy_rotation",
+        AsyncMock(return_value={"logical_node_id": node_id, "current_proxy_id": 22}),
+    )
+    monkeypatch.setattr(main, "_proxy_to_worker", worker_call)
+
+    assert not await main._rotate_unhealthy_earnapp_node(node_id, 11, generation=4, expected_proxy_id=11)
+
+
+@pytest.mark.asyncio
 async def test_dashboard_blocked_rotation_survives_heartbeat_health_race(monkeypatch):
     """An authenticated dashboard block must not be erased by a healthy local probe."""
     monkeypatch.setattr(main.provider_runtime, "mutation_block", lambda *_args, **_kwargs: None)

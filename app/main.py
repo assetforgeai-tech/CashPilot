@@ -4647,7 +4647,10 @@ async def _rotate_unhealthy_earnapp_node(
             "EarnApp node %s proxy DB CAS committed; worker finalization remains pending",
             node_id,
         )
-        return True
+        # The database CAS is durable, but the runtime is not confirmed yet.
+        # Report failure so the pending-binding reconciler keeps retrying rather
+        # than allowing the lifecycle scheduler to treat this as complete.
+        return False
 
 
 def _earnapp_lxd_settings(config: Mapping[str, Any] | None) -> dict[str, int]:
