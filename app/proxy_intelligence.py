@@ -64,6 +64,37 @@ def normalize_ipapi_payload(payload: Mapping[str, Any] | None, *, source: str = 
     for key in ("is_datacenter", "is_proxy", "is_vpn", "is_tor", "is_hosting"):
         if key in data:
             result[key] = bool(data.get(key))
+    # ipapi.is currently exposes provider identity as strings rather than the
+    # legacy boolean quality flags. Keep the inference evidence-bound: obvious
+    # cloud/hosting names become datacenter; a known company/ASN without an
+    # infrastructure marker is only an inferred residential result.
+    company = str(data.get("company") or "").strip().lower()
+    asn = str(data.get("asn") or "").strip().lower()
+    provider = " ".join(value for value in (company, asn) if value)
+    infrastructure_terms = (
+        "amazon",
+        "aws",
+        "azure",
+        "cloud",
+        "digitalocean",
+        "google cloud",
+        "google llc",
+        "hetzner",
+        "hosting",
+        "linode",
+        "microsoft corporation",
+        "ovh",
+        "oracle cloud",
+        "server",
+        "vultr",
+    )
+    quality_terms = ("proxy", "vpn", "tor")
+    if provider and any(term in provider for term in quality_terms):
+        result["is_proxy"] = True
+    elif provider and any(term in provider for term in infrastructure_terms):
+        result["is_datacenter"] = True
+    elif provider:
+        result["is_residential"] = True
     return result
 
 
@@ -79,6 +110,8 @@ def _classify_ip_type(quality: Mapping[str, Any]) -> tuple[str, str]:
         return "datacenter", "verified"
     if quality.get("is_hosting"):
         return "hosting", "verified"
+    if quality.get("is_residential"):
+        return "residential", "inferred"
     if quality and any(key.startswith("is_") for key in quality):
         return "residential", "inferred"
     return "unknown", "unknown"

@@ -3249,6 +3249,30 @@ def test_proxy_intelligence_cache_retries_unknown_type_even_when_source_is_recor
     asyncio.run(run())
 
 
+def test_ipapi_current_company_schema_infers_ip_type():
+    from app.proxy_intelligence import merge_intelligence, normalize_ipapi_payload
+
+    residential = normalize_ipapi_payload(
+        {
+            "is_bogon": False,
+            "cc": "VN",
+            "company": "Viettel Group",
+            "asn": "AS7552 Viettel Group",
+        }
+    )
+    datacenter = normalize_ipapi_payload(
+        {
+            "is_bogon": False,
+            "cc": "US",
+            "company": "Microsoft Azure",
+            "asn": "AS8075 Microsoft Corporation",
+        }
+    )
+
+    assert merge_intelligence("1.1.1.1", quality=residential)["ip_type"] == "residential"
+    assert merge_intelligence("2.2.2.2", quality=datacenter)["ip_type"] == "datacenter"
+
+
 def test_earnapp_probe_keeps_generic_latency_separate(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
