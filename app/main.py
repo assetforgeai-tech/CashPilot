@@ -752,7 +752,7 @@ async def _run_earnapp_lifecycle_scheduler() -> None:
                 evidence = snapshot_evidence
             if not isinstance(evidence, Mapping):
                 continue
-            usage = evidence.get("usage_current", evidence.get("usage_total", 0))
+            usage = earnapp_lifecycle.effective_usage(evidence)
             decision = earnapp_lifecycle.evaluate_node(
                 {
                     "usage": usage or 0,

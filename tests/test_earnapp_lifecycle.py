@@ -169,6 +169,48 @@ async def test_scheduler_prefers_latest_account_snapshot_over_stale_spec_evidenc
 
 
 @pytest.mark.asyncio
+async def test_scheduler_uses_uptime_for_qualified_uptime_billing(monkeypatch):
+    node = {
+        "logical_node_id": "earnapp-mac-qualified-uptime",
+        "account_id": 470,
+        "assigned_worker_id": 3098,
+        "device_id": "sdk-mac-qualified-uptime",
+        "state": "ACTIVE",
+        "proxy_health": "healthy",
+        "usage_baseline": 100.0,
+        "window_started_at": (datetime.now(UTC) - timedelta(minutes=10)).isoformat(),
+        "same_proxy_recreates": 2,
+        "rotate_count": 1,
+    }
+    monkeypatch.setattr(main.database, "list_earnapp_logical_nodes", AsyncMock(return_value=[node]))
+    monkeypatch.setattr(main.database, "get_provider_instance_spec", AsyncMock(return_value={}))
+    monkeypatch.setattr(
+        main.database,
+        "get_latest_earnapp_snapshot",
+        AsyncMock(
+            return_value={
+                "collected_at": datetime.now(UTC).isoformat(),
+                "devices_json": (
+                    '[{"device_id":"sdk-mac-qualified-uptime",'
+                    '"billing":"qualified_uptime","usage_current":0,'
+                    '"usage_total":0,"uptime":160,"total_uptime":160}]'
+                ),
+            }
+        ),
+    )
+    update = AsyncMock(return_value=True)
+    execute = AsyncMock(return_value=True)
+    monkeypatch.setattr(main.database, "update_earnapp_lifecycle", update)
+    monkeypatch.setattr(main, "_execute_earnapp_lifecycle_action", execute)
+
+    await main._run_earnapp_lifecycle_scheduler()
+
+    execute.assert_not_awaited()
+    assert update.await_args.args[1].action == "healthy"
+    assert update.await_args.kwargs["usage"] == 160.0
+
+
+@pytest.mark.asyncio
 async def test_scheduler_refreshes_stale_account_snapshot_before_flatline_recreate(monkeypatch):
     node = {
         "logical_node_id": "earnapp-mac-refresh",

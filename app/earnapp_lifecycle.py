@@ -13,6 +13,7 @@ from typing import Any
 # A short flatline window lets the worker recover promptly; the account API
 # can lag, so this is still long enough to avoid reacting to one poll.
 FLATLINE_MINUTES = 10
+_UPTIME_BILLING = frozenset({"uptime", "fixed", "qualified_uptime"})
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,31 @@ class LifecycleDecision:
     same_proxy_recreates: int
     rotate_count: int
     reason: str = ""
+
+
+def effective_usage(snapshot: Mapping[str, Any]) -> float:
+    """Return the workload counter appropriate for the account billing mode."""
+    billing = str(snapshot.get("billing") or "").strip().lower()
+    keys = (
+        ("uptime", "total_uptime", "earned_total", "usage_total", "usage_current")
+        if billing in _UPTIME_BILLING
+        else (
+            "usage_total",
+            "usage_current",
+            "bandwidth",
+            "total_bandwidth",
+            "earned_total",
+        )
+    )
+    values = []
+    for key in keys:
+        try:
+            value = float(snapshot.get(key) or 0)
+        except (TypeError, ValueError):
+            continue
+        if value > 0:
+            values.append(value)
+    return max(values, default=0.0)
 
 
 def _when(value: Any, default: datetime) -> datetime:
