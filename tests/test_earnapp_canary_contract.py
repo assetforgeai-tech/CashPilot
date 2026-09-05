@@ -484,9 +484,9 @@ def test_ios_generated_entrypoint_runs_registration_after_profile_boot_before_ru
     startup = earnapp_runtime.ios_entrypoint_script().decode("utf-8")
 
     assert "/usr/local/bin/ios-register-device" in startup
-    assert "CP_EARNAPP_IOS_REDSOCKS" in startup
-    assert "pkill -x redsocks" in startup
-    assert "iptables -t nat -D OUTPUT -p tcp -j CP_EARNAPP_IOS_REDSOCKS" in startup
+    assert "CP_EARNAPP_IOS_REDSOCKS" not in startup
+    assert "pkill -x redsocks" not in startup
+    assert "unset PROXY_CREDENTIALS PROXY_HOST PROXY_PORT PROXY_USER PROXY_PASS" in startup
     assert 'exec /usr/local/bin/entrypoint-original.sh "$@"' in startup
 
 

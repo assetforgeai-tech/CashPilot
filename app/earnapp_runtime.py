@@ -223,10 +223,7 @@ def ios_entrypoint_script() -> bytes:
         b"#!/usr/bin/env bash\n"
         b"set -euo pipefail\n"
         b"/usr/local/bin/ios-register-device\n"
-        b"iptables -t nat -D OUTPUT -p tcp -j CP_EARNAPP_IOS_REDSOCKS 2>/dev/null || true\n"
-        b"iptables -t nat -F CP_EARNAPP_IOS_REDSOCKS 2>/dev/null || true\n"
-        b"iptables -t nat -X CP_EARNAPP_IOS_REDSOCKS 2>/dev/null || true\n"
-        b"pkill -x redsocks 2>/dev/null || true\n"
+        b"unset PROXY_CREDENTIALS PROXY_HOST PROXY_PORT PROXY_USER PROXY_PASS\n"
         b'exec /usr/local/bin/entrypoint-original.sh "$@"\n'
     )
 
