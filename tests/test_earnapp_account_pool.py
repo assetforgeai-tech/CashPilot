@@ -2199,7 +2199,9 @@ def test_deleted_duplicate_profile_stays_deleted_when_imported_against_populated
                 await earnapp_accounts.import_account(_payload("profile-duplicate", "same@example.com"))
 
             db = await database._get_db()
-            row = await (await db.execute("SELECT state FROM earnapp_accounts WHERE id = ?", (duplicate_id,))).fetchone()
+            row = await (
+                await db.execute("SELECT state FROM earnapp_accounts WHERE id = ?", (duplicate_id,))
+            ).fetchone()
             assert row["state"] == "DELETED"
             assert (await earnapp_accounts.list_accounts())[0]["id"] == canonical_id
 
