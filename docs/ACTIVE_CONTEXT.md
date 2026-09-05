@@ -1326,3 +1326,40 @@ historical snapshots and read-only inspection stay available.
   with the same proxy before rotation, while proxy/egress failures rotate
   immediately and account-auth failures remain deferred. The lifecycle and
   canary contract suites pass with the new threshold.
+
+## EarnApp macOS workload investigation after v1.20.8 (2026-09-05)
+
+- Server UI and test-US worker were upgraded to `v1.20.8` with their existing
+  volumes preserved; the server SQLite integrity check returned `ok`, and both
+  containers are healthy with restart count `0`.
+- The authoritative collector now confirms mac-09, mac-11, and mac-12 are
+  genuinely linked, online, VN, and `qualified_uptime`; all three still report
+  zero usage/uptime in the short observation window. This is not the prior
+  false-online/429 result.
+- Restart A/B was completed without changing identity, volume, account, or
+  proxy: mac-11 used `docker restart`, while mac-12 used `stop` then `start`.
+  Both returned healthy but did not produce a metric delta, so restart style is
+  not the primary cause.
+- A DB/runtime proxy split was found for mac-11: the database expected proxy
+  `12886`, while its prior runtime carried the route later assigned to mac-12.
+  Server-side CAS adoption correctly rejected the inconsistent authority
+  snapshot (HTTP 409), so no unsafe DB mutation occurred. Recreating mac-11
+  from the authoritative server spec restored proxy `12886`/its expected
+  egress and produced a fresh `cid_set`; link/online/VN evidence remains valid,
+  but usage is still pending.
+- Positive-control mac-08 remains untouched and continues to show sustained
+  `cmd_tun_close` workload. Do not create further UUID/proxy experiments until
+  account-side workload assignment or profile/runtime eligibility is compared
+  through redacted evidence; `online` and `cid_set` alone are insufficient.
+- Redacted profile comparison found no missing Mac contract field. Mac-08 and
+  mac-12 use the same model, macOS version, UA, timezone, runtime flags and
+  profile schema; their identity values are correctly unique. Account-side
+  evidence instead shows mac-08 has `country`, `ips`, uptime and earnings,
+  while mac-12 has only `qualified_uptime`/rate and no assigned IP or uptime.
+- A lifecycle defect was reproduced: the scheduler always preferred
+  `usage_current`, which remains zero for `qualified_uptime` devices even when
+  their uptime or earnings increases. This caused false flatline recovery and
+  explained the unexpected automatic recreates during controlled testing.
+  Lifecycle now selects the workload counter by billing mode; a regression
+  test failed before the fix and passes after it. The lifecycle and canary
+  contract suites pass (`205 passed, 1 skipped`).
