@@ -2,6 +2,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $sourceBase = Join-Path ([IO.Path]::GetTempPath()) ('earnapp-publish-' + [guid]::NewGuid().ToString('N'))
 $remoteRoot = '/tmp/cashpilot-earnapp-generic-20260905'
+$publishTag = if ($env:EARNAPP_PUBLISH_TAG) { $env:EARNAPP_PUBLISH_TAG } else { '20260905-gap2' }
 $vpsFile = 'D:\1. WORK_true\CashPilot\earnapp_update_05092026\vps.txt'
 $credential = @{}
 Get-Content -LiteralPath $vpsFile | ForEach-Object {
@@ -40,20 +41,20 @@ sudo docker login ghcr.io -u assetforgeai-tech --password-stdin < "$ROOT/ghcr-to
 for p in macos ios ubuntu; do
   tag=$p
   [[ "$p" == macos ]] && tag=mac-canary
-  sudo docker build --pull=false -t "cashpilot/earnapp-$tag:20260905-gap" "$ROOT/$p"
+sudo docker build --pull=false -t "cashpilot/earnapp-$tag:$publishTag" "$ROOT/$p"
 done
-sudo docker tag cashpilot/earnapp-mac-canary:20260905-gap ghcr.io/assetforgeai-tech/cashpilot-earnapp-macos:20260905-gap
-sudo docker tag cashpilot/earnapp-ios:20260905-gap ghcr.io/assetforgeai-tech/cashpilot-earnapp-ios:20260905-gap
-sudo docker tag cashpilot/earnapp-ubuntu:20260905-gap ghcr.io/assetforgeai-tech/cashpilot-earnapp-ubuntu:20260905-gap
-sudo docker push ghcr.io/assetforgeai-tech/cashpilot-earnapp-macos:20260905-gap
-sudo docker push ghcr.io/assetforgeai-tech/cashpilot-earnapp-ios:20260905-gap
-sudo docker push ghcr.io/assetforgeai-tech/cashpilot-earnapp-ubuntu:20260905-gap
+sudo docker tag "cashpilot/earnapp-mac-canary:$publishTag" "ghcr.io/assetforgeai-tech/cashpilot-earnapp-macos:$publishTag"
+sudo docker tag "cashpilot/earnapp-ios:$publishTag" "ghcr.io/assetforgeai-tech/cashpilot-earnapp-ios:$publishTag"
+sudo docker tag "cashpilot/earnapp-ubuntu:$publishTag" "ghcr.io/assetforgeai-tech/cashpilot-earnapp-ubuntu:$publishTag"
+sudo docker push "ghcr.io/assetforgeai-tech/cashpilot-earnapp-macos:$publishTag"
+sudo docker push "ghcr.io/assetforgeai-tech/cashpilot-earnapp-ios:$publishTag"
+sudo docker push "ghcr.io/assetforgeai-tech/cashpilot-earnapp-ubuntu:$publishTag"
 sudo docker logout ghcr.io >/dev/null
-sudo docker image inspect ghcr.io/assetforgeai-tech/cashpilot-earnapp-macos:20260905-gap ghcr.io/assetforgeai-tech/cashpilot-earnapp-ios:20260905-gap ghcr.io/assetforgeai-tech/cashpilot-earnapp-ubuntu:20260905-gap --format '{{.RepoTags}} {{.Id}}'
+sudo docker image inspect "ghcr.io/assetforgeai-tech/cashpilot-earnapp-macos:$publishTag" "ghcr.io/assetforgeai-tech/cashpilot-earnapp-ios:$publishTag" "ghcr.io/assetforgeai-tech/cashpilot-earnapp-ubuntu:$publishTag" --format '{{.RepoTags}} {{.Id}}'
 rm -f "$ROOT/ghcr-token.txt"
 rm -rf "$ROOT"
 '@
-    $remoteScript = $remoteScript.Replace('__REMOTE_ROOT__', $remoteRoot)
+    $remoteScript = $remoteScript.Replace('__REMOTE_ROOT__', $remoteRoot).Replace('$publishTag', $publishTag)
     [IO.File]::WriteAllText((Join-Path $sourceBase 'remote.sh'), $remoteScript, (New-Object Text.UTF8Encoding($false)))
     & $pscp -batch -pwfile $passwordFile $tokenFile ($credential['user'] + '@' + $credential['ip'] + ":$remoteRoot/ghcr-token.txt") | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'GHCR token upload failed' }

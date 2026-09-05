@@ -874,3 +874,11 @@ cfc6823769b2: Pushed
 [cashpilot/earnapp-mac-canary:20260905-gap ghcr.io/assetforgeai-tech/cashpilot-earnapp-macos:20260905-gap] sha256:df3748898c9cf617bed0a3312bfb004201c4d1c1ffa40526c4171f6d3620918a
 [cashpilot/earnapp-ios:20260905-gap ghcr.io/assetforgeai-tech/cashpilot-earnapp-ios:20260905-gap] sha256:aa78351e3280c25dd3727a0de6ce5cefb7407ed81a91bc19b65532f1aca37764
 [cashpilot/earnapp-ubuntu:20260905-gap ghcr.io/assetforgeai-tech/cashpilot-earnapp-ubuntu:20260905-gap] sha256:598b87d32dee6681f97ffecdb6342282ca8004447dc4cddc64a13b73b379bb43
+
+2026-09-05 gap2 publish after resolved-endpoint handoff:
+
+- MacOS: `ghcr.io/assetforgeai-tech/cashpilot-earnapp-macos:20260905-gap2`, image digest `sha256:3463435e02453fc15075a586e1938d6ed7378ec46f4351d3f661f2029a13ca72`, runtime manifest `510e4f2b5e2310b7a76f51efbe779d49b99b2419820fd3903838281b8d2ff7fa`.
+- iOS: `ghcr.io/assetforgeai-tech/cashpilot-earnapp-ios:20260905-gap2`, image digest `sha256:aa78351e3280c25dd3727a0de6ce5cefb7407ed81a91bc19b65532f1aca37764`.
+- Ubuntu: `ghcr.io/assetforgeai-tech/cashpilot-earnapp-ubuntu:20260905-gap2`, image digest `sha256:71aeb822295195e50a127534c7554aa3f749a147c8e24633eb182ea92037d029`.
+
+The publisher logged out from GHCR and removed the remote token/build directory after successful inspection.
