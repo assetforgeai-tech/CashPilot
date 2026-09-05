@@ -43,8 +43,19 @@ def test_mac_profile_blob_uses_the_official_boot_js_default_key():
 
 
 def test_image_builder_default_source_points_to_cashpilot_bundle():
-    expected = Path(__file__).resolve().parents[2] / "earnapp_new_update" / "earnapp-runtime-files" / "mac"
+    expected = Path(__file__).resolve().parents[3] / "earnapp_new_update" / "earnapp-runtime-files" / "mac-1.660.577"
     assert build_earnapp_canary_image.default_source_dir() == expected
+    ubuntu = build_earnapp_canary_image.default_source_dir("ubuntu")
+    assert ubuntu == Path(__file__).resolve().parents[3] / "earnapp_update_05092026" / "runtime" / "ubuntu"
+
+
+def test_mac_proxy_handoff_pins_the_resolved_ipv4_for_source_iptables():
+    entrypoint = earnapp_runtime.proxy_entrypoint_script("macos").decode("utf-8")
+
+    handoff = entrypoint.index('export PROXY_HOST="$PROXY_IP"')
+    source_exec = entrypoint.index('exec "$SANITIZED_ENTRYPOINT" "$@"')
+    assert "unset PROXY_CREDENTIALS" in entrypoint[handoff - 128 : handoff]
+    assert handoff < source_exec
 
 
 def _request(path: str) -> Request:
@@ -290,7 +301,7 @@ def test_verified_image_labels_are_fail_closed():
 
 def test_mac_runtime_manifest_is_derived_from_authoritative_artifact_hashes():
     assert earnapp_runtime.runtime_asset_manifest_sha256() == (
-        "2e78b472799b6a22aba93664da435dbd6810c1c3b69ec1c64cde968ecc763810"
+        "510e4f2b5e2310b7a76f51efbe779d49b99b2419820fd3903838281b8d2ff7fa"
     )
     assert earnapp_runtime.runtime_asset_manifest_sha256() == earnapp_runtime.MAC_RUNTIME_ASSET_MANIFEST_SHA256
 
@@ -484,6 +495,9 @@ def test_ios_generated_entrypoint_runs_registration_after_profile_boot_before_ru
     startup = earnapp_runtime.ios_entrypoint_script().decode("utf-8")
 
     assert "/usr/local/bin/ios-register-device" in startup
+    assert "CP_EARNAPP_IOS_REDSOCKS" not in startup
+    assert "pkill -x redsocks" not in startup
+    assert "unset PROXY_CREDENTIALS PROXY_HOST PROXY_PORT PROXY_USER PROXY_PASS" in startup
     assert 'exec /usr/local/bin/entrypoint-original.sh "$@"' in startup
 
 
@@ -573,6 +587,18 @@ def test_macos_proxy_wrapper_registers_seeded_uuid_before_runtime_handoff():
     assert '"$(cat "$STATE_DIR/registered")" != "$EXPECTED_DEVICE_ID"' in wrapper
 
 
+def test_macos_source_entrypoint_preserves_decline_cooldown_and_crash_retry():
+    source = build_earnapp_canary_image.default_source_dir("macos") / "entrypoint.sh"
+    if not source.is_file():
+        pytest.skip("operator-supplied EarnApp runtime bundle is not present")
+    wrapper = source.read_text(encoding="utf-8")
+
+    assert "tunnel_init_decline" in wrapper
+    assert 'DECLINE_COOLDOWN_SEC="${DECLINE_COOLDOWN_SEC:-600}"' in wrapper
+    assert "connect decline cooldown" in wrapper
+    assert "while true; do" in wrapper
+
+
 def test_macos_proxy_wrapper_declares_state_dir_before_identity_recovery_guard():
     wrapper = earnapp_runtime.generated_runtime_artifacts("macos")["cashpilot-proxy-entrypoint"].decode()
     assert wrapper.index("STATE_DIR=/etc/earnapp") < wrapper.index('"$STATE_DIR/uuid"')
@@ -637,7 +663,9 @@ def test_ubuntu_image_wraps_the_pinned_reference_runtime_with_fail_closed_proxyi
     assert "RUN mv /usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-original.sh" in recipe
     assert "COPY cashpilot-proxy-entrypoint /usr/local/bin/entrypoint.sh" in recipe
     assert 'ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]' in recipe
-    assert earnapp_runtime.UBUNTU_RUNTIME_ARTIFACT_HASHES == {}
+    assert earnapp_runtime.UBUNTU_RUNTIME_ARTIFACT_HASHES == {
+        "entrypoint.sh": "b03e12ed092f8386177910b9d9d89e6189c66730472a891d67192a958a4344bc",
+    }
 
 
 def test_ubuntu_thin_wrapper_tag_changes_when_the_reference_manifest_changes(monkeypatch):
@@ -648,11 +676,12 @@ def test_ubuntu_thin_wrapper_tag_changes_when_the_reference_manifest_changes(mon
 
 
 def test_ubuntu_reference_image_uses_the_verified_manifest_digest():
+    assert earnapp_runtime.UBUNTU_REFERENCE_IMAGE == "ghcr.io/assetforgeai-tech/cashpilot-earnapp-ubuntu"
     assert earnapp_runtime.UBUNTU_REFERENCE_DIGEST == (
-        "sha256:55fc019a70b269cc1023dd9a323640129298439f6b902e30e34c24b9bdc4d0ae"
+        "sha256:19b8d5831f0e83c0beb9a514bc9ed40c0be252ac101217fc01a6e2ac4714c559"
     )
     assert earnapp_runtime.UBUNTU_REFERENCE_IMAGE_PIN == (
-        "ghcr.io/s0ckd3/earnapp-2movn@sha256:55fc019a70b269cc1023dd9a323640129298439f6b902e30e34c24b9bdc4d0ae"
+        "ghcr.io/assetforgeai-tech/cashpilot-earnapp-ubuntu@sha256:19b8d5831f0e83c0beb9a514bc9ed40c0be252ac101217fc01a6e2ac4714c559"
     )
 
 

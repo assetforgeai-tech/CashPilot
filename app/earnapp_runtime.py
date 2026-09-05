@@ -34,10 +34,10 @@ UBUNTU_PLATFORM = "linux"
 UBUNTU_APPID = "node_earnapp.com"
 UBUNTU_DEVICE_PREFIX = "sdk-node-"
 UBUNTU_RUNTIME_HOST = "earnapp_ubuntu"
-UBUNTU_REFERENCE_IMAGE = "ghcr.io/s0ckd3/earnapp-2movn"
+UBUNTU_REFERENCE_IMAGE = "ghcr.io/assetforgeai-tech/cashpilot-earnapp-ubuntu"
 # Pin the Linux/amd64 child manifest rather than the multi-platform index so
 # the canary cannot silently select a different architecture.
-UBUNTU_REFERENCE_DIGEST = "sha256:55fc019a70b269cc1023dd9a323640129298439f6b902e30e34c24b9bdc4d0ae"
+UBUNTU_REFERENCE_DIGEST = "sha256:19b8d5831f0e83c0beb9a514bc9ed40c0be252ac101217fc01a6e2ac4714c559"
 UBUNTU_REFERENCE_IMAGE_PIN = f"{UBUNTU_REFERENCE_IMAGE}@{UBUNTU_REFERENCE_DIGEST}"
 
 # These are the only runtime artifacts copied into the canary image.  The
@@ -57,7 +57,9 @@ IOS_RUNTIME_ARTIFACT_HASHES = {
     "entrypoint.sh": "50b32e6f7280da75a7568cd25b6e4e43797f254517b1ee316f5b359f24e4144e",
 }
 
-UBUNTU_RUNTIME_ARTIFACT_HASHES: dict[str, str] = {}
+UBUNTU_RUNTIME_ARTIFACT_HASHES = {
+    "entrypoint.sh": "b03e12ed092f8386177910b9d9d89e6189c66730472a891d67192a958a4344bc",
+}
 
 _PLATFORM_CONTRACTS = {
     "macos": {
@@ -221,6 +223,7 @@ def ios_entrypoint_script() -> bytes:
         b"#!/usr/bin/env bash\n"
         b"set -euo pipefail\n"
         b"/usr/local/bin/ios-register-device\n"
+        b"unset PROXY_CREDENTIALS PROXY_HOST PROXY_PORT PROXY_USER PROXY_PASS\n"
         b'exec /usr/local/bin/entrypoint-original.sh "$@"\n'
     )
 
@@ -285,6 +288,12 @@ fi
 if [[ -f "$STATE_DIR/registered" && "$(cat "$STATE_DIR/registered")" == "complete" ]]; then
   rm -f "$STATE_DIR/registered"
 fi
+# The verified source entrypoint writes the proxy endpoint into an iptables
+# destination rule. Pass the already-resolved IPv4 so hostname endpoints cannot
+# produce an invalid rule or bypass the fail-closed route.
+unset PROXY_CREDENTIALS
+export PROXY_HOST="$PROXY_IP"
+export PROXY_PORT PROXY_USER PROXY_PASS PROXY_TYPE
 EXPECTED_DEVICE_ID="${EARNAPP_DEVICE_ID:?}"
 [[ -s "$STATE_DIR/uuid" && "$(cat "$STATE_DIR/uuid")" == "$EXPECTED_DEVICE_ID" ]]
 if [[ ! -s "$STATE_DIR/registered" || "$(cat "$STATE_DIR/registered")" != "$EXPECTED_DEVICE_ID" ]]; then
