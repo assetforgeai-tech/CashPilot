@@ -3501,6 +3501,29 @@ async def api_deploy_earnapp_canary(
     except Exception as exc:
         logger.warning("EarnApp canary deployment failed for %s: %s", body.logical_node_id, type(exc).__name__)
         raise HTTPException(status_code=502, detail="EarnApp canary deployment failed") from exc
+    # A worker deploy can complete before its next heartbeat.  Promote the
+    # exact CAS tuple here so verification does not race a RECOVERY_HOLD node.
+    # This does not claim a replacement or alter any identity/lease metadata.
+    with contextlib.suppress(Exception):
+        deployed_node = await database.get_earnapp_logical_node(body.logical_node_id)
+        if deployed_node and str(deployed_node.get("state") or "").upper() == "RECOVERY_HOLD":
+            deployed_worker = int(deployed_node.get("assigned_worker_id") or 0)
+            deployed_generation = int(deployed_node.get("generation") or 0)
+            deployed_device = str(deployed_node.get("device_id") or "").strip()
+            deployed_proxy = int(deployed_node.get("current_proxy_id") or 0)
+            if (
+                deployed_worker == int(worker_id)
+                and deployed_generation > 0
+                and deployed_device
+                and deployed_proxy > 0
+            ):
+                await database.heartbeat_earnapp_node(
+                    body.logical_node_id,
+                    deployed_worker,
+                    generation=deployed_generation,
+                    device_id=deployed_device,
+                    proxy_id=deployed_proxy,
+                )
     verification = await _persist_earnapp_canary_verification(
         body.logical_node_id,
         await _verify_earnapp_canary_with_proxy_rotation(body.logical_node_id),
