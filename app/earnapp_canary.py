@@ -570,7 +570,7 @@ async def deploy_platform_canary(
             "deployed",
             "verification_pending",
         }
-        and existing_contract == expected_contract
+        and (not current_spec or existing_contract == expected_contract)
     ):
         existing_worker = int(existing.get("worker_id") or 0)
         if existing_worker and existing_worker != int(worker_id):
