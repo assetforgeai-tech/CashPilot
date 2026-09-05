@@ -1,0 +1,3805 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Self-hosted passive income orchestrator. Deploy, manage, and monitor 14 providers from a single dashboard.">
+      
+      
+        <meta name="author" content="Sergio Fernandez">
+      
+      
+        <link rel="canonical" href="https://geiserx.github.io/CashPilot/ACTIVE_CONTEXT/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../icon.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>CashPilot Active Context - CashPilot</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/theme.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#cashpilot-active-context" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="CashPilot" class="md-header__button md-logo" aria-label="CashPilot" data-md-component="logo">
+      
+  <img src="../logo.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            CashPilot
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              CashPilot Active Context
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/GeiserX/CashPilot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GeiserX/CashPilot
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../guides/" class="md-tabs__link">
+          
+  
+  
+  Service Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../configuration/" class="md-tabs__link">
+          
+  
+  
+  Configuration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../security-defaults/" class="md-tabs__link">
+          
+  
+  
+  Security
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../backup-restore/" class="md-tabs__link">
+          
+  
+  
+  Operations
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../architecture/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="CashPilot" class="md-nav__button md-logo" aria-label="CashPilot" data-md-component="logo">
+      
+  <img src="../logo.svg" alt="logo">
+
+    </a>
+    CashPilot
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/GeiserX/CashPilot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GeiserX/CashPilot
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Service Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Service Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bandwidth Sharing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Bandwidth Sharing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/earnfm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Earn.fm
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/earnapp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    EarnApp
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/iproyal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IPRoyal Pawns
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/mysterium/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MystNodes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/nkn/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NKN
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/packetstream/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PacketStream
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/proxies-sx/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Proxies.sx
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/proxybase/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ProxyBase
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/proxybase-xyz/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ProxyBase Markets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/proxyrack/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ProxyRack
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/repocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repocket
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/spide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/traffmonetizer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Traffmonetizer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/urnetwork/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    URnetwork
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DePIN
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    DePIN
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/uprock/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Uprock
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/wipter/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wipter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Configuration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fleet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fleet Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Security
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security-defaults/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security Defaults
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../isolation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Network Isolation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Operations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../backup-restore/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backup and Restore
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../backup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backing Up Node Identities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/prometheus-metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prometheus Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../upgrade-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrade to v1.0.0
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Direction and Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../research/idle-network-traffic/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    What "idle" looks like on the wire
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../research/per-ip-device-limits/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Per-IP device limits
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../research/self-hosting-operability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Self-hosting operability review
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../research/fleet-upgrades-and-onboarding/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fleet upgrades & onboarding (design)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../research/earnings-benchmarks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Earnings benchmarks (design)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#earnapp-macos-lan-profile-recovery-2026-09-04" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EarnApp macOS LAN-profile recovery (2026-09-04)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#earnapp-macos-upgrade-evidence-and-lifecycle-gate-2026-09-04" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EarnApp macOS-upgrade evidence and lifecycle gate (2026-09-04)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#earnapp-v11817-multi-platform-canary-reboot-checkpoint-2026-09-04" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EarnApp v1.18.17 multi-platform canary reboot checkpoint (2026-09-04)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#earnapp-ubuntu-reference-closeout-and-worker-mutation-gate-2026-09-03" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EarnApp Ubuntu reference closeout and worker mutation gate (2026-09-03)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#earnapp-multi-platform-production-hardening-2026-09-01-source-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EarnApp multi-platform production hardening (2026-09-01, source gate)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#earnapp-ubuntu-reference-canary-restart-verification-2026-09-02" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EarnApp Ubuntu reference canary restart verification (2026-09-02)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#earnapp-ubuntu-docker-migration-unreleased-2026-08-31" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EarnApp Ubuntu Docker migration (unreleased, 2026-08-31)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#earnapp-ubuntu-canary-5-investigation-2026-08-31" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EarnApp Ubuntu canary 5 investigation (2026-08-31)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#current-source-policy-unreleased-2026-08-29" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Current source policy (unreleased, 2026-08-29)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v1141-compliance-rollout-closeout-2026-08-29" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v1.14.1 compliance rollout closeout (2026-08-29)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v1141-live-earnapp-status-historical-deployed-baseline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v1.14.1 live EarnApp status (historical deployed baseline)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#earnapp-platform-canary-investigation-historical-2026-08-28" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EarnApp platform canary investigation (historical, 2026-08-28)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#earnapp-v1134-closeout-historical-runtime-baseline-2026-08-28" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EarnApp v1.13.4 closeout (historical runtime baseline, 2026-08-28)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#earnapp-v1132-scoped-live-rollout-historical-checkpoint-2026-08-28" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EarnApp v1.13.2 scoped live rollout (historical checkpoint, 2026-08-28)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#earnapp-v1112-legacy-migration-live-closeout-2026-08-26" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EarnApp v1.11.2 legacy migration live closeout (2026-08-26)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#earnapp-accountrecovery-implementation-merged-baseline-2026-08-25-historical-checkpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EarnApp account/recovery implementation (merged baseline, 2026-08-25; historical checkpoint)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v1100-proxy-pool-metadatalocation-live-closeout-2026-08-25" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v1.10.0 Proxy Pool metadata/location live closeout (2026-08-25)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v190-proxy-pool-import-protocol-live-closeout-2026-08-25" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v1.9.0 Proxy Pool import-protocol live closeout (2026-08-25)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v181-proxy-pool-live-closeout-2026-08-25" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v1.8.1 Proxy Pool live closeout (2026-08-25)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#current-repository-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Current repository state
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#product-baseline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Product baseline
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#earnapp-proxy-pool-and-runtime-baseline-historical-runtime-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EarnApp Proxy Pool and runtime baseline (historical runtime contract)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v172-proxy-pool-live-closeout-2026-08-24" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v1.7.2 Proxy Pool live closeout (2026-08-24)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#retired-provider-compatibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retired-provider compatibility
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#product-work-represented-by-this-merged-baseline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Product work represented by this merged baseline
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#nkn-implementation-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NKN implementation status
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v161-nkn-chaindb-snapshot-closeout-2026-08-24" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v1.6.1 NKN ChainDB snapshot closeout (2026-08-24)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v163-nkn-host-helper-live-closeout-2026-08-24" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v1.6.3 NKN host-helper live closeout (2026-08-24)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#proxy-ack-rotation-baseline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Proxy ACK rotation baseline
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v120-live-canary-2026-08-22" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v1.2.0 live canary (2026-08-22)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v132-nkn-live-canary-2026-08-2223" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v1.3.2 NKN live canary (2026-08-22/23)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v151-nkn-lxd-closeout-2026-08-23" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v1.5.1 NKN LXD closeout (2026-08-23)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#protected-provider-matrix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Protected provider matrix
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verification-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verification status
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#earnapp-macos-zero-usage-investigation-2026-09-05" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EarnApp macOS zero-usage investigation (2026-09-05)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="EarnApp macOS zero-usage investigation (2026-09-05)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#restart-ab-follow-up-2026-09-05" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Restart A/B follow-up (2026-09-05)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#earnapp-macos-workload-investigation-after-v1208-2026-09-05" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EarnApp macOS workload investigation after v1.20.8 (2026-09-05)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="EarnApp macOS workload investigation after v1.20.8 (2026-09-05)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#short-loop-restart-and-egress-reconciliation-2026-09-05" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Short-loop restart and egress reconciliation (2026-09-05)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#leaseheartbeataccount-count-audit-2026-09-05" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lease/heartbeat/account-count audit (2026-09-05)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/GeiserX/CashPilot/edit/main/docs/ACTIVE_CONTEXT.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="cashpilot-active-context">CashPilot Active Context<a class="headerlink" href="#cashpilot-active-context" title="Permanent link">&para;</a></h1>
+<h2 id="earnapp-macos-lan-profile-recovery-2026-09-04">EarnApp macOS LAN-profile recovery (2026-09-04)<a class="headerlink" href="#earnapp-macos-lan-profile-recovery-2026-09-04" title="Permanent link">&para;</a></h2>
+<ul>
+<li>PR #119 merged as <code>92eb0e1</code> and release <code>v1.19.3</code> completed successfully.
+  The server UI and only test-US worker <code>3098</code> were upgraded to <code>1.19.3</code>;
+  both are healthy. No protected provider container, iOS node, Ubuntu node,
+  proxy lease, account assignment, identity volume or UUID was changed.</li>
+<li>The two macOS nodes were already linked to their intended accounts. Repeated
+  authenticated link checks returned the exact device UUIDs, so missing link
+  was not the root cause of their offline state.</li>
+<li>The root cause was the persisted <code>lan_ip=172.31.255.1</code>. SDK <code>1.660.577</code>
+  deliberately filters the full Docker bridge range <code>172.16.0.0/12</code>, producing
+  <code>devs changed: found 0 devs</code>. The profile migration changed only runtime
+  metadata to <code>lan_ip=10.255.255.1</code>; device UUID, serial, platform UUID,
+  account, volume and proxy assignment stayed unchanged.</li>
+<li><code>earnapp-v1182-us-mac-01</code> retains UUID
+  <code>sdk-mac-e769907c101b5e1f4789794fccfd76b7</code>, account <code>2</code>, proxy <code>12709</code> and
+  egress <code>116.98.185.18</code>. <code>earnapp-v1182-us-mac-02</code> retains UUID
+  <code>sdk-mac-60e6ff13760ba2c72c56d8d25bc31ec5</code>, account <code>470</code>, proxy <code>12737</code> and
+  egress <code>116.105.109.101</code>.</li>
+<li>Both exact runtimes now report <code>found 1 devs</code>, interface <code>en0
+  (10.255.255.1)</code>, connected agent WebSockets and successful <code>tunnel_init</code>.
+  A fresh authenticated account verification reports both exact UUIDs as
+  <code>online=true</code>, <code>banned=false</code>, country <code>VN</code>, and the expected proxy egress.
+  Usage remains zero immediately after recovery, so their status is
+  <code>online_pending_usage</code>; do not mark EarnApp <code>PROTECTED_DONE</code> until positive
+  usage/earnings is observed.</li>
+<li>The recovery exposed a stale persisted spec for macOS-02 with redacted proxy
+  credentials. It was restored from the same authoritative proxy lease without
+  rotation. Future full redeploy code must always rebuild credentials from the
+  live lease rather than treating the redacted provider-instance spec as a
+  replayable secret-bearing transport spec.</li>
+<li>Follow-up snapshots keep both exact UUIDs <code>online=true</code>, <code>banned=false</code>, and
+  country <code>VN</code>. macOS-02 has now recorded positive usage <code>141</code> and therefore
+  proves that the corrected profile can carry qualified workload; macOS-01
+  remains online at zero usage and its observation window remains open.
+  A controlled restart of macOS-01 preserved its container ID, UUID, account 2,
+  proxy <code>12709</code>, volume, and image; the post-restart log again showed one
+  detected <code>en0</code>, connected proxy/agent WebSockets, and successful
+  <code>tunnel_init</code>. Authenticated link/collection immediately afterward still
+  reported the exact UUID <code>online=true</code>, <code>country=VN</code>, and usage <code>0</code>, so link
+  presence is confirmed but restart alone has not yet produced positive usage.
+  macOS-02 had one transient proxy TLS
+  reset and recovered its proxy/agent WebSockets without a lease change. Its
+  container remains running with restart count <code>0</code> and no OOM. The 120-minute
+  post-recovery usage window for macOS-01 therefore remains open; this is not
+  sufficient evidence to mark the provider complete.</li>
+<li>PR #120 merged as <code>bf71f09</code>; Auto Release published and verified <code>v1.19.4</code>.
+  Only test-US worker <code>3098</code> was upgraded to the <code>v1.19.4</code> worker digest. The
+  worker is healthy with restart count <code>0</code>, and all six EarnApp canary
+  containers retained their IDs/runtime state across the worker-only upgrade.
+  The released recreate route now fetches the latest assigned MacOS/iOS
+  identity asset and replaces only that read-only bind; it does not link,
+  rotate, rewrite the UUID, or replace the persistent identity volume.</li>
+</ul>
+<h2 id="earnapp-macos-upgrade-evidence-and-lifecycle-gate-2026-09-04">EarnApp macOS-upgrade evidence and lifecycle gate (2026-09-04)<a class="headerlink" href="#earnapp-macos-upgrade-evidence-and-lifecycle-gate-2026-09-04" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Forensic review of <code>earnapp_macos_upgrade_20260904</code> confirms the upstream
+  image changed SDK <code>1.605.415</code> to <code>1.660.577</code>, improved interface/local-address
+  handling, filtered Docker bridge addresses, and added bounded tunnel-decline
+  cooldown. It did not change UUID generation, OAuth/link behavior, or provide
+  a blacklist bypass. The observed 100 MiB image also recorded cgroup OOMs and
+  is not a safe default.</li>
+<li>The exhaustive verifier compared equal-size binaries and found <code>17,330</code>
+  changed bytes across <code>104</code> ranges, all inside seven pkg <code>STORE_CONTENT</code>
+  records. ELF/pkg structure, native runtime, VFS, BuildID and all identity/link
+  surfaces are unchanged. The relevant behavior is limited to safe local
+  address/interface fallback, a derived <code>tunnel_init</code> alias and reduced payload,
+  full Docker bridge filtering (<code>172.16.0.0/12</code>), and a two-hour decline cap;
+  wrapper restart cooldown remains bounded to 60-3,600 seconds.</li>
+<li>CashPilot release <code>v1.18.23</code> is deployed UI-only. The UI is healthy at the
+  pinned digest and database integrity is <code>ok</code>; worker <code>1.18.16</code> and all
+  non-UI containers remained unchanged.</li>
+<li>PR #114 adds fail-closed capability checks to heartbeat pending-proxy
+  reconciliation and unhealthy-node rotation. Automatic EarnApp mutation now
+  requires an online worker reporting <code>&gt;=1.18.21</code>; lookup errors, old,
+  unknown-version, and offline workers remain observation-only.</li>
+<li>Live test-US worker <code>3098</code> reports <code>1.18.21</code>. Historical test-sing worker
+  <code>43406</code> reports <code>1.17.13</code>; post-deploy log sweep found no new proxy apply,
+  finalize, or rotation request to that worker.</li>
+<li>Six test-US canaries remain unchanged and within scope. iOS (2) and Ubuntu
+  (2) have positive usage; macOS-01 is online with zero usage during the
+  propagation window, while macOS-02 is online in the authenticated snapshot
+  but its persisted worker evidence is stale/error. No automatic mutation was
+  run during this verification checkpoint.</li>
+<li>The verified operator artifact bundle is available outside Git at
+  <code>earnapp_new_update/earnapp-runtime-files/mac-1.660.577</code>; its binary,
+  boot script, and entrypoint hashes match the forensic report. A dedicated
+  image <code>cashpilot/earnapp-mac-canary:asset-769bc08f7fc5</code> was built on
+  <code>vps-test-us</code> and passed Dockerfile/syntax checks, but has not replaced a
+  live node yet. Adoption remains limited to a bounded macOS canary with
+  memory monitoring.</li>
+<li>During the bounded canary, the first image rollout exposed a stale wrapper
+  checksum for the previous macOS binary, which removed the new binary and
+  caused <code>/usr/bin/earnapp</code> exit <code>127</code>. The checksum contract was corrected to
+  <code>d140b41a...d6911</code>, tests pass, and the test-US canary image was rebuilt with
+  manifest <code>e949d13d7861</code>. mac-01 and mac-02 now run SDK <code>1.660.577</code> with
+  unchanged UUIDs, volumes, account assignments, proxy egress and no OOM;
+  usage verification remains pending.</li>
+</ul>
+<h2 id="earnapp-v11817-multi-platform-canary-reboot-checkpoint-2026-09-04">EarnApp v1.18.17 multi-platform canary reboot checkpoint (2026-09-04)<a class="headerlink" href="#earnapp-v11817-multi-platform-canary-reboot-checkpoint-2026-09-04" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>vps-test-us</code> was rebooted in isolation. All six canary containers returned
+  automatically with restart policy <code>always</code>, restart count <code>0</code>, unchanged
+  UUIDs, volumes, image lanes and DB proxy assignments. Worker <code>3098</code> remains
+  on <code>1.18.17</code>; UI/worker key hashes still match and heartbeat remains healthy.</li>
+<li>Exact egress remained correct through the proxy sidecars. mac-01/mac-02,
+  iOS-01/iOS-02 and Ubuntu-01/02 retained their expected proxy egress; mac
+  runtime logs show Bright SDK proxy and agent WebSockets connected.</li>
+<li>mac-02's earlier <code>install_device</code> <code>504</code> was transient: proxy <code>12737</code> now
+  probes alive over HTTP with expected egress <code>116.105.109.101</code>, while SOCKS5
+  is not supported. A direct link retry returns <code>HTTP 200 / This device was
+  already linked</code>, so no proxy rotation or identity change was performed.</li>
+<li>Fresh authenticated snapshots show all six canaries <code>online=true</code>; iOS and
+  Ubuntu have positive usage/earnings, and both mac nodes now have
+  <code>country_code=VN</code> but usage remains <code>0</code> during the initial propagation
+  window. EarnApp is therefore not yet <code>PROTECTED_DONE</code>; continue the 120-minute
+  usage gate before any recreate decision.</li>
+<li>Lifecycle scheduler fix is now covered by a regression test: every node with
+  first zero-usage evidence persists <code>window_started_at</code>, so the 120-minute
+  flatline gate cannot reset on each scheduler pass; positive usage resets the
+  window and recovery counters.</li>
+</ul>
+<h2 id="earnapp-ubuntu-reference-closeout-and-worker-mutation-gate-2026-09-03">EarnApp Ubuntu reference closeout and worker mutation gate (2026-09-03)<a class="headerlink" href="#earnapp-ubuntu-reference-closeout-and-worker-mutation-gate-2026-09-03" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Fresh authenticated account evidence confirms all three Ubuntu reference
+  nodes are now <code>online=true</code>, country <code>US</code>, and have positive qualified usage
+  and earnings. Reference 01 reports <code>35,318,878 ms</code> / <code>$0.136</code>; reference 02
+  reports <code>25,188,345 ms</code> / <code>$0.097</code>; reference 03 reports <code>16,328,630 ms</code> /
+  <code>$0.062</code>.</li>
+<li>Reference 03 is <code>earnapp-ubuntu-reference-20260902-03</code>, device
+  <code>sdk-node-371434603e7548fdb10c18935829181c</code>, proxy <code>13848</code>, and egress
+  <code>130.180.232.61</code>. Its container remains running with restart count <code>0</code>, the
+  named volume <code>earnapp-ubuntu-reference-20260902-03-data</code>, the same UUID, and
+  matching observed egress. References 01/02/03 are successful protected
+  baseline and must not be recreated, rotated, or used for further canaries.</li>
+<li>The production iOS trio is also online with positive usage. For the production
+  MacOS trio, node 01 is online with positive usage, node 02's assigned UUID is
+  absent from the authenticated account snapshot, and node 03 is present but
+  offline with zero usage. Only MacOS 02/03 remain eligible for bounded repair;
+  all nodes with positive usage are inspection-only.</li>
+<li>The MacOS 02 failure was traced to overlapping proxy-recreate requests. Docker
+  returned <code>409 Conflict</code> for the stable container name after a heartbeat loaded
+  pre-mutation state and later overwrote the new pending binding/container ID,
+  allowing another request to enter the same recreate path.</li>
+<li>The source fix serializes EarnApp proxy apply/finalize per logical node,
+  authenticates before allocating a lock, and makes heartbeat evidence refresh
+  skip or reload around the same mutation boundary. Regression coverage includes
+  concurrent apply, apply/finalize ordering, heartbeat stale-write protection,
+  and unauthenticated request rejection.</li>
+<li>Fresh source verification on Python 3.14: focused EarnApp/proxy suite
+  <code>439 passed</code>; full suite <code>2473 passed, 8 skipped</code>; Ruff check, changed-file
+  format check, compileall, and <code>git diff --check</code> pass. This is still a source
+  gate: the live worker remains on <code>v1.17.10</code>; no worker redeploy or live MacOS
+  mutation has occurred for this fix yet.</li>
+</ul>
+<h2 id="earnapp-multi-platform-production-hardening-2026-09-01-source-gate">EarnApp multi-platform production hardening (2026-09-01, source gate)<a class="headerlink" href="#earnapp-multi-platform-production-hardening-2026-09-01-source-gate" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Current branch <code>feat/earnapp-production-hardening</code> adds the approved geo
+  matrix: VN residential -&gt; dedicated macOS/iOS Docker lanes; non-VN
+  residential -&gt; dedicated Ubuntu Docker lane. Generic/raw EarnApp deploy
+  remains fail-closed.</li>
+<li>Proxy changes now recreate only the EarnApp main container. The existing
+  identity volume, env, labels, UUID/device ID and resource limits are copied
+  from the live inspect contract; the old container is restored on failed
+  replacement. Non-EarnApp sidecars retain their prior restart behavior.</li>
+<li>Link verification is serialized per account, has a 5-second minimum relay,
+  and uses a 300-second cooldown after every five-attempt burst.</li>
+<li>Ubuntu fresh identity now matches the audited 22.04.5 profile contract:
+  <code>host.json</code>, <code>host.serial</code>, machine-id, release/interface/model/CPU/memory
+  fields, unique <code>sdk-node-&lt;32 hex&gt;</code> ID, and optional <code>earnapp-host ensure/apply</code>.</li>
+<li>Fresh source evidence: focused EarnApp/proxy tests <code>411 passed</code>; full suite
+  <code>2435 passed, 8 skipped</code>; Ruff, compileall and <code>git diff --check</code> passed.
+  No release, deploy, VPS mutation, account change, protected-node mutation or
+  provider outside EarnApp has occurred in this source gate.</li>
+<li>Next authorized live step is sequential canary only: 3 macOS + 3 iOS on
+  distinct VN residential leases, then 3 Ubuntu on distinct non-VN residential
+  leases. Each node must prove exact UUID, account link, online state and
+  positive usage before closeout.</li>
+</ul>
+<h2 id="earnapp-ubuntu-reference-canary-restart-verification-2026-09-02">EarnApp Ubuntu reference canary restart verification (2026-09-02)<a class="headerlink" href="#earnapp-ubuntu-reference-canary-restart-verification-2026-09-02" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Canary <code>earnapp-ubuntu-reference-20260902-01</code> was restarted in place only;
+  no node, account, lease, proxy, volume or provider outside this canary was
+  changed. The container stayed <code>running</code> with restart count <code>0</code>.</li>
+<li>Restart persistence proof: the container ID, named volume
+  <code>earnapp-ubuntu-reference-20260902-01-data</code>, and generated device UUID
+  <code>sdk-node-335d82dec8be4388bf643267bc32846c</code> were unchanged. The worker-side
+  egress remained <code>207.228.29.7</code> (US residential), matching proxy lease <code>13801</code>.</li>
+<li>Fresh authenticated collector evidence after restart reports the exact UUID
+  present, <code>online=true</code>, <code>banned=false</code>, <code>country_code=US</code>,
+  <code>billing=qualified_uptime</code>, <code>usage_current=845068</code>, <code>usage_total=845068</code>,
+  <code>usage_points=7</code>, and <code>earned_total=0.003</code>. Persisted workload state remains
+  <code>workload_verified</code>; no new link or identity operation was needed.</li>
+<li>This closes the bounded restart-persistence check for the reference canary.
+  It does not authorize the planned 3+3+3 production canary rollout; that
+  remains a separate, explicitly approved operation.</li>
+</ul>
+<p>Updated: 2026-08-31 (EarnApp Ubuntu canary 5 TLS/transport investigation)</p>
+<h2 id="earnapp-ubuntu-docker-migration-unreleased-2026-08-31">EarnApp Ubuntu Docker migration (unreleased, 2026-08-31)<a class="headerlink" href="#earnapp-ubuntu-docker-migration-unreleased-2026-08-31" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Source changes now route new Ubuntu EarnApp deployments through the dedicated
+  Docker lane using the pinned official Linux binary image
+  <code>cashpilot/earnapp-ubuntu:asset-f52fb20750d1</code>.</li>
+<li>Ubuntu identity profiles generate unique <code>id</code>, <code>serial</code>, <code>machine_id</code>,
+  hostname and <code>sdk-node-&lt;32 hex&gt;</code> device IDs per logical node. The image
+  removes <code>/.dockerenv</code>, persists <code>/etc/machine-id</code> and <code>tracking_id</code>, validates
+  proxy egress, and retries <code>install_device</code>/<code>is_linked</code> before starting the
+  official runtime.</li>
+<li>New and replacement EarnApp nodes are Docker-only across Ubuntu, macOS and
+  iOS. Legacy LXD heartbeat records remain readable as evidence only; deploy,
+  recreate, recovery and proxy mutation reject LXD.</li>
+<li>Regression evidence for this source change: Ruff, compileall and 513 focused
+  EarnApp/provider tests pass. No release, worker redeploy, VPS mutation,
+  proxy rotation, identity rewrite or existing node mutation has occurred yet.</li>
+<li>Live canary remains pending on <code>test-sing</code>: remove/recreate only the Ubuntu
+  canary after release, preload the pinned image, then verify Docker runtime,
+  exact UUID/egress, <code>linked:true</code>, country, positive usage and restart/reboot
+  persistence. Protected nodes and providers remain untouched.</li>
+</ul>
+<h2 id="earnapp-ubuntu-canary-5-investigation-2026-08-31">EarnApp Ubuntu canary 5 investigation (2026-08-31)<a class="headerlink" href="#earnapp-ubuntu-canary-5-investigation-2026-08-31" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Current target is only <code>earnapp-ubuntu-canary-test-sing-5</code>, LXD
+  <code>cashpilot-earnapp-earnapp-ubuntu-canary-test-sing-5</code>, device
+  <code>sdk-node-2a7f6d1a0695feb31485a559fc6f0137</code>, account <code>2</code>, generation <code>1</code>,
+  proxy <code>13746</code>, egress <code>64.52.28.108</code>. Do not mutate node 4, NKN, MYST or any
+  other protected provider/node/lease/identity/volume.</li>
+<li>Fresh read-only checks show the LXD guest and both services running, the
+  exact UUID present in the authenticated five-device list, and the server
+  lease/observed egress unchanged. The node is not complete: authenticated
+  daily usage remains zero for 2026-08-24 through 2026-08-30, and the status
+  endpoint does not report the exact UUID online.</li>
+<li>Chrome profile 40 confirms the authoritative remote symptom:
+  <code>sdk-node-fc6f0137</code> has blank country, <code>0s</code> usage and <code>$0</code>; the other Ubuntu
+  row <code>sdk-node-a4addc8f</code> is also at <code>0s</code>, while protected Mac/iOS devices have
+  positive usage. Local process/service health is not an online/usage proof.</li>
+<li>The operator's earlier TLS failure is tracked as a valid hypothesis. Strict
+  TLS 1.3 CA/SNI checks and a strict WSS <code>101</code> handshake currently succeed
+  through proxy <code>13746</code>; the live SPKI matches the historical pin and the
+  current pin document. Guest CA/time state is valid. No general TLS failure
+  has been reproduced.</li>
+<li>Proprietary binary pinning/handshake behavior is not fully observable, so
+  TLS remains residual uncertainty. Do not disable certificate verification,
+  remove pinning or treat <code>NODE_TLS_REJECT_UNAUTHORIZED</code> from the historical
+  Apple Docker build as applicable to the native Ubuntu ELF.</li>
+<li>Proxy <code>13746</code> rejects SOCKS5 UDP ASSOCIATE (<code>reply=7</code>), its <code>udp_ok</code> is
+  unknown, the guest rejects non-DNS UDP, and the catalog says
+  <code>egress.udp: none</code>. No current non-VN residential EarnApp candidate has
+  verified <code>udp_ok=true</code>. UDP requirement remains an investigation hypothesis,
+  not a confirmed root cause or permission to rotate the lease.</li>
+<li>sing-box supports UDP on SOCKS/TUN, including optional UDP-over-TCP, but the
+  current CashPilot guest deliberately blocks non-DNS UDP. This is a concrete
+  runtime/reference difference and the next bounded hypothesis to test only
+  after an impact map and a rollback-preserving node-5 A/B design.</li>
+<li>Read-only UDP ASSOCIATE probes for candidates <code>13746</code>, <code>13751</code>, <code>13754</code>,
+  <code>13781</code>, <code>13752</code>, <code>13768</code> and <code>13773</code> all returned SOCKS reply <code>7</code>. Rotating
+  node 5 among them would not change UDP capability. sing-box UoT is
+  proprietary and requires a compatible server; do not enable it against this
+  ordinary third-party SOCKS pool without server-side proof.</li>
+<li>Existing uncommitted retry code for <code>install_device</code> plus <code>is_linked</code> is not
+  sufficient to close the gate because the device is already registered while
+  usage is zero. Do not release/deploy it until the online/usage failure is
+  explained and the retry contract is re-reviewed against that evidence.</li>
+<li>Protected rollback artifacts for node 5 are LXD snapshots
+  <code>pre-singbox-ab-20260830T185328Z</code> and
+  <code>pre-singbox-ab-20260830T195303Z</code>. No release, proxy rotation, identity
+  rewrite, recreate, account mutation or provider change occurred in this
+  investigation.</li>
+</ul>
+<h2 id="current-source-policy-unreleased-2026-08-29">Current source policy (unreleased, 2026-08-29)<a class="headerlink" href="#current-source-policy-unreleased-2026-08-29" title="Permanent link">&para;</a></h2>
+<ul>
+<li>The current worktree changes EarnApp to a geo-platform runtime policy:
+  qualified VN residential proxies use the dedicated MacOS/iOS Docker lanes;
+  qualified non-VN residential proxies use the official Linux x64 Ubuntu LXD
+  lane.</li>
+<li>Generic catalog deploy, raw Docker deploy and caller-supplied platform
+  metadata on generic routes remain blocked; only dedicated server/worker
+  platform contracts may deploy or mutate a node.</li>
+<li>Ubuntu nodes retain sequential auto-deploy, non-VN residential proxy
+  selection, account binding, one-hour recovery hold, one-time replacement
+  tickets, CAS lifecycle and proxy rotation/reconciliation. Settings
+  <code>earnapp_lxd_cpu</code> and <code>earnapp_lxd_memory_mib</code> are authoritative for new
+  guests.</li>
+<li>The official EarnApp help article, updated 2026-07-30, states that Linux x64
+  on a 64-bit OS is supported, Ubuntu 20.04 is the tested distribution, the
+  Bright Data installer is authoritative, and the installed service starts on
+  reboot. The pinned installer SHA-256 in the host helper was rechecked against
+  the current official download and still matches.</li>
+<li>This source-only gate change does not alter the v1.14.1 live fleet evidence
+  recorded below. No release, deploy, VPS mutation, proxy lease, account,
+  identity or existing EarnApp node was changed in this worktree.</li>
+</ul>
+<h2 id="v1141-compliance-rollout-closeout-2026-08-29">v1.14.1 compliance rollout closeout (2026-08-29)<a class="headerlink" href="#v1141-compliance-rollout-closeout-2026-08-29" title="Permanent link">&para;</a></h2>
+<ul>
+<li>PR #55 merged as <code>21b4f90765cb98cfc97c753ea6e9f2ab6fc3e599</code> and
+  Auto Release run <code>33241201751</code> published <code>v1.14.1</code>. Post-merge Catalog
+  Check, CodeQL, Documentation, Lint, Tests and Auto Release all completed
+  successfully. The published UI and worker digests are respectively
+  <code>sha256:f8291ff7ecae02981edbdfd987ad3a45e3386efa9a843004148ad7773b38b552</code>
+  and
+  <code>sha256:09550bc1098eccd8dbef04b1b0d7e665196e460ef25414f25d4d856e078140f0</code>.</li>
+<li>The server UI was recreated alone and is healthy on <code>v1.14.1</code>, restart count
+  <code>0</code>, with the existing <code>cashpilot_cashpilot_data:/data</code> and
+  <code>cashpilot_cashpilot_fleet:/fleet</code> volumes unchanged. SQLite remains schema
+  <code>21</code> with <code>integrity=ok</code> and zero foreign-key violations. The live runtime
+  matrix returns <code>deployment_allowed=false</code> and
+  <code>deployment_policy=vps_runtime_prohibited</code>; both generic deployment and
+  existing-runtime mutation checks block EarnApp instances.</li>
+<li>Collection remained available through the compliance gate. The active
+  account's fresh redacted snapshot reports balance/total <code>2.511</code>, online
+  <code>3</code>, offline <code>1</code>; the legacy account remains <code>DISABLED</code>. No credential was
+  rendered during verification.</li>
+<li>Only <code>cashpilot-worker</code> on <code>test-sing</code> was recreated, with <code>--no-deps</code>, from
+  the pinned worker digest above. It is healthy on <code>v1.14.1</code>, restart count
+  <code>0</code>, and retains the existing <code>/data</code>, public-IP-slot, NKN-agent,
+  EarnApp-agent and Docker-socket mounts. The persisted worker ID and signing
+  key hashes, plus the public-IP-slot hash, are unchanged.</li>
+<li>Server worker row <code>43406</code> remains online with confirmed enrollment and a
+  fresh <code>v1.14.1</code> heartbeat. The NKN LXD instance remains <code>RUNNING</code>; its inner
+  official NKN container ID, one-CPU/one-GiB limits, wallet <code>#1</code>, lease client,
+  assignment version <code>3</code>, node identity and runtime evidence are unchanged.
+  Both NKN and EarnApp host agents remain enabled and active.</li>
+<li>All nine existing EarnApp containers and sidecars retained their exact IDs,
+  images, state, restart counts and mounts. The three active leases remain
+  bound to the same logical nodes and proxies: Mac node 1 to <code>#12706</code>, Mac
+  recovery node 2 to <code>#12708</code>, and iOS node 3 to <code>#12724</code>. No EarnApp node,
+  sidecar, volume, identity, proxy or account binding was deployed, stopped,
+  restarted, recreated, rotated, released, recovered, unlinked or deleted.</li>
+<li>Protected operational backups are
+  <code>/opt/cashpilot/backups/v1.14.1-ui-predeploy-20260829T075511Z</code> on the server
+  and
+  <code>/opt/cashpilot-worker/backups/v1.14.1-worker-predeploy-20260829T081122Z</code>
+  on <code>test-sing</code>. They contain compose/inspect evidence and data snapshots;
+  credentials remain protected and were not added to Git.</li>
+</ul>
+<h2 id="v1141-live-earnapp-status-historical-deployed-baseline">v1.14.1 live EarnApp status (historical deployed baseline)<a class="headerlink" href="#v1141-live-earnapp-status-historical-deployed-baseline" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Historical v1.14.1 status:</strong> <code>COMPLIANCE_BLOCKED</code> / <code>RUNTIME_DISABLED</code> for
+  all new VPS runtimes. That released build treated EarnApp terms as prohibiting
+  virtual machines, containers and hosting services, so it did not create new
+  Docker, LXD or other hosted nodes. This paragraph records the deployed
+  v1.14.1 baseline; the unreleased source policy above now authorizes only the
+  dedicated official Ubuntu x64/LXD lane.</li>
+<li>The Account Pool and collector remain enabled. The operator refreshed the
+  account token; the server stores only encrypted credentials and exposes only
+  expiry/status metadata. A token refresh restores collection only and does not
+  authorize a new hosted node.</li>
+<li>Fresh collection-only verification after the refresh and rollout returned
+  <code>status=ok</code>, balance/total <code>2.511</code>, online/offline <code>3/1</code>, and a healthy existing account
+  route on proxy <code>#12706</code>. The token expiry remains <code>unknown</code> because the
+  refreshed credential did not expose parseable expiry metadata. No runtime or
+  lease mutation was performed by this check.</li>
+<li>Existing EarnApp nodes are inspection-only and immutable. Do not recreate,
+  migrate, rotate, unlink, delete or alter their identities, volumes, sidecars,
+  account bindings or leases through this policy change.</li>
+<li>Generic deploy, platform-canary deploy, Ubuntu-LXD deploy and EarnApp
+  auto-deploy fail closed before worker, slot, proxy or lease calls. Collection,
+  historical snapshots and existing-node inspection remain available.</li>
+<li>Older sections below describe historical canary states. They are retained for
+  auditability; the unreleased source policy at the top is the current code
+  authorization.</li>
+</ul>
+<h2 id="earnapp-platform-canary-investigation-historical-2026-08-28">EarnApp platform canary investigation (historical, 2026-08-28)<a class="headerlink" href="#earnapp-platform-canary-investigation-historical-2026-08-28" title="Permanent link">&para;</a></h2>
+<ul>
+<li>At this historical checkpoint, the investigation reopened platform validation without changing the
+  immutable baseline. The existing Docker nodes <code>earnapp-canary-test-sing-1</code>
+  and <code>earnapp-recovery-test-sing-2</code> must not be recreated, migrated, rotated
+  or deleted; their containers, sidecars, volumes, identities, account binding
+  and leases remain protected.</li>
+<li>Fresh authenticated usage data corrects an earlier diagnostic mistake: node 1
+  has positive current-day qualified usage (<code>32,740,937 ms</code> on 2026-08-28),
+  while node 2 has only <code>18,142 ms</code> and is near a workload plateau. Both devices
+  are present, online and not banned. Online status alone is not a workload
+  success gate.</li>
+<li>The evidence does not establish Docker as the root cause. Node 1 has WSS
+  timeout/proxy <code>502</code> signals; node 2 has a clean route but little workload, so
+  control-plane allocation/eligibility remains an open hypothesis.</li>
+<li>New canaries are disposable only: iOS uses a fresh Docker node with a VN
+  residential lease; Ubuntu uses the official runtime in a fresh LXD guest with
+  a non-VN residential lease. Each must prove authenticated presence, online
+  state, positive workload delta, identity persistence and exclusive proxy
+  ownership.</li>
+<li>MacOS/iOS remain Docker-only. Apple-platform LXD conversion is outside the
+  approved design and has no deploy or experimental-spec path in CashPilot.</li>
+<li>Historical status only: EarnApp remained open for platform closeout until
+  iOS and Ubuntu-LXD canaries could pass all gates. The current compliance gate
+  supersedes that authorization. NKN, MYST and other <code>PROTECTED_DONE</code>
+  providers are unaffected.</li>
+</ul>
+<h2 id="earnapp-v1134-closeout-historical-runtime-baseline-2026-08-28">EarnApp v1.13.4 closeout (historical runtime baseline, 2026-08-28)<a class="headerlink" href="#earnapp-v1134-closeout-historical-runtime-baseline-2026-08-28" title="Permanent link">&para;</a></h2>
+<ul>
+<li>PR #52 merged at <code>8d2b86087c4cefc8e256aa8e359e2b2829c8af3e</code> after
+  CodeQL, Ruff and the full GitHub test suite passed. Auto Release run
+  <code>33137032952</code> published <code>v1.13.4</code>; the worker manifest is
+  <code>sha256:9e8e3e20f671fd775aa4443ba9d0b63b11fcb90bb63a96cb549213f9ed7e695f</code>.</li>
+<li>The release fixes EarnApp proxy rotation when the main container uses
+  <code>network_mode=container:&lt;sidecar-id&gt;</code>. After each EarnApp sidecar restart,
+  the worker validates the exact sidecar ID/name and restarts only the matching
+  main container so it joins the new network namespace. Apply, explicit
+  rollback and internal rollback are regression-covered; non-EarnApp sidecars
+  keep their existing behavior.</li>
+<li>Only <code>cashpilot-worker</code> on <code>test-sing</code> was recreated, with <code>--no-deps</code>, from
+  the pinned v1.13.4 digest. Its persisted worker ID/key hashes were unchanged,
+  the server received a fresh authenticated <code>1.13.4</code> heartbeat, and all EarnApp
+  and NKN runtime lifecycle snapshots were unchanged by the worker rollout.</li>
+<li><code>cashpilot-ui</code> intentionally remained on the verified v1.13.2 digest because
+  this fix executes inside the remote worker's sidecar orchestration path; no
+  server-side schema, route or scheduler change was required for the gate.</li>
+<li>Protected node <code>earnapp-canary-test-sing-1</code> remained inspect-only throughout:
+  container <code>346712d55ab6</code>, sidecar <code>59dc3b1034ac</code>, volume
+  <code>earnapp-canary-test-sing-1-data</code>, device
+  <code>sdk-mac-84809cc96464d92c8a2786714ae944b1</code>, proxy <code>12706</code>, egress
+  <code>171.251.97.103</code>, start times, restart counts and machine ID were unchanged.</li>
+<li>Disposable node <code>earnapp-recovery-test-sing-2</code> retained container
+  <code>075ad5d045a6</code>, sidecar <code>dbc24f66d495</code>, volume
+  <code>earnapp-recovery-test-sing-2-data</code>, generation <code>1</code>, account <code>2</code>, device
+  <code>sdk-mac-9e2dfc3d266d95b951cc24e5f5ab3142</code> and machine ID while two isolated
+  rotations succeeded. The first changed proxy <code>12708</code>/<code>116.98.176.124</code> to
+  <code>12724</code>/<code>14.236.137.88</code>; the second selected the prior proxy by affinity and
+  returned to <code>12708</code>/<code>116.98.176.124</code>. Main networking retained <code>eth0</code>, routes
+  and DNS after both sidecar restarts.</li>
+<li>Authenticated EarnApp evidence reported both device IDs present, online and
+  not banned. The account snapshot was balance <code>$2.284</code>, online <code>2</code>, offline
+  <code>0</code>. Final database state is <code>integrity=ok</code>, foreign-key violations <code>0</code>,
+  active rotation reservations <code>0</code>, and exactly two active EarnApp leases.</li>
+<li>Server backup is
+  <code>/opt/cashpilot/backups/earnapp-v134-rotation-20260828T030039Z</code>; worker/runtime
+  snapshots are under
+  <code>/opt/cashpilot-worker/backups/earnapp-v134-rotation-20260828T030039Z</code> and
+  <code>/opt/cashpilot-worker/backups/v1.13.4-worker-deploy-20260828T025707Z</code>.</li>
+<li>At this checkpoint EarnApp became <code>PROTECTED_DONE</code>. The 2026-08-29
+  compliance decision supersedes deploy authorization: it remains a protected
+  historical baseline, but hosted runtime is now <code>COMPLIANCE_BLOCKED</code> /
+  <code>RUNTIME_DISABLED</code>. Do not use either successful live node as a destructive
+  test.</li>
+</ul>
+<p>Updated: 2026-08-28 (historical v1.13.2 checkpoint; recovery gates were open at this release)</p>
+<h2 id="earnapp-v1132-scoped-live-rollout-historical-checkpoint-2026-08-28">EarnApp v1.13.2 scoped live rollout (historical checkpoint, 2026-08-28)<a class="headerlink" href="#earnapp-v1132-scoped-live-rollout-historical-checkpoint-2026-08-28" title="Permanent link">&para;</a></h2>
+<ul>
+<li>PR #48 merged at <code>ba2d29dda746327e0db445239244e12c684d9e03</code> and Auto
+  Release run <code>33104948032</code> published <code>v1.13.2</code> from that merge. Post-merge
+  Catalog Check, CodeQL, Lint, Tests and Auto Release all completed
+  successfully.</li>
+<li>Registry verification resolved the UI image to
+  <code>sha256:83a5b98c698d4ac59513d72108d516581e58be2895dcf9351ee68d77fc8ce913</code>
+  and the worker image to
+  <code>sha256:03419892ec982acb240d13b6238bbb9a6ea15f36ff1db281d39e8fb20a73e1a7</code>.</li>
+<li>Before the live change, a consistent server SQLite backup was written to
+  <code>/opt/cashpilot/backups/earnapp-v132-authority-backfill-20260827T192358Z</code>.
+  The approved metadata-only backfill set the legacy canary to
+  <code>platform=macos</code> and <code>expected_egress_ip=171.251.97.103</code> after correlating
+  database state, the active lease, proxy evidence, encrypted spec and running
+  container labels. Account, worker, generation, device identity and lease did
+  not change.</li>
+<li>Only <code>cashpilot-ui</code> on the server and <code>cashpilot-worker</code> on <code>test-sing</code> were
+  force-recreated without their dependencies. Both report version <code>1.13.2</code> and
+  healthy state. The UI database remains at schema <code>21</code> with <code>integrity=ok</code> and
+  zero foreign-key violations.</li>
+<li>Worker row <code>43406</code> retained persisted client ID
+  <code>e2a103a007d7e7c93172de6505e2e14839519dca4176989561dcf6f827a0871c</code>.
+  The signing-key file was verified unchanged without recording its secret
+  value. Fresh authenticated heartbeats arrived at <code>2026-08-27 19:30:18 UTC</code>
+  and <code>2026-08-27 19:31:21 UTC</code>.</li>
+<li>The live node remains <code>earnapp-canary-test-sing-1</code>, Account Pool id <code>2</code>
+  (<code>assetforgeai</code>), platform/backend <code>macos</code>/<code>docker</code>, proxy lease <code>#12706</code>, and
+  egress <code>171.251.97.103</code>. The runtime image remains
+  <code>cashpilot/earnapp-mac-canary:asset-4a1e80cbb95d</code>. Container
+  <code>cashpilot-earnapp-canary-test-sing-1</code>, sidecar
+  <code>cashpilot-earnapp-canary-test-sing-1-egress</code>, volume
+  <code>earnapp-canary-test-sing-1-data</code>, account binding, generation and device
+  identity were preserved. Fleet reports online <code>1</code>, offline <code>0</code>, with healthy
+  runtime state.</li>
+<li>Chrome profile 40 remains authoritative. It shows account <code>AssetForge AI</code>,
+  balance <code>$2.284</code>, device <code>sdk-mac-4ae944b1</code>, country <code>VN</code>, and active usage.
+  This is the remote-account evidence; container health alone is not treated as
+  proof of a linked online device.</li>
+<li>NKN LXD, Mysterium and all other <code>PROTECTED_DONE</code> providers, their containers,
+  volumes, identities, proxy/wallet leases and runtime state were not changed.</li>
+<li>At this v1.13.2 checkpoint EarnApp was not yet <code>PROTECTED_DONE</code>; the remaining
+  gates were restart/recovery persistence and isolated proxy rotation on a new
+  disposable canary. The v1.13.4 closeout above supersedes that open status.</li>
+</ul>
+<p>Updated: 2026-08-26 (EarnApp v1.11.2 legacy migration live closeout complete)</p>
+<h2 id="earnapp-v1112-legacy-migration-live-closeout-2026-08-26">EarnApp v1.11.2 legacy migration live closeout (2026-08-26)<a class="headerlink" href="#earnapp-v1112-legacy-migration-live-closeout-2026-08-26" title="Permanent link">&para;</a></h2>
+<ul>
+<li>PR #42 merged as <code>a6c6e4c18a7e4fdfca7b00396bbb51f6f6f2e849</code>. Auto Release run
+  <code>32902222108</code> passed and published <code>v1.11.2</code>; the tag resolves to the same
+  merge commit. All post-merge Catalog, CodeQL, Documentation, Lint and Tests
+  workflows also passed.</li>
+<li>Migration runs in one <code>BEGIN IMMEDIATE</code> transaction and rolls back on any
+  schema, archive, conflict or <code>foreign_key_check</code> failure. Legacy account and
+  lease data remain in <code>earnapp_accounts_legacy_v18</code> and
+  <code>earnapp_account_leases_legacy_v18</code>; interrupted v19 sources remain in
+  <code>earnapp_accounts_v19_legacy</code> rather than being discarded.</li>
+<li>Completion is fail-closed: the marker
+  <code>migration.earnapp_accounts.legacy_v19=complete</code> is accepted only when the
+  canonical account schema, child tables, primary keys, indexes, unique keys,
+  foreign keys, archive parity and row identities still match the contract.
+  Unknown child tables, external trigger references, duplicate archive IDs and
+  conflicting partial rows abort without committing.</li>
+<li>Legacy accounts are never silently activated. Legacy active leases become
+  deterministic <code>RECOVERABLE</code> logical nodes, while account credentials remain
+  encrypted and are adoptable only through an explicit Chrome import. Fernet
+  values are compared by decrypted plaintext during interrupted-copy recovery,
+  so normal token re-encryption does not create a false conflict.</li>
+<li>Regression coverage includes transaction rollback, archive preservation,
+  canonical/child schema validation, FK/index/trigger preservation, marker
+  validation, duplicate/conflicting archive detection, synthetic-account
+  quarantine and Fernet-equivalence checks. No provider catalog/runtime source,
+  proxy lease, wallet lease, identity or provider volume changed.</li>
+<li>Fresh local verification: focused EarnApp/Chrome/proxy/UI suite <code>369 passed</code>;
+  full non-live suite <code>1854 passed, 8 skipped</code> after fetching the fork tag
+  refspec used by CI. Ruff lint, compileall, JavaScript parse, deploy-baseline
+  and <code>git diff --check</code> pass. Repository-wide Ruff format still reports only
+  the unchanged historical plan file
+  <code>docs/superpowers/plans/2026-08-25-proxy-import-protocol.md</code>.</li>
+<li>A consistent SQLite backup plus encryption/session keys and compose evidence
+  was created at
+  <code>/opt/cashpilot/backups/v1.11.2-earnapp-migration-20260825T214804Z</code> before
+  deploy. Pre-migration DB evidence was <code>integrity=ok</code>, zero FK violations, one
+  legacy <code>VALID</code> account and three legacy <code>ACTIVE</code> leases.</li>
+<li>Only <code>cashpilot-ui</code> was recreated, using UI digest
+  <code>sha256:31d17ca6ba17a55ae6f15686bc945a1ed12dfad29ce87f1ed71fa2ef8605086d</code>.
+  It is healthy, reports <code>CASHPILOT_VERSION=1.11.2</code>, restart count <code>0</code>, and
+  serves the normal root redirect. The v1.11.2 worker image was published by
+  the release contract but was not deployed.</li>
+<li>Live migration retained the immutable v18 archives (<code>1</code> account, <code>3</code>
+  leases), materialized one canonical account as <code>DISABLED</code>, created three
+  deterministic <code>RECOVERABLE</code> logical nodes, and wrote marker
+  <code>migration.earnapp_accounts.legacy_v19=complete</code>. Integrity remains <code>ok</code>, FK
+  violations remain <code>0</code>, and the second controlled UI boot logged
+  <code>Schema at version 19; no migration needed this boot.</code></li>
+<li>Worker <code>60b180133540</code> kept its custom image, start time and restart count <code>0</code>;
+  the fingerprint of every non-UI container stayed unchanged. Counts for
+  workers/provider instances/MYST wallets/NKN wallets remained
+  <code>3 / 29 / 6266 / 26021</code>. No worker/provider runtime was redeployed.</li>
+</ul>
+<h2 id="earnapp-accountrecovery-implementation-merged-baseline-2026-08-25-historical-checkpoint">EarnApp account/recovery implementation (merged baseline, 2026-08-25; historical checkpoint)<a class="headerlink" href="#earnapp-accountrecovery-implementation-merged-baseline-2026-08-25-historical-checkpoint" title="Permanent link">&para;</a></h2>
+<ul>
+<li>PR #40 merged as <code>102fa9e1e163a9cb0ebd7715da19a19a33e17b51</code>; its implementation
+  commit is <code>9968a853ba5523c4bd96fa61e98473583c6a7e46</code>. At this historical
+  checkpoint the control plane was merged, while the official runtime/live
+  canary work was intentionally still open.</li>
+<li>The server now has an isolated EarnApp Account Pool: Google/Apple metadata,
+  Fernet-encrypted allowlisted cookies, masked owner APIs, token/cookie expiry
+  warnings, least-assigned account allocation, account-scoped read-only
+  collection, proxy capacity and logical-node recovery state. Schema is <code>19</code>.</li>
+<li>Recovery starts only after the existing <code>900s</code> stale-worker threshold.
+  <code>RECOVERY_HOLD</code> is exactly <code>3600s</code> (one hour): the original proxy remains
+  exclusive during the hold; after expiry its lease is released but
+  <code>preferred_proxy_id</code>, account binding, device identity and logical node are
+  retained. A different worker requires a one-time ticket plus generation/CAS;
+  CashPilot never automatically unlinks or deletes the remote EarnApp device.</li>
+<li>EarnApp routes require a generic-live, canonical residential proxy whose
+  latest matching-egress EarnApp WSS evidence is <code>CID_SET</code> and <code>eligible</code>.
+  Collection uses a proxy belonging to that account; before node one, a
+  dedicated account-control route is leased and then transferred atomically.
+  Proxy Pool selected/status/all deletion removes transient control-route rows
+  in the same transaction while preserving EarnApp accounts and credentials.</li>
+<li>The Chrome Manifest V3 importer reads only <code>auth</code>, <code>auth-method</code>,
+  <code>oauth-refresh-token</code>, <code>oauth-token</code>, <code>xsrf-token</code>, <code>brd_sess_id</code> and
+  <code>cg_uuid</code> from EarnApp. First import is explicit; subsequent cookie/startup/
+  15-minute synchronization applies only to the bound account. Both ordinary
+  provider imports and EarnApp sync now use one authenticated HTTPS CashPilot
+  origin under <code>4gmt.com</code>; the legacy plaintext HTTP/IP destination is removed.
+  Provider collectors still use their official upstream APIs. Google and Apple
+  cookies are never read, displayed or logged.</li>
+<li>EarnApp capacity and account-control allocation exclude legacy assignments,
+  active scoped leases and active control routes by both endpoint ID and
+  canonical egress IP, including duplicate rows that have not yet been marked.</li>
+<li>Final pre-PR hardening makes replacement-ticket creation a transactional
+  compare-and-swap: the node must still be in <code>RECOVERY_HOLD</code>/<code>RECOVERABLE</code>,
+  generation must match, and the target worker must exist. A heartbeat from the
+  original worker atomically cancels recovery metadata and revokes outstanding
+  same-generation tickets. Claims are rejected after the node is active again.</li>
+<li>EarnApp capacity is reported as distinct eligible/leaseable egress IPs, not
+  endpoint rows. The Chrome importer catches invalid CashPilot URLs inside its
+  visible error path, and cookie-change debounce uses a separate one-shot alarm
+  so it cannot overwrite the recurring 15-minute token-sync schedule.</li>
+<li>The merged baseline's earlier verification was <code>283 passed</code> focused and
+  <code>1812 passed, 8 skipped</code> full; the current migration-safety branch's fresh
+  verification is recorded in the section above.</li>
+<li>Historical checkpoint only: official catalog/runtime, MacOS/iOS emulation,
+  Ubuntu LXD deployment, worker provision/follow/link automation, DNS/reverse
+  proxy provisioning, Chrome validation and the live canary had not yet been
+  completed. See the v1.13.4 closeout section above for the current protected
+  state.</li>
+</ul>
+<h2 id="v1100-proxy-pool-metadatalocation-live-closeout-2026-08-25">v1.10.0 Proxy Pool metadata/location live closeout (2026-08-25)<a class="headerlink" href="#v1100-proxy-pool-metadatalocation-live-closeout-2026-08-25" title="Permanent link">&para;</a></h2>
+<ul>
+<li>PR #38 merged at <code>30ab8a2b4e4915deba9ed216e1b6fa7c47ea91ad</code>; Auto Release run
+  <code>32837209953</code> completed successfully and published <code>v1.10.0</code>.</li>
+<li>Only <code>cashpilot-ui</code> was redeployed. It is healthy at digest
+  <code>sha256:f62032cc8e0cac986c02ed2b1760b1f175942a4a0a2b4a9309d1c6f6828798c0</code>;
+  restart count is <code>0</code>. <code>cashpilot-worker</code> kept its existing container,
+  image, start time, health, and restart count; no worker/provider runtime was
+  changed.</li>
+<li>The final authenticated read-only snapshot contains <code>1,004</code> rows:
+  <code>1,000</code> generic-live and <code>4</code> generic-dead; <code>1,000</code> known egress and <code>4</code>
+  unresolved; <code>0</code> location pending, <code>0</code> IP-type pending, and <code>0</code> aggregate
+  metadata pending. Duplicate egress rows are <code>161</code>; canonical available is
+  <code>839</code>; active assignments and scoped leases are both <code>0</code>.</li>
+<li>All <code>1,000</code> known egress rows have <code>country_code=VN</code> and <code>ip_type=residential</code>.
+  The API/filter machine key is ISO alpha-2 <code>VN</code>; the UI derives the readable
+  label <code>Vietnam</code>. The four dead rows stay <code>Generic check failed</code>/unknown
+  because no authoritative egress exists.</li>
+<li>EarnApp evidence is independent of Location: <code>306</code> eligible, <code>273</code>
+  leaseable, <code>881</code> checked, <code>119</code> not checked, and <code>4</code> skipped due to generic
+  failure. Lease selection still requires canonical egress, no assignment or
+  lease, and latest <code>CID_SET</code> evidence.</li>
+<li>The one-IP canary and bounded metadata-only refresh persisted geo/IP-type
+  evidence without generic/EarnApp rechecks, rotation, lease/release,
+  assignment, duplicate cleanup, credential changes, wallet operations, or
+  provider actions. Full evidence is in
+  <code>docs/research/proxy-pool-metadata-location-live-closeout.md</code>.</li>
+<li>The old screenshot with many <code>Metadata pending</code>/<code>unknown</code> chips is a
+  pre-closeout capture; it is not current live state. The remaining safe data
+  quality item is limited to the four generic-dead rows.</li>
+</ul>
+<h2 id="v190-proxy-pool-import-protocol-live-closeout-2026-08-25">v1.9.0 Proxy Pool import-protocol live closeout (2026-08-25)<a class="headerlink" href="#v190-proxy-pool-import-protocol-live-closeout-2026-08-25" title="Permanent link">&para;</a></h2>
+<ul>
+<li>PR #36 merged at <code>eb3da8b1663af352a6386fef1d170d7e36784db7</code>; Auto Release
+  published GitHub tag <code>v1.9.0</code> and registry image tags <code>1.9.0</code>/<code>1.9</code>.</li>
+<li>The UI-only change adds a request-scoped import selector: <code>Auto</code>, <code>HTTP</code>, or
+  <code>SOCKS5</code>. Auto preserves SOCKS5-then-HTTP detection; a forced choice applies
+  only to the initial generic import check, while later scheduler/manual
+  rechecks remain automatic. No provider, worker, lease, wallet, identity,
+  migration, or live proxy-row code was changed.</li>
+<li>Live <code>cashpilot-ui</code> is healthy at digest
+  <code>sha256:9fb1593d7bcd6378d0ab97be96afd598112ac13826983867a422b8750592d717</code>,
+  reports <code>CASHPILOT_VERSION=1.9.0</code>, and has restart count <code>0</code>. The UI was
+  recreated with <code>--no-deps</code> and the existing volumes/network/ports.</li>
+<li><code>cashpilot-worker</code> remains container <code>60b180133540</code>, image
+  <code>cashpilot-worker-local:proxy-egress</code>, start time <code>2026-08-20T09:04:41Z</code>,
+  restart count <code>0</code>, and healthy. It was not pulled, recreated, restarted, or
+  redeployed. Database integrity remains <code>ok</code>.</li>
+<li>Read-only browser verification passed at desktop <code>1280px</code> and mobile <code>375px</code>:
+  no document overflow, selector default <code>auto</code>, options <code>Auto</code>/<code>HTTP</code>/<code>SOCKS5</code>,
+  visible label <code>Protocol</code>, and a <code>44px</code> control.</li>
+<li>The full read-only Proxy Pool sweep found <code>1,004</code> rows over <code>11</code> stable
+  pages, <code>1,003 alive / 1 dead</code>, <code>0</code> duplicate row IDs, HTTP protocol only,
+  provider <code>zlproxy</code> only, and <code>0</code> active worker/instance bindings. Scheduler
+  is currently disabled at <code>60</code> minutes/concurrency <code>32</code>.</li>
+<li>Live data-quality state is materially different from the older <code>v1.8.1</code>
+  snapshot: all <code>1,004</code> rows lack country/location and IP-type metadata;
+  <code>306</code> EarnApp rows are <code>CID_SET</code> eligible, <code>578</code> are <code>BLACKLIST</code> blocked,
+  and <code>120</code> have no EarnApp evidence. Duplicate reconciliation marks <code>164</code>
+  rows across <code>145</code> egress groups, with canonical IDs present for all marked
+  rows.</li>
+<li>Full evidence and bounded recommendations are recorded in
+  <code>docs/research/proxy-pool-v1.9.0-live-audit.md</code>. No live import, recheck,
+  delete, rotation, lease, release, assignment, or metadata normalization was
+  performed during the audit.</li>
+</ul>
+<h2 id="v181-proxy-pool-live-closeout-2026-08-25">v1.8.1 Proxy Pool live closeout (2026-08-25)<a class="headerlink" href="#v181-proxy-pool-live-closeout-2026-08-25" title="Permanent link">&para;</a></h2>
+<ul>
+<li>PR #33 merged at <code>098ac2b3eee1a77b09ec7855c328485f9ce7ef0a</code> and published
+  <code>v1.8.0</code>. The audit then found the <code>dawn_dashboard_session</code> masking gap. PR
+  #34 merged the isolated fix at <code>a3d2dce4bef66fdc1053fefda38cdbde3b422ed7</code>;
+  Auto Release run <code>32817037347</code> completed successfully and published <code>v1.8.1</code>.</li>
+<li>The server <code>cashpilot-ui</code> is healthy on the verified UI digest
+  <code>sha256:3ba1e9b4ba1cfb7e24eb9e8df47257953d4474f2dcdc29799c3a40ebeb22244d</code>;
+  container <code>0e67b499ff69</code>, <code>CASHPILOT_VERSION=1.8.1</code>, restart count <code>0</code>.
+  UI override <code>/opt/cashpilot/docker-compose.ui-v1.8.1.override.yml</code> has SHA-256
+  <code>fab6b15055a05a682a0571da8830d2f607767f34cc4c03b9e1d92cc0b830da25</code>.</li>
+<li><code>cashpilot-worker</code> remained container <code>60b180133540</code>, image
+  <code>cashpilot-worker-local:proxy-egress</code>, start time
+  <code>2026-08-20T09:04:41.088040401Z</code>, restart count <code>0</code>, and healthy. The
+  worker was not pulled, recreated, restarted or redeployed. DB integrity is
+  <code>ok</code>, schema <code>18</code>.</li>
+<li>A fresh authenticated read-only sweep retrieved all <code>3,223</code> proxy rows over
+  <code>33</code> bounded pages (maximum <code>100</code> items; maximum payload <code>117,744</code> bytes).
+  Generic alive/dead is <code>1,844 / 1,379</code>; egress known/unresolved is
+  <code>1,844 / 1,379</code>; country known <code>1,831</code>; IP type known <code>1,020</code>; metadata
+  pending aggregate <code>824</code>; duplicate egress rows <code>755</code>; canonical usable and
+  available are both <code>1,089</code>.</li>
+<li>EarnApp evidence counts are eligible <code>922</code>, leaseable <code>338</code>, checked <code>1,793</code>,
+  not checked <code>51</code>, and skipped because the generic check failed <code>1,379</code>.
+  Active legacy and scoped leases are both <code>0</code>. Scheduler remains enabled at
+  <code>60</code> minutes/concurrency <code>64</code>. No import, delete, recheck, rotation, lease,
+  release or assignment was performed.</li>
+<li>Authenticated Playwright checks passed on desktop <code>1440px</code> and mobile
+  <code>375px</code>: no page overflow, bounded server pagination, search/filter/sort and
+  pagination requests, correct ARIA sort transitions, and no console/page
+  errors. The mobile table's inner horizontal scroll is intentional.</li>
+<li>Endpoint map and redacted evidence are recorded in
+  <code>docs/research/proxy-pool-v1.8.0-live-audit.md</code>. The pre-fix audit found one
+  security gap: <code>dawn_dashboard_session</code> was populated in <code>/api/config</code> but was
+  not classified into <code>_secrets</code>; its value was not copied into docs. The
+  <code>v1.8.1</code> authenticated proof confirms that the key is absent from the
+  ordinary config map and present only as <code>_secrets.dawn_dashboard_session =
+  true</code>. No credential was rotated or deleted.</li>
+<li>Two data-quality follow-ups remain design-only: canonicalize <code>VN</code>/<code>Viet Nam</code>
+  labels (<code>39 / 1,542</code> rows in the closeout snapshot) and plan a
+  freshness-aware EarnApp re-probe. Do not bulk mutate either until an impact
+  map and explicit approval exist.</li>
+</ul>
+<h2 id="current-repository-state">Current repository state<a class="headerlink" href="#current-repository-state" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Historical repository/deployment checkpoint: canonical source and tag
+  <code>v1.13.2</code> both resolved to merge <code>ba2d29d</code>; the live
+  server UI and <code>test-sing</code> worker are verified on the v1.13.2 digests recorded
+  in the scoped-live section above. The deployment was limited to those two
+  CashPilot components and the existing EarnApp canary.</li>
+<li>At that checkpoint schema was <code>21</code>; the server database integrity check was
+  <code>ok</code> with zero foreign-key violations. EarnApp platform/device identity
+  remains immutable per logical node. Recovery/rotation mutation gates are now
+  closed by the current inspection-only policy.</li>
+<li>PR #27 upgrades the reported SQLite schema from 17 to 18 through
+  idempotent guards. A migration regression starts from a populated v17 proxy
+  schema and verifies that endpoints, worker assignments and provider masks are
+  retained while the new intelligence, evidence, import and scoped-lease
+  structures are added.</li>
+<li>The original direct-runtime and Docker canary history is retained for
+  traceability. The LXD runtime landed through PR #17, guarded canary adoption
+  through PR #18, the adoption timeout fix through PR #19, and the optional
+  ChainDB acceleration through PRs #21-#24.</li>
+<li>Release <code>v1.6.1</code> is published and verified. PR #21 added the snapshot
+  publisher/consumer contract, PR #22 fixed the release image build context, and
+  PR #23 added publisher compatibility with the VPS's Python 3.10 runtime.</li>
+<li>PR #1 (Grass retirement), PR #2 (fork GHCR images), PR #3 (fork install
+  surfaces), PR #4 (redacted historical evidence), PR #5 (current context),
+  PR #6 (read-only baseline refresh), PR #7 (proxy worker ACK rotation), PR #8
+  (post-merge baseline), PR #9 (<code>v1.2.0</code> canary context), PR #10 (NKN direct
+  runtime), PRs #11-#13 (NKN canary fixes), PRs #14-#16 (NKN context history),
+  PRs #17-#19 (LXD runtime, adoption and timeout fix), and PRs #21-#23 (ChainDB
+  acceleration and release/runtime fixes), PR #24 (shared ChainDB cache), and
+  PR #25 (bootstrap and standalone NKN host-helper closeout), PR #26 (NKN
+  <code>v1.6.3</code> live context), PR #27 (Proxy Pool qualification), PR #28
+  (persisted-egress intelligence fix), PR #29 (EarnApp probe TLS contract), PR
+  #30 (v1.7.2 live closeout), PR #31 (import enrichment), PR #32 (lease safety),
+  PR #33 (server-side pagination/UI hardening), and PR #34 (dashboard-session
+  masking) are merged.</li>
+<li>Release <code>v1.6.3</code> is published from merge commit <code>f5ee981</code>; Auto Release run
+  <code>32720862355</code> completed successfully and built both fork GHCR images. The UI
+  digest is
+  <code>sha256:7434350e08a622789ff67efb52d73bf5b88866510cf61c04603471201e9c86aa</code>
+  and the worker digest is
+  <code>sha256:69e02f99b16a6ec82590859f6b26596b6e7c26a3931788a531843e2c4777f249</code>.
+  Tests, Ruff, CodeQL, Documentation, Catalog Check and Auto Release all passed
+  on the same merge SHA.
+  This release evidence does not authorize a bulk server or worker redeploy.</li>
+<li>The source branch remains <code>main</code>; release/deploy state is operational
+  evidence and does not change the protected provider catalog.</li>
+<li>Proxy lease rotation is server-authoritative with worker-local probe/ACK,
+  persistent sidecar configuration and fail-closed CAS semantics. Generic proxy
+  assignment remains worker-level; NKN has its own direct public-IP slot model.</li>
+<li>Grass remains retired from the product. <code>test-sing</code> was explicitly approved
+  as disposable test state and cleaned before the NKN canary; its current state
+  is the worker, one LXD NKN node, and the stopped legacy Docker NKN container
+  retained only for rollback evidence.</li>
+<li>The implementation decision and safety boundaries are recorded in
+  <code>docs/research/provider-removal-grass-2026-08.md</code>.</li>
+</ul>
+<h2 id="product-baseline">Product baseline<a class="headerlink" href="#product-baseline" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Current catalog: 16 providers, 14 bandwidth and 2 DePIN.</li>
+<li>Current collectors: 9 shared-registry collectors plus the separate
+  account-scoped EarnApp collector.</li>
+<li>Current catalog metadata still contains 15 runtime-capable entries for
+  historical compatibility; the one manual-only entry remains explicit. NKN
+  direct slots stay outside the generic Docker queue. EarnApp also stays out of
+  that queue: VN residential proxies use dedicated MacOS/iOS Docker lanes,
+  while non-VN residential proxies use official Ubuntu x64/LXD; generic/raw
+  Docker paths remain blocked.</li>
+<li>Fifteen provider runtimes are <code>PROTECTED_DONE</code>; EarnApp is separately
+  <code>FOCUS_EARNAPP_MULTIPLATFORM</code> / <code>platform_restricted</code>. Its Account Pool, collector
+  and historical evidence remain available.</li>
+<li>Mysterium remains direct-only. Its wallet inventory, lease, identity,
+  WireGuard/TUN and runtime contracts are not altered by this branch.</li>
+</ul>
+<h2 id="earnapp-proxy-pool-and-runtime-baseline-historical-runtime-contract">EarnApp Proxy Pool and runtime baseline (historical runtime contract)<a class="headerlink" href="#earnapp-proxy-pool-and-runtime-baseline-historical-runtime-contract" title="Permanent link">&para;</a></h2>
+<ul>
+<li>EarnApp retains catalog/runtime metadata and an active collector lane. The
+  qualification and lease rules below apply to the dedicated Ubuntu LXD route;
+  no Mac/iOS or generic Docker runtime lease is authorized.</li>
+<li>Only the latest EarnApp WSS verdict <code>CID_SET</code> is eligible. <code>BLACKLIST</code> is
+  blocked, <code>DECLINE</code> is quality-rejected, and timeout/transport failures remain
+  unknown. WSS ping payloads are returned as binary pong frames without UTF-8
+  coercion.</li>
+<li>Country evidence comes from <code>ipwho.is</code>; quality flags and IP type come from
+  <code>ipapi.is</code>. The dashboard shows country/source, IP type/source, generic live
+  state, UDP evidence, generic latency, EarnApp verdict/reason/latency and last
+  check time without exposing proxy credentials.</li>
+<li>Duplicate egress rows remain available as raw import evidence, but only one
+  canonical endpoint can receive a new assignment or scoped lease. Existing
+  assignments are not revoked merely because duplicate detection discovers a
+  collision.</li>
+<li>EarnApp uses a scoped lease keyed by provider, worker and instance, separate
+  from the legacy worker-level proxy assignment. Proxy eligibility for other
+  providers is unchanged except that every new lease rejects an egress already
+  in active use.</li>
+<li>Duplicate export is masked by default. Raw credential export is owner-only
+  and requires an explicit operator action; stored import evidence remains
+  encrypted at rest.</li>
+<li><code>Delete all proxy pool</code> is intentionally absolute: after two UI confirmations
+  and two exact API confirmation values it deletes all endpoints, worker proxy
+  assignment rows, scoped leases, masks, probe evidence and import records.
+  Provider configuration and provider-instance rows remain, with their proxy
+  references cleared by foreign keys.</li>
+<li>Protected provider catalog/runtime/collector files are outside PRs #27-#29.
+  No provider marked <code>PROTECTED_DONE</code> was redesigned, redeployed or used as a
+  canary by this work.</li>
+<li>The final pre-PR audit corrected two isolated Proxy Pool edge cases: duplicate
+  canonicalization now prefers the latest EarnApp <code>CID_SET</code> evidence rather
+  than any historical/generic eligible probe, and partial geo/type metadata is
+  retried instead of being treated as a complete seven-day cache hit.</li>
+<li>Final PR #29 verification passed <code>1679 passed, 8 skipped</code> for the full
+  non-live suite and <code>182 passed</code> for the focused proxy/UI suite. Ruff check,
+  changed-file format check, Python compileall, <code>mkdocs build --strict</code>,
+  <code>git diff --check</code>, protected-path comparison and added-line secret-pattern
+  checks all passed.</li>
+</ul>
+<h2 id="v172-proxy-pool-live-closeout-2026-08-24">v1.7.2 Proxy Pool live closeout (2026-08-24)<a class="headerlink" href="#v172-proxy-pool-live-closeout-2026-08-24" title="Permanent link">&para;</a></h2>
+<ul>
+<li>PR #27 merged as <code>94a68a0</code> and released the qualification baseline as
+  <code>v1.7.0</code>. PR #28 merged as <code>2440322</code> and released the persisted-egress
+  intelligence fix as <code>v1.7.1</code>. PR #29 merged as <code>bd8d957</code> and Auto Release run
+  <code>32748192052</code> published <code>v1.7.2</code> after CI, both image builds, tag resolution
+  and embedded-version verification passed.</li>
+<li>Release <code>v1.7.2</code> UI digest is
+  <code>sha256:f05069653b725347b3ab115308a2e9a83094c4d8649cb09360ffdea464c44838</code>;
+  worker digest is
+  <code>sha256:c27eb4e98ebee30d5bd4fae27656365f47573958703de4fe139f3b5a022d2ce3</code>.
+  Only the UI image was deployed. The live worker was not pulled, recreated or
+  restarted.</li>
+<li>Live <code>cashpilot-ui</code> container <code>101fb16648f1</code> is healthy on the exact UI
+  digest and reports <code>CASHPILOT_VERSION=1.7.2</code>. SQLite remains schema <code>18</code> with
+  <code>integrity_check=ok</code>; authenticated <code>GET /api/proxy-pool</code>, <code>GET
+  /api/proxy-pool/scheduler</code>, <code>GET /api/workers</code> and <code>GET /api/fleet/summary</code>
+  all returned HTTP 200.</li>
+<li><code>cashpilot-worker</code> remained container <code>60b180133540</code>, local image
+  <code>cashpilot-worker-local:proxy-egress</code>, image ID <code>sha256:3eb671780df3</code>, start
+  time <code>2026-08-20T09:04:41Z</code>, restart count <code>0</code>, and healthy state before and
+  after the UI-only deployment.</li>
+<li>Generic Proxy Pool evidence remains authoritative: endpoint <code>8931</code> is alive
+  at egress <code>14.180.201.10</code>, country <code>Viet Nam</code>, IP type <code>residential</code>, and is
+  the canonical row for its egress. Duplicate reconciliation remains <code>417</code>;
+  scheduler policy remains <code>enabled=true</code>, interval <code>60</code> minutes, concurrency
+  <code>64</code>.</li>
+<li>The isolated EarnApp WSS canary rechecked only endpoint <code>8931</code> at concurrency
+  <code>1</code>. Certificate verification no longer failed after PR #29; the authoritative
+  result was <code>WSS_FAIL</code>, eligibility <code>unknown</code>, reason <code>WSS handshake rejected:
+  HTTP/1.1 302 Moved Temporarily</code>, latency <code>528 ms</code>. Because it was not
+  <code>CID_SET</code>/eligible, no provider-scoped lease or EarnApp container was created.</li>
+<li>Post-canary invariants show zero active and zero historical provider-scoped
+  leases, worker <code>3113</code> still assigned to proxy <code>5810</code>, all three workers online,
+  unchanged provider-instance and MYST/NKN wallet-state counts, and zero Grass
+  instances. No protected provider, credential, wallet, worker assignment or
+  provider runtime was mutated.</li>
+</ul>
+<h2 id="retired-provider-compatibility">Retired-provider compatibility<a class="headerlink" href="#retired-provider-compatibility" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Grass is absent from catalog, runtime, collector, importer,
+  dashboard and generated navigation.</li>
+<li>Historical SQLite earnings, payout, deployment and worker rows are not
+  deleted. Current APIs filter retired slugs from product views and aggregates.</li>
+<li>Legacy secret-key suffixes remain encrypted/masked for compatibility; they do
+  not make the retired provider deployable.</li>
+<li>Git history and historical changelog entries remain available for research.</li>
+</ul>
+<h2 id="product-work-represented-by-this-merged-baseline">Product work represented by this merged baseline<a class="headerlink" href="#product-work-represented-by-this-merged-baseline" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Removed provider YAML, collector, installer/automation paths and provider-only
+  tests/fixtures.</li>
+<li>Added explicit retired-provider filtering for current earnings, health,
+  alerts, Fleet and worker views without mutating stored legacy rows. Unknown
+  or test-only slugs are not treated as retired merely because they are absent
+  from the catalog.</li>
+<li>Added the same explicit boundary to Prometheus refresh gauges and lifecycle /
+  collection metric labels, so legacy Grass rows do not leak through <code>/metrics</code>.</li>
+<li>Added the same boundary to runtime-asset admin/worker endpoints and payout
+  confirm/reject mutations; legacy rows remain auditable but cannot be used as
+  current Grass operations.</li>
+<li>Centralized the retired-provider predicate and made it case-insensitive, so
+  <code>grass</code>, <code>Grass</code> and padded variants follow the same boundary across API,
+  worker heartbeat, metrics and database aggregates.</li>
+<li>Preserved the generic raw worker command contract; official catalog deploy
+  routes naturally return not-found for the retired slug.</li>
+<li>Removed the retired provider from the Chrome importer and regenerated README
+  tables/documentation navigation.</li>
+<li>Added regression tests for masked legacy secrets, hidden legacy rows,
+  aggregate/chart exclusion, health-check exclusion, collection-run detection
+  and official deploy rejection.</li>
+<li>Moved the old local Grass lab/profile artifacts to the non-Git quarantine
+  <code>secret/retired/grass-20260821</code>; external repositories were not touched.</li>
+</ul>
+<h2 id="nkn-implementation-status">NKN implementation status<a class="headerlink" href="#nkn-implementation-status" title="Permanent link">&para;</a></h2>
+<ul>
+<li>NKN is official <code>nknorg/nkn:latest</code>, direct-only, and uses one exclusive
+  wallet lease per bootstrap-discovered public IPv4 slot.</li>
+<li>New NKN slots run in an NKN-only LXD instance with the official Docker node
+  inside it. Server Settings are authoritative for future creation/adoption:
+  <code>nkn_lxd_cpu=1</code> and <code>nkn_lxd_memory_mib=1024</code> are the current verified values;
+  saving different values never silently resizes a running node.</li>
+<li>Host bootstrap owns public-IP discovery, bridge/SNAT routing, Docker
+  prerequisites and persistent <code>LimitNOFILE=1048576</code>; worker deploy only reads
+  the resulting slot state and never mutates host routes.</li>
+<li>Server auto-deploy leases and deploys slots sequentially. A failed slot keeps
+  its lease for retry; deliberate remove is the only normal release path.</li>
+<li>Worker heartbeat reports redacted <code>getnodestate</code> evidence; <code>PERSIST_FINISHED</code>
+  plus a running container is required for online status. NKN balance uses the
+  official wallet RPC and the Settings beneficiary address.</li>
+<li>Pre-PR audit closed the fleet-wide slot-id collision, generic deploy bypass,
+  fake global deployment row, public-IP rebinding, stale evidence, Docker client
+  lifecycle, zero-slot completion and worker slot-state mount gaps. Reclaimed
+  assignment tokens are now lease-guarded end to end. The worker suspends an
+  unacknowledged node at 14 minutes without deleting identity, ahead of the
+  server's 15-minute reclaim; a valid ACK resumes it, while a rejected stale
+  token removes only its label-matched NKN container/volume.</li>
+<li>Current source status: PRs #17-#19, #21-#25 and releases through <code>v1.6.3</code>
+  are green. The guarded LXD adoption timeout remains 900 seconds while normal
+  deploy timeout remains 60 seconds. The latest full suite passed <code>1642 passed,
+  8 skipped</code>; NKN-focused tests passed <code>305 passed, 1 skipped</code>. Runtime,
+  heartbeat, Fleet, wallet, RPC and lease-guard snapshots keep NKN
+  <code>PROTECTED_DONE</code>.</li>
+</ul>
+<h2 id="v161-nkn-chaindb-snapshot-closeout-2026-08-24">v1.6.1 NKN ChainDB snapshot closeout (2026-08-24)<a class="headerlink" href="#v161-nkn-chaindb-snapshot-closeout-2026-08-24" title="Permanent link">&para;</a></h2>
+<ul>
+<li>The optional private-R2 publisher/restore path is merged through PRs #21-#23,
+  released as <code>v1.6.1</code>, and deployed only to the dedicated NKN publisher VPS.
+  The archive contract contains <code>ChainDB/</code> only; wallet, password, config,
+  <code>ChainDB.config</code>, node identity and lease material remain outside the archive.</li>
+<li>A controlled cold snapshot from <code>test-sing</code> produced the manual seed object
+  <code>cashpilot-nkn-chaindb/manual/test-sing-20260824T043345Z.tar.zst</code> with
+  <code>5,783,795,401</code> bytes and SHA-256
+  <code>d70d8ae06cf67266e06702894ceafd31190352f238bc6b1b77e86c4c3af14928</code>.
+  Restoring that <code>ChainDB/</code> into the stopped publisher node preserved the
+  publisher wallet/config hashes and Node ID, and both nodes returned to
+  <code>PERSIST_FINISHED</code>.</li>
+<li>The first canonical publisher run completed successfully from block height
+  <code>9689115</code>. It published
+  <code>cashpilot-nkn-chaindb/snapshots/9689115-20260824T054653Z-9c8d29068fd741dab315d17d3c9f3fcdcfe0c389a29fefede7ba06cfd18e10e5.tar.zst</code>
+  and then <code>cashpilot-nkn-chaindb/manifests/latest.json</code>. The archive is
+  <code>5,795,325,602</code> bytes with SHA-256
+  <code>9c8d29068fd741dab315d17d3c9f3fcdcfe0c389a29fefede7ba06cfd18e10e5</code>.</li>
+<li>Verification streamed the complete canonical object back from R2 without a
+  local copy; byte count and SHA-256 matched <code>latest.json</code> and object metadata,
+  and no multipart upload remained unfinished. The publisher removed its local
+  archive after publication.</li>
+<li>Publisher container ID
+  <code>c13a32936b8f698309a07ddb428b06fdfcae0e575da8ad89b33a71773795dffe</code>
+  and Node ID
+  <code>38a798d0f7de12b7064eddae9befee319e69c1b013799cdbcf954d1353cb935a</code>
+  remained unchanged with restart count <code>0</code>. Fresh RPC evidence returned
+  <code>PERSIST_FINISHED</code> at height <code>9689178</code>; identity/config hashes matched the
+  pre-run baseline.</li>
+<li><code>cashpilot-nkn-chaindb-publisher.timer</code> is enabled and <code>active (waiting)</code>.
+  Its first verified next trigger was <code>2026-08-25 00:08:11 UTC</code>; enabling it did
+  not immediately launch a second snapshot. The manual seed object lives outside
+  the automated <code>snapshots/</code> retention scope and is not referenced by
+  <code>latest.json</code>.</li>
+<li>The approved consumer optimization is implemented in the NKN host helper only:
+  one verified archive per digest is cached under
+  <code>/var/lib/cashpilot/nkn-chaindb-cache</code>, protected by a lock and <code>.partial</code> to
+  final atomic rename, then exposed to each LXD node through a read-only disk
+  device. The restore staging/atomic swap contract and publisher are unchanged;
+  each node still owns a separate live <code>ChainDB</code>.</li>
+<li>The isolated shared-cache canary completed on <code>test-us</code> worker <code>3098</code>, slot
+  <code>ipv4-001</code>, public IP <code>104.211.53.252</code>, using the existing exclusive wallet
+  lease (<code>wallet_id=3</code>, assignment version <code>1</code>). The cache populated the canonical
+  <code>5,795,325,602</code> byte archive once, retained SHA-256
+  <code>9c8d29068fd741dab315d17d3c9f3fcdcfe0c389a29fefede7ba06cfd18e10e5</code>,
+  and exposed it to the LXD instance through the read-only
+  <code>nkn-chaindb-cache</code> disk device.</li>
+<li>A failed first restore exercised the unchanged atomic rollback path after the
+  LXD stub resolver stopped responding under the cold-restore I/O load. The node
+  returned to its previous <code>ChainDB</code>; the wallet, config and lease were unchanged.
+  The inner official Docker runtime now receives explicit public DNS servers so
+  it does not inherit a dead LXD <code>127.0.0.53</code> stub. The second restore reused the
+  same cache archive without a network download: inode <code>325123</code>, size and mtime
+  were unchanged and no <code>.partial</code> file remained.</li>
+<li>The successful second restore swapped only <code>ChainDB/</code>, preserved wallet hash
+  <code>035cfdd43ee4c6bbf5f0d460b7eb5b8f3985ca05e1ee5bab2c36043dc6e076ca</code>,
+  config hash
+  <code>f75113b8edcf4c4382968c2fac963b3b1f86bb72fc1234c584c921b407b4c965</code>
+  and Node ID
+  <code>c36ecaa9abdcec725d889ec222834f5a1705065ede7f5857cfb56f1d5ee293d7</code>.
+  Fresh RPC reached <code>PERSIST_FINISHED</code> above height <code>9689780</code>; worker heartbeat
+  and Fleet report this node online. Publisher and <code>test-sing</code> were not changed.</li>
+<li>A controlled restart of only the <code>test-us</code> NKN LXD instance then proved
+  <code>boot.autostart</code>, inner <code>restart: always</code>, DNS recovery, route/SNAT recovery and
+  shared-cache persistence. The node returned to <code>PERSIST_FINISHED</code> at height
+  <code>9689812</code> with the same Node ID, wallet/config hashes and cache inode; observed
+  egress remained <code>104.211.53.252</code>.</li>
+<li>PR #24 merged the shared-cache/DNS implementation as <code>bb52dea</code> and release
+  <code>v1.6.2</code> published both images. The isolated <code>test-us</code> worker still runs the
+  earlier <code>v1.6.1</code> image digest
+  <code>sha256:58b8a452e4566a578de224df20d621bc18d1b2739d1eb43d69e9099f02416974</code>;
+  the <code>v1.6.2</code> release image digests were UI
+  <code>sha256:7993a5a519c4a42e21a32c78836057658b052af33bb803587d1ae9c51d74ac9e</code>
+  and worker
+  <code>sha256:4909468c68b1d5c7b186b0596e966f3f28db4325588725e2162ee0f09db90f03</code>.
+  The host helper was installed directly from reviewed source for the canary.
+  The <code>v1.6.3</code> closeout below supersedes only that helper installation. The
+  worker image remains an explicit mixed deployment state, not a failed release.</li>
+</ul>
+<h2 id="v163-nkn-host-helper-live-closeout-2026-08-24">v1.6.3 NKN host-helper live closeout (2026-08-24)<a class="headerlink" href="#v163-nkn-host-helper-live-closeout-2026-08-24" title="Permanent link">&para;</a></h2>
+<ul>
+<li>PR #25 merged as <code>f5ee981</code> and release <code>v1.6.3</code> completed on the same SHA.
+  The live deployment downloaded the official GitHub tag archive and verified
+  every installed helper input by SHA-256 before running
+  <code>scripts/install-nkn-host-helper.sh</code>.</li>
+<li>The installer updated only the restricted NKN helper files and restarted only
+  <code>cashpilot-nkn-agent.service</code>. It did not restart or recreate the CashPilot
+  worker, the LXD instance, the inner NKN container, a wallet lease or a data
+  volume. The helper is enabled and active, has <code>NRestarts=0</code>, and its Unix
+  socket responds according to the restricted endpoint contract.</li>
+<li>The <code>test-us</code> worker container remained
+  <code>308579e2618da1be5e804c4aa8a47e0edc51ee7a38a13ae83242734edee1d0a9</code>
+  on the existing <code>v1.6.1</code> worker digest with restart count <code>0</code> and unchanged
+  start time. No worker image redeploy was required for this host-only change.</li>
+<li>The NKN LXD instance remained running with the same PID, <code>1 CPU / 1024 MiB</code>
+  hard limits, <code>boot.autostart=true</code>, per-slot TCP/UDP forwarding and read-only
+  shared-cache device. Inner container ID
+  <code>a3087def4b899c710ef00a5c286b4eff546c7117d0dd55db549dcd60c86840ff</code>
+  remained unchanged with restart count <code>0</code> and <code>restart: always</code>.</li>
+<li>The post-deploy RPC returned <code>PERSIST_FINISHED</code> at height <code>9690031</code> with the
+  same Node ID
+  <code>c36ecaa9abdcec725d889ec222834f5a1705065ede7f5857cfb56f1d5ee293d7</code>.
+  Wallet, password and config hashes remained unchanged; the wallet and config
+  hashes are respectively
+  <code>035cfdd43ee4c6bbf5f0d460b7eb5b8f3985ca05e1ee5bab2c36043dc6e076ca</code>
+  and
+  <code>f75113b8edcf4c4382968c2fac963b3b1f86bb72fc1234c584c921b407b4c965</code>.</li>
+<li>The shared archive retained inode <code>325123</code>, size <code>5,795,325,602</code>, mtime and
+  SHA-256
+  <code>9c8d29068fd741dab315d17d3c9f3fcdcfe0c389a29fefede7ba06cfd18e10e5</code>;
+  no <code>.partial</code> file appeared. Public egress remained <code>104.211.53.252</code>.</li>
+<li>Authenticated, read-only <code>GET /api/workers</code> and <code>GET /api/fleet/summary</code>
+  snapshots returned HTTP 200 without rendering credentials. Worker <code>3098</code> was
+  online with confirmed enrollment and reported the same NKN Node ID as
+  <code>running=true</code>, <code>online=true</code>, <code>rpc_reachable=true</code>, backend <code>lxd</code> and
+  <code>PERSIST_FINISHED</code>. Fleet reported two NKN nodes, two online and zero offline.</li>
+<li>This closeout did not mutate <code>test-sing</code>, the publisher, R2, either NKN wallet
+  lease or any other provider. NKN remains <code>PROTECTED_DONE</code>; future work must
+  treat its runtime, identities, leases, volumes and ChainDB flow as protected
+  baseline unless an explicitly approved defect requires a scoped change.</li>
+</ul>
+<h2 id="proxy-ack-rotation-baseline">Proxy ACK rotation baseline<a class="headerlink" href="#proxy-ack-rotation-baseline" title="Permanent link">&para;</a></h2>
+<ul>
+<li>The server remains the only proxy-pool and lease authority. A candidate is
+  not committed until the worker probes it from the VPS, stages it into the
+  named sing-box sidecar volume, restarts only the affected sidecars and returns
+  a redacted binding ACK.</li>
+<li>Failed probe/apply/ACK/CAS or ambiguous transport leaves the previous lease
+  intact; token-checked runtime rollback is best effort only when the worker may
+  have applied a candidate.</li>
+<li>The worker probe endpoint accepts only the built-in safe target set. Arbitrary
+  request-supplied URLs are rejected before network access to prevent SSRF.</li>
+<li>Before the live canary, no live worker, proxy lease, provider identity, volume
+  or database was touched while implementing or merging this baseline.</li>
+</ul>
+<h2 id="v120-live-canary-2026-08-22">v1.2.0 live canary (2026-08-22)<a class="headerlink" href="#v120-live-canary-2026-08-22" title="Permanent link">&para;</a></h2>
+<ul>
+<li>VPS server UI was upgraded alone to
+  <code>ghcr.io/assetforgeai-tech/cashpilot:1.2.0</code> at digest
+  <code>sha256:4517ad2110bbaea5caaa5ab7ffdde82a5294163f852a35f97695e247ae74238b</code>.
+  It is healthy; SQLite integrity is <code>ok</code> and schema version is <code>17</code>.</li>
+<li>VPS test-sing worker <code>34253</code> was upgraded alone to
+  <code>ghcr.io/assetforgeai-tech/cashpilot-worker:1.2.0</code> at digest
+  <code>sha256:e731983774bfe5035bf7ca40e53fbeade47913826f00d33bf99d2b4b75e580a5</code>.
+  Heartbeat is <code>online</code>, key confirmation remains true and the worker reports
+  <code>1.2.0</code>.</li>
+<li>The test-sing worker's <code>/data/.worker_id</code> and <code>/data/.worker_key</code> hashes are
+  unchanged. All 32 non-worker provider containers retained their IDs,
+  restart counts and runtime state; MYST direct was not recreated.</li>
+<li>An isolated sidecar canary used proxy pool endpoint <code>5802</code> only. It passed
+  worker-local probe, apply, redacted ACK, finalize/rollback and finalize/
+  confirm paths. The worker assignment and proxy lease remained unchanged;
+  the canary container and volume were removed afterward.</li>
+<li>Proxy Pool scheduler was restored to its pre-canary policy:
+  <code>enabled=true</code>, interval <code>60</code> minutes, concurrency <code>64</code>.</li>
+<li>Test-sing systemd now has a separate v1.2.0 override/drop-in so a future
+  service restart does not silently fall back to the old image. The original
+  three untracked compose files remain untouched.</li>
+<li>Protected backups and checksums:
+  server <code>/opt/cashpilot/backups/v1.2.0-canary-20260822T072108Z</code>;
+  test-sing <code>/home/kalinh/cashpilot-backups/v1.2.0-worker-canary-20260822T072741Z</code>.
+  These paths contain operational backup/evidence files; credentials were not
+  printed or added to Git.</li>
+<li>The server-local custom worker remains <code>cashpilot-worker-local:proxy-egress</code>
+  (<code>dev</code>) by design; it was not bulk-redeployed. This is an explicit mixed
+  deployment state, not evidence that the release failed.</li>
+</ul>
+<h2 id="v132-nkn-live-canary-2026-08-2223">v1.3.2 NKN live canary (2026-08-22/23)<a class="headerlink" href="#v132-nkn-live-canary-2026-08-2223" title="Permanent link">&para;</a></h2>
+<p>This section is historical Docker-canary evidence. The current runtime is the
+LXD closeout recorded in the next section; the legacy Docker container remains
+stopped and must not be mistaken for the active node.</p>
+<ul>
+<li>Auto Release for commit <code>4c55eac</code> published and verified both <code>v1.3.2</code>
+  images. The server UI runs
+  <code>ghcr.io/assetforgeai-tech/cashpilot@sha256:25450f4790a98f53508228e726f2e3ee1f8701e024c852acfe3a841fd302f31e</code>;
+  <code>test-sing</code> worker <code>43406</code> runs
+  <code>ghcr.io/assetforgeai-tech/cashpilot-worker@sha256:e487e8acaf56043df18c906ce16e961e3e86a6ac27b9420429d055c1b8a87a28</code>
+  and reports version <code>1.3.2</code>.</li>
+<li>The approved clean <code>test-sing</code> canary has one direct slot at public IP
+  <code>4.193.231.232</code>, bridge <code>cashpilot-direct-ipv4-001</code>, and only two containers:
+  <code>cashpilot-worker</code> plus <code>nkn-direct-ipv4-001</code>.</li>
+<li>NKN container ID
+  <code>4a84d3d96b14468d9e6396c3e84d1352042ea5adfd955768397dd35c6283f84e</code>
+  has remained stable through the VPS reboot. It uses the official
+  <code>nknorg/nkn:latest</code> image, private volume <code>cashpilot-nkn-ipv4-001-data</code>,
+  one CPU, 1 GiB RAM, PIDs limit 512, <code>restart: always</code>, and TCP/UDP ports
+  <code>30000-30005</code> bound to the slot private IP.</li>
+<li>Wallet <code>1</code> remains exclusively <code>LEASED</code> to worker <code>43406</code>, slot
+  <code>ipv4-001</code>, assignment version <code>3</code>; the worker state and heartbeat expose no
+  wallet JSON or password. Node ID begins <code>2c58f11ddb37</code>; container restart
+  count is <code>0</code> and OOM state is false.</li>
+<li>The authenticated NKN credential test reads the authoritative Settings
+  beneficiary and reports <code>17006.09284572 NKN</code>. The unchanged node reached
+  <code>PERSIST_FINISHED</code> at RPC height <code>9684184</code> and continued accepting blocks.</li>
+<li>Fresh heartbeats returned HTTP 200 and synchronized redacted evidence
+  <code>{running: true, online: true, sync_state: PERSIST_FINISHED}</code>. Fleet reports
+  <code>total_nodes=1</code>, <code>online=1</code>, <code>offline=0</code>; wallet <code>1</code> remains <code>LEASED</code> to
+  worker <code>43406</code>, slot <code>ipv4-001</code>, assignment version <code>3</code>.</li>
+<li>After the recorded VPS reboot, no manual container restart, recreate, remove,
+  wallet rotation or provider redeploy was used to obtain completion evidence.
+  NKN is now <code>PROTECTED_DONE</code>; keep this successful node, identity volume and
+  lease unchanged unless a separately approved lifecycle operation requires
+  otherwise.</li>
+</ul>
+<h2 id="v151-nkn-lxd-closeout-2026-08-23">v1.5.1 NKN LXD closeout (2026-08-23)<a class="headerlink" href="#v151-nkn-lxd-closeout-2026-08-23" title="Permanent link">&para;</a></h2>
+<ul>
+<li>PR #17 introduced the restricted NKN host helper and LXD runtime; PR #18
+  adopted the pre-provisioned canary without changing its NKN data, wallet or
+  Node ID. PR #19 fixed the server timeout mismatch discovered during adoption:
+  ordinary deploy remains 60 seconds and guarded adoption receives 900 seconds.</li>
+<li>Auto Release run <code>32631080399</code> published and verified both <code>v1.5.1</code> images.
+  Only the server UI was redeployed because the fix is in <code>app/main.py</code>. The UI
+  is healthy at
+  <code>ghcr.io/assetforgeai-tech/cashpilot@sha256:08c69e606a9fdca18edb1479e9b229e04c8d2f6915d0d3779cb028c806cd4bf5</code>;
+  SQLite integrity is <code>ok</code> and schema version remains <code>17</code>. Server snapshot:
+  <code>/opt/cashpilot/backups/ui-20260823T163408Z</code>.</li>
+<li><code>test-sing</code> worker <code>43406</code> remains healthy on <code>v1.5.0</code> at digest
+  <code>sha256:35d9b31458edb306e2b98bb1583ef04bfe54592c582bdb656f71fcf0f1841247</code>;
+  it was not recreated for the UI-only patch. The NKN LXD helper socket is
+  active and restricted to <code>root:docker</code> mode <code>0660</code>.</li>
+<li>Active target <code>cashpilot-nkn-ipv4-001</code> has LXD IP <code>10.252.0.2</code>, hard
+  <code>1 CPU / 1 GiB</code> limits and swap disabled. Its inner container
+  <code>cashpilot-nkn</code> keeps ID
+  <code>c4b7c9f3df9ec439ba1ecd636d0937ec1f1020901dc4ddba2810d147ddc73fd1</code>,
+  <code>restart=always</code>, host networking and the official pinned image digest
+  <code>nknorg/nkn@sha256:9a96013030545d71bdacee29922bb412a01bb71325ce246c36fb13623dfed07a</code>.</li>
+<li>Node ID is
+  <code>2c58f11ddb37bd4c8e1bf16804bf19bd719038340afee0ea8ab373eed13604c2</code>;
+  RPC returned <code>PERSIST_FINISHED</code> after adoption and again after the controlled
+  lease-guard test. Fleet reports NKN <code>total=1</code>, <code>online=1</code>, <code>offline=0</code>.</li>
+<li>Wallet <code>1</code> remains <code>LEASED</code> to worker <code>43406</code>, slot <code>ipv4-001</code>, client
+  <code>a38e77d55a2442af8fd79f096d0f69da:nkn:ipv4-001</code>, assignment version <code>3</code>.
+  The controlled guard test forced a stale local ACK, suspended the LXD node,
+  then used the authenticated server heartbeat ACK with the exact CAS tuple to
+  resume it. No wallet release, reassignment, identity rotation or volume
+  deletion occurred.</li>
+<li>Legacy Docker container
+  <code>4a84d3d96b14468d9e6396c3e84d1352042ea5adfd955768397dd35c6283f84e</code>
+  remains <code>exited</code> with restart policy <code>no</code>; it was not started or recreated.</li>
+</ul>
+<h2 id="protected-provider-matrix">Protected provider matrix<a class="headerlink" href="#protected-provider-matrix" title="Permanent link">&para;</a></h2>
+<p><code>PROTECTED_DONE</code>: <code>earnfm</code>, <code>iproyal</code>, <code>mysterium</code>, <code>packetstream</code>,
+<code>proxies-sx</code>, <code>proxybase</code>, <code>proxybase-xyz</code>, <code>proxyrack</code>, <code>repocket</code>, <code>spide</code>,
+<code>traffmonetizer</code>, <code>uprock</code>, <code>urnetwork</code>, <code>wipter</code>, <code>nkn</code>.</p>
+<p>EarnApp is <code>FOCUS_EARNAPP_MULTIPLATFORM</code> / <code>platform_restricted</code>. VN residential
+proxies may deploy through dedicated validated MacOS/iOS Docker lanes; non-VN
+residential proxies use official Linux x64 through the dedicated Ubuntu Docker
+route. Generic/raw Docker remains blocked. The historical Apple runtime baseline
+and existing nodes remain protected. Account collection, token refresh,
+historical snapshots and read-only inspection stay available.</p>
+<h2 id="verification-status">Verification status<a class="headerlink" href="#verification-status" title="Permanent link">&para;</a></h2>
+<ul>
+<li>PR #48 merged at <code>ba2d29d</code>; Catalog Check, CodeQL, Lint, Tests and Auto
+  Release all passed. Release <code>v1.13.2</code>, both registry digests, scoped UI/worker
+  health, schema <code>21</code>, database integrity, preserved worker identity, two fresh
+  heartbeats, Fleet <code>1/0</code> and Chrome profile 40 remote-device evidence are
+  recorded in the current section at the top of this file.</li>
+<li>PR #34 is merged at <code>a3d2dce</code>; Auto Release run <code>32817037347</code> completed
+  successfully and published <code>v1.8.1</code>. Fresh authenticated proof confirms the
+  dashboard session is masked, the UI-only deployment boundary is intact, DB
+  integrity/schema is <code>ok / 18</code>, and the full 3,223-row Proxy Pool read model is
+  available over 33 bounded pages with zero active leases.</li>
+<li>PRs #27-#29 are merged. Auto Release run <code>32748192052</code> completed successfully
+  and published <code>v1.7.2</code>; both release image manifests resolved and reported
+  embedded version <code>1.7.2</code> before the tag and GitHub Release were created.</li>
+<li>Fresh live evidence proves the <code>v1.7.2</code> UI-only deployment boundary, schema
+  <code>18</code> integrity, all four authenticated read endpoints, Location/IP Type
+  metadata, duplicate reconciliation, scheduler policy, EarnApp WSS result and
+  zero scoped-lease residue. The worker ID/image/start time/restart count and
+  worker-level assignment <code>3113 -&gt; 5810</code> remained unchanged.</li>
+<li>PR #23's fresh source suite passed <code>1618 passed, 2 skipped</code>; its release gate,
+  Ruff, Tests, CodeQL, Catalog Check and Auto Release jobs all completed
+  successfully.</li>
+<li>PR #19 passed Analyze, CodeQL, Ruff and Tests. Merge commit <code>7df2fdd</code>
+  triggered Auto Release run <code>32631080399</code>; both <code>v1.5.1</code> image manifests and
+  embedded versions were verified before the tag and GitHub Release were
+  published.</li>
+<li>Fresh live evidence proves the LXD runtime, exact CAS lease-guard
+  suspend/resume, UI-only upgrade isolation, Fleet <code>1/1/0</code>, wallet continuity,
+  Node ID continuity and legacy Docker stopped state.</li>
+<li>Fresh publisher evidence proves the cold stop/archive/start sequence, full R2
+  stream checksum, immutable archive plus manifest-last publication, local
+  cleanup, preserved publisher identity and a daily timer in waiting state.</li>
+<li>Ruff lint, Python compileall and browser-free behavior checks pass;
+  README/catalog and documentation-nav checks pass.</li>
+<li><code>mkdocs build --strict</code> passes with a temporary docs-only environment. The
+  build reports the internal research/onboarding pages as intentionally
+  unlisted from the public nav.</li>
+<li>Docker smoke builds were not run because Docker CLI/daemon is unavailable on
+  this Windows machine. No dependency, lockfile, or VPS workaround was used.</li>
+<li><code>git diff --check</code> passes, and all 14 protected provider YAML hashes match
+  the merged baseline. The read-only baseline audit also validated graph coverage for 301/301
+  scanned files and refreshed the local knowledge/domain graph artifacts.</li>
+<li><code>ruff format --check</code> continues to report only the two pre-existing baseline
+  files <code>tests/test_ci_gates_report_what_they_checked.py</code> and
+  <code>tests/test_worker_myst_sync.py</code>; neither file is changed by this docs branch.</li>
+<li>Live/VPS verification for the historical <code>v1.2.0</code> proxy canary, historical
+  <code>v1.3.2</code> Docker NKN canary and current <code>v1.5.1</code> LXD closeout is complete.
+  Final NKN API proof shows worker <code>43406</code> online, Fleet NKN <code>1/1/0</code>, exclusive
+  wallet assignment version <code>3</code> and redacted <code>PERSIST_FINISHED</code> evidence.</li>
+<li>Future provider deployment still requires an impact map and explicit approval;
+  this canary did not authorize bulk redeploy, wallet rotation, credential
+  rotation or changes to any protected provider.</li>
+<li>Historical technical closeout evidence remains valid: restart/network-
+  namespace persistence and two isolated proxy rotations passed on
+  <code>earnapp-recovery-test-sing-2</code>, while <code>earnapp-canary-test-sing-1</code> remained
+  unchanged. This does not override the current hosted-runtime compliance gate.</li>
+</ul>
+<h2 id="earnapp-macos-zero-usage-investigation-2026-09-05">EarnApp macOS zero-usage investigation (2026-09-05)<a class="headerlink" href="#earnapp-macos-zero-usage-investigation-2026-09-05" title="Permanent link">&para;</a></h2>
+<h3 id="restart-ab-follow-up-2026-09-05">Restart A/B follow-up (2026-09-05)<a class="headerlink" href="#restart-ab-follow-up-2026-09-05" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Canary mac-08 was restarted in place only. UUID
+  <code>sdk-mac-77bfdb9a1e16332af80e763e9cca7f00</code>, identity volume, account 470 and
+  proxy lease remained unchanged. It returned <code>running</code>, <code>OOMKilled=false</code>,
+  SDK <code>1.660.577</code>, proxy/WSS connection and successful <code>tunnel_init</code>.</li>
+<li>After restart, mac-08 produced repeated <code>cmd_tun_close</code> workload markers
+  and about <code>923 kB/861 kB</code> container network I/O. This proves runtime
+  activity, but not authoritative EarnApp usage.</li>
+<li>Canary mac-09 was then restarted in place with UUID
+  <code>sdk-mac-c86a2fed5d1871e41436fff05e8eed9b</code>, account 2, its existing volume
+  and proxy preserved. It returned <code>running</code>, <code>OOMKilled=false</code>, SDK
+  <code>1.660.577</code>, and successful <code>tunnel_init</code>, but only about <code>59.8 kB/20 kB</code>
+  network I/O and no <code>cmd_tun_close</code> in the first window.</li>
+<li>Restart-only remains an insufficient, non-authoritative remedy: mac-08 has
+  local workload signals without confirmed account usage, while mac-09 has
+  control-plane success without workload signals. No recreate, proxy rotation,
+  account mutation, identity rewrite, volume deletion or positive-control
+  mutation was performed in this A/B test.</li>
+<li>A fresh authenticated collector run after the restarts changed the result:
+  mac-08 now reports <code>online=true</code>, <code>country_code=VN</code>, usage <code>1,957,596</code> and
+  earnings <code>0.003</code>, proving that a controlled restart can restore usage for
+  this preserved identity/proxy combination after propagation. mac-09 remains
+  <code>online=true</code> but has blank country/IP and usage <code>0</code> after the same restart
+  and a further short observation window; its receive traffic stayed near
+  <code>83.6 kB/29.7 kB</code> with no workload markers. The two outcomes confirm that
+  restart is a viable first recovery action, not a universal fix.</li>
+<li>UI-only lifecycle release <code>v1.20.4</code> was deployed to the server container
+  <code>cashpilot-ui</code>; it is healthy with SQLite <code>integrity_check=ok</code>, while the
+  worker and other provider containers were not restarted. This activates the
+  approved 10-minute flatline observation policy without changing node state.</li>
+<li>
+<p>A fresh macOS canary <code>earnapp-v1204-us-mac-10</code> was deployed on worker 92161
+  with a new identity UUID/profile and distinct VN residential proxy. It
+  started on SDK <code>1.660.577</code>, completed proxy/WSS/<code>tunnel_init</code>, and remained
+  running without OOM. After one controlled restart it still had no country,
+  workload marker or authoritative usage in the short window, so the fresh
+  identity experiment is inconclusive rather than a production proof. It was
+  not recreated or rotated further.</p>
+</li>
+<li>
+<p>Canary <code>earnapp-v1202-us-mac-08</code> (<code>sdk-mac-77bfdb9a1e16332af80e763e9cca7f00</code>)
+  was restarted in place with its UUID, volume, account and proxy unchanged.
+  The runtime reconnected proxy/WSS and sent successful <code>tunnel_init</code> payloads,
+  but the authoritative account API still reported no device status and zero
+  usage. Restart alone is therefore not a verified usage remedy.</p>
+</li>
+<li>A backup container named <code>cashpilot-earnapp-v1202-us-mac-08-pre-old-image</code>
+  was running concurrently with the canary and carried the same UUID, account,
+  proxy and logical-node identity. It was stopped without deleting its volume.</li>
+<li>A second duplicate backup, <code>cashpilot-earnapp-v1201-us-mac-05-pre-appid-fix</code>,
+  was also running with the same UUID as mac-05; it was stopped without deleting
+  the node or volume. Backup artifacts must remain stopped and inspection-only.</li>
+<li>A fresh canary attempt for logical node 07 exposed a separate allocator issue:
+  proxy <code>12709</code> was assigned even though the legacy positive-control mac-01
+  runtime was already using that egress. The canary was removed and its binding
+  rolled back; mac-01 was not changed. Future canary allocation must reconcile
+  live worker runtime leases with database leases before deployment.</li>
+<li>The account usage API contains positive usage for other macOS/iOS/Ubuntu
+  devices, while canary 08 remains at zero. This rules out a general collector
+  outage. Do not recreate or rotate more nodes until runtime/proxy collision
+  reconciliation and authoritative dashboard status are resolved.</li>
+<li>
+<p>A regression guard was added (source-only, not yet released): EarnApp lease,
+  rotation-candidate and reservation queries now exclude proxies referenced by
+  any provider runtime instance, matching both endpoint ID and egress IP. The
+  new test fails against the old allocator and passes with the guard.</p>
+</li>
+<li>
+<p>On 2026-09-05, canaries mac-08 and mac-09 were restarted in place with UUID,
+  volume, account and proxy preserved. Both reconnected through redsocks and
+  completed certificate-pin/WSS/tunnel-init handshakes. mac-08 restored
+  <code>country_code=VN</code> and its egress IP but remained at zero usage; mac-09 stayed
+  <code>online=true</code> without country/IP and remained at zero usage. Restart alone
+  is therefore not a sufficient usage remedy.</p>
+</li>
+<li>As a one-variable experiment, mac-09 was recreated with the positive-control
+  image <code>asset-e949d13d7861</code> instead of <code>asset-2e78b472799b</code>; UUID, identity
+  volume, account and egress <code>116.105.109.204</code> were preserved. The replacement
+  completed the same proxy/WSS/tunnel-init path, but after an additional poll
+  still had no country/IP/usage. The former container remains stopped as
+  <code>...-pre-image-switch</code> for rollback; it was not deleted.</li>
+<li>Runtime network counters show mac-08 has substantial bidirectional traffic,
+  while mac-09 has near-zero receive traffic and neither canary produces the
+  sustained <code>cmd_tun_close</code> workload pattern seen on positive-control mac-02.
+  This points away from a basic proxy or startup failure and toward backend
+  workload eligibility/assignment (or account-side policy). Do not mass
+  recreate, rotate proxies, or mutate protected controls based on zero usage
+  alone; the next experiment must capture account-side assignment evidence or
+  use an explicitly approved fresh canary.</li>
+<li>After the controlled image switch, the two canary worker state files were
+  reconciled atomically to the replacement container IDs; UUID, proxy, egress,
+  generation and runtime status were unchanged. The stopped old-image backup
+  remains available for inspection/rollback.</li>
+<li>The provider-wide lifecycle flatline window was reduced from 120 minutes to
+  10 minutes. A node is still observed before recovery, then recreated twice
+  with the same proxy before rotation, while proxy/egress failures rotate
+  immediately and account-auth failures remain deferred. The lifecycle and
+  canary contract suites pass with the new threshold.</li>
+</ul>
+<h2 id="earnapp-macos-workload-investigation-after-v1208-2026-09-05">EarnApp macOS workload investigation after v1.20.8 (2026-09-05)<a class="headerlink" href="#earnapp-macos-workload-investigation-after-v1208-2026-09-05" title="Permanent link">&para;</a></h2>
+<h3 id="short-loop-restart-and-egress-reconciliation-2026-09-05">Short-loop restart and egress reconciliation (2026-09-05)<a class="headerlink" href="#short-loop-restart-and-egress-reconciliation-2026-09-05" title="Permanent link">&para;</a></h3>
+<h3 id="leaseheartbeataccount-count-audit-2026-09-05">Lease/heartbeat/account-count audit (2026-09-05)<a class="headerlink" href="#leaseheartbeataccount-count-audit-2026-09-05" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Read-only server audit found 39 non-retired logical records: 24 <code>ACTIVE</code>, 11
+  <code>RECOVERABLE</code>, and 1 <code>PLANNED</code> (plus 3 retired records). The two canonical
+  accounts each have 18 historical/non-retired records but only 12 active nodes
+  and 12 active EarnApp proxy leases. Active node <code>current_proxy_id</code> values match
+  their exclusive, unreleased provider lease; no CAS lease mismatch or duplicate
+  active egress was found.</li>
+<li>The account API previously exposed <code>assigned_nodes</code> as the only node count,
+  which made the dashboard display 18 assigned even when only 12 were active.
+  It now exposes <code>active_nodes</code>, <code>recovery_nodes</code>, and <code>planned_nodes</code>; the
+  Settings row renders those states explicitly while retaining the historical
+  assigned total.</li>
+<li>Three offline worker rows remain in the database. On <code>test-us</code>, worker <code>3098</code>
+  is offline while its old EarnApp containers are still running on the VPS; the
+  current worker <code>92161</code> owns the five state files it reports. The old containers
+  have no current sidecar/state/lease authority and the corresponding logical
+  nodes are <code>RECOVERABLE</code>. They must not be auto-adopted from names or container
+  presence alone, and no cleanup or proxy re-lease was performed in this audit.</li>
+<li>
+<p>This is a split-brain/orphan-runtime warning, not evidence of a lease allocator
+  bug. Reconciliation requires a node-by-node, CAS-scoped operator action (or a
+  confirmed old worker recovery) before removing any old container; bulk cleanup
+  would risk a live EarnApp identity or remote device.</p>
+</li>
+<li>
+<p>A read-only/runtime probe found that the proxy route recorded in the server DB
+  did not equal the egress actually observed inside the container. Before the
+  restart, mac-11 was recorded as <code>116.105.110.188</code> but egressed as
+  <code>116.103.140.66</code>; mac-12 was recorded as <code>14.174.154.30</code> but egressed as
+  <code>116.105.104.32</code>. Redsocks and the fail-closed <code>iptables</code> chain were present
+  in both containers, so this was not a missing proxy redirect.</p>
+</li>
+<li>mac-11 was restarted in place only. Container ID, UUID, account, image and
+  volume were preserved. After restart, the account API assigned the actual
+  egress IP (<code>116.103.140.66</code>) and VN country; mac-12 likewise assigned
+  <code>14.174.154.30</code> after its controlled restart. This confirms backend
+  country/IP propagation can lag the runtime connection and that a restart can
+  trigger assignment propagation.</li>
+<li>Despite both devices reporting <code>online=true</code>, VN country/IP and
+  <code>qualified_uptime</code>, neither target produced a positive account-side usage,
+  uptime or earnings delta in the short follow-up window. Runtime logs also
+  showed no <code>cmd_tun</code>/<code>cmd_tun_close</code> workload marker. Therefore UUID
+  recreation, rapid relink and proxy rotation were not performed: they would
+  change multiple variables before the current runtime/account assignment
+  mismatch is understood.</li>
+<li>
+<p>The positive control <code>mac-08</code> was not touched. No protected provider, account
+  credential, identity volume or lease was mutated by this experiment.</p>
+</li>
+<li>
+<p>Server UI and test-US worker were upgraded to <code>v1.20.8</code> with their existing
+  volumes preserved; the server SQLite integrity check returned <code>ok</code>, and both
+  containers are healthy with restart count <code>0</code>.</p>
+</li>
+<li>The authoritative collector now confirms mac-09, mac-11, and mac-12 are
+  genuinely linked, online, VN, and <code>qualified_uptime</code>; all three still report
+  zero usage/uptime in the short observation window. This is not the prior
+  false-online/429 result.</li>
+<li>Restart A/B was completed without changing identity, volume, account, or
+  proxy: mac-11 used <code>docker restart</code>, while mac-12 used <code>stop</code> then <code>start</code>.
+  Both returned healthy but did not produce a metric delta, so restart style is
+  not the primary cause.</li>
+<li>A DB/runtime proxy split was found for mac-11: the database expected proxy
+  <code>12886</code>, while its prior runtime carried the route later assigned to mac-12.
+  Server-side CAS adoption correctly rejected the inconsistent authority
+  snapshot (HTTP 409), so no unsafe DB mutation occurred. Recreating mac-11
+  from the authoritative server spec restored proxy <code>12886</code>/its expected
+  egress and produced a fresh <code>cid_set</code>; link/online/VN evidence remains valid,
+  but usage is still pending.</li>
+<li>Positive-control mac-08 remains untouched and continues to show sustained
+  <code>cmd_tun_close</code> workload. Do not create further UUID/proxy experiments until
+  account-side workload assignment or profile/runtime eligibility is compared
+  through redacted evidence; <code>online</code> and <code>cid_set</code> alone are insufficient.</li>
+<li>Redacted profile comparison found no missing Mac contract field. Mac-08 and
+  mac-12 use the same model, macOS version, UA, timezone, runtime flags and
+  profile schema; their identity values are correctly unique. Account-side
+  evidence instead shows mac-08 has <code>country</code>, <code>ips</code>, uptime and earnings,
+  while mac-12 has only <code>qualified_uptime</code>/rate and no assigned IP or uptime.</li>
+<li>A lifecycle defect was reproduced: the scheduler always preferred
+  <code>usage_current</code>, which remains zero for <code>qualified_uptime</code> devices even when
+  their uptime or earnings increases. This caused false flatline recovery and
+  explained the unexpected automatic recreates during controlled testing.
+  Lifecycle now selects the workload counter by billing mode; a regression
+  test failed before the fix and passes after it. The lifecycle and canary
+  contract suites pass (<code>205 passed, 1 skipped</code>).</li>
+<li>After <code>v1.20.9</code>, mac-12 reached <code>lum_sdk_mac_22_svc_tun_1b</code> and
+  <code>lum_sdk_mac_tun_1b</code>, but the account API still had not assigned country/IP
+  or uptime. The scheduler then rotated/recreated the node, invalidating the
+  observation window. A second lifecycle guard now keeps an online,
+  non-banned <code>qualified_uptime</code> device in <code>observe</code> while both account-side
+  country and IP are absent; explicit proxy-health failures still rotate
+  immediately. The expanded lifecycle/canary suite passes (<code>206 passed, 1
+  skipped</code>).</li>
+<li>Chrome profile import was verified read-only against the two open EarnApp
+  dashboards. The server received two new rows, but the live DB evidence shows
+  account <code>912</code> is an exact credential duplicate of account <code>470</code> with zero
+  nodes; account <code>2</code> also has the same credentials as account <code>1</code> but a legacy
+  email typo (<code>assetforgeai@gmail.com,</code>). No live row was deleted or merged.</li>
+<li>The account upsert duplicate guard now normalizes trailing email punctuation,
+  refreshes the existing account row while preserving its profile key and node
+  bindings, and fails closed when an email matches multiple non-legacy rows.
+  Focused account/import tests pass (<code>79 passed</code>).</li>
+<li>The duplicate guard also handles an already-bound profile key that points to a
+  zero-node duplicate: if exactly one same-email account has live nodes, new
+  credentials are redirected to that populated canonical row and the empty
+  duplicate is marked <code>ACCOUNT_LOCKED</code>; multiple populated matches still fail
+  closed for manual review. Live deletion/release was not performed.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2026 Sergio Fernandez
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/GeiserX/CashPilot" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/assetforgeai-tech/CashPilot/pkgs/container/cashpilot" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M349.9 236.3h-66.1v-59.4h66.1zm0-204.3h-66.1v60.7h66.1zm78.2 144.8H362v59.4h66.1zm-156.3-72.1h-66.1v60.1h66.1zm78.1 0h-66.1v60.1h66.1zm276.8 100c-14.4-9.7-47.6-13.2-73.1-8.4-3.3-24-16.7-44.9-41.1-63.7l-14-9.3-9.3 14c-18.4 27.8-23.4 73.6-3.7 103.8-8.7 4.7-25.8 11.1-48.4 10.7H2.4c-8.7 50.8 5.8 116.8 44 162.1 37.1 43.9 92.7 66.2 165.4 66.2 157.4 0 273.9-72.5 328.4-204.2 21.4.4 67.6.1 91.3-45.2 1.5-2.5 6.6-13.2 8.5-17.1zm-511.1-27.9h-66v59.4h66.1v-59.4zm78.1 0h-66.1v59.4h66.1zm78.1 0h-66.1v59.4h66.1zm-78.1-72.1h-66.1v60.1h66.1z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "content.code.copy", "content.action.edit", "search.highlight", "search.suggest", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
