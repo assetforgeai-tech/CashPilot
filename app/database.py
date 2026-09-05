@@ -3618,6 +3618,7 @@ async def upsert_earnapp_account(
     cookie_expires_at: str | None,
 ) -> int:
     """Insert or refresh one profile-bound EarnApp account."""
+
     def normalized_email(value: Any) -> str:
         return str(value or "").strip().rstrip(",").strip().lower()
 
@@ -3659,9 +3660,13 @@ async def upsert_earnapp_account(
                     )
                 ).fetchall()
                 populated = [row for row in same_email if int(row["assigned_nodes"] or 0) > 0]
-                current_has_nodes = any(int(row["id"]) == int(existing["id"]) and int(row["assigned_nodes"] or 0) > 0 for row in same_email)
+                current_has_nodes = any(
+                    int(row["id"]) == int(existing["id"]) and int(row["assigned_nodes"] or 0) > 0 for row in same_email
+                )
                 if len(populated) > 1:
-                    raise ValueError("EarnApp email is bound to multiple populated accounts; manual duplicate review is required")
+                    raise ValueError(
+                        "EarnApp email is bound to multiple populated accounts; manual duplicate review is required"
+                    )
                 if populated and not current_has_nodes and int(populated[0]["id"]) != int(existing["id"]):
                     duplicate_to_lock = int(existing["id"])
                     existing = populated[0]

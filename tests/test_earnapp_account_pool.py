@@ -1912,7 +1912,9 @@ def test_chrome_import_rejects_ambiguous_duplicate_email_without_mutation(tmp_pa
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
             await database.init_db()
             db = await database._get_db()
-            encrypted = database.encrypt_value(json.dumps({"cookies": {"oauth-refresh-token": "old", "xsrf-token": "old"}}))
+            encrypted = database.encrypt_value(
+                json.dumps({"cookies": {"oauth-refresh-token": "old", "xsrf-token": "old"}})
+            )
             for profile in ("bound-a", "bound-b"):
                 await db.execute(
                     """
@@ -1939,7 +1941,9 @@ def test_chrome_import_redirects_zero_node_duplicate_to_populated_canonical_acco
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
             await database.init_db()
             db = await database._get_db()
-            encrypted = database.encrypt_value(json.dumps({"cookies": {"oauth-refresh-token": "old", "xsrf-token": "old"}}))
+            encrypted = database.encrypt_value(
+                json.dumps({"cookies": {"oauth-refresh-token": "old", "xsrf-token": "old"}})
+            )
             for profile in ("canonical-profile", "duplicate-profile"):
                 await db.execute(
                     """
@@ -1962,7 +1966,9 @@ def test_chrome_import_redirects_zero_node_duplicate_to_populated_canonical_acco
             account_id = await earnapp_accounts.import_account(_payload("duplicate-profile", "owner@example.com"))
 
             assert account_id == 1
-            rows = await (await db.execute("SELECT id, profile_key, state FROM earnapp_accounts ORDER BY id")).fetchall()
+            rows = await (
+                await db.execute("SELECT id, profile_key, state FROM earnapp_accounts ORDER BY id")
+            ).fetchall()
             assert [dict(row) for row in rows] == [
                 {"id": 1, "profile_key": "canonical-profile", "state": "ACTIVE"},
                 {"id": 2, "profile_key": "duplicate-profile", "state": "ACCOUNT_LOCKED"},
