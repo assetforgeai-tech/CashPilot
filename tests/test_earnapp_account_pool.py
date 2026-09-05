@@ -2178,6 +2178,36 @@ def test_refresh_does_not_reactivate_locked_or_deleted_accounts(tmp_path):
     asyncio.run(run())
 
 
+def test_deleted_duplicate_profile_stays_deleted_when_imported_against_populated_account(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            await database.init_db()
+            canonical_id = await earnapp_accounts.import_account(_payload("profile-canonical", "same@example.com"))
+            db = await database._get_db()
+            await db.execute(
+                "INSERT INTO earnapp_logical_nodes (logical_node_id, account_id, platform, state) VALUES (?, ?, ?, 'ACTIVE')",
+                ("canonical-node", canonical_id, "macos"),
+            )
+            await db.commit()
+            duplicate_id = await earnapp_accounts.import_account(_payload("profile-duplicate", "other@example.com"))
+            await db.execute("UPDATE earnapp_accounts SET email = ? WHERE id = ?", ("same@example.com", duplicate_id))
+            await db.commit()
+            await database.set_earnapp_account_state(duplicate_id, "ACCOUNT_LOCKED")
+            assert await earnapp_accounts.delete_account(duplicate_id)
+
+            with pytest.raises(ValueError, match="deleted"):
+                await earnapp_accounts.import_account(_payload("profile-duplicate", "same@example.com"))
+
+            db = await database._get_db()
+            row = await (
+                await db.execute("SELECT state FROM earnapp_accounts WHERE id = ?", (duplicate_id,))
+            ).fetchone()
+            assert row["state"] == "DELETED"
+            assert (await earnapp_accounts.list_accounts())[0]["id"] == canonical_id
+
+    asyncio.run(run())
+
+
 def test_locked_account_deletion_preserves_its_local_node_proxy_lease_while_runtime_is_disabled(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):

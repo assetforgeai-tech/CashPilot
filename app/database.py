@@ -3641,6 +3641,11 @@ async def upsert_earnapp_account(
                     (profile,),
                 )
             ).fetchone()
+            # A deleted Chrome profile is a tombstone. Do not let a later
+            # importer sync route it through duplicate reconciliation and
+            # resurrect the row as ACCOUNT_LOCKED.
+            if existing and str(existing["state"]) == "DELETED":
+                raise ValueError("EarnApp account is deleted")
             duplicate_to_lock: int | None = None
             if existing and normalized_email(email):
                 same_email = await (
