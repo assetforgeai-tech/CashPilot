@@ -181,6 +181,9 @@ def _public_account(
         "cookie_expires_at": row.get("cookie_expires_at"),
         "token_warning": _token_warning(row),
         "assigned_nodes": int(row.get("assigned_nodes") or 0),
+        "active_nodes": int(row.get("active_nodes") or 0),
+        "recovery_nodes": int(row.get("recovery_nodes") or 0),
+        "planned_nodes": int(row.get("planned_nodes") or 0),
         "credentials_present": {str(key): True for key in credential_keys},
         "collector": {
             "money_balance": float(snapshot["money_balance"]) if snapshot else None,
@@ -243,6 +246,9 @@ async def _account_payload() -> dict[str, Any]:
         "active": sum(row["state"] == "ACTIVE" for row in accounts),
         "locked": sum(row["state"] == "ACCOUNT_LOCKED" for row in accounts),
         "nodes": len([row for row in nodes if row["state"] != "RETIRED"]),
+        "active_nodes": sum(row["state"] == "ACTIVE" for row in nodes),
+        "recovery_nodes": sum(row["state"] in {"RECOVERY_HOLD", "RECOVERABLE"} for row in nodes),
+        "planned_nodes": sum(row["state"] == "PLANNED" for row in nodes),
     }
     return {
         "accounts": accounts,

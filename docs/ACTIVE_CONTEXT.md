@@ -1331,6 +1331,30 @@ historical snapshots and read-only inspection stay available.
 
 ### Short-loop restart and egress reconciliation (2026-09-05)
 
+### Lease/heartbeat/account-count audit (2026-09-05)
+
+- Read-only server audit found 39 non-retired logical records: 24 `ACTIVE`, 11
+  `RECOVERABLE`, and 1 `PLANNED` (plus 3 retired records). The two canonical
+  accounts each have 18 historical/non-retired records but only 12 active nodes
+  and 12 active EarnApp proxy leases. Active node `current_proxy_id` values match
+  their exclusive, unreleased provider lease; no CAS lease mismatch or duplicate
+  active egress was found.
+- The account API previously exposed `assigned_nodes` as the only node count,
+  which made the dashboard display 18 assigned even when only 12 were active.
+  It now exposes `active_nodes`, `recovery_nodes`, and `planned_nodes`; the
+  Settings row renders those states explicitly while retaining the historical
+  assigned total.
+- Three offline worker rows remain in the database. On `test-us`, worker `3098`
+  is offline while its old EarnApp containers are still running on the VPS; the
+  current worker `92161` owns the five state files it reports. The old containers
+  have no current sidecar/state/lease authority and the corresponding logical
+  nodes are `RECOVERABLE`. They must not be auto-adopted from names or container
+  presence alone, and no cleanup or proxy re-lease was performed in this audit.
+- This is a split-brain/orphan-runtime warning, not evidence of a lease allocator
+  bug. Reconciliation requires a node-by-node, CAS-scoped operator action (or a
+  confirmed old worker recovery) before removing any old container; bulk cleanup
+  would risk a live EarnApp identity or remote device.
+
 - A read-only/runtime probe found that the proxy route recorded in the server DB
   did not equal the egress actually observed inside the container. Before the
   restart, mac-11 was recorded as `116.105.110.188` but egressed as

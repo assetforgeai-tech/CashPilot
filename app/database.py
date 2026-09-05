@@ -3782,7 +3782,10 @@ async def list_earnapp_accounts(*, include_deleted: bool = False) -> list[dict[s
             SELECT a.id, a.profile_key, a.account_name, a.email, a.auth_method, a.state,
                    a.credential_keys_json, a.token_expires_at, a.cookie_expires_at,
                    a.created_at, a.updated_at,
-                   COUNT(n.logical_node_id) AS assigned_nodes
+                   COUNT(n.logical_node_id) AS assigned_nodes,
+                   COALESCE(SUM(n.state = 'ACTIVE'), 0) AS active_nodes,
+                   COALESCE(SUM(n.state IN ('RECOVERY_HOLD', 'RECOVERABLE')), 0) AS recovery_nodes,
+                   COALESCE(SUM(n.state = 'PLANNED'), 0) AS planned_nodes
             FROM earnapp_accounts a
             LEFT JOIN earnapp_logical_nodes n
               ON n.account_id = a.id AND n.state != 'RETIRED'
