@@ -11,6 +11,7 @@ in this branch:
 | Default Mac/iOS bundle path resolved inside `codex-scratch` | Builder resolved `codex-scratch/earnapp_new_update` | Resolve from the repository's external `earnapp_new_update` bundle and use `mac-1.660.577` explicitly |
 | iOS route setup could leave duplicate redsocks/iptables state | iOS generated wrapper installed `CP_EARNAPP_IOS_REDSOCKS`, then the source entrypoint could install another route | Keep the validated generated route, clear proxy variables, and hand off to the source entrypoint without creating a second redsocks process |
 | Ubuntu provenance was not pinned to the captured private image | Runtime contract used the old public digest and empty artifact hash map | Pin private GHCR digest and captured Ubuntu entrypoint hash |
+| Mac source proxy route received an unresolved hostname | The source entrypoint embeds `PROXY_HOST` in an IPv4 iptables destination rule | Resolve once in the generated fail-closed wrapper and pass that pinned IPv4 into the source entrypoint |
 
 ## Retained source behavior
 
@@ -38,8 +39,8 @@ in this branch:
 
 ## Remaining before live canary
 
-1. Build and inspect generic MacOS/iOS images on a controlled runner and
-   publish immutable private GHCR packages.
+1. Verify the published private GHCR manifests and update deployment pins to
+   their immutable digests without storing registry credentials in CashPilot.
 2. Preload those digests on `vps-test-us` without changing existing nodes.
 3. Canary one isolated node per OS with distinct eligible residential proxy
    leases, then verify online state, positive usage and restart persistence.

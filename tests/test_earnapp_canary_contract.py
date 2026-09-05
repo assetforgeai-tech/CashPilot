@@ -45,6 +45,17 @@ def test_mac_profile_blob_uses_the_official_boot_js_default_key():
 def test_image_builder_default_source_points_to_cashpilot_bundle():
     expected = Path(__file__).resolve().parents[3] / "earnapp_new_update" / "earnapp-runtime-files" / "mac-1.660.577"
     assert build_earnapp_canary_image.default_source_dir() == expected
+    ubuntu = build_earnapp_canary_image.default_source_dir("ubuntu")
+    assert ubuntu == Path(__file__).resolve().parents[3] / "earnapp_update_05092026" / "runtime" / "ubuntu"
+
+
+def test_mac_proxy_handoff_pins_the_resolved_ipv4_for_source_iptables():
+    entrypoint = earnapp_runtime.proxy_entrypoint_script("macos").decode("utf-8")
+
+    handoff = entrypoint.index('export PROXY_HOST="$PROXY_IP"')
+    source_exec = entrypoint.index('exec "$SANITIZED_ENTRYPOINT" "$@"')
+    assert 'unset PROXY_CREDENTIALS' in entrypoint[handoff - 128 : handoff]
+    assert handoff < source_exec
 
 
 def _request(path: str) -> Request:
@@ -290,7 +301,7 @@ def test_verified_image_labels_are_fail_closed():
 
 def test_mac_runtime_manifest_is_derived_from_authoritative_artifact_hashes():
     assert earnapp_runtime.runtime_asset_manifest_sha256() == (
-        "2e78b472799b6a22aba93664da435dbd6810c1c3b69ec1c64cde968ecc763810"
+        "510e4f2b5e2310b7a76f51efbe779d49b99b2419820fd3903838281b8d2ff7fa"
     )
     assert earnapp_runtime.runtime_asset_manifest_sha256() == earnapp_runtime.MAC_RUNTIME_ASSET_MANIFEST_SHA256
 

@@ -288,6 +288,12 @@ fi
 if [[ -f "$STATE_DIR/registered" && "$(cat "$STATE_DIR/registered")" == "complete" ]]; then
   rm -f "$STATE_DIR/registered"
 fi
+# The verified source entrypoint writes the proxy endpoint into an iptables
+# destination rule. Pass the already-resolved IPv4 so hostname endpoints cannot
+# produce an invalid rule or bypass the fail-closed route.
+unset PROXY_CREDENTIALS
+export PROXY_HOST="$PROXY_IP"
+export PROXY_PORT PROXY_USER PROXY_PASS PROXY_TYPE
 EXPECTED_DEVICE_ID="${EARNAPP_DEVICE_ID:?}"
 [[ -s "$STATE_DIR/uuid" && "$(cat "$STATE_DIR/uuid")" == "$EXPECTED_DEVICE_ID" ]]
 if [[ ! -s "$STATE_DIR/registered" || "$(cat "$STATE_DIR/registered")" != "$EXPECTED_DEVICE_ID" ]]; then

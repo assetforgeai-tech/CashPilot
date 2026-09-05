@@ -1,0 +1,876 @@
+
+WARNING! Your credentials are stored unencrypted in '/root/.docker/config.json'.
+Configure a credential helper to remove this warning. See
+https://docs.docker.com/go/credential-store/
+
+DEPRECATED: The legacy builder is deprecated and will be removed in a future release.
+            Install the buildx component to build images with BuildKit:
+            https://docs.docker.com/go/buildx/
+
+Sending build context to Docker daemon  52.76MB
+
+Step 1/13 : FROM ubuntu:22.04
+22.04: Pulling from library/ubuntu
+5370ab2c86d9: Download complete
+Digest: sha256:2edbbc5dc405e9612ba3584ce95480277e3eb374407b5505fe26f17df77c7dbc
+Status: Downloaded newer image for ubuntu:22.04
+ ---> 2edbbc5dc405
+Step 2/13 : ENV DEBIAN_FRONTEND=noninteractive     EARNAPP_WATCHDOG=1     NODE_TLS_REJECT_UNAUTHORIZED=0
+ ---> Running in e79ba7bcef72
+ ---> Removed intermediate container e79ba7bcef72
+ ---> f600c2dc6f44
+Step 3/13 : RUN apt-get update     && apt-get install -y --no-install-recommends ca-certificates curl dbus iproute2 iptables nodejs procps redsocks     && rm -rf /var/lib/apt/lists/*
+ ---> Running in f797a55e9223
+Get:1 http://archive.ubuntu.com/ubuntu jammy InRelease [270 kB]
+Get:2 http://security.ubuntu.com/ubuntu jammy-security InRelease [129 kB]
+Get:3 http://security.ubuntu.com/ubuntu jammy-security/restricted amd64 Packages [7706 kB]
+Get:4 http://archive.ubuntu.com/ubuntu jammy-updates InRelease [128 kB]
+Get:5 http://archive.ubuntu.com/ubuntu jammy-backports InRelease [127 kB]
+Get:6 http://archive.ubuntu.com/ubuntu jammy/restricted amd64 Packages [164 kB]
+Get:7 http://archive.ubuntu.com/ubuntu jammy/multiverse amd64 Packages [266 kB]
+Get:8 http://archive.ubuntu.com/ubuntu jammy/main amd64 Packages [1792 kB]
+Get:9 http://security.ubuntu.com/ubuntu jammy-security/main amd64 Packages [4287 kB]
+Get:10 http://archive.ubuntu.com/ubuntu jammy/universe amd64 Packages [17.5 MB]
+Get:11 http://security.ubuntu.com/ubuntu jammy-security/multiverse amd64 Packages [84.1 kB]
+Get:12 http://security.ubuntu.com/ubuntu jammy-security/universe amd64 Packages [1316 kB]
+Get:13 http://archive.ubuntu.com/ubuntu jammy-updates/restricted amd64 Packages [8004 kB]
+Get:14 http://archive.ubuntu.com/ubuntu jammy-updates/universe amd64 Packages [1620 kB]
+Get:15 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages [4623 kB]
+Get:16 http://archive.ubuntu.com/ubuntu jammy-updates/multiverse amd64 Packages [92.7 kB]
+Get:17 http://archive.ubuntu.com/ubuntu jammy-backports/main amd64 Packages [82.8 kB]
+Get:18 http://archive.ubuntu.com/ubuntu jammy-backports/universe amd64 Packages [35.6 kB]
+Fetched 48.2 MB in 6s (7492 kB/s)
+Reading package lists...
+Reading package lists...
+Building dependency tree...
+Reading state information...
+procps is already the newest version (2:3.3.17-6ubuntu2.1).
+The following additional packages will be installed:
+  libapparmor1 libbpf0 libbrotli1 libbsd0 libc-ares2 libcap2-bin libcurl4
+  libdbus-1-3 libelf1 libevent-core-2.1-7 libexpat1 libicu70 libip4tc2
+  libip6tc2 libldap-2.5-0 libmd0 libmnl0 libnetfilter-conntrack3 libnfnetlink0
+  libnftnl11 libnghttp2-14 libnode72 libpsl5 librtmp1 libsasl2-2
+  libsasl2-modules-db libssh-4 libuv1 libxtables12 netbase openssl
+Suggested packages:
+  default-dbus-session-bus | dbus-session-bus iproute2-doc firewalld kmod
+  nftables npm
+Recommended packages:
+  libatm1 libpam-cap libldap-common publicsuffix libsasl2-modules nodejs-doc
+The following NEW packages will be installed:
+  ca-certificates curl dbus iproute2 iptables libapparmor1 libbpf0 libbrotli1
+  libbsd0 libc-ares2 libcap2-bin libcurl4 libdbus-1-3 libelf1
+  libevent-core-2.1-7 libexpat1 libicu70 libip4tc2 libip6tc2 libldap-2.5-0
+  libmd0 libmnl0 libnetfilter-conntrack3 libnfnetlink0 libnftnl11
+  libnghttp2-14 libnode72 libpsl5 librtmp1 libsasl2-2 libsasl2-modules-db
+  libssh-4 libuv1 libxtables12 netbase nodejs openssl redsocks
+0 upgraded, 38 newly installed, 0 to remove and 24 not upgraded.
+Need to get 27.1 MB of archives.
+After this operation, 93.8 MB of additional disk space will be used.
+Get:1 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 openssl amd64 3.0.2-0ubuntu1.29 [1185 kB]
+Get:2 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 ca-certificates all 20260601~22.04.1 [141 kB]
+Get:3 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libapparmor1 amd64 3.0.4-2ubuntu2.5 [39.6 kB]
+Get:4 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libdbus-1-3 amd64 1.12.20-2ubuntu4.1 [189 kB]
+Get:5 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libexpat1 amd64 2.4.7-1ubuntu0.7 [92.1 kB]
+Get:6 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 dbus amd64 1.12.20-2ubuntu4.1 [158 kB]
+Get:7 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libelf1 amd64 0.186-1ubuntu0.1 [51.1 kB]
+Get:8 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libbpf0 amd64 1:0.5.0-1ubuntu22.04.1 [140 kB]
+Get:9 http://archive.ubuntu.com/ubuntu jammy/main amd64 libmd0 amd64 1.0.4-1build1 [23.0 kB]
+Get:10 http://archive.ubuntu.com/ubuntu jammy/main amd64 libbsd0 amd64 0.11.5-1 [44.8 kB]
+Get:11 http://archive.ubuntu.com/ubuntu jammy/main amd64 libmnl0 amd64 1.0.4-3build2 [13.2 kB]
+Get:12 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libxtables12 amd64 1.8.7-1ubuntu5.2 [31.3 kB]
+Get:13 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libcap2-bin amd64 1:2.44-1ubuntu0.22.04.3 [26.0 kB]
+Get:14 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 iproute2 amd64 5.15.0-1ubuntu2.2 [1072 kB]
+Get:15 http://archive.ubuntu.com/ubuntu jammy/main amd64 libicu70 amd64 70.1-2 [10.6 MB]
+Get:16 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libip4tc2 amd64 1.8.7-1ubuntu5.2 [19.9 kB]
+Get:17 http://archive.ubuntu.com/ubuntu jammy/main amd64 netbase all 6.3 [12.9 kB]
+Get:18 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libip6tc2 amd64 1.8.7-1ubuntu5.2 [20.3 kB]
+Get:19 http://archive.ubuntu.com/ubuntu jammy/main amd64 libnfnetlink0 amd64 1.0.1-3build3 [14.6 kB]
+Get:20 http://archive.ubuntu.com/ubuntu jammy/main amd64 libnetfilter-conntrack3 amd64 1.0.9-1 [45.3 kB]
+Get:21 http://archive.ubuntu.com/ubuntu jammy/main amd64 libnftnl11 amd64 1.2.1-1build1 [65.5 kB]
+Get:22 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 iptables amd64 1.8.7-1ubuntu5.2 [455 kB]
+Get:23 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libnghttp2-14 amd64 1.43.0-1ubuntu0.4 [76.9 kB]
+Get:24 http://archive.ubuntu.com/ubuntu jammy/main amd64 libpsl5 amd64 0.21.0-1.2build2 [58.4 kB]
+Get:25 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libuv1 amd64 1.43.0-1ubuntu0.1 [92.7 kB]
+Get:26 http://archive.ubuntu.com/ubuntu jammy/main amd64 libbrotli1 amd64 1.0.9-2build6 [315 kB]
+Get:27 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libsasl2-modules-db amd64 2.1.27+dfsg2-3ubuntu1.2 [20.5 kB]
+Get:28 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libsasl2-2 amd64 2.1.27+dfsg2-3ubuntu1.2 [53.8 kB]
+Get:29 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libldap-2.5-0 amd64 2.5.20+dfsg-0ubuntu0.22.04.1 [184 kB]
+Get:30 http://archive.ubuntu.com/ubuntu jammy/main amd64 librtmp1 amd64 2.4+20151223.gitfa8646d.1-2build4 [58.2 kB]
+Get:31 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libssh-4 amd64 0.9.6-2ubuntu0.22.04.8 [189 kB]
+Get:32 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libcurl4 amd64 7.81.0-1ubuntu1.27 [292 kB]
+Get:33 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 curl amd64 7.81.0-1ubuntu1.27 [194 kB]
+Get:34 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libevent-core-2.1-7 amd64 2.1.12-stable-1ubuntu0.1 [94.2 kB]
+Get:35 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libc-ares2 amd64 1.18.1-1ubuntu0.22.04.3 [45.1 kB]
+Get:36 http://archive.ubuntu.com/ubuntu jammy-updates/universe amd64 libnode72 amd64 12.22.9~dfsg-1ubuntu3.6 [10.8 MB]
+Get:37 http://archive.ubuntu.com/ubuntu jammy-updates/universe amd64 nodejs amd64 12.22.9~dfsg-1ubuntu3.6 [122 kB]
+Get:38 http://archive.ubuntu.com/ubuntu jammy/universe amd64 redsocks amd64 0.5-2build1 [56.6 kB]
+[91mdebconf: delaying package configuration, since apt-utils is not installed
+[0mFetched 27.1 MB in 16s (1741 kB/s)
+Selecting previously unselected package openssl.
+(Reading database ... 
+(Reading database ... 5%
+(Reading database ... 10%
+(Reading database ... 15%
+(Reading database ... 20%
+(Reading database ... 25%
+(Reading database ... 30%
+(Reading database ... 35%
+(Reading database ... 40%
+(Reading database ... 45%
+(Reading database ... 50%
+(Reading database ... 55%
+(Reading database ... 60%
+(Reading database ... 65%
+(Reading database ... 70%
+(Reading database ... 75%
+(Reading database ... 80%
+(Reading database ... 85%
+(Reading database ... 90%
+(Reading database ... 95%
+(Reading database ... 100%
+(Reading database ... 4393 files and directories currently installed.)
+Preparing to unpack .../00-openssl_3.0.2-0ubuntu1.29_amd64.deb ...
+Unpacking openssl (3.0.2-0ubuntu1.29) ...
+Selecting previously unselected package ca-certificates.
+Preparing to unpack .../01-ca-certificates_20260601~22.04.1_all.deb ...
+Unpacking ca-certificates (20260601~22.04.1) ...
+Selecting previously unselected package libapparmor1:amd64.
+Preparing to unpack .../02-libapparmor1_3.0.4-2ubuntu2.5_amd64.deb ...
+Unpacking libapparmor1:amd64 (3.0.4-2ubuntu2.5) ...
+Selecting previously unselected package libdbus-1-3:amd64.
+Preparing to unpack .../03-libdbus-1-3_1.12.20-2ubuntu4.1_amd64.deb ...
+Unpacking libdbus-1-3:amd64 (1.12.20-2ubuntu4.1) ...
+Selecting previously unselected package libexpat1:amd64.
+Preparing to unpack .../04-libexpat1_2.4.7-1ubuntu0.7_amd64.deb ...
+Unpacking libexpat1:amd64 (2.4.7-1ubuntu0.7) ...
+Selecting previously unselected package dbus.
+Preparing to unpack .../05-dbus_1.12.20-2ubuntu4.1_amd64.deb ...
+Unpacking dbus (1.12.20-2ubuntu4.1) ...
+Selecting previously unselected package libelf1:amd64.
+Preparing to unpack .../06-libelf1_0.186-1ubuntu0.1_amd64.deb ...
+Unpacking libelf1:amd64 (0.186-1ubuntu0.1) ...
+Selecting previously unselected package libbpf0:amd64.
+Preparing to unpack .../07-libbpf0_1%3a0.5.0-1ubuntu22.04.1_amd64.deb ...
+Unpacking libbpf0:amd64 (1:0.5.0-1ubuntu22.04.1) ...
+Selecting previously unselected package libmd0:amd64.
+Preparing to unpack .../08-libmd0_1.0.4-1build1_amd64.deb ...
+Unpacking libmd0:amd64 (1.0.4-1build1) ...
+Selecting previously unselected package libbsd0:amd64.
+Preparing to unpack .../09-libbsd0_0.11.5-1_amd64.deb ...
+Unpacking libbsd0:amd64 (0.11.5-1) ...
+Selecting previously unselected package libmnl0:amd64.
+Preparing to unpack .../10-libmnl0_1.0.4-3build2_amd64.deb ...
+Unpacking libmnl0:amd64 (1.0.4-3build2) ...
+Selecting previously unselected package libxtables12:amd64.
+Preparing to unpack .../11-libxtables12_1.8.7-1ubuntu5.2_amd64.deb ...
+Unpacking libxtables12:amd64 (1.8.7-1ubuntu5.2) ...
+Selecting previously unselected package libcap2-bin.
+Preparing to unpack .../12-libcap2-bin_1%3a2.44-1ubuntu0.22.04.3_amd64.deb ...
+Unpacking libcap2-bin (1:2.44-1ubuntu0.22.04.3) ...
+Selecting previously unselected package iproute2.
+Preparing to unpack .../13-iproute2_5.15.0-1ubuntu2.2_amd64.deb ...
+Unpacking iproute2 (5.15.0-1ubuntu2.2) ...
+Selecting previously unselected package libicu70:amd64.
+Preparing to unpack .../14-libicu70_70.1-2_amd64.deb ...
+Unpacking libicu70:amd64 (70.1-2) ...
+Selecting previously unselected package libip4tc2:amd64.
+Preparing to unpack .../15-libip4tc2_1.8.7-1ubuntu5.2_amd64.deb ...
+Unpacking libip4tc2:amd64 (1.8.7-1ubuntu5.2) ...
+Selecting previously unselected package netbase.
+Preparing to unpack .../16-netbase_6.3_all.deb ...
+Unpacking netbase (6.3) ...
+Selecting previously unselected package libip6tc2:amd64.
+Preparing to unpack .../17-libip6tc2_1.8.7-1ubuntu5.2_amd64.deb ...
+Unpacking libip6tc2:amd64 (1.8.7-1ubuntu5.2) ...
+Selecting previously unselected package libnfnetlink0:amd64.
+Preparing to unpack .../18-libnfnetlink0_1.0.1-3build3_amd64.deb ...
+Unpacking libnfnetlink0:amd64 (1.0.1-3build3) ...
+Selecting previously unselected package libnetfilter-conntrack3:amd64.
+Preparing to unpack .../19-libnetfilter-conntrack3_1.0.9-1_amd64.deb ...
+Unpacking libnetfilter-conntrack3:amd64 (1.0.9-1) ...
+Selecting previously unselected package libnftnl11:amd64.
+Preparing to unpack .../20-libnftnl11_1.2.1-1build1_amd64.deb ...
+Unpacking libnftnl11:amd64 (1.2.1-1build1) ...
+Selecting previously unselected package iptables.
+Preparing to unpack .../21-iptables_1.8.7-1ubuntu5.2_amd64.deb ...
+Unpacking iptables (1.8.7-1ubuntu5.2) ...
+Selecting previously unselected package libnghttp2-14:amd64.
+Preparing to unpack .../22-libnghttp2-14_1.43.0-1ubuntu0.4_amd64.deb ...
+Unpacking libnghttp2-14:amd64 (1.43.0-1ubuntu0.4) ...
+Selecting previously unselected package libpsl5:amd64.
+Preparing to unpack .../23-libpsl5_0.21.0-1.2build2_amd64.deb ...
+Unpacking libpsl5:amd64 (0.21.0-1.2build2) ...
+Selecting previously unselected package libuv1:amd64.
+Preparing to unpack .../24-libuv1_1.43.0-1ubuntu0.1_amd64.deb ...
+Unpacking libuv1:amd64 (1.43.0-1ubuntu0.1) ...
+Selecting previously unselected package libbrotli1:amd64.
+Preparing to unpack .../25-libbrotli1_1.0.9-2build6_amd64.deb ...
+Unpacking libbrotli1:amd64 (1.0.9-2build6) ...
+Selecting previously unselected package libsasl2-modules-db:amd64.
+Preparing to unpack .../26-libsasl2-modules-db_2.1.27+dfsg2-3ubuntu1.2_amd64.deb ...
+Unpacking libsasl2-modules-db:amd64 (2.1.27+dfsg2-3ubuntu1.2) ...
+Selecting previously unselected package libsasl2-2:amd64.
+Preparing to unpack .../27-libsasl2-2_2.1.27+dfsg2-3ubuntu1.2_amd64.deb ...
+Unpacking libsasl2-2:amd64 (2.1.27+dfsg2-3ubuntu1.2) ...
+Selecting previously unselected package libldap-2.5-0:amd64.
+Preparing to unpack .../28-libldap-2.5-0_2.5.20+dfsg-0ubuntu0.22.04.1_amd64.deb ...
+Unpacking libldap-2.5-0:amd64 (2.5.20+dfsg-0ubuntu0.22.04.1) ...
+Selecting previously unselected package librtmp1:amd64.
+Preparing to unpack .../29-librtmp1_2.4+20151223.gitfa8646d.1-2build4_amd64.deb ...
+Unpacking librtmp1:amd64 (2.4+20151223.gitfa8646d.1-2build4) ...
+Selecting previously unselected package libssh-4:amd64.
+Preparing to unpack .../30-libssh-4_0.9.6-2ubuntu0.22.04.8_amd64.deb ...
+Unpacking libssh-4:amd64 (0.9.6-2ubuntu0.22.04.8) ...
+Selecting previously unselected package libcurl4:amd64.
+Preparing to unpack .../31-libcurl4_7.81.0-1ubuntu1.27_amd64.deb ...
+Unpacking libcurl4:amd64 (7.81.0-1ubuntu1.27) ...
+Selecting previously unselected package curl.
+Preparing to unpack .../32-curl_7.81.0-1ubuntu1.27_amd64.deb ...
+Unpacking curl (7.81.0-1ubuntu1.27) ...
+Selecting previously unselected package libevent-core-2.1-7:amd64.
+Preparing to unpack .../33-libevent-core-2.1-7_2.1.12-stable-1ubuntu0.1_amd64.deb ...
+Unpacking libevent-core-2.1-7:amd64 (2.1.12-stable-1ubuntu0.1) ...
+Selecting previously unselected package libc-ares2:amd64.
+Preparing to unpack .../34-libc-ares2_1.18.1-1ubuntu0.22.04.3_amd64.deb ...
+Unpacking libc-ares2:amd64 (1.18.1-1ubuntu0.22.04.3) ...
+Selecting previously unselected package libnode72:amd64.
+Preparing to unpack .../35-libnode72_12.22.9~dfsg-1ubuntu3.6_amd64.deb ...
+Unpacking libnode72:amd64 (12.22.9~dfsg-1ubuntu3.6) ...
+Selecting previously unselected package nodejs.
+Preparing to unpack .../36-nodejs_12.22.9~dfsg-1ubuntu3.6_amd64.deb ...
+Unpacking nodejs (12.22.9~dfsg-1ubuntu3.6) ...
+Selecting previously unselected package redsocks.
+Preparing to unpack .../37-redsocks_0.5-2build1_amd64.deb ...
+Unpacking redsocks (0.5-2build1) ...
+Setting up libip4tc2:amd64 (1.8.7-1ubuntu5.2) ...
+Setting up libexpat1:amd64 (2.4.7-1ubuntu0.7) ...
+Setting up libapparmor1:amd64 (3.0.4-2ubuntu2.5) ...
+Setting up libpsl5:amd64 (0.21.0-1.2build2) ...
+Setting up libip6tc2:amd64 (1.8.7-1ubuntu5.2) ...
+Setting up libbrotli1:amd64 (1.0.9-2build6) ...
+Setting up libnghttp2-14:amd64 (1.43.0-1ubuntu0.4) ...
+Setting up libc-ares2:amd64 (1.18.1-1ubuntu0.22.04.3) ...
+Setting up libsasl2-modules-db:amd64 (2.1.27+dfsg2-3ubuntu1.2) ...
+Setting up libcap2-bin (1:2.44-1ubuntu0.22.04.3) ...
+Setting up libuv1:amd64 (1.43.0-1ubuntu0.1) ...
+Setting up librtmp1:amd64 (2.4+20151223.gitfa8646d.1-2build4) ...
+Setting up libdbus-1-3:amd64 (1.12.20-2ubuntu4.1) ...
+Setting up dbus (1.12.20-2ubuntu4.1) ...
+Setting up libmnl0:amd64 (1.0.4-3build2) ...
+Setting up libevent-core-2.1-7:amd64 (2.1.12-stable-1ubuntu0.1) ...
+Setting up libxtables12:amd64 (1.8.7-1ubuntu5.2) ...
+Setting up libsasl2-2:amd64 (2.1.27+dfsg2-3ubuntu1.2) ...
+Setting up libssh-4:amd64 (0.9.6-2ubuntu0.22.04.8) ...
+Setting up libmd0:amd64 (1.0.4-1build1) ...
+Setting up libnfnetlink0:amd64 (1.0.1-3build3) ...
+Setting up redsocks (0.5-2build1) ...
+invoke-rc.d: could not determine current runlevel
+invoke-rc.d: policy-rc.d denied execution of start.
+Setting up netbase (6.3) ...
+Setting up openssl (3.0.2-0ubuntu1.29) ...
+Setting up libbsd0:amd64 (0.11.5-1) ...
+Setting up libelf1:amd64 (0.186-1ubuntu0.1) ...
+Setting up libicu70:amd64 (70.1-2) ...
+Setting up libnftnl11:amd64 (1.2.1-1build1) ...
+Setting up libldap-2.5-0:amd64 (2.5.20+dfsg-0ubuntu0.22.04.1) ...
+Setting up libnode72:amd64 (12.22.9~dfsg-1ubuntu3.6) ...
+Setting up ca-certificates (20260601~22.04.1) ...
+Updating certificates in /etc/ssl/certs...
+121 added, 0 removed; done.
+Setting up libnetfilter-conntrack3:amd64 (1.0.9-1) ...
+Setting up libcurl4:amd64 (7.81.0-1ubuntu1.27) ...
+Setting up curl (7.81.0-1ubuntu1.27) ...
+Setting up libbpf0:amd64 (1:0.5.0-1ubuntu22.04.1) ...
+Setting up iptables (1.8.7-1ubuntu5.2) ...
+update-alternatives: using /usr/sbin/iptables-legacy to provide /usr/sbin/iptables (iptables) in auto mode
+update-alternatives: using /usr/sbin/ip6tables-legacy to provide /usr/sbin/ip6tables (ip6tables) in auto mode
+update-alternatives: using /usr/sbin/iptables-nft to provide /usr/sbin/iptables (iptables) in auto mode
+update-alternatives: using /usr/sbin/ip6tables-nft to provide /usr/sbin/ip6tables (ip6tables) in auto mode
+update-alternatives: using /usr/sbin/arptables-nft to provide /usr/sbin/arptables (arptables) in auto mode
+update-alternatives: using /usr/sbin/ebtables-nft to provide /usr/sbin/ebtables (ebtables) in auto mode
+Setting up iproute2 (5.15.0-1ubuntu2.2) ...
+Setting up nodejs (12.22.9~dfsg-1ubuntu3.6) ...
+update-alternatives: using /usr/bin/nodejs to provide /usr/bin/js (js) in auto mode
+update-alternatives: warning: skip creation of /usr/share/man/man1/js.1.gz because associated file /usr/share/man/man1/nodejs.1.gz (of link group js) doesn't exist
+Processing triggers for libc-bin (2.35-0ubuntu3.14) ...
+Processing triggers for ca-certificates (20260601~22.04.1) ...
+Updating certificates in /etc/ssl/certs...
+0 added, 0 removed; done.
+Running hooks in /etc/ca-certificates/update.d...
+done.
+ ---> Removed intermediate container f797a55e9223
+ ---> 95d9ba793365
+Step 4/13 : COPY earnapp-mac /opt/earnapp-mac
+ ---> 1bc55a8b350c
+Step 5/13 : COPY boot.js /usr/local/lib/node/boot.js
+ ---> 31922179f2ac
+Step 6/13 : COPY earn-supervisor /usr/local/bin/earn-supervisor
+ ---> 18cbbeeb8ded
+Step 7/13 : COPY entrypoint.sh /usr/local/bin/entrypoint-original.sh
+ ---> 7de060a13743
+Step 8/13 : COPY cashpilot-proxy-entrypoint /usr/local/bin/entrypoint.sh
+ ---> 963d12f7dc75
+Step 9/13 : COPY runtime-manifest.json /opt/cashpilot/runtime-manifest.json
+ ---> e87a957f1b1b
+Step 10/13 : RUN chmod 0755 /opt/earnapp-mac /usr/local/bin/earn-supervisor /usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-original.sh     && node --check /usr/local/lib/node/boot.js     && bash -n /usr/local/bin/earn-supervisor /usr/local/bin/entrypoint.sh
+ ---> Running in a047c6f67179
+ ---> Removed intermediate container a047c6f67179
+ ---> 2ffcc09174b4
+Step 11/13 : LABEL com.cashpilot.earnapp.runtime=earnapp_mac_canary       com.cashpilot.earnapp.platform=darwin       com.cashpilot.earnapp.appid=mac_com.earnapp       com.cashpilot.earnapp.device-prefix=sdk-mac-       com.cashpilot.earnapp.assets-sha256=2e78b472799b6a22aba93664da435dbd6810c1c3b69ec1c64cde968ecc763810
+ ---> Running in 3badb293d350
+ ---> Removed intermediate container 3badb293d350
+ ---> dda3790f0c34
+Step 12/13 : VOLUME ["/etc/earnapp"]
+ ---> Running in d9a5a5eafc16
+ ---> Removed intermediate container d9a5a5eafc16
+ ---> 2b12d5f3831b
+Step 13/13 : ENTRYPOINT ["/usr/local/bin/earn-supervisor"]
+ ---> Running in 6d01802d0290
+ ---> Removed intermediate container 6d01802d0290
+ ---> df3748898c9c
+Successfully built df3748898c9c
+Successfully tagged cashpilot/earnapp-mac-canary:20260905-gap
+DEPRECATED: The legacy builder is deprecated and will be removed in a future release.
+            Install the buildx component to build images with BuildKit:
+            https://docs.docker.com/go/buildx/
+
+Sending build context to Docker daemon  52.77MB
+
+Step 1/15 : FROM ubuntu:22.04
+ ---> 2edbbc5dc405
+Step 2/15 : ENV DEBIAN_FRONTEND=noninteractive     EARNAPP_WATCHDOG=1     NODE_TLS_REJECT_UNAUTHORIZED=0
+ ---> Using cache
+ ---> f600c2dc6f44
+Step 3/15 : RUN apt-get update     && apt-get install -y --no-install-recommends ca-certificates curl dbus iproute2 iptables nodejs procps redsocks     && rm -rf /var/lib/apt/lists/*
+ ---> Using cache
+ ---> 95d9ba793365
+Step 4/15 : COPY earnapp-bootstrap /opt/earnapp-ios
+ ---> 0dc419f96c85
+Step 5/15 : COPY boot.js /usr/local/lib/node/boot.js
+ ---> 1584a5892700
+Step 6/15 : COPY earn-supervisor /usr/local/bin/earn-supervisor
+ ---> dd40a418eb80
+Step 7/15 : COPY entrypoint.sh /usr/local/bin/entrypoint-original.sh
+ ---> 6f44c7d8407e
+Step 8/15 : COPY ios-entrypoint /usr/local/bin/ios-entrypoint
+ ---> edc521b57f34
+Step 9/15 : COPY ios-register-device /usr/local/bin/ios-register-device
+ ---> 613d9b9ed891
+Step 10/15 : COPY cashpilot-proxy-entrypoint /usr/local/bin/entrypoint.sh
+ ---> 6bf847049020
+Step 11/15 : COPY runtime-manifest.json /opt/cashpilot/runtime-manifest.json
+ ---> bd4d81c8abf8
+Step 12/15 : RUN chmod 0755 /opt/earnapp-ios /usr/local/bin/earn-supervisor /usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-original.sh /usr/local/bin/ios-entrypoint /usr/local/bin/ios-register-device     && node --check /usr/local/lib/node/boot.js     && bash -n /usr/local/bin/earn-supervisor /usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-original.sh /usr/local/bin/ios-register-device
+ ---> Running in c4eacc2f6412
+ ---> Removed intermediate container c4eacc2f6412
+ ---> 255030cdd312
+Step 13/15 : LABEL com.cashpilot.earnapp.runtime=earnapp_ios       com.cashpilot.earnapp.platform=ios       com.cashpilot.earnapp.appid=com.brd.earnapp       com.cashpilot.earnapp.device-prefix=sdk-ios-       com.cashpilot.earnapp.assets-sha256=211d184e6066ad80ec5a2020fafd2c78b7280bee677557a2e9a5946b700c4a12
+ ---> Running in 827da2167f8e
+ ---> Removed intermediate container 827da2167f8e
+ ---> abfefdba8389
+Step 14/15 : VOLUME ["/etc/earnapp"]
+ ---> Running in 2053580dae2b
+ ---> Removed intermediate container 2053580dae2b
+ ---> 0e1506b04b95
+Step 15/15 : ENTRYPOINT ["/usr/local/bin/earn-supervisor"]
+ ---> Running in 3c744bbddef7
+ ---> Removed intermediate container 3c744bbddef7
+ ---> aa78351e3280
+Successfully built aa78351e3280
+Successfully tagged cashpilot/earnapp-ios:20260905-gap
+DEPRECATED: The legacy builder is deprecated and will be removed in a future release.
+            Install the buildx component to build images with BuildKit:
+            https://docs.docker.com/go/buildx/
+
+Sending build context to Docker daemon  24.06kB
+
+Step 1/6 : FROM ghcr.io/assetforgeai-tech/cashpilot-earnapp-ubuntu@sha256:19b8d5831f0e83c0beb9a514bc9ed40c0be252ac101217fc01a6e2ac4714c559
+ ---> 19b8d5831f0e
+Step 2/6 : RUN mv /usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-original.sh
+ ---> Running in d08c582996d3
+ ---> Removed intermediate container d08c582996d3
+ ---> 5f2c005173e7
+Step 3/6 : COPY cashpilot-proxy-entrypoint /usr/local/bin/entrypoint.sh
+ ---> 3213c5c24044
+Step 4/6 : RUN chmod 0755 /usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-original.sh
+ ---> Running in ec0d6a6f2b8b
+ ---> Removed intermediate container ec0d6a6f2b8b
+ ---> b045b1579320
+Step 5/6 : LABEL com.cashpilot.earnapp.runtime=earnapp_ubuntu       com.cashpilot.earnapp.platform=linux       com.cashpilot.earnapp.appid=node_earnapp.com       com.cashpilot.earnapp.device-prefix=sdk-node-       com.cashpilot.earnapp.assets-sha256=03bab071d0c15826ece8c4e541559b3118cfd18feed4cbb67a0a5750bde6f2f2
+ ---> Running in 450cdd19b460
+ ---> Removed intermediate container 450cdd19b460
+ ---> 63dc969c570b
+Step 6/6 : ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+ ---> Running in fd7ef66dd0da
+ ---> Removed intermediate container fd7ef66dd0da
+ ---> 598b87d32dee
+Successfully built 598b87d32dee
+Successfully tagged cashpilot/earnapp-ubuntu:20260905-gap
+The push refers to repository [ghcr.io/assetforgeai-tech/cashpilot-earnapp-macos]
+69ad2efc535a: Waiting
+4df52974a240: Waiting
+dff810632f79: Waiting
+434893009830: Waiting
+05b0516d989c: Waiting
+d544298cabd5: Waiting
+d216ba62c41c: Waiting
+f249a079b12d: Waiting
+8f6f09ffbf65: Waiting
+69ad2efc535a: Waiting
+4df52974a240: Waiting
+dff810632f79: Waiting
+434893009830: Waiting
+05b0516d989c: Waiting
+d544298cabd5: Waiting
+d216ba62c41c: Waiting
+f249a079b12d: Waiting
+8f6f09ffbf65: Waiting
+69ad2efc535a: Waiting
+4df52974a240: Waiting
+dff810632f79: Waiting
+434893009830: Waiting
+05b0516d989c: Waiting
+d544298cabd5: Waiting
+d216ba62c41c: Waiting
+f249a079b12d: Waiting
+8f6f09ffbf65: Waiting
+69ad2efc535a: Waiting
+4df52974a240: Waiting
+dff810632f79: Waiting
+434893009830: Waiting
+05b0516d989c: Waiting
+d544298cabd5: Waiting
+d216ba62c41c: Waiting
+f249a079b12d: Waiting
+8f6f09ffbf65: Waiting
+dff810632f79: Waiting
+434893009830: Waiting
+05b0516d989c: Waiting
+d544298cabd5: Waiting
+d216ba62c41c: Waiting
+f249a079b12d: Waiting
+8f6f09ffbf65: Waiting
+69ad2efc535a: Waiting
+4df52974a240: Waiting
+f249a079b12d: Waiting
+8f6f09ffbf65: Waiting
+69ad2efc535a: Waiting
+4df52974a240: Waiting
+dff810632f79: Waiting
+434893009830: Waiting
+05b0516d989c: Waiting
+d544298cabd5: Waiting
+d216ba62c41c: Waiting
+69ad2efc535a: Waiting
+4df52974a240: Waiting
+dff810632f79: Waiting
+434893009830: Waiting
+05b0516d989c: Waiting
+d544298cabd5: Waiting
+d216ba62c41c: Waiting
+f249a079b12d: Waiting
+8f6f09ffbf65: Waiting
+69ad2efc535a: Waiting
+4df52974a240: Waiting
+dff810632f79: Waiting
+434893009830: Waiting
+05b0516d989c: Waiting
+d544298cabd5: Waiting
+d216ba62c41c: Waiting
+f249a079b12d: Waiting
+8f6f09ffbf65: Waiting
+05b0516d989c: Waiting
+d544298cabd5: Waiting
+d216ba62c41c: Waiting
+f249a079b12d: Waiting
+8f6f09ffbf65: Waiting
+69ad2efc535a: Waiting
+4df52974a240: Waiting
+dff810632f79: Waiting
+434893009830: Waiting
+69ad2efc535a: Waiting
+4df52974a240: Waiting
+dff810632f79: Waiting
+434893009830: Waiting
+05b0516d989c: Waiting
+d544298cabd5: Waiting
+d216ba62c41c: Waiting
+f249a079b12d: Waiting
+8f6f09ffbf65: Waiting
+434893009830: Waiting
+05b0516d989c: Waiting
+d544298cabd5: Waiting
+d216ba62c41c: Waiting
+f249a079b12d: Waiting
+8f6f09ffbf65: Waiting
+69ad2efc535a: Waiting
+4df52974a240: Waiting
+dff810632f79: Waiting
+d544298cabd5: Waiting
+d216ba62c41c: Waiting
+f249a079b12d: Waiting
+8f6f09ffbf65: Waiting
+69ad2efc535a: Waiting
+4df52974a240: Waiting
+dff810632f79: Waiting
+434893009830: Waiting
+05b0516d989c: Waiting
+f249a079b12d: Waiting
+8f6f09ffbf65: Waiting
+69ad2efc535a: Waiting
+4df52974a240: Waiting
+dff810632f79: Waiting
+434893009830: Waiting
+05b0516d989c: Waiting
+d544298cabd5: Waiting
+d216ba62c41c: Waiting
+69ad2efc535a: Waiting
+4df52974a240: Waiting
+dff810632f79: Waiting
+434893009830: Waiting
+05b0516d989c: Waiting
+d544298cabd5: Waiting
+d216ba62c41c: Waiting
+f249a079b12d: Waiting
+8f6f09ffbf65: Waiting
+d544298cabd5: Waiting
+f249a079b12d: Waiting
+05b0516d989c: Waiting
+d544298cabd5: Waiting
+05b0516d989c: Waiting
+d544298cabd5: Waiting
+d544298cabd5: Waiting
+d544298cabd5: Waiting
+d544298cabd5: Mounted from assetforgeai-tech/cashpilot-earnapp-ubuntu
+d216ba62c41c: Pushed
+dff810632f79: Pushed
+434893009830: Pushed
+f249a079b12d: Pushed
+05b0516d989c: Pushed
+8f6f09ffbf65: Pushed
+69ad2efc535a: Pushed
+4df52974a240: Pushed
+20260905-gap: digest: sha256:df3748898c9cf617bed0a3312bfb004201c4d1c1ffa40526c4171f6d3620918a size: 2298
+The push refers to repository [ghcr.io/assetforgeai-tech/cashpilot-earnapp-ios]
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+b7b39435dfe0: Waiting
+222ad9525ef7: Waiting
+ea55853aa673: Waiting
+5d44fa25713a: Waiting
+2aa4b706b48b: Waiting
+4df52974a240: Waiting
+5063db699315: Waiting
+81485dc198a7: Waiting
+d544298cabd5: Waiting
+5063db699315: Waiting
+81485dc198a7: Waiting
+d544298cabd5: Waiting
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+b7b39435dfe0: Waiting
+222ad9525ef7: Waiting
+ea55853aa673: Waiting
+5d44fa25713a: Waiting
+2aa4b706b48b: Waiting
+4df52974a240: Waiting
+222ad9525ef7: Waiting
+ea55853aa673: Waiting
+5d44fa25713a: Waiting
+2aa4b706b48b: Waiting
+4df52974a240: Waiting
+5063db699315: Waiting
+81485dc198a7: Waiting
+d544298cabd5: Waiting
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+b7b39435dfe0: Waiting
+5063db699315: Waiting
+81485dc198a7: Waiting
+d544298cabd5: Waiting
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+b7b39435dfe0: Waiting
+222ad9525ef7: Waiting
+ea55853aa673: Waiting
+5d44fa25713a: Waiting
+2aa4b706b48b: Waiting
+4df52974a240: Waiting
+d544298cabd5: Waiting
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+b7b39435dfe0: Waiting
+222ad9525ef7: Waiting
+ea55853aa673: Waiting
+5d44fa25713a: Waiting
+2aa4b706b48b: Waiting
+4df52974a240: Waiting
+5063db699315: Waiting
+81485dc198a7: Waiting
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+b7b39435dfe0: Waiting
+222ad9525ef7: Waiting
+ea55853aa673: Waiting
+5d44fa25713a: Waiting
+2aa4b706b48b: Waiting
+4df52974a240: Waiting
+5063db699315: Waiting
+81485dc198a7: Waiting
+d544298cabd5: Waiting
+b7b39435dfe0: Waiting
+222ad9525ef7: Waiting
+ea55853aa673: Waiting
+5d44fa25713a: Waiting
+2aa4b706b48b: Waiting
+4df52974a240: Waiting
+5063db699315: Waiting
+81485dc198a7: Waiting
+d544298cabd5: Waiting
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+2aa4b706b48b: Waiting
+4df52974a240: Waiting
+5063db699315: Waiting
+81485dc198a7: Waiting
+d544298cabd5: Waiting
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+b7b39435dfe0: Waiting
+222ad9525ef7: Waiting
+ea55853aa673: Waiting
+5d44fa25713a: Waiting
+5063db699315: Waiting
+81485dc198a7: Waiting
+d544298cabd5: Waiting
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+b7b39435dfe0: Waiting
+222ad9525ef7: Waiting
+ea55853aa673: Waiting
+5d44fa25713a: Waiting
+2aa4b706b48b: Waiting
+4df52974a240: Waiting
+5063db699315: Waiting
+81485dc198a7: Waiting
+d544298cabd5: Waiting
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+b7b39435dfe0: Waiting
+222ad9525ef7: Waiting
+ea55853aa673: Waiting
+5d44fa25713a: Waiting
+2aa4b706b48b: Waiting
+4df52974a240: Waiting
+d544298cabd5: Waiting
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+b7b39435dfe0: Waiting
+222ad9525ef7: Waiting
+ea55853aa673: Waiting
+5d44fa25713a: Waiting
+2aa4b706b48b: Waiting
+4df52974a240: Waiting
+5063db699315: Waiting
+81485dc198a7: Waiting
+81485dc198a7: Waiting
+d544298cabd5: Waiting
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+b7b39435dfe0: Waiting
+222ad9525ef7: Waiting
+ea55853aa673: Waiting
+5d44fa25713a: Waiting
+2aa4b706b48b: Waiting
+4df52974a240: Waiting
+5063db699315: Waiting
+5063db699315: Waiting
+81485dc198a7: Waiting
+d544298cabd5: Waiting
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+b7b39435dfe0: Waiting
+222ad9525ef7: Waiting
+ea55853aa673: Waiting
+5d44fa25713a: Waiting
+2aa4b706b48b: Waiting
+4df52974a240: Waiting
+4df52974a240: Waiting
+d544298cabd5: Waiting
+d544298cabd5: Waiting
+4df52974a240: Waiting
+d544298cabd5: Waiting
+4df52974a240: Waiting
+d544298cabd5: Waiting
+4df52974a240: Waiting
+d544298cabd5: Waiting
+4df52974a240: Waiting
+d544298cabd5: Mounted from assetforgeai-tech/cashpilot-earnapp-ubuntu
+4df52974a240: Mounted from assetforgeai-tech/cashpilot-earnapp-macos
+1b7a8dc7d391: Pushed
+ef8521c85468: Pushed
+ea55853aa673: Pushed
+5d44fa25713a: Pushed
+2aa4b706b48b: Pushed
+81485dc198a7: Pushed
+b7b39435dfe0: Pushed
+222ad9525ef7: Pushed
+5063db699315: Pushed
+20260905-gap: digest: sha256:aa78351e3280c25dd3727a0de6ce5cefb7407ed81a91bc19b65532f1aca37764 size: 2739
+The push refers to repository [ghcr.io/assetforgeai-tech/cashpilot-earnapp-ubuntu]
+e101f0fdb263: Waiting
+919ffd839afc: Waiting
+4f4fb700ef54: Waiting
+a00092fb6748: Waiting
+feb3fa14bea3: Waiting
+cfc6823769b2: Waiting
+120c7c2a5424: Waiting
+69d78788e722: Waiting
+d544298cabd5: Waiting
+9f6bc89699a5: Waiting
+fa09349ca998: Waiting
+6a3c293df4d2: Waiting
+120c7c2a5424: Waiting
+69d78788e722: Waiting
+d544298cabd5: Waiting
+9f6bc89699a5: Waiting
+fa09349ca998: Waiting
+6a3c293df4d2: Waiting
+e101f0fdb263: Waiting
+919ffd839afc: Waiting
+4f4fb700ef54: Waiting
+a00092fb6748: Waiting
+feb3fa14bea3: Waiting
+cfc6823769b2: Waiting
+919ffd839afc: Waiting
+4f4fb700ef54: Waiting
+a00092fb6748: Waiting
+feb3fa14bea3: Waiting
+cfc6823769b2: Waiting
+120c7c2a5424: Waiting
+69d78788e722: Waiting
+d544298cabd5: Waiting
+9f6bc89699a5: Waiting
+fa09349ca998: Waiting
+6a3c293df4d2: Waiting
+e101f0fdb263: Waiting
+120c7c2a5424: Waiting
+69d78788e722: Waiting
+d544298cabd5: Waiting
+9f6bc89699a5: Waiting
+fa09349ca998: Waiting
+6a3c293df4d2: Waiting
+e101f0fdb263: Waiting
+919ffd839afc: Waiting
+4f4fb700ef54: Waiting
+a00092fb6748: Waiting
+feb3fa14bea3: Waiting
+cfc6823769b2: Waiting
+120c7c2a5424: Waiting
+69d78788e722: Waiting
+d544298cabd5: Waiting
+9f6bc89699a5: Waiting
+fa09349ca998: Waiting
+6a3c293df4d2: Waiting
+e101f0fdb263: Waiting
+919ffd839afc: Waiting
+4f4fb700ef54: Waiting
+a00092fb6748: Waiting
+feb3fa14bea3: Waiting
+cfc6823769b2: Waiting
+a00092fb6748: Waiting
+feb3fa14bea3: Waiting
+cfc6823769b2: Waiting
+120c7c2a5424: Waiting
+69d78788e722: Waiting
+d544298cabd5: Waiting
+9f6bc89699a5: Waiting
+fa09349ca998: Waiting
+6a3c293df4d2: Waiting
+e101f0fdb263: Waiting
+919ffd839afc: Waiting
+4f4fb700ef54: Waiting
+120c7c2a5424: Waiting
+69d78788e722: Waiting
+d544298cabd5: Waiting
+9f6bc89699a5: Waiting
+fa09349ca998: Waiting
+6a3c293df4d2: Waiting
+e101f0fdb263: Waiting
+919ffd839afc: Waiting
+4f4fb700ef54: Waiting
+a00092fb6748: Waiting
+feb3fa14bea3: Waiting
+cfc6823769b2: Waiting
+120c7c2a5424: Waiting
+69d78788e722: Waiting
+d544298cabd5: Waiting
+9f6bc89699a5: Waiting
+fa09349ca998: Waiting
+6a3c293df4d2: Waiting
+e101f0fdb263: Waiting
+919ffd839afc: Waiting
+4f4fb700ef54: Waiting
+a00092fb6748: Waiting
+feb3fa14bea3: Waiting
+cfc6823769b2: Waiting
+a00092fb6748: Waiting
+feb3fa14bea3: Waiting
+cfc6823769b2: Waiting
+120c7c2a5424: Waiting
+69d78788e722: Waiting
+d544298cabd5: Waiting
+9f6bc89699a5: Waiting
+fa09349ca998: Waiting
+6a3c293df4d2: Waiting
+e101f0fdb263: Waiting
+919ffd839afc: Waiting
+4f4fb700ef54: Waiting
+a00092fb6748: Waiting
+feb3fa14bea3: Waiting
+cfc6823769b2: Waiting
+120c7c2a5424: Waiting
+69d78788e722: Waiting
+d544298cabd5: Waiting
+9f6bc89699a5: Waiting
+fa09349ca998: Waiting
+6a3c293df4d2: Waiting
+e101f0fdb263: Waiting
+919ffd839afc: Waiting
+4f4fb700ef54: Waiting
+120c7c2a5424: Waiting
+69d78788e722: Waiting
+d544298cabd5: Layer already exists
+9f6bc89699a5: Waiting
+fa09349ca998: Waiting
+6a3c293df4d2: Waiting
+e101f0fdb263: Waiting
+919ffd839afc: Waiting
+4f4fb700ef54: Waiting
+a00092fb6748: Waiting
+feb3fa14bea3: Waiting
+cfc6823769b2: Waiting
+9f6bc89699a5: Waiting
+fa09349ca998: Layer already exists
+6a3c293df4d2: Layer already exists
+e101f0fdb263: Layer already exists
+919ffd839afc: Waiting
+4f4fb700ef54: Layer already exists
+a00092fb6748: Layer already exists
+feb3fa14bea3: Layer already exists
+cfc6823769b2: Waiting
+120c7c2a5424: Layer already exists
+69d78788e722: Waiting
+69d78788e722: Waiting
+9f6bc89699a5: Layer already exists
+919ffd839afc: Waiting
+cfc6823769b2: Waiting
+69d78788e722: Waiting
+919ffd839afc: Waiting
+cfc6823769b2: Pushed
+69d78788e722: Pushed
+919ffd839afc: Pushed
+20260905-gap: digest: sha256:598b87d32dee6681f97ffecdb6342282ca8004447dc4cddc64a13b73b379bb43 size: 3334
+[cashpilot/earnapp-mac-canary:20260905-gap ghcr.io/assetforgeai-tech/cashpilot-earnapp-macos:20260905-gap] sha256:df3748898c9cf617bed0a3312bfb004201c4d1c1ffa40526c4171f6d3620918a
+[cashpilot/earnapp-ios:20260905-gap ghcr.io/assetforgeai-tech/cashpilot-earnapp-ios:20260905-gap] sha256:aa78351e3280c25dd3727a0de6ce5cefb7407ed81a91bc19b65532f1aca37764
+[cashpilot/earnapp-ubuntu:20260905-gap ghcr.io/assetforgeai-tech/cashpilot-earnapp-ubuntu:20260905-gap] sha256:598b87d32dee6681f97ffecdb6342282ca8004447dc4cddc64a13b73b379bb43

@@ -211,7 +211,7 @@ def default_source_dir(platform: str = "macos") -> Path:
     selected = str(platform or "macos").strip().lower()
     external_root = ROOT.parents[1] / "earnapp_new_update"
     if selected == "ubuntu":
-        return ROOT / ".runtime-src" / "ubuntu"
+        return ROOT.parents[1] / "earnapp_update_05092026" / "runtime" / "ubuntu"
     bundle = "ios" if selected == "ios" else "mac-1.660.577"
     return external_root / "earnapp-runtime-files" / bundle
 
