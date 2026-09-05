@@ -37,10 +37,82 @@ in this branch:
   not promoted as generic images. Generic images must be built from the
   external runtime artifacts with new encrypted profiles and state volumes.
 
-## Remaining before live canary
+## Completed canary preparation
 
-1. Verify the published private GHCR manifests and update deployment pins to
-   their immutable digests without storing registry credentials in CashPilot.
-2. Preload those digests on `vps-test-us` without changing existing nodes.
-3. Canary one isolated node per OS with distinct eligible residential proxy
-   leases, then verify online state, positive usage and restart persistence.
+The private GHCR manifests were published and the corrected Ubuntu digest was
+preloaded on `vps-test-us` without changing existing node volumes. Six isolated
+canaries were deployed with distinct residential proxy leases, and restart
+persistence was checked without changing UUIDs. Positive usage remains the only
+open maturation gate; it is intentionally not treated as a reason to recreate
+or rotate a node while its proxy is healthy.
+
+## 2026-09-06 Ubuntu wrapper correction
+
+The isolated six-node canary exposed a source-build defect in the Ubuntu lane:
+the generated outer wrapper had been paired with a previously wrapped image and
+therefore waited for `EARNAPP_DEVICE_ID`, while the authoritative Linux runtime
+must generate and persist its UUID on first boot. The fix keeps the official
+Ubuntu entrypoint as `entrypoint-original.sh`, removes only application-level
+proxy environment variables, and lets the reference runtime own installation,
+UUID generation, registration, and upgrade behavior.
+
+Verification completed before publication:
+
+- Focused EarnApp suite: `224 passed, 1 skipped`.
+- Full suite: `2577 passed, 9 skipped`; the two initial compose-pin failures
+  disappeared after fetching the fork tag refspec (`refs/fork-tags/*`), with no
+  source change to compose files.
+- Ruff check and format check passed after formatting the three changed files.
+- Context manifests were generated for MacOS, iOS, and Ubuntu without secrets.
+- Published immutable private GHCR tag: `20260906-ubuntu-fix`.
+- Ubuntu image digest: `sha256:817e16db2fb80de2c1b5a05cc1aea29173c53fdf917689a451097bd32fbe19d0`.
+- Ubuntu runtime manifest: `0bf2a0b415389164d22566350e10928a9fa42d7d49582be2ab81a1f35f303e78`.
+- The corrected Ubuntu image was preloaded on `vps-test-us` under the worker
+  contract tag `cashpilot/earnapp-ubuntu:asset-0bf2a0b41538`; no canary identity
+  was recreated during preload.
+
+The six canaries remain isolated. At the first snapshot their proxies were
+healthy and identities were unchanged. Ubuntu devices were present, online and
+not banned but still awaiting a usage delta; MacOS devices were present but
+pending/offline in the account snapshot; iOS verification had not yet been
+persisted. These are maturation observations, not a basis for proxy rotation.
+
+## iOS canary timing finding
+
+The iOS lane is slower for a different reason than initial proxy or TLS
+registration. On both iOS canaries, `proxy_en0` WSS connected in about one
+second and all three agent WSS sockets connected within about three seconds.
+The delayed signal appears later as `agent WS ... zfin_pending: ... wait timeout`,
+while the container remains running and proxy egress remains healthy. This
+places the delay in post-connect agent finalization/workload admission, not in
+`install_device`, DNS, or the fail-closed TCP route.
+
+The current iOS artifact is the captured `1.617.813` runtime, whereas the MacOS
+canary uses verified `1.660.577` and Ubuntu uses `1.665.73`. Both iOS identity
+profiles satisfy the contract (`appid=com.brd.earnapp`, `tv_platform=ios`,
+`arch=arm64`, iPhone model, iOS 18.2.1, unique serial/device UUID). The safe
+policy is therefore to treat iOS as a longer maturation lane and require a
+positive usage delta before changing proxy or identity; `zfin_pending` alone is
+not evidence of a proxy failure.
+
+## 2026-09-06 lifecycle root cause
+
+The first six-node live restart exposed an operational mismatch: the server
+lifecycle scheduler ran every five minutes and treated a ten-minute usage
+flatline as a recreate, then escalated to proxy rotation after two same-proxy
+recreates. EarnApp's reference VPS reaches country/usage after roughly
+30--60 minutes, so the CashPilot policy could reset a healthy admission session
+before the account backend had finished assigning workload. Scheduler logs also
+showed repeated `proxy/apply`/`proxy/finalize` `409` responses while DB state was
+advanced, leaving runtime, lease and server records temporarily inconsistent.
+
+The policy is now changed in this branch:
+
+- admission/flatline grace is 60 minutes;
+- healthy-proxy flatline, offline or banned node uses an in-place main-container
+  restart, preserving UUID, volume, account and lease;
+- recreate is not selected by usage flatline, and proxy rotation is reserved
+  for explicit unhealthy/egress-mismatch evidence;
+- restart has a generation/device CAS-scoped worker endpoint;
+- the existing proxy-apply/finalize reconciliation remains a separate open gate
+  and must be fixed before production closeout.

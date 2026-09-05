@@ -12,7 +12,9 @@ from typing import Any
 
 # A short flatline window lets the worker recover promptly; the account API
 # can lag, so this is still long enough to avoid reacting to one poll.
-FLATLINE_MINUTES = 10
+# EarnApp may take tens of minutes to assign country and admit workload.  Do
+# not mutate a node during that admission window.
+FLATLINE_MINUTES = 60
 _UPTIME_BILLING = frozenset({"uptime", "fixed", "qualified_uptime"})
 
 
@@ -87,6 +89,7 @@ def evaluate_node(
     flatline = current - started >= timedelta(minutes=FLATLINE_MINUTES)
     if not flatline and not snapshot.get("banned"):
         return LifecycleDecision("observe", same, rotates)
-    if same < 2:
-        return LifecycleDecision("recreate", same + 1, rotates, "usage flatline or banned")
-    return LifecycleDecision("rotate_recreate", 0, rotates + 1, "same-proxy recovery exhausted")
+    # A healthy route with a flatline is a workload/admission problem, not
+    # proof that the identity or proxy should be replaced. Restart in place so
+    # the device, volume and lease remain stable.
+    return LifecycleDecision("restart", 0, rotates, "usage flatline or banned")
