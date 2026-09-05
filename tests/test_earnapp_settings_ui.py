@@ -21,6 +21,9 @@ def test_settings_prioritizes_token_and_proxy_route_health_without_secret_fields
     assert "Last collected" in javascript
     assert "collector.usage_current" in javascript
     assert "Current qualified usage" in javascript
+    assert "active_nodes" in javascript
+    assert "recovery_nodes" in javascript
+    assert "planned_nodes" in javascript
     assert "proxy.password" not in javascript
     assert "credentials_enc" not in javascript
 

@@ -72,7 +72,15 @@ def test_import_and_list_mask_every_credential_and_report_capacity(tmp_path, cli
     assert imported.status_code == 200
     payload = listed.json()
     assert listed.status_code == 200
-    assert payload["counts"] == {"accounts": 1, "active": 1, "locked": 0, "nodes": 0}
+    assert payload["counts"] == {
+        "accounts": 1,
+        "active": 1,
+        "locked": 0,
+        "nodes": 0,
+        "active_nodes": 0,
+        "recovery_nodes": 0,
+        "planned_nodes": 0,
+    }
     assert payload["proxy_capacity"]["recovery_hold_seconds"] == 3600
     row = payload["accounts"][0]
     assert row["profile_key"] == "profile-40"
@@ -220,6 +228,32 @@ def test_list_includes_latest_collector_summary_and_recovery_countdown(tmp_path,
     assert node["generation"] == 3
     assert 3590 <= node["recovery_hold_remaining_seconds"] <= 3600
     assert "secretly-not-returned" not in response.text
+
+
+def test_account_payload_separates_active_and_recovery_node_counts(tmp_path, client):
+    with (
+        patch.object(database, "DB_DIR", tmp_path),
+        patch.object(database, "DB_PATH", tmp_path / "earnapp.db"),
+        patch("app.deps.auth.get_current_user", return_value=_owner()),
+    ):
+        asyncio.run(database.init_db())
+        account_id = client.post("/api/admin/earnapp/accounts/import", json=_import_body()).json()["account_id"]
+
+        async def seed():
+            await database.assign_earnapp_account("earnapp-active")
+            await database.set_earnapp_logical_node_state("earnapp-active", "ACTIVE")
+            await database.assign_earnapp_account("earnapp-recovery")
+            await database.set_earnapp_logical_node_state("earnapp-recovery", "RECOVERABLE")
+            await database.assign_earnapp_account("earnapp-planned")
+
+        asyncio.run(seed())
+        payload = client.get("/api/admin/earnapp/accounts").json()
+
+    row = next(item for item in payload["accounts"] if item["id"] == account_id)
+    assert row["assigned_nodes"] == 3
+    assert row["active_nodes"] == 1
+    assert row["recovery_nodes"] == 1
+    assert row["planned_nodes"] == 1
 
 
 def test_collect_endpoint_returns_sanitized_result_and_replacement_delegates_platform_policy(client):

@@ -3524,8 +3524,8 @@ const CP = (() => {
       const route = account.route || {};
       const balance = collector.money_balance == null ? '&mdash;' : `${Number(collector.money_balance).toFixed(2)} USD`;
       const nodes = collector.online_nodes == null
-        ? `${Number(account.assigned_nodes) || 0} assigned`
-        : `${Number(collector.online_nodes) || 0} online / ${Number(collector.offline_nodes) || 0} offline`;
+        ? `${Number(account.active_nodes) || 0} active / ${Number(account.recovery_nodes) || 0} recovery / ${Number(account.planned_nodes) || 0} planned`
+        : `${Number(collector.online_nodes) || 0} collector online / ${Number(collector.offline_nodes) || 0} offline · ${Number(account.active_nodes) || 0} CashPilot active / ${Number(account.recovery_nodes) || 0} recovery`;
       const usage = collector.usage_current == null
         ? 'Current qualified usage unavailable'
         : `Current qualified usage ${Math.max(0, Number(collector.usage_current) || 0).toLocaleString()} ms`;
