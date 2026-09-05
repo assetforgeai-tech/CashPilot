@@ -562,11 +562,16 @@ async def deploy_platform_canary(
     current_spec = await database.get_provider_instance_spec(node_id)
     expected_contract = earnapp_runtime.runtime_asset_manifest_sha256(platform=selected)
     existing_contract = str((current_spec or {}).get("image_contract_sha256") or "")
-    if existing and str(existing.get("status") or "").lower() in {
-        "running",
-        "deployed",
-        "verification_pending",
-    } and existing_contract == expected_contract:
+    if (
+        existing
+        and str(existing.get("status") or "").lower()
+        in {
+            "running",
+            "deployed",
+            "verification_pending",
+        }
+        and existing_contract == expected_contract
+    ):
         existing_worker = int(existing.get("worker_id") or 0)
         if existing_worker and existing_worker != int(worker_id):
             raise ValueError("EarnApp canary is already assigned to another worker")
