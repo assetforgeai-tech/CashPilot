@@ -637,7 +637,9 @@ def test_ubuntu_image_wraps_the_pinned_reference_runtime_with_fail_closed_proxyi
     assert "RUN mv /usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-original.sh" in recipe
     assert "COPY cashpilot-proxy-entrypoint /usr/local/bin/entrypoint.sh" in recipe
     assert 'ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]' in recipe
-    assert earnapp_runtime.UBUNTU_RUNTIME_ARTIFACT_HASHES == {}
+    assert earnapp_runtime.UBUNTU_RUNTIME_ARTIFACT_HASHES == {
+        "entrypoint.sh": "b03e12ed092f8386177910b9d9d89e6189c66730472a891d67192a958a4344bc",
+    }
 
 
 def test_ubuntu_thin_wrapper_tag_changes_when_the_reference_manifest_changes(monkeypatch):
@@ -648,11 +650,12 @@ def test_ubuntu_thin_wrapper_tag_changes_when_the_reference_manifest_changes(mon
 
 
 def test_ubuntu_reference_image_uses_the_verified_manifest_digest():
+    assert earnapp_runtime.UBUNTU_REFERENCE_IMAGE == "ghcr.io/assetforgeai-tech/cashpilot-earnapp-ubuntu"
     assert earnapp_runtime.UBUNTU_REFERENCE_DIGEST == (
-        "sha256:55fc019a70b269cc1023dd9a323640129298439f6b902e30e34c24b9bdc4d0ae"
+        "sha256:19b8d5831f0e83c0beb9a514bc9ed40c0be252ac101217fc01a6e2ac4714c559"
     )
     assert earnapp_runtime.UBUNTU_REFERENCE_IMAGE_PIN == (
-        "ghcr.io/s0ckd3/earnapp-2movn@sha256:55fc019a70b269cc1023dd9a323640129298439f6b902e30e34c24b9bdc4d0ae"
+        "ghcr.io/assetforgeai-tech/cashpilot-earnapp-ubuntu@sha256:19b8d5831f0e83c0beb9a514bc9ed40c0be252ac101217fc01a6e2ac4714c559"
     )
 
 
