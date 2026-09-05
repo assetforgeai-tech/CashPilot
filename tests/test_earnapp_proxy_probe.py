@@ -10,6 +10,23 @@ from app import proxy_intelligence
 from app.proxy_probe_profiles import earnapp
 
 
+def test_ipwho_security_and_connection_fields_fill_ip_type():
+    normalized = proxy_intelligence.normalize_ipwho_payload(
+        {
+            "success": True,
+            "country_code": "VN",
+            "country": "Vietnam",
+            "connection": {"type": "Residential"},
+            "security": {"proxy": False, "vpn": False, "tor": False},
+        }
+    )
+
+    merged = proxy_intelligence.merge_intelligence("1.1.1.1", country=normalized, quality=normalized)
+    assert merged["country_code"] == "VN"
+    assert merged["ip_type"] == "residential"
+    assert merged["ip_type_source"] == "ipwho.is"
+
+
 def test_only_cid_set_is_earnapp_eligible():
     assert earnapp.classify_verdict("CID_SET", "cid-1") == "eligible"
     assert earnapp.classify_verdict("BLACKLIST", "earnapp_blacklist") == "blocked"

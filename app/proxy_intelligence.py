@@ -29,12 +29,28 @@ def normalize_ipwho_payload(payload: Mapping[str, Any] | None) -> dict[str, Any]
     data = dict(payload or {})
     if data.get("success") is not True:
         return {}
-    return {
+    connection = data.get("connection") if isinstance(data.get("connection"), Mapping) else {}
+    security = data.get("security") if isinstance(data.get("security"), Mapping) else {}
+    connection_type = str(connection.get("type") or "").strip().lower()
+    result = {
         "country_code": _normalize_country_code(data.get("country_code")),
         "country_name": str(data.get("country") or "").strip(),
         "geo_source": "ipwho.is",
         "geo_confidence": "verified",
     }
+    if connection_type:
+        result["ip_type_source"] = "ipwho.is"
+        result["ip_type"] = {
+            "residential": "residential",
+            "business": "residential",
+            "hosting": "hosting",
+            "datacenter": "datacenter",
+            "mobile": "residential",
+        }.get(connection_type, "unknown")
+    for key, target in (("proxy", "is_proxy"), ("vpn", "is_vpn"), ("tor", "is_tor")):
+        if key in security:
+            result[target] = bool(security.get(key))
+    return result
 
 
 def normalize_ipapi_payload(payload: Mapping[str, Any] | None, *, source: str = "ipapi.is") -> dict[str, Any]:
@@ -52,6 +68,9 @@ def normalize_ipapi_payload(payload: Mapping[str, Any] | None, *, source: str = 
 
 
 def _classify_ip_type(quality: Mapping[str, Any]) -> tuple[str, str]:
+    explicit = str(quality.get("ip_type") or "").strip().lower()
+    if explicit in _KNOWN_IP_TYPES and explicit != "unknown":
+        return explicit, "verified"
     if quality.get("is_vpn"):
         return "vpn", "verified"
     if quality.get("is_proxy") or quality.get("is_tor"):
@@ -73,7 +92,8 @@ def merge_intelligence(
 ) -> dict[str, Any]:
     country_data = dict(country or {})
     quality_data = dict(quality or {})
-    ip_type, confidence = _classify_ip_type(quality_data)
+    merged_quality = {**country_data, **quality_data}
+    ip_type, confidence = _classify_ip_type(merged_quality)
     if ip_type not in _KNOWN_IP_TYPES:
         ip_type = "unknown"
         confidence = "unknown"
@@ -89,7 +109,7 @@ def merge_intelligence(
         ),
         "geo_confidence": str(country_data.get("geo_confidence") or ("inferred" if country_code else "unknown")),
         "ip_type": ip_type,
-        "ip_type_source": str(quality_data.get("ip_type_source") or ""),
+        "ip_type_source": str(merged_quality.get("ip_type_source") or ""),
         "ip_type_confidence": confidence,
         "lookup_status": {},
     }

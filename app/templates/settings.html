@@ -73,6 +73,26 @@
     <button class="btn btn-ghost" data-action="saveEnvSettings">Save EarnApp runtime</button>
   </div>
 
+  <div class="earnapp-runtime-settings">
+    <div>
+      <h4>Platform policy by proxy country</h4>
+      <p>Select every OS CashPilot may assign. Existing node platforms remain unchanged.</p>
+    </div>
+    <strong>Viet Nam proxy</strong>
+    <div class="earnapp-platform-checks">
+      <label><input class="settings-config-input" type="checkbox" data-config="earnapp_platform_vn_ubuntu"> Ubuntu</label>
+      <label><input class="settings-config-input" type="checkbox" data-config="earnapp_platform_vn_macos" checked> MacOS</label>
+      <label><input class="settings-config-input" type="checkbox" data-config="earnapp_platform_vn_ios" checked> iOS</label>
+    </div>
+    <strong>Non-Viet Nam proxy</strong>
+    <div class="earnapp-platform-checks">
+      <label><input class="settings-config-input" type="checkbox" data-config="earnapp_platform_non_vn_ubuntu" checked> Ubuntu</label>
+      <label><input class="settings-config-input" type="checkbox" data-config="earnapp_platform_non_vn_macos"> MacOS</label>
+      <label><input class="settings-config-input" type="checkbox" data-config="earnapp_platform_non_vn_ios"> iOS</label>
+    </div>
+    <button class="btn btn-ghost" data-action="saveEnvSettings">Save platform policy</button>
+  </div>
+
   <div class="earnapp-account-grid">
     <div class="earnapp-import-panel">
       <h4>Import or refresh one account</h4>

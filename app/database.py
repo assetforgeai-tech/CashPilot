@@ -9025,7 +9025,11 @@ async def export_duplicate_proxy_rows(*, raw: bool = False) -> list[dict[str, An
 
 
 async def update_proxy_pool_check_results(
-    results: Mapping[int, str], *, protocols: Mapping[int, str] | None = None, exit_ips: Mapping[int, str] | None = None
+    results: Mapping[int, str],
+    *,
+    protocols: Mapping[int, str] | None = None,
+    exit_ips: Mapping[int, str] | None = None,
+    udp_results: Mapping[int, bool | None] | None = None,
 ) -> int:
     db = await _get_db()
     try:
@@ -9057,6 +9061,7 @@ async def update_proxy_pool_check_results(
                     ip_type_source = CASE WHEN ? OR (? != '' AND ? != exit_ip) THEN '' ELSE ip_type_source END,
                     ip_type_confidence = CASE WHEN ? OR (? != '' AND ? != exit_ip) THEN 'unknown' ELSE ip_type_confidence END,
                     ip_type_checked_at = CASE WHEN ? OR (? != '' AND ? != exit_ip) THEN NULL ELSE ip_type_checked_at END,
+                    udp_ok = COALESCE(?, udp_ok),
                     last_checked_at = datetime('now')
                 WHERE id = ?
                 """,
@@ -9068,6 +9073,7 @@ async def update_proxy_pool_check_results(
                     exit_ip,
                     exit_ip,
                     *(value for _field in range(10) for value in (clear_intelligence, exit_ip, exit_ip)),
+                    (udp_results or {}).get(proxy_id),
                     int(proxy_id),
                 ),
             )

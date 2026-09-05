@@ -19,6 +19,49 @@ LxdDeploy = Callable[[int, str, dict[str, Any]], Awaitable[dict[str, Any]]]
 VerifyNode = Callable[[str], Awaitable[Mapping[str, Any]]]
 PlatformChoice = Callable[[], str]
 
+_PLATFORM_ORDER = ("ubuntu", "macos", "ios")
+
+
+def _truthy(value: Any) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def platform_policy_from_config(config: Mapping[str, Any] | None) -> dict[str, tuple[str, ...]]:
+    """Build explicit country/OS policy; empty config preserves the legacy route."""
+    values = dict(config or {})
+    defaults = {"VN": ("macos", "ios"), "NON_VN": ("ubuntu",)}
+    result: dict[str, tuple[str, ...]] = {}
+    for country, legacy in defaults.items():
+        key_prefix = "earnapp_platform_vn_" if country == "VN" else "earnapp_platform_non_vn_"
+        configured = tuple(platform for platform in _PLATFORM_ORDER if f"{key_prefix}{platform}" in values)
+        enabled = tuple(platform for platform in configured if _truthy(values.get(f"{key_prefix}{platform}")))
+        result[country] = enabled if configured else legacy
+    return result
+
+
+def allowed_platforms_for_country(
+    country_code: str, policy: Mapping[str, tuple[str, ...]] | None = None
+) -> tuple[str, ...]:
+    country = str(country_code or "").strip().upper()
+    selected = policy or platform_policy_from_config({})
+    return tuple(selected.get("VN" if country == "VN" else "NON_VN", ()))
+
+
+def platform_country_filter(platform: str, policy: Mapping[str, tuple[str, ...]] | None = None) -> tuple[str, str]:
+    selected = str(platform or "").strip().lower()
+    if not selected:
+        return "", ""
+    policy = policy or platform_policy_from_config({})
+    vn = selected in tuple(policy.get("VN", ()))
+    non_vn = selected in tuple(policy.get("NON_VN", ()))
+    if vn and non_vn:
+        return "", ""
+    if vn:
+        return "VN", ""
+    if non_vn:
+        return "", "VN"
+    return "", "__NO_MATCH__"
+
 
 def _valid_ubuntu_device_id(value: Any) -> str:
     """Return a runtime UUID only when it is safe to use for CAS cleanup."""
@@ -152,25 +195,17 @@ async def target_worker_plans(
     return [plan for plan in plans if plan.logical_node_id in retry_ids or plan.logical_node_id in selected_new_ids]
 
 
-def _platform_for_country(country_code: str, chooser: PlatformChoice) -> str:
+def _platform_for_country(
+    country_code: str, chooser: PlatformChoice, policy: Mapping[str, tuple[str, ...]] | None = None
+) -> str:
     country = str(country_code or "").strip().upper()
     if len(country) != 2:
         raise ValueError("EarnApp proxy country is required")
-    if country == "VN":
-        selected = str(chooser() or "").strip().lower()
-        if selected not in {"macos", "ios"}:
-            raise ValueError("EarnApp VN platform choice is invalid")
-        return selected
-    return "ubuntu"
-
-
-def _platform_country_filter(platform: str) -> tuple[str, str]:
-    selected = str(platform or "").strip().lower()
-    if selected in {"macos", "ios"}:
-        return "VN", ""
-    if selected == "ubuntu":
-        return "", "VN"
-    return "", ""
+    allowed = allowed_platforms_for_country(country, policy)
+    if not allowed:
+        raise ValueError(f"no EarnApp platform enabled for {country}")
+    selected = str(chooser() or "").strip().lower()
+    return selected if selected in allowed else allowed[0]
 
 
 async def _proxy_for_id(proxy_id: int) -> dict[str, Any]:
@@ -187,6 +222,7 @@ async def prepare_node(
     *,
     vn_platform_choice: PlatformChoice | None = None,
     required_platform: str | None = None,
+    platform_policy: Mapping[str, tuple[str, ...]] | None = None,
 ) -> PreparedEarnAppNode:
     """Bind an account, exclusive proxy, immutable platform, and identity."""
     if earnapp_policy.is_protected_logical_node(plan.logical_node_id):
@@ -210,7 +246,9 @@ async def prepare_node(
         raise ValueError("EarnApp required platform is invalid")
     if existing_platform and required and existing_platform != required:
         raise RuntimeError("EarnApp logical node platform is disabled by runtime policy")
-    requested_country, excluded_country = _platform_country_filter(existing_platform or required)
+    requested_country, excluded_country = platform_country_filter(existing_platform or required, platform_policy)
+    if excluded_country == "__NO_MATCH__":
+        raise RuntimeError("EarnApp platform is disabled for both country classes")
 
     lease: dict[str, Any] | None = None
     active = await database.get_active_provider_proxy_lease("earnapp", plan.worker_id, plan.logical_node_id)
@@ -261,7 +299,9 @@ async def prepare_node(
     platform = (
         existing_platform
         or required
-        or _platform_for_country(country, vn_platform_choice or (lambda: secrets.choice(("macos", "ios"))))
+        or _platform_for_country(
+            country, vn_platform_choice or (lambda: secrets.choice(("macos", "ios"))), platform_policy
+        )
     )
     if platform in {"macos", "ios"} and country != "VN":
         raise RuntimeError("EarnApp Mac/iOS node requires a VN proxy")
@@ -386,6 +426,7 @@ async def deploy_worker_nodes_sequentially(
     vn_platform_choice: PlatformChoice | None = None,
     verify_node: VerifyNode | None = None,
     required_platform: str | None = None,
+    platform_policy: Mapping[str, tuple[str, ...]] | None = None,
 ) -> dict[str, list[str]]:
     """Deploy each planned node in order and require authenticated online evidence."""
     verifier = verify_node or _default_verify_node
@@ -450,6 +491,7 @@ async def deploy_worker_nodes_sequentially(
                 plan,
                 vn_platform_choice=vn_platform_choice,
                 required_platform=required or None,
+                platform_policy=platform_policy,
             )
             prepared_node = node
             spec = _transport_spec(node, lxd_settings=lxd_settings)
