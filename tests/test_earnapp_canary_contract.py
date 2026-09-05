@@ -301,7 +301,7 @@ def test_verified_image_labels_are_fail_closed():
 
 def test_mac_runtime_manifest_is_derived_from_authoritative_artifact_hashes():
     assert earnapp_runtime.runtime_asset_manifest_sha256() == (
-        "510e4f2b5e2310b7a76f51efbe779d49b99b2419820fd3903838281b8d2ff7fa"
+        "a971949f68f1a2cbdf5e466405dc1ae9ed00d0751ba0260e191ef9be082cbbc7"
     )
     assert earnapp_runtime.runtime_asset_manifest_sha256() == earnapp_runtime.MAC_RUNTIME_ASSET_MANIFEST_SHA256
 
@@ -535,10 +535,23 @@ def test_every_platform_image_installs_a_fail_closed_proxy_wrapper(platform):
     assert "CP_EARNAPP_OUT" in wrapper
     assert "iptables -I OUTPUT 1 -j CP_EARNAPP_OUT" in wrapper
     assert "ip6tables -I OUTPUT 1 -j CP_EARNAPP6_OUT" in wrapper
-    assert "-p udp --dport 53 -j ACCEPT" in wrapper
-    assert "-p tcp --dport 53 -j ACCEPT" in wrapper
+    assert "CP_EARNAPP_DNS" in wrapper
+    assert "--dport 53 -j REDIRECT --to-ports 1053" in wrapper
     assert '"$PROXY_IP"/32' in wrapper
     assert "-j DROP" in wrapper
+
+
+@pytest.mark.parametrize("platform", ["macos", "ios", "ubuntu"])
+def test_every_platform_tunnels_dns_through_the_assigned_proxy(platform):
+    wrapper = earnapp_runtime.generated_runtime_artifacts(platform)["cashpilot-proxy-entrypoint"].decode("utf-8")
+
+    assert "dnstc { local_ip = 127.0.0.1; local_port = 1053; }" in wrapper
+    assert "while true; do" in wrapper
+    assert '/usr/sbin/redsocks -c "$DNS_CONF"' in wrapper
+    assert "iptables -t nat -A CP_EARNAPP_DNS -p udp --dport 53 -j REDIRECT --to-ports 1053" in wrapper
+    assert "iptables -t nat -A CP_EARNAPP_DNS -p tcp --dport 53 -j REDIRECT --to-ports 12345" in wrapper
+    assert "iptables -A CP_EARNAPP_OUT -p udp --dport 53 -j ACCEPT" not in wrapper
+    assert "iptables -A CP_EARNAPP_OUT -p tcp --dport 53 -j ACCEPT" not in wrapper
 
 
 @pytest.mark.parametrize("platform", ["macos", "ubuntu"])
