@@ -315,6 +315,25 @@ def probe_service_egress(slug: str) -> dict[str, Any]:
     }
 
 
+def wait_for_service_egress(
+    slug: str,
+    expected_egress_ip: str,
+    *,
+    timeout_seconds: float = 45,
+    poll_interval_seconds: float = 2,
+) -> dict[str, Any]:
+    """Wait for a newly recreated proxy runtime to expose its expected route."""
+    deadline = time.monotonic() + max(0.0, float(timeout_seconds))
+    last: dict[str, Any] = {"running": False, "observed_egress_ip": "", "probe_ok": False}
+    while True:
+        last = probe_service_egress(slug)
+        if last.get("probe_ok") is True and str(last.get("observed_egress_ip") or "") == expected_egress_ip:
+            return last
+        if time.monotonic() >= deadline:
+            return last
+        time.sleep(max(0.0, float(poll_interval_seconds)))
+
+
 def earnapp_runtime_authority(slug: str) -> dict[str, Any]:
     """Return the exact Docker identity and egress needed for a guarded repair."""
     node_id = str(slug or "").strip()
