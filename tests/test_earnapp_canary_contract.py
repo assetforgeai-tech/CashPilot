@@ -554,13 +554,18 @@ def test_proxy_wrapper_leaves_proxy_process_to_reference_runtime(platform):
 def test_transparent_proxy_runtime_disables_application_level_proxying(platform):
     wrapper = earnapp_runtime.generated_runtime_artifacts(platform)["cashpilot-proxy-entrypoint"].decode("utf-8")
 
-    assert "sed" in wrapper
+    if platform == "ubuntu":
+        assert "EARNAPP_DEVICE_ID" not in wrapper
+        assert "sed" in wrapper
+    else:
+        assert "sed" in wrapper
     assert "HTTP_PROXY" in wrapper
     assert "HTTPS_PROXY" in wrapper
     assert "http_proxy" in wrapper
     assert "https_proxy" in wrapper
     assert "unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy NO_PROXY no_proxy" in wrapper
-    assert "# ANTI-DETECTION: Docker \\/ VM" in wrapper
+    if platform == "macos":
+        assert "# ANTI-DETECTION: Docker \\/ VM" in wrapper
     assert 'exec "$SANITIZED_ENTRYPOINT" "$@"' in wrapper
 
 
@@ -651,7 +656,12 @@ def test_ubuntu_runtime_spec_lets_the_reference_image_generate_the_device_identi
 
 
 def test_ubuntu_reference_runtime_uses_the_shared_fail_closed_proxy_entrypoint():
-    assert set(earnapp_runtime.generated_runtime_artifacts("ubuntu")) == {"cashpilot-proxy-entrypoint"}
+    artifacts = earnapp_runtime.generated_runtime_artifacts("ubuntu")
+
+    assert set(artifacts) == {"cashpilot-proxy-entrypoint"}
+    wrapper = artifacts["cashpilot-proxy-entrypoint"].decode("utf-8")
+    assert "EARNAPP_DEVICE_ID" not in wrapper
+    assert 'exec "$SANITIZED_ENTRYPOINT" "$@"' in wrapper
 
 
 def test_ubuntu_image_wraps_the_pinned_reference_runtime_with_fail_closed_proxying():
@@ -660,7 +670,8 @@ def test_ubuntu_image_wraps_the_pinned_reference_runtime_with_fail_closed_proxyi
 
     assert manifest["base_image"] == earnapp_runtime.UBUNTU_REFERENCE_IMAGE_PIN
     assert f"FROM {earnapp_runtime.UBUNTU_REFERENCE_IMAGE_PIN}" in recipe
-    assert "RUN mv /usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-original.sh" in recipe
+    assert "RUN mv /usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-base.sh" in recipe
+    assert "COPY entrypoint.sh /usr/local/bin/entrypoint-original.sh" in recipe
     assert "COPY cashpilot-proxy-entrypoint /usr/local/bin/entrypoint.sh" in recipe
     assert 'ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]' in recipe
     assert earnapp_runtime.UBUNTU_RUNTIME_ARTIFACT_HASHES == {

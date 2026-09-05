@@ -82,7 +82,8 @@ def render_dockerfile(manifest: Mapping[str, object], *, platform: str = "macos"
     if selected == "ubuntu":
         return f"""FROM {earnapp_runtime.UBUNTU_REFERENCE_IMAGE_PIN}
 
-RUN mv /usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-original.sh
+RUN mv /usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-base.sh
+COPY entrypoint.sh /usr/local/bin/entrypoint-original.sh
 COPY cashpilot-proxy-entrypoint /usr/local/bin/entrypoint.sh
 RUN chmod 0755 /usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-original.sh
 
