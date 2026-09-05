@@ -545,13 +545,13 @@ def test_every_platform_image_installs_a_fail_closed_proxy_wrapper(platform):
 def test_every_platform_tunnels_dns_through_the_assigned_proxy(platform):
     wrapper = earnapp_runtime.generated_runtime_artifacts(platform)["cashpilot-proxy-entrypoint"].decode("utf-8")
 
-    assert 'dnstc { local_ip = 127.0.0.1; local_port = 1053; }' in wrapper
-    assert 'while true; do' in wrapper
+    assert "dnstc { local_ip = 127.0.0.1; local_port = 1053; }" in wrapper
+    assert "while true; do" in wrapper
     assert '/usr/sbin/redsocks -c "$DNS_CONF"' in wrapper
-    assert 'iptables -t nat -A CP_EARNAPP_DNS -p udp --dport 53 -j REDIRECT --to-ports 1053' in wrapper
-    assert 'iptables -t nat -A CP_EARNAPP_DNS -p tcp --dport 53 -j REDIRECT --to-ports 12345' in wrapper
-    assert 'iptables -A CP_EARNAPP_OUT -p udp --dport 53 -j ACCEPT' not in wrapper
-    assert 'iptables -A CP_EARNAPP_OUT -p tcp --dport 53 -j ACCEPT' not in wrapper
+    assert "iptables -t nat -A CP_EARNAPP_DNS -p udp --dport 53 -j REDIRECT --to-ports 1053" in wrapper
+    assert "iptables -t nat -A CP_EARNAPP_DNS -p tcp --dport 53 -j REDIRECT --to-ports 12345" in wrapper
+    assert "iptables -A CP_EARNAPP_OUT -p udp --dport 53 -j ACCEPT" not in wrapper
+    assert "iptables -A CP_EARNAPP_OUT -p tcp --dport 53 -j ACCEPT" not in wrapper
 
 
 @pytest.mark.parametrize("platform", ["macos", "ubuntu"])
