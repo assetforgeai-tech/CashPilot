@@ -469,16 +469,18 @@ class _RateLimitedLinkClient(_CurrentShapeClient):
         return await super().post(url, **kwargs)
 
 
-def test_link_and_verify_device_treats_link_rate_limit_as_pending_after_runtime_registered():
+def test_link_and_verify_device_treats_link_rate_limit_as_pending_before_workload():
     credentials = {"cookies": {"oauth-refresh-token": "refresh-secret", "xsrf-token": "xsrf-secret"}}
     proxy = {"protocol": "http", "host": "proxy.example", "port": 8080}
 
     with patch("app.collectors.earnapp.httpx.AsyncClient", side_effect=_RateLimitedLinkClient):
         result = asyncio.run(EarnAppAccountCollector(credentials, proxy).link_and_verify_device("device-a"))
 
-    assert result["status"] == "online"
+    assert result["status"] == "pending"
+    assert result["error_kind"] == "rate_limited"
     assert result["device_present"] is True
     assert result["link_attempted"] is True
+    assert result["online"] is False
 
 
 def test_normalize_snapshot_reads_current_and_legacy_bandwidth_counters():
