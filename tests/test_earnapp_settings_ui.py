@@ -61,7 +61,11 @@ def test_settings_exposes_authoritative_earnapp_lxd_values():
     assert "EarnApp Docker runtime" in template
     assert 'id="earnapp-lxd-cpu" data-config="earnapp_lxd_cpu" value="1"' in template
     assert 'id="earnapp-lxd-memory" data-config="earnapp_lxd_memory_mib" value="1024"' in template
-    assert "Save EarnApp runtime" in template
+
+
+def test_settings_save_preserves_explicitly_disabled_platform_checks():
+    script = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+    assert "if (input.type === 'checkbox' || val)" in script
 
 
 def test_settings_scopes_recovery_to_ubuntu_and_keeps_apple_inspection_only():

@@ -534,15 +534,51 @@ async def _probe_proxy(
                 continue
             exit_ip = await _probe_proxy_exit_ip(host, port, protocol=protocol, username=username, password=password)
             if exit_ip:
+                udp_ok = await _probe_proxy_udp_capability(
+                    host, port, protocol=protocol, username=username, password=password, timeout=timeout
+                )
                 return {
                     "status": "alive",
                     "protocol": protocol,
                     "exit_ip": exit_ip,
                     "latency_ms": elapsed_ms(),
+                    "udp_ok": udp_ok,
                 }
         except Exception:
             continue
     return {"status": "dead", "protocol": "", "latency_ms": elapsed_ms()}
+
+
+async def _probe_proxy_udp_capability(
+    host: str,
+    port: int,
+    *,
+    protocol: str,
+    username: str = "",
+    password: str = "",
+    timeout: float = 5.0,
+) -> bool:
+    """Detect SOCKS5 UDP ASSOCIATE support without transmitting payload data."""
+    if str(protocol or "").lower() != "socks5":
+        return False
+    try:
+        reader, writer = await asyncio.wait_for(asyncio.open_connection(host, int(port)), timeout=timeout)
+        try:
+            methods = b"\x00" if not (username or password) else b"\x00\x02"
+            writer.write(b"\x05" + bytes([len(methods)]) + methods)
+            await writer.drain()
+            if await asyncio.wait_for(reader.readexactly(2), timeout=timeout) != b"\x05\x00":
+                return False
+            writer.write(b"\x05\x03\x00\x01\x00\x00\x00\x00\x00\x00")
+            await writer.drain()
+            response = await asyncio.wait_for(reader.readexactly(10), timeout=timeout)
+            return response[:2] == b"\x05\x00"
+        finally:
+            writer.close()
+            with contextlib.suppress(Exception):
+                await writer.wait_closed()
+    except Exception:
+        return False
 
 
 async def _probe_proxy_exit_ip(
@@ -922,7 +958,11 @@ async def run_proxy_pool_recheck(
     results = {int(row["id"]): str(result.get("status") or "dead") for row, result in checks}
     protocols = {int(row["id"]): str(result.get("protocol") or "") for row, result in checks}
     exit_ips = {int(row["id"]): str(result.get("exit_ip") or "") for row, result in checks}
-    checked = await database.update_proxy_pool_check_results(results, protocols=protocols, exit_ips=exit_ips)
+    udp_results = {int(row["id"]): result.get("udp_ok") for row, result in checks}
+    update_kwargs = {"protocols": protocols, "exit_ips": exit_ips}
+    if any(value is not None for value in udp_results.values()):
+        update_kwargs["udp_results"] = udp_results
+    checked = await database.update_proxy_pool_check_results(results, **update_kwargs)
     intelligence_jobs: list[tuple[int, str]] = []
     for row, result in checks:
         proxy_id = int(row["id"])
@@ -936,7 +976,7 @@ async def run_proxy_pool_recheck(
             exit_ip=str(result.get("exit_ip") or ""),
             latency_ms=result.get("latency_ms"),
             probe_version="generic-v1",
-            evidence={"protocol": str(result.get("protocol") or "")},
+            evidence={"protocol": str(result.get("protocol") or ""), "udp_ok": result.get("udp_ok")},
         )
         intelligence_exit_ip = str(
             result.get("exit_ip") or (row.get("exit_ip") if result.get("status") == "alive" else "") or ""

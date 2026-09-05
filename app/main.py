@@ -4667,6 +4667,7 @@ async def _deploy_earnapp_nodes(worker_id: int, *, config: Mapping[str, Any] | N
         limits = _earnapp_lxd_settings(config)
     except Exception:
         limits = {}
+    platform_policy = earnapp_deploy.platform_policy_from_config(config)
 
     async def docker_deploy(target_worker_id: int, node_id: str, spec: dict[str, Any]) -> dict[str, Any]:
         return await _proxy_worker_earnapp_docker_deploy(target_worker_id, node_id, spec)
@@ -4698,6 +4699,7 @@ async def _deploy_earnapp_nodes(worker_id: int, *, config: Mapping[str, Any] | N
                 docker_remove=docker_remove,
                 lxd_deploy=None,
                 lxd_settings=limits,
+                platform_policy=platform_policy,
             )
     finally:
         _EARNAPP_DEPLOY_ACTIVE.discard(int(worker_id))
@@ -6348,6 +6350,15 @@ def _validate_config_update(data: Mapping[str, str]) -> None:
         _nkn_lxd_settings(data)
     if {"earnapp_lxd_cpu", "earnapp_lxd_memory_mib"}.intersection(data):
         _earnapp_lxd_settings(data)
+    platform_keys = {
+        f"earnapp_platform_{country}_{platform}"
+        for country in ("vn", "non_vn")
+        for platform in ("ubuntu", "macos", "ios")
+    }
+    if platform_keys.intersection(data):
+        policy = earnapp_deploy.platform_policy_from_config(data)
+        if not policy["VN"] or not policy["NON_VN"]:
+            raise ValueError("Enable at least one EarnApp OS for both Viet Nam and non-Viet Nam proxies")
     if any(key.startswith("nkn_chaindb_") for key in data):
         _nkn_chaindb_settings(data)
 

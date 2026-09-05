@@ -3854,7 +3854,7 @@ const CP = (() => {
     inputs.forEach(input => {
       const key = input.dataset.envKey || input.dataset.config;
       const val = input.type === 'checkbox' ? (input.checked ? 'true' : 'false') : input.value.trim();
-      if (val) {
+      if (input.type === 'checkbox' || val) {
         data[key] = val;
       }
     });

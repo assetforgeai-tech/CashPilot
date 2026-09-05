@@ -219,6 +219,37 @@ def test_prepare_node_derives_platform_and_leaves_fresh_ubuntu_identity_to_the_r
     asyncio.run(run())
 
 
+def test_platform_policy_allows_each_os_for_vn_and_non_vn():
+    policy = earnapp_deploy.platform_policy_from_config(
+        {
+            "earnapp_platform_vn_ubuntu": "true",
+            "earnapp_platform_vn_macos": "true",
+            "earnapp_platform_vn_ios": "true",
+            "earnapp_platform_non_vn_ubuntu": "true",
+            "earnapp_platform_non_vn_macos": "true",
+            "earnapp_platform_non_vn_ios": "true",
+        }
+    )
+
+    assert earnapp_deploy.allowed_platforms_for_country("VN", policy) == ("ubuntu", "macos", "ios")
+    assert earnapp_deploy.allowed_platforms_for_country("US", policy) == ("ubuntu", "macos", "ios")
+
+
+def test_platform_policy_defaults_preserve_existing_country_routes():
+    policy = earnapp_deploy.platform_policy_from_config({})
+
+    assert earnapp_deploy.allowed_platforms_for_country("VN", policy) == ("macos", "ios")
+    assert earnapp_deploy.allowed_platforms_for_country("US", policy) == ("ubuntu",)
+
+
+def test_platform_country_filter_is_unrestricted_when_os_is_enabled_everywhere():
+    policy = earnapp_deploy.platform_policy_from_config(
+        {"earnapp_platform_vn_macos": "true", "earnapp_platform_non_vn_macos": "true"}
+    )
+
+    assert earnapp_deploy.platform_country_filter("macos", policy) == ("", "")
+
+
 def test_prepare_node_reuses_the_uuid_already_persisted_for_an_ubuntu_retry(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
