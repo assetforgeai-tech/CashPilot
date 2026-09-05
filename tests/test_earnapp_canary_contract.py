@@ -589,6 +589,8 @@ def test_macos_proxy_wrapper_registers_seeded_uuid_before_runtime_handoff():
 
 def test_macos_source_entrypoint_preserves_decline_cooldown_and_crash_retry():
     source = build_earnapp_canary_image.default_source_dir("macos") / "entrypoint.sh"
+    if not source.is_file():
+        pytest.skip("operator-supplied EarnApp runtime bundle is not present")
     wrapper = source.read_text(encoding="utf-8")
 
     assert "tunnel_init_decline" in wrapper
