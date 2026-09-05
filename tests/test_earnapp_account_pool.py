@@ -1880,6 +1880,128 @@ def test_chrome_import_adopts_matching_legacy_account_without_creating_duplicate
     asyncio.run(run())
 
 
+def test_chrome_import_with_same_email_refreshes_existing_account_and_preserves_profile_key(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            await database.init_db()
+            db = await database._get_db()
+            await db.execute(
+                """
+                INSERT INTO earnapp_accounts
+                    (profile_key, account_name, email, auth_method, credentials_enc,
+                     credential_keys_json, state)
+                VALUES ('bound-profile', 'owner@example.com', 'owner@example.com',
+                        'google', ?, '[\"oauth-refresh-token\",\"xsrf-token\"]', 'ACTIVE')
+                """,
+                (database.encrypt_value(json.dumps({"cookies": {"oauth-refresh-token": "old", "xsrf-token": "old"}})),),
+            )
+            await db.commit()
+
+            account_id = await earnapp_accounts.import_account(_payload("new-profile", "owner@example.com"))
+
+            assert account_id == 1
+            assert (await (await db.execute("SELECT COUNT(*) AS count FROM earnapp_accounts")).fetchone())["count"] == 1
+            row = await (await db.execute("SELECT profile_key, email FROM earnapp_accounts WHERE id = 1")).fetchone()
+            assert dict(row) == {"profile_key": "bound-profile", "email": "owner@example.com"}
+
+    asyncio.run(run())
+
+
+def test_chrome_import_rejects_ambiguous_duplicate_email_without_mutation(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            await database.init_db()
+            db = await database._get_db()
+            encrypted = database.encrypt_value(
+                json.dumps({"cookies": {"oauth-refresh-token": "old", "xsrf-token": "old"}})
+            )
+            for profile in ("bound-a", "bound-b"):
+                await db.execute(
+                    """
+                    INSERT INTO earnapp_accounts
+                        (profile_key, account_name, email, auth_method, credentials_enc,
+                         credential_keys_json, state)
+                    VALUES (?, 'owner@example.com', 'owner@example.com', 'google', ?,
+                            '[\"oauth-refresh-token\",\"xsrf-token\"]', 'ACTIVE')
+                    """,
+                    (profile, encrypted),
+                )
+            await db.commit()
+
+            with pytest.raises(ValueError, match="multiple accounts"):
+                await earnapp_accounts.import_account(_payload("new-profile", "owner@example.com"))
+
+            assert (await (await db.execute("SELECT COUNT(*) AS count FROM earnapp_accounts")).fetchone())["count"] == 2
+
+    asyncio.run(run())
+
+
+def test_chrome_import_redirects_zero_node_duplicate_to_populated_canonical_account(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            await database.init_db()
+            db = await database._get_db()
+            encrypted = database.encrypt_value(
+                json.dumps({"cookies": {"oauth-refresh-token": "old", "xsrf-token": "old"}})
+            )
+            for profile in ("canonical-profile", "duplicate-profile"):
+                await db.execute(
+                    """
+                    INSERT INTO earnapp_accounts
+                        (profile_key, account_name, email, auth_method, credentials_enc,
+                         credential_keys_json, state)
+                    VALUES (?, 'owner@example.com', 'owner@example.com', 'google', ?,
+                            '[\"oauth-refresh-token\",\"xsrf-token\"]', 'ACTIVE')
+                    """,
+                    (profile, encrypted),
+                )
+            await db.execute(
+                """
+                INSERT INTO earnapp_logical_nodes (logical_node_id, account_id, platform, state)
+                VALUES ('earnapp-live-node', 1, 'ubuntu', 'ACTIVE')
+                """
+            )
+            await db.commit()
+
+            account_id = await earnapp_accounts.import_account(_payload("duplicate-profile", "owner@example.com"))
+
+            assert account_id == 1
+            rows = await (
+                await db.execute("SELECT id, profile_key, state FROM earnapp_accounts ORDER BY id")
+            ).fetchall()
+            assert [dict(row) for row in rows] == [
+                {"id": 1, "profile_key": "canonical-profile", "state": "ACTIVE"},
+                {"id": 2, "profile_key": "duplicate-profile", "state": "ACCOUNT_LOCKED"},
+            ]
+
+    asyncio.run(run())
+
+
+def test_chrome_import_normalizes_trailing_email_punctuation_for_duplicate_guard(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            await database.init_db()
+            db = await database._get_db()
+            await db.execute(
+                """
+                INSERT INTO earnapp_accounts
+                    (profile_key, account_name, email, auth_method, credentials_enc,
+                     credential_keys_json, state)
+                VALUES ('bound-profile', 'owner@example.com', 'owner@example.com,',
+                        'google', ?, '[\"oauth-refresh-token\",\"xsrf-token\"]', 'ACTIVE')
+                """,
+                (database.encrypt_value(json.dumps({"cookies": {"oauth-refresh-token": "old", "xsrf-token": "old"}})),),
+            )
+            await db.commit()
+
+            account_id = await earnapp_accounts.import_account(_payload("new-profile", "owner@example.com"))
+
+            assert account_id == 1
+            assert (await (await db.execute("SELECT COUNT(*) AS count FROM earnapp_accounts")).fetchone())["count"] == 1
+
+    asyncio.run(run())
+
+
 def test_chrome_import_adopts_synthetic_legacy_account_with_authoritative_apple_method(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
