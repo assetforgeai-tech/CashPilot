@@ -344,6 +344,7 @@ exec "$SANITIZED_ENTRYPOINT" "$@"'''
 set -euo pipefail
 STATE_DIR=/etc/earnapp
 REDSOCKS_PORT=12345
+DNS_CONF=/tmp/cashpilot-dnstc.conf
 PROXY_TYPE=$(printf '%s' "${{PROXY_TYPE:-SOCKS5}}" | tr '[:lower:]' '[:upper:]')
 IFS=: read -r PROXY_HOST PROXY_PORT PROXY_USER PROXY_PASS <<<"${{PROXY_CREDENTIALS:?}}"
 [[ -n "$PROXY_HOST" && "$PROXY_PORT" =~ ^[0-9]+$ ]]
@@ -354,15 +355,32 @@ case "$PROXY_TYPE" in
   HTTP) REDSOCKS_TYPE=http-connect ;;
   *) exit 64 ;;
 esac
+cat >"$DNS_CONF" <<EOF
+base {{ log_debug = off; log_info = off; log = "file:/tmp/dnstc.log"; daemon = off; redirector = iptables; }}
+dnstc {{ local_ip = 127.0.0.1; local_port = 1053; }}
+EOF
+(
+  # The reference runtime may stop redsocks while applying its own proxy setup;
+  # keep the DNS tunnel available and let it restart without changing policy.
+  while true; do
+    /usr/sbin/redsocks -c "$DNS_CONF" >>/tmp/dnstc-start.log 2>&1 || true
+    sleep 1
+  done
+) &
+sleep 1
 iptables -N CP_EARNAPP_OUT 2>/dev/null || iptables -F CP_EARNAPP_OUT
 iptables -A CP_EARNAPP_OUT -o lo -j ACCEPT
 iptables -A CP_EARNAPP_OUT -d 127.0.0.0/8 -j ACCEPT
 iptables -A CP_EARNAPP_OUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 iptables -A CP_EARNAPP_OUT -d "$PROXY_IP"/32 -p tcp --dport "$PROXY_PORT" -j ACCEPT
-iptables -A CP_EARNAPP_OUT -p udp --dport 53 -j ACCEPT
-iptables -A CP_EARNAPP_OUT -p tcp --dport 53 -j ACCEPT
 iptables -A CP_EARNAPP_OUT -j DROP
 iptables -C OUTPUT -j CP_EARNAPP_OUT 2>/dev/null || iptables -I OUTPUT 1 -j CP_EARNAPP_OUT
+iptables -t nat -N CP_EARNAPP_DNS 2>/dev/null || iptables -t nat -F CP_EARNAPP_DNS
+iptables -t nat -A CP_EARNAPP_DNS -d 127.0.0.0/8 -j RETURN
+iptables -t nat -A CP_EARNAPP_DNS -p udp --dport 53 -j REDIRECT --to-ports 1053
+iptables -t nat -A CP_EARNAPP_DNS -p tcp --dport 53 -j REDIRECT --to-ports 12345
+iptables -t nat -C OUTPUT -p udp --dport 53 -j CP_EARNAPP_DNS 2>/dev/null || iptables -t nat -I OUTPUT 1 -p udp --dport 53 -j CP_EARNAPP_DNS
+iptables -t nat -C OUTPUT -p tcp --dport 53 -j CP_EARNAPP_DNS 2>/dev/null || iptables -t nat -I OUTPUT 1 -p tcp --dport 53 -j CP_EARNAPP_DNS
 if command -v ip6tables >/dev/null 2>&1; then
   ip6tables -N CP_EARNAPP6_OUT 2>/dev/null || ip6tables -F CP_EARNAPP6_OUT
   ip6tables -A CP_EARNAPP6_OUT -o lo -j ACCEPT
