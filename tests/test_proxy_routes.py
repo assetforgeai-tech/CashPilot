@@ -3208,6 +3208,47 @@ def test_proxy_intelligence_cache_retries_when_only_one_source_is_fresh(tmp_path
     asyncio.run(run())
 
 
+def test_proxy_intelligence_cache_retries_unknown_type_even_when_source_is_recorded(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            (proxy_id,) = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id, [{"provider_proxy_id": "one", "host": "1.1.1.1", "port": 1000}]
+            )
+            await database.save_proxy_probe_result(
+                proxy_id,
+                profile="generic",
+                probe_status="alive",
+                verdict="ALIVE",
+                eligibility="eligible",
+                reason="",
+                exit_ip="8.8.8.8",
+                latency_ms=10,
+                probe_version="test",
+            )
+            db = await database._get_db()
+            try:
+                await db.execute(
+                    """
+                    UPDATE proxy_endpoints
+                    SET location = 'United States', country_code = 'US', country_name = 'United States',
+                        geo_source = 'ipwho.is', geo_confidence = 'verified', geo_checked_at = datetime('now'),
+                        ip_type = 'unknown', ip_type_source = 'ipwho.is',
+                        ip_type_confidence = 'unknown', ip_type_checked_at = datetime('now')
+                    WHERE id = ?
+                    """,
+                    (proxy_id,),
+                )
+                await db.commit()
+            finally:
+                await db.close()
+
+            assert await database.get_cached_proxy_intelligence("8.8.8.8") is None
+
+    asyncio.run(run())
+
+
 def test_earnapp_probe_keeps_generic_latency_separate(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):

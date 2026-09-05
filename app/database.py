@@ -9155,6 +9155,7 @@ async def get_cached_proxy_intelligence(exit_ip: str, *, max_age_hours: int = 16
               AND geo_source != ''
               AND geo_checked_at >= datetime('now', ?)
               AND ip_type_source != ''
+              AND ip_type NOT IN ('', 'unknown')
               AND ip_type_checked_at >= datetime('now', ?)
             ORDER BY CASE WHEN geo_source != '' AND ip_type_source != '' THEN 0 ELSE 1 END,
                      max(coalesce(geo_checked_at, ''), coalesce(ip_type_checked_at, '')) DESC,
