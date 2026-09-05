@@ -1329,6 +1329,30 @@ historical snapshots and read-only inspection stay available.
 
 ## EarnApp macOS workload investigation after v1.20.8 (2026-09-05)
 
+### Short-loop restart and egress reconciliation (2026-09-05)
+
+- A read-only/runtime probe found that the proxy route recorded in the server DB
+  did not equal the egress actually observed inside the container. Before the
+  restart, mac-11 was recorded as `116.105.110.188` but egressed as
+  `116.103.140.66`; mac-12 was recorded as `14.174.154.30` but egressed as
+  `116.105.104.32`. Redsocks and the fail-closed `iptables` chain were present
+  in both containers, so this was not a missing proxy redirect.
+- mac-11 was restarted in place only. Container ID, UUID, account, image and
+  volume were preserved. After restart, the account API assigned the actual
+  egress IP (`116.103.140.66`) and VN country; mac-12 likewise assigned
+  `14.174.154.30` after its controlled restart. This confirms backend
+  country/IP propagation can lag the runtime connection and that a restart can
+  trigger assignment propagation.
+- Despite both devices reporting `online=true`, VN country/IP and
+  `qualified_uptime`, neither target produced a positive account-side usage,
+  uptime or earnings delta in the short follow-up window. Runtime logs also
+  showed no `cmd_tun`/`cmd_tun_close` workload marker. Therefore UUID
+  recreation, rapid relink and proxy rotation were not performed: they would
+  change multiple variables before the current runtime/account assignment
+  mismatch is understood.
+- The positive control `mac-08` was not touched. No protected provider, account
+  credential, identity volume or lease was mutated by this experiment.
+
 - Server UI and test-US worker were upgraded to `v1.20.8` with their existing
   volumes preserved; the server SQLite integrity check returned `ok`, and both
   containers are healthy with restart count `0`.
@@ -1371,3 +1395,17 @@ historical snapshots and read-only inspection stay available.
   country and IP are absent; explicit proxy-health failures still rotate
   immediately. The expanded lifecycle/canary suite passes (`206 passed, 1
   skipped`).
+- Chrome profile import was verified read-only against the two open EarnApp
+  dashboards. The server received two new rows, but the live DB evidence shows
+  account `912` is an exact credential duplicate of account `470` with zero
+  nodes; account `2` also has the same credentials as account `1` but a legacy
+  email typo (`assetforgeai@gmail.com,`). No live row was deleted or merged.
+- The account upsert duplicate guard now normalizes trailing email punctuation,
+  refreshes the existing account row while preserving its profile key and node
+  bindings, and fails closed when an email matches multiple non-legacy rows.
+  Focused account/import tests pass (`79 passed`).
+- The duplicate guard also handles an already-bound profile key that points to a
+  zero-node duplicate: if exactly one same-email account has live nodes, new
+  credentials are redirected to that populated canonical row and the empty
+  duplicate is marked `ACCOUNT_LOCKED`; multiple populated matches still fail
+  closed for manual review. Live deletion/release was not performed.

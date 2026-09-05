@@ -3618,6 +3618,9 @@ async def upsert_earnapp_account(
     cookie_expires_at: str | None,
 ) -> int:
     """Insert or refresh one profile-bound EarnApp account."""
+    def normalized_email(value: Any) -> str:
+        return str(value or "").strip().rstrip(",").strip().lower()
+
     profile = str(profile_key or "").strip()
     name = str(account_name or "").strip()
     method = str(auth_method or "").strip().lower()
@@ -3637,6 +3640,55 @@ async def upsert_earnapp_account(
                     (profile,),
                 )
             ).fetchone()
+            duplicate_to_lock: int | None = None
+            if existing and normalized_email(email):
+                same_email = await (
+                    await db.execute(
+                        """
+                        SELECT a.id, a.profile_key, a.account_name, a.auth_method, a.state,
+                               COUNT(n.logical_node_id) AS assigned_nodes
+                        FROM earnapp_accounts a
+                        LEFT JOIN earnapp_logical_nodes n
+                          ON n.account_id = a.id AND n.state != 'RETIRED'
+                        WHERE lower(trim(rtrim(a.email, ','))) = ?
+                          AND a.state != 'DELETED'
+                        GROUP BY a.id
+                        ORDER BY assigned_nodes DESC, a.id ASC
+                        """,
+                        (normalized_email(email),),
+                    )
+                ).fetchall()
+                populated = [row for row in same_email if int(row["assigned_nodes"] or 0) > 0]
+                current_has_nodes = any(int(row["id"]) == int(existing["id"]) and int(row["assigned_nodes"] or 0) > 0 for row in same_email)
+                if len(populated) > 1:
+                    raise ValueError("EarnApp email is bound to multiple populated accounts; manual duplicate review is required")
+                if populated and not current_has_nodes and int(populated[0]["id"]) != int(existing["id"]):
+                    duplicate_to_lock = int(existing["id"])
+                    existing = populated[0]
+                    profile = str(existing["profile_key"] or "")
+            if not existing and normalized_email(email):
+                email_matches = await (
+                    await db.execute(
+                        """
+                        SELECT a.id, a.profile_key, a.account_name, a.auth_method, a.state,
+                               COUNT(n.logical_node_id) AS assigned_nodes
+                        FROM earnapp_accounts a
+                        LEFT JOIN earnapp_logical_nodes n
+                          ON n.account_id = a.id AND n.state != 'RETIRED'
+                        WHERE lower(trim(rtrim(a.email, ','))) = ?
+                          AND a.profile_key NOT LIKE 'legacy-account-%'
+                          AND a.state != 'DELETED'
+                        GROUP BY a.id
+                        ORDER BY assigned_nodes DESC, a.id ASC
+                        """,
+                        (normalized_email(email),),
+                    )
+                ).fetchall()
+                if len(email_matches) > 1:
+                    raise ValueError("EarnApp email is bound to multiple accounts; manual duplicate review is required")
+                if email_matches:
+                    existing = email_matches[0]
+                    profile = str(existing["profile_key"] or "")
             legacy_adoption = bool(existing and str(existing["profile_key"]).startswith("legacy-account-"))
             if not existing:
                 existing = await (
@@ -3696,6 +3748,11 @@ async def upsert_earnapp_account(
                 ),
             )
             row = await cursor.fetchone()
+            if duplicate_to_lock is not None:
+                await db.execute(
+                    "UPDATE earnapp_accounts SET state = 'ACCOUNT_LOCKED', updated_at = datetime('now') WHERE id = ?",
+                    (duplicate_to_lock,),
+                )
             await db.commit()
             return int(row["id"])
         except Exception:
