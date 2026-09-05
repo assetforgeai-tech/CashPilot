@@ -43,7 +43,7 @@ def test_mac_profile_blob_uses_the_official_boot_js_default_key():
 
 
 def test_image_builder_default_source_points_to_cashpilot_bundle():
-    expected = Path(__file__).resolve().parents[2] / "earnapp_new_update" / "earnapp-runtime-files" / "mac"
+    expected = Path(__file__).resolve().parents[3] / "earnapp_new_update" / "earnapp-runtime-files" / "mac-1.660.577"
     assert build_earnapp_canary_image.default_source_dir() == expected
 
 
@@ -484,6 +484,9 @@ def test_ios_generated_entrypoint_runs_registration_after_profile_boot_before_ru
     startup = earnapp_runtime.ios_entrypoint_script().decode("utf-8")
 
     assert "/usr/local/bin/ios-register-device" in startup
+    assert "CP_EARNAPP_IOS_REDSOCKS" in startup
+    assert "pkill -x redsocks" in startup
+    assert "iptables -t nat -D OUTPUT -p tcp -j CP_EARNAPP_IOS_REDSOCKS" in startup
     assert 'exec /usr/local/bin/entrypoint-original.sh "$@"' in startup
 
 
@@ -571,6 +574,16 @@ def test_macos_proxy_wrapper_registers_seeded_uuid_before_runtime_handoff():
     assert '"$STATE_DIR/registered"' in wrapper
     assert 'printf \'%s\' "$EXPECTED_DEVICE_ID" >"$STATE_DIR/registered"' in wrapper
     assert '"$(cat "$STATE_DIR/registered")" != "$EXPECTED_DEVICE_ID"' in wrapper
+
+
+def test_macos_source_entrypoint_preserves_decline_cooldown_and_crash_retry():
+    source = build_earnapp_canary_image.default_source_dir("macos") / "entrypoint.sh"
+    wrapper = source.read_text(encoding="utf-8")
+
+    assert "tunnel_init_decline" in wrapper
+    assert 'DECLINE_COOLDOWN_SEC="${DECLINE_COOLDOWN_SEC:-600}"' in wrapper
+    assert "connect decline cooldown" in wrapper
+    assert "while true; do" in wrapper
 
 
 def test_macos_proxy_wrapper_declares_state_dir_before_identity_recovery_guard():

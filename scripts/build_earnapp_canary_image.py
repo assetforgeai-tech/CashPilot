@@ -209,9 +209,11 @@ def image_reference(manifest_hash: str, *, platform: str = "macos") -> str:
 def default_source_dir(platform: str = "macos") -> Path:
     """Return the external operator-supplied runtime bundle path."""
     selected = str(platform or "macos").strip().lower()
+    external_root = ROOT.parents[1] / "earnapp_new_update"
     if selected == "ubuntu":
         return ROOT / ".runtime-src" / "ubuntu"
-    return ROOT.parent / "earnapp_new_update" / "earnapp-runtime-files" / ("ios" if selected == "ios" else "mac")
+    bundle = "ios" if selected == "ios" else "mac-1.660.577"
+    return external_root / "earnapp-runtime-files" / bundle
 
 
 def main() -> int:
