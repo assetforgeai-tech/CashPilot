@@ -54,7 +54,7 @@ def test_mac_proxy_handoff_pins_the_resolved_ipv4_for_source_iptables():
 
     handoff = entrypoint.index('export PROXY_HOST="$PROXY_IP"')
     source_exec = entrypoint.index('exec "$SANITIZED_ENTRYPOINT" "$@"')
-    assert 'unset PROXY_CREDENTIALS' in entrypoint[handoff - 128 : handoff]
+    assert "unset PROXY_CREDENTIALS" in entrypoint[handoff - 128 : handoff]
     assert handoff < source_exec
 
 
