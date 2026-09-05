@@ -3511,12 +3511,7 @@ async def api_deploy_earnapp_canary(
             deployed_generation = int(deployed_node.get("generation") or 0)
             deployed_device = str(deployed_node.get("device_id") or "").strip()
             deployed_proxy = int(deployed_node.get("current_proxy_id") or 0)
-            if (
-                deployed_worker == int(worker_id)
-                and deployed_generation > 0
-                and deployed_device
-                and deployed_proxy > 0
-            ):
+            if deployed_worker == int(worker_id) and deployed_generation > 0 and deployed_device and deployed_proxy > 0:
                 await database.heartbeat_earnapp_node(
                     body.logical_node_id,
                     deployed_worker,
