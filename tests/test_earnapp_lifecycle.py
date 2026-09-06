@@ -189,6 +189,47 @@ async def test_scheduler_prefers_latest_account_snapshot_over_stale_spec_evidenc
 
 
 @pytest.mark.asyncio
+async def test_scheduler_preserves_auth_failure_for_cookie_retry_instead_of_restart(monkeypatch):
+    node = {
+        "logical_node_id": "earnapp-ios-auth",
+        "account_id": 470,
+        "device_id": "sdk-ios-auth",
+        "state": "ACTIVE",
+        "proxy_health": "healthy",
+        "usage_baseline": 0.0,
+        "window_started_at": (datetime.now(UTC) - timedelta(minutes=90)).isoformat(),
+        "same_proxy_recreates": 0,
+        "rotate_count": 0,
+    }
+    monkeypatch.setattr(main.database, "list_earnapp_logical_nodes", AsyncMock(return_value=[node]))
+    monkeypatch.setattr(
+        main.database,
+        "get_provider_instance_spec",
+        AsyncMock(
+            return_value={
+                "earnapp_device_verification": {
+                    "device_id": "sdk-ios-auth",
+                    "online": False,
+                    "auth_failed": True,
+                    "usage_current": 0.0,
+                }
+            }
+        ),
+    )
+    monkeypatch.setattr(main.database, "get_latest_earnapp_snapshot", AsyncMock(return_value=None))
+    update = AsyncMock(return_value=True)
+    monkeypatch.setattr(main.database, "update_earnapp_lifecycle", update)
+    execute = AsyncMock(return_value=True)
+    monkeypatch.setattr(main, "_execute_earnapp_lifecycle_action", execute)
+
+    await main._run_earnapp_lifecycle_scheduler()
+
+    assert update.await_count == 1
+    assert update.await_args.args[1].action == "defer_auth"
+    execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_scheduler_uses_uptime_for_qualified_uptime_billing(monkeypatch):
     node = {
         "logical_node_id": "earnapp-mac-qualified-uptime",

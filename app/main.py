@@ -757,6 +757,10 @@ async def _run_earnapp_lifecycle_scheduler() -> None:
                 {
                     "usage": usage or 0,
                     "banned": bool(evidence.get("banned")),
+                    "auth_failed": bool(evidence.get("auth_failed")),
+                    "online": evidence.get("online"),
+                    "country_code": evidence.get("country_code") or evidence.get("country"),
+                    "ip": evidence.get("ip") or evidence.get("public_ip"),
                     "egress_ok": str(node.get("proxy_health") or "") != "unhealthy",
                 },
                 node,
