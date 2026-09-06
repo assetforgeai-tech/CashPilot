@@ -4393,10 +4393,7 @@ async def _adopt_earnapp_runtime_proxy_locked(
         or str(authority.get("expected_egress_ip") or "").strip() != expected_egress
         or str(authority.get("observed_egress_ip") or "").strip() != expected_egress
         or authority.get("main_running") is not True
-        or (
-            str(authority.get("sidecar_container_id") or "").strip()
-            and authority.get("sidecar_running") is not True
-        )
+        or (str(authority.get("sidecar_container_id") or "").strip() and authority.get("sidecar_running") is not True)
         or authority.get("probe_ok") is not True
         or not str(authority.get("main_container_id") or "").strip()
     ):

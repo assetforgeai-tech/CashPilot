@@ -356,7 +356,9 @@ def earnapp_runtime_authority(slug: str) -> dict[str, Any]:
     sidecar_id = str(getattr(sidecar, "id", "") or "").strip()
     sidecar_name = str(getattr(sidecar, "name", "") or "").strip().lstrip("/")
     if sidecar is not None:
-        network_mode = str(((getattr(main, "attrs", {}) or {}).get("HostConfig") or {}).get("NetworkMode") or "").strip()
+        network_mode = str(
+            ((getattr(main, "attrs", {}) or {}).get("HostConfig") or {}).get("NetworkMode") or ""
+        ).strip()
         if network_mode not in {f"container:{value}" for value in (sidecar_id, sidecar_name) if value}:
             raise RuntimeError(f"EarnApp runtime for {node_id} has an unexpected network namespace")
         sidecar_mounts = (getattr(sidecar, "attrs", {}) or {}).get("Mounts", []) or []
