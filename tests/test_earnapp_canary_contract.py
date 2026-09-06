@@ -688,6 +688,7 @@ def test_ubuntu_reference_runtime_uses_the_shared_fail_closed_proxy_entrypoint()
 def test_ubuntu_image_wraps_the_pinned_reference_runtime_with_fail_closed_proxying():
     manifest = earnapp_runtime.runtime_asset_manifest(platform="ubuntu")
     recipe = build_earnapp_canary_image.render_dockerfile(manifest, platform="ubuntu")
+    assert "apt-get install -y --no-install-recommends nodejs ca-certificates" in recipe
 
     assert manifest["base_image"] == earnapp_runtime.UBUNTU_REFERENCE_IMAGE_PIN
     assert f"FROM {earnapp_runtime.UBUNTU_REFERENCE_IMAGE_PIN}" in recipe
