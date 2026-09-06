@@ -809,6 +809,37 @@ async def _assigned_worker_supports_earnapp_lifecycle(worker_id: int) -> bool:
     return _worker_supports_earnapp_lifecycle(worker)
 
 
+def _heartbeat_confirms_earnapp_runtime_absent(worker: Mapping[str, Any], node_id: str) -> bool:
+    """Accept absence only from a fresh, successfully decoded worker heartbeat."""
+    if str(worker.get("status") or "").strip().lower() != "online":
+        return False
+    try:
+        heartbeat = datetime.fromisoformat(str(worker.get("last_heartbeat") or "").replace("Z", "+00:00"))
+        if heartbeat.tzinfo is None:
+            heartbeat = heartbeat.replace(tzinfo=UTC)
+    except (TypeError, ValueError):
+        return False
+    if datetime.now(UTC) - heartbeat > timedelta(minutes=3):
+        return False
+    containers = worker.get("containers")
+    if isinstance(containers, str):
+        containers = _safe_json(containers, None)
+    if not isinstance(containers, list):
+        return False
+    expected_names = {node_id, f"cashpilot-{node_id}", f"cashpilot-{node_id}-egress"}
+    for item in containers:
+        if not isinstance(item, Mapping):
+            return False
+        names = {
+            str(item.get("name") or "").lstrip("/"),
+            str(item.get("service") or ""),
+            str(item.get("instance_id") or ""),
+        }
+        if names & expected_names:
+            return False
+    return True
+
+
 async def _execute_earnapp_lifecycle_action(node: Mapping[str, Any], action: str) -> bool:
     """Execute one durable recovery decision without linking or touching peers."""
     node_id = str(node.get("logical_node_id") or "").strip()
@@ -842,7 +873,9 @@ async def _execute_earnapp_lifecycle_action(node: Mapping[str, Any], action: str
             if str((worker or {}).get("status") or "").strip().lower() != "online":
                 return False
             presence = await _earnapp_runtime_presence(node)
-            if presence != {"main_present": False, "sidecar_present": False}:
+            if presence != {"main_present": False, "sidecar_present": False} and not (
+                presence is None and _heartbeat_confirms_earnapp_runtime_absent(worker, node_id)
+            ):
                 return False
             return await database.finalize_earnapp_node_removal(
                 node_id,

@@ -526,3 +526,40 @@ async def test_restart_missing_runtime_does_not_finalize_when_presence_is_uncert
 
     assert await main._execute_earnapp_lifecycle_action(node, "restart") is False
     finalize.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_restart_missing_runtime_finalizes_when_fresh_heartbeat_confirms_absence(monkeypatch):
+    node = {
+        "logical_node_id": "earnapp-mac-heartbeat-missing",
+        "assigned_worker_id": 3098,
+        "generation": 3,
+        "device_id": "sdk-mac-" + "d" * 32,
+        "current_proxy_id": 17,
+    }
+    proxy = AsyncMock(side_effect=HTTPException(status_code=404, detail="Worker request failed"))
+    monkeypatch.setattr(main, "_proxy_to_worker", proxy)
+    monkeypatch.setattr(
+        main.database,
+        "get_worker",
+        AsyncMock(
+            return_value={
+                "id": 3098,
+                "status": "online",
+                "last_heartbeat": datetime.now(UTC).isoformat(),
+                "containers": "[]",
+            }
+        ),
+    )
+    monkeypatch.setattr(main, "_earnapp_runtime_presence", AsyncMock(return_value=None))
+    finalize = AsyncMock(return_value=True)
+    monkeypatch.setattr(main.database, "finalize_earnapp_node_removal", finalize)
+
+    assert await main._execute_earnapp_lifecycle_action(node, "restart") is True
+    finalize.assert_awaited_once_with(
+        "earnapp-mac-heartbeat-missing",
+        3098,
+        generation=3,
+        device_id="sdk-mac-" + "d" * 32,
+        reason="EARNAPP_RUNTIME_MISSING",
+    )
