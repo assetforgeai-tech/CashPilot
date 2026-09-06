@@ -48,3 +48,34 @@ The reference image is not promoted as a generic image. CashPilot's image
 builder continues to generate a per-node profile, volume, proxy route, and
 content-addressed runtime manifest. A future watchdog change must be tested
 with a fresh canary and must not embed host fingerprints or source-node state.
+
+## Test-US reboot finding
+
+The upgraded worker rollout initially succeeded interactively, but the first
+`vps-test-us` reboot restored `cashpilot-worker:1.21.14`. The cause was not an
+EarnApp runtime or identity problem: `/etc/systemd/system/cashpilot-worker.service`
+still referenced the old `docker-compose.worker.v1.21.14.override.yml`. The unit
+was corrected to reference `docker-compose.worker.v1.21.17.override.yml`, then
+reloaded and restarted without touching the six canary containers. Afterward the
+worker reported `1.21.17`, was healthy, and heartbeat requests returned `200`.
+All six canary container IDs, volumes, and start-time lineage remained intact.
+
+## Usage-positive reference comparison
+
+The operator confirmed that the source UUID is usage-positive on the upgraded
+reference VPS. Read-only logs show the source route exits through `69.215.151.72`
+(`US`) and differs from the current test-US macOS canaries in several protocol
+inputs:
+
+| Field | Reference source | CashPilot macOS canary |
+| --- | --- | --- |
+| CPU/OS profile | `arm64`, macOS `11.4` | `x86_64`, macOS `14.6.1` |
+| EarnApp binary | `1.605.415` | `1.660.577` |
+| tunnel `appid` | `mac_com.earnapp` | stable alias emitted by `1.660.577` |
+| tunnel payload | includes `makeflags`, `sdk_version`, `confdir`, `gw_ip`, `http3`, `is_swift`, `idle=false` | newer payload omits deprecated fields and uses the hardened contract |
+| observed country | `US` | `VN` |
+
+This is evidence for a controlled differential canary, not permission to copy the
+source UUID, encrypted profile, CID, consent, tracking state, proxy credential,
+or host-bound image. Production remains on the newer binary until a separate
+canary proves which variable affects usage.

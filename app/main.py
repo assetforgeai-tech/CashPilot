@@ -765,6 +765,8 @@ async def _run_earnapp_lifecycle_scheduler() -> None:
                     "online": evidence.get("online"),
                     "country_code": evidence.get("country_code") or evidence.get("country"),
                     "ip": evidence.get("ip") or evidence.get("public_ip"),
+                    "billing": evidence.get("billing"),
+                    "earnings_update_in_ms": evidence.get("earnings_update_in_ms"),
                     "egress_ok": str(node.get("proxy_health") or "") != "unhealthy",
                 },
                 node,
