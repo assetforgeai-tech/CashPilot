@@ -3965,10 +3965,23 @@ async def _remove_earnapp_docker_runtime(logical_node_id: str, worker_id: int | 
     device_id = str(node.get("device_id") or "").strip()
     if worker_id is not None and int(worker_id) != assigned:
         raise HTTPException(status_code=409, detail="EarnApp logical node belongs to another worker")
-    if assigned <= 0 or generation <= 0 or not device_id or str(node.get("state") or "").upper() not in {"ACTIVE", "RECOVERY_HOLD"}:
+    if (
+        assigned <= 0
+        or generation <= 0
+        or not device_id
+        or str(node.get("state") or "").upper() not in {"ACTIVE", "RECOVERY_HOLD"}
+    ):
         raise HTTPException(status_code=409, detail="EarnApp Docker assignment is not lifecycle-ready")
-    result = await _proxy_to_worker(assigned, "DELETE", f"/api/earnapp/docker-nodes/{node_id}", json={"generation": generation, "device_id": device_id}, timeout=180)
-    if not await database.finalize_earnapp_node_removal(node_id, assigned, generation=generation, device_id=device_id, reason="EARNAPP_NODE_REMOVED"):
+    result = await _proxy_to_worker(
+        assigned,
+        "DELETE",
+        f"/api/earnapp/docker-nodes/{node_id}",
+        json={"generation": generation, "device_id": device_id},
+        timeout=180,
+    )
+    if not await database.finalize_earnapp_node_removal(
+        node_id, assigned, generation=generation, device_id=device_id, reason="EARNAPP_NODE_REMOVED"
+    ):
         raise HTTPException(status_code=409, detail="EarnApp assignment changed during remove")
     await database.remove_provider_instance(node_id)
     return assigned, result
