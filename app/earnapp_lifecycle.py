@@ -71,14 +71,13 @@ def evaluate_node(
     if bool(snapshot.get("auth_failed")):
         return LifecycleDecision("defer_auth", same, rotates, "account authentication requires retry")
     billing = str(snapshot.get("billing") or "").strip().lower()
-    if (
+    awaiting_country = (
         billing in _UPTIME_BILLING
         and snapshot.get("online") is True
         and not str(snapshot.get("country_code") or snapshot.get("country") or "").strip()
         and not str(snapshot.get("ip") or snapshot.get("public_ip") or "").strip()
         and not snapshot.get("banned")
-    ):
-        return LifecycleDecision("observe", same, rotates, "awaiting account-side country assignment")
+    )
     if str(runtime.get("proxy_health") or "").lower() == "unhealthy" or snapshot.get("egress_ok") is False:
         return LifecycleDecision("rotate_recreate", same, rotates + 1, "proxy health or egress mismatch")
     baseline = float(runtime.get("usage_baseline") or 0)
@@ -87,6 +86,8 @@ def evaluate_node(
         return LifecycleDecision("healthy", 0, 0, "positive usage delta")
     started = _when(runtime.get("window_started_at"), current)
     flatline = current - started >= timedelta(minutes=FLATLINE_MINUTES)
+    if awaiting_country and not flatline:
+        return LifecycleDecision("observe", same, rotates, "awaiting account-side country assignment")
     if not flatline and not snapshot.get("banned"):
         return LifecycleDecision("observe", same, rotates)
     # A healthy route with a flatline is a workload/admission problem, not
