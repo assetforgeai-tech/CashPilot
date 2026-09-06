@@ -354,7 +354,8 @@ case "$PROXY_TYPE" in
   HTTP) REDSOCKS_TYPE=http-connect ;;
   *) exit 64 ;;
 esac
-printf "nameserver 8.8.8.8\noptions use-vc timeout:2 attempts:2\n" > /etc/resolv.conf
+node /usr/local/lib/cashpilot-doh.js >/tmp/cashpilot-doh.log 2>&1 &
+printf "nameserver 127.0.0.1\noptions timeout:2 attempts:2\n" > /etc/resolv.conf
 iptables -N CP_EARNAPP_OUT 2>/dev/null || iptables -F CP_EARNAPP_OUT
 iptables -A CP_EARNAPP_OUT -o lo -j ACCEPT
 iptables -A CP_EARNAPP_OUT -d 127.0.0.0/8 -j ACCEPT
@@ -363,8 +364,9 @@ iptables -A CP_EARNAPP_OUT -d "$PROXY_IP"/32 -p tcp --dport "$PROXY_PORT" -j ACC
 iptables -A CP_EARNAPP_OUT -j DROP
 iptables -C OUTPUT -j CP_EARNAPP_OUT 2>/dev/null || iptables -I OUTPUT 1 -j CP_EARNAPP_OUT
 iptables -t nat -N CP_EARNAPP_DNS 2>/dev/null || iptables -t nat -F CP_EARNAPP_DNS
-iptables -t nat -A CP_EARNAPP_DNS -d 127.0.0.0/8 -j RETURN
-iptables -t nat -A CP_EARNAPP_DNS -p tcp --dport 53 -j REDIRECT --to-ports 12345
+iptables -t nat -A CP_EARNAPP_DNS -p udp --dport 53 -j REDIRECT --to-ports 1053
+iptables -t nat -A CP_EARNAPP_DNS -p tcp --dport 53 -j REDIRECT --to-ports 1053
+iptables -t nat -C OUTPUT -p udp --dport 53 -j CP_EARNAPP_DNS 2>/dev/null || iptables -t nat -I OUTPUT 1 -p udp --dport 53 -j CP_EARNAPP_DNS
 iptables -t nat -C OUTPUT -p tcp --dport 53 -j CP_EARNAPP_DNS 2>/dev/null || iptables -t nat -I OUTPUT 1 -p tcp --dport 53 -j CP_EARNAPP_DNS
 if command -v ip6tables >/dev/null 2>&1; then
   ip6tables -N CP_EARNAPP6_OUT 2>/dev/null || ip6tables -F CP_EARNAPP6_OUT
@@ -380,7 +382,10 @@ fi
 def generated_runtime_artifacts(platform: str = "macos") -> dict[str, bytes]:
     """Return generated scripts that are part of the platform image digest."""
     selected = _image_platform(platform)
-    generated = {"cashpilot-proxy-entrypoint": proxy_entrypoint_script(selected)}
+    generated = {
+        "cashpilot-proxy-entrypoint": proxy_entrypoint_script(selected),
+        "cashpilot-doh.js": doh_resolver_script(),
+    }
     if selected == "ios":
         generated.update(
             {
@@ -389,6 +394,78 @@ def generated_runtime_artifacts(platform: str = "macos") -> dict[str, bytes]:
             }
         )
     return generated
+
+
+def doh_resolver_script() -> bytes:
+    """Provide a local DNS wire server whose upstream is HTTPS through redsocks."""
+    return rb""""use strict";
+const dgram = require("dgram");
+const net = require("net");
+const https = require("https");
+
+const UPSTREAM_IP = "1.1.1.1";
+const UPSTREAM_HOST = "cloudflare-dns.com";
+const PORT = 1053;
+
+function resolveWire(query) {
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: UPSTREAM_IP,
+      port: 443,
+      method: "POST",
+      path: "/dns-query",
+      servername: UPSTREAM_HOST,
+      headers: {
+        "accept": "application/dns-message",
+        "content-type": "application/dns-message",
+        "content-length": query.length,
+        "host": UPSTREAM_HOST,
+      },
+      timeout: 5000,
+    }, response => {
+      const chunks = [];
+      response.on("data", chunk => chunks.push(chunk));
+      response.on("end", () => {
+        if (response.statusCode !== 200) return reject(new Error(`DoH HTTP ${response.statusCode}`));
+        resolve(Buffer.concat(chunks));
+      });
+    });
+    req.on("timeout", () => req.destroy(new Error("DoH timeout")));
+    req.on("error", reject);
+    req.end(query);
+  });
+}
+
+function serveQuery(query, send) {
+  resolveWire(query).then(send).catch(() => {});
+}
+
+const udp = dgram.createSocket("udp4");
+udp.on("message", (query, remote) => {
+  serveQuery(query, answer => udp.send(answer, remote.port, remote.address));
+});
+udp.bind(PORT, "127.0.0.1");
+
+const tcp = net.createServer(socket => {
+  let input = Buffer.alloc(0);
+  socket.on("data", chunk => {
+    input = Buffer.concat([input, chunk]);
+    while (input.length >= 2) {
+      const length = input.readUInt16BE(0);
+      if (input.length < length + 2) return;
+      const query = input.subarray(2, length + 2);
+      input = input.subarray(length + 2);
+      serveQuery(query, answer => {
+        const frame = Buffer.alloc(answer.length + 2);
+        frame.writeUInt16BE(answer.length, 0);
+        answer.copy(frame, 2);
+        socket.write(frame);
+      });
+    }
+  });
+});
+tcp.listen(PORT, "127.0.0.1");
+"""
 
 
 def ubuntu_entrypoint_script() -> bytes:

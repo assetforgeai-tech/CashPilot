@@ -85,6 +85,7 @@ def render_dockerfile(manifest: Mapping[str, object], *, platform: str = "macos"
 RUN mv /usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-base.sh
 COPY entrypoint.sh /usr/local/bin/entrypoint-original.sh
 COPY cashpilot-proxy-entrypoint /usr/local/bin/entrypoint.sh
+COPY cashpilot-doh.js /usr/local/lib/cashpilot-doh.js
 RUN chmod 0755 /usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-original.sh
 
 LABEL com.cashpilot.earnapp.runtime={earnapp_runtime.UBUNTU_RUNTIME_HOST} \\
@@ -138,10 +139,12 @@ RUN apt-get update \\
 COPY {binary_source} /opt/{binary_target}
 COPY boot.js /usr/local/lib/node/boot.js
 COPY earn-supervisor /usr/local/bin/earn-supervisor
-{entrypoint_copy}{registration_copy}COPY runtime-manifest.json /opt/cashpilot/runtime-manifest.json
+{entrypoint_copy}{registration_copy}COPY cashpilot-doh.js /usr/local/lib/cashpilot-doh.js
+COPY runtime-manifest.json /opt/cashpilot/runtime-manifest.json
 
 RUN chmod 0755 /opt/{binary_target} /usr/local/bin/earn-supervisor /usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-original.sh{registration_mode} \\
     && node --check /usr/local/lib/node/boot.js \\
+    && node --check /usr/local/lib/cashpilot-doh.js \\
     && bash -n /usr/local/bin/earn-supervisor /usr/local/bin/entrypoint.sh{shellcheck}
 
 LABEL com.cashpilot.earnapp.runtime={runtime} \\
