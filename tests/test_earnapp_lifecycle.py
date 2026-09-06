@@ -86,6 +86,23 @@ def test_qualified_uptime_without_country_or_ip_waits_for_backend_assignment():
     assert decision.action == "observe"
 
 
+def test_qualified_uptime_without_country_restarts_after_admission_window():
+    now = datetime.now(UTC)
+    decision = evaluate_node(
+        {
+            "usage": 0.0,
+            "billing": "qualified_uptime",
+            "online": True,
+            "country_code": "",
+            "ip": "",
+            "banned": False,
+        },
+        _runtime(window_started_at=(now - timedelta(minutes=60)).isoformat()),
+        now,
+    )
+    assert decision.action == "restart"
+
+
 def test_proxy_failure_rotates_immediately_and_auth_failure_is_deferred():
     now = datetime.now(UTC)
     assert (
