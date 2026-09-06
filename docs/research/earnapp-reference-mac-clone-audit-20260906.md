@@ -48,3 +48,14 @@ The reference image is not promoted as a generic image. CashPilot's image
 builder continues to generate a per-node profile, volume, proxy route, and
 content-addressed runtime manifest. A future watchdog change must be tested
 with a fresh canary and must not embed host fingerprints or source-node state.
+
+## Test-US reboot finding
+
+The upgraded worker rollout initially succeeded interactively, but the first
+`vps-test-us` reboot restored `cashpilot-worker:1.21.14`. The cause was not an
+EarnApp runtime or identity problem: `/etc/systemd/system/cashpilot-worker.service`
+still referenced the old `docker-compose.worker.v1.21.14.override.yml`. The unit
+was corrected to reference `docker-compose.worker.v1.21.17.override.yml`, then
+reloaded and restarted without touching the six canary containers. Afterward the
+worker reported `1.21.17`, was healthy, and heartbeat requests returned `200`.
+All six canary container IDs, volumes, and start-time lineage remained intact.
