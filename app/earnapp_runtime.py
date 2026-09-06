@@ -276,6 +276,9 @@ unset PROXY_CREDENTIALS PROXY_HOST PROXY_PORT PROXY_USER PROXY_PASS
         runtime_handoff = r'''SANITIZED_ENTRYPOINT=/tmp/cashpilot-entrypoint-original.sh
 sed '/^set -euo pipefail/a unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy NO_PROXY no_proxy' \
   /usr/local/bin/entrypoint-original.sh >"$SANITIZED_ENTRYPOINT"
+# The reference watchdog re-enables errexit immediately before returning the
+# child status. That exits PID 1 before the caller can classify and back off.
+sed -i '0,/^  set -e$/s//  : # caller restores errexit/' "$SANITIZED_ENTRYPOINT"
 chmod 0755 "$SANITIZED_ENTRYPOINT"
 exec "$SANITIZED_ENTRYPOINT" "$@"'''
     else:

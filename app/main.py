@@ -867,7 +867,25 @@ async def _execute_earnapp_lifecycle_action(node: Mapping[str, Any], action: str
         },
         timeout=180,
     )
-    return isinstance(result, Mapping) and str(result.get("status") or "").lower() == "recreated"
+    if not isinstance(result, Mapping) or str(result.get("status") or "").lower() != "recreated":
+        return False
+    # The worker creates a replacement container; persist its ID immediately so
+    # server-side health/reconciliation never follows the removed predecessor.
+    container_id = str(result.get("container_id") or "").strip()
+    if container_id:
+        instance = await database.get_provider_instance(node_id)
+        if instance:
+            await database.save_provider_instance(
+                "earnapp",
+                node_id,
+                worker_id=worker_id,
+                mode=str(instance.get("mode") or "proxy"),
+                container_id=container_id,
+                sidecar_id=str(instance.get("sidecar_id") or ""),
+                proxy_id=int(instance.get("proxy_id") or node.get("current_proxy_id") or 0) or None,
+                status=str(instance.get("status") or "running"),
+            )
+    return True
 
 
 # Login rate limiting moved to app.login_rate_limit (bead sux) — it was the last
