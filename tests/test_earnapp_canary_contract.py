@@ -3882,6 +3882,65 @@ async def test_worker_cleanup_refuses_every_existing_earnapp_runtime(slug, devic
 
 
 @pytest.mark.asyncio
+async def test_worker_presence_requires_matching_assignment_and_reports_both_components(monkeypatch):
+    slug = "earnapp-mac-presence"
+    device_id = "sdk-mac-" + "d" * 32
+    monkeypatch.setattr(
+        worker_api,
+        "_earnapp_node_state",
+        lambda _slug: {
+            "generation": 4,
+            "device_id": device_id,
+            "runtime_backend": "docker",
+        },
+    )
+    presence = MagicMock(return_value={"main_present": False, "sidecar_present": False})
+    monkeypatch.setattr(worker_api.orchestrator, "earnapp_service_presence", presence)
+
+    with patch.object(worker_api, "_verify_api_key"):
+        result = await worker_api.api_earnapp_docker_node_presence(
+            _request(f"/api/earnapp/docker-nodes/{slug}/presence"),
+            slug,
+            generation=4,
+            device_id=device_id,
+        )
+
+    assert result == {
+        "logical_node_id": slug,
+        "main_present": False,
+        "sidecar_present": False,
+    }
+    presence.assert_called_once_with(slug)
+
+
+@pytest.mark.asyncio
+async def test_worker_presence_rejects_stale_assignment(monkeypatch):
+    slug = "earnapp-mac-presence"
+    monkeypatch.setattr(
+        worker_api,
+        "_earnapp_node_state",
+        lambda _slug: {
+            "generation": 4,
+            "device_id": "sdk-mac-" + "d" * 32,
+            "runtime_backend": "docker",
+        },
+    )
+    presence = MagicMock()
+    monkeypatch.setattr(worker_api.orchestrator, "earnapp_service_presence", presence)
+
+    with patch.object(worker_api, "_verify_api_key"), pytest.raises(HTTPException) as exc:
+        await worker_api.api_earnapp_docker_node_presence(
+            _request(f"/api/earnapp/docker-nodes/{slug}/presence"),
+            slug,
+            generation=3,
+            device_id="sdk-mac-" + "d" * 32,
+        )
+
+    assert exc.value.status_code == 409
+    presence.assert_not_called()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "slug",
     [

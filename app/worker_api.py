@@ -2721,6 +2721,29 @@ async def api_earnapp_node_runtime_authority(
     }
 
 
+@app.get("/api/earnapp/docker-nodes/{slug}/presence")
+async def api_earnapp_docker_node_presence(
+    request: Request,
+    slug: str,
+    generation: int,
+    device_id: str,
+) -> dict[str, Any]:
+    """Return exact Docker component presence for a CAS-scoped node."""
+    _verify_api_key(request)
+    state = _earnapp_node_state(slug)
+    if (
+        int(state.get("generation") or 0) != int(generation)
+        or str(state.get("device_id") or "") != str(device_id)
+        or str(state.get("runtime_backend") or "").strip().lower() != "docker"
+    ):
+        raise HTTPException(status_code=409, detail="EarnApp node assignment conflict")
+    try:
+        presence = await asyncio.to_thread(orchestrator.earnapp_service_presence, slug)
+    except (ValueError, RuntimeError, OSError) as exc:
+        raise HTTPException(status_code=409, detail="EarnApp runtime presence is unavailable") from exc
+    return {"logical_node_id": slug, **presence}
+
+
 @app.post("/api/earnapp/docker-nodes/{slug}/deploy")
 async def api_deploy_earnapp_docker_node(request: Request, slug: str, spec: DeploySpec) -> dict[str, Any]:
     """Deploy a validated MacOS/iOS/Ubuntu EarnApp runtime through its dedicated lane."""

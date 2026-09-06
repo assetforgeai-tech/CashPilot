@@ -824,16 +824,33 @@ async def _execute_earnapp_lifecycle_action(node: Mapping[str, Any], action: str
             dashboard_blocked=True,
         )
     if action == "restart":
-        result = await _proxy_to_worker(
-            worker_id,
-            "POST",
-            f"/api/earnapp/docker-nodes/{node_id}/restart",
-            json={
-                "generation": int(node.get("generation") or 0),
-                "device_id": str(node.get("device_id") or ""),
-            },
-            timeout=180,
-        )
+        try:
+            result = await _proxy_to_worker(
+                worker_id,
+                "POST",
+                f"/api/earnapp/docker-nodes/{node_id}/restart",
+                json={
+                    "generation": int(node.get("generation") or 0),
+                    "device_id": str(node.get("device_id") or ""),
+                },
+                timeout=180,
+            )
+        except HTTPException as exc:
+            if exc.status_code != 404:
+                raise
+            worker = await database.get_worker(worker_id)
+            if str((worker or {}).get("status") or "").strip().lower() != "online":
+                return False
+            presence = await _earnapp_runtime_presence(node)
+            if presence != {"main_present": False, "sidecar_present": False}:
+                return False
+            return await database.finalize_earnapp_node_removal(
+                node_id,
+                worker_id,
+                generation=int(node.get("generation") or 0),
+                device_id=str(node.get("device_id") or ""),
+                reason="EARNAPP_RUNTIME_MISSING",
+            )
         return isinstance(result, Mapping) and str(result.get("status") or "").lower() == "restarted"
     if action != "recreate":
         return False
@@ -4167,6 +4184,31 @@ async def _proxy_to_worker(
     except httpx.HTTPError as exc:
         logger.warning("worker proxy error: %s", exc)
         raise HTTPException(status_code=503, detail="Worker communication failed")
+
+
+async def _earnapp_runtime_presence(node: Mapping[str, Any]) -> dict[str, bool] | None:
+    """Read worker-authoritative Docker presence for one exact EarnApp binding."""
+    node_id = str(node.get("logical_node_id") or "").strip()
+    worker_id = int(node.get("assigned_worker_id") or 0)
+    generation = int(node.get("generation") or 0)
+    device_id = str(node.get("device_id") or "")
+    if not node_id or worker_id <= 0 or generation <= 0 or not device_id:
+        return None
+    try:
+        result = await _proxy_to_worker(
+            worker_id,
+            "GET",
+            f"/api/earnapp/docker-nodes/{node_id}/presence",
+            params={"generation": str(generation), "device_id": device_id},
+            timeout=30,
+        )
+    except Exception:
+        return None
+    if not isinstance(result, Mapping):
+        return None
+    if not isinstance(result.get("main_present"), bool) or not isinstance(result.get("sidecar_present"), bool):
+        return None
+    return {"main_present": result["main_present"], "sidecar_present": result["sidecar_present"]}
 
 
 async def _proxy_worker_command(
