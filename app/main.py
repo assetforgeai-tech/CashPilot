@@ -712,7 +712,10 @@ async def _run_earnapp_lifecycle_scheduler() -> None:
     """Persist uniform EarnApp health decisions from the latest evidence."""
     refreshed_accounts: set[int] = set()
     for node in await database.list_earnapp_logical_nodes():
-        if str(node.get("state") or "").upper() == "RETIRED":
+        # Only nodes with an assigned runtime participate in lifecycle actions.
+        # RECOVERABLE/PLANNED rows intentionally retain history and affinity but
+        # no longer have a worker container to restart.
+        if str(node.get("state") or "").upper() not in {"ACTIVE", "RECOVERY_HOLD"}:
             continue
         try:
             spec = await database.get_provider_instance_spec(str(node.get("logical_node_id") or ""))
