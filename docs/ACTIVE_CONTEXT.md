@@ -1,5 +1,37 @@
 # CashPilot Active Context
 
+## EarnApp production resume checkpoint (2026-09-06)
+
+- Goal resumed from the existing six-node `vps-test-us` canary. Release
+  `v1.21.13` is published after PR #155 (`7790f62`); UI and worker are both
+  healthy on that release. The rollout recreated only `cashpilot-ui` and
+  `cashpilot-worker`; the six EarnApp container IDs, UUIDs, named volumes,
+  account bindings and active proxy leases were unchanged.
+- PR #155 adds a read-only, CAS-scoped worker presence probe. If a lifecycle
+  restart returns `404`, the server now finalizes a node only when the worker
+  is online and both Docker components are authoritatively absent. Offline
+  workers, stale generation/device IDs, transport errors and uncertain
+  presence remain fail-closed; no account is deleted automatically.
+- Fresh account evidence after rollout: iOS and Ubuntu canaries retain
+  positive usage/earnings; both macOS canaries are `online=true`, VN and proxy
+  healthy but still have zero usage in the current observation window. They
+  remain eligible for restart-only observation, not recreate or proxy rotation.
+- Worker state, DB lease and live egress agree for all six canaries. A stale
+  EarnApp account snapshot may show a previous Ubuntu IP after a legitimate
+  proxy rotation; this is upstream dashboard propagation lag, not direct-VPS
+  leakage. Live probes show distinct proxy egress, local DoH on `127.0.0.1`,
+  TCP/UDP 53 redirects and a fail-closed `CP_EARNAPP_OUT` chain.
+- Account `2` and `470` have cookie expiry metadata. Their current
+  `oauth-refresh-token` values are opaque/non-JWT, so `token_expires_at` is
+  `unknown`; the Chrome importer can record JWT `exp` when present and syncs
+  changed cookies every 15 minutes, but deliberately does not automate
+  logout/login, MFA, OTP or CAPTCHA. Account deletion remains explicit and
+  requires `ACCOUNT_LOCKED` plus two confirmations.
+- EarnApp is not yet `PROTECTED_DONE`: macOS positive usage and reboot
+  persistence evidence remain open, and stale historical logical rows are
+  recoverable rather than bulk-deleted. No provider outside EarnApp was
+  changed.
+
 ## EarnApp macOS LAN-profile recovery (2026-09-04)
 
 - PR #119 merged as `92eb0e1` and release `v1.19.3` completed successfully.
