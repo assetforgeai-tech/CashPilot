@@ -61,9 +61,9 @@ Provider credentials are grouped by purpose:
 - **Dashboard / session**: used for dashboard/API/session access and should not be echoed back to the browser.
 - **Credential health**: shows freshness/status only; raw secret values remain write-only.
 
-Auto deploy is off by default. When enabled, the server waits for three healthy worker heartbeats, then deploys NKN, generic catalog providers, and the dedicated EarnApp platform lanes sequentially with the configured per-provider delay. EarnApp never enters the generic Docker queue: VN residential proxies use MacOS/iOS emulation and non-VN residential proxies use official Ubuntu x64/LXD. Keep this global switch operator-disabled until every provider-specific release and live gate intended for the target fleet has passed.
+Auto deploy is off by default. When enabled, the server waits for three healthy worker heartbeats, then deploys NKN, generic catalog providers, and the dedicated EarnApp platform lanes sequentially with the configured per-provider delay. EarnApp never enters the generic Docker queue: VN residential proxies use MacOS/iOS emulation and non-VN residential proxies use official Ubuntu x64/Docker. Keep this global switch operator-disabled until every provider-specific release and live gate intended for the target fleet has passed.
 
-EarnApp Ubuntu LXD limits are authoritative database-backed Settings values for newly created guests:
+Legacy EarnApp Ubuntu LXD limits remain database-backed Settings values for historical records; new and replacement EarnApp Ubuntu nodes use the Docker lane:
 
 | Setting | Default | Accepted range | Purpose |
 |---------|---------|----------------|---------|
