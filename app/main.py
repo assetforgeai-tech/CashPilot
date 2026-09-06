@@ -3954,10 +3954,36 @@ async def _remove_earnapp_ubuntu_runtime(
     return assigned_worker_id, result
 
 
+async def _remove_earnapp_docker_runtime(logical_node_id: str, worker_id: int | None) -> tuple[int, dict[str, Any]]:
+    """Remove a tracked Docker EarnApp node for any supported platform."""
+    node_id = str(logical_node_id or "").strip()
+    node = await database.get_earnapp_logical_node(node_id)
+    if not node or str(node.get("platform") or "").lower() not in {"macos", "ios", "ubuntu"}:
+        raise HTTPException(status_code=409, detail="EarnApp Docker assignment is not lifecycle-ready")
+    assigned = int(node.get("assigned_worker_id") or 0)
+    generation = int(node.get("generation") or 0)
+    device_id = str(node.get("device_id") or "").strip()
+    if worker_id is not None and int(worker_id) != assigned:
+        raise HTTPException(status_code=409, detail="EarnApp logical node belongs to another worker")
+    if assigned <= 0 or generation <= 0 or not device_id or str(node.get("state") or "").upper() not in {"ACTIVE", "RECOVERY_HOLD"}:
+        raise HTTPException(status_code=409, detail="EarnApp Docker assignment is not lifecycle-ready")
+    result = await _proxy_to_worker(assigned, "DELETE", f"/api/earnapp/docker-nodes/{node_id}", json={"generation": generation, "device_id": device_id}, timeout=180)
+    if not await database.finalize_earnapp_node_removal(node_id, assigned, generation=generation, device_id=device_id, reason="EARNAPP_NODE_REMOVED"):
+        raise HTTPException(status_code=409, detail="EarnApp assignment changed during remove")
+    await database.remove_provider_instance(node_id)
+    return assigned, result
+
+
 async def _svc_stop(request: Request, slug: str, worker_id: int | None) -> dict[str, str]:
     _require_writer(request)
     if earnapp_policy.is_protected_runtime_reference(slug):
         raise HTTPException(status_code=409, detail="Protected EarnApp node is inspection-only")
+    tracked = await database.get_earnapp_logical_node(slug)
+    if tracked and str(tracked.get("platform") or "").lower() in {"macos", "ios"}:
+        _require_writer(request)
+        worker_id, result = await _remove_earnapp_docker_runtime(slug, worker_id)
+        await database.record_health_event("earnapp", "remove", f"removed {slug} from worker {worker_id}")
+        return result
     if provider_runtime.is_runtime_instance(slug):
         worker_id, result = await _proxy_earnapp_ubuntu_lifecycle(slug, worker_id, "stop")
         await database.record_health_event("earnapp", "stop", f"suspended {slug} on worker {worker_id}")
