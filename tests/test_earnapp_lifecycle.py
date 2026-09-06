@@ -174,6 +174,32 @@ async def test_scheduler_persists_initial_flatline_window(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_scheduler_ignores_recoverable_nodes_without_active_runtime(monkeypatch):
+    node = {
+        "logical_node_id": "earnapp-mac-recoverable",
+        "account_id": 2,
+        "assigned_worker_id": 3098,
+        "device_id": "sdk-mac-recoverable",
+        "state": "RECOVERABLE",
+        "proxy_health": "healthy",
+        "usage_baseline": 0.0,
+        "window_started_at": (datetime.now(UTC) - timedelta(minutes=121)).isoformat(),
+        "same_proxy_recreates": 0,
+        "rotate_count": 0,
+    }
+    monkeypatch.setattr(main.database, "list_earnapp_logical_nodes", AsyncMock(return_value=[node]))
+    spec = AsyncMock()
+    execute = AsyncMock()
+    monkeypatch.setattr(main.database, "get_provider_instance_spec", spec)
+    monkeypatch.setattr(main, "_execute_earnapp_lifecycle_action", execute)
+
+    await main._run_earnapp_lifecycle_scheduler()
+
+    spec.assert_not_awaited()
+    execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_scheduler_uses_latest_account_snapshot_when_spec_has_no_evidence(monkeypatch):
     node = {
         "logical_node_id": "earnapp-mac-1",
