@@ -3991,12 +3991,6 @@ async def _svc_stop(request: Request, slug: str, worker_id: int | None) -> dict[
     _require_writer(request)
     if earnapp_policy.is_protected_runtime_reference(slug):
         raise HTTPException(status_code=409, detail="Protected EarnApp node is inspection-only")
-    tracked = await database.get_earnapp_logical_node(slug)
-    if tracked and str(tracked.get("platform") or "").lower() in {"macos", "ios"}:
-        _require_writer(request)
-        worker_id, result = await _remove_earnapp_docker_runtime(slug, worker_id)
-        await database.record_health_event("earnapp", "remove", f"removed {slug} from worker {worker_id}")
-        return result
     if provider_runtime.is_runtime_instance(slug):
         worker_id, result = await _proxy_earnapp_ubuntu_lifecycle(slug, worker_id, "stop")
         await database.record_health_event("earnapp", "stop", f"suspended {slug} on worker {worker_id}")
@@ -4070,6 +4064,13 @@ async def _svc_restart(request: Request, slug: str, worker_id: int | None) -> di
         worker_id, result = await _proxy_earnapp_ubuntu_lifecycle(slug, worker_id, "restart")
         await database.record_health_event("earnapp", "restart", f"restarted {slug} on worker {worker_id}")
         metrics.record_container_lifecycle("restart", "earnapp")
+        return result
+    tracked = await database.get_earnapp_logical_node(slug)
+    if tracked and str(tracked.get("platform") or "").lower() in {"macos", "ios"}:
+        _require_writer(request)
+        worker_id, result = await _remove_earnapp_docker_runtime(slug, worker_id)
+        await database.record_health_event("earnapp", "remove", f"removed {slug} from worker {worker_id}")
+        metrics.record_container_lifecycle("remove", "earnapp")
         return result
     worker_id = await _resolve_worker_id(worker_id)
     result = await _proxy_worker_command(worker_id, "restart", slug)
