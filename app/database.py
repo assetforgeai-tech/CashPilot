@@ -466,6 +466,7 @@ CREATE TABLE IF NOT EXISTS earnapp_logical_nodes (
     window_started_at   TEXT,
     same_proxy_recreates INTEGER NOT NULL DEFAULT 0,
     rotate_count        INTEGER NOT NULL DEFAULT 0,
+    earnings_zero_observed_at TEXT,
     lifecycle_action    TEXT NOT NULL DEFAULT 'observe',
     quarantine_reason   TEXT NOT NULL DEFAULT '',
     created_at         TEXT    NOT NULL DEFAULT (datetime('now')),
@@ -548,6 +549,7 @@ CREATE TABLE IF NOT EXISTS earnapp_account_snapshots (
     offline_nodes  INTEGER NOT NULL DEFAULT 0,
     devices_json   TEXT    NOT NULL DEFAULT '[]',
     payment_json   TEXT    NOT NULL DEFAULT '{}',
+    earnings_update_in_ms INTEGER,
     collected_at   TEXT    NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY(account_id) REFERENCES earnapp_accounts(id) ON DELETE CASCADE
 );
@@ -625,6 +627,7 @@ _EARNAPP_CHILD_COLUMNS = {
         "window_started_at",
         "same_proxy_recreates",
         "rotate_count",
+        "earnings_zero_observed_at",
         "lifecycle_action",
         "quarantine_reason",
         "created_at",
@@ -649,6 +652,7 @@ _EARNAPP_CHILD_COLUMNS = {
         "offline_nodes",
         "devices_json",
         "payment_json",
+        "earnings_update_in_ms",
         "collected_at",
     },
     "earnapp_replacement_tickets": {
@@ -1925,6 +1929,7 @@ async def _ensure_earnapp_logical_node_proxy_health_schema(db: Any, applied: lis
         "window_started_at": "TEXT",
         "same_proxy_recreates": "INTEGER NOT NULL DEFAULT 0",
         "rotate_count": "INTEGER NOT NULL DEFAULT 0",
+        "earnings_zero_observed_at": "TEXT",
         "lifecycle_action": "TEXT NOT NULL DEFAULT 'observe'",
         "quarantine_reason": "TEXT NOT NULL DEFAULT ''",
     }
@@ -2193,6 +2198,7 @@ async def _create_earnapp_current_schema(db: Any) -> None:
             window_started_at   TEXT,
             same_proxy_recreates INTEGER NOT NULL DEFAULT 0,
             rotate_count        INTEGER NOT NULL DEFAULT 0,
+            earnings_zero_observed_at TEXT,
             lifecycle_action    TEXT NOT NULL DEFAULT 'observe',
             quarantine_reason   TEXT NOT NULL DEFAULT '',
             created_at         TEXT    NOT NULL DEFAULT (datetime('now')),
@@ -2247,6 +2253,8 @@ async def _create_earnapp_current_schema(db: Any) -> None:
             online_nodes INTEGER NOT NULL DEFAULT 0,
             offline_nodes INTEGER NOT NULL DEFAULT 0,
             devices_json TEXT NOT NULL DEFAULT '[]',
+            payment_json TEXT NOT NULL DEFAULT '{}',
+            earnings_update_in_ms INTEGER,
             collected_at TEXT NOT NULL DEFAULT (datetime('now')),
             FOREIGN KEY(account_id) REFERENCES earnapp_accounts(id) ON DELETE CASCADE
         )
@@ -2335,6 +2343,7 @@ async def _rebuild_earnapp_child_table(db: Any, table_name: str) -> None:
                 online_nodes INTEGER NOT NULL DEFAULT 0, offline_nodes INTEGER NOT NULL DEFAULT 0,
                 devices_json TEXT NOT NULL DEFAULT '[]',
                 payment_json TEXT NOT NULL DEFAULT '{}',
+                earnings_update_in_ms INTEGER,
                 collected_at TEXT NOT NULL DEFAULT (datetime('now')),
                 FOREIGN KEY(account_id) REFERENCES earnapp_accounts(id) ON DELETE CASCADE
             )
@@ -2714,7 +2723,7 @@ async def _migrate_legacy_earnapp_accounts(db: Any, applied: list[str]) -> None:
 #: missing a column -- an interrupted upgrade, a restored backup, a hand-edited
 #: file -- could never be repaired, because the gate would say there was nothing
 #: to do. The guards are idempotent and cheap; the version is for the operator.
-SCHEMA_VERSION = 21
+SCHEMA_VERSION = 22
 
 
 async def init_db() -> None:
@@ -2739,6 +2748,9 @@ async def init_db() -> None:
                     "ALTER TABLE earnapp_account_snapshots ADD COLUMN payment_json TEXT NOT NULL DEFAULT '{}'"
                 )
                 applied.append("earnapp_account_snapshots.payment_json")
+            if "earnings_update_in_ms" not in snapshot_cols:
+                await db.execute("ALTER TABLE earnapp_account_snapshots ADD COLUMN earnings_update_in_ms INTEGER")
+                applied.append("earnapp_account_snapshots.earnings_update_in_ms")
         await _migrate_legacy_earnapp_accounts(db, applied)
         await db.executescript(_EARNAPP_ACCOUNTS_SCHEMA)
         await _quarantine_synthetic_legacy_accounts(db, applied)
@@ -3641,11 +3653,30 @@ async def upsert_earnapp_account(
                     (profile,),
                 )
             ).fetchone()
-            # A deleted Chrome profile is a tombstone. Do not let a later
-            # importer sync route it through duplicate reconciliation and
-            # resurrect the row as ACCOUNT_LOCKED.
+            # A deleted profile with a single active canonical account for the
+            # same email refreshes that account; the tombstone itself remains
+            # deleted. Ambiguous or ownerless cases still fail closed.
             if existing and str(existing["state"]) == "DELETED":
-                raise ValueError("EarnApp account is deleted")
+                active_matches = (
+                    await (
+                        await db.execute(
+                            """
+                        SELECT id, profile_key, account_name, auth_method, state
+                        FROM earnapp_accounts
+                        WHERE lower(trim(rtrim(email, ','))) = ? AND state != 'DELETED'
+                        ORDER BY id
+                        """,
+                            (normalized_email(email),),
+                        )
+                    ).fetchall()
+                    if normalized_email(email)
+                    else []
+                )
+                if len(active_matches) == 1:
+                    existing = active_matches[0]
+                    profile = str(existing["profile_key"] or "")
+                else:
+                    raise ValueError("EarnApp account is deleted")
             duplicate_to_lock: int | None = None
             if existing and normalized_email(email):
                 same_email = await (
@@ -6132,7 +6163,11 @@ async def get_earnapp_account_control_route(
 
 
 async def update_earnapp_lifecycle(
-    logical_node_id: str, decision: Any, *, usage: float | None = None, window_started_at: str | None = None
+    logical_node_id: str,
+    decision: Any,
+    *,
+    usage: float | None = None,
+    window_started_at: str | None = None,
 ) -> bool:
     """Persist the pure lifecycle decision without touching identity or leases."""
     db = await _get_db()
@@ -6141,9 +6176,14 @@ async def update_earnapp_lifecycle(
             "lifecycle_action = ?",
             "same_proxy_recreates = ?",
             "rotate_count = ?",
-            "updated_at = datetime('now')",
         ]
         values: list[Any] = [str(decision.action), int(decision.same_proxy_recreates), int(decision.rotate_count)]
+        if bool(getattr(decision, "clear_earnings_zero_observed", False)):
+            fields.append("earnings_zero_observed_at = NULL")
+        elif getattr(decision, "earnings_zero_observed_at", None):
+            fields.append("earnings_zero_observed_at = ?")
+            values.append(str(decision.earnings_zero_observed_at))
+        fields.append("updated_at = datetime('now')")
         if usage is not None:
             fields.append("usage_baseline = ?")
             values.append(float(usage))
@@ -6390,8 +6430,8 @@ async def save_earnapp_snapshot(account_id: int, snapshot: Mapping[str, Any]) ->
         cursor = await db.execute(
             """
             INSERT INTO earnapp_account_snapshots
-                (account_id, money_balance, money_total, online_nodes, offline_nodes, devices_json, payment_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                (account_id, money_balance, money_total, online_nodes, offline_nodes, devices_json, payment_json, earnings_update_in_ms)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 int(account_id),
@@ -6405,6 +6445,7 @@ async def save_earnapp_snapshot(account_id: int, snapshot: Mapping[str, Any]) ->
                     sort_keys=True,
                     separators=(",", ":"),
                 ),
+                int(snapshot["earnings_update_in_ms"]) if snapshot.get("earnings_update_in_ms") is not None else None,
             ),
         )
         await db.commit()

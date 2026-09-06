@@ -73,7 +73,9 @@ Add tests equivalent to:
 ```python
 def test_proxy_import_parser_applies_operator_protocol_mode():
     assert proxy_routes._parse_proxy_import("proxy.example:1000", protocol_mode="http")[0]["protocol"] == "http"
-    assert proxy_routes._parse_proxy_import("http://proxy.example:1000", protocol_mode="socks5")[0]["protocol"] == "socks5"
+    assert (
+        proxy_routes._parse_proxy_import("http://proxy.example:1000", protocol_mode="socks5")[0]["protocol"] == "socks5"
+    )
 
 
 def test_proxy_import_parser_auto_preserves_explicit_scheme_and_legacy_default():

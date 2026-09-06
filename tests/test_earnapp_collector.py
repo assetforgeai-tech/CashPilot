@@ -148,6 +148,11 @@ def test_normalize_snapshot_supports_current_earnapp_money_and_device_shape():
     )
 
 
+def test_normalize_snapshot_keeps_earnings_update_counter():
+    snapshot = normalize_snapshot({}, {"balance": 1}, [], {}, {}, {"balance_sync": 123456})
+    assert snapshot["earnings_update_in_ms"] == 123456
+
+
 def test_account_without_nodes_gets_an_exclusive_control_route_that_transfers_to_first_node(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
@@ -702,6 +707,8 @@ class _Client:
         if url.endswith("/usage"):
             assert kwargs["params"]["step"] == "daily"
             return _Response(200, [])
+        if url.endswith("/counters"):
+            return _Response(200, {"balance_sync": 123456})
         if url.endswith("/payment_methods"):
             return _Response(
                 200,
@@ -763,6 +770,7 @@ def test_collector_rotates_xsrf_routes_every_request_through_account_proxy_and_n
         ("GET", "https://earnapp.com/dashboard/api/money"),
         ("GET", "https://earnapp.com/dashboard/api/devices"),
         ("GET", "https://earnapp.com/dashboard/api/usage"),
+        ("GET", "https://earnapp.com/dashboard/api/counters"),
         ("GET", "https://earnapp.com/dashboard/api/payment_methods"),
         ("GET", "https://earnapp.com/dashboard/api/redeem_details"),
         ("GET", "https://earnapp.com/dashboard/api/transactions"),
@@ -778,6 +786,7 @@ def test_collector_rotates_xsrf_routes_every_request_through_account_proxy_and_n
         "usage_total": 0,
         "usage_available_nodes": 0,
         "usage_missing_nodes": 2,
+        "earnings_update_in_ms": 123456,
         "payment": {
             "configured": False,
             "method": "",

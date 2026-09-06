@@ -39,6 +39,7 @@ def test_positive_usage_resets_recovery_counters():
     decision = evaluate_node({"usage": 11.0, "banned": False}, _runtime(), datetime.now(UTC))
     assert decision.action == "healthy"
     assert decision.same_proxy_recreates == 0
+    assert decision.clear_earnings_zero_observed is True
 
 
 def test_flat_usage_restarts_without_recreate_or_proxy_rotation():
@@ -67,6 +68,37 @@ def test_new_or_restarted_node_gets_a_sixty_minute_admission_window():
     )
     assert observe.action == "observe"
     assert recover.action == "restart"
+
+
+def test_flatline_waits_for_earnings_update_boundary_not_container_age():
+    now = datetime.now(UTC)
+    runtime = _runtime(window_started_at=(now - timedelta(hours=3)).isoformat())
+    assert (
+        evaluate_node({"usage": 10.0, "banned": False, "earnings_update_in_ms": 120000}, runtime, now).action
+        == "observe"
+    )
+    first_zero = evaluate_node({"usage": 10.0, "banned": False, "earnings_update_in_ms": 0}, runtime, now)
+    assert first_zero.action == "observe"
+    assert "boundary" in first_zero.reason
+    after_grace = _runtime(
+        window_started_at=(now - timedelta(hours=3)).isoformat(),
+        earnings_zero_observed_at=(now - timedelta(minutes=5)).isoformat(),
+    )
+    assert (
+        evaluate_node({"usage": 10.0, "banned": False, "earnings_update_in_ms": 0}, after_grace, now).action
+        == "restart"
+    )
+
+
+def test_positive_earnings_counter_clears_previous_zero_boundary():
+    now = datetime.now(UTC)
+    decision = evaluate_node(
+        {"usage": 10.0, "banned": False, "earnings_update_in_ms": 120000},
+        _runtime(earnings_zero_observed_at=(now - timedelta(minutes=10)).isoformat()),
+        now,
+    )
+    assert decision.action == "observe"
+    assert decision.clear_earnings_zero_observed is True
 
 
 def test_qualified_uptime_without_country_or_ip_waits_for_backend_assignment():
