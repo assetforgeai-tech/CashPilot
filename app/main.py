@@ -749,7 +749,11 @@ async def _run_earnapp_lifecycle_scheduler() -> None:
                 None,
             )
             if isinstance(snapshot_evidence, Mapping):
-                evidence = snapshot_evidence
+                # Device metrics identify the node; the account-level balance
+                # counter defines the authoritative earnings update boundary.
+                evidence = {**snapshot_evidence}
+                if snapshot.get("earnings_update_in_ms") is not None:
+                    evidence["earnings_update_in_ms"] = snapshot.get("earnings_update_in_ms")
             if not isinstance(evidence, Mapping):
                 continue
             usage = earnapp_lifecycle.effective_usage(evidence)

@@ -2178,7 +2178,7 @@ def test_refresh_does_not_reactivate_locked_or_deleted_accounts(tmp_path):
     asyncio.run(run())
 
 
-def test_deleted_duplicate_profile_stays_deleted_when_imported_against_populated_account(tmp_path):
+def test_deleted_duplicate_profile_refreshes_populated_canonical_without_resurrection(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
             await database.init_db()
@@ -2195,8 +2195,7 @@ def test_deleted_duplicate_profile_stays_deleted_when_imported_against_populated
             await database.set_earnapp_account_state(duplicate_id, "ACCOUNT_LOCKED")
             assert await earnapp_accounts.delete_account(duplicate_id)
 
-            with pytest.raises(ValueError, match="deleted"):
-                await earnapp_accounts.import_account(_payload("profile-duplicate", "same@example.com"))
+            assert await earnapp_accounts.import_account(_payload("profile-duplicate", "same@example.com")) == canonical_id
 
             db = await database._get_db()
             row = await (

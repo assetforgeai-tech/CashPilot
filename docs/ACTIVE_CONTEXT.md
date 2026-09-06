@@ -1,5 +1,68 @@
 # CashPilot Active Context
 
+## EarnApp production resume checkpoint (2026-09-06, v1.21.14 rollout)
+
+- Release `v1.21.14` completed successfully from merge SHA
+  `83adb68ed93597ca8540732186d36e2656bac705`; CI lint/test, UI/worker image
+  builds, tag resolution and GitHub release all passed.
+- The `test-us` worker was upgraded in place to
+  `ghcr.io/assetforgeai-tech/cashpilot-worker:1.21.14`. Its Docker container is
+  healthy with restart count `0`; the six EarnApp node containers were not
+  recreated by the worker rollout.
+- The two Ubuntu canaries were then recreated once through the worker CAS route,
+  preserving UUID, account, proxy lease, volume and generation. Fresh containers
+  are `6eee77cc...` (Ubuntu-01) and `9b7bf981...` (Ubuntu-02); both report
+  `RestartCount=0`, watchdog `E_OK`, one EarnApp process, and distinct proxy
+  egress (`130.180.231.27` and `207.228.7.149`).
+- A host audit found no cron, EarnApp systemd timer, duplicate supervisor or
+  external recreate controller. Repeated Docker `exec` events are the worker's
+  bounded `api.ipify.org` and health probes. The earlier Ubuntu multiple-IP
+  dashboard history is explained by legitimate proxy rotation under stable UUIDs.
+- The `test-us` systemd unit was failed because it used Compose project
+  `cashpilot-worker` while the running container belonged to project `cashpilot`,
+  causing a name conflict. The unit now uses the existing `cashpilot` project
+  and `v1.21.14` override; it is `active (exited)` with a successful start and
+  does not mutate EarnApp nodes.
+- The server UI was upgraded alone to
+  `ghcr.io/assetforgeai-tech/cashpilot:1.21.14`; it is healthy, restart count
+  `0`, and the server-local worker stayed on its existing image/container.
+  SQLite schema boot completed without migration errors.
+- The stale server worker row `3098` (same test-US name, offline, no remaining
+  EarnApp node reference) was deleted through the owner API. Current server
+  mapping has worker `92161` online for all six test-US canaries and worker
+  `43406` online for the test-sing NKN lane. No active proxy lease or node was
+  deleted by this cleanup.
+- EarnApp remains **not** `PROTECTED_DONE`: this checkpoint proves runtime,
+  egress, process and worker-state recovery, but does not yet provide fresh
+  positive usage for both macOS canaries or reboot-persistence evidence for all
+  six nodes. Continue collector-based verification before final closeout.
+- A fresh owner-triggered collector run after the rollout succeeded for both
+  accounts: account `2` reported `5` online / `0` offline and balance `6.772`;
+  account `470` reported `8` online / `0` offline and balance `7.449`. This
+  confirms the authenticated collector path is healthy, but aggregate account
+  balances are not by themselves proof that each macOS node has a new usage
+  delta; the per-device observation and reboot gate remain open.
+- Follow-up collection at `2026-09-06 05:01 UTC` still reports MacOS-01
+  `online=true`, VN, `total_uptime=0`, `earned=0`; MacOS-02 remains at
+  `total_uptime=9082`, while both iOS and both Ubuntu nodes retain positive
+  uptime/earnings. The restart-only window for MacOS-01 therefore remains
+  unresolved; no recreate or proxy rotation is justified while its route is
+  healthy.
+- At `2026-09-06 05:04 UTC`, MacOS-01 had been running for roughly nine
+  minutes after the controlled restart (`RestartCount=0`, same container ID).
+  Logs show repeated proxy/WSS connections, `cid_set`, and successful
+  `tunnel_init`; the configured lifecycle flatline window is 60 minutes, so no
+  second recovery action is due yet. This is an active observation, not a
+  completion gate.
+- Per-device snapshot at `2026-09-06 04:49-04:57 UTC` shows iOS-01/iOS-02 and
+  Ubuntu-01/02 with positive `qualified_uptime` and earnings. MacOS-02 has
+  `online=true`, VN and `total_uptime=9082`; MacOS-01 remained `online=true`,
+  VN but `total_uptime=0` and earnings `0`. MacOS-01 was restarted in place
+  once (same UUID/account/proxy/volume); the runtime returned one detected
+  `en0`, proxy/WSS connections and successful `tunnel_init`, but its immediate
+  follow-up collector still reports zero uptime. Its short post-restart window
+  remains open; no recreate, link or proxy rotation was performed.
+
 ## EarnApp production resume checkpoint (2026-09-06)
 
 - Goal resumed from the existing six-node `vps-test-us` canary. Release
@@ -1465,3 +1528,42 @@ historical snapshots and read-only inspection stay available.
   credentials are redirected to that populated canonical row and the empty
   duplicate is marked `ACCOUNT_LOCKED`; multiple populated matches still fail
   closed for manual review. Live deletion/release was not performed.
+
+## Test-US macOS recreate and Ubuntu multi-IP audit (2026-09-06)
+
+- Both macOS canaries were recreated through the worker's main-container lane:
+  `earnapp-canary-us-macos-01` now uses `795e4b6ab8e1`, and
+  `earnapp-canary-us-macos-02` uses `0fa5f6745dea`. The sidecars were not
+  replaced. The `/etc/earnapp` volumes, UUIDs, account bindings and image asset
+  digest remained unchanged; Docker restart count is `0` for both replacements.
+- Post-recreate container probes observed distinct proxy egresses: macOS-01
+  `116.98.181.112`, macOS-02 `116.103.142.238`; Ubuntu-01
+  `130.180.231.27`, Ubuntu-02 `207.228.7.149`. This rules out a shared proxy
+  route at the runtime boundary for this snapshot.
+- Ubuntu process audit found exactly one `/usr/bin/earnapp run` per Ubuntu
+  container, each under its corresponding Docker cgroup, with one redsocks and
+  one CashPilot DoH process in the same container. No host EarnApp systemd
+  service, timer, cron job, duplicate supervisor, or second EarnApp process was
+  found. The host `earnapp.service` unit is disabled and no host process owns
+  the Ubuntu runtimes.
+- Therefore multiple IPs shown historically for an Ubuntu device are not
+  evidence of concurrent duplicate processes. They are consistent with proxy
+  rotation/history (or delayed account-dashboard assignment). Fresh collector
+  evidence should be used to compare the exact device UUID and current IP;
+  no Ubuntu proxy rotation or identity mutation was performed in this audit.
+- A fresh owner collector snapshot then matched both live Ubuntu UUIDs to the
+  EarnApp account records: Ubuntu-01 was `online=true`, country `US`,
+  `130.180.231.27`, positive uptime/usage and `0.146` earned; Ubuntu-02 was
+  `online=true`, country `US`, `207.228.7.149`, positive uptime/usage and
+  `0.120` earned. The account collector reported no offline nodes for the
+  sampled account. This is direct evidence that the current Ubuntu runtimes
+  are earning through their distinct assigned proxies.
+- The same snapshot still shows macOS-01 online/VN with zero uptime and
+  macOS-02 online/VN with only its prior small uptime reading. Both macOS
+  replacements had been running for less than 15 minutes at the time of the
+  check, so the 60-minute restart-only observation gate remains open. No
+  second restart, recreate, relink or rotation was performed.
+- Repository verification after this live audit passed the complete local
+  suite: `2589 passed, 9 skipped`. Ruff lint and `compileall` pass; Ruff format
+  check reports four pre-existing formatting differences in generated/runtime
+  heredoc areas and was not auto-applied during the live gate.

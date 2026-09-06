@@ -196,6 +196,9 @@ def _public_account(
             "usage_total": sum(float(device.get("usage_total") or 0) for device in usage_devices) if snapshot else None,
             "usage_available_nodes": len(usage_devices) if snapshot else None,
             "usage_missing_nodes": len(devices) - len(usage_devices) if snapshot else None,
+            "earnings_update_in_ms": int(snapshot["earnings_update_in_ms"])
+            if snapshot and snapshot.get("earnings_update_in_ms") is not None
+            else None,
             "payment": payment if isinstance(payment, dict) else {},
             "collected_at": snapshot.get("collected_at") if snapshot else None,
         },

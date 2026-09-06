@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
@@ -246,6 +247,7 @@ def normalize_snapshot(
     devices_payload: Any,
     statuses: Any,
     usage_payload: Any = None,
+    counters_payload: Any = None,
 ) -> dict[str, Any]:
     user = dict(user_data) if isinstance(user_data, Mapping) else {}
     balances = dict(money) if isinstance(money, Mapping) else {}
@@ -309,6 +311,10 @@ def normalize_snapshot(
     }
     if payment:
         snapshot["payment"] = payment
+    if isinstance(counters_payload, Mapping):
+        counter = counters_payload.get("balance_sync")
+        with contextlib.suppress(TypeError, ValueError):
+            snapshot["earnings_update_in_ms"] = max(0, int(float(counter)))
     return snapshot
 
 
@@ -566,6 +572,10 @@ class EarnAppAccountCollector:
                     params={**API_PARAMS, "step": "daily"},
                     headers=headers,
                 )
+                try:
+                    counters_response = await client.get(f"{API_BASE}/counters", params=API_PARAMS, headers=headers)
+                except Exception:  # Optional endpoint; older dashboard contracts omit it.
+                    counters_response = None
                 payment_methods_response = await client.get(
                     f"{API_BASE}/payment_methods", params=API_PARAMS, headers=headers
                 )
@@ -604,6 +614,7 @@ class EarnAppAccountCollector:
                     devices_response.json(),
                     statuses,
                     usage_response.json(),
+                    counters_response.json() if counters_response is not None and counters_response.status_code == 200 else {},
                 ) | {
                     "payment": normalize_payment(
                         payment_methods_response.json() if payment_methods_response.status_code == 200 else {},

@@ -3521,6 +3521,10 @@ const CP = (() => {
     rows.innerHTML = accounts.map(account => {
       const token = earnAppTokenLabel(account);
       const collector = account.collector || {};
+      const updateMs = Number(collector.earnings_update_in_ms);
+      const updateLabel = Number.isFinite(updateMs) && updateMs >= 0
+        ? `Earnings update in ${Math.floor(updateMs / 60000)}m ${Math.floor((updateMs % 60000) / 1000)}s`
+        : 'Earnings update countdown unavailable';
       const route = account.route || {};
       const balance = collector.money_balance == null ? '&mdash;' : `${Number(collector.money_balance).toFixed(2)} USD`;
       const nodes = collector.online_nodes == null
@@ -3554,7 +3558,7 @@ const CP = (() => {
         <td><strong>${escapeHtml(account.account_name || account.email || `Account ${account.id}`)}</strong><small>${escapeHtml(account.auth_method || '')} · ${escapeHtml(account.profile_key || '')}</small><span class="badge badge-category">${escapeHtml(account.state || '')}</span></td>
         <td><span class="earnapp-token-state ${escapeHtml(token.css)}">${escapeHtml(token.label)}</span><small>${account.token_expires_at ? escapeHtml(fmtTimestamp(account.token_expires_at).text) : 'No expiry metadata'}</small></td>
         <td><strong>${escapeHtml(route.status || 'unavailable')}</strong><small>${route.source === 'node' ? 'Account node proxy' : (route.source === 'account_control' ? 'Pre-node control proxy' : 'No collector route')}</small><small>${route.egress_ip ? `${escapeHtml(route.country_code || '—')} · ${escapeHtml(route.egress_ip)} · proxy #${escapeHtml(route.proxy_id || '—')}` : 'No healthy account-owned egress'}</small><small>${route.checked_at ? `Checked ${escapeHtml(fmtTimestamp(route.checked_at).text)}` : 'Check time unavailable'}</small></td>
-        <td><strong>${balance}</strong><small>${collector.money_total == null ? 'Lifetime unavailable' : `${Number(collector.money_total).toFixed(2)} USD lifetime`}</small><small>${collector.collected_at ? `Last collected ${escapeHtml(fmtTimestamp(collector.collected_at).text)}` : 'No successful collection yet'}</small></td>
+        <td><strong>${balance}</strong><small>${collector.money_total == null ? 'Lifetime unavailable' : `${Number(collector.money_total).toFixed(2)} USD lifetime`}</small><small>${escapeHtml(updateLabel)}</small><small>${collector.collected_at ? `Last collected ${escapeHtml(fmtTimestamp(collector.collected_at).text)}` : 'No successful collection yet'}</small></td>
         <td>${escapeHtml(nodes)}<small>${escapeHtml(usage)}</small>${usageCoverage ? `<small>${escapeHtml(usageCoverage)}</small>` : ''}</td>
         <td><strong>${escapeHtml(paymentState)}</strong><small>${escapeHtml(paymentDestination)}</small><small>${escapeHtml(paymentMethodSummary)}</small><small>${escapeHtml(transactionSummary)}</small></td>
         <td><div class="earnapp-row-actions">
