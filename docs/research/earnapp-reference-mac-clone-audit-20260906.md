@@ -79,3 +79,19 @@ This is evidence for a controlled differential canary, not permission to copy th
 source UUID, encrypted profile, CID, consent, tracking state, proxy credential,
 or host-bound image. Production remains on the newer binary until a separate
 canary proves which variable affects usage.
+
+## Controlled binary differential
+
+A bounded test on `sdk-mac-ecb0b1fda1d61d79f09bfee6138643ea` changed only
+the executable from `1.660.577` to the verified `1.605.415` bytes while
+preserving the node UUID, account, proxy, volume, container and generated
+identity profile. The older executable started and connected, but immediately
+selected the real Docker address `172.17.0.3` for agent tunnel initialization
+and logged `interface not found for 172.17.0.3`. The current executable instead
+uses the emulated `en0` / `10.255.255.1` identity path without that warning.
+
+The node was restored to `1.660.577` after the observation. No identity,
+account assignment, proxy lease or volume was replaced. This rejects an
+unqualified rollback to `1.605.415`: its positive result on the source VPS
+depends on more than the binary alone, and the rollback reintroduces the exact
+Docker-interface mismatch fixed by the current release.

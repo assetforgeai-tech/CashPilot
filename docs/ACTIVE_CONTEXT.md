@@ -1,5 +1,27 @@
 # CashPilot Active Context
 
+## EarnApp v1.21.19 lifecycle and macOS differential checkpoint (2026-09-06)
+
+- PR #162 fixed the server lifecycle scheduler so only `ACTIVE` and
+  `RECOVERY_HOLD` EarnApp rows can trigger runtime actions. Historical
+  `RECOVERABLE` rows no longer issue repeated restart/presence requests to
+  missing worker containers. The release is deployed as `v1.21.19`; the server
+  UI and test-US worker are healthy, and the worker systemd unit is pinned to
+  the matching override.
+- The six current test-US canary container IDs and device UUIDs survived the
+  rollout. Their routes still resolve to six distinct proxy egress addresses;
+  iOS and Ubuntu retain positive usage, while both macOS nodes remain online
+  with country `VN` and zero qualified uptime in the latest account snapshot.
+- The usage-positive source node
+  `sdk-mac-66db858d1668e1e0fcc3da8af45247fa` is confirmed as a valid positive
+  control. A bounded executable-only differential on macOS-02 showed that
+  `1.605.415` reintroduces `interface not found for 172.17.0.3`, while
+  `1.660.577` keeps the emulated `en0` / `10.255.255.1` route. macOS-02 was
+  restored to `1.660.577` with the same UUID, account, proxy and volume.
+- Do not roll production back to `1.605.415` or clone the source host-bound
+  image. Continue observation through the authoritative EarnApp earnings
+  boundary before the restart-only lifecycle action is evaluated.
+
 ## EarnApp production resume checkpoint (2026-09-06, v1.21.14 rollout)
 
 - Release `v1.21.14` completed successfully from merge SHA
