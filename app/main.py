@@ -4393,7 +4393,10 @@ async def _adopt_earnapp_runtime_proxy_locked(
         or str(authority.get("expected_egress_ip") or "").strip() != expected_egress
         or str(authority.get("observed_egress_ip") or "").strip() != expected_egress
         or authority.get("main_running") is not True
-        or authority.get("sidecar_running") is not True
+        or (
+            str(authority.get("sidecar_container_id") or "").strip()
+            and authority.get("sidecar_running") is not True
+        )
         or authority.get("probe_ok") is not True
         or not str(authority.get("main_container_id") or "").strip()
     ):
@@ -4420,6 +4423,20 @@ async def _adopt_earnapp_runtime_proxy_locked(
 
 
 async def _reconcile_earnapp_pending_proxy_binding(instance: Mapping[str, Any], worker_id: int) -> bool:
+    """Reconcile only after the active rotation has finished its database CAS."""
+    node_id = str(instance.get("logical_node_id") or "").strip()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{2,120}", node_id) or earnapp_policy.is_protected_logical_node(node_id):
+        return False
+    lock = _EARNAPP_ROTATION_LOCKS.setdefault(node_id, asyncio.Lock())
+    if lock.locked():
+        # A heartbeat can expose write-ahead intent while apply is still running.
+        # The next heartbeat retries after rotation/adoption releases this lock.
+        return False
+    async with lock:
+        return await _reconcile_earnapp_pending_proxy_binding_locked(instance, worker_id)
+
+
+async def _reconcile_earnapp_pending_proxy_binding_locked(instance: Mapping[str, Any], worker_id: int) -> bool:
     """Finish or roll back a proxy transaction whose final ACK was lost.
 
     The worker keeps the old route in ``proxy_id`` while a candidate is staged.

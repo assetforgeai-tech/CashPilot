@@ -250,6 +250,55 @@ def test_platform_country_filter_is_unrestricted_when_os_is_enabled_everywhere()
     assert earnapp_deploy.platform_country_filter("macos", policy) == ("", "")
 
 
+@pytest.mark.parametrize("platform", ["macos", "ios", "ubuntu"])
+@pytest.mark.parametrize("country", ["VN", "US"])
+def test_prepare_node_honors_enabled_platform_country_policy(tmp_path, platform, country):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            await database.init_db()
+            await earnapp_accounts.import_account(_account("profile-a"))
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            proxy_id = await _seed_proxy(provider_id, 1, country)
+            worker_id = await database.upsert_worker("worker-a", "worker-a", "http://worker-a")
+            plan = earnapp_deploy.plan_worker_nodes(worker_id, 1)[0]
+            policy = earnapp_deploy.platform_policy_from_config(
+                {f"earnapp_platform_vn_{platform}": "true", f"earnapp_platform_non_vn_{platform}": "true"}
+            )
+
+            prepared = await earnapp_deploy.prepare_node(
+                plan,
+                required_platform=platform,
+                platform_policy=policy,
+            )
+
+            assert prepared.platform == platform
+            assert prepared.proxy["proxy_id"] == proxy_id
+            assert prepared.proxy["country_code"] == country
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("platform", ["macos", "ios", "ubuntu"])
+def test_prepare_node_rejects_disabled_platform_without_leasing(tmp_path, platform):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            await database.init_db()
+            await earnapp_accounts.import_account(_account("profile-a"))
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            await _seed_proxy(provider_id, 1, "VN")
+            await _seed_proxy(provider_id, 2, "US")
+            worker_id = await database.upsert_worker("worker-a", "worker-a", "http://worker-a")
+            plan = earnapp_deploy.plan_worker_nodes(worker_id, 1)[0]
+            policy = earnapp_deploy.platform_policy_from_config(
+                {f"earnapp_platform_vn_{platform}": "false", f"earnapp_platform_non_vn_{platform}": "false"}
+            )
+            with pytest.raises(RuntimeError, match="disabled for both country classes"):
+                await earnapp_deploy.prepare_node(plan, required_platform=platform, platform_policy=policy)
+            assert await database.get_active_provider_proxy_lease("earnapp", worker_id, plan.logical_node_id) is None
+
+    asyncio.run(run())
+
+
 def test_prepare_node_reuses_the_uuid_already_persisted_for_an_ubuntu_retry(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):

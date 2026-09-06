@@ -1,5 +1,18 @@
 # CashPilot Active Context
 
+## EarnApp live pending-binding recheck (2026-09-06 17:00 UTC)
+
+- A fresh authenticated collector snapshot still finds both current macOS
+  canaries online in VN with `total_uptime=0`, `usage=0`, and `earned=0`.
+- Runtime containers remain healthy with `RestartCount=0`; the last 20-minute
+  logs contain no `cmd_tun` workload markers.
+- The server-side worker is online and heartbeating, but each macOS node still
+  has a pending proxy binding whose candidate egress has not been observed by
+  the worker. The server keeps the transaction unfinalized by design.
+- Do not force commit/rollback or rotate identity while candidate egress is
+  unverified. The remaining action is to repair the worker binding/heartbeat
+  path, then collect a new earnings-boundary snapshot.
+
 ## EarnApp v1.21.19 lifecycle and macOS differential checkpoint (2026-09-06)
 
 - PR #162 fixed the server lifecycle scheduler so only `ACTIVE` and
@@ -1589,3 +1602,29 @@ historical snapshots and read-only inspection stay available.
   suite: `2589 passed, 9 skipped`. Ruff lint and `compileall` pass; Ruff format
   check reports four pre-existing formatting differences in generated/runtime
   heredoc areas and was not auto-applied during the live gate.
+
+## EarnApp pending-binding investigation and race fix (2026-09-07)
+
+- Server logs show both macOS rotations reached `proxy/apply` with HTTP 200,
+  then received HTTP 409 from `proxy/finalize`. Successful commit postverification
+  requires the matching active binding version, no candidate/previous artifacts,
+  and a running runtime whose observed egress matches the new route.
+- Runtime uses the old routes: macOS-01 `171.251.99.76`, macOS-02
+  `116.98.229.8`. DB expects the new routes `116.98.226.84` and
+  `171.251.99.76`, respectively. This does not prove proxy metadata is crossed
+  or corrupt. The exact live 409 cause remains unverified.
+- A regression reproduces a server race: heartbeat reconciliation can roll back
+  staged intent while the rotation still holds its node lock, before DB CAS.
+  Reconciliation now shares that lock with rotation/adoption and skips busy
+  nodes until a later heartbeat. This prevents the local-process race; it does
+  not itself repair existing split-brain assignments or prove live causation.
+- Do not force finalize, rewrite proxy endpoint metadata, or rotate identity. Recovery requires an authoritative worker-side route probe and CAS-scoped repair preserving UUID, volume and account bindings.
+- A direct read-only `orchestrator.proxy_binding_status` call on both current
+  macOS nodes returned empty binding version and no candidate/previous artifact.
+  Together with the old observed egress, this establishes that no staged Docker
+  binding currently remains; the worker pending journal disagrees with runtime.
+- The existing runtime-adoption API requires a sing-box sidecar and therefore
+  cannot yet validate these main-only Docker runtimes. Extend its authority
+  checks and database contract for the current transport before attempting repair.
+  Repair ordering must consider that macOS-02's database lease currently owns
+  macOS-01's live proxy, so independent adoption in arbitrary order is unsafe.

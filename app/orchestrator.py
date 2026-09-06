@@ -342,7 +342,7 @@ def earnapp_runtime_authority(slug: str) -> dict[str, Any]:
     client = _get_client()
     main = _find_earnapp_runtime_container(client, node_id, sidecar=False)
     sidecar = _find_earnapp_runtime_container(client, node_id, sidecar=True)
-    if main is None or sidecar is None:
+    if main is None:
         raise RuntimeError(f"EarnApp runtime for {node_id} is incomplete")
     labels = getattr(main, "labels", {}) or {}
     if str(labels.get("cashpilot.earnapp.logical_node_id") or "").strip() != node_id:
@@ -355,16 +355,17 @@ def earnapp_runtime_authority(slug: str) -> dict[str, Any]:
         raise RuntimeError(f"EarnApp runtime for {node_id} has no valid generation")
     sidecar_id = str(getattr(sidecar, "id", "") or "").strip()
     sidecar_name = str(getattr(sidecar, "name", "") or "").strip().lstrip("/")
-    network_mode = str(((getattr(main, "attrs", {}) or {}).get("HostConfig") or {}).get("NetworkMode") or "").strip()
-    if network_mode not in {f"container:{value}" for value in (sidecar_id, sidecar_name) if value}:
-        raise RuntimeError(f"EarnApp runtime for {node_id} has an unexpected network namespace")
-    sidecar_mounts = (getattr(sidecar, "attrs", {}) or {}).get("Mounts", []) or []
-    if not any(
-        str(mount.get("Destination") or "").rstrip("/") == "/etc/sing-box" and mount.get("RW", True)
-        for mount in sidecar_mounts
-        if isinstance(mount, dict)
-    ):
-        raise RuntimeError(f"EarnApp runtime for {node_id} has no persistent egress sidecar volume")
+    if sidecar is not None:
+        network_mode = str(((getattr(main, "attrs", {}) or {}).get("HostConfig") or {}).get("NetworkMode") or "").strip()
+        if network_mode not in {f"container:{value}" for value in (sidecar_id, sidecar_name) if value}:
+            raise RuntimeError(f"EarnApp runtime for {node_id} has an unexpected network namespace")
+        sidecar_mounts = (getattr(sidecar, "attrs", {}) or {}).get("Mounts", []) or []
+        if not any(
+            str(mount.get("Destination") or "").rstrip("/") == "/etc/sing-box" and mount.get("RW", True)
+            for mount in sidecar_mounts
+            if isinstance(mount, dict)
+        ):
+            raise RuntimeError(f"EarnApp runtime for {node_id} has no persistent egress sidecar volume")
     platform = str(labels.get("cashpilot.earnapp.platform") or "").strip().lower()
     if platform == "darwin":
         platform = "macos"

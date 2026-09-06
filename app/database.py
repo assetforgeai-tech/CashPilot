@@ -5129,7 +5129,6 @@ async def adopt_earnapp_runtime_proxy(
         or not expected_egress
         or observed_egress != expected_egress
         or not live_container_id
-        or not live_sidecar_id
     ):
         return None
     async with _earnapp_lock():
