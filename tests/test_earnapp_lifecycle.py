@@ -73,7 +73,10 @@ def test_new_or_restarted_node_gets_a_sixty_minute_admission_window():
 def test_flatline_waits_for_earnings_update_boundary_not_container_age():
     now = datetime.now(UTC)
     runtime = _runtime(window_started_at=(now - timedelta(hours=3)).isoformat())
-    assert evaluate_node({"usage": 10.0, "banned": False, "earnings_update_in_ms": 120000}, runtime, now).action == "observe"
+    assert (
+        evaluate_node({"usage": 10.0, "banned": False, "earnings_update_in_ms": 120000}, runtime, now).action
+        == "observe"
+    )
     first_zero = evaluate_node({"usage": 10.0, "banned": False, "earnings_update_in_ms": 0}, runtime, now)
     assert first_zero.action == "observe"
     assert "boundary" in first_zero.reason
@@ -81,7 +84,10 @@ def test_flatline_waits_for_earnings_update_boundary_not_container_age():
         window_started_at=(now - timedelta(hours=3)).isoformat(),
         earnings_zero_observed_at=(now - timedelta(minutes=5)).isoformat(),
     )
-    assert evaluate_node({"usage": 10.0, "banned": False, "earnings_update_in_ms": 0}, after_grace, now).action == "restart"
+    assert (
+        evaluate_node({"usage": 10.0, "banned": False, "earnings_update_in_ms": 0}, after_grace, now).action
+        == "restart"
+    )
 
 
 def test_positive_earnings_counter_clears_previous_zero_boundary():

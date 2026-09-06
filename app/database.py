@@ -2749,9 +2749,7 @@ async def init_db() -> None:
                 )
                 applied.append("earnapp_account_snapshots.payment_json")
             if "earnings_update_in_ms" not in snapshot_cols:
-                await db.execute(
-                    "ALTER TABLE earnapp_account_snapshots ADD COLUMN earnings_update_in_ms INTEGER"
-                )
+                await db.execute("ALTER TABLE earnapp_account_snapshots ADD COLUMN earnings_update_in_ms INTEGER")
                 applied.append("earnapp_account_snapshots.earnings_update_in_ms")
         await _migrate_legacy_earnapp_accounts(db, applied)
         await db.executescript(_EARNAPP_ACCOUNTS_SCHEMA)
@@ -3659,17 +3657,21 @@ async def upsert_earnapp_account(
             # same email refreshes that account; the tombstone itself remains
             # deleted. Ambiguous or ownerless cases still fail closed.
             if existing and str(existing["state"]) == "DELETED":
-                active_matches = await (
-                    await db.execute(
-                        """
+                active_matches = (
+                    await (
+                        await db.execute(
+                            """
                         SELECT id, profile_key, account_name, auth_method, state
                         FROM earnapp_accounts
                         WHERE lower(trim(rtrim(email, ','))) = ? AND state != 'DELETED'
                         ORDER BY id
                         """,
-                        (normalized_email(email),),
-                    )
-                ).fetchall() if normalized_email(email) else []
+                            (normalized_email(email),),
+                        )
+                    ).fetchall()
+                    if normalized_email(email)
+                    else []
+                )
                 if len(active_matches) == 1:
                     existing = active_matches[0]
                     profile = str(existing["profile_key"] or "")

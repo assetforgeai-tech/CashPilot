@@ -2195,7 +2195,9 @@ def test_deleted_duplicate_profile_refreshes_populated_canonical_without_resurre
             await database.set_earnapp_account_state(duplicate_id, "ACCOUNT_LOCKED")
             assert await earnapp_accounts.delete_account(duplicate_id)
 
-            assert await earnapp_accounts.import_account(_payload("profile-duplicate", "same@example.com")) == canonical_id
+            assert (
+                await earnapp_accounts.import_account(_payload("profile-duplicate", "same@example.com")) == canonical_id
+            )
 
             db = await database._get_db()
             row = await (

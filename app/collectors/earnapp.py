@@ -614,7 +614,9 @@ class EarnAppAccountCollector:
                     devices_response.json(),
                     statuses,
                     usage_response.json(),
-                    counters_response.json() if counters_response is not None and counters_response.status_code == 200 else {},
+                    counters_response.json()
+                    if counters_response is not None and counters_response.status_code == 200
+                    else {},
                 ) | {
                     "payment": normalize_payment(
                         payment_methods_response.json() if payment_methods_response.status_code == 200 else {},
