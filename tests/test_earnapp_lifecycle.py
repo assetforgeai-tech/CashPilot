@@ -448,6 +448,38 @@ async def test_restart_action_calls_cas_scoped_worker_route(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_recreate_action_persists_worker_container_id(monkeypatch):
+    node = {
+        "logical_node_id": "earnapp-mac-recover",
+        "assigned_worker_id": 3098,
+        "generation": 3,
+        "device_id": "sdk-mac-" + "a" * 32,
+        "platform": "macos",
+    }
+    proxy = AsyncMock(return_value={"status": "recreated", "container_id": "new-container"})
+    save = AsyncMock()
+    monkeypatch.setattr(main, "_proxy_to_worker", proxy)
+    monkeypatch.setattr(
+        main.database,
+        "get_provider_instance",
+        AsyncMock(return_value={"worker_id": 3098, "mode": "proxy", "proxy_id": 17, "status": "running"}),
+    )
+    monkeypatch.setattr(main.database, "save_provider_instance", save)
+
+    assert await main._execute_earnapp_lifecycle_action(node, "recreate") is True
+    save.assert_awaited_once_with(
+        "earnapp",
+        "earnapp-mac-recover",
+        worker_id=3098,
+        mode="proxy",
+        container_id="new-container",
+        sidecar_id="",
+        proxy_id=17,
+        status="running",
+    )
+
+
+@pytest.mark.asyncio
 async def test_restart_missing_runtime_finalizes_only_after_authoritative_absence(monkeypatch):
     node = {
         "logical_node_id": "earnapp-mac-missing",

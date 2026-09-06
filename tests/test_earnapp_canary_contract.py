@@ -683,6 +683,7 @@ def test_ubuntu_reference_runtime_uses_the_shared_fail_closed_proxy_entrypoint()
     wrapper = artifacts["cashpilot-proxy-entrypoint"].decode("utf-8")
     assert "EARNAPP_DEVICE_ID" not in wrapper
     assert 'exec "$SANITIZED_ENTRYPOINT" "$@"' in wrapper
+    assert "0,/^  set -e$/s" in wrapper
 
 
 def test_ubuntu_image_wraps_the_pinned_reference_runtime_with_fail_closed_proxying():
