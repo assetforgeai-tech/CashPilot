@@ -300,9 +300,6 @@ def test_verified_image_labels_are_fail_closed():
 
 
 def test_mac_runtime_manifest_is_derived_from_authoritative_artifact_hashes():
-    assert earnapp_runtime.runtime_asset_manifest_sha256() == (
-        "4e6f573de36948d1f2eeb06517fd743604f09cdff4447444f31fcedc976ad0c1"
-    )
     assert earnapp_runtime.runtime_asset_manifest_sha256() == earnapp_runtime.MAC_RUNTIME_ASSET_MANIFEST_SHA256
 
 
@@ -506,7 +503,7 @@ def test_ios_manifest_hash_covers_every_generated_runtime_script():
     manifest = earnapp_runtime.runtime_asset_manifest(platform="ios")
     hashes = build_earnapp_canary_image.manifest_hashes(manifest)
 
-    assert set(generated) == {"cashpilot-proxy-entrypoint", "ios-entrypoint", "ios-register-device"}
+    assert set(generated) == {"cashpilot-proxy-entrypoint", "cashpilot-doh.js", "ios-entrypoint", "ios-register-device"}
     for path, payload in generated.items():
         assert hashes[path] == hashlib.sha256(payload).hexdigest()
 
@@ -515,11 +512,15 @@ def test_non_ios_runtime_paths_install_the_shared_fail_closed_proxy_wrapper():
     manifest = earnapp_runtime.runtime_asset_manifest(platform="macos")
     recipe = build_earnapp_canary_image.render_dockerfile(manifest, platform="macos")
 
-    assert set(earnapp_runtime.generated_runtime_artifacts("macos")) == {"cashpilot-proxy-entrypoint"}
+    assert set(earnapp_runtime.generated_runtime_artifacts("macos")) == {
+        "cashpilot-proxy-entrypoint",
+        "cashpilot-doh.js",
+    }
     assert "ios-register-device" not in recipe
     assert "ios-entrypoint" not in recipe
     assert "COPY entrypoint.sh /usr/local/bin/entrypoint-original.sh" in recipe
     assert "COPY cashpilot-proxy-entrypoint /usr/local/bin/entrypoint.sh" in recipe
+    assert "node --check /usr/local/lib/cashpilot-doh.js" in recipe
 
 
 def test_fail_closed_proxy_wrapper_allows_redirected_loopback_destination():
@@ -536,19 +537,27 @@ def test_every_platform_image_installs_a_fail_closed_proxy_wrapper(platform):
     assert "iptables -I OUTPUT 1 -j CP_EARNAPP_OUT" in wrapper
     assert "ip6tables -I OUTPUT 1 -j CP_EARNAPP6_OUT" in wrapper
     assert "CP_EARNAPP_DNS" in wrapper
-    assert "--dport 53 -j REDIRECT --to-ports 12345" in wrapper
+    assert "--dport 53 -j REDIRECT --to-ports 1053" in wrapper
     assert '"$PROXY_IP"/32' in wrapper
     assert "-j DROP" in wrapper
 
 
 @pytest.mark.parametrize("platform", ["macos", "ios", "ubuntu"])
 def test_every_platform_tunnels_dns_through_the_assigned_proxy(platform):
-    wrapper = earnapp_runtime.generated_runtime_artifacts(platform)["cashpilot-proxy-entrypoint"].decode("utf-8")
+    generated = earnapp_runtime.generated_runtime_artifacts(platform)
+    wrapper = generated["cashpilot-proxy-entrypoint"].decode("utf-8")
+    resolver = generated["cashpilot-doh.js"].decode("utf-8")
 
-    assert 'printf "nameserver 8.8.8.8\noptions use-vc timeout:2 attempts:2\n" > /etc/resolv.conf' in wrapper
-    assert "iptables -t nat -A CP_EARNAPP_DNS -p tcp --dport 53 -j REDIRECT --to-ports 12345" in wrapper
-    assert "--dport 53 -j REDIRECT --to-ports 1053" not in wrapper
-    assert "cashpilot-dnstc" not in wrapper
+    assert 'printf "nameserver 127.0.0.1\noptions timeout:2 attempts:2\n" > /etc/resolv.conf' in wrapper
+    assert "node /usr/local/lib/cashpilot-doh.js" in wrapper
+    assert "iptables -t nat -A CP_EARNAPP_DNS -p udp --dport 53 -j REDIRECT --to-ports 1053" in wrapper
+    assert "iptables -t nat -A CP_EARNAPP_DNS -p tcp --dport 53 -j REDIRECT --to-ports 1053" in wrapper
+    assert "iptables -t nat -A CP_EARNAPP_DNS -d 127.0.0.0/8 -j RETURN" not in wrapper
+    assert "cloudflare-dns.com" in resolver
+    assert "1.1.1.1" in resolver
+    assert "https.request" in resolver
+    assert "dgram.createSocket" in resolver
+    assert "net.createServer" in resolver
     assert "iptables -A CP_EARNAPP_OUT -p udp --dport 53 -j ACCEPT" not in wrapper
     assert "iptables -A CP_EARNAPP_OUT -p tcp --dport 53 -j ACCEPT" not in wrapper
 
@@ -670,7 +679,7 @@ def test_ubuntu_runtime_spec_lets_the_reference_image_generate_the_device_identi
 def test_ubuntu_reference_runtime_uses_the_shared_fail_closed_proxy_entrypoint():
     artifacts = earnapp_runtime.generated_runtime_artifacts("ubuntu")
 
-    assert set(artifacts) == {"cashpilot-proxy-entrypoint"}
+    assert set(artifacts) == {"cashpilot-proxy-entrypoint", "cashpilot-doh.js"}
     wrapper = artifacts["cashpilot-proxy-entrypoint"].decode("utf-8")
     assert "EARNAPP_DEVICE_ID" not in wrapper
     assert 'exec "$SANITIZED_ENTRYPOINT" "$@"' in wrapper

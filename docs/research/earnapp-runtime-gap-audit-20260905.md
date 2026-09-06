@@ -1,5 +1,32 @@
 # EarnApp runtime gap audit (2026-09-05)
 
+## 2026-09-06 fail-closed DNS correction
+
+Live restart evidence on the six-node test-US canary showed that forcing DNS
+wire traffic through an HTTP residential proxy with `CONNECT :53` caused
+repeatable `queryA ECONNREFUSED` messages. The runtime eventually connected by
+falling back to previously resolved service IPs, but that slow path is not a
+reliable production resolver. The reference VPS resolves through the Azure host
+resolver directly; that is faster, but leaks DNS outside the assigned proxy and
+therefore cannot be adopted as the production contract.
+
+The generated MacOS/iOS/Ubuntu images now include a small local DNS wire server:
+
+- applications resolve through `127.0.0.1:53`;
+- UDP and TCP DNS queries are redirected only to the local listener on `1053`;
+- the listener sends RFC 8484 DNS messages to Cloudflare over HTTPS/443;
+- that HTTPS socket is transparently routed through the node's existing
+  redsocks path and exact leased proxy endpoint;
+- direct UDP, direct DNS, IPv6 and non-proxy TCP remain fail-closed.
+
+No account cookie, node UUID, identity profile, volume or proxy credential is
+embedded in the resolver artifact. The resolver is included in each immutable
+runtime manifest, so a DNS-policy change necessarily produces new per-platform
+image tags. Source validation includes Node syntax checking and contract tests
+for both UDP/TCP DNS redirection and the DoH-over-proxy path. Live adoption
+remains limited to the six isolated canaries; protected providers are outside
+this change.
+
 ## Source comparison
 
 The external forensic bundle was compared with the current CashPilot runtime
