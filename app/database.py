@@ -3649,7 +3649,7 @@ async def upsert_earnapp_account(
             await db.execute("BEGIN IMMEDIATE")
             existing = await (
                 await db.execute(
-                    "SELECT id, profile_key, account_name, auth_method, state FROM earnapp_accounts WHERE profile_key = ?",
+                    "SELECT id, profile_key, account_name, email, auth_method, state FROM earnapp_accounts WHERE profile_key = ?",
                     (profile,),
                 )
             ).fetchone()
@@ -3661,7 +3661,7 @@ async def upsert_earnapp_account(
                     await (
                         await db.execute(
                             """
-                        SELECT id, profile_key, account_name, auth_method, state
+                        SELECT id, profile_key, account_name, email, auth_method, state
                         FROM earnapp_accounts
                         WHERE lower(trim(rtrim(email, ','))) = ? AND state != 'DELETED'
                         ORDER BY id
@@ -3677,12 +3677,14 @@ async def upsert_earnapp_account(
                     profile = str(existing["profile_key"] or "")
                 else:
                     raise ValueError("EarnApp account is deleted")
+            if existing and normalized_email(existing["email"]) and normalized_email(email) != normalized_email(existing["email"]):
+                raise ValueError("Chrome profile is already bound to a different EarnApp account")
             duplicate_to_lock: int | None = None
             if existing and normalized_email(email):
                 same_email = await (
                     await db.execute(
                         """
-                        SELECT a.id, a.profile_key, a.account_name, a.auth_method, a.state,
+                        SELECT a.id, a.profile_key, a.account_name, a.email, a.auth_method, a.state,
                                COUNT(n.logical_node_id) AS assigned_nodes
                         FROM earnapp_accounts a
                         LEFT JOIN earnapp_logical_nodes n
@@ -3711,7 +3713,7 @@ async def upsert_earnapp_account(
                 email_matches = await (
                     await db.execute(
                         """
-                        SELECT a.id, a.profile_key, a.account_name, a.auth_method, a.state,
+                        SELECT a.id, a.profile_key, a.account_name, a.email, a.auth_method, a.state,
                                COUNT(n.logical_node_id) AS assigned_nodes
                         FROM earnapp_accounts a
                         LEFT JOIN earnapp_logical_nodes n
@@ -3735,7 +3737,7 @@ async def upsert_earnapp_account(
                 existing = await (
                     await db.execute(
                         """
-                        SELECT id, profile_key, account_name, auth_method, state
+                        SELECT id, profile_key, account_name, email, auth_method, state
                         FROM earnapp_accounts
                         WHERE profile_key LIKE 'legacy-account-%'
                           AND lower(trim(account_name)) = lower(trim(?))
@@ -3753,7 +3755,10 @@ async def upsert_earnapp_account(
                     )
                     legacy_adoption = True
             if existing and (
-                str(existing["account_name"]) != name
+                (
+                    str(existing["account_name"]) != name
+                    and not (normalized_email(email) and normalized_email(existing["email"]) == normalized_email(email))
+                )
                 or (not legacy_adoption and str(existing["auth_method"]) != method)
             ):
                 raise ValueError("Chrome profile is already bound to a different EarnApp account")
