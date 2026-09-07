@@ -1,5 +1,47 @@
 # EarnApp reference macOS clone audit (2026-09-06)
 
+## Live evidence, 2026-09-07
+
+UI commit `133b4b0` passed 2623 tests (9 skipped), Ruff check and format.
+UI image `1.21.25` was published and its lifecycle code inspected before a
+scoped deployment in `/opt/cashpilot`. Mount mappings and admin key matched
+the previous container; authenticated `/api/workers` returned HTTP 200.
+The build workflow's tag verification failed only because worker `1.21.25`
+was deliberately not built. The live worker remains `1.21.21`.
+
+Both authorized macOS canaries were removed through `/api/remove` on worker
+92161. Each returned HTTP 200 with `main_present=false` and
+`sidecar_present=false`. Database assignments became PLANNED with no worker
+or proxy; accounts, UUIDs and volumes were retained. Both were then recreated
+through the supported canary deployment route using the existing pinned
+runtime. This recreation is not a promotion of the reference runtime.
+
+| Node suffix | New container ID | Expected and observed egress |
+| --- | --- | --- |
+| macos-01 | `552edcb55f174d61a20118a4be140477a04c63f23b7ca15d6a744553af58f9bb` | `116.98.226.84` |
+| macos-02 | `335f96f60529810a4b4c48ae1d1b359fdf128d417a20d09c6367f269d44d6b76` | `171.251.99.76` |
+
+Both are ACTIVE in the database, with matching container IDs, zero restarts
+and no interface errors in the inspected startup logs. Node 01's HTTP caller
+timed out during the long workload verification stage after deployment;
+the runtime and bookkeeping were separately confirmed present. Running and
+matching egress do not establish usage. Latest inspected account snapshots
+at 00:10 UTC still reported `usage_current=0` for both UUIDs, with the next
+earnings update around 01:00 UTC. Some historical usage totals equaled uptime;
+those totals are not accepted as fresh workload evidence.
+
+Fresh reference inspection confirms image digest
+`sha256:c42b5055e60102f57cb226c9d68194b4bb34e07dd94b37969ce262febd92b018`,
+SOCKS5, `/usr/local/bin/bound-entrypoint`, and executable SHA256
+`3333e8dd1e1a5433d79542ad646edcf07256e3f9fee05e14735e61e606a374d0`.
+Its supervisor validates per-node plaintext identity, seeds persistent state,
+applies host bootstrap, and launches the entrypoint. CashPilot instead loads
+its own encrypted identity through `boot.js`. The reference host bootstrap
+adds a LAN alias plus an SNAT rule; CashPilot's inspected bootstrap adds an
+alias without that rule. These differences have not yet been isolated in a
+controlled runtime comparison. The reference's recent logs alone do not
+establish a fresh per-device usage delta. EarnApp closeout remains unverified.
+
 ## Source node
 
 - UUID: `sdk-mac-66db858d1668e1e0fcc3da8af45247fa`
