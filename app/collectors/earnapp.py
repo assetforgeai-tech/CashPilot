@@ -20,8 +20,8 @@ API_PARAMS = {"appid": "earnapp"}
 AUTH_FAILURE_CODES = {401, 403}
 LINK_MIN_INTERVAL_SECONDS = 5.0
 LINK_RATE_LIMIT_COOLDOWN_SECONDS = 300.0
-_link_guards: dict[str, asyncio.Lock] = {}
-_link_next_allowed: dict[str, float] = {}
+_link_guards: dict[tuple[int, str], asyncio.Lock] = {}
+_link_next_allowed: dict[tuple[int, str], float] = {}
 
 
 def _link_guard_key(credentials: Mapping[str, Any]) -> str:
@@ -452,11 +452,12 @@ class EarnAppAccountCollector:
             link_attempted = False
             already_linked = False
             if device is None:
-                guard = _link_guards.setdefault(self._link_key, asyncio.Lock())
+                loop_key = (id(asyncio.get_running_loop()), self._link_key)
+                guard = _link_guards.setdefault(loop_key, asyncio.Lock())
                 await guard.acquire()
                 try:
                     now = time.monotonic()
-                    next_allowed = _link_next_allowed.get(self._link_key, 0.0)
+                    next_allowed = _link_next_allowed.get(loop_key, 0.0)
                     if now < next_allowed:
                         return {
                             "status": "pending",
@@ -484,7 +485,7 @@ class EarnAppAccountCollector:
                     if link_response.status_code in AUTH_FAILURE_CODES:
                         return {"status": "error", "error_kind": "auth", "error": "authentication rejected"}
                     if link_response.status_code == 429:
-                        _link_next_allowed[self._link_key] = time.monotonic() + LINK_RATE_LIMIT_COOLDOWN_SECONDS
+                        _link_next_allowed[loop_key] = time.monotonic() + LINK_RATE_LIMIT_COOLDOWN_SECONDS
                         return {
                             "status": "pending",
                             "error_kind": "rate_limited",
@@ -498,7 +499,7 @@ class EarnAppAccountCollector:
                             "retry_after_seconds": 300,
                         }
                     link_response.raise_for_status()
-                    _link_next_allowed[self._link_key] = time.monotonic() + LINK_MIN_INTERVAL_SECONDS
+                    _link_next_allowed[loop_key] = time.monotonic() + LINK_MIN_INTERVAL_SECONDS
                 finally:
                     guard.release()
                 link_result = link_response.json()

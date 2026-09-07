@@ -504,9 +504,13 @@ def test_link_guard_cools_down_subsequent_account_link():
     credentials = {"cookies": {"oauth-refresh-token": "refresh-secret", "xsrf-token": "xsrf-secret"}}
     proxy = {"protocol": "http", "host": "proxy.example", "port": 8080}
     calls: list[tuple[str, str]] = []
-    with patch("app.collectors.earnapp.httpx.AsyncClient", side_effect=lambda **kwargs: _LinkClient(calls, **kwargs)):
-        first = asyncio.run(EarnAppAccountCollector(credentials, proxy).link_and_verify_device("sdk-mac-first"))
-        second = asyncio.run(EarnAppAccountCollector(credentials, proxy).link_and_verify_device("sdk-mac-second"))
+    async def run_pair():
+        with patch("app.collectors.earnapp.httpx.AsyncClient", side_effect=lambda **kwargs: _LinkClient(calls, **kwargs)):
+            first = await EarnAppAccountCollector(credentials, proxy).link_and_verify_device("sdk-mac-first")
+            second = await EarnAppAccountCollector(credentials, proxy).link_and_verify_device("sdk-mac-second")
+            return first, second
+
+    first, second = asyncio.run(run_pair())
     assert first["link_attempted"] is True
     assert second["status"] == "pending"
     assert second["error_kind"] == "rate_limited"
