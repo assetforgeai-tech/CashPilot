@@ -3764,6 +3764,30 @@ async def test_canary_deploy_route_rejects_online_without_workload(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_canary_deploy_route_preserves_safe_runtime_error_detail(monkeypatch):
+    monkeypatch.setattr(main, "_resolve_worker_id", AsyncMock(return_value=3))
+    monkeypatch.setattr(
+        earnapp_canary,
+        "deploy_canary",
+        AsyncMock(side_effect=RuntimeError("no eligible residential EarnApp proxy available")),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await main.api_deploy_earnapp_canary(
+            _request("/api/admin/earnapp/canary/deploy"),
+            main.EarnAppCanaryDeployRequest(
+                logical_node_id="earnapp-canary-no-proxy",
+                worker_id=3,
+                platform="macos",
+            ),
+            _auth={"r": "owner"},
+        )
+
+    assert exc.value.status_code == 409
+    assert exc.value.detail == "no eligible residential EarnApp proxy available"
+
+
+@pytest.mark.asyncio
 async def test_canary_verify_route_rejects_online_without_workload(monkeypatch):
     pending = {
         "status": "online_pending_usage",

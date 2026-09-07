@@ -3651,6 +3651,12 @@ async def api_deploy_earnapp_canary(
             )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        detail = str(exc)
+        if detail.startswith("EarnApp ") or detail == "no eligible residential EarnApp proxy available":
+            raise HTTPException(status_code=409, detail=detail) from exc
+        logger.warning("EarnApp canary deployment failed for %s: %s", body.logical_node_id, type(exc).__name__)
+        raise HTTPException(status_code=502, detail="EarnApp canary deployment failed") from exc
     except Exception as exc:
         logger.warning("EarnApp canary deployment failed for %s: %s", body.logical_node_id, type(exc).__name__)
         raise HTTPException(status_code=502, detail="EarnApp canary deployment failed") from exc
