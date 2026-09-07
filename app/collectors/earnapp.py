@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import contextlib
 import asyncio
+import contextlib
 import hashlib
 import time
 from collections.abc import Mapping
