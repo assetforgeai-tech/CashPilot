@@ -245,6 +245,18 @@ class TestTheTagVerifierCanTellApartMissingAndUnreachable:
             "it states a partial release as fact when an auth or rate-limit failure looks identical"
         )
 
+    def test_ui_only_build_does_not_verify_unpublished_worker_tags(self):
+        job = self._job()
+        steps = _steps(job)
+        for step in steps:
+            run = str(step.get("run", ""))
+            if "UI_TAGS" not in run or "WORKER_TAGS" not in run:
+                continue
+            env = step.get("env", {})
+            assert "BUILD_UI" in env and "BUILD_WORKER" in env
+            assert 'if [ "$BUILD_UI" = "true" ]' in run
+            assert 'if [ "$BUILD_WORKER" = "true" ]' in run
+
 
 class TestTheReleaseGateRunsWhatShips:
     def _dockerfile_python(self, name):
