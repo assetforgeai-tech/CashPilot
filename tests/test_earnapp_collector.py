@@ -14,6 +14,13 @@ from app.collectors.base import EarningsResult
 from app.collectors.earnapp import EarnAppAccountCollector, build_proxy_url, normalize_snapshot
 
 
+@pytest.fixture(autouse=True)
+def _reset_earnapp_link_guards():
+    earnapp._link_guards.clear()
+    earnapp._link_next_allowed.clear()
+    yield
+
+
 def _account(profile: str = "profile-a") -> dict[str, object]:
     return {
         "profile_key": profile,
@@ -491,6 +498,20 @@ def test_link_and_verify_device_treats_link_rate_limit_as_pending_before_workloa
     assert result["device_present"] is False
     assert result["link_attempted"] is True
     assert result["online"] is False
+
+
+def test_link_guard_cools_down_subsequent_account_link():
+    credentials = {"cookies": {"oauth-refresh-token": "refresh-secret", "xsrf-token": "xsrf-secret"}}
+    proxy = {"protocol": "http", "host": "proxy.example", "port": 8080}
+    calls: list[tuple[str, str]] = []
+    with patch("app.collectors.earnapp.httpx.AsyncClient", side_effect=lambda **kwargs: _LinkClient(calls, **kwargs)):
+        first = asyncio.run(EarnAppAccountCollector(credentials, proxy).link_and_verify_device("sdk-mac-first"))
+        second = asyncio.run(EarnAppAccountCollector(credentials, proxy).link_and_verify_device("sdk-mac-second"))
+    assert first["link_attempted"] is True
+    assert second["status"] == "pending"
+    assert second["error_kind"] == "rate_limited"
+    assert second["link_attempted"] is False
+    assert len([url for method, url in calls if method == "POST" and url.endswith("/link_device")]) == 1
 
 
 def test_normalize_snapshot_reads_current_and_legacy_bandwidth_counters():
