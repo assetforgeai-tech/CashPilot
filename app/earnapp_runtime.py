@@ -319,7 +319,9 @@ export PROXY_HOST="$PROXY_IP"
 export PROXY_PORT PROXY_USER PROXY_PASS PROXY_TYPE
 EXPECTED_DEVICE_ID="${EARNAPP_DEVICE_ID:?}"
 [[ -s "$STATE_DIR/uuid" && "$(cat "$STATE_DIR/uuid")" == "$EXPECTED_DEVICE_ID" ]]
-IDENTITY_FILE="${IDENTITY_FILE:-$STATE_DIR/identity.json}"
+# boot.js decrypts the mounted profile into this tmpfs path. The state volume
+# intentionally contains only lifecycle markers, never plaintext identity.
+IDENTITY_FILE=/run/mac-boot/identity.json
 [[ -s "$IDENTITY_FILE" ]]
 version=$(/usr/bin/earnapp --version | awk '{print $2}')
 printf '%s\n' "$version" >"$STATE_DIR/ver"

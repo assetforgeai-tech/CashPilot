@@ -641,7 +641,7 @@ def test_macos_proxy_wrapper_registers_seeded_uuid_before_runtime_handoff():
 def test_macos_proxy_wrapper_registers_the_profile_serial_not_the_uuid_suffix():
     wrapper = earnapp_runtime.generated_runtime_artifacts("macos")["cashpilot-proxy-entrypoint"].decode()
 
-    assert 'IDENTITY_FILE="${IDENTITY_FILE:-$STATE_DIR/identity.json}"' in wrapper
+    assert 'IDENTITY_FILE=/run/mac-boot/identity.json' in wrapper
     assert "serial=$(node -e" in wrapper
     assert "arch=$(node -e" in wrapper
     assert "arch=$arch&appid=mac_com.earnapp" in wrapper
