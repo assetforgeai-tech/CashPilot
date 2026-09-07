@@ -194,7 +194,7 @@ def test_stale_sweep_waits_fifteen_minutes_and_holds_proxy_for_one_hour(tmp_path
     asyncio.run(run())
 
 
-def test_recovery_hold_keeps_proxy_exclusive_then_preserves_affinity_after_release(tmp_path):
+def test_recovery_hold_expiry_keeps_proxy_until_runtime_removal_confirmed(tmp_path):
     async def run():
         db_dir, db_path = _db_patch(tmp_path)
         with db_dir, db_path:
@@ -213,12 +213,14 @@ def test_recovery_hold_keeps_proxy_exclusive_then_preserves_affinity_after_relea
             )
             await db.commit()
             swept = await earnapp_recovery.sweep_stale_nodes()
-            assert [row["logical_node_id"] for row in swept["released"]] == ["earnapp-node-a"]
+            assert swept["released"] == []
             released = next(
                 row for row in await database.list_earnapp_logical_nodes() if row["logical_node_id"] == "earnapp-node-a"
             )
-            assert released["state"] == "RECOVERABLE"
-            assert released["current_proxy_id"] is None
+            assert released["state"] == "RECOVERY_HOLD"
+            assert released["current_proxy_id"] == proxies[0]
+            lease = await database.get_active_provider_proxy_lease("earnapp", old_worker, "earnapp-node-a")
+            assert lease is not None and lease["proxy_id"] == proxies[0]
             assert released["preferred_proxy_id"] == proxies[0]
 
             recovered = await earnapp_recovery.claim_node(
@@ -502,14 +504,21 @@ def test_recovery_does_not_reuse_preferred_proxy_after_a_legacy_worker_claims_it
             )
             await db.commit()
             await earnapp_recovery.sweep_stale_nodes()
+            assert await database.finalize_earnapp_node_removal(
+                "earnapp-node-a",
+                old_worker,
+                generation=provisioned["generation"],
+                device_id="device-a",
+                reason="TEST_CONFIRMED_RUNTIME_REMOVED",
+            )
 
             legacy_worker = await database.upsert_worker("worker-legacy", "legacy", "http://legacy")
             assert await database.set_worker_proxy_assignment(legacy_worker, proxies[0])
 
-            recovered = await earnapp_recovery.claim_node(
+            recovered = await _provision_ubuntu_node(
                 "earnapp-node-a",
                 old_worker,
-                expected_generation=provisioned["generation"],
+                device_id="device-a",
             )
             assert recovered["proxy_id"] == proxies[1]
             assert (await database.get_worker_proxy_assignment(legacy_worker))["proxy_id"] == proxies[0]
@@ -531,15 +540,22 @@ def test_recovery_does_not_reuse_preferred_proxy_after_another_account_controls_
             )
             await db.commit()
             await earnapp_recovery.sweep_stale_nodes()
+            assert await database.finalize_earnapp_node_removal(
+                "earnapp-node-a",
+                old_worker,
+                generation=provisioned["generation"],
+                device_id="device-a",
+                reason="TEST_CONFIRMED_RUNTIME_REMOVED",
+            )
 
             other_account = await earnapp_accounts.import_account(_account("profile-b"))
             route = await earnapp_collection.ensure_collection_route(other_account)
             assert route is not None and route["proxy_id"] == proxies[0]
 
-            recovered = await earnapp_recovery.claim_node(
+            recovered = await _provision_ubuntu_node(
                 "earnapp-node-a",
                 old_worker,
-                expected_generation=provisioned["generation"],
+                device_id="device-a",
             )
             assert recovered["proxy_id"] == proxies[1]
             assert (await database.get_earnapp_account_control_route(other_account))["proxy_id"] == proxies[0]

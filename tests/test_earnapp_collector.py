@@ -468,6 +468,11 @@ def test_link_and_verify_device_exposes_current_workload_counters():
 
 
 class _RateLimitedLinkClient(_CurrentShapeClient):
+    async def get(self, url, **kwargs):
+        if url.endswith("/devices"):
+            return _Response(200, [])
+        return await super().get(url, **kwargs)
+
     async def post(self, url, **kwargs):
         if url.endswith("/link_device"):
             return _Response(429, {"error": "Too many requests"})
@@ -483,7 +488,7 @@ def test_link_and_verify_device_treats_link_rate_limit_as_pending_before_workloa
 
     assert result["status"] == "pending"
     assert result["error_kind"] == "rate_limited"
-    assert result["device_present"] is True
+    assert result["device_present"] is False
     assert result["link_attempted"] is True
     assert result["online"] is False
 
@@ -1002,6 +1007,7 @@ class _AlreadyPresentLinkClient(_LinkClient):
     def __init__(self, calls: list[tuple[str, str]], **kwargs):
         super().__init__(calls, **kwargs)
         self.linked = True
+        self.link_payload = None
 
     async def post(self, url, **kwargs):
         if url.endswith("/link_device"):
@@ -1093,7 +1099,7 @@ def test_link_and_verify_device_uses_account_proxy_and_requires_dashboard_online
     assert "rotated-xsrf" not in json.dumps(result)
 
 
-def test_link_and_verify_device_links_an_install_registered_device_before_accepting_already_linked():
+def test_link_and_verify_device_does_not_relink_device_already_present_in_account():
     calls: list[tuple[str, str]] = []
     clients: list[_AlreadyPresentLinkClient] = []
 
@@ -1117,16 +1123,10 @@ def test_link_and_verify_device_links_an_install_registered_device_before_accept
             )
         )
 
-    assert clients[0].link_payload == {
-        "uuid": "sdk-mac-test",
-        "platform": "linux",
-        "_csrf": "rotated-xsrf",
-    }
+    assert clients[0].link_payload is None
     assert calls == [
         ("GET", "https://earnapp.com/dashboard/api/sec/rotate_xsrf"),
         ("GET", "https://earnapp.com/dashboard/api/user_data"),
-        ("GET", "https://earnapp.com/dashboard/api/devices"),
-        ("POST", "https://earnapp.com/dashboard/api/link_device"),
         ("GET", "https://earnapp.com/dashboard/api/devices"),
         ("POST", "https://earnapp.com/dashboard/api/device_statuses"),
         ("GET", "https://earnapp.com/dashboard/api/usage"),
@@ -1146,7 +1146,7 @@ def test_link_and_verify_device_links_an_install_registered_device_before_accept
         "status": "online",
         "device_id": "sdk-mac-test",
         "authenticated": True,
-        "link_attempted": True,
+        "link_attempted": False,
         "device_present": True,
         "online": True,
         "banned": False,
@@ -1156,7 +1156,7 @@ def test_link_and_verify_device_links_an_install_registered_device_before_accept
     assert "already linked" not in json.dumps(result).lower()
 
 
-def test_link_and_verify_device_rejects_already_linked_when_authenticated_refetch_loses_uuid():
+def test_link_and_verify_device_accepts_existing_device_without_relinking():
     calls: list[tuple[str, str]] = []
 
     def factory(**kwargs):
@@ -1176,20 +1176,12 @@ def test_link_and_verify_device_rejects_already_linked_when_authenticated_refetc
         ("GET", "https://earnapp.com/dashboard/api/sec/rotate_xsrf"),
         ("GET", "https://earnapp.com/dashboard/api/user_data"),
         ("GET", "https://earnapp.com/dashboard/api/devices"),
-        ("POST", "https://earnapp.com/dashboard/api/link_device"),
-        ("GET", "https://earnapp.com/dashboard/api/devices"),
+        ("POST", "https://earnapp.com/dashboard/api/device_statuses"),
+        ("GET", "https://earnapp.com/dashboard/api/usage"),
     ]
-    assert result == {
-        "status": "error",
-        "error_kind": "remote",
-        "error": "EarnApp rejected device link",
-        "device_id": "sdk-mac-test",
-        "authenticated": True,
-        "link_attempted": True,
-        "device_present": False,
-        "online": False,
-        "banned": False,
-    }
+    assert result["status"] == "online"
+    assert result["link_attempted"] is False
+    assert result["device_present"] is True
     assert "refresh-secret" not in json.dumps(result)
     assert "rotated-xsrf" not in json.dumps(result)
     assert "already linked" not in json.dumps(result).lower()
@@ -1292,6 +1284,11 @@ def test_auth_failure_marks_account_but_proxy_route_failure_does_not(tmp_path):
                 auth_result = await earnapp_collection.collect_account(account_id)
             assert auth_result["error_kind"] == "auth"
             assert (await earnapp_accounts.list_accounts())[0]["state"] == "AUTH_FAILED"
+
+            with patch.object(EarnAppAccountCollector, "collect_snapshot", return_value={"status": "ok"}):
+                recovered = await earnapp_collection.collect_account(account_id)
+            assert recovered["status"] == "ok"
+            assert (await earnapp_accounts.list_accounts())[0]["state"] == "ACTIVE"
 
             assert await database.set_earnapp_account_state(account_id, "ACTIVE")
             with patch.object(
@@ -1520,3 +1517,9 @@ def test_scheduled_earnapp_recovery_clears_the_durable_account_alert():
             main._collector_alerts = previous_alerts
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("flag", ["banned", "is_banned"])
+def test_normalize_snapshot_retains_ban_for_lifecycle(flag):
+    result = normalize_snapshot({}, {}, [{"uuid": "device", flag: True}], {"device": True})
+    assert result["devices"][0]["banned"] is True

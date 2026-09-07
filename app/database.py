@@ -3649,7 +3649,7 @@ async def upsert_earnapp_account(
             await db.execute("BEGIN IMMEDIATE")
             existing = await (
                 await db.execute(
-                    "SELECT id, profile_key, account_name, auth_method, state FROM earnapp_accounts WHERE profile_key = ?",
+                    "SELECT id, profile_key, account_name, email, auth_method, state FROM earnapp_accounts WHERE profile_key = ?",
                     (profile,),
                 )
             ).fetchone()
@@ -3661,7 +3661,7 @@ async def upsert_earnapp_account(
                     await (
                         await db.execute(
                             """
-                        SELECT id, profile_key, account_name, auth_method, state
+                        SELECT id, profile_key, account_name, email, auth_method, state
                         FROM earnapp_accounts
                         WHERE lower(trim(rtrim(email, ','))) = ? AND state != 'DELETED'
                         ORDER BY id
@@ -3677,12 +3677,18 @@ async def upsert_earnapp_account(
                     profile = str(existing["profile_key"] or "")
                 else:
                     raise ValueError("EarnApp account is deleted")
+            if (
+                existing
+                and normalized_email(existing["email"])
+                and normalized_email(email) != normalized_email(existing["email"])
+            ):
+                raise ValueError("Chrome profile is already bound to a different EarnApp account")
             duplicate_to_lock: int | None = None
             if existing and normalized_email(email):
                 same_email = await (
                     await db.execute(
                         """
-                        SELECT a.id, a.profile_key, a.account_name, a.auth_method, a.state,
+                        SELECT a.id, a.profile_key, a.account_name, a.email, a.auth_method, a.state,
                                COUNT(n.logical_node_id) AS assigned_nodes
                         FROM earnapp_accounts a
                         LEFT JOIN earnapp_logical_nodes n
@@ -3711,7 +3717,7 @@ async def upsert_earnapp_account(
                 email_matches = await (
                     await db.execute(
                         """
-                        SELECT a.id, a.profile_key, a.account_name, a.auth_method, a.state,
+                        SELECT a.id, a.profile_key, a.account_name, a.email, a.auth_method, a.state,
                                COUNT(n.logical_node_id) AS assigned_nodes
                         FROM earnapp_accounts a
                         LEFT JOIN earnapp_logical_nodes n
@@ -3735,7 +3741,7 @@ async def upsert_earnapp_account(
                 existing = await (
                     await db.execute(
                         """
-                        SELECT id, profile_key, account_name, auth_method, state
+                        SELECT id, profile_key, account_name, email, auth_method, state
                         FROM earnapp_accounts
                         WHERE profile_key LIKE 'legacy-account-%'
                           AND lower(trim(account_name)) = lower(trim(?))
@@ -3753,7 +3759,10 @@ async def upsert_earnapp_account(
                     )
                     legacy_adoption = True
             if existing and (
-                str(existing["account_name"]) != name
+                (
+                    str(existing["account_name"]) != name
+                    and not (normalized_email(email) and normalized_email(existing["email"]) == normalized_email(email))
+                )
                 or (not legacy_adoption and str(existing["auth_method"]) != method)
             ):
                 raise ValueError("Chrome profile is already bound to a different EarnApp account")
@@ -5129,7 +5138,6 @@ async def adopt_earnapp_runtime_proxy(
         or not expected_egress
         or observed_egress != expected_egress
         or not live_container_id
-        or not live_sidecar_id
     ):
         return None
     async with _earnapp_lock():
@@ -5786,40 +5794,8 @@ async def sweep_stale_earnapp_nodes(
                 )
                 held.append({"logical_node_id": str(row["logical_node_id"])})
 
-            expired = await (
-                await db.execute(
-                    f"""
-                    SELECT * FROM earnapp_logical_nodes
-                    WHERE state = 'RECOVERY_HOLD'
-                      {platform_clause.replace("n.", "")}
-                      {excluded_clause.replace("n.", "")}
-                      AND recovery_hold_until IS NOT NULL
-                      AND recovery_hold_until <= datetime('now')
-                    ORDER BY logical_node_id
-                    """,
-                    (*platform_params, *excluded_params),
-                )
-            ).fetchall()
-            for row in expired:
-                node_id = str(row["logical_node_id"])
-                await db.execute(
-                    """
-                    UPDATE provider_proxy_leases
-                    SET released_at = datetime('now'), release_reason = 'EARNAPP_RECOVERY_HOLD_EXPIRED'
-                    WHERE provider_slug = 'earnapp' AND instance_id = ? AND released_at IS NULL
-                    """,
-                    (node_id,),
-                )
-                await db.execute(
-                    """
-                    UPDATE earnapp_logical_nodes
-                    SET state = 'RECOVERABLE', assigned_worker_id = NULL, current_proxy_id = NULL,
-                        updated_at = datetime('now')
-                    WHERE logical_node_id = ? AND state = 'RECOVERY_HOLD'
-                    """,
-                    (node_id,),
-                )
-                released.append({"logical_node_id": node_id})
+            # A timeout cannot prove a disconnected worker stopped its runtime.
+            # Only confirmed removal may release the lease for reassignment.
             await db.commit()
             return {"held": held, "released": released}
         except Exception:

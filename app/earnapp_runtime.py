@@ -308,8 +308,9 @@ export PROXY_HOST="$PROXY_IP"
 export PROXY_PORT PROXY_USER PROXY_PASS PROXY_TYPE
 EXPECTED_DEVICE_ID="${EARNAPP_DEVICE_ID:?}"
 [[ -s "$STATE_DIR/uuid" && "$(cat "$STATE_DIR/uuid")" == "$EXPECTED_DEVICE_ID" ]]
+version=$(/usr/bin/earnapp --version | awk '{print $2}')
+printf '%s\n' "$version" >"$STATE_DIR/ver"
 if [[ ! -s "$STATE_DIR/registered" || "$(cat "$STATE_DIR/registered")" != "$EXPECTED_DEVICE_ID" ]]; then
-  version=$(/usr/bin/earnapp --version | awk '{print $2}')
   serial=${EXPECTED_DEVICE_ID#sdk-mac-}
   register_body=$(mktemp)
   trap 'rm -f "$register_body"' EXIT

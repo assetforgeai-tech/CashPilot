@@ -303,10 +303,12 @@ async def prepare_node(
             country, vn_platform_choice or (lambda: secrets.choice(("macos", "ios"))), platform_policy
         )
     )
-    if platform in {"macos", "ios"} and country != "VN":
-        raise RuntimeError("EarnApp Mac/iOS node requires a VN proxy")
-    if platform == "ubuntu" and country == "VN":
-        raise RuntimeError("EarnApp Ubuntu node requires a non-VN proxy")
+    # Country affinity is policy-driven. The legacy defaults still restrict
+    # Apple lanes to VN and Ubuntu to non-VN, while explicit Settings ticks
+    # may authorize any platform/country combination for controlled canaries.
+    allowed_for_country = allowed_platforms_for_country(country, platform_policy)
+    if platform not in allowed_for_country:
+        raise RuntimeError("EarnApp platform is disabled for this proxy country")
     if existing_platform and existing_platform != platform:
         raise RuntimeError("EarnApp logical node platform is immutable")
     await database.assign_earnapp_account(plan.logical_node_id, platform=platform)

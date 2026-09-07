@@ -2529,3 +2529,38 @@ def test_proxy_capacity_counts_canonical_egress_and_excludes_every_assignment_ty
             assert capacity["control_routes"] == 1
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("profile", ["bound-profile", "new-profile"])
+def test_refresh_same_email_allows_display_name_change(tmp_path, profile):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            await database.init_db()
+            original = _payload("bound-profile", "owner@example.com")
+            original["account_name"] = "Old display name"
+            account_id = await earnapp_accounts.import_account(original)
+            refreshed = _payload(profile, "OWNER@example.com")
+            refreshed["account_name"] = "New display name"
+            assert await earnapp_accounts.import_account(refreshed) == account_id
+            rows = await database.list_earnapp_accounts()
+            assert len(rows) == 1
+            assert rows[0]["profile_key"] == "bound-profile"
+            assert rows[0]["account_name"] == "New display name"
+
+    asyncio.run(run())
+
+
+def test_refresh_rejects_changed_email_with_same_display_name(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            await database.init_db()
+            original = _payload("bound-profile", "owner@example.com")
+            original["account_name"] = "Same display name"
+            await earnapp_accounts.import_account(original)
+            other = _payload("bound-profile", "other@example.com")
+            other["account_name"] = "Same display name"
+            with pytest.raises(ValueError, match="already bound"):
+                await earnapp_accounts.import_account(other)
+            assert (await database.list_earnapp_accounts())[0]["email"] == "owner@example.com"
+
+    asyncio.run(run())

@@ -136,6 +136,8 @@ def _parse_timestamp(value: Any) -> datetime | None:
 
 
 def _token_warning(row: dict[str, Any]) -> str:
+    if str(row.get("state") or "").upper() in {"AUTH_FAILED", "EXPIRED"}:
+        return "expired"
     expiry = _parse_timestamp(row.get("token_expires_at"))
     if expiry is None:
         return "expiry_unknown"

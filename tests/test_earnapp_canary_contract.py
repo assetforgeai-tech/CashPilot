@@ -58,6 +58,12 @@ def test_mac_proxy_handoff_pins_the_resolved_ipv4_for_source_iptables():
     assert handoff < source_exec
 
 
+def test_mac_proxy_handoff_refreshes_persisted_binary_version():
+    entrypoint = earnapp_runtime.proxy_entrypoint_script("macos").decode("utf-8")
+    assert "version=$(/usr/bin/earnapp --version | awk" in entrypoint
+    assert 'printf \'%s\\n\' "$version" >"$STATE_DIR/ver"' in entrypoint
+
+
 def _request(path: str) -> Request:
     return Request({"type": "http", "method": "POST", "path": path, "headers": []})
 
@@ -1221,7 +1227,8 @@ def test_worker_boundary_rejects_ios_proxy_outside_authoritative_vn_residential_
 
 
 @pytest.mark.asyncio
-async def test_deploy_hands_proxy_secret_only_to_worker_and_persists_redacted_spec(monkeypatch):
+@pytest.mark.parametrize("country", ["VN", "US"])
+async def test_deploy_hands_proxy_secret_only_to_worker_and_persists_redacted_spec(monkeypatch, country):
     sent: list[dict] = []
     saved: list[dict] = []
 
@@ -1244,6 +1251,7 @@ async def test_deploy_hands_proxy_secret_only_to_worker_and_persists_redacted_sp
         ),
     )
     monkeypatch.setattr(database, "get_provider_instance", AsyncMock(return_value=None))
+    monkeypatch.setattr(database, "get_config", AsyncMock(return_value={"earnapp_platform_non_vn_macos": "true"}))
     monkeypatch.setattr(
         earnapp_canary,
         "provision_canary",
@@ -1272,7 +1280,7 @@ async def test_deploy_hands_proxy_secret_only_to_worker_and_persists_redacted_sp
                 "username": "proxy-user",
                 "password": "proxy-password",
                 "exit_ip": "203.0.113.10",
-                "country_code": "VN",
+                "country_code": country,
                 "ip_type": "residential",
             }
         ),
@@ -1308,6 +1316,7 @@ async def test_failed_canary_deploy_removes_and_rolls_back_only_that_canary(monk
         ),
     )
     monkeypatch.setattr(database, "get_provider_instance", AsyncMock(return_value=None))
+    monkeypatch.setattr(database, "get_config", AsyncMock(return_value={}))
     monkeypatch.setattr(
         earnapp_canary,
         "provision_canary",
@@ -1376,6 +1385,7 @@ async def test_failed_retry_does_not_remove_or_rollback_existing_canary(monkeypa
         ),
     )
     monkeypatch.setattr(database, "get_provider_instance", AsyncMock(return_value=None))
+    monkeypatch.setattr(database, "get_config", AsyncMock(return_value={}))
     monkeypatch.setattr(
         earnapp_canary,
         "provision_canary",
@@ -1439,6 +1449,7 @@ async def test_proxy_validation_failure_rolls_back_new_binding_before_worker_dep
         ),
     )
     monkeypatch.setattr(database, "get_provider_instance", AsyncMock(return_value=None))
+    monkeypatch.setattr(database, "get_config", AsyncMock(return_value={}))
     monkeypatch.setattr(
         earnapp_canary,
         "provision_canary",
@@ -1472,7 +1483,7 @@ async def test_proxy_validation_failure_rolls_back_new_binding_before_worker_dep
     )
     monkeypatch.setattr(database, "rollback_earnapp_canary_binding", rollback)
 
-    with pytest.raises(ValueError, match="VN residential"):
+    with pytest.raises(ValueError, match="policy-eligible residential"):
         await earnapp_canary.deploy_canary(
             "earnapp-canary-1",
             3,
@@ -1507,6 +1518,7 @@ async def test_provider_instance_persist_failure_removes_and_rolls_back_new_cana
         ),
     )
     monkeypatch.setattr(database, "get_provider_instance", AsyncMock(return_value=None))
+    monkeypatch.setattr(database, "get_config", AsyncMock(return_value={}))
     monkeypatch.setattr(
         earnapp_canary,
         "provision_canary",
@@ -1618,44 +1630,38 @@ async def test_retry_running_canary_is_idempotent_and_never_redeploys(monkeypatc
     remove.assert_not_awaited()
 
 
-def test_provision_canary_reuses_existing_node_and_never_worker_assignment():
-    async def run():
-        with (
-            patch.object(
-                database,
-                "get_earnapp_logical_node",
-                AsyncMock(side_effect=[None, {"current_proxy_id": 12}]),
-            ),
-            patch.object(
-                earnapp_canary.earnapp_recovery,
-                "provision_node",
-                AsyncMock(
-                    return_value={
-                        "logical_node_id": "earnapp-canary-1",
-                        "account_id": 7,
-                        "worker_id": 3,
-                        "device_id": "sdk-mac-test",
-                        "proxy_id": 12,
-                        "generation": 1,
-                        "state": "ACTIVE",
-                    }
-                ),
-            ) as provision,
-            patch.object(database, "get_worker_proxy_assignment", AsyncMock(return_value=None)),
-        ):
-            first = await earnapp_canary.provision_canary("earnapp-canary-1", 3, "sdk-mac-test")
-            second = await earnapp_canary.provision_canary("earnapp-canary-1", 3, "sdk-mac-test")
-            assert second["proxy_id"] == first["proxy_id"]
-            provision.assert_awaited_with(
-                "earnapp-canary-1",
-                3,
-                device_id="sdk-mac-test",
-                proxy_country_code="VN",
-                platform="macos",
-            )
-            assert await database.get_worker_proxy_assignment(3) is None
-
-    asyncio.run(run())
+@pytest.mark.asyncio
+async def test_provision_canary_uses_settings_and_preserves_identity(monkeypatch):
+    device = "sdk-mac-test"
+    prepared = earnapp_deploy.PreparedEarnAppNode(
+        worker_id=3,
+        slot_id="ipv4-001",
+        logical_node_id="earnapp-canary-1",
+        platform="macos",
+        account_id=7,
+        device_id=device,
+        generation=1,
+        proxy={"proxy_id": 12, "country_code": "US"},
+        created_binding=True,
+    )
+    prepare = AsyncMock(return_value=prepared)
+    monkeypatch.setattr(earnapp_deploy, "prepare_node", prepare)
+    monkeypatch.setattr(
+        database,
+        "get_config",
+        AsyncMock(
+            return_value={
+                "earnapp_platform_non_vn_macos": "true",
+            }
+        ),
+    )
+    monkeypatch.setattr(database, "get_earnapp_logical_node", AsyncMock(return_value=None))
+    result = await earnapp_canary.provision_canary("earnapp-canary-1", 3, device)
+    assert result["device_id"] == device
+    assert result["proxy_id"] == 12
+    assert result["created_binding"] is True
+    assert prepare.await_args.kwargs["required_platform"] == "macos"
+    assert "macos" in prepare.await_args.kwargs["platform_policy"]["NON_VN"]
 
 
 @pytest.mark.asyncio

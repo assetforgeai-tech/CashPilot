@@ -88,6 +88,34 @@ def test_earnapp_runtime_authority_reports_exact_identity_proxy_and_components(m
     }
 
 
+def test_earnapp_runtime_authority_accepts_main_only_runtime(monkeypatch):
+    device_id = "sdk-mac-" + "2" * 32
+    main_container = MagicMock(
+        id="main-only-id",
+        status="running",
+        labels={
+            "cashpilot.earnapp.logical_node_id": "earnapp-main-only",
+            "cashpilot.earnapp.device_id": device_id,
+            "cashpilot.earnapp.platform": "macos",
+            "cashpilot.earnapp.generation": "1",
+        },
+        attrs={"HostConfig": {"NetworkMode": "default"}},
+    )
+    client = MagicMock()
+    monkeypatch.setattr(
+        orchestrator, "_find_earnapp_runtime_container", lambda *_a, sidecar: None if sidecar else main_container
+    )
+    monkeypatch.setattr(orchestrator, "_get_client", lambda: client)
+    monkeypatch.setattr(
+        orchestrator,
+        "probe_service_egress",
+        lambda _slug: {"running": True, "probe_ok": True, "observed_egress_ip": "198.51.100.2"},
+    )
+    result = orchestrator.earnapp_runtime_authority("earnapp-main-only")
+    assert result["sidecar_container_id"] == ""
+    assert result["platform"] == "macos"
+
+
 def test_worker_runtime_authority_is_cas_scoped_and_read_only(tmp_path, monkeypatch):
     monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
     node_id = "earnapp-runtime-authority"
@@ -305,7 +333,8 @@ def test_worker_runtime_authority_serializes_concurrent_reads_with_node_mutation
 
 
 @pytest.mark.asyncio
-async def test_server_runtime_adoption_requires_matching_worker_authority(monkeypatch):
+@pytest.mark.parametrize("sidecar_id", ["sidecar-id", ""])
+async def test_server_runtime_adoption_requires_matching_worker_authority(monkeypatch, sidecar_id):
     node_id = "earnapp-runtime-authority"
     device_id = "sdk-mac-" + "1" * 32
     node = {
@@ -326,9 +355,9 @@ async def test_server_runtime_adoption_requires_matching_worker_authority(monkey
         "expected_egress_ip": "198.51.100.61",
         "observed_egress_ip": "198.51.100.61",
         "main_container_id": "main-id",
-        "sidecar_container_id": "sidecar-id",
+        "sidecar_container_id": sidecar_id,
         "main_running": True,
-        "sidecar_running": True,
+        "sidecar_running": bool(sidecar_id),
         "probe_ok": True,
     }
     monkeypatch.setattr(main.provider_runtime, "mutation_block", lambda *_args, **_kwargs: None)
@@ -359,7 +388,7 @@ async def test_server_runtime_adoption_requires_matching_worker_authority(monkey
         expected_runtime_egress_ip="198.51.100.61",
         observed_runtime_egress_ip="198.51.100.61",
         container_id="main-id",
-        sidecar_id="sidecar-id",
+        sidecar_id=sidecar_id,
     )
 
 
@@ -693,7 +722,8 @@ def test_node_scoped_health_evidence_and_atomic_rotation_preserve_preference(tmp
     asyncio.run(run())
 
 
-def test_adopt_earnapp_runtime_proxy_repairs_only_matching_split_brain_assignment(tmp_path):
+@pytest.mark.parametrize("sidecar_id", ["live-sidecar", ""])
+def test_adopt_earnapp_runtime_proxy_repairs_only_matching_split_brain_assignment(tmp_path, sidecar_id):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "adopt.db"):
             await database.init_db()
@@ -727,7 +757,7 @@ def test_adopt_earnapp_runtime_proxy_repairs_only_matching_split_brain_assignmen
                 expected_runtime_egress_ip="198.51.100.61",
                 observed_runtime_egress_ip="198.51.100.61",
                 container_id="live-container",
-                sidecar_id="live-sidecar",
+                sidecar_id=sidecar_id,
             )
 
             assert adopted and adopted["current_proxy_id"] == runtime_proxy
@@ -739,7 +769,7 @@ def test_adopt_earnapp_runtime_proxy_repairs_only_matching_split_brain_assignmen
             instance = await database.get_provider_instance(node_id)
             assert instance["proxy_id"] == runtime_proxy
             assert instance["container_id"] == "live-container"
-            assert instance["sidecar_id"] == "live-sidecar"
+            assert instance["sidecar_id"] == sidecar_id
             leases = await database.list_provider_proxy_leases(provider_slug="earnapp")
             assert len([row for row in leases if row["instance_id"] == node_id and not row["released_at"]]) == 1
             assert any(
@@ -760,7 +790,7 @@ def test_adopt_earnapp_runtime_proxy_repairs_only_matching_split_brain_assignmen
                 expected_runtime_egress_ip="198.51.100.61",
                 observed_runtime_egress_ip="198.51.100.61",
                 container_id="live-container",
-                sidecar_id="live-sidecar",
+                sidecar_id=sidecar_id,
             )
             assert replay and replay["current_proxy_id"] == runtime_proxy
             leases = await database.list_provider_proxy_leases(provider_slug="earnapp")
@@ -1420,12 +1450,48 @@ async def test_pending_rotation_reconciliation_rolls_back_write_ahead_intent_wit
     )
     monkeypatch.setattr(main, "_proxy_to_worker", finalize)
 
+    lock = asyncio.Lock()
+    monkeypatch.setitem(main._EARNAPP_ROTATION_LOCKS, node_id, lock)
+    async with lock:
+        assert not await main._reconcile_earnapp_pending_proxy_binding(instance, 11)
+        finalize.assert_not_awaited()
+
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def paused_finalize(*_args, **_kwargs):
+        entered.set()
+        await release.wait()
+        return finalize.return_value
+
+    finalize.side_effect = paused_finalize
+    task = asyncio.create_task(main._reconcile_earnapp_pending_proxy_binding(instance, 11))
+    try:
+        await asyncio.wait_for(entered.wait(), timeout=2)
+        assert lock.locked()
+        assert not await main._reconcile_earnapp_pending_proxy_binding(instance, 11)
+        finalize.assert_awaited_once()
+    finally:
+        release.set()
+        result = await asyncio.wait_for(task, timeout=2)
+    assert result
+    assert not lock.locked()
+    finalize.side_effect = RuntimeError("worker unavailable")
+    assert not await main._reconcile_earnapp_pending_proxy_binding(instance, 11)
+    assert not lock.locked()
+    finalize.side_effect = None
     assert await main._reconcile_earnapp_pending_proxy_binding(instance, 11)
     assert finalize.await_args.kwargs["json"]["commit"] is False
 
 
 @pytest.mark.asyncio
-async def test_pending_rotation_reconciliation_refuses_database_egress_mismatch(monkeypatch):
+@pytest.mark.parametrize(
+    ("database_egress", "pending_observed"),
+    [("203.0.113.42", "198.51.100.42"), ("198.51.100.42", ""), ("198.51.100.42", "198.51.100.41")],
+)
+async def test_pending_rotation_reconciliation_refuses_unverified_candidate(
+    monkeypatch, database_egress, pending_observed
+):
     node_id = "earnapp-proxy-w11-ipv4-005"
     device_id = "sdk-mac-" + "e" * 32
     instance = {
@@ -1436,7 +1502,7 @@ async def test_pending_rotation_reconciliation_refuses_database_egress_mismatch(
         "pending_binding_version": "rotation_pending_777777",
         "pending_proxy_id": 42,
         "pending_expected_egress_ip": "198.51.100.42",
-        "pending_observed_egress_ip": "198.51.100.42",
+        "pending_observed_egress_ip": pending_observed,
     }
     monkeypatch.setattr(
         database,
@@ -1449,7 +1515,7 @@ async def test_pending_rotation_reconciliation_refuses_database_egress_mismatch(
                 "device_id": device_id,
                 "current_proxy_id": 42,
                 "preferred_proxy_id": 41,
-                "expected_egress_ip": "203.0.113.42",
+                "expected_egress_ip": database_egress,
                 "state": "ACTIVE",
             }
         ),

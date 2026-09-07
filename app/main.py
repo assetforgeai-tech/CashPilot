@@ -711,6 +711,7 @@ async def _run_proxy_pool_recheck_scheduler() -> None:
 async def _run_earnapp_lifecycle_scheduler() -> None:
     """Persist uniform EarnApp health decisions from the latest evidence."""
     refreshed_accounts: set[int] = set()
+    failed_accounts: set[int] = set()
     for node in await database.list_earnapp_logical_nodes():
         # Only nodes with an assigned runtime participate in lifecycle actions.
         # RECOVERABLE/PLANNED rows intentionally retain history and affinity but
@@ -721,6 +722,8 @@ async def _run_earnapp_lifecycle_scheduler() -> None:
             spec = await database.get_provider_instance_spec(str(node.get("logical_node_id") or ""))
             evidence = (spec or {}).get("earnapp_device_verification") if isinstance(spec, Mapping) else None
             account_id = int(node.get("account_id") or 0)
+            if account_id in failed_accounts:
+                continue
             snapshot = await database.get_latest_earnapp_snapshot(account_id)
             # The collector normally runs hourly, while flatline recovery is
             # intentionally short. Refresh an old account snapshot at the
@@ -738,8 +741,11 @@ async def _run_earnapp_lifecycle_scheduler() -> None:
                     minutes=earnapp_lifecycle.FLATLINE_MINUTES
                 ):
                     refreshed_accounts.add(account_id)
-                    with contextlib.suppress(Exception):
-                        await earnapp_collection.collect_account(account_id)
+                    failed_accounts.add(account_id)
+                    result = await earnapp_collection.collect_account(account_id)
+                    if result.get("status") != "ok":
+                        continue
+                    failed_accounts.discard(account_id)
                     snapshot = await database.get_latest_earnapp_snapshot(account_id)
             devices = _safe_json((snapshot or {}).get("devices_json") or "[]") if snapshot else []
             device_id = str(node.get("device_id") or "")
@@ -3831,6 +3837,8 @@ def _merge_recorded_spec(
 async def _resolve_earnapp_ubuntu_lifecycle(
     logical_node_id: str,
     worker_id: int | None,
+    *,
+    allow_macos_remove: bool = False,
 ) -> tuple[int, dict[str, Any], str]:
     """Resolve one Ubuntu assignment and its persisted runtime backend."""
     node_id = str(logical_node_id or "").strip()
@@ -3850,7 +3858,10 @@ async def _resolve_earnapp_ubuntu_lifecycle(
     generation = int(node.get("generation") or 0)
     device_id = str(node.get("device_id") or "").strip()
     state = str(node.get("state") or "").strip().upper()
-    if platform != "ubuntu":
+    # The route name is legacy; all current EarnApp Docker lanes share the
+    # same CAS lifecycle. Keep the backend guard, but do not reject valid
+    # macOS/iOS assignments before dispatching their Docker action.
+    if platform not in {"ubuntu", "macos", "ios"}:
         raise HTTPException(status_code=409, detail=provider_runtime.EARNAPP_PLATFORM_BLOCK_MESSAGE)
     if state not in {"ACTIVE", "RECOVERY_HOLD"} or assigned_worker_id <= 0 or generation <= 0 or not device_id:
         raise HTTPException(status_code=409, detail="EarnApp Ubuntu assignment is not lifecycle-ready")
@@ -3936,9 +3947,11 @@ async def _remove_earnapp_ubuntu_runtime(
     logical_node_id: str,
     worker_id: int | None,
 ) -> tuple[int, dict[str, Any]]:
-    """Remove one Ubuntu runtime, then CAS-release only its assignment."""
+    """Remove one Ubuntu or macOS runtime, then CAS-release only its assignment."""
     node_id = str(logical_node_id or "").strip()
-    assigned_worker_id, cas, backend = await _resolve_earnapp_ubuntu_lifecycle(node_id, worker_id)
+    assigned_worker_id, cas, backend = await _resolve_earnapp_ubuntu_lifecycle(
+        node_id, worker_id, allow_macos_remove=True
+    )
     route = f"/api/earnapp/docker-nodes/{node_id}" if backend == "docker" else f"/api/earnapp/nodes/{node_id}"
     result = await _proxy_to_worker(assigned_worker_id, "DELETE", route, json=cas, timeout=180)
     removed = await database.finalize_earnapp_node_removal(
@@ -4393,7 +4406,7 @@ async def _adopt_earnapp_runtime_proxy_locked(
         or str(authority.get("expected_egress_ip") or "").strip() != expected_egress
         or str(authority.get("observed_egress_ip") or "").strip() != expected_egress
         or authority.get("main_running") is not True
-        or authority.get("sidecar_running") is not True
+        or (str(authority.get("sidecar_container_id") or "").strip() and authority.get("sidecar_running") is not True)
         or authority.get("probe_ok") is not True
         or not str(authority.get("main_container_id") or "").strip()
     ):
@@ -4420,6 +4433,20 @@ async def _adopt_earnapp_runtime_proxy_locked(
 
 
 async def _reconcile_earnapp_pending_proxy_binding(instance: Mapping[str, Any], worker_id: int) -> bool:
+    """Reconcile only after the active rotation has finished its database CAS."""
+    node_id = str(instance.get("logical_node_id") or "").strip()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{2,120}", node_id) or earnapp_policy.is_protected_logical_node(node_id):
+        return False
+    lock = _EARNAPP_ROTATION_LOCKS.setdefault(node_id, asyncio.Lock())
+    if lock.locked():
+        # A heartbeat can expose write-ahead intent while apply is still running.
+        # The next heartbeat retries after rotation/adoption releases this lock.
+        return False
+    async with lock:
+        return await _reconcile_earnapp_pending_proxy_binding_locked(instance, worker_id)
+
+
+async def _reconcile_earnapp_pending_proxy_binding_locked(instance: Mapping[str, Any], worker_id: int) -> bool:
     """Finish or roll back a proxy transaction whose final ACK was lost.
 
     The worker keeps the old route in ``proxy_id`` while a candidate is staged.

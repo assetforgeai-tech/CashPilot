@@ -31,6 +31,14 @@ def _owner():
     return {"uid": 1, "u": "admin", "r": "owner"}
 
 
+@pytest.mark.parametrize("state", ["AUTH_FAILED", "EXPIRED"])
+def test_token_warning_reports_rejected_auth_even_with_future_expiry(state):
+    assert (
+        earnapp_accounts_router._token_warning({"state": state, "token_expires_at": "2099-01-01T00:00:00+00:00"})
+        == "expired"
+    )
+
+
 def _import_body() -> dict[str, object]:
     return {
         "profile_key": "profile-40",
