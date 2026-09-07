@@ -45,6 +45,12 @@ function decodeJwtExpiry(value) {
   return Number.isFinite(expiry) && expiry > 0 ? expiry : null;
 }
 
+function accountEmail(cookies) {
+  const payload = decodeJwtPayload(cookies?.["oauth-refresh-token"]?.value);
+  const email = String(payload?.email || "").trim().toLowerCase();
+  return email.includes("@") ? email : "";
+}
+
 function accountFingerprint(cookies, fallback) {
   const payload = decodeJwtPayload(cookies?.["oauth-refresh-token"]?.value);
   for (const key of ["sub", "user_id", "uid", "email"]) {
@@ -192,13 +198,15 @@ async function syncBoundEarnAppAccount() {
 }
 
 async function importEarnAppAccount(message) {
-  const accountName = String(message.accountName || "").trim();
-  const email = String(message.email || "").trim();
+  const requestedName = String(message.accountName || "").trim();
+  const requestedEmail = String(message.email || "").trim().toLowerCase();
   const authMethod = String(message.authMethod || "").trim().toLowerCase();
-  if (!accountName) throw new Error("EarnApp account name is required");
   if (!new Set(["google", "apple"]).has(authMethod)) throw new Error("Choose Google or Apple login");
   const server = normalizeCashPilotServer(message.server);
   const cookies = await collectEarnAppCookies();
+  const email = accountEmail(cookies) || requestedEmail;
+  const accountName = email || requestedName;
+  if (!email) throw new Error("EarnApp email unavailable; enter the account email");
   const existing = await getBinding();
   if (existing) {
     if (
