@@ -43,10 +43,10 @@ def test_mac_profile_blob_uses_the_official_boot_js_default_key():
 
 
 def test_image_builder_default_source_points_to_cashpilot_bundle():
-    expected = Path(__file__).resolve().parents[3] / "earnapp_new_update" / "earnapp-runtime-files" / "mac-1.660.577"
+    expected = Path(__file__).resolve().parents[2] / "earnapp_new_update" / "earnapp-runtime-files" / "mac-1.660.577"
     assert build_earnapp_canary_image.default_source_dir() == expected
     ubuntu = build_earnapp_canary_image.default_source_dir("ubuntu")
-    assert ubuntu == Path(__file__).resolve().parents[3] / "earnapp_update_05092026" / "runtime" / "ubuntu"
+    assert ubuntu == Path(__file__).resolve().parents[2] / "earnapp_update_05092026" / "runtime" / "ubuntu"
 
 
 def test_mac_proxy_handoff_pins_the_resolved_ipv4_for_source_iptables():
@@ -343,6 +343,24 @@ def test_canary_image_build_recipe_validates_artifacts_and_emits_pinned_labels(t
     assert 'ENTRYPOINT ["/usr/local/bin/earn-supervisor"]' in recipe
 
 
+def test_macos_image_context_pins_registration_to_the_supplied_binary(tmp_path):
+    source = tmp_path / "mac"
+    source.mkdir()
+    expected = {}
+    for name in earnapp_runtime.MAC_RUNTIME_ARTIFACT_HASHES:
+        content = '[[ ! -f "$STATE_DIR/uuid" || ! -x /usr/bin/earnapp ]]' if name == "entrypoint.sh" else name
+        payload = (content + "\n").encode()
+        (source / name).write_bytes(payload)
+        expected[name] = hashlib.sha256(payload).hexdigest()
+    context = tmp_path / "context"
+
+    with patch.object(earnapp_runtime, "MAC_RUNTIME_ARTIFACT_HASHES", expected):
+        build_earnapp_canary_image.write_context(source, context, platform="macos")
+
+    wrapper = (context / "cashpilot-proxy-entrypoint").read_text(encoding="utf-8")
+    assert f'MAC_BINARY_SHA256={expected["earnapp-mac"]}' in wrapper
+
+
 @pytest.mark.parametrize(
     ("platform", "wrong_marker"),
     [
@@ -423,7 +441,8 @@ def test_ios_image_builder_uses_the_ios_bundle_and_verified_runtime_contract(tmp
     recipe = build_earnapp_canary_image.render_dockerfile(manifest, platform="ios")
     digest = earnapp_runtime.runtime_asset_manifest_sha256(expected, platform="ios")
 
-    assert "COPY earnapp-bootstrap /opt/earnapp-ios" in recipe
+    assert "sha256sum /opt/earnapp-ios" in recipe
+    assert expected["earnapp-bootstrap"] in recipe
     assert "com.cashpilot.earnapp.runtime=earnapp_ios" in recipe
     assert "com.cashpilot.earnapp.platform=ios" in recipe
     assert "com.cashpilot.earnapp.appid=com.brd.earnapp" in recipe
@@ -619,6 +638,23 @@ def test_macos_proxy_wrapper_registers_seeded_uuid_before_runtime_handoff():
     assert '"$(cat "$STATE_DIR/registered")" != "$EXPECTED_DEVICE_ID"' in wrapper
 
 
+def test_macos_proxy_wrapper_registers_the_profile_serial_not_the_uuid_suffix():
+    wrapper = earnapp_runtime.generated_runtime_artifacts("macos")["cashpilot-proxy-entrypoint"].decode()
+
+    assert 'IDENTITY_FILE="${IDENTITY_FILE:-$STATE_DIR/identity.json}"' in wrapper
+    assert 'serial=$(node -e' in wrapper
+    assert 'arch=$(node -e' in wrapper
+    assert "arch=$arch&appid=mac_com.earnapp" in wrapper
+    assert 'serial=${EXPECTED_DEVICE_ID#sdk-mac-}' not in wrapper
+
+
+def test_macos_proxy_wrapper_can_pin_an_operator_verified_reference_binary():
+    digest = "3" * 64
+    wrapper = earnapp_runtime.proxy_entrypoint_script("macos", mac_binary_sha256=digest).decode()
+
+    assert f"MAC_BINARY_SHA256={digest}" in wrapper
+
+
 def test_macos_source_entrypoint_preserves_decline_cooldown_and_crash_retry():
     source = build_earnapp_canary_image.default_source_dir("macos") / "entrypoint.sh"
     if not source.is_file():
@@ -673,11 +709,12 @@ def test_ubuntu_runtime_spec_lets_the_reference_image_generate_the_device_identi
     assert "EARNAPP_DEVICE_ID" not in spec["env"]
     assert spec["runtime_assets"] == []
     assert spec["env"]["EARNAPP_EXPECTED_EGRESS_IP"] == "203.0.113.10"
-    assert spec["env"]["NODE_TLS_REJECT_UNAUTHORIZED"] == "0"
+    assert spec["env"]["NODE_TLS_REJECT_UNAUTHORIZED"] == "1"
     assert spec["env"]["PROXY_TYPE"] == "SOCKS5"
     assert spec["env"]["PROXY_CREDENTIALS"] == "proxy.example:1080::"
     assert spec["network_mode"] == "bridge"
     assert spec["resources"]["mem_limit"] == "1g"
+    assert spec["resources"]["nano_cpus"] == 1_000_000_000
     assert spec["cap_add"] == ["NET_ADMIN"]
     earnapp_runtime.validate_runtime_spec(spec)
 
@@ -718,10 +755,30 @@ def test_ubuntu_thin_wrapper_tag_changes_when_the_reference_manifest_changes(mon
 def test_ubuntu_reference_image_uses_the_verified_manifest_digest():
     assert earnapp_runtime.UBUNTU_REFERENCE_IMAGE == "ghcr.io/assetforgeai-tech/cashpilot-earnapp-ubuntu"
     assert earnapp_runtime.UBUNTU_REFERENCE_DIGEST == (
-        "sha256:19b8d5831f0e83c0beb9a514bc9ed40c0be252ac101217fc01a6e2ac4714c559"
+        "sha256:3e63d79166d493c55879635071c85da298e0d7c13f186dedcb579f9512abdc41"
     )
+
+
+def test_upgraded_reference_vps_images_are_immutable_and_platform_specific():
+    images = earnapp_runtime.REFERENCE_VPS_IMAGES
+    assert set(images) == {"macos", "ios", "ubuntu"}
+    for image in images.values():
+        assert "@sha256:" in image
     assert earnapp_runtime.UBUNTU_REFERENCE_IMAGE_PIN == (
-        "ghcr.io/assetforgeai-tech/cashpilot-earnapp-ubuntu@sha256:19b8d5831f0e83c0beb9a514bc9ed40c0be252ac101217fc01a6e2ac4714c559"
+        "ghcr.io/assetforgeai-tech/cashpilot-earnapp-ubuntu@sha256:3e63d79166d493c55879635071c85da298e0d7c13f186dedcb579f9512abdc41"
+    )
+
+
+def test_runtime_bundle_defaults_resolve_beside_the_repository():
+    workspace = Path(__file__).resolve().parents[2]
+    assert build_earnapp_canary_image.default_source_dir("macos") == (
+        workspace / "earnapp_new_update" / "earnapp-runtime-files" / "mac-1.660.577"
+    )
+    assert build_earnapp_canary_image.default_source_dir("ios") == (
+        workspace / "earnapp_new_update" / "earnapp-runtime-files" / "ios"
+    )
+    assert build_earnapp_canary_image.default_source_dir("ubuntu") == (
+        workspace / "earnapp_update_05092026" / "runtime" / "ubuntu"
     )
 
 

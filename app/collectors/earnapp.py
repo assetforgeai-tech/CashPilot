@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hashlib
+import json
 import time
 from collections.abc import Mapping
 from datetime import UTC, datetime
@@ -22,6 +23,36 @@ LINK_MIN_INTERVAL_SECONDS = 5.0
 LINK_RATE_LIMIT_COOLDOWN_SECONDS = 300.0
 _link_guards: dict[tuple[int, str], asyncio.Lock] = {}
 _link_next_allowed: dict[tuple[int, str], float] = {}
+
+
+def _rejection_kind(response: httpx.Response) -> str | None:
+    """Classify account/proxy rejection without treating every 4xx as auth."""
+    if response.status_code in AUTH_FAILURE_CODES:
+        return "auth"
+    location = str(response.headers.get("location") or "").lower()
+    try:
+        body = json.dumps(response.json(), sort_keys=True).lower()
+    except (ValueError, TypeError):
+        body = ""
+    text = f"{location} {body}"
+    if "ip_block" in text or "proxy blocked" in text:
+        return "proxy_blocked"
+    if any(word in text for word in ("suspended", "suspension", "locked", "account_deleted", "account deleted")):
+        return "account_locked"
+    return None
+
+
+def _rejection_result(response: httpx.Response) -> dict[str, str] | None:
+    kind = _rejection_kind(response)
+    if not kind:
+        return None
+    messages = {
+        "auth": ("auth", "authentication rejected"),
+        "proxy_blocked": ("proxy_blocked", "EarnApp blocked the account proxy"),
+        "account_locked": ("account_locked", "EarnApp account is suspended or locked"),
+    }
+    error_kind, message = messages[kind]
+    return {"status": "error", "error_kind": error_kind, "error": message}
 
 
 def _link_guard_key(credentials: Mapping[str, Any]) -> str:
@@ -438,10 +469,9 @@ class EarnAppAccountCollector:
             rotate.raise_for_status()
             headers = self._headers(client, self.cookies)
             user_response = await client.get(f"{API_BASE}/user_data", params=API_PARAMS, headers=headers)
-            if user_response.status_code in AUTH_FAILURE_CODES:
-                return {"status": "error", "error_kind": "auth", "error": "authentication rejected"}
-            if user_response.status_code == 406 and "ip_block" in str(user_response.headers.get("location") or ""):
-                return {"status": "error", "error_kind": "proxy_blocked", "error": "EarnApp blocked the account proxy"}
+            rejection = _rejection_result(user_response)
+            if rejection:
+                return rejection
             user_response.raise_for_status()
 
             devices_response = await client.get(f"{API_BASE}/devices", params=API_PARAMS, headers=headers)
@@ -589,6 +619,33 @@ class EarnAppAccountCollector:
         finally:
             await client.aclose()
 
+    async def delete_device(self, device_id: str) -> dict[str, Any]:
+        """Delete one remote device; an already-absent device is idempotent."""
+        uuid = str(device_id or "").strip()
+        if not uuid:
+            return {"status": "error", "error_kind": "shape", "error": "EarnApp device id is required"}
+        client = self._client()
+        try:
+            rotate = await client.get(f"{API_BASE}/sec/rotate_xsrf", params=API_PARAMS)
+            if rotate.status_code in AUTH_FAILURE_CODES:
+                return {"status": "error", "error_kind": "auth", "error": "authentication rejected"}
+            rotate.raise_for_status()
+            headers = self._headers(client, self.cookies)
+            response = await client.delete(f"{API_BASE}/device/{quote(uuid, safe='')}", params=API_PARAMS, headers=headers)
+            if response.status_code in {404, 410}:
+                return {"status": "deleted", "device_id": uuid, "already_absent": True}
+            if response.status_code in AUTH_FAILURE_CODES:
+                return {"status": "error", "error_kind": "auth", "error": "authentication rejected"}
+            response.raise_for_status()
+            return {"status": "deleted", "device_id": uuid, "already_absent": False}
+        except (httpx.TimeoutException, httpx.NetworkError, httpx.ProxyError):
+            return {"status": "error", "error_kind": "route", "error": "EarnApp route unavailable"}
+        except httpx.HTTPStatusError as exc:
+            kind = base.classify_exception(exc)
+            return {"status": "error", "error_kind": "auth" if kind == base.KIND_AUTH else "remote", "error": "authentication rejected" if kind == base.KIND_AUTH else "EarnApp device deletion failed"}
+        finally:
+            await client.aclose()
+
     async def collect_snapshot(self) -> dict[str, Any]:
         try:
             client = self._client()
@@ -619,14 +676,9 @@ class EarnAppAccountCollector:
                 )
                 transactions_response = await client.get(f"{API_BASE}/transactions", params=API_PARAMS, headers=headers)
                 for response in (user_response, money_response, devices_response, usage_response):
-                    if response.status_code in AUTH_FAILURE_CODES:
-                        return {"status": "error", "error_kind": "auth", "error": "authentication rejected"}
-                    if response.status_code == 406 and "ip_block" in str(response.headers.get("location") or ""):
-                        return {
-                            "status": "error",
-                            "error_kind": "proxy_blocked",
-                            "error": "EarnApp blocked the account proxy",
-                        }
+                    rejection = _rejection_result(response)
+                    if rejection:
+                        return rejection
                     response.raise_for_status()
                 devices = _payload_devices(devices_response.json())
                 device_ids = [_device_id(item) for item in devices]

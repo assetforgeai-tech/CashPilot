@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
+import hashlib
 
 # A short flatline window lets the worker recover promptly; the account API
 # can lag, so this is still long enough to avoid reacting to one poll.
@@ -17,6 +18,26 @@ from typing import Any
 FLATLINE_MINUTES = 60
 EARNINGS_ZERO_GRACE_MINUTES = 5
 _UPTIME_BILLING = frozenset({"uptime", "fixed", "qualified_uptime"})
+
+
+def earnings_cycle_id(
+    account_id: int,
+    earnings_update_in_ms: Any,
+    *,
+    boundary_started_at: Any = None,
+    previous_cycle_id: Any = None,
+) -> str:
+    """Return a stable key for one earnings cycle, including repeated resets."""
+    try:
+        counter = int(earnings_update_in_ms)
+    except (TypeError, ValueError):
+        return ""
+    if counter < 0:
+        return ""
+    boundary = str(boundary_started_at or "").strip() if counter <= 0 else ""
+    if counter <= 0 and not boundary:
+        boundary = f"after:{str(previous_cycle_id or '').strip()}"
+    return hashlib.sha256(f"earnapp:{int(account_id)}:{counter}:{boundary}".encode()).hexdigest()[:24]
 
 
 @dataclass(frozen=True)
@@ -73,6 +94,8 @@ def evaluate_node(
     rotates = max(0, int(runtime.get("rotate_count") or 0))
     if bool(snapshot.get("auth_failed")):
         return LifecycleDecision("defer_auth", same, rotates, "account authentication requires retry")
+    if bool(snapshot.get("banned")):
+        return LifecycleDecision("recreate", same + 1, rotates, "device banned")
     billing = str(snapshot.get("billing") or "").strip().lower()
     awaiting_country = (
         billing in _UPTIME_BILLING
@@ -130,4 +153,4 @@ def evaluate_node(
     # A healthy route with a flatline is a workload/admission problem, not
     # proof that the identity or proxy should be replaced. Restart in place so
     # the device, volume and lease remain stable.
-    return LifecycleDecision("restart", 0, rotates, "usage flatline or banned")
+    return LifecycleDecision("restart", 0, rotates, "usage flatline or offline")

@@ -459,6 +459,25 @@ def test_link_classifies_dashboard_ip_block_as_proxy_blocked(monkeypatch):
     }
 
 
+class _AccountLockedClient(_IpBlockedClient):
+    async def get(self, url, **_kwargs):
+        response = await super().get(url, **_kwargs)
+        if url.endswith("/user_data"):
+            response = _Response(400, {"error": "account deleted"})
+            response.headers["location"] = "https://earnapp.com/dashboard/account"
+        return response
+
+
+def test_link_classifies_account_deleted_separately_from_auth_or_proxy(monkeypatch):
+    monkeypatch.setattr(httpx, "AsyncClient", _AccountLockedClient)
+    collector = EarnAppAccountCollector(
+        {"cookies": {"xsrf-token": "xsrf"}},
+        {"protocol": "http", "host": "proxy.example", "port": 8080},
+    )
+    result = asyncio.run(collector.link_and_verify_device("sdk-mac-" + "a" * 32))
+    assert result["error_kind"] == "account_locked"
+
+
 def test_link_and_verify_device_exposes_current_workload_counters():
     credentials = {"cookies": {"oauth-refresh-token": "refresh-secret", "xsrf-token": "xsrf-secret"}}
     proxy = {"protocol": "http", "host": "proxy.example", "port": 8080}
@@ -977,6 +996,25 @@ def test_payment_configuration_uses_account_proxy_and_never_returns_raw_destinat
     assert disabled["configured"] is False
     assert "owner@example.com" not in json.dumps(configured)
     assert "refresh-secret" not in json.dumps(configured)
+
+
+def test_delete_device_uses_authenticated_account_proxy_and_is_idempotent():
+    calls = []
+
+    class DeleteClient(_PaymentClient):
+        async def delete(self, url, **kwargs):
+            calls.append(("DELETE", url, kwargs.get("headers", {}).get("xsrf-token")))
+            return _Response(404, {})
+
+    credentials = {"cookies": {"oauth-refresh-token": "refresh", "xsrf-token": "xsrf"}}
+    proxy = {"protocol": "socks5", "host": "proxy.example", "port": 1080}
+    with patch(
+        "app.collectors.earnapp.httpx.AsyncClient", side_effect=lambda **kwargs: DeleteClient(calls, **kwargs)
+    ):
+        result = asyncio.run(EarnAppAccountCollector(credentials, proxy).delete_device("device-a"))
+
+    assert result == {"status": "deleted", "device_id": "device-a", "already_absent": True}
+    assert ("DELETE", "https://earnapp.com/dashboard/api/device/device-a", "rotated-xsrf") in calls
 
 
 class _LinkClient:

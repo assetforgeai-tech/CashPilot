@@ -1,6 +1,6 @@
 const DEFAULT_SERVER = "https://cashpilot.4gmt.com";
 const EARNAPP_BINDING_KEY = "earnappAccountBinding";
-const EARNAPP_SYNC_ALARM = "earnapp-token-sync";
+const EARNAPP_AUTO_LOGIN_KEY = "earnappAutoLoginEnabled";
 const EARNAPP_COOKIE_DEBOUNCE_ALARM = "earnapp-cookie-debounce";
 const EARNAPP_COOKIE_ALLOWLIST = Object.freeze([
   "auth",
@@ -100,6 +100,11 @@ async function getBinding() {
   return stored[EARNAPP_BINDING_KEY];
 }
 
+async function getAutoLoginEnabled() {
+  const stored = await chrome.storage.local.get({ [EARNAPP_AUTO_LOGIN_KEY]: false });
+  return stored[EARNAPP_AUTO_LOGIN_KEY] === true;
+}
+
 function expiryMetadata(cookies) {
   const tokenExpiresAt = decodeJwtExpiry(cookies["oauth-refresh-token"]?.value);
   const cookieExpirations = Object.values(cookies)
@@ -123,6 +128,7 @@ function publicBinding(binding) {
     tokenExpiresAt: binding.tokenExpiresAt || null,
     cookieExpiresAt: binding.cookieExpiresAt || null,
     lastError: binding.lastError || null,
+    autoLoginEnabled: binding.autoLoginEnabled === true,
   };
 }
 
@@ -171,7 +177,6 @@ async function persistSyncResult(binding, cookies, accountId) {
     lastError: null,
   };
   await chrome.storage.local.set({ [EARNAPP_BINDING_KEY]: updated });
-  chrome.alarms.create(EARNAPP_SYNC_ALARM, { periodInMinutes: 15 });
   return updated;
 }
 
@@ -218,6 +223,7 @@ async function importEarnAppAccount(message) {
     }
     assertSameAccount(existing, cookies);
   }
+  const autoLoginEnabled = await getAutoLoginEnabled();
   const binding = existing || {
     profileKey: `earnapp-profile-${crypto.randomUUID()}`,
     accountName,
@@ -227,6 +233,7 @@ async function importEarnAppAccount(message) {
     server,
     createdAt: new Date().toISOString(),
   };
+  binding.autoLoginEnabled = autoLoginEnabled;
   const accountId = await postToCashPilot(server, {
     profile_key: binding.profileKey,
     account_name: binding.accountName,
@@ -238,6 +245,10 @@ async function importEarnAppAccount(message) {
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === "SET_EARNAPP_AUTO_LOGIN") {
+    chrome.storage.local.set({ [EARNAPP_AUTO_LOGIN_KEY]: message.enabled === true }).then(() => sendResponse({ ok: true }));
+    return true;
+  }
   if (message?.type === "GET_EARNAPP_BINDING") {
     getBinding()
       .then(binding => sendResponse({ ok: true, binding: publicBinding(binding) }))
@@ -268,13 +279,13 @@ chrome.cookies.onChanged.addListener(changeInfo => {
 });
 
 chrome.alarms.onAlarm.addListener(alarm => {
-  if (alarm.name === EARNAPP_SYNC_ALARM || alarm.name === EARNAPP_COOKIE_DEBOUNCE_ALARM) {
+  if (alarm.name === EARNAPP_COOKIE_DEBOUNCE_ALARM) {
     void syncBoundEarnAppAccount();
   }
 });
 
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.alarms.create(EARNAPP_SYNC_ALARM, { periodInMinutes: 15 });
+  chrome.alarms.clear("earnapp-token-sync");
 });
 
 chrome.runtime.onStartup.addListener(() => void syncBoundEarnAppAccount());

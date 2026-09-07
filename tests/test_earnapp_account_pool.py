@@ -126,6 +126,61 @@ def test_import_encrypts_credentials_and_lists_only_masked_metadata(tmp_path):
     asyncio.run(run())
 
 
+def test_record_earnapp_auth_result_persists_auditable_state(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            await database.init_db()
+            account_id = await earnapp_accounts.import_account(_payload("profile-auth", "auth@example.com"))
+
+            assert await database.record_earnapp_auth_result(
+                account_id, success=False, failure_kind="ACCOUNT_SUSPENDED"
+            )
+            row = await (await (await database._get_db()).execute(
+                "SELECT state, last_auth_success_at, last_auth_failure_at, auth_failure_kind, needs_token_refresh "
+                "FROM earnapp_accounts WHERE id = ?", (account_id,)
+            )).fetchone()
+            assert row["state"] == "ACCOUNT_LOCKED"
+            assert row["last_auth_success_at"] is None
+            assert row["last_auth_failure_at"]
+            assert row["auth_failure_kind"] == "ACCOUNT_SUSPENDED"
+            assert row["needs_token_refresh"] == 1
+
+            assert await database.record_earnapp_auth_result(account_id, success=True)
+            row = await (await (await database._get_db()).execute(
+                "SELECT state, last_auth_success_at, last_auth_failure_at, auth_failure_kind, needs_token_refresh "
+                "FROM earnapp_accounts WHERE id = ?", (account_id,)
+            )).fetchone()
+            assert row["state"] == "ACTIVE"
+            assert row["last_auth_success_at"]
+            assert row["last_auth_failure_at"] is None
+            assert row["auth_failure_kind"] == ""
+            assert row["needs_token_refresh"] == 0
+
+    asyncio.run(run())
+
+
+def test_prepare_fresh_earnapp_replacement_clears_identity_and_lease(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            await database.init_db()
+            account_id = await earnapp_accounts.import_account(_payload("profile-fresh", "fresh@example.com"))
+            db = await database._get_db()
+            await db.execute("INSERT INTO workers(id, client_id) VALUES (7, 'worker-7')")
+            await db.execute(
+                "INSERT INTO earnapp_logical_nodes(logical_node_id, account_id, platform, state, generation, "
+                "assigned_worker_id, device_id, current_proxy_id) VALUES (?, ?, 'macos', 'ACTIVE', 2, 7, ?, NULL)",
+                ("fresh-node", account_id, "sdk-mac-" + "a" * 32),
+            )
+            await db.commit()
+            assert await database.prepare_fresh_earnapp_replacement("fresh-node", 7, generation=2, device_id="sdk-mac-" + "a" * 32)
+            row = await (await db.execute(
+                "SELECT state, generation, assigned_worker_id, device_id, current_proxy_id FROM earnapp_logical_nodes WHERE logical_node_id='fresh-node'"
+            )).fetchone()
+            assert dict(row) == {"state": "PLANNED", "generation": 3, "assigned_worker_id": None, "device_id": "", "current_proxy_id": None}
+
+    asyncio.run(run())
+
+
 async def _seed_legacy_earnapp_schema(
     db,
     accounts: list[dict[str, object]],
@@ -316,7 +371,7 @@ def test_init_db_migrates_legacy_earnapp_accounts_without_exposing_or_losing_cre
                     "account_name": "owner@example.com",
                     "email": "owner@example.com",
                     "auth_method": "google",
-                    "state": "DISABLED",
+                        "state": "DISABLED",
                     "token_expires_at": None,
                     "cookie_expires_at": None,
                     "assigned_nodes": 1,

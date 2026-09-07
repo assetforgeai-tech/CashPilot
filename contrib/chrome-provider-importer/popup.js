@@ -128,6 +128,7 @@ function applyEarnAppBinding(binding) {
   document.getElementById("earnapp-account-name").value = binding.accountName || "";
   document.getElementById("earnapp-email").value = binding.email || "";
   document.getElementById("earnapp-auth-method").value = binding.authMethod || "google";
+  document.getElementById("earnapp-auto-login").checked = Boolean(binding.autoLoginEnabled);
   for (const id of ["server-url", "earnapp-account-name", "earnapp-email", "earnapp-auth-method"]) {
     document.getElementById(id).disabled = true;
   }
@@ -139,6 +140,12 @@ function applyEarnAppBinding(binding) {
     <div class="muted">Last sync: ${escapeHtml(synced)}; token ${escapeHtml(formatExpiry(binding.tokenExpiresAt))}.</div>
     ${warning}
   `);
+}
+
+async function saveAutoLoginPreference() {
+  const enabled = document.getElementById("earnapp-auto-login").checked;
+  await chrome.storage.local.set({ earnappAutoLoginEnabled: enabled });
+  chrome.runtime.sendMessage({ type: "SET_EARNAPP_AUTO_LOGIN", enabled });
 }
 
 async function importEarnApp() {
@@ -163,6 +170,7 @@ async function importEarnApp() {
 }
 
 document.getElementById("import-earnapp").addEventListener("click", importEarnApp);
+document.getElementById("earnapp-auto-login").addEventListener("change", saveAutoLoginPreference);
 
 chrome.runtime.onMessage.addListener(message => {
   if (message?.type !== "EARNAPP_SYNC_STATUS") return;

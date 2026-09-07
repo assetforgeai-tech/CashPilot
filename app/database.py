@@ -437,6 +437,10 @@ CREATE TABLE IF NOT EXISTS earnapp_accounts (
     token_expires_at     TEXT,
     cookie_expires_at    TEXT,
     state                TEXT    NOT NULL DEFAULT 'ACTIVE',
+    last_auth_success_at TEXT,
+    last_auth_failure_at TEXT,
+    auth_failure_kind    TEXT    NOT NULL DEFAULT '',
+    needs_token_refresh  INTEGER NOT NULL DEFAULT 0,
     created_at           TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_at           TEXT    NOT NULL DEFAULT (datetime('now'))
 );
@@ -467,6 +471,8 @@ CREATE TABLE IF NOT EXISTS earnapp_logical_nodes (
     same_proxy_recreates INTEGER NOT NULL DEFAULT 0,
     rotate_count        INTEGER NOT NULL DEFAULT 0,
     earnings_zero_observed_at TEXT,
+    earnings_cycle_id   TEXT NOT NULL DEFAULT '',
+    last_recovery_cycle_id TEXT NOT NULL DEFAULT '',
     lifecycle_action    TEXT NOT NULL DEFAULT 'observe',
     quarantine_reason   TEXT NOT NULL DEFAULT '',
     created_at         TEXT    NOT NULL DEFAULT (datetime('now')),
@@ -570,6 +576,10 @@ CREATE TABLE earnapp_accounts (
     token_expires_at     TEXT,
     cookie_expires_at    TEXT,
     state                TEXT    NOT NULL DEFAULT 'ACTIVE',
+    last_auth_success_at TEXT,
+    last_auth_failure_at TEXT,
+    auth_failure_kind    TEXT    NOT NULL DEFAULT '',
+    needs_token_refresh  INTEGER NOT NULL DEFAULT 0,
     created_at           TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_at           TEXT    NOT NULL DEFAULT (datetime('now'))
 )
@@ -588,6 +598,10 @@ _EARNAPP_ACCOUNT_REQUIRED_COLUMNS = {
     "token_expires_at",
     "cookie_expires_at",
     "state",
+    "last_auth_success_at",
+    "last_auth_failure_at",
+    "auth_failure_kind",
+    "needs_token_refresh",
     "created_at",
     "updated_at",
 }
@@ -601,7 +615,12 @@ _EARNAPP_LEGACY_ACCOUNT_REQUIRED_COLUMNS = {
     "updated_at",
 }
 
-_EARNAPP_V19_ACCOUNT_REQUIRED_COLUMNS = _EARNAPP_ACCOUNT_REQUIRED_COLUMNS
+_EARNAPP_V19_ACCOUNT_REQUIRED_COLUMNS = _EARNAPP_ACCOUNT_REQUIRED_COLUMNS - {
+    "last_auth_success_at",
+    "last_auth_failure_at",
+    "auth_failure_kind",
+    "needs_token_refresh",
+}
 
 _EARNAPP_CHILD_COLUMNS = {
     "earnapp_logical_nodes": {
@@ -627,7 +646,9 @@ _EARNAPP_CHILD_COLUMNS = {
         "window_started_at",
         "same_proxy_recreates",
         "rotate_count",
-        "earnings_zero_observed_at",
+    "earnings_zero_observed_at",
+    "earnings_cycle_id",
+    "last_recovery_cycle_id",
         "lifecycle_action",
         "quarantine_reason",
         "created_at",
@@ -797,8 +818,11 @@ _EARNAPP_CHILD_UNIQUE_COLUMNS = {
     "earnapp_replacement_tickets": {"token_hash"},
 }
 
-_EARNAPP_ACCOUNT_COLUMN_TYPES = {column: "TEXT" for column in _EARNAPP_ACCOUNT_REQUIRED_COLUMNS - {"id"}} | {
-    "id": "INTEGER"
+_EARNAPP_ACCOUNT_COLUMN_TYPES = {
+    column: "TEXT" for column in _EARNAPP_ACCOUNT_REQUIRED_COLUMNS - {"id", "needs_token_refresh"}
+} | {
+    "needs_token_refresh": "INTEGER",
+    "id": "INTEGER",
 }
 
 _EARNAPP_ACCOUNT_DEFAULTS = {
@@ -812,6 +836,10 @@ _EARNAPP_ACCOUNT_DEFAULTS = {
     "token_expires_at": None,
     "cookie_expires_at": None,
     "state": "'ACTIVE'",
+    "last_auth_success_at": None,
+    "last_auth_failure_at": None,
+    "auth_failure_kind": "''",
+    "needs_token_refresh": "0",
     "created_at": "datetime('now')",
     "updated_at": "datetime('now')",
 }
@@ -1930,6 +1958,8 @@ async def _ensure_earnapp_logical_node_proxy_health_schema(db: Any, applied: lis
         "same_proxy_recreates": "INTEGER NOT NULL DEFAULT 0",
         "rotate_count": "INTEGER NOT NULL DEFAULT 0",
         "earnings_zero_observed_at": "TEXT",
+        "earnings_cycle_id": "TEXT NOT NULL DEFAULT ''",
+        "last_recovery_cycle_id": "TEXT NOT NULL DEFAULT ''",
         "lifecycle_action": "TEXT NOT NULL DEFAULT 'observe'",
         "quarantine_reason": "TEXT NOT NULL DEFAULT ''",
     }
@@ -2000,10 +2030,11 @@ async def _validate_completed_earnapp_migration(
             str(canonical_info[name]["type"] or "").upper() != expected
             for name, expected in _EARNAPP_ACCOUNT_COLUMN_TYPES.items()
         )
-        or any(
-            not int(canonical_info[name]["notnull"] or 0)
-            for name in _EARNAPP_ACCOUNT_REQUIRED_COLUMNS - {"id", "token_expires_at", "cookie_expires_at"}
-        )
+            or any(
+                not int(canonical_info[name]["notnull"] or 0)
+                for name in _EARNAPP_ACCOUNT_REQUIRED_COLUMNS
+                - {"id", "token_expires_at", "cookie_expires_at", "last_auth_success_at", "last_auth_failure_at"}
+            )
         or any(
             _normalise_sql_default(canonical_info[name]["dflt_value"]) != _normalise_sql_default(expected)
             for name, expected in _EARNAPP_ACCOUNT_DEFAULTS.items()
@@ -2199,6 +2230,8 @@ async def _create_earnapp_current_schema(db: Any) -> None:
             same_proxy_recreates INTEGER NOT NULL DEFAULT 0,
             rotate_count        INTEGER NOT NULL DEFAULT 0,
             earnings_zero_observed_at TEXT,
+            earnings_cycle_id TEXT NOT NULL DEFAULT '',
+            last_recovery_cycle_id TEXT NOT NULL DEFAULT '',
             lifecycle_action    TEXT NOT NULL DEFAULT 'observe',
             quarantine_reason   TEXT NOT NULL DEFAULT '',
             created_at         TEXT    NOT NULL DEFAULT (datetime('now')),
@@ -2723,7 +2756,7 @@ async def _migrate_legacy_earnapp_accounts(db: Any, applied: list[str]) -> None:
 #: missing a column -- an interrupted upgrade, a restored backup, a hand-edited
 #: file -- could never be repaired, because the gate would say there was nothing
 #: to do. The guards are idempotent and cheap; the version is for the operator.
-SCHEMA_VERSION = 22
+SCHEMA_VERSION = 23
 
 
 async def init_db() -> None:
@@ -2751,8 +2784,34 @@ async def init_db() -> None:
             if "earnings_update_in_ms" not in snapshot_cols:
                 await db.execute("ALTER TABLE earnapp_account_snapshots ADD COLUMN earnings_update_in_ms INTEGER")
                 applied.append("earnapp_account_snapshots.earnings_update_in_ms")
+        account_columns = (
+            await _table_columns(db, "earnapp_accounts") if await _table_exists(db, "earnapp_accounts") else set()
+        )
+        baseline_columns = _EARNAPP_ACCOUNT_REQUIRED_COLUMNS - {
+            "last_auth_success_at", "last_auth_failure_at", "auth_failure_kind", "needs_token_refresh"
+        }
+        if baseline_columns <= account_columns:
+            for column, definition in {
+                "last_auth_success_at": "TEXT",
+                "last_auth_failure_at": "TEXT",
+                "auth_failure_kind": "TEXT NOT NULL DEFAULT ''",
+                "needs_token_refresh": "INTEGER NOT NULL DEFAULT 0",
+            }.items():
+                if column not in account_columns:
+                    await db.execute(f"ALTER TABLE earnapp_accounts ADD COLUMN {column} {definition}")
+                    applied.append(f"earnapp_accounts.{column}")
         await _migrate_legacy_earnapp_accounts(db, applied)
         await db.executescript(_EARNAPP_ACCOUNTS_SCHEMA)
+        account_columns = await _table_columns(db, "earnapp_accounts")
+        for column, definition in {
+            "last_auth_success_at": "TEXT",
+            "last_auth_failure_at": "TEXT",
+            "auth_failure_kind": "TEXT NOT NULL DEFAULT ''",
+            "needs_token_refresh": "INTEGER NOT NULL DEFAULT 0",
+        }.items():
+            if column not in account_columns:
+                await db.execute(f"ALTER TABLE earnapp_accounts ADD COLUMN {column} {definition}")
+                applied.append(f"earnapp_accounts.{column}")
         await _quarantine_synthetic_legacy_accounts(db, applied)
         # Recovery releases the live assignment but keeps its prior owner so
         # another worker still needs a one-time replacement ticket.
@@ -3821,6 +3880,8 @@ async def list_earnapp_accounts(*, include_deleted: bool = False) -> list[dict[s
             f"""
             SELECT a.id, a.profile_key, a.account_name, a.email, a.auth_method, a.state,
                    a.credential_keys_json, a.token_expires_at, a.cookie_expires_at,
+                   a.last_auth_success_at, a.last_auth_failure_at, a.auth_failure_kind,
+                   a.needs_token_refresh,
                    a.created_at, a.updated_at,
                    COUNT(n.logical_node_id) AS assigned_nodes,
                    COALESCE(SUM(n.state = 'ACTIVE'), 0) AS active_nodes,
@@ -4034,6 +4095,23 @@ async def get_earnapp_identity_profile(logical_node_id: str) -> dict[str, str] |
     return profiles[0] if profiles else None
 
 
+async def delete_earnapp_identity_profile(logical_node_id: str) -> bool:
+    """Remove one node identity only after its remote device was deleted."""
+    node_id = str(logical_node_id or "").strip()
+    if not node_id or earnapp_policy.is_protected_runtime_reference(node_id):
+        return False
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "DELETE FROM config WHERE key LIKE ?",
+            (f"runtime_asset::earnapp::%::{node_id}::secret",),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+    finally:
+        await db.close()
+
+
 async def save_earnapp_mac_profile(logical_node_id: str, *, device_id: str, value: str) -> None:
     """Backward-compatible wrapper for the established Mac profile key."""
     await save_earnapp_identity_profile(
@@ -4065,6 +4143,37 @@ async def set_earnapp_account_state(account_id: int, state: str) -> bool:
             "UPDATE earnapp_accounts SET state = ?, updated_at = datetime('now') WHERE id = ? AND state != 'DELETED'",
             (normalized, int(account_id)),
         )
+        await db.commit()
+        return bool(cursor.rowcount)
+    finally:
+        await db.close()
+
+
+async def record_earnapp_auth_result(account_id: int, *, success: bool, failure_kind: str = "") -> bool:
+    """Persist auth evidence without storing credentials or response bodies."""
+    kind = str(failure_kind or "").strip().upper()[:80]
+    if success:
+        cursor_sql = """
+            UPDATE earnapp_accounts
+            SET state = 'ACTIVE', last_auth_success_at = datetime('now'),
+                last_auth_failure_at = NULL, auth_failure_kind = '',
+                needs_token_refresh = 0, updated_at = datetime('now')
+            WHERE id = ? AND state != 'DELETED'
+        """
+        params = (int(account_id),)
+    else:
+        state = "ACCOUNT_LOCKED" if kind in {"ACCOUNT_SUSPENDED", "ACCOUNT_LOCKED"} else "AUTH_FAILED"
+        cursor_sql = """
+            UPDATE earnapp_accounts
+            SET state = ?, last_auth_failure_at = datetime('now'),
+                auth_failure_kind = ?, needs_token_refresh = 1,
+                updated_at = datetime('now')
+            WHERE id = ? AND state != 'DELETED'
+        """
+        params = (state, kind or "AUTH_FAILED", int(account_id))
+    db = await _get_db()
+    try:
+        cursor = await db.execute(cursor_sql, params)
         await db.commit()
         return bool(cursor.rowcount)
     finally:
@@ -5699,6 +5808,51 @@ async def finalize_earnapp_node_removal(
             await db.close()
 
 
+async def prepare_fresh_earnapp_replacement(
+    logical_node_id: str,
+    worker_id: int,
+    *,
+    generation: int,
+    device_id: str,
+    preserve_proxy_affinity: bool = True,
+) -> bool:
+    """Retire local identity/lease after remote deletion; next deploy is fresh."""
+    node_id = str(logical_node_id or "").strip()
+    if not node_id or earnapp_policy.is_protected_logical_node(node_id):
+        return False
+    async with _earnapp_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            row = await (await db.execute(
+                "SELECT state, assigned_worker_id, generation, device_id, current_proxy_id "
+                "FROM earnapp_logical_nodes WHERE logical_node_id = ?", (node_id,)
+            )).fetchone()
+            if not row or str(row["state"]) != "ACTIVE" or int(row["assigned_worker_id"] or 0) != int(worker_id) \
+                    or int(row["generation"] or 0) != int(generation) or str(row["device_id"] or "") != str(device_id):
+                await db.rollback()
+                return False
+            proxy_id = int(row["current_proxy_id"] or 0)
+            await db.execute(
+                "UPDATE provider_proxy_leases SET released_at = datetime('now'), release_reason = ? "
+                "WHERE provider_slug='earnapp' AND worker_id=? AND instance_id=? AND released_at IS NULL",
+                ("EARNAPP_FRESH_REPLACEMENT", int(worker_id), node_id),
+            )
+            await db.execute(
+                "UPDATE earnapp_logical_nodes SET state='PLANNED', assigned_worker_id=NULL, last_worker_id=?, "
+                "generation=generation+1, device_id='', current_proxy_id=NULL, preferred_proxy_id=?, "
+                "proxy_health='unknown', updated_at=datetime('now') WHERE logical_node_id=? AND generation=?",
+                (int(worker_id), (proxy_id or None) if preserve_proxy_affinity else None, node_id, int(generation)),
+            )
+            await db.commit()
+            return True
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
+
+
 async def begin_earnapp_recovery_hold(logical_node_id: str, *, hold_seconds: int) -> dict[str, Any] | None:
     node_id = str(logical_node_id or "").strip()
     if earnapp_policy.is_protected_logical_node(node_id):
@@ -6144,6 +6298,7 @@ async def update_earnapp_lifecycle(
     *,
     usage: float | None = None,
     window_started_at: str | None = None,
+    earnings_cycle_id: str | None = None,
 ) -> bool:
     """Persist the pure lifecycle decision without touching identity or leases."""
     db = await _get_db()
@@ -6166,6 +6321,12 @@ async def update_earnapp_lifecycle(
         if window_started_at is not None:
             fields.append("window_started_at = ?")
             values.append(str(window_started_at))
+        if earnings_cycle_id is not None:
+            fields.append("earnings_cycle_id = ?")
+            values.append(str(earnings_cycle_id))
+            if str(decision.action) in {"restart", "recreate", "rotate_recreate"}:
+                fields.append("last_recovery_cycle_id = ?")
+                values.append(str(earnings_cycle_id))
         values.append(str(logical_node_id))
         cursor = await db.execute(
             f"UPDATE earnapp_logical_nodes SET {', '.join(fields)} WHERE logical_node_id = ?", values
