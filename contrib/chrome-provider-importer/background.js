@@ -202,8 +202,7 @@ async function importEarnAppAccount(message) {
   const existing = await getBinding();
   if (existing) {
     if (
-      existing.accountName !== accountName ||
-      existing.email !== email ||
+      (existing.email || "").toLowerCase() !== (email || "").toLowerCase() ||
       existing.authMethod !== authMethod ||
       existing.server !== server
     ) {
