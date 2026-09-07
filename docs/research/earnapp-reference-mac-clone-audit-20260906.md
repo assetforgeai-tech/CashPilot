@@ -44,6 +44,21 @@ establish a fresh per-device usage delta. EarnApp closeout remains unverified.
 
 ## Source node
 
+## Follow-up evidence, 2026-09-07
+
+After the `1.21.27` worker rollout, node 02 was restarted with its retained
+volume. The new bootstrap wrote `ver=1.660.577` automatically and the process
+sent repeated `tunnel_init`, `register_client`, and proxy heartbeat reports
+with HTTP 200 responses. Its proxy egress remained `171.251.99.76` and DB
+lease/heartbeat state remained healthy. The account collector returned `status=ok`.
+
+The account API still reported node 02 online but with `uptime=0`,
+`earned=0`, and empty bandwidth. Node 01 continued to report `earned=0.102`
+under `qualified_uptime`. Container metadata, image, identity, UUID, account,
+proxy type, and expected egress matched the deployed contract. This isolates
+the remaining discrepancy to EarnApp's per-device backend accounting or
+registration state; no credential, identity, or reference state was changed.
+
 - UUID: `sdk-mac-66db858d1668e1e0fcc3da8af45247fa`
 - Reference container: `earnapp-mac-n-e26d63`
 - Reference volume: `earnapp-mac-n-e26d63-data`
