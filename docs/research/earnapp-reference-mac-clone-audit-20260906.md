@@ -42,6 +42,15 @@ alias without that rule. These differences have not yet been isolated in a
 controlled runtime comparison. The reference's recent logs alone do not
 establish a fresh per-device usage delta. EarnApp closeout remains unverified.
 
+Further raw inspection showed node 02's container metadata is equivalent to
+node 01's: same verified image and runtime labels, distinct encrypted profile,
+UUID, account, proxy credentials, and expected egress. Its process emits
+repeated `tunnel_init` and `register_client` reports, while EarnApp's account
+API continues to return `online=true`, `uptime=0`, and `earned=0`. The worker
+heartbeat remains HTTP 200. This is a provider-side per-device accounting
+discrepancy; changing local traffic, identity, or reference credentials would
+destroy the controlled comparison and is intentionally not done.
+
 ## Source node
 
 ## Follow-up evidence, 2026-09-07
