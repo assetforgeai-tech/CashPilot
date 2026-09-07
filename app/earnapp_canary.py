@@ -11,7 +11,7 @@ import secrets
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
-from app import database, earnapp_identity, earnapp_policy, earnapp_recovery, earnapp_runtime
+from app import database, earnapp_identity, earnapp_policy, earnapp_runtime
 from app.collectors.earnapp import EarnAppAccountCollector
 
 WorkerDeploy = Callable[[int, str, dict[str, Any]], Awaitable[dict[str, Any]]]
@@ -401,17 +401,27 @@ def build_runtime_spec(
 
 
 async def provision_canary(logical_node_id: str, worker_id: int, device_id: str) -> dict[str, Any]:
+    from app import earnapp_deploy
+
     node_id = _mutable_node_id(logical_node_id)
     device = earnapp_runtime.validate_device_id(device_id)
-    before = await database.get_earnapp_logical_node(node_id)
-    node = await earnapp_recovery.provision_node(
-        node_id,
-        int(worker_id),
-        device_id=device,
-        proxy_country_code="VN",
-        platform="macos",
+    policy = earnapp_deploy.platform_policy_from_config(await database.get_config())
+    node = await earnapp_deploy.prepare_node(
+        earnapp_deploy.EarnAppNodePlan(int(worker_id), "ipv4-001", node_id),
+        required_platform="macos",
+        platform_policy=policy,
     )
-    return {**node, "created_binding": not bool((before or {}).get("current_proxy_id"))}
+    if node.device_id != device:
+        raise ValueError("EarnApp Mac identity changed during preparation")
+    return {
+        "logical_node_id": node_id,
+        "account_id": node.account_id,
+        "worker_id": node.worker_id,
+        "device_id": node.device_id,
+        "proxy_id": int(node.proxy["proxy_id"]),
+        "generation": node.generation,
+        "created_binding": node.created_binding,
+    }
 
 
 async def deploy_canary(
@@ -421,6 +431,8 @@ async def deploy_canary(
     worker_deploy: WorkerDeploy,
     worker_remove: WorkerRemove,
 ) -> dict[str, Any]:
+    from app import earnapp_deploy
+
     node_id = _mutable_node_id(logical_node_id)
     profile = await get_or_create_mac_identity_profile(node_id)
 
@@ -440,14 +452,18 @@ async def deploy_canary(
 
     provisioned = await provision_canary(node_id, int(worker_id), profile["device_id"])
     try:
-        proxy = await database.lease_proxy_for_provider_instance("earnapp", int(worker_id), node_id, country_code="VN")
+        policy = earnapp_deploy.platform_policy_from_config(await database.get_config())
+        country, excluded = earnapp_deploy.platform_country_filter("macos", policy)
+        proxy = await database.lease_proxy_for_provider_instance(
+            "earnapp", int(worker_id), node_id, country_code=country, exclude_country_code=excluded
+        )
         if not proxy:
-            raise ValueError("no eligible VN residential EarnApp proxy available")
+            raise ValueError("no eligible residential EarnApp proxy available")
         if (
-            str(proxy.get("country_code") or "").upper() != "VN"
+            "macos" not in earnapp_deploy.allowed_platforms_for_country(str(proxy.get("country_code") or ""), policy)
             or str(proxy.get("ip_type") or "").lower() != "residential"
         ):
-            raise ValueError("EarnApp Mac canary requires a VN residential proxy")
+            raise ValueError("EarnApp Mac canary requires a policy-eligible residential proxy")
         transport_spec = build_canary_spec(
             node_id,
             int(provisioned["account_id"]),
