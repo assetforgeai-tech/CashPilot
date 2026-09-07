@@ -1293,6 +1293,11 @@ def test_auth_failure_marks_account_but_proxy_route_failure_does_not(tmp_path):
             assert auth_result["error_kind"] == "auth"
             assert (await earnapp_accounts.list_accounts())[0]["state"] == "AUTH_FAILED"
 
+            with patch.object(EarnAppAccountCollector, "collect_snapshot", return_value={"status": "ok"}):
+                recovered = await earnapp_collection.collect_account(account_id)
+            assert recovered["status"] == "ok"
+            assert (await earnapp_accounts.list_accounts())[0]["state"] == "ACTIVE"
+
             assert await database.set_earnapp_account_state(account_id, "ACTIVE")
             with patch.object(
                 EarnAppAccountCollector,
@@ -1520,3 +1525,9 @@ def test_scheduled_earnapp_recovery_clears_the_durable_account_alert():
             main._collector_alerts = previous_alerts
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("flag", ["banned", "is_banned"])
+def test_normalize_snapshot_retains_ban_for_lifecycle(flag):
+    result = normalize_snapshot({}, {}, [{"uuid": "device", flag: True}], {"device": True})
+    assert result["devices"][0]["banned"] is True

@@ -263,6 +263,7 @@ def normalize_snapshot(
         devices.append(
             {
                 "device_id": device_id,
+                **({"banned": _banned(raw)} if "banned" in raw or "is_banned" in raw else {}),
                 **_device_metrics(raw, usage),
                 "ip": _first_ip(raw, node),
                 "rate": _float(share.get("rate", raw.get("rate"))),

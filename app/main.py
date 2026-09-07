@@ -711,6 +711,7 @@ async def _run_proxy_pool_recheck_scheduler() -> None:
 async def _run_earnapp_lifecycle_scheduler() -> None:
     """Persist uniform EarnApp health decisions from the latest evidence."""
     refreshed_accounts: set[int] = set()
+    failed_accounts: set[int] = set()
     for node in await database.list_earnapp_logical_nodes():
         # Only nodes with an assigned runtime participate in lifecycle actions.
         # RECOVERABLE/PLANNED rows intentionally retain history and affinity but
@@ -721,6 +722,8 @@ async def _run_earnapp_lifecycle_scheduler() -> None:
             spec = await database.get_provider_instance_spec(str(node.get("logical_node_id") or ""))
             evidence = (spec or {}).get("earnapp_device_verification") if isinstance(spec, Mapping) else None
             account_id = int(node.get("account_id") or 0)
+            if account_id in failed_accounts:
+                continue
             snapshot = await database.get_latest_earnapp_snapshot(account_id)
             # The collector normally runs hourly, while flatline recovery is
             # intentionally short. Refresh an old account snapshot at the
@@ -738,8 +741,11 @@ async def _run_earnapp_lifecycle_scheduler() -> None:
                     minutes=earnapp_lifecycle.FLATLINE_MINUTES
                 ):
                     refreshed_accounts.add(account_id)
-                    with contextlib.suppress(Exception):
-                        await earnapp_collection.collect_account(account_id)
+                    failed_accounts.add(account_id)
+                    result = await earnapp_collection.collect_account(account_id)
+                    if result.get("status") != "ok":
+                        continue
+                    failed_accounts.discard(account_id)
                     snapshot = await database.get_latest_earnapp_snapshot(account_id)
             devices = _safe_json((snapshot or {}).get("devices_json") or "[]") if snapshot else []
             device_id = str(node.get("device_id") or "")

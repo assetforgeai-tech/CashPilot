@@ -680,3 +680,38 @@ async def test_restart_missing_runtime_finalizes_when_fresh_heartbeat_confirms_a
         device_id="sdk-mac-" + "d" * 32,
         reason="EARNAPP_RUNTIME_MISSING",
     )
+
+
+@pytest.mark.asyncio
+async def test_scheduler_defers_all_account_nodes_when_refresh_auth_fails(monkeypatch):
+    node = {
+        "logical_node_id": "earnapp-mac-refresh",
+        "account_id": 470,
+        "assigned_worker_id": 3098,
+        "device_id": "sdk-mac-refresh",
+        "state": "ACTIVE",
+        "proxy_health": "healthy",
+        "usage_baseline": 100.0,
+        "window_started_at": (datetime.now(UTC) - timedelta(minutes=10)).isoformat(),
+        "same_proxy_recreates": 0,
+        "rotate_count": 0,
+    }
+    monkeypatch.setattr(
+        main.database, "list_earnapp_logical_nodes", AsyncMock(return_value=[node, dict(node, logical_node_id="peer")])
+    )
+    monkeypatch.setattr(main.database, "get_provider_instance_spec", AsyncMock(return_value={}))
+    old = (datetime.now(UTC) - timedelta(minutes=70)).isoformat()
+    stale = {"collected_at": old, "devices_json": '[{"device_id":"sdk-mac-refresh","online":true,"usage_current":100}]'}
+    monkeypatch.setattr(main.database, "get_latest_earnapp_snapshot", AsyncMock(return_value=stale))
+    collect = AsyncMock(return_value={"status": "error", "error_kind": "auth"})
+    monkeypatch.setattr(main.earnapp_collection, "collect_account", collect)
+    update = AsyncMock(return_value=True)
+    execute = AsyncMock()
+    monkeypatch.setattr(main.database, "update_earnapp_lifecycle", update)
+    monkeypatch.setattr(main, "_execute_earnapp_lifecycle_action", execute)
+
+    await main._run_earnapp_lifecycle_scheduler()
+
+    collect.assert_awaited_once_with(470)
+    execute.assert_not_awaited()
+    update.assert_not_awaited()
