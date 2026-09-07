@@ -605,18 +605,20 @@ async def test_server_lifecycle_dispatches_persisted_ubuntu_docker_node(monkeypa
 
 
 @pytest.mark.asyncio
-async def test_server_remove_releases_only_the_removed_ubuntu_node(monkeypatch):
+@pytest.mark.parametrize("platform", ["ubuntu", "macos"])
+async def test_server_remove_releases_only_the_removed_node(monkeypatch, platform):
     node_id = "earnapp-ubuntu-policy"
     other_node_id = "earnapp-ubuntu-other"
     worker_remove = AsyncMock(return_value={"status": "removed", "logical_node_id": node_id})
     finalize = AsyncMock(return_value=True)
     remove_instance = AsyncMock()
+    device_id = ("sdk-mac-" if platform == "macos" else "sdk-node-") + "4" * 32
 
     monkeypatch.setattr(main, "_require_writer", lambda _request: {"r": "writer"})
     monkeypatch.setattr(
         database,
         "get_earnapp_logical_node",
-        AsyncMock(return_value=_authoritative_node()),
+        AsyncMock(return_value=_authoritative_node(platform=platform, device_id=device_id)),
     )
     monkeypatch.setattr(main, "_proxy_to_worker", worker_remove)
     monkeypatch.setattr(database, "finalize_earnapp_node_removal", finalize)
@@ -632,12 +634,18 @@ async def test_server_remove_releases_only_the_removed_ubuntu_node(monkeypatch):
     )
 
     assert result["status"] == "removed"
-    worker_remove.assert_awaited_once()
+    worker_remove.assert_awaited_once_with(
+        3,
+        "DELETE",
+        f"/api/earnapp/docker-nodes/{node_id}",
+        json={"generation": 4, "device_id": device_id},
+        timeout=180,
+    )
     finalize.assert_awaited_once_with(
         node_id,
         3,
         generation=4,
-        device_id="sdk-node-" + "4" * 32,
+        device_id=device_id,
         reason="EARNAPP_NODE_REMOVED",
     )
     remove_instance.assert_awaited_once_with(node_id)
@@ -645,7 +653,8 @@ async def test_server_remove_releases_only_the_removed_ubuntu_node(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_server_remove_keeps_bookkeeping_when_worker_remove_fails(monkeypatch):
+@pytest.mark.parametrize("platform", ["ubuntu", "macos"])
+async def test_server_remove_keeps_bookkeeping_when_worker_remove_fails(monkeypatch, platform):
     finalize = AsyncMock()
     remove_instance = AsyncMock()
 
@@ -653,7 +662,7 @@ async def test_server_remove_keeps_bookkeeping_when_worker_remove_fails(monkeypa
     monkeypatch.setattr(
         database,
         "get_earnapp_logical_node",
-        AsyncMock(return_value=_authoritative_node()),
+        AsyncMock(return_value=_authoritative_node(platform=platform)),
     )
     monkeypatch.setattr(
         main, "_proxy_to_worker", AsyncMock(side_effect=HTTPException(status_code=503, detail="worker failed"))
@@ -672,6 +681,46 @@ async def test_server_remove_keeps_bookkeeping_when_worker_remove_fails(monkeypa
     assert exc.value.status_code == 503
     finalize.assert_not_awaited()
     remove_instance.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["worker", "backend", "authority", "cas", "auth", "protected"])
+async def test_macos_remove_fails_closed(monkeypatch, failure):
+    node_id = "earnapp-macos-policy"
+    lookup = AsyncMock(return_value=_authoritative_node(platform="macos"))
+    proxy = AsyncMock(return_value={"status": "removed"})
+    finalize = AsyncMock(return_value=failure != "cas")
+    remove = AsyncMock()
+
+    def writer(_request):
+        if failure == "auth":
+            raise HTTPException(status_code=403)
+
+    monkeypatch.setattr(main, "_require_writer", writer)
+    monkeypatch.setattr(database, "get_earnapp_logical_node", lookup)
+    monkeypatch.setattr(database, "get_provider_instance", AsyncMock(return_value={"instance_id": node_id}))
+    monkeypatch.setattr(
+        database,
+        "get_provider_instance_spec",
+        AsyncMock(return_value={"runtime_backend": "lxd" if failure == "backend" else "docker"}),
+    )
+    monkeypatch.setattr(main, "_proxy_to_worker", proxy)
+    monkeypatch.setattr(database, "finalize_earnapp_node_removal", finalize)
+    monkeypatch.setattr(database, "remove_provider_instance", remove)
+    if failure == "authority":
+        lookup.side_effect = RuntimeError("database unavailable")
+    if failure == "protected":
+        node_id = "earnapp-ubuntu-canary-test-sing-4"
+
+    with pytest.raises(HTTPException) as exc:
+        await main._svc_remove(_request(f"/api/remove/{node_id}"), node_id, 9 if failure == "worker" else 3, False)
+    assert exc.value.status_code == (403 if failure == "auth" else 409)
+    remove.assert_not_awaited()
+    if failure != "cas":
+        proxy.assert_not_awaited()
+        finalize.assert_not_awaited()
+    if failure in {"auth", "protected"}:
+        lookup.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -791,7 +840,8 @@ async def test_database_finalize_ubuntu_remove_releases_exact_lease_and_preserve
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("platform", ["macos", "ios", "unknown"])
-async def test_server_lifecycle_blocks_non_ubuntu_nodes_from_authoritative_db(monkeypatch, platform):
+@pytest.mark.parametrize("action", ["stop", "restart"])
+async def test_server_lifecycle_blocks_non_ubuntu_nodes_from_authoritative_db(monkeypatch, platform, action):
     proxy = AsyncMock()
     monkeypatch.setattr(main, "_require_writer", lambda _request: {"r": "writer"})
     monkeypatch.setattr(
@@ -802,7 +852,9 @@ async def test_server_lifecycle_blocks_non_ubuntu_nodes_from_authoritative_db(mo
     monkeypatch.setattr(main, "_proxy_to_worker", proxy)
 
     with pytest.raises(HTTPException) as exc:
-        await main._svc_stop(_request("/api/stop/earnapp-ubuntu-policy"), "earnapp-ubuntu-policy", 3)
+        await getattr(main, f"_svc_{action}")(
+            _request(f"/api/{action}/earnapp-ubuntu-policy"), "earnapp-ubuntu-policy", 3
+        )
 
     assert exc.value.status_code == 409
     proxy.assert_not_awaited()
