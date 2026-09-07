@@ -18,7 +18,7 @@ decrypted tmpfs handoff. State volumes keep lifecycle markers only.
 | Platform | Nodes | Runtime image | CPU | Memory | Egress check |
 | --- | --- | --- | ---: | ---: | --- |
 | macOS | `macos-10`, `macos-11` | `asset-bd8de3ac58d1` | 1 core | 1 GiB | observed IP matched leased proxy |
-| iOS | `ios-01`, `ios-02` | `asset-f384c554c3f8` | host value | 1 GiB | observed IP matched leased proxy |
+| iOS | `ios-01`, `ios-02` | `asset-f384c554c3f8` | 1 core | 1 GiB | observed IP matched leased proxy |
 | Ubuntu | `ubuntu-03`, `ubuntu-04` | `asset-89902b056dc4` | 1 core | 1 GiB | observed IP matched leased proxy |
 
 All six containers were `running`, restart count `0` before reboot. UUIDs and
