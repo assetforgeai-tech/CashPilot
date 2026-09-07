@@ -188,12 +188,16 @@ jobs:
         env:
           UI_TAGS: ${{ needs.resolve-tags.outputs.ui_tags }}
           WORKER_TAGS: ${{ needs.resolve-tags.outputs.worker_tags }}
+          BUILD_UI: ${{ inputs.build_ui }}
+          BUILD_WORKER: ${{ inputs.build_worker }}
         run: |
           # Written to a file and read WITHOUT a pipe: a `while` on the right of
           # a pipe runs in a subshell, so a counter set inside it is lost. And
           # the step runs under `bash -e`, where a plain `[ -s f ] && x=1` fails
           # the whole step on the happy path when the file is absent.
-          printf '%s\n%s\n' "$UI_TAGS" "$WORKER_TAGS" > /tmp/tags.txt
+          : > /tmp/tags.txt
+          if [ "$BUILD_UI" = "true" ]; then printf '%s\n' "$UI_TAGS" >> /tmp/tags.txt; fi
+          if [ "$BUILD_WORKER" = "true" ]; then printf '%s\n' "$WORKER_TAGS" >> /tmp/tags.txt; fi
           missing=0
           while IFS= read -r tag; do
             [ -n "$tag" ] || continue
@@ -226,6 +230,8 @@ jobs:
         env:
           UI_TAGS: ${{ needs.resolve-tags.outputs.ui_tags }}
           WORKER_TAGS: ${{ needs.resolve-tags.outputs.worker_tags }}
+          BUILD_UI: ${{ inputs.build_ui }}
+          BUILD_WORKER: ${{ inputs.build_worker }}
           VERSION: ${{ inputs.version }}
         run: |
           # The release input is "v1.2.3"; the image bakes the bare number.
@@ -235,6 +241,9 @@ jobs:
           # A here-string, not a pipe and not a temp file: a `while` on the right
           # of a pipe runs in a subshell, so `bad` set inside it would be lost --
           # which is why the step above uses a file. This avoids both.
+          tags=""
+          if [ "$BUILD_UI" = "true" ]; then tags="${UI_TAGS}"; fi
+          if [ "$BUILD_WORKER" = "true" ]; then tags="${tags}${tags:+$'\n'}${WORKER_TAGS}"; fi
           while IFS= read -r tag; do
             [ -n "$tag" ] || continue
             # `docker buildx imagetools inspect --raw` returns the manifest, not
@@ -260,7 +269,7 @@ jobs:
               echo "WRONG   $tag reports '${got}', expected '${want}'"
               bad=1
             fi
-          done <<< "$(printf '%s\n%s\n' "$UI_TAGS" "$WORKER_TAGS")"
+          done <<< "$tags"
           if [ "$bad" -ne 0 ]; then
             echo "::error::A published image reports a version other than the one it is tagged with. This is what a re-tagged or cache-stale image looks like: the tag resolves, so the check above passes, while every worker running it reports the WRONG version on the fleet page -- and a wrong version reads as a match, hiding the staleness version reporting exists to reveal. Do NOT fix this by re-tagging; rebuild the image. A PULL FAILED line above means the version could not be read at all -- that is also a failure here, because an unverified image must not ship looking verified."
             exit 1
