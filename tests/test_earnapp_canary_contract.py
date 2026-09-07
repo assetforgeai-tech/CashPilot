@@ -58,6 +58,12 @@ def test_mac_proxy_handoff_pins_the_resolved_ipv4_for_source_iptables():
     assert handoff < source_exec
 
 
+def test_mac_proxy_handoff_refreshes_persisted_binary_version():
+    entrypoint = earnapp_runtime.proxy_entrypoint_script("macos").decode("utf-8")
+    assert "version=$(/usr/bin/earnapp --version | awk" in entrypoint
+    assert 'printf \'%s\\n\' "$version" >"$STATE_DIR/ver"' in entrypoint
+
+
 def _request(path: str) -> Request:
     return Request({"type": "http", "method": "POST", "path": path, "headers": []})
 
