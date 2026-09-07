@@ -103,13 +103,18 @@ def test_generate_macos_identity_is_complete_and_unique():
 def test_generate_macos_identity_keeps_model_architecture_consistent():
     for index in range(32):
         identity = earnapp_identity.generate_identity(f"node-mac-arch-{index}", "macos")
-        expected_arch = "arm64" if identity["device_model"] in {
-            "iMac21,1",
-            "MacBookPro17,1",
-            "MacBookPro18,2",
-            "MacBookPro18,3",
-            "MacBookPro20,1",
-        } else "x64"
+        expected_arch = (
+            "arm64"
+            if identity["device_model"]
+            in {
+                "iMac21,1",
+                "MacBookPro17,1",
+                "MacBookPro18,2",
+                "MacBookPro18,3",
+                "MacBookPro20,1",
+            }
+            else "x64"
+        )
 
         assert identity["arch"] == expected_arch
         assert identity["uname_m"] == ("arm64" if expected_arch == "arm64" else "x86_64")

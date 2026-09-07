@@ -358,7 +358,7 @@ def test_macos_image_context_pins_registration_to_the_supplied_binary(tmp_path):
         build_earnapp_canary_image.write_context(source, context, platform="macos")
 
     wrapper = (context / "cashpilot-proxy-entrypoint").read_text(encoding="utf-8")
-    assert f'MAC_BINARY_SHA256={expected["earnapp-mac"]}' in wrapper
+    assert f"MAC_BINARY_SHA256={expected['earnapp-mac']}" in wrapper
 
 
 @pytest.mark.parametrize(
@@ -642,10 +642,10 @@ def test_macos_proxy_wrapper_registers_the_profile_serial_not_the_uuid_suffix():
     wrapper = earnapp_runtime.generated_runtime_artifacts("macos")["cashpilot-proxy-entrypoint"].decode()
 
     assert 'IDENTITY_FILE="${IDENTITY_FILE:-$STATE_DIR/identity.json}"' in wrapper
-    assert 'serial=$(node -e' in wrapper
-    assert 'arch=$(node -e' in wrapper
+    assert "serial=$(node -e" in wrapper
+    assert "arch=$(node -e" in wrapper
     assert "arch=$arch&appid=mac_com.earnapp" in wrapper
-    assert 'serial=${EXPECTED_DEVICE_ID#sdk-mac-}' not in wrapper
+    assert "serial=${EXPECTED_DEVICE_ID#sdk-mac-}" not in wrapper
 
 
 def test_macos_proxy_wrapper_can_pin_an_operator_verified_reference_binary():

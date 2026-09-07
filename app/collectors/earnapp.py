@@ -631,7 +631,9 @@ class EarnAppAccountCollector:
                 return {"status": "error", "error_kind": "auth", "error": "authentication rejected"}
             rotate.raise_for_status()
             headers = self._headers(client, self.cookies)
-            response = await client.delete(f"{API_BASE}/device/{quote(uuid, safe='')}", params=API_PARAMS, headers=headers)
+            response = await client.delete(
+                f"{API_BASE}/device/{quote(uuid, safe='')}", params=API_PARAMS, headers=headers
+            )
             if response.status_code in {404, 410}:
                 return {"status": "deleted", "device_id": uuid, "already_absent": True}
             if response.status_code in AUTH_FAILURE_CODES:
@@ -642,7 +644,11 @@ class EarnAppAccountCollector:
             return {"status": "error", "error_kind": "route", "error": "EarnApp route unavailable"}
         except httpx.HTTPStatusError as exc:
             kind = base.classify_exception(exc)
-            return {"status": "error", "error_kind": "auth" if kind == base.KIND_AUTH else "remote", "error": "authentication rejected" if kind == base.KIND_AUTH else "EarnApp device deletion failed"}
+            return {
+                "status": "error",
+                "error_kind": "auth" if kind == base.KIND_AUTH else "remote",
+                "error": "authentication rejected" if kind == base.KIND_AUTH else "EarnApp device deletion failed",
+            }
         finally:
             await client.aclose()
 

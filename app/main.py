@@ -966,13 +966,13 @@ async def _delete_earnapp_remote_device(node: Mapping[str, Any]) -> bool:
     route = await earnapp_collection.account_route_status(account_id)
     if not account or str(route.get("status") or "") != "healthy":
         return False
-    result = await earnapp_collection.EarnAppAccountCollector(account.get("credentials") or {}, route).delete_device(device_id)
+    result = await earnapp_collection.EarnAppAccountCollector(account.get("credentials") or {}, route).delete_device(
+        device_id
+    )
     return str(result.get("status") or "").lower() == "deleted"
 
 
-async def _retire_earnapp_node_for_fresh_replacement(
-    node: Mapping[str, Any], *, preserve_proxy_affinity: bool
-) -> bool:
+async def _retire_earnapp_node_for_fresh_replacement(node: Mapping[str, Any], *, preserve_proxy_affinity: bool) -> bool:
     """Remote-delete, remove local runtime, then atomically clear identity."""
     node_id = str(node.get("logical_node_id") or "").strip()
     worker_id = int(node.get("assigned_worker_id") or 0)

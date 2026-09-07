@@ -1008,9 +1008,7 @@ def test_delete_device_uses_authenticated_account_proxy_and_is_idempotent():
 
     credentials = {"cookies": {"oauth-refresh-token": "refresh", "xsrf-token": "xsrf"}}
     proxy = {"protocol": "socks5", "host": "proxy.example", "port": 1080}
-    with patch(
-        "app.collectors.earnapp.httpx.AsyncClient", side_effect=lambda **kwargs: DeleteClient(calls, **kwargs)
-    ):
+    with patch("app.collectors.earnapp.httpx.AsyncClient", side_effect=lambda **kwargs: DeleteClient(calls, **kwargs)):
         result = asyncio.run(EarnAppAccountCollector(credentials, proxy).delete_device("device-a"))
 
     assert result == {"status": "deleted", "device_id": "device-a", "already_absent": True}

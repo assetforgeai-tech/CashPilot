@@ -38,4 +38,3 @@ def test_banned_never_falls_through_to_offline_restart():
         datetime(2026, 9, 8, 1, tzinfo=UTC),
     )
     assert decision.action == "recreate"
-

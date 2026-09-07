@@ -25,7 +25,9 @@ def build_manifest(root: Path) -> dict[str, object]:
     artifacts = []
     for path in sorted(root.rglob("*")):
         if path.is_file() and path.name not in {"vps.txt"}:
-            artifacts.append({"path": path.relative_to(root).as_posix(), "sha256": sha256(path), "size": path.stat().st_size})
+            artifacts.append(
+                {"path": path.relative_to(root).as_posix(), "sha256": sha256(path), "size": path.stat().st_size}
+            )
     return {"schema": 1, "source": "earnapp_update_05092026", "artifacts": artifacts}
 
 

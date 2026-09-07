@@ -646,9 +646,9 @@ _EARNAPP_CHILD_COLUMNS = {
         "window_started_at",
         "same_proxy_recreates",
         "rotate_count",
-    "earnings_zero_observed_at",
-    "earnings_cycle_id",
-    "last_recovery_cycle_id",
+        "earnings_zero_observed_at",
+        "earnings_cycle_id",
+        "last_recovery_cycle_id",
         "lifecycle_action",
         "quarantine_reason",
         "created_at",
@@ -2030,11 +2030,11 @@ async def _validate_completed_earnapp_migration(
             str(canonical_info[name]["type"] or "").upper() != expected
             for name, expected in _EARNAPP_ACCOUNT_COLUMN_TYPES.items()
         )
-            or any(
-                not int(canonical_info[name]["notnull"] or 0)
-                for name in _EARNAPP_ACCOUNT_REQUIRED_COLUMNS
-                - {"id", "token_expires_at", "cookie_expires_at", "last_auth_success_at", "last_auth_failure_at"}
-            )
+        or any(
+            not int(canonical_info[name]["notnull"] or 0)
+            for name in _EARNAPP_ACCOUNT_REQUIRED_COLUMNS
+            - {"id", "token_expires_at", "cookie_expires_at", "last_auth_success_at", "last_auth_failure_at"}
+        )
         or any(
             _normalise_sql_default(canonical_info[name]["dflt_value"]) != _normalise_sql_default(expected)
             for name, expected in _EARNAPP_ACCOUNT_DEFAULTS.items()
@@ -2788,7 +2788,10 @@ async def init_db() -> None:
             await _table_columns(db, "earnapp_accounts") if await _table_exists(db, "earnapp_accounts") else set()
         )
         baseline_columns = _EARNAPP_ACCOUNT_REQUIRED_COLUMNS - {
-            "last_auth_success_at", "last_auth_failure_at", "auth_failure_kind", "needs_token_refresh"
+            "last_auth_success_at",
+            "last_auth_failure_at",
+            "auth_failure_kind",
+            "needs_token_refresh",
         }
         if baseline_columns <= account_columns:
             for column, definition in {
@@ -5824,12 +5827,20 @@ async def prepare_fresh_earnapp_replacement(
         db = await _open_transaction_connection()
         try:
             await db.execute("BEGIN IMMEDIATE")
-            row = await (await db.execute(
-                "SELECT state, assigned_worker_id, generation, device_id, current_proxy_id "
-                "FROM earnapp_logical_nodes WHERE logical_node_id = ?", (node_id,)
-            )).fetchone()
-            if not row or str(row["state"]) != "ACTIVE" or int(row["assigned_worker_id"] or 0) != int(worker_id) \
-                    or int(row["generation"] or 0) != int(generation) or str(row["device_id"] or "") != str(device_id):
+            row = await (
+                await db.execute(
+                    "SELECT state, assigned_worker_id, generation, device_id, current_proxy_id "
+                    "FROM earnapp_logical_nodes WHERE logical_node_id = ?",
+                    (node_id,),
+                )
+            ).fetchone()
+            if (
+                not row
+                or str(row["state"]) != "ACTIVE"
+                or int(row["assigned_worker_id"] or 0) != int(worker_id)
+                or int(row["generation"] or 0) != int(generation)
+                or str(row["device_id"] or "") != str(device_id)
+            ):
                 await db.rollback()
                 return False
             proxy_id = int(row["current_proxy_id"] or 0)
