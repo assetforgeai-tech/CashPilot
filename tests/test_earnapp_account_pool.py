@@ -2530,6 +2530,7 @@ def test_proxy_capacity_counts_canonical_egress_and_excludes_every_assignment_ty
 
     asyncio.run(run())
 
+
 @pytest.mark.parametrize("profile", ["bound-profile", "new-profile"])
 def test_refresh_same_email_allows_display_name_change(tmp_path, profile):
     async def run():
@@ -2545,6 +2546,7 @@ def test_refresh_same_email_allows_display_name_change(tmp_path, profile):
             assert len(rows) == 1
             assert rows[0]["profile_key"] == "bound-profile"
             assert rows[0]["account_name"] == "New display name"
+
     asyncio.run(run())
 
 
@@ -2560,4 +2562,5 @@ def test_refresh_rejects_changed_email_with_same_display_name(tmp_path):
             with pytest.raises(ValueError, match="already bound"):
                 await earnapp_accounts.import_account(other)
             assert (await database.list_earnapp_accounts())[0]["email"] == "owner@example.com"
+
     asyncio.run(run())
