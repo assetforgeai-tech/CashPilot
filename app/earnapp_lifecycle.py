@@ -5,11 +5,11 @@ The decision function is pure; callers persist the returned counters and action.
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
-import hashlib
 
 # A short flatline window lets the worker recover promptly; the account API
 # can lag, so this is still long enough to avoid reacting to one poll.
