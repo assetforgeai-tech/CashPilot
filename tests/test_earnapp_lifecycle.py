@@ -42,15 +42,15 @@ def test_positive_usage_resets_recovery_counters():
     assert decision.clear_earnings_zero_observed is True
 
 
-def test_flat_usage_restarts_without_recreate_or_proxy_rotation():
+def test_banned_device_recreates_without_proxy_rotation():
     now = datetime.now(UTC)
     decision = evaluate_node(
         {"usage": 10.0, "online": False, "banned": True},
         _runtime(same_proxy_recreates=2, rotate_count=3),
         now,
     )
-    assert decision.action == "restart"
-    assert decision.same_proxy_recreates == 0
+    assert decision.action == "recreate"
+    assert decision.same_proxy_recreates == 3
     assert decision.rotate_count == 3
 
 
@@ -101,6 +101,20 @@ def test_positive_earnings_counter_clears_previous_zero_boundary():
     assert decision.clear_earnings_zero_observed is True
 
 
+def test_earnings_cycle_id_changes_at_counter_reset_and_is_stable_inside_cycle():
+    from app.earnapp_lifecycle import earnings_cycle_id
+
+    assert earnings_cycle_id(470, 0) == earnings_cycle_id(470, 0)
+    assert earnings_cycle_id(470, 0, boundary_started_at="2026-09-08T00:00:00+00:00") != earnings_cycle_id(
+        470, 0, boundary_started_at="2026-09-09T00:00:00+00:00"
+    )
+    assert earnings_cycle_id(470, 0, previous_cycle_id="cycle-a") != earnings_cycle_id(
+        470, 0, previous_cycle_id="cycle-b"
+    )
+    assert earnings_cycle_id(470, 60_000) == earnings_cycle_id(470, 60_000)
+    assert earnings_cycle_id(470, None) == ""
+
+
 def test_qualified_uptime_without_country_or_ip_waits_for_backend_assignment():
     now = datetime.now(UTC)
     decision = evaluate_node(
@@ -142,6 +156,27 @@ def test_proxy_failure_rotates_immediately_and_auth_failure_is_deferred():
         == "rotate_recreate"
     )
     assert evaluate_node({"usage": 10, "banned": False, "auth_failed": True}, _runtime(), now).action == "defer_auth"
+
+
+@pytest.mark.asyncio
+async def test_banned_recreate_requires_remote_device_delete(monkeypatch):
+    node = {
+        "logical_node_id": "earnapp-mac-banned",
+        "assigned_worker_id": 3098,
+        "generation": 3,
+        "device_id": "sdk-mac-" + "c" * 32,
+        "platform": "macos",
+        "remote_delete_required": True,
+    }
+    retire = AsyncMock(return_value=True)
+    monkeypatch.setattr(main, "_retire_earnapp_node_for_fresh_replacement", retire)
+    monkeypatch.setattr(main, "_assigned_worker_supports_earnapp_lifecycle", AsyncMock(return_value=True))
+    monkeypatch.setattr(main.database, "get_earnapp_logical_node", AsyncMock(return_value=node))
+    monkeypatch.setattr(main.database, "get_provider_instance", AsyncMock(return_value=None))
+    monkeypatch.setattr(main.database, "save_provider_instance", AsyncMock())
+
+    assert await main._execute_earnapp_lifecycle_action(node, "recreate") is True
+    retire.assert_awaited_once_with(node, preserve_proxy_affinity=True)
 
 
 @pytest.mark.asyncio

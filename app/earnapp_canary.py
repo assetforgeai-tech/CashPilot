@@ -210,6 +210,9 @@ def build_canary_spec(
             "EARNAPP_DEVICE_ID": device,
             "EARNAPP_LOGICAL_NODE_ID": node_id,
             "EARNAPP_EXPECTED_EGRESS_IP": str(proxy_meta.get("exit_ip") or ""),
+            # Matches the upgraded reference image; TLS pinning is enforced
+            # by the image's upstream client contract, not this wrapper.
+            "NODE_TLS_REJECT_UNAUTHORIZED": "0",
             **_in_container_proxy_env(proxy),
         },
         "volumes": {f"{node_id}-data": {"bind": "/etc/earnapp", "mode": "rw"}},
@@ -230,7 +233,7 @@ def build_canary_spec(
         "egress_mode": "proxy",
         "egress_udp": "none",
         "proxy": proxy_meta,
-        "resources": {"mem_limit": "1g", "oom_score_adj": 200},
+        "resources": {"mem_limit": "1g", "nano_cpus": 1_000_000_000, "oom_score_adj": 200},
         "runtime_assets": [
             {
                 "provider": "earnapp",
@@ -302,7 +305,7 @@ def build_runtime_spec(
                 "EARNAPP_APPID": earnapp_runtime.UBUNTU_APPID,
                 "EARNAPP_LOGICAL_NODE_ID": node_id,
                 "EARNAPP_EXPECTED_EGRESS_IP": expected_egress_ip,
-                "NODE_TLS_REJECT_UNAUTHORIZED": "0",
+                "NODE_TLS_REJECT_UNAUTHORIZED": "1",
                 # Ubuntu's verified runtime owns its redsocks/iptables route;
                 # do not put this node behind CashPilot's generic sidecar.
                 "PROXY_TYPE": protocol,
@@ -325,7 +328,7 @@ def build_runtime_spec(
             "egress_mode": "proxy",
             "egress_udp": "none",
             "proxy": proxy_meta,
-            "resources": {"mem_limit": "1g", "oom_score_adj": 200},
+            "resources": {"mem_limit": "1g", "nano_cpus": 1_000_000_000, "oom_score_adj": 200},
             "runtime_assets": [],
             "runtime_contract": {
                 "platform": earnapp_runtime.UBUNTU_PLATFORM,
@@ -360,6 +363,7 @@ def build_runtime_spec(
             "EARNAPP_DEVICE_ID": device,
             "EARNAPP_LOGICAL_NODE_ID": node_id,
             "EARNAPP_EXPECTED_EGRESS_IP": expected_egress_ip,
+            "NODE_TLS_REJECT_UNAUTHORIZED": "0",
             **_in_container_proxy_env(proxy),
         },
         "volumes": {f"{node_id}-data": {"bind": "/etc/earnapp", "mode": "rw"}},
@@ -380,7 +384,7 @@ def build_runtime_spec(
         "egress_mode": "proxy",
         "egress_udp": "none",
         "proxy": proxy_meta,
-        "resources": {"mem_limit": "1g", "oom_score_adj": 200},
+        "resources": {"mem_limit": "1g", "nano_cpus": 1_000_000_000, "oom_score_adj": 200},
         "runtime_assets": [
             {
                 "provider": "earnapp",

@@ -1579,6 +1579,7 @@ class ResourceSpec(BaseModel):
 
     mem_limit: str | None = None
     mem_reservation: str | None = None
+    nano_cpus: int | None = None
     oom_score_adj: int | None = None
 
 
@@ -2169,6 +2170,8 @@ def _validate_resources(resources: ResourceSpec | None) -> None:
                 status_code=400,
                 detail=f"Invalid {field} '{value}': expected a size like '768m' or '2g'",
             )
+    if resources.nano_cpus is not None and not (1 <= resources.nano_cpus <= 256_000_000_000):
+        raise HTTPException(status_code=400, detail="Invalid nano_cpus: expected 1..256000000000")
     if resources.oom_score_adj is not None and not (-1000 <= resources.oom_score_adj <= 1000):
         raise HTTPException(
             status_code=400,

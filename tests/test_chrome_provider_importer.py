@@ -179,10 +179,10 @@ def test_earnapp_background_sync_only_runs_after_binding_and_tracks_expiry_metad
     assert "chrome.cookies.onChanged.addListener" in background
     assert "syncBoundEarnAppAccount" in background
     assert 'type: "EARNAPP_SYNC_STATUS"' in background
-    assert "periodInMinutes: 15" in background
+    assert "periodInMinutes: 15" not in background
 
 
-def test_earnapp_cookie_debounce_does_not_replace_the_periodic_sync_alarm():
+def test_earnapp_cookie_debounce_is_the_only_automatic_sync_alarm():
     background = (EXT / "background.js").read_text(encoding="utf-8")
     cookie_listener = background[
         background.index("chrome.cookies.onChanged.addListener") : background.index("chrome.alarms.onAlarm.addListener")
@@ -197,6 +197,17 @@ def test_earnapp_cookie_debounce_does_not_replace_the_periodic_sync_alarm():
     assert "chrome.alarms.create(EARNAPP_COOKIE_DEBOUNCE_ALARM, { delayInMinutes: 0.5 })" in cookie_listener
     assert "EARNAPP_SYNC_ALARM" not in cookie_listener
     assert "alarm.name === EARNAPP_COOKIE_DEBOUNCE_ALARM" in alarm_listener
+    assert "EARNAPP_SYNC_ALARM" not in background
+
+
+def test_earnapp_auto_login_requires_explicit_operator_checkbox():
+    popup_html = (EXT / "popup.html").read_text(encoding="utf-8")
+    popup = (EXT / "popup.js").read_text(encoding="utf-8")
+    background = (EXT / "background.js").read_text(encoding="utf-8")
+    assert 'id="earnapp-auto-login"' in popup_html
+    assert "autoLoginEnabled" in popup
+    assert "autoLoginEnabled" in background
+    assert "[EARNAPP_AUTO_LOGIN_KEY]: false" in background
 
 
 def test_earnapp_sync_rejects_non_https_or_non_4gmt_destinations_and_hides_secrets():

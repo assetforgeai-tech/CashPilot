@@ -62,12 +62,18 @@ async def collect_account(account_id: int) -> dict[str, Any]:
             snapshot = await EarnAppAccountCollector(account.get("credentials") or {}, route).collect_snapshot()
             if snapshot.get("status") == "ok":
                 await database.save_earnapp_snapshot(account_id, snapshot)
-                if account.get("state") == "AUTH_FAILED":
-                    await database.set_earnapp_account_state(account_id, "ACTIVE")
+                if account.get("id") is not None:
+                    await database.record_earnapp_auth_result(account_id, success=True)
                 return snapshot
             last_snapshot = snapshot
             if snapshot.get("error_kind") == "auth":
-                await database.set_earnapp_account_state(account_id, "AUTH_FAILED")
+                failure_kind = str(snapshot.get("auth_failure_kind") or "AUTH_FAILED").upper()
+                if account.get("id") is not None:
+                    await database.record_earnapp_auth_result(
+                        account_id,
+                        success=False,
+                        failure_kind=failure_kind,
+                    )
                 return snapshot
         return last_snapshot
 

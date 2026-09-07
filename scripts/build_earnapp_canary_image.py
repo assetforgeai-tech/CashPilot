@@ -129,17 +129,18 @@ ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
             "COPY cashpilot-proxy-entrypoint /usr/local/bin/entrypoint.sh\n"
         )
         shellcheck = ""
-    return f"""FROM ubuntu:22.04
+    # Start from the exact upgraded VPS image for the platform.  This keeps
+    # native libraries, supervisor/watchdog, and OS packages identical; the
+    # generated layer only adds CashPilot's identity/proxy policy.
+    base_image = earnapp_runtime.REFERENCE_VPS_IMAGES[selected]
+    binary_hash = manifest_hashes(manifest)[binary_source]
+    return f"""FROM {base_image}
 
 ENV DEBIAN_FRONTEND=noninteractive \\
     EARNAPP_WATCHDOG=1 \\
     NODE_TLS_REJECT_UNAUTHORIZED=0
 
-RUN apt-get update \\
-    && apt-get install -y --no-install-recommends ca-certificates curl dbus iproute2 iptables nodejs procps redsocks \\
-    && rm -rf /var/lib/apt/lists/*
-
-COPY {binary_source} /opt/{binary_target}
+RUN test "$(sha256sum /opt/{binary_target} | cut -d' ' -f1)" = "{binary_hash}"
 COPY boot.js /usr/local/lib/node/boot.js
 COPY earn-supervisor /usr/local/bin/earn-supervisor
 {entrypoint_copy}{registration_copy}COPY cashpilot-doh.js /usr/local/lib/cashpilot-doh.js
@@ -192,13 +193,19 @@ def write_context(
     selected = str(platform or "macos").strip().lower()
     manifest = validate_artifacts(source, platform=selected)
     generated_names = set(earnapp_runtime.generated_runtime_artifacts(selected))
+    inherited = {"earnapp-mac"} if selected == "macos" else {"earnapp-bootstrap"} if selected == "ios" else set()
     for row in manifest["artifacts"]:
         name = str(row["path"])
-        if name not in generated_names:
+        if name not in generated_names and name not in inherited:
             shutil.copy2(source / name, context / name)
     manifest_bytes = _manifest_bytes(manifest)
     (context / "runtime-manifest.json").write_bytes(manifest_bytes)
-    for name, payload in earnapp_runtime.generated_runtime_artifacts(selected).items():
+    generated = earnapp_runtime.generated_runtime_artifacts(selected)
+    if selected == "macos":
+        generated["cashpilot-proxy-entrypoint"] = earnapp_runtime.proxy_entrypoint_script(
+            "macos", mac_binary_sha256=manifest_hashes(manifest)["earnapp-mac"]
+        )
+    for name, payload in generated.items():
         (context / name).write_bytes(payload)
     (context / "Dockerfile").write_text(render_dockerfile(manifest, platform=selected), encoding="utf-8")
     return context, hashlib.sha256(manifest_bytes).hexdigest()
@@ -216,9 +223,9 @@ def image_reference(manifest_hash: str, *, platform: str = "macos") -> str:
 def default_source_dir(platform: str = "macos") -> Path:
     """Return the external operator-supplied runtime bundle path."""
     selected = str(platform or "macos").strip().lower()
-    external_root = ROOT.parents[1] / "earnapp_new_update"
+    external_root = ROOT.parent / "earnapp_new_update"
     if selected == "ubuntu":
-        return ROOT.parents[1] / "earnapp_update_05092026" / "runtime" / "ubuntu"
+        return ROOT.parent / "earnapp_update_05092026" / "runtime" / "ubuntu"
     bundle = "ios" if selected == "ios" else "mac-1.660.577"
     return external_root / "earnapp-runtime-files" / bundle
 

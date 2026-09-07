@@ -35,10 +35,11 @@ _IOS_CATALOG = (
     ("iPhone17,2", "18.5", "22F76", "24.5.0", "CFNetwork/1575.500.1", "iPhone 16 Pro", "A18 Pro"),
 )
 _MAC_CATALOG = (
-    ("MacBookPro17,1", "11.0.1", "20B50", "20.1.0", "Big Sur", "1209.0.0"),
-    ("MacBookPro18,3", "12.6.8", "21G725", "21.6.0", "Monterey", "1335.0.3"),
-    ("MacBookPro18,2", "13.6.7", "22G720", "22.6.0", "Ventura", "1408.0.4"),
-    ("MacBookPro20,1", "14.6.1", "23G93", "23.6.0", "Sonoma", "1498.700.2"),
+    ("iMac21,1", "11.4", "20F71", "20.5.0", "Big Sur", "1240.0.4", "arm64"),
+    ("MacBookPro17,1", "11.0.1", "20B50", "20.1.0", "Big Sur", "1209.0.0", "arm64"),
+    ("MacBookPro18,3", "12.6.8", "21G725", "21.6.0", "Monterey", "1335.0.3", "arm64"),
+    ("MacBookPro18,2", "13.6.7", "22G720", "22.6.0", "Ventura", "1408.0.4", "arm64"),
+    ("MacBookPro20,1", "14.6.1", "23G93", "23.6.0", "Sonoma", "1498.700.2", "arm64"),
 )
 
 _MAC_STATE_FIELDS = frozenset(
@@ -168,16 +169,16 @@ def _runtime_state(*, mobile: bool, battery_percentage: int) -> dict[str, Any]:
 
 def _mac_identity(logical_node_id: str) -> dict[str, Any]:
     suffix = _node_suffix(logical_node_id)
-    model, os_version, os_build, uname_r, codename, cfnetwork = secrets.choice(_MAC_CATALOG)
+    model, os_version, os_build, uname_r, codename, cfnetwork, arch = secrets.choice(_MAC_CATALOG)
     serial = secrets.token_hex(20)
     identity = {
         **_base_state(),
-        "id": f"cp-macos-{os_version.replace('.', '')}-x64-{codename.lower().replace(' ', '-')}-{secrets.token_hex(4)}",
+        "id": f"cp-macos-{os_version.replace('.', '')}-{arch}-{codename.lower().replace(' ', '-')}-{secrets.token_hex(4)}",
         "platform": earnapp_runtime.MAC_PLATFORM,
         "appid": earnapp_runtime.MAC_APPID,
         "version": "1.660.577",
         "sdk_version": "1.660.577",
-        "arch": "x64",
+        "arch": arch,
         "release": f"Version {os_version} (Build {os_build})",
         "ifname": "en0",
         "iface_type": "eth",
@@ -191,7 +192,7 @@ def _mac_identity(logical_node_id: str) -> dict[str, Any]:
         "codename": codename,
         "device_model": model,
         "uname_s": "Darwin",
-        "uname_m": "x86_64",
+        "uname_m": arch,
         "uname_r": uname_r,
         "serial_material_mac": _local_unicast_mac(),
         "serial": serial,
@@ -612,3 +613,14 @@ async def ensure_identity_profile(logical_node_id: str, platform: str) -> dict[s
         "device_id": str(identity["device_id"]),
         "value": value,
     }
+
+
+async def reset_identity_profile(logical_node_id: str, platform: str) -> dict[str, str]:
+    """Create a fresh platform identity after confirmed remote deletion."""
+    from app import database
+
+    selected = _platform(platform)
+    removed = await database.delete_earnapp_identity_profile(logical_node_id)
+    if not removed:
+        raise RuntimeError("EarnApp identity reset requires an existing unprotected profile")
+    return await ensure_identity_profile(logical_node_id, selected)

@@ -780,6 +780,20 @@ async def _run_earnapp_lifecycle_scheduler() -> None:
                 },
                 node,
             )
+            cycle_id = earnapp_lifecycle.earnings_cycle_id(
+                account_id,
+                evidence.get("earnings_update_in_ms"),
+                boundary_started_at=node.get("earnings_zero_observed_at"),
+                previous_cycle_id=node.get("earnings_cycle_id"),
+            )
+            if (
+                cycle_id
+                and decision.action in {"restart", "recreate", "rotate_recreate"}
+                and str(node.get("last_recovery_cycle_id") or "") == cycle_id
+            ):
+                # One recovery mutation per Earnings Update cycle.  A later
+                # collector snapshot may clear the flatline without restarting again.
+                continue
             # Anchor the short observation window on first evidence; without
             # this persisted timestamp, every scheduler pass starts the clock over.
             window_started_at = str(node.get("window_started_at") or datetime.now(UTC).isoformat())
@@ -789,7 +803,10 @@ async def _run_earnapp_lifecycle_scheduler() -> None:
                 worker = await database.get_worker(int(node.get("assigned_worker_id") or 0))
                 if not _worker_supports_earnapp_lifecycle(worker):
                     continue
-                if not await _execute_earnapp_lifecycle_action(node, decision.action):
+                action_node = dict(node) if decision.reason == "device banned" else node
+                if action_node is not node:
+                    action_node["remote_delete_required"] = True
+                if not await _execute_earnapp_lifecycle_action(action_node, decision.action):
                     continue
                 window_started_at = datetime.now(UTC).isoformat()
             await database.update_earnapp_lifecycle(
@@ -797,6 +814,7 @@ async def _run_earnapp_lifecycle_scheduler() -> None:
                 decision,
                 usage=float(usage or 0),
                 window_started_at=window_started_at,
+                earnings_cycle_id=cycle_id or None,
             )
         except Exception as exc:  # noqa: BLE001 - one node cannot block peers
             logger.debug("EarnApp lifecycle evaluation skipped: %s", type(exc).__name__)
@@ -902,6 +920,8 @@ async def _execute_earnapp_lifecycle_action(node: Mapping[str, Any], action: str
         return isinstance(result, Mapping) and str(result.get("status") or "").lower() == "restarted"
     if action != "recreate":
         return False
+    if bool(node.get("remote_delete_required")):
+        return await _retire_earnapp_node_for_fresh_replacement(node, preserve_proxy_affinity=True)
     platform = str(node.get("platform") or "").strip().lower()
     if platform not in {"macos", "ios", "ubuntu"}:
         return False
@@ -933,6 +953,52 @@ async def _execute_earnapp_lifecycle_action(node: Mapping[str, Any], action: str
                 proxy_id=int(instance.get("proxy_id") or node.get("current_proxy_id") or 0) or None,
                 status=str(instance.get("status") or "running"),
             )
+    return True
+
+
+async def _delete_earnapp_remote_device(node: Mapping[str, Any]) -> bool:
+    """Delete the dashboard device before a banned/fresh replacement."""
+    account_id = int(node.get("account_id") or 0)
+    device_id = str(node.get("device_id") or "").strip()
+    if account_id <= 0 or not device_id:
+        return False
+    account = await database.get_earnapp_account_credentials(account_id)
+    route = await earnapp_collection.account_route_status(account_id)
+    if not account or str(route.get("status") or "") != "healthy":
+        return False
+    result = await earnapp_collection.EarnAppAccountCollector(account.get("credentials") or {}, route).delete_device(
+        device_id
+    )
+    return str(result.get("status") or "").lower() == "deleted"
+
+
+async def _retire_earnapp_node_for_fresh_replacement(node: Mapping[str, Any], *, preserve_proxy_affinity: bool) -> bool:
+    """Remote-delete, remove local runtime, then atomically clear identity."""
+    node_id = str(node.get("logical_node_id") or "").strip()
+    worker_id = int(node.get("assigned_worker_id") or 0)
+    generation = int(node.get("generation") or 0)
+    device_id = str(node.get("device_id") or "").strip()
+    if not await _delete_earnapp_remote_device(node):
+        return False
+    removed = await _proxy_to_worker(
+        worker_id,
+        "DELETE",
+        f"/api/earnapp/docker-nodes/{node_id}",
+        json={"generation": generation, "device_id": device_id},
+        timeout=180,
+    )
+    if not isinstance(removed, Mapping) or str(removed.get("status") or "").lower() != "removed":
+        return False
+    if not await database.prepare_fresh_earnapp_replacement(
+        node_id,
+        worker_id,
+        generation=generation,
+        device_id=device_id,
+        preserve_proxy_affinity=preserve_proxy_affinity,
+    ):
+        return False
+    with contextlib.suppress(Exception):
+        await database.delete_earnapp_identity_profile(node_id)
     return True
 
 
@@ -4640,6 +4706,11 @@ async def _rotate_unhealthy_earnapp_node(
             return False
         if not dashboard_blocked and current[4] != "unhealthy":
             return False
+        # A real account-bound node must be removed from EarnApp before its
+        # proxy identity changes. Older synthetic test rows lack account_id;
+        # preserve their local rotation contract.
+        if int(node.get("account_id") or 0) > 0:
+            return await _retire_earnapp_node_for_fresh_replacement(node, preserve_proxy_affinity=False)
         candidate = await database.find_available_earnapp_proxy_for_node(
             node_id,
             int(worker_id),

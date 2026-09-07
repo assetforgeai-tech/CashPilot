@@ -37,8 +37,16 @@ UBUNTU_RUNTIME_HOST = "earnapp_ubuntu"
 UBUNTU_REFERENCE_IMAGE = "ghcr.io/assetforgeai-tech/cashpilot-earnapp-ubuntu"
 # Pin the Linux/amd64 child manifest rather than the multi-platform index so
 # the canary cannot silently select a different architecture.
-UBUNTU_REFERENCE_DIGEST = "sha256:19b8d5831f0e83c0beb9a514bc9ed40c0be252ac101217fc01a6e2ac4714c559"
+# Digest captured from the upgraded reference VPS (2026-09-08).  Keep the
+# platform image immutable; a tag may move while a canary is running.
+UBUNTU_REFERENCE_DIGEST = "sha256:3e63d79166d493c55879635071c85da298e0d7c13f186dedcb579f9512abdc41"
 UBUNTU_REFERENCE_IMAGE_PIN = f"{UBUNTU_REFERENCE_IMAGE}@{UBUNTU_REFERENCE_DIGEST}"
+
+REFERENCE_VPS_IMAGES = {
+    "macos": "ghcr.io/assetforgeai-tech/cashpilot-earnapp-macos@sha256:3f2a7b9998e6940616c0ec2beec2bfda73e12b598c2da5c80d7ec57ba5178a6d",
+    "ios": "ghcr.io/assetforgeai-tech/cashpilot-earnapp-ios@sha256:915875703413a2192c0995bbfc3af4921ed26755a8fe43d329d6f3ebc7d9e0bb",
+    "ubuntu": UBUNTU_REFERENCE_IMAGE_PIN,
+}
 
 # These are the only runtime artifacts copied into the canary image.  The
 # binaries remain outside Git; the hashes pin the exact local source bundle
@@ -228,7 +236,7 @@ def ios_entrypoint_script() -> bytes:
     )
 
 
-def proxy_entrypoint_script(platform: str = "macos") -> bytes:
+def proxy_entrypoint_script(platform: str = "macos", *, mac_binary_sha256: str | None = None) -> bytes:
     """Route one EarnApp container through its assigned proxy and fail closed."""
     selected = _image_platform(platform)
     next_entrypoint = "/usr/local/bin/ios-entrypoint" if selected == "ios" else "/usr/local/bin/entrypoint-original.sh"
@@ -282,6 +290,9 @@ sed -i '0,/^  set -e$/s//  : # caller restores errexit/' "$SANITIZED_ENTRYPOINT"
 chmod 0755 "$SANITIZED_ENTRYPOINT"
 exec "$SANITIZED_ENTRYPOINT" "$@"'''
     else:
+        binary_sha256 = str(mac_binary_sha256 or MAC_RUNTIME_ARTIFACT_HASHES["earnapp-mac"]).strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{64}", binary_sha256):
+            raise ValueError("EarnApp Mac binary hash must be SHA-256")
         runtime_handoff = r'''# The reference entrypoint starts redsocks and also exports application-level
 # proxy variables. EarnApp's Axios client then sends absolute-form requests
 # that some leased HTTP proxies reject with 400. Keep redsocks/iptables, but
@@ -289,7 +300,7 @@ exec "$SANITIZED_ENTRYPOINT" "$@"'''
 # routing and retain origin-form requests.
 # A failed first install can leave a complete binary without the reference
 # marker. Adopt only the content-addressed binary; partial installs must retry.
-MAC_BINARY_SHA256=d140b41ad1d7e851e2775aed4a77dc72fc306a206287c440829d6b47f35d6911
+MAC_BINARY_SHA256=__MAC_BINARY_SHA256__
 if [[ -s "$STATE_DIR/uuid" && -s "$STATE_DIR/com.earnapp.cid" && -x /opt/earnapp-mac \
       && "$(sha256sum /opt/earnapp-mac | awk '{print $1}')" == "$MAC_BINARY_SHA256" ]]; then
   install -m 0755 /opt/earnapp-mac /usr/bin/earnapp
@@ -308,10 +319,15 @@ export PROXY_HOST="$PROXY_IP"
 export PROXY_PORT PROXY_USER PROXY_PASS PROXY_TYPE
 EXPECTED_DEVICE_ID="${EARNAPP_DEVICE_ID:?}"
 [[ -s "$STATE_DIR/uuid" && "$(cat "$STATE_DIR/uuid")" == "$EXPECTED_DEVICE_ID" ]]
+IDENTITY_FILE="${IDENTITY_FILE:-$STATE_DIR/identity.json}"
+[[ -s "$IDENTITY_FILE" ]]
 version=$(/usr/bin/earnapp --version | awk '{print $2}')
 printf '%s\n' "$version" >"$STATE_DIR/ver"
 if [[ ! -s "$STATE_DIR/registered" || "$(cat "$STATE_DIR/registered")" != "$EXPECTED_DEVICE_ID" ]]; then
-  serial=${EXPECTED_DEVICE_ID#sdk-mac-}
+  serial=$(node -e 'const d=require(process.argv[1]); process.stdout.write(String(d.serial || ""))' "$IDENTITY_FILE")
+  arch=$(node -e 'const d=require(process.argv[1]); process.stdout.write(String(d.arch || ""))' "$IDENTITY_FILE")
+  [[ -n "$serial" ]]
+  [[ -n "$arch" ]]
   register_body=$(mktemp)
   trap 'rm -f "$register_body"' EXIT
   case "$PROXY_TYPE" in
@@ -326,7 +342,7 @@ if [[ ! -s "$STATE_DIR/registered" || "$(cat "$STATE_DIR/registered")" != "$EXPE
     if curl -fsS --http1.1 --connect-timeout 15 --max-time 45 \
         "${register_proxy[@]}" -H 'Content-Type: application/json' \
         -o "$register_body" \
-        "https://client.earnapp.com/install_device?uuid=$EXPECTED_DEVICE_ID&version=$version&arch=x64&appid=mac_com.earnapp&os=macOS" \
+        "https://client.earnapp.com/install_device?uuid=$EXPECTED_DEVICE_ID&version=$version&arch=$arch&appid=mac_com.earnapp&os=macOS" \
         --data "{\"serial\":\"$serial\"}" \
       && grep -Eq '"ok"[[:space:]]*:[[:space:]]*(1|true|"1")' "$register_body"; then
       printf '%s' "$EXPECTED_DEVICE_ID" >"$STATE_DIR/registered"
@@ -344,6 +360,7 @@ sed '/# ANTI-DETECTION: Docker \/ VM/i unset HTTP_PROXY HTTPS_PROXY http_proxy h
   /usr/local/bin/entrypoint-original.sh >"$SANITIZED_ENTRYPOINT"
 chmod 0755 "$SANITIZED_ENTRYPOINT"
 exec "$SANITIZED_ENTRYPOINT" "$@"'''
+        runtime_handoff = runtime_handoff.replace("__MAC_BINARY_SHA256__", binary_sha256)
     return f"""#!/usr/bin/env bash
 set -euo pipefail
 STATE_DIR=/etc/earnapp

@@ -1,0 +1,311 @@
+{
+  "artifacts": [
+    {
+      "path": "artifacts/earnapp-mac-1.605.415",
+      "sha256": "3333e8dd1e1a5433d79542ad646edcf07256e3f9fee05e14735e61e606a374d0",
+      "size": 52730204
+    },
+    {
+      "path": "artifacts/ios-image.tar.gz",
+      "sha256": "9f6345b0bd97e5732fc643ee85092e40b311c9bed88cf370c1d89d71979b89c6",
+      "size": 146738020
+    },
+    {
+      "path": "artifacts/IOS_SHA256SUMS",
+      "sha256": "7141f441c60c713e55e61623d01343872b189a95cef60781fbc6d17191d97787",
+      "size": 1295
+    },
+    {
+      "path": "artifacts/mac-image.tar.gz",
+      "sha256": "416349b5556c124021af2cd2fb674b55a9c614a9319c7383b21c24b1fe26a723",
+      "size": 118057540
+    },
+    {
+      "path": "artifacts/mac_layers/05ee9b72fba48d82ac46b6557d75b33bb238a9235e4ee2a303fa16fc4442cb71.supervisor",
+      "sha256": "c6dcfb1a27c2339bb90e8c8f8d04ce240b08d5e1c05d7f4750b0e0911fb0db97",
+      "size": 3491
+    },
+    {
+      "path": "artifacts/mac_layers/bba4bec88e94ad5d770efeefe222885fc1fdd1a1124c36eab607b06bc16bb76d.entrypoint",
+      "sha256": "a785dbd317365f23b32fce8d9b93357073e3329f374b199a089b789f89748d41",
+      "size": 6532
+    },
+    {
+      "path": "artifacts/mac_layers/blobs/sha256/05ee9b72fba48d82ac46b6557d75b33bb238a9235e4ee2a303fa16fc4442cb71",
+      "sha256": "05ee9b72fba48d82ac46b6557d75b33bb238a9235e4ee2a303fa16fc4442cb71",
+      "size": 1728
+    },
+    {
+      "path": "artifacts/mac_layers/blobs/sha256/18b5265473c44417802a5fabb3f14d61d5865e0c2b73a5b4fc3cdc2cd7a9944c",
+      "sha256": "18b5265473c44417802a5fabb3f14d61d5865e0c2b73a5b4fc3cdc2cd7a9944c",
+      "size": 1047
+    },
+    {
+      "path": "artifacts/mac_layers/blobs/sha256/1fbaea36ce6c5b083ac4873d05bb6c7a1d58264e86c7cc8222b5d3930eb648d5",
+      "sha256": "1fbaea36ce6c5b083ac4873d05bb6c7a1d58264e86c7cc8222b5d3930eb648d5",
+      "size": 198
+    },
+    {
+      "path": "artifacts/mac_layers/blobs/sha256/21a62e5ed2be66d67a86321ad4916812d63cb8bb93de80bbf3688e29931e9568",
+      "sha256": "21a62e5ed2be66d67a86321ad4916812d63cb8bb93de80bbf3688e29931e9568",
+      "size": 24445823
+    },
+    {
+      "path": "artifacts/mac_layers/blobs/sha256/2353fce57838a0f0a2f2c3b0a8973a2eaa1bac6c55c5c2a63670a546a765af47",
+      "sha256": "2353fce57838a0f0a2f2c3b0a8973a2eaa1bac6c55c5c2a63670a546a765af47",
+      "size": 801
+    },
+    {
+      "path": "artifacts/mac_layers/blobs/sha256/27697358e79c95fdd1cf7a05ea87570ccde0a2c5952dfd7ff9a2c1b421f517a6",
+      "sha256": "27697358e79c95fdd1cf7a05ea87570ccde0a2c5952dfd7ff9a2c1b421f517a6",
+      "size": 185
+    },
+    {
+      "path": "artifacts/mac_layers/blobs/sha256/39a945af8df2ad9343f141c82355d3f2c4b576d432eda34c460d630607462b60",
+      "sha256": "39a945af8df2ad9343f141c82355d3f2c4b576d432eda34c460d630607462b60",
+      "size": 29736517
+    },
+    {
+      "path": "artifacts/mac_layers/blobs/sha256/3cb984f91100d7c9ce60df8915245b701c382c5841cb834a7b77b38c3c12cd12",
+      "sha256": "3cb984f91100d7c9ce60df8915245b701c382c5841cb834a7b77b38c3c12cd12",
+      "size": 458
+    },
+    {
+      "path": "artifacts/mac_layers/blobs/sha256/4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1",
+      "sha256": "4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1",
+      "size": 32
+    },
+    {
+      "path": "artifacts/mac_layers/blobs/sha256/5359ffe7a6b7cdb347c83d4a5ccc07e7086331b88093b64951bbff256596d97c",
+      "sha256": "5359ffe7a6b7cdb347c83d4a5ccc07e7086331b88093b64951bbff256596d97c",
+      "size": 9909
+    },
+    {
+      "path": "artifacts/mac_layers/blobs/sha256/54ec819ef0b3b3e272894b58c8939a6f480b37bcd4336c632c238f2654504369",
+      "sha256": "54ec819ef0b3b3e272894b58c8939a6f480b37bcd4336c632c238f2654504369",
+      "size": 24445141
+    },
+    {
+      "path": "artifacts/mac_layers/blobs/sha256/5ac7cfee9360eef8d55f3faaa93c6aa9088a07ed1f932152e5f7186eb6c99d11",
+      "sha256": "5ac7cfee9360eef8d55f3faaa93c6aa9088a07ed1f932152e5f7186eb6c99d11",
+      "size": 1536
+    },
+    {
+      "path": "artifacts/mac_layers/blobs/sha256/5f4557a7b16433d7379ac5a678e1cc3a15fe1aadee1ab6fd5c61ad4a4b90c6e2",
+      "sha256": "5f4557a7b16433d7379ac5a678e1cc3a15fe1aadee1ab6fd5c61ad4a4b90c6e2",
+      "size": 249
+    },
+    {
+      "path": "artifacts/mac_layers/blobs/sha256/956cd537ed3f1c38b52c1c872f23d2e8f3f97a0027c15764f11b1f25fd6c8ec4",
+      "sha256": "956cd537ed3f1c38b52c1c872f23d2e8f3f97a0027c15764f11b1f25fd6c8ec4",
+      "size": 10214867
+    },
+    {
+      "path": "artifacts/mac_layers/blobs/sha256/a5e911586dd14aedcd5ef872a3cc584aa1a665e99cb59f97eb0f3ca30aaa3c49",
+      "sha256": "a5e911586dd14aedcd5ef872a3cc584aa1a665e99cb59f97eb0f3ca30aaa3c49",
+      "size": 24445136
+    },
+    {
+      "path": "artifacts/mac_layers/blobs/sha256/a7461b6fcf5c52b8aa96c9095c3607b12b70db7a83d44e91968342d1b9672fc4",
+      "sha256": "a7461b6fcf5c52b8aa96c9095c3607b12b70db7a83d44e91968342d1b9672fc4",
+      "size": 5319811
+    },
+    {
+      "path": "artifacts/mac_layers/blobs/sha256/bba4bec88e94ad5d770efeefe222885fc1fdd1a1124c36eab607b06bc16bb76d",
+      "sha256": "bba4bec88e94ad5d770efeefe222885fc1fdd1a1124c36eab607b06bc16bb76d",
+      "size": 2210
+    },
+    {
+      "path": "artifacts/mac_layers/blobs/sha256/c0a751f2c1a8a1ec16703485644ef7566233b8f071510c5d2838ac4195cbfafe",
+      "sha256": "c0a751f2c1a8a1ec16703485644ef7566233b8f071510c5d2838ac4195cbfafe",
+      "size": 4273
+    },
+    {
+      "path": "artifacts/mac_layers/blobs/sha256/c1c106f3e59e84b605e25ecf173bf6e9e906dca1f4ef777c338d04b879f9a4b1",
+      "sha256": "c1c106f3e59e84b605e25ecf173bf6e9e906dca1f4ef777c338d04b879f9a4b1",
+      "size": 191
+    },
+    {
+      "path": "artifacts/mac_layers/blobs/sha256/c42b5055e60102f57cb226c9d68194b4bb34e07dd94b37969ce262febd92b018",
+      "sha256": "c42b5055e60102f57cb226c9d68194b4bb34e07dd94b37969ce262febd92b018",
+      "size": 4666
+    },
+    {
+      "path": "artifacts/mac_layers/index.json",
+      "sha256": "30dbc534526661f82b7f4c7b14f2446f426db6ad98b08cd737fbca8b73591226",
+      "size": 368
+    },
+    {
+      "path": "artifacts/mac_layers/manifest.json",
+      "sha256": "783e8a46fbe6159eda9ce61b884addc39672dad46d1aa4f8995a4ee917c2b820",
+      "size": 1738
+    },
+    {
+      "path": "artifacts/mac_layers/oci-layout",
+      "sha256": "18f0797eab35a4597c1e9624aa4f15fd91f6254e5538c1e0d193b2a95dd4acc6",
+      "size": 30
+    },
+    {
+      "path": "artifacts/SHA256SUMS",
+      "sha256": "f2205e9cab4e0949a449f0cff5ca0edba3e4fce8b204c963c048fac6c8b00028",
+      "size": 2094
+    },
+    {
+      "path": "artifacts/ubuntu-image.tar.gz",
+      "sha256": "103ad18352f4ce313096300d8e148925ba38dce11573fb0f77b4d8bd068d8b95",
+      "size": 65158754
+    },
+    {
+      "path": "audit_vps_readonly.ps1",
+      "sha256": "6e51eb48dc26bdc33fa6aa8a5ead1d5a801a9d8301a667473a08109e2983e038",
+      "size": 4660
+    },
+    {
+      "path": "evidence/earnapp-ios-n-2a3ff5.inspect.json",
+      "sha256": "afbb330b430975f0f8665c231a85724a2f28d45fdd9aef7022c05c70eeb4b94a",
+      "size": 8142
+    },
+    {
+      "path": "evidence/earnapp-ios-n-2a3ff5.logs.txt",
+      "sha256": "371595e4bd3b527ea07659acd7be335d91f0a19c12a41dc6127aa2b7642932f3",
+      "size": 18941
+    },
+    {
+      "path": "evidence/earnapp-linux-n-d6e656.inspect.json",
+      "sha256": "04804037afcdc1f6fea3ee20f93024ebed9ffbe70d675de72d21aa405a14eb89",
+      "size": 6612
+    },
+    {
+      "path": "evidence/earnapp-linux-n-d6e656.logs.txt",
+      "sha256": "4860ee45451c67dbaf2c142d1eb2036ef7c957bc1e7ec2ee7652099a95c0df22",
+      "size": 27851
+    },
+    {
+      "path": "evidence/earnapp-mac-n-21d75d.inspect.json",
+      "sha256": "058fb0b4123dbaf01686b2ff5a4c7bf571d286bff2387ee2570910315380402b",
+      "size": 8139
+    },
+    {
+      "path": "evidence/earnapp-mac-n-21d75d.logs.txt",
+      "sha256": "159fd498f5b2fc03933d3ef19993100f40c8a60661c36c68eff981c10c01c964",
+      "size": 127286
+    },
+    {
+      "path": "evidence/export-preflight.txt",
+      "sha256": "368b78929f9f2e8fb5405d5c4db76275f2c824f88f7c26890dd21c3a7fe68eda",
+      "size": 47
+    },
+    {
+      "path": "evidence/ios-export-preflight.txt",
+      "sha256": "017ce253a50a5382fe77b3f37ba9170cdb079bcefab7249f892bc458dc86d025",
+      "size": 51
+    },
+    {
+      "path": "evidence/ios-image.inspect.json",
+      "sha256": "28b123213ba2eb652c6d655a4482bfad98b056817e890cf4a7df9ce9e91aafa2",
+      "size": 3992
+    },
+    {
+      "path": "evidence/mac-image.inspect.json",
+      "sha256": "e1fa2e4882991a6cf66493271237fde9d2853d469dee3b553b8730bee04457dd",
+      "size": 3909
+    },
+    {
+      "path": "evidence/ubuntu-ghcr-publish.txt",
+      "sha256": "bfaa436ff2afd629118285e16fac910f6ac6302522057a23c071b3ea3250044b",
+      "size": 315
+    },
+    {
+      "path": "evidence/ubuntu-image.inspect.json",
+      "sha256": "45e7677f285386fe7b52c86948655ff10b28537ace1dae04bf9a0d9b73e5d82c",
+      "size": 2943
+    },
+    {
+      "path": "export_ios_baseline.ps1",
+      "sha256": "1d2133c47315ca9ea6bc2b771920c725b5cbb2b623d5aaaa72a4f6ed1f8e39f0",
+      "size": 4313
+    },
+    {
+      "path": "export_mac_ubuntu_baseline.ps1",
+      "sha256": "d27b9d28925a0a6c9efdf063949178b0c67daceba85b77b19ef50c5ba3f22ccd",
+      "size": 4412
+    },
+    {
+      "path": "MAC_UBUNTU_BASELINE.md",
+      "sha256": "cb14bd6ef88ebcde6deb81283a4820a2da327f6956d18532fe3b14abcbbfa53b",
+      "size": 4563
+    },
+    {
+      "path": "publish_ubuntu_private_ghcr.ps1",
+      "sha256": "d63109efe80b538a3fa125d6584427c0b5c13c1afcd70e2d4d239fe0c958eba2",
+      "size": 2010
+    },
+    {
+      "path": "READONLY_AUDIT.md",
+      "sha256": "1ab47c8cb2d85c1608fb633bd1ad09c460aaeff4b7d326756a2e76af3441e1c5",
+      "size": 2478
+    },
+    {
+      "path": "runtime/host-runtime.tar.gz",
+      "sha256": "85cea451eec057fa7e734548ca3ba6d779ed5836a3f9de14b8394575ef0d7d8e",
+      "size": 45
+    },
+    {
+      "path": "runtime/ios/bound-entrypoint",
+      "sha256": "e05a63a8b030b2afd150d67b007b1ade8aa5c2ece6a4d41e7a8ad4babf5c7453",
+      "size": 491
+    },
+    {
+      "path": "runtime/ios/earn-supervisor",
+      "sha256": "170c39c7821b7fd6110b96242b703fd6a0541dee29cf6c4525c3a70b67d42a25",
+      "size": 715
+    },
+    {
+      "path": "runtime/ios/earnapp-bind/fp-check.sh",
+      "sha256": "3e8a6deabccae7c1135d2c35bb61301a9167a0003fa28eb66441fd83fd908ccd",
+      "size": 1157
+    },
+    {
+      "path": "runtime/ios/earnapp-bind/host_fingerprint.py",
+      "sha256": "6bd372e7483e615500652f0ce6b0b97b320a25f43df8941698e97256b0a15963",
+      "size": 14428
+    },
+    {
+      "path": "runtime/ios/entrypoint.sh",
+      "sha256": "802b5c305bc552bb06d2e9cbfaa00297d1da3a1ac9f58a173cceb2d8b79fa001",
+      "size": 7882
+    },
+    {
+      "path": "runtime/mac/earn-spoof/identity-apply.sh",
+      "sha256": "407c234739ea61b833f4f136595ebdd9a78e79c764a63f25cf5449b755c5bad9",
+      "size": 2626
+    },
+    {
+      "path": "runtime/mac/earnapp-bind/fp-check.sh",
+      "sha256": "3e8a6deabccae7c1135d2c35bb61301a9167a0003fa28eb66441fd83fd908ccd",
+      "size": 1157
+    },
+    {
+      "path": "runtime/mac/earnapp-bind/host_fingerprint.py",
+      "sha256": "6bd372e7483e615500652f0ce6b0b97b320a25f43df8941698e97256b0a15963",
+      "size": 14428
+    },
+    {
+      "path": "runtime/mac/entrypoint.sh",
+      "sha256": "111056c55165df8cdaeb00af0ada98c1e724c7c5f990e925b1132cbc58d60645",
+      "size": 6363
+    },
+    {
+      "path": "runtime/ubuntu/entrypoint.sh",
+      "sha256": "b03e12ed092f8386177910b9d9d89e6189c66730472a891d67192a958a4344bc",
+      "size": 14385
+    },
+    {
+      "path": "vps-readonly-inventory.txt",
+      "sha256": "923bc1f02c827250b4024c789481da8ffd4e6da30eb7cc16fba0a4a95c3749c2",
+      "size": 23966
+    }
+  ],
+  "schema": 1,
+  "source": "earnapp_update_05092026"
+}
