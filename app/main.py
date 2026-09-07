@@ -3858,7 +3858,10 @@ async def _resolve_earnapp_ubuntu_lifecycle(
     generation = int(node.get("generation") or 0)
     device_id = str(node.get("device_id") or "").strip()
     state = str(node.get("state") or "").strip().upper()
-    if platform != "ubuntu" and not (allow_macos_remove and platform == "macos"):
+    # The route name is legacy; all current EarnApp Docker lanes share the
+    # same CAS lifecycle. Keep the backend guard, but do not reject valid
+    # macOS/iOS assignments before dispatching their Docker action.
+    if platform not in {"ubuntu", "macos", "ios"}:
         raise HTTPException(status_code=409, detail=provider_runtime.EARNAPP_PLATFORM_BLOCK_MESSAGE)
     if state not in {"ACTIVE", "RECOVERY_HOLD"} or assigned_worker_id <= 0 or generation <= 0 or not device_id:
         raise HTTPException(status_code=409, detail="EarnApp Ubuntu assignment is not lifecycle-ready")

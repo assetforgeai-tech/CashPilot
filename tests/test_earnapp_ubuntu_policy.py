@@ -839,7 +839,7 @@ async def test_database_finalize_ubuntu_remove_releases_exact_lease_and_preserve
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("platform", ["macos", "ios", "unknown"])
+@pytest.mark.parametrize("platform", ["unknown"])
 @pytest.mark.parametrize("action", ["stop", "restart"])
 async def test_server_lifecycle_blocks_non_ubuntu_nodes_from_authoritative_db(monkeypatch, platform, action):
     proxy = AsyncMock()
@@ -858,6 +858,34 @@ async def test_server_lifecycle_blocks_non_ubuntu_nodes_from_authoritative_db(mo
 
     assert exc.value.status_code == 409
     proxy.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", ["macos", "ios"])
+@pytest.mark.parametrize("action", ["stop", "restart"])
+async def test_server_lifecycle_dispatches_current_docker_platforms(monkeypatch, platform, action):
+    device_prefix = "sdk-mac-" if platform == "macos" else "sdk-ios-"
+    device_id = device_prefix + "a" * 32
+    proxy = AsyncMock(return_value={"status": action})
+    monkeypatch.setattr(main, "_require_writer", lambda _request: {"r": "writer"})
+    monkeypatch.setattr(
+        database,
+        "get_earnapp_logical_node",
+        AsyncMock(return_value=_authoritative_node(platform=platform, device_id=device_id)),
+    )
+    monkeypatch.setattr(
+        database, "get_provider_instance", AsyncMock(return_value={"instance_id": "earnapp-platform-policy"})
+    )
+    monkeypatch.setattr(database, "get_provider_instance_spec", AsyncMock(return_value={"runtime_backend": "docker"}))
+    monkeypatch.setattr(main, "_proxy_to_worker", proxy)
+    monkeypatch.setattr(main.database, "record_health_event", AsyncMock())
+    monkeypatch.setattr(main.metrics, "record_container_lifecycle", lambda *_args, **_kwargs: None)
+
+    await getattr(main, f"_svc_{action}")(
+        _request(f"/api/{action}/earnapp-platform-policy"), "earnapp-platform-policy", 3
+    )
+
+    proxy.assert_awaited_once_with(3, "POST", f"/api/containers/earnapp-platform-policy/{action}")
 
 
 @pytest.mark.asyncio
