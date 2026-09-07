@@ -11,7 +11,7 @@ description: >
 short_description: Proxy-only EarnApp runtime with platform-aware canary provisioning
 
 docker:
-  image: cashpilot/earnapp-mac-canary:asset-d3ab51669be3
+  image: cashpilot/earnapp-mac-canary:asset-bd8de3ac58d1
   platforms: [linux/amd64]
   env: []
   ports: []
