@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
+import hashlib
+import time
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
@@ -15,6 +18,18 @@ from app.collectors import base
 API_BASE = "https://earnapp.com/dashboard/api"
 API_PARAMS = {"appid": "earnapp"}
 AUTH_FAILURE_CODES = {401, 403}
+LINK_MIN_INTERVAL_SECONDS = 5.0
+LINK_RATE_LIMIT_COOLDOWN_SECONDS = 300.0
+_link_guards: dict[tuple[int, str], asyncio.Lock] = {}
+_link_next_allowed: dict[tuple[int, str], float] = {}
+
+
+def _link_guard_key(credentials: Mapping[str, Any]) -> str:
+    cookies = credentials.get("cookies") if isinstance(credentials, Mapping) else {}
+    if not isinstance(cookies, Mapping):
+        cookies = credentials
+    material = "\x1f".join(f"{key}={cookies.get(key, '')}" for key in sorted(cookies))
+    return hashlib.sha256(material.encode()).hexdigest()
 
 
 def build_proxy_url(proxy: Mapping[str, Any]) -> str:
@@ -328,6 +343,7 @@ class EarnAppAccountCollector:
             raw_cookies = {}
         self.cookies = {str(key): str(value) for key, value in raw_cookies.items() if str(value)}
         self.proxy_url = build_proxy_url(proxy)
+        self._link_key = _link_guard_key(credentials)
 
     def _client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(
@@ -436,33 +452,56 @@ class EarnAppAccountCollector:
             link_attempted = False
             already_linked = False
             if device is None:
-                link_attempted = True
-                xsrf = str(client.cookies.get("xsrf-token") or self.cookies.get("xsrf-token") or "")
-                if not xsrf:
-                    return {"status": "error", "error_kind": "auth", "error": "EarnApp XSRF unavailable"}
-                link_headers, link_request = self._link_contract(uuid, platform, xsrf)
-                link_response = await client.post(
-                    f"{API_BASE}/link_device",
-                    params=API_PARAMS,
-                    headers={**headers, **link_headers},
-                    json=link_request,
-                )
-                if link_response.status_code in AUTH_FAILURE_CODES:
-                    return {"status": "error", "error_kind": "auth", "error": "authentication rejected"}
-                if link_response.status_code == 429:
-                    return {
-                        "status": "pending",
-                        "error_kind": "rate_limited",
-                        "error": "EarnApp device link is rate-limited",
-                        "device_id": uuid,
-                        "authenticated": True,
-                        "link_attempted": True,
-                        "device_present": False,
-                        "online": False,
-                        "banned": False,
-                        "retry_after_seconds": 300,
-                    }
-                link_response.raise_for_status()
+                loop_key = (id(asyncio.get_running_loop()), self._link_key)
+                guard = _link_guards.setdefault(loop_key, asyncio.Lock())
+                await guard.acquire()
+                try:
+                    now = time.monotonic()
+                    next_allowed = _link_next_allowed.get(loop_key, 0.0)
+                    if now < next_allowed:
+                        return {
+                            "status": "pending",
+                            "error_kind": "rate_limited",
+                            "error": "EarnApp device link is cooling down",
+                            "device_id": uuid,
+                            "authenticated": True,
+                            "link_attempted": False,
+                            "device_present": False,
+                            "online": False,
+                            "banned": False,
+                            "retry_after_seconds": max(1, int(next_allowed - now)),
+                        }
+                    link_attempted = True
+                    xsrf = str(client.cookies.get("xsrf-token") or self.cookies.get("xsrf-token") or "")
+                    if not xsrf:
+                        return {"status": "error", "error_kind": "auth", "error": "EarnApp XSRF unavailable"}
+                    link_headers, link_request = self._link_contract(uuid, platform, xsrf)
+                    link_response = await client.post(
+                        f"{API_BASE}/link_device",
+                        params=API_PARAMS,
+                        headers={**headers, **link_headers},
+                        json=link_request,
+                    )
+                    if link_response.status_code in AUTH_FAILURE_CODES:
+                        return {"status": "error", "error_kind": "auth", "error": "authentication rejected"}
+                    if link_response.status_code == 429:
+                        _link_next_allowed[loop_key] = time.monotonic() + LINK_RATE_LIMIT_COOLDOWN_SECONDS
+                        return {
+                            "status": "pending",
+                            "error_kind": "rate_limited",
+                            "error": "EarnApp device link is rate-limited",
+                            "device_id": uuid,
+                            "authenticated": True,
+                            "link_attempted": True,
+                            "device_present": False,
+                            "online": False,
+                            "banned": False,
+                            "retry_after_seconds": 300,
+                        }
+                    link_response.raise_for_status()
+                    _link_next_allowed[loop_key] = time.monotonic() + LINK_MIN_INTERVAL_SECONDS
+                finally:
+                    guard.release()
                 link_result = link_response.json()
                 link_error = str(link_result.get("error") or "") if isinstance(link_result, Mapping) else ""
                 already_linked = "already linked" in link_error.lower()
