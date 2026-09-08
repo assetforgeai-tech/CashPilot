@@ -103,6 +103,10 @@ def evaluate_node(
         return LifecycleDecision("defer_auth", same, rotates, "account authentication requires retry")
     if bool(snapshot.get("banned")):
         return LifecycleDecision("recreate", same + 1, rotates, "device banned")
+    # Offline is an operational failure even when the last account snapshot
+    # still reports positive usage. Restart in place; preserve identity/lease.
+    if snapshot.get("online") is False:
+        return LifecycleDecision("restart", 0, rotates, "node offline")
     billing = str(snapshot.get("billing") or "").strip().lower()
     awaiting_country = (
         billing in _UPTIME_BILLING

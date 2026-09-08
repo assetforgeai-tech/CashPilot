@@ -32,6 +32,16 @@
 - `Recreate preserves identity and does not link` nghĩa là API recreate hiện giữ device identity/volume/logical binding cũ, chỉ dựng lại runtime; nó **không** gọi EarnApp `link_device`.
 - Cơ chế này phù hợp cho recovery local/offline, nhưng không đủ cho policy mới của `banned` và proxy rotation. Hai trường hợp đó phải remote-delete device rồi tạo identity/UUID/volume mới và link lại.
 
+## Usage-flatline and Offline Policy (authoritative)
+
+- `earnings_update_in_ms` is the account-side Earnings Update cycle boundary.
+- At the first boundary observation, record the cycle and wait the configured grace period; do not mutate the node.
+- If usage has not increased after the boundary/grace, perform exactly one `restart` for that cycle.
+- The restart is in place: preserve device UUID/identity, volume, account binding, and proxy lease; do not delete or relink the remote device.
+- `offline` always maps to the same in-place `restart`, even when a stale collector snapshot still contains positive usage.
+- Lifecycle polling remains every 5 minutes. `last_recovery_cycle_id` prevents duplicate restarts in one Earnings Update cycle; a new boundary permits one new restart.
+- Flatline/offline never triggers proxy rotation or fresh identity by itself. `banned` and unhealthy proxy remain separate replacement paths.
+
 ## Task 1: Freeze and Test the Unified Policy
 
 **Files:**
@@ -52,7 +62,7 @@ healthy       -> no mutation
 ```
 
 - [x] Write failing tests asserting each row and asserting banned never maps to restart.
-- [ ] Test earnings boundary: one recovery decision after `earnings_update_in_ms` resets; no duplicate action during the same cycle.
+- [x] Test earnings boundary: one recovery decision after `earnings_update_in_ms` resets; no duplicate action during the same cycle.
 - [x] Run `pytest tests/test_earnapp_lifecycle.py tests/test_earnapp_policy_matrix.py -q` and confirm expected failures.
 - [x] Implement the smallest pure decision change; keep 5-minute offline scheduling.
 - [x] Run the focused tests; `38 passed` on 2026-09-08.
@@ -100,7 +110,7 @@ healthy       -> no mutation
 - Test: `tests/test_earnapp_collector.py`, `tests/test_earnapp_lifecycle.py`
 
 - [x] Keep collector interval at 60 minutes.
-- [ ] Keep lifecycle interval at 5 minutes for observation and offline restart.
+- [x] Keep lifecycle interval at 5 minutes for observation and offline restart.
 - [x] Persist `earnings_cycle_id`, `earnings_zero_observed_at`, `last_recovery_cycle_id`, and the previous `earnings_update_in_ms` counter.
 - [x] Use account `earnings_update_in_ms` as the cycle boundary; retain the boundary marker through the positive countdown and recover once after grace.
 - [ ] Prevent collector refresh and lifecycle refresh from issuing duplicate API calls for the same account within one scheduler pass.
