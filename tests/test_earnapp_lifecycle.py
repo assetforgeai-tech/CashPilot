@@ -706,8 +706,7 @@ async def test_scheduler_does_not_restart_flatline_twice_in_same_earnings_cycle(
                 "collected_at": datetime.now(UTC).isoformat(),
                 "earnings_update_in_ms": 0,
                 "devices_json": (
-                    '[{"device_id":"sdk-mac-cycle-guard","online":true,'
-                    '"country_code":"VN","usage_current":10}]'
+                    '[{"device_id":"sdk-mac-cycle-guard","online":true,"country_code":"VN","usage_current":10}]'
                 ),
             }
         ),
