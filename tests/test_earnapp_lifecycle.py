@@ -128,6 +128,23 @@ def test_countdown_increase_marks_a_new_earnings_boundary():
     assert decision.earnings_zero_observed_at is not None
 
 
+def test_countdown_increase_restarts_boundary_tracking_after_stale_marker():
+    now = datetime.now(UTC)
+    decision = evaluate_node(
+        {
+            "usage": 0.0,
+            "banned": False,
+            "earnings_update_in_ms": 3_500_000,
+            "previous_earnings_update_in_ms": 1_000,
+        },
+        _runtime(earnings_zero_observed_at=(now - timedelta(minutes=30)).isoformat()),
+        now,
+    )
+    assert decision.action == "observe"
+    assert decision.reason.startswith("earnings update boundary")
+    assert decision.earnings_zero_observed_at is not None
+
+
 def test_earnings_cycle_id_changes_at_counter_reset_and_is_stable_inside_cycle():
     from app.earnapp_lifecycle import earnings_cycle_id
 
