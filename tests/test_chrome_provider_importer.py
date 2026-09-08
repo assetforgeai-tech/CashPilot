@@ -200,6 +200,19 @@ def test_earnapp_cookie_debounce_is_the_only_automatic_sync_alarm():
     assert "EARNAPP_SYNC_ALARM" not in background
 
 
+def test_earnapp_auto_login_checks_server_refresh_state_without_periodic_token_sync():
+    background = (EXT / "background.js").read_text(encoding="utf-8")
+    assert 'const EARNAPP_REFRESH_STATE_ALARM = "earnapp-refresh-state"' in background
+    assert 'fetch("/api/admin/earnapp/accounts"' in background
+    assert "needs_token_refresh" in background
+    assert "periodInMinutes: 5" in background
+    assert "autoRefreshEarnAppLogin" in background
+    assert 'chrome.tabs.update(tab.id, { url: "https://earnapp.com/settings"' in background
+    assert 'chrome.tabs.update(tab.id, { url: "https://earnapp.com/login"' in background
+    assert "operator_required" in background
+    assert "password entry" not in background.lower()
+
+
 def test_earnapp_auto_login_requires_explicit_operator_checkbox():
     popup_html = (EXT / "popup.html").read_text(encoding="utf-8")
     popup = (EXT / "popup.js").read_text(encoding="utf-8")

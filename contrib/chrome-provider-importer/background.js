@@ -2,6 +2,7 @@ const DEFAULT_SERVER = "https://cashpilot.4gmt.com";
 const EARNAPP_BINDING_KEY = "earnappAccountBinding";
 const EARNAPP_AUTO_LOGIN_KEY = "earnappAutoLoginEnabled";
 const EARNAPP_COOKIE_DEBOUNCE_ALARM = "earnapp-cookie-debounce";
+const EARNAPP_REFRESH_STATE_ALARM = "earnapp-refresh-state";
 const EARNAPP_COOKIE_ALLOWLIST = Object.freeze([
   "auth",
   "auth-method",
@@ -120,6 +121,7 @@ function publicBinding(binding) {
   if (!binding) return null;
   return {
     profileKey: binding.profileKey,
+    accountId: binding.accountId || null,
     accountName: binding.accountName,
     email: binding.email,
     authMethod: binding.authMethod,
@@ -160,6 +162,66 @@ async function postToCashPilot(server, payload) {
     throw new Error(`${result?.result?.detail || "CashPilot import failed"}${status}`);
   }
   return result.result.accountId;
+}
+
+async function refreshRequired(binding) {
+  const origin = normalizeCashPilotServer(binding.server);
+  const tabs = await chrome.tabs.query({ url: [`${origin}/*`] });
+  if (!tabs.length) return false;
+  const target = tabs.find(tab => String(tab.url || "").includes("/settings")) || tabs[0];
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId: target.id },
+    func: async profileKey => {
+      const response = await fetch("/api/admin/earnapp/accounts", { credentials: "same-origin" });
+      if (!response.ok) return false;
+      const payload = await response.json();
+      const account = (payload.accounts || []).find(row => row.profile_key === profileKey);
+      return Boolean(account?.needs_token_refresh || ["AUTH_FAILED", "EXPIRED"].includes(account?.state));
+    },
+    args: [binding.profileKey],
+  });
+  return result?.result === true;
+}
+
+async function clickEarnAppAuthControl(tabId, action, authMethod) {
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (requestedAction, method) => {
+      const text = document.body?.innerText?.toLowerCase() || "";
+      if (["captcha", "verification code", "one-time password", "two-factor"].some(marker => text.includes(marker))) {
+        return "operator_required";
+      }
+      const labels = requestedAction === "logout" ? ["logout", "log out", "sign out"] : [method, `continue with ${method}`];
+      const control = [...document.querySelectorAll("button,a")].find(element => {
+        const label = `${element.innerText || ""} ${element.getAttribute("aria-label") || ""}`.toLowerCase();
+        return labels.some(value => label.includes(value));
+      });
+      if (!control) return "not_found";
+      control.click();
+      return "clicked";
+    },
+    args: [action, authMethod],
+  });
+  return result?.result || "not_found";
+}
+
+async function autoRefreshEarnAppLogin() {
+  const binding = await getBinding();
+  if (!binding || !(await getAutoLoginEnabled()) || !(await refreshRequired(binding))) return;
+  const tabs = await chrome.tabs.query({ url: ["https://earnapp.com/*", "https://*.earnapp.com/*"] });
+  const tab = tabs[0] || (await chrome.tabs.create({ url: "https://earnapp.com/dashboard", active: false }));
+  await chrome.tabs.update(tab.id, { url: "https://earnapp.com/settings", active: false });
+  await new Promise(resolve => setTimeout(resolve, 3000));
+  const logout = await clickEarnAppAuthControl(tab.id, "logout", binding.authMethod);
+  if (logout === "operator_required") throw new Error("EarnApp login requires operator verification");
+  await new Promise(resolve => setTimeout(resolve, logout === "clicked" ? 3000 : 1000));
+  await chrome.tabs.update(tab.id, { url: "https://earnapp.com/login", active: false });
+  await new Promise(resolve => setTimeout(resolve, 3000));
+  const login = await clickEarnAppAuthControl(tab.id, "login", binding.authMethod);
+  if (login === "operator_required") throw new Error("EarnApp login requires operator verification");
+  if (login !== "clicked") throw new Error("EarnApp login control was not found; operator action required");
+  await new Promise(resolve => setTimeout(resolve, 8000));
+  await syncBoundEarnAppAccount();
 }
 
 async function notifyStatus(status, detail = {}) {
@@ -282,10 +344,17 @@ chrome.alarms.onAlarm.addListener(alarm => {
   if (alarm.name === EARNAPP_COOKIE_DEBOUNCE_ALARM) {
     void syncBoundEarnAppAccount();
   }
+  if (alarm.name === EARNAPP_REFRESH_STATE_ALARM) {
+    void autoRefreshEarnAppLogin().catch(error => notifyStatus("error", { error: String(error?.message || error) }));
+  }
 });
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.alarms.clear("earnapp-token-sync");
+  chrome.alarms.create(EARNAPP_REFRESH_STATE_ALARM, { periodInMinutes: 5 });
 });
 
-chrome.runtime.onStartup.addListener(() => void syncBoundEarnAppAccount());
+chrome.runtime.onStartup.addListener(() => {
+  chrome.alarms.create(EARNAPP_REFRESH_STATE_ALARM, { periodInMinutes: 5 });
+  void autoRefreshEarnAppLogin().catch(() => undefined);
+});

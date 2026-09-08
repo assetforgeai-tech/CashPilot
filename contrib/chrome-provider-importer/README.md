@@ -28,7 +28,7 @@ Values are never printed in the popup. The extension only saves keys explicitly 
 4. Enter the account label/email and choose Google or Apple.
 5. Press **Import and bind account** once.
 
-The first import is always explicit. After it succeeds, that Chrome profile is permanently bound in extension-local storage to the same CashPilot server and EarnApp account. Changes to the exact allowlisted EarnApp cookies schedule a background refresh; accounts that were never imported are never synchronized. Automatic Google/Apple logout, password entry, MFA, OTP, and CAPTCHA handling are intentionally excluded.
+The first import is always explicit. After it succeeds, that Chrome profile is permanently bound in extension-local storage to the same CashPilot server and EarnApp account. Changes to the exact allowlisted EarnApp cookies schedule a background refresh; accounts that were never imported are never synchronized. When the operator enables automatic login, the extension checks only CashPilot's `needs_token_refresh` state, then attempts EarnApp logout and the selected Google/Apple session login in that bound profile. Password entry, MFA, OTP, and CAPTCHA handling remain excluded and require operator action.
 
 The extension reads only these cookies from the `earnapp.com` domain:
 
