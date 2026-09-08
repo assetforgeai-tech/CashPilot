@@ -15,6 +15,8 @@
 - All six have exclusive leases, healthy proxy state, and worker heartbeat `92161` online. Collector calls for accounts `2` and `470` returned HTTP 200.
 - Snapshot `2026-09-08 17:43:59-17:44:04` reports Ubuntu country/usage; new macOS/iOS devices still await country/usage propagation. Clean-reboot and positive-usage verification remain open.
 - Clean reboot completed on `vps-test-us` at `2026-09-08 17:48:20Z`; SSH returned and worker `92161` reported `online` at `17:49:04Z`. All six canary containers returned `running`; all six logical nodes remained `ACTIVE` with the same proxy IDs and worker assignment.
+- Release `v1.23.2` was deployed to the CashPilot server on `2026-09-08`; UI and worker containers are healthy. The two macOS non-VN nodes were restarted through the CAS-aware Docker lifecycle route. Their logical state, generation, device IDs, proxy IDs, and worker assignment remained unchanged; both containers remained running with increasing network counters.
+- Post-deploy collector checks for accounts `2` and `470` returned HTTP 200. Account-level totals remain healthy, but per-device macOS usage still requires the next EarnApp earnings boundary before it can be marked positive.
 ## Scope
 
 - Worker: `92161` on `vps-test-us`.
