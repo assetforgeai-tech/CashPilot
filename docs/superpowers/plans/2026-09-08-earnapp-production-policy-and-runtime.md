@@ -107,6 +107,9 @@ focused suite above.
   excludes `VN` even when both country policies allow MacOS. The default remains
   `any` for backward compatibility, while production evidence must record the
   explicit scope used.
+- Code release `v1.23.0` is published. Live canary remains pending until the
+  CashPilot server and `vps-test-us` worker are upgraded to that release; the
+  worker credential alone does not authorize server deployment.
 
 ## Task 1: Freeze and Test the Unified Policy
 
