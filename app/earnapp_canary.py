@@ -584,6 +584,7 @@ async def deploy_platform_canary(
     existing_contract = str((current_spec or {}).get("image_contract_sha256") or "")
     if (
         existing
+        and str((before or {}).get("state") or "").upper() == "ACTIVE"
         and str(existing.get("status") or "").lower()
         in {
             "running",
