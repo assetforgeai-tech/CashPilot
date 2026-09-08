@@ -69,3 +69,25 @@ and uptimes were unchanged by this repair.
 Positive EarnApp dashboard usage/country remains an external asynchronous
 signal. Collector data must be checked at the next Earnings Update boundary;
 container health alone is not treated as positive-usage proof.
+
+## v1.22.8 lifecycle recovery verification
+
+- PR `#187` anchored a first observed positive Earnings Update countdown to a
+  durable cycle ID. PR `#188` preserved that account-level cycle even when the
+  EarnApp device-status payload temporarily omitted a device.
+- Focused lifecycle, policy-matrix, and collector tests passed: `90 passed`.
+- Server UI and `vps-test-us` worker were deployed at `v1.22.8`; both reported
+  healthy with restart count `0`. The worker firewall remained active.
+- The first post-upgrade scheduler pass restarted iOS-01 once and atomically
+  persisted matching `earnings_cycle_id` and `last_recovery_cycle_id`.
+- The following five-minute pass did not restart any of the six live canaries.
+  Existing `409` calls target legacy ACTIVE database rows whose containers are
+  absent; they are separate cleanup work and did not mutate the six canaries.
+- The restart preserved the iOS-01 device UUID, proxy assignment, named volume,
+  account assignment, and container identity. No remote delete, link, lease
+  release, or proxy rotation occurred.
+- A fresh authenticated collector run succeeded for accounts `2` and `470`.
+  Both macOS canaries were online with VN country and their expected distinct
+  proxy IPs; Ubuntu-01 was online with US country. iOS-02 and Ubuntu-02 were
+  online but still awaiting country/usage propagation. Positive usage for all
+  six remains a production-closeout gate.
