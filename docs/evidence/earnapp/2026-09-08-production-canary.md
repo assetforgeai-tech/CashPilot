@@ -1,5 +1,20 @@
 # EarnApp production canary — 2026-09-08
 
+## 2026-09-09 macOS non-VN canary
+
+- `earnapp-canary-us-macos-nonvn-01`: `ACTIVE`, worker `92161`, device `sdk-mac-70b1989773eca3d6157bec6e6df80b96`, proxy `130.180.234.47` (`US`, residential), container running.
+- `earnapp-canary-us-macos-nonvn-02`: `ACTIVE`, worker `92161`, device `sdk-mac-491639397177d293f957e44291bab9bb`, proxy `62.164.242.0` (`US`, residential), container running.
+- Both proxies passed latest `earnapp_wss` qualification (`CID_SET`, `eligible`); egress IPs are unique.
+- Existing VN macOS nodes were not modified. Earnings/usage remains pending the normal EarnApp update cycle.
+
+## 2026-09-09 six-node gate
+
+- macOS: `earnapp-canary-us-macos-nonvn-01` and `-02` are `ACTIVE`, Docker `running`, with unique US residential egress.
+- iOS: `earnapp-canary-us-fresh-ios-01` and `earnapp-canary-us-production-ios-02` are `ACTIVE`, Docker `running`, with unique VN residential proxies.
+- Ubuntu: `earnapp-canary-us-fresh-ubuntu-01` and `-02` are `ACTIVE`, Docker `running`, with unique US residential egress.
+- All six have exclusive leases, healthy proxy state, and worker heartbeat `92161` online. Collector calls for accounts `2` and `470` returned HTTP 200.
+- Snapshot `2026-09-08 17:43:59-17:44:04` reports Ubuntu country/usage; new macOS/iOS devices still await country/usage propagation. Clean-reboot and positive-usage verification remain open.
+- Clean reboot completed on `vps-test-us` at `2026-09-08 17:48:20Z`; SSH returned and worker `92161` reported `online` at `17:49:04Z`. All six canary containers returned `running`; all six logical nodes remained `ACTIVE` with the same proxy IDs and worker assignment.
 ## Scope
 
 - Worker: `92161` on `vps-test-us`.
