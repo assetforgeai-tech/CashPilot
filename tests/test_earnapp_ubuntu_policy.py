@@ -532,12 +532,12 @@ def _authoritative_node(
 @pytest.mark.parametrize(
     ("action", "expected_calls"),
     [
-        ("stop", [("POST", "/api/containers/earnapp-ubuntu-policy/stop")]),
-        ("start", [("POST", "/api/containers/earnapp-ubuntu-policy/start")]),
+            ("stop", [("POST", "/api/earnapp/docker-nodes/earnapp-ubuntu-policy/stop")]),
+            ("start", [("POST", "/api/earnapp/docker-nodes/earnapp-ubuntu-policy/start")]),
         (
             "restart",
             [
-                ("POST", "/api/containers/earnapp-ubuntu-policy/restart"),
+                    ("POST", "/api/earnapp/docker-nodes/earnapp-ubuntu-policy/restart"),
             ],
         ),
         ("remove", [("DELETE", "/api/earnapp/docker-nodes/earnapp-ubuntu-policy")]),
@@ -577,6 +577,9 @@ async def test_server_lifecycle_dispatches_authoritative_ubuntu_docker_node(monk
         )
 
     assert [(call.args[1], call.args[2]) for call in proxy.await_args_list] == expected_calls
+    if action != "remove":
+        assert proxy.await_args.kwargs["json"] == {"generation": 4, "device_id": device_id}
+        assert proxy.await_args.kwargs["timeout"] == 180
     if action == "remove":
         assert proxy.await_args.kwargs["json"] == {"generation": 4, "device_id": device_id}
 
@@ -601,7 +604,13 @@ async def test_server_lifecycle_dispatches_persisted_ubuntu_docker_node(monkeypa
 
     await main._svc_stop(_request("/api/stop/earnapp-ubuntu-policy"), "earnapp-ubuntu-policy", 3)
 
-    proxy.assert_awaited_once_with(3, "POST", "/api/containers/earnapp-ubuntu-policy/stop")
+    proxy.assert_awaited_once_with(
+        3,
+        "POST",
+        "/api/earnapp/docker-nodes/earnapp-ubuntu-policy/stop",
+        json={"generation": 6, "device_id": device_id},
+        timeout=180,
+    )
 
 
 @pytest.mark.asyncio
@@ -885,7 +894,13 @@ async def test_server_lifecycle_dispatches_current_docker_platforms(monkeypatch,
         _request(f"/api/{action}/earnapp-platform-policy"), "earnapp-platform-policy", 3
     )
 
-    proxy.assert_awaited_once_with(3, "POST", f"/api/containers/earnapp-platform-policy/{action}")
+    proxy.assert_awaited_once_with(
+        3,
+        "POST",
+        f"/api/earnapp/docker-nodes/earnapp-platform-policy/{action}",
+        json={"generation": 4, "device_id": device_id},
+        timeout=180,
+    )
 
 
 @pytest.mark.asyncio
@@ -977,7 +992,9 @@ async def test_raw_worker_lifecycle_dispatches_ubuntu_docker_without_trusting_bo
     proxy.assert_awaited_once_with(
         3,
         "POST",
-        "/api/containers/earnapp-ubuntu-policy/start",
+        "/api/earnapp/docker-nodes/earnapp-ubuntu-policy/start",
+        json={"generation": 5, "device_id": device_id},
+        timeout=180,
     )
 
 
