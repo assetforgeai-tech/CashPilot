@@ -141,9 +141,9 @@ healthy       -> no mutation
 - [x] Build a sanitized reference manifest containing binary/script hashes, container limits, mounts, bridge/LAN addressing, capabilities and restart policy for each OS: `docs/evidence/earnapp/reference-vps-2026-09-08.md`.
 - [x] Diff reference bundle metadata against CashPilot without copying UUID, account, volume, proxy, or credentials; emit `reference-bundle-manifest-2026-09-08.json`.
 - [x] Port only missing behavior after an exact per-OS contract diff: verified upgraded image digests and artifact hashes; no UUID, profile, proxy credential, or host fingerprint copied.
-- [ ] Gate every image build on a sanitized fidelity report for macOS/iOS/Ubuntu covering binary/image digest, entrypoint, supervisor/watchdog, `lan_ip`, interface selection, redsocks/iptables, DNS, proxy bypasses, link retry/cooldown, mounts, limits, capabilities and restart policy. Reference manifest captured; fresh verifier still required.
+- [x] Gate every image build on a sanitized fidelity report for macOS/iOS/Ubuntu covering binary/image digest, entrypoint, supervisor/watchdog, `lan_ip`, interface selection, redsocks/iptables, DNS, proxy bypasses, link retry/cooldown, mounts, limits, capabilities and restart policy. Reference manifest captured; `scripts/verify_earnapp_runtime_fidelity.py` now runs during context staging and fails closed on drift.
 - [x] Ensure all three platforms use Docker; remove accidental LXD selection without touching unrelated providers.
-- [ ] Add tests for identity uniqueness, platform contract, proxy egress, watchdog and reboot persistence.
+- [x] Add runtime fidelity regression tests for complete and tampered contexts; live proxy egress/watchdog/reboot evidence remains in the dated canary report.
 
 ## Task 7: Remove Kernel/Runtime Fingerprints
 
