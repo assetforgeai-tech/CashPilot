@@ -976,8 +976,9 @@ async def _delete_earnapp_remote_device(node: Mapping[str, Any]) -> bool:
     if account_id <= 0 or not device_id:
         return False
     account = await database.get_earnapp_account_credentials(account_id)
-    route = await earnapp_collection.account_route_status(account_id)
-    if not account or str(route.get("status") or "") != "healthy":
+    routes = await earnapp_collection._collection_routes(account_id)
+    route = routes[0] if routes else None
+    if not account or not route:
         return False
     result = await earnapp_collection.EarnAppAccountCollector(account.get("credentials") or {}, route).delete_device(
         device_id

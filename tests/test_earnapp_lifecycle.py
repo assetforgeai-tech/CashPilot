@@ -433,6 +433,32 @@ async def test_locked_account_cleanup_releases_after_local_ack_even_when_remote_
 
 
 @pytest.mark.asyncio
+async def test_remote_device_delete_uses_full_internal_account_route(monkeypatch):
+    node = {"account_id": 470, "device_id": "sdk-mac-" + "a" * 32}
+    account = {"credentials": {"cookies": {"xsrf-token": "redacted"}}}
+    full_route = {
+        "protocol": "socks5",
+        "host": "proxy.example",
+        "port": 1080,
+        "username": "user",
+        "password": "redacted",
+    }
+    monkeypatch.setattr(main.database, "get_earnapp_account_credentials", AsyncMock(return_value=account))
+    monkeypatch.setattr(main.earnapp_collection, "_collection_routes", AsyncMock(return_value=[full_route]))
+    delete = AsyncMock(return_value={"status": "deleted"})
+    seen = {}
+    monkeypatch.setattr(
+        main.earnapp_collection,
+        "EarnAppAccountCollector",
+        lambda credentials, route: (seen.update(route=route) or type("Collector", (), {"delete_device": delete})()),
+    )
+
+    assert await main._delete_earnapp_remote_device(node) is True
+    assert seen["route"] == full_route
+    assert delete.await_args.args == (node["device_id"],)
+
+
+@pytest.mark.asyncio
 async def test_scheduler_uses_uptime_for_qualified_uptime_billing(monkeypatch):
     node = {
         "logical_node_id": "earnapp-mac-qualified-uptime",
