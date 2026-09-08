@@ -1432,7 +1432,8 @@ def test_collect_active_accounts_isolates_failures_and_skips_locked_accounts(mon
     assert "refresh-secret" not in json.dumps(result)
 
 
-def test_collect_account_reuses_snapshot_created_while_waiting_for_account_lock():
+@pytest.mark.asyncio
+async def test_collect_account_reuses_snapshot_created_while_waiting_for_account_lock():
     account = {"id": 7, "credentials": {"xsrf_token": "opaque"}}
     route = {"proxy_id": 101, "protocol": "http", "host": "proxy.test", "port": 8080}
     api_calls = 0
@@ -1456,24 +1457,21 @@ def test_collect_account_reuses_snapshot_created_while_waiting_for_account_lock(
     async def save(_account_id, snapshot):
         snapshots.append({**snapshot, "collected_at": datetime.now(UTC).isoformat()})
 
-    async def run():
-        with (
-            patch.object(database, "get_earnapp_account_credentials", AsyncMock(return_value=account)),
-            patch.object(database, "get_latest_earnapp_snapshot", side_effect=latest),
-            patch.object(earnapp_collection, "_collection_routes", AsyncMock(return_value=[route])),
-            patch.object(earnapp_collection, "EarnAppAccountCollector", FakeCollector),
-            patch.object(database, "save_earnapp_snapshot", side_effect=save),
-            patch.object(database, "record_earnapp_auth_result", AsyncMock()),
-        ):
-            first, second = await asyncio.gather(
-                earnapp_collection.collect_account(7, reuse_recent_seconds=60),
-                earnapp_collection.collect_account(7, reuse_recent_seconds=60),
-            )
-        assert first["status"] == "ok"
-        assert second == {"status": "ok", "source": "recent_snapshot"}
-        assert api_calls == 1
-
-    asyncio.run(run())
+    with (
+        patch.object(database, "get_earnapp_account_credentials", AsyncMock(return_value=account)),
+        patch.object(database, "get_latest_earnapp_snapshot", side_effect=latest),
+        patch.object(earnapp_collection, "_collection_routes", AsyncMock(return_value=[route])),
+        patch.object(earnapp_collection, "EarnAppAccountCollector", FakeCollector),
+        patch.object(database, "save_earnapp_snapshot", side_effect=save),
+        patch.object(database, "record_earnapp_auth_result", AsyncMock()),
+    ):
+        first, second = await asyncio.gather(
+            earnapp_collection.collect_account(7, reuse_recent_seconds=60),
+            earnapp_collection.collect_account(7, reuse_recent_seconds=60),
+        )
+    assert first["status"] == "ok"
+    assert second == {"status": "ok", "source": "recent_snapshot"}
+    assert api_calls == 1
 
 
 def test_account_route_status_reports_exact_account_proxy_without_credentials(tmp_path):
