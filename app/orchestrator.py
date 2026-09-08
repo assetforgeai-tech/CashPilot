@@ -1414,6 +1414,21 @@ def remove_earnapp_service(slug: str) -> dict[str, bool]:
     return presence
 
 
+def remove_earnapp_identity_volume(slug: str) -> bool:
+    """Remove only the named EarnApp identity volume after CAS cleanup."""
+    client = _get_client()
+    for component in (False, True):
+        container = _find_earnapp_runtime_container(client, slug, sidecar=component)
+        if container is not None:
+            raise RuntimeError(f"EarnApp runtime still exists for {slug}")
+    prefix = f"{slug}-data"
+    for volume in client.volumes.list(filters={"name": prefix}):
+        if str(getattr(volume, "name", "")) == prefix:
+            volume.remove(force=True)
+            return True
+    return False
+
+
 def remove_service(slug: str, delete_volumes: bool = False, allow_delete_critical: bool = False) -> dict[str, Any]:
     """Stop and remove the container for a service.
 

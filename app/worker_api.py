@@ -2675,6 +2675,10 @@ async def api_remove_earnapp_docker_node(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if result.get("main_present") is not False or result.get("sidecar_present") is not False:
         raise HTTPException(status_code=409, detail="EarnApp Docker cleanup is incomplete")
+    try:
+        await asyncio.to_thread(orchestrator.remove_earnapp_identity_volume, slug)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail="EarnApp identity volume cleanup is incomplete") from exc
     with contextlib.suppress(ValueError):
         _remove_earnapp_state(slug)
     return {"status": "removed", **result}
