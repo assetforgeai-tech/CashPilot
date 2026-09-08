@@ -838,6 +838,34 @@ async def test_restart_missing_runtime_finalizes_only_after_authoritative_absenc
 
 
 @pytest.mark.asyncio
+async def test_restart_stale_worker_assignment_finalizes_after_authoritative_absence(monkeypatch):
+    node = {
+        "logical_node_id": "earnapp-mac-stale",
+        "assigned_worker_id": 3098,
+        "generation": 3,
+        "device_id": "sdk-mac-" + "e" * 32,
+        "current_proxy_id": 17,
+    }
+    proxy = AsyncMock(side_effect=HTTPException(status_code=409, detail="assignment conflict"))
+    monkeypatch.setattr(main, "_proxy_to_worker", proxy)
+    monkeypatch.setattr(main.database, "get_worker", AsyncMock(return_value={"id": 3098, "status": "online"}))
+    monkeypatch.setattr(
+        main, "_earnapp_runtime_presence", AsyncMock(return_value={"main_present": False, "sidecar_present": False})
+    )
+    finalize = AsyncMock(return_value=True)
+    monkeypatch.setattr(main.database, "finalize_earnapp_node_removal", finalize)
+
+    assert await main._execute_earnapp_lifecycle_action(node, "restart") is True
+    finalize.assert_awaited_once_with(
+        "earnapp-mac-stale",
+        3098,
+        generation=3,
+        device_id="sdk-mac-" + "e" * 32,
+        reason="EARNAPP_RUNTIME_MISSING",
+    )
+
+
+@pytest.mark.asyncio
 async def test_restart_missing_runtime_does_not_finalize_when_presence_is_uncertain(monkeypatch):
     node = {
         "logical_node_id": "earnapp-mac-uncertain",
