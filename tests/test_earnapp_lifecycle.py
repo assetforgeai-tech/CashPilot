@@ -444,8 +444,16 @@ async def test_remote_device_delete_uses_full_internal_account_route(monkeypatch
         "password": "redacted",
     }
     monkeypatch.setattr(main.database, "get_earnapp_account_credentials", AsyncMock(return_value=account))
-    monkeypatch.setattr(main.earnapp_collection, "_collection_routes", AsyncMock(return_value=[full_route]))
-    delete = AsyncMock(return_value={"status": "deleted"})
+    second_route = {**full_route, "host": "proxy-2.example"}
+    monkeypatch.setattr(
+        main.earnapp_collection, "_collection_routes", AsyncMock(return_value=[full_route, second_route])
+    )
+    delete = AsyncMock(
+        side_effect=[
+            {"status": "error", "error_kind": "proxy_blocked"},
+            {"status": "deleted"},
+        ]
+    )
     seen = {}
     monkeypatch.setattr(
         main.earnapp_collection,
@@ -454,7 +462,8 @@ async def test_remote_device_delete_uses_full_internal_account_route(monkeypatch
     )
 
     assert await main._delete_earnapp_remote_device(node) is True
-    assert seen["route"] == full_route
+    assert seen["route"] == second_route
+    assert delete.await_count == 2
     assert delete.await_args.args == (node["device_id"],)
 
 

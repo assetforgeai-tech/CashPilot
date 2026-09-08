@@ -977,13 +977,15 @@ async def _delete_earnapp_remote_device(node: Mapping[str, Any]) -> bool:
         return False
     account = await database.get_earnapp_account_credentials(account_id)
     routes = await earnapp_collection._collection_routes(account_id)
-    route = routes[0] if routes else None
-    if not account or not route:
+    if not account or not routes:
         return False
-    result = await earnapp_collection.EarnAppAccountCollector(account.get("credentials") or {}, route).delete_device(
-        device_id
-    )
-    return str(result.get("status") or "").lower() == "deleted"
+    for route in routes:
+        result = await earnapp_collection.EarnAppAccountCollector(
+            account.get("credentials") or {}, route
+        ).delete_device(device_id)
+        if str(result.get("status") or "").lower() == "deleted":
+            return True
+    return False
 
 
 async def _retire_locked_earnapp_runtime(node: Mapping[str, Any]) -> bool:
