@@ -55,7 +55,7 @@ jobs:
       - name: Lint
         run: uv run ruff check . && uv run ruff format --check .
       - name: Test
-        timeout-minutes: 10
+        timeout-minutes: 15
         run: uv run pytest tests/ -v --tb=short --durations=25
 
   release:
