@@ -35,6 +35,9 @@
 ## Usage-flatline and Offline Policy (authoritative)
 
 - `earnings_update_in_ms` is the account-side Earnings Update cycle boundary.
+- **Usage-flatline policy:** when one Earnings Update cycle completes and the
+  node's usage has not increased, restart the node in place. This is the
+  required recovery action, not an advisory alert.
 - At the first boundary observation, record the cycle and wait the configured grace period; do not mutate the node.
 - If usage has not increased after the boundary/grace, perform exactly one `restart` for that cycle.
 - The restart is in place: preserve device UUID/identity, volume, account binding, and proxy lease; do not delete or relink the remote device.
@@ -54,6 +57,17 @@ This policy is a production gate, not an advisory heuristic:
 | stale/unknown account snapshot | observe only | all state | fresh collector snapshot |
 
 The scheduler must persist the cycle marker and restart marker atomically. One node receives at most one flatline restart per Earnings Update cycle. A restart must never call remote device delete, link, proxy release, or proxy rotation. These assertions require regression coverage and dated canary evidence before EarnApp is marked production-ready.
+
+### Policy status (2026-09-08)
+
+- [x] Usage unchanged at the completed Earnings Update boundary restarts the
+  node in place after the configured five-minute observation grace.
+- [x] Offline status restarts the node in place on the five-minute lifecycle
+  poll, preserving identity, account binding, volume, and proxy lease.
+- [x] Per-cycle marker prevents duplicate restarts; positive usage clears the
+  pending flatline marker.
+- [x] Focused regression suite passes: `46 passed` (`tests/test_earnapp_lifecycle.py`
+  and `tests/test_earnapp_policy_matrix.py`).
 
 ## Task 1: Freeze and Test the Unified Policy
 
