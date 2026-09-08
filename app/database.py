@@ -5628,13 +5628,17 @@ async def bind_earnapp_generated_device_id(
     generation: int,
     proxy_id: int,
     device_id: str,
+    platform: str = "ubuntu",
 ) -> dict[str, Any] | None:
-    """CAS-bind the UUID generated inside one fresh Ubuntu runtime volume."""
+    """CAS-bind the UUID generated inside one fresh Docker runtime volume."""
     node_id = str(logical_node_id or "").strip()
     generated = str(device_id or "").strip()
+    selected_platform = str(platform or "ubuntu").strip().lower()
     if earnapp_policy.is_protected_logical_node(node_id):
         raise ValueError("protected EarnApp node is inspection-only")
-    if not re.fullmatch(r"sdk-node-[0-9a-f]{32}", generated):
+    prefixes = {"ubuntu": "sdk-node-", "ios": "sdk-ios-"}
+    prefix = prefixes.get(selected_platform)
+    if not prefix or not re.fullmatch(re.escape(prefix) + r"[0-9a-f]{32}", generated):
         raise ValueError("EarnApp generated device identity is invalid")
     async with _earnapp_lock():
         db = await _open_transaction_connection()
@@ -5653,11 +5657,11 @@ async def bind_earnapp_generated_device_id(
                 """
                 UPDATE earnapp_logical_nodes
                 SET device_id = ?, updated_at = datetime('now')
-                WHERE logical_node_id = ? AND platform = 'ubuntu'
+                WHERE logical_node_id = ? AND platform = ?
                   AND assigned_worker_id = ? AND generation = ? AND current_proxy_id = ?
                   AND (device_id = '' OR device_id = ?)
                 """,
-                (generated, node_id, int(worker_id), int(generation), int(proxy_id), generated),
+                (generated, node_id, selected_platform, int(worker_id), int(generation), int(proxy_id), generated),
             )
             if int(updated.rowcount or 0) != 1:
                 await db.rollback()

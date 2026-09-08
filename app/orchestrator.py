@@ -262,11 +262,12 @@ def assert_fresh_earnapp_runtime(
 def wait_for_earnapp_device_id(
     slug: str,
     *,
+    device_prefix: str = "sdk-node-",
     timeout_seconds: float = 300,
     poll_interval_seconds: float = 2,
     client: Any | None = None,
 ) -> str:
-    """Wait for the reference Ubuntu runtime to persist its generated UUID."""
+    """Wait for an Apple/Linux runtime to persist its generated device UUID."""
     docker_client = client or _get_client()
     deadline = time.monotonic() + max(0.0, float(timeout_seconds))
     while True:
@@ -277,7 +278,7 @@ def wait_for_earnapp_device_id(
         if int(getattr(result, "exit_code", 1)) == 0:
             raw = getattr(result, "output", b"")
             value = raw.decode("utf-8", errors="replace").strip() if isinstance(raw, bytes) else str(raw or "").strip()
-            if not re.fullmatch(r"sdk-node-[0-9a-f]{32}", value):
+            if not re.fullmatch(re.escape(device_prefix) + r"[0-9a-f]{32}", value):
                 raise RuntimeError("EarnApp reference runtime generated an invalid device identity")
             return value
         if time.monotonic() >= deadline:
