@@ -112,10 +112,27 @@ def test_counter_reset_waits_for_grace_before_restarting_flatline_node():
     assert decision.clear_earnings_zero_observed is False
 
 
+def test_countdown_increase_marks_a_new_earnings_boundary():
+    now = datetime.now(UTC)
+    decision = evaluate_node(
+        {
+            "usage": 10.0,
+            "banned": False,
+            "earnings_update_in_ms": 3_500_000,
+            "previous_earnings_update_in_ms": 1_000,
+        },
+        _runtime(),
+        now,
+    )
+    assert decision.action == "observe"
+    assert decision.earnings_zero_observed_at is not None
+
+
 def test_earnings_cycle_id_changes_at_counter_reset_and_is_stable_inside_cycle():
     from app.earnapp_lifecycle import earnings_cycle_id
 
     assert earnings_cycle_id(470, 0) == earnings_cycle_id(470, 0)
+    assert earnings_cycle_id(470, 0, previous_cycle_id="cycle-a") == "cycle-a"
     assert earnings_cycle_id(470, 0, boundary_started_at="2026-09-08T00:00:00+00:00") != earnings_cycle_id(
         470, 0, boundary_started_at="2026-09-09T00:00:00+00:00"
     )
@@ -124,6 +141,15 @@ def test_earnings_cycle_id_changes_at_counter_reset_and_is_stable_inside_cycle()
     )
     assert earnings_cycle_id(470, 60_000, previous_cycle_id="cycle-a") == "cycle-a"
     assert earnings_cycle_id(470, 30_000, previous_cycle_id="cycle-a") == "cycle-a"
+    assert (
+        earnings_cycle_id(
+            470,
+            60_000,
+            previous_cycle_id="cycle-a",
+            boundary_started_at="2026-09-08T00:00:00+00:00",
+        )
+        != "cycle-a"
+    )
     assert earnings_cycle_id(470, None) == ""
 
 

@@ -34,12 +34,17 @@ def earnings_cycle_id(
         return ""
     if counter < 0:
         return ""
-    if counter > 0:
-        return str(previous_cycle_id or "").strip()
-    boundary = str(boundary_started_at or "").strip() if counter <= 0 else ""
-    if counter <= 0 and not boundary:
-        boundary = f"after:{str(previous_cycle_id or '').strip()}"
-    return hashlib.sha256(f"earnapp:{int(account_id)}:{counter}:{boundary}".encode()).hexdigest()[:24]
+    previous = str(previous_cycle_id or "").strip()
+    boundary = str(boundary_started_at or "").strip()
+    if counter > 0 and not boundary:
+        return previous
+    # A zero countdown is not itself a new event. Keep the current cycle
+    # stable until the subsequent counter increase marks the boundary.
+    if counter <= 0 and previous and not boundary:
+        return previous
+    if not boundary:
+        boundary = f"after:{previous}"
+    return hashlib.sha256(f"earnapp:{int(account_id)}:{boundary}".encode()).hexdigest()[:24]
 
 
 @dataclass(frozen=True)
@@ -125,6 +130,21 @@ def evaluate_node(
         counter_value = None
         started = _when(runtime.get("window_started_at"), current)
         flatline = current - started >= timedelta(minutes=FLATLINE_MINUTES)
+    previous_counter = snapshot.get("previous_earnings_update_in_ms")
+    try:
+        boundary_reset = (
+            counter_value is not None and previous_counter is not None and counter_value > float(previous_counter)
+        )
+    except (TypeError, ValueError):
+        boundary_reset = False
+    if boundary_reset and not runtime.get("earnings_zero_observed_at"):
+        return LifecycleDecision(
+            "observe",
+            same,
+            rotates,
+            "earnings update boundary observed; waiting for post-cycle usage",
+            earnings_zero_observed_at=current.isoformat(),
+        )
     if counter_available and counter_value is not None and counter_value > 0:
         zero_seen = runtime.get("earnings_zero_observed_at")
         if zero_seen:
