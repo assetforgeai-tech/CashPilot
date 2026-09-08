@@ -12,6 +12,7 @@ on:
       - 'app/**'
       - 'services/**'
       - 'scripts/**'
+      - 'contrib/chrome-provider-importer/**'
       - '.dockerignore'
   workflow_dispatch:
 
