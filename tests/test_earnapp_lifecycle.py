@@ -341,6 +341,60 @@ async def test_scheduler_preserves_auth_failure_for_cookie_retry_instead_of_rest
 
 
 @pytest.mark.asyncio
+async def test_scheduler_retires_locked_account_runtime_and_releases_its_proxy(monkeypatch):
+    node = {
+        "logical_node_id": "earnapp-locked-node",
+        "account_id": 470,
+        "assigned_worker_id": 3098,
+        "device_id": "sdk-node-locked",
+        "state": "ACTIVE",
+    }
+    monkeypatch.setattr(main.database, "list_earnapp_logical_nodes", AsyncMock(return_value=[node]))
+    monkeypatch.setattr(
+        main.database,
+        "list_earnapp_accounts",
+        AsyncMock(return_value=[{"id": 470, "state": "ACCOUNT_LOCKED"}]),
+    )
+    retire = AsyncMock(return_value=True)
+    monkeypatch.setattr(main, "_retire_locked_earnapp_runtime", retire)
+    spec = AsyncMock()
+    monkeypatch.setattr(main.database, "get_provider_instance_spec", spec)
+
+    await main._run_earnapp_lifecycle_scheduler()
+
+    retire.assert_awaited_once_with(node)
+    spec.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_locked_account_cleanup_releases_after_local_ack_even_when_remote_delete_fails(monkeypatch):
+    node = {
+        "logical_node_id": "earnapp-locked-node",
+        "account_id": 470,
+        "assigned_worker_id": 3098,
+        "generation": 3,
+        "device_id": "sdk-node-locked",
+    }
+    worker = AsyncMock(return_value={"status": "removed"})
+    release = AsyncMock(return_value=True)
+    remote_delete = AsyncMock(return_value=False)
+    monkeypatch.setattr(main, "_proxy_to_worker", worker)
+    monkeypatch.setattr(main.database, "finalize_earnapp_node_removal", release)
+    monkeypatch.setattr(main, "_delete_earnapp_remote_device", remote_delete)
+
+    assert await main._retire_locked_earnapp_runtime(node) is True
+    worker.assert_awaited_once()
+    release.assert_awaited_once_with(
+        "earnapp-locked-node",
+        3098,
+        generation=3,
+        device_id="sdk-node-locked",
+        reason="EARNAPP_ACCOUNT_LOCKED",
+    )
+    remote_delete.assert_awaited_once_with(node)
+
+
+@pytest.mark.asyncio
 async def test_scheduler_uses_uptime_for_qualified_uptime_billing(monkeypatch):
     node = {
         "logical_node_id": "earnapp-mac-qualified-uptime",
