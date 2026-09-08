@@ -17,6 +17,7 @@
 - Clean reboot completed on `vps-test-us` at `2026-09-08 17:48:20Z`; SSH returned and worker `92161` reported `online` at `17:49:04Z`. All six canary containers returned `running`; all six logical nodes remained `ACTIVE` with the same proxy IDs and worker assignment.
 - Release `v1.23.2` was deployed to the CashPilot server on `2026-09-08`; UI and worker containers are healthy. The two macOS non-VN nodes were restarted through the CAS-aware Docker lifecycle route. Their logical state, generation, device IDs, proxy IDs, and worker assignment remained unchanged; both containers remained running with increasing network counters.
 - Post-deploy collector checks for accounts `2` and `470` returned HTTP 200. Account-level totals remain healthy, but per-device macOS usage still requires the next EarnApp earnings boundary before it can be marked positive.
+- Release `v1.23.3` was deployed after the recovery-marker fix. Both macOS non-VN devices now report `country_code=US`; their containers remain running with unchanged UUIDs, generations, proxy IDs, and worker assignment. Their per-device usage is still `0` in the current snapshot, so the next fresh Earnings Update boundary remains the required recovery-policy gate.
 ## Scope
 
 - Worker: `92161` on `vps-test-us`.
