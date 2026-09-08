@@ -428,6 +428,7 @@ async def provision_canary(logical_node_id: str, worker_id: int, device_id: str)
         "worker_id": node.worker_id,
         "device_id": node.device_id,
         "proxy_id": int(node.proxy["proxy_id"]),
+        "proxy": dict(node.proxy),
         "generation": node.generation,
         "created_binding": node.created_binding,
     }
@@ -464,9 +465,24 @@ async def deploy_canary(
     try:
         policy = earnapp_deploy.platform_policy_from_config(await database.get_config())
         country, excluded = earnapp_deploy.proxy_country_filter(country_scope, policy)
-        proxy = await database.lease_proxy_for_provider_instance(
-            "earnapp", int(worker_id), node_id, country_code=country, exclude_country_code=excluded
-        )
+        # ``provision_canary`` already binds the lease atomically. Leasing a
+        # second time races the unique provider-instance/egress guards.
+        proxy = provisioned.get("proxy")
+        if not proxy:
+            # Test doubles and legacy callers may only return proxy_id. Keep
+            # the compatibility path; production provisioning carries the
+            # already-validated lease payload and avoids a second lease.
+            proxy = await database.lease_proxy_for_provider_instance(
+                "earnapp", int(worker_id), node_id, country_code=country, exclude_country_code=excluded
+            )
+        if proxy:
+            proxy = dict(proxy)
+            proxy.setdefault("proxy_id", int(provisioned["proxy_id"]))
+        proxy_country = str((proxy or {}).get("country_code") or "").strip().upper()
+        if country and proxy_country != country:
+            proxy = None
+        if excluded and proxy_country == excluded:
+            proxy = None
         if not proxy:
             raise ValueError("no eligible residential EarnApp proxy available")
         if (
