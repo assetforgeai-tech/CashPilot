@@ -287,6 +287,33 @@ def test_prepare_node_honors_enabled_platform_country_policy(tmp_path, platform,
     asyncio.run(run())
 
 
+def test_prepare_node_country_scope_overrides_dual_platform_default(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            await database.init_db()
+            await earnapp_accounts.import_account(_account("profile-a"))
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            await _seed_proxy(provider_id, 1, "VN")
+            us_proxy = await _seed_proxy(provider_id, 2, "US")
+            worker_id = await database.upsert_worker("worker-a", "worker-a", "http://worker-a")
+            plan = earnapp_deploy.plan_worker_nodes(worker_id, 1)[0]
+            policy = earnapp_deploy.platform_policy_from_config(
+                {"earnapp_platform_vn_macos": "true", "earnapp_platform_non_vn_macos": "true"}
+            )
+
+            prepared = await earnapp_deploy.prepare_node(
+                plan,
+                required_platform="macos",
+                platform_policy=policy,
+                country_scope="non-vn",
+            )
+
+            assert prepared.proxy["proxy_id"] == us_proxy
+            assert prepared.proxy["country_code"] == "US"
+
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize("platform", ["macos", "ios", "ubuntu"])
 def test_prepare_node_rejects_disabled_platform_without_leasing(tmp_path, platform):
     async def run():

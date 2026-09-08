@@ -235,6 +235,7 @@ async def prepare_node(
     vn_platform_choice: PlatformChoice | None = None,
     required_platform: str | None = None,
     platform_policy: Mapping[str, tuple[str, ...]] | None = None,
+    country_scope: str = "any",
 ) -> PreparedEarnAppNode:
     """Bind an account, exclusive proxy, immutable platform, and identity."""
     if earnapp_policy.is_protected_logical_node(plan.logical_node_id):
@@ -259,6 +260,9 @@ async def prepare_node(
     if existing_platform and required and existing_platform != required:
         raise RuntimeError("EarnApp logical node platform is disabled by runtime policy")
     requested_country, excluded_country = platform_country_filter(existing_platform or required, platform_policy)
+    scope_country, scope_excluded = proxy_country_filter(country_scope, platform_policy)
+    if scope_country or scope_excluded:
+        requested_country, excluded_country = scope_country, scope_excluded
     if excluded_country == "__NO_MATCH__":
         raise RuntimeError("EarnApp platform is disabled for both country classes")
 

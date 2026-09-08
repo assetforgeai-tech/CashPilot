@@ -409,7 +409,9 @@ def build_runtime_spec(
     }
 
 
-async def provision_canary(logical_node_id: str, worker_id: int, device_id: str) -> dict[str, Any]:
+async def provision_canary(
+    logical_node_id: str, worker_id: int, device_id: str, *, country_scope: str = "any"
+) -> dict[str, Any]:
     from app import earnapp_deploy
 
     node_id = _mutable_node_id(logical_node_id)
@@ -419,6 +421,7 @@ async def provision_canary(logical_node_id: str, worker_id: int, device_id: str)
         earnapp_deploy.EarnAppNodePlan(int(worker_id), "ipv4-001", node_id),
         required_platform="macos",
         platform_policy=policy,
+        country_scope=country_scope,
     )
     if node.device_id != device:
         raise ValueError("EarnApp Mac identity changed during preparation")
@@ -461,7 +464,7 @@ async def deploy_canary(
             "container_id": str(existing.get("container_id") or "remote"),
         }
 
-    provisioned = await provision_canary(node_id, int(worker_id), profile["device_id"])
+    provisioned = await provision_canary(node_id, int(worker_id), profile["device_id"], country_scope=country_scope)
     try:
         policy = earnapp_deploy.platform_policy_from_config(await database.get_config())
         country, excluded = earnapp_deploy.proxy_country_filter(country_scope, policy)
