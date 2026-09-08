@@ -4485,6 +4485,7 @@ async def test_worker_earnapp_docker_remove_cleans_unprotected_state(tmp_path, m
             "remove_earnapp_service",
             return_value={"main_present": False, "sidecar_present": False},
         ) as remove,
+        patch.object(worker_api.orchestrator, "remove_earnapp_identity_volume") as remove_volume,
     ):
         result = await worker_api.api_remove_earnapp_docker_node(
             _request("/api/earnapp/docker-nodes/earnapp-node-1"),
@@ -4494,6 +4495,7 @@ async def test_worker_earnapp_docker_remove_cleans_unprotected_state(tmp_path, m
 
     assert result["status"] == "removed"
     remove.assert_called_once()
+    remove_volume.assert_called_once_with("earnapp-node-1")
     assert not worker_api._earnapp_state_path("earnapp-node-1").exists()
 
 
