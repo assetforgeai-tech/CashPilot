@@ -791,7 +791,10 @@ async def _run_earnapp_lifecycle_scheduler() -> None:
             cycle_id = earnapp_lifecycle.earnings_cycle_id(
                 account_id,
                 evidence.get("earnings_update_in_ms"),
-                boundary_started_at=node.get("earnings_zero_observed_at"),
+                boundary_started_at=(
+                    decision.earnings_zero_observed_at
+                    or node.get("earnings_zero_observed_at")
+                ),
                 previous_cycle_id=node.get("earnings_cycle_id"),
             )
             if (

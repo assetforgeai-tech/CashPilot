@@ -132,6 +132,7 @@ def test_earnings_cycle_id_changes_at_counter_reset_and_is_stable_inside_cycle()
     from app.earnapp_lifecycle import earnings_cycle_id
 
     assert earnings_cycle_id(470, 0) == earnings_cycle_id(470, 0)
+    assert earnings_cycle_id(470, 0, previous_cycle_id="cycle-a") == "cycle-a"
     assert earnings_cycle_id(470, 0, boundary_started_at="2026-09-08T00:00:00+00:00") != earnings_cycle_id(
         470, 0, boundary_started_at="2026-09-09T00:00:00+00:00"
     )
@@ -140,6 +141,15 @@ def test_earnings_cycle_id_changes_at_counter_reset_and_is_stable_inside_cycle()
     )
     assert earnings_cycle_id(470, 60_000, previous_cycle_id="cycle-a") == "cycle-a"
     assert earnings_cycle_id(470, 30_000, previous_cycle_id="cycle-a") == "cycle-a"
+    assert (
+        earnings_cycle_id(
+            470,
+            60_000,
+            previous_cycle_id="cycle-a",
+            boundary_started_at="2026-09-08T00:00:00+00:00",
+        )
+        != "cycle-a"
+    )
     assert earnings_cycle_id(470, None) == ""
 
 
