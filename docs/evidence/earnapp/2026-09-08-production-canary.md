@@ -38,6 +38,14 @@ The worker was rebooted. After boot, all six canary containers returned to
 `running` within the observed startup window, with the same state volumes and
 node identities.
 
+The reboot audit also found that the live worker container was operator-created
+and had no Compose project labels, while the systemd unit attempted `docker
+compose up`. That produced a container-name conflict despite the worker being
+healthy. The unit now starts the existing `cashpilot-worker` container first
+and falls back to the pinned `1.21.24` Compose definition only when it is absent.
+The unit is enabled/active with `Result=success`; all six EarnApp container IDs
+and uptimes were unchanged by this repair.
+
 ## Release
 
 - PR: `#168`
