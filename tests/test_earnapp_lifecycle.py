@@ -153,6 +153,14 @@ def test_earnings_cycle_id_changes_at_counter_reset_and_is_stable_inside_cycle()
     assert earnings_cycle_id(470, None) == ""
 
 
+def test_first_positive_counter_gets_stable_cycle_marker():
+    from app.earnapp_lifecycle import earnings_cycle_id
+
+    first = earnings_cycle_id(470, 3_000_000)
+    assert first
+    assert earnings_cycle_id(470, 2_000_000, previous_cycle_id=first) == first
+
+
 def test_qualified_uptime_without_country_or_ip_waits_for_backend_assignment():
     now = datetime.now(UTC)
     decision = evaluate_node(
