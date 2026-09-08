@@ -2918,6 +2918,7 @@ class EarnAppCanaryDeployRequest(BaseModel):
     logical_node_id: str = Field(min_length=3, max_length=128, pattern=r"^[a-z0-9][a-z0-9-]{2,120}$")
     worker_id: int | None = Field(default=None, gt=0)
     platform: str = Field(default="ubuntu", pattern=r"^(macos|ios|ubuntu)$")
+    country_scope: str = Field(default="any", pattern=r"^(any|vn|non-vn)$")
 
 
 class EarnAppRuntimeProxyAdoptRequest(BaseModel):
@@ -3687,6 +3688,7 @@ async def api_deploy_earnapp_canary(
                 int(worker_id),
                 worker_deploy=worker_deploy,
                 worker_remove=worker_remove,
+                country_scope=body.country_scope,
             )
         else:
             # Ubuntu canaries use Docker; retain parsed legacy limits for

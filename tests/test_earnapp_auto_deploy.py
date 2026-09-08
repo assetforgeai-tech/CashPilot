@@ -250,6 +250,15 @@ def test_platform_country_filter_is_unrestricted_when_os_is_enabled_everywhere()
     assert earnapp_deploy.platform_country_filter("macos", policy) == ("", "")
 
 
+def test_proxy_country_scope_forces_non_vn_without_disabling_vn_platforms():
+    policy = earnapp_deploy.platform_policy_from_config(
+        {"earnapp_platform_vn_macos": "true", "earnapp_platform_non_vn_macos": "true"}
+    )
+
+    assert earnapp_deploy.proxy_country_filter("non-vn", policy) == ("", "VN")
+    assert earnapp_deploy.proxy_country_filter("vn", policy) == ("VN", "")
+
+
 @pytest.mark.parametrize("platform", ["macos", "ios", "ubuntu"])
 @pytest.mark.parametrize("country", ["VN", "US"])
 def test_prepare_node_honors_enabled_platform_country_policy(tmp_path, platform, country):

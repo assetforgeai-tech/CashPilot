@@ -63,6 +63,18 @@ def platform_country_filter(platform: str, policy: Mapping[str, tuple[str, ...]]
     return "", "__NO_MATCH__"
 
 
+def proxy_country_filter(scope: str, policy: Mapping[str, tuple[str, ...]] | None = None) -> tuple[str, str]:
+    """Convert an explicit canary country scope into lease filters."""
+    selected = str(scope or "").strip().lower().replace("_", "-")
+    if selected in {"non-vn", "nonvn", "outside-vn"}:
+        return "", "VN"
+    if selected in {"vn", "vietnam"}:
+        return "VN", ""
+    if selected in {"", "any", "all"}:
+        return "", ""
+    raise ValueError("EarnApp proxy country scope is invalid")
+
+
 def _valid_ubuntu_device_id(value: Any) -> str:
     """Return a runtime UUID only when it is safe to use for CAS cleanup."""
     device_id = str(value or "").strip()

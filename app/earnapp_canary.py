@@ -439,6 +439,7 @@ async def deploy_canary(
     *,
     worker_deploy: WorkerDeploy,
     worker_remove: WorkerRemove,
+    country_scope: str = "any",
 ) -> dict[str, Any]:
     from app import earnapp_deploy
 
@@ -462,7 +463,7 @@ async def deploy_canary(
     provisioned = await provision_canary(node_id, int(worker_id), profile["device_id"])
     try:
         policy = earnapp_deploy.platform_policy_from_config(await database.get_config())
-        country, excluded = earnapp_deploy.platform_country_filter("macos", policy)
+        country, excluded = earnapp_deploy.proxy_country_filter(country_scope, policy)
         proxy = await database.lease_proxy_for_provider_instance(
             "earnapp", int(worker_id), node_id, country_code=country, exclude_country_code=excluded
         )
