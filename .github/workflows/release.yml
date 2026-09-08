@@ -117,6 +117,11 @@ jobs:
           if echo "$CHANGED" | grep -qE '^scripts/'; then
             BUILD_UI=true
           fi
+          # The Chrome importer ships with the UI-side operator tooling and
+          # must receive an immutable release tag when its behavior changes.
+          if echo "$CHANGED" | grep -qE '^contrib/chrome-provider-importer/'; then
+            BUILD_UI=true
+          fi
           if echo "$CHANGED" | grep -qE '^services/'; then
             BUILD_UI=true
             BUILD_WORKER=true
