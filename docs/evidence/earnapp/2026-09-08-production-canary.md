@@ -52,6 +52,18 @@ and uptimes were unchanged by this repair.
 - Release: `v1.21.24`
 - Server UI and worker updated to `1.21.24` before the canary.
 
+## 2026-09-08 follow-up
+
+- Boundary recovery fix merged as PR `#175`, released as `v1.21.27`, and
+  deployed UI-only. The worker image/container and all six EarnApp nodes were
+  unchanged.
+- Runtime fidelity gate merged as PR `#176`, released as `v1.21.28`, and
+  deployed UI-only. Context staging now verifies the three reference image
+  pins, artifact hashes, proxy/DoH entrypoint wiring, and complete artifact
+  sets before any EarnApp image build.
+- Post-deploy server evidence: UI `v1.21.28` healthy, worker remained
+  `1.21.24`, worker restart count `0`; no node recreation or proxy lease change.
+
 ## Remaining proof
 
 Positive EarnApp dashboard usage/country remains an external asynchronous
