@@ -101,7 +101,7 @@ healthy       -> no mutation
 
 - [x] Keep collector interval at 60 minutes.
 - [ ] Keep lifecycle interval at 5 minutes for observation and offline restart.
-- [x] Persist `earnings_cycle_id`, `earnings_zero_observed_at`, `last_recovery_cycle_id`, and the previous `earnings_update_in_ms` counter.
+- [ ] Persist `earnings_cycle_id`, `earnings_zero_observed_at`, and `last_recovery_cycle_id`.
 - [x] Use account `earnings_update_in_ms` as the cycle boundary; retain the boundary marker through the positive countdown and recover once after grace.
 - [ ] Prevent collector refresh and lifecycle refresh from issuing duplicate API calls for the same account within one scheduler pass.
 - [ ] Add tests for delayed dashboard data, usage increasing while status is stale, and banned after boundary.
