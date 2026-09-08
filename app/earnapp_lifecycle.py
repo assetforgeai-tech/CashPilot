@@ -146,7 +146,7 @@ def evaluate_node(
         )
     except (TypeError, ValueError):
         boundary_reset = False
-    if boundary_reset and not runtime.get("earnings_zero_observed_at"):
+    if boundary_reset:
         return LifecycleDecision(
             "observe",
             same,
