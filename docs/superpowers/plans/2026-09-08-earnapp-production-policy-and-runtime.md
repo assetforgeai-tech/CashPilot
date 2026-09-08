@@ -126,7 +126,7 @@ healthy       -> no mutation
 - [x] Keep lifecycle interval at 5 minutes for observation and offline restart.
 - [x] Persist `earnings_cycle_id`, `earnings_zero_observed_at`, `last_recovery_cycle_id`, and the previous `earnings_update_in_ms` counter.
 - [x] Use account `earnings_update_in_ms` as the cycle boundary; retain the boundary marker through the positive countdown and recover once after grace.
-- [ ] Prevent collector refresh and lifecycle refresh from issuing duplicate API calls for the same account within one scheduler pass.
+- [x] Prevent collector refresh and lifecycle refresh from issuing duplicate API calls for the same account within one scheduler pass; lifecycle reuses a successful snapshot collected within 60 seconds while the account lock serializes concurrent callers.
 - [ ] Add tests for delayed dashboard data, usage increasing while status is stale, and banned after boundary.
 
 ## Task 5: Chrome Token Expiry and Opt-in Automatic Login

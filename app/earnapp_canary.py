@@ -8,6 +8,7 @@ import hashlib
 import json
 import re
 import secrets
+import weakref
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
@@ -26,12 +27,16 @@ LINK_VERIFY_COOLDOWN_SECONDS = 300
 MAC_PROXY_TUN_IP = "10.255.255.1"
 _UPTIME_BILLING = frozenset({"uptime", "fixed", "qualified_uptime"})
 _BYTE_BILLING = frozenset({"bandwidth", "bytes", "byte", "traffic", "gb"})
-_ACCOUNT_VERIFY_LOCKS: dict[int, asyncio.Lock] = {}
+_ACCOUNT_VERIFY_LOCKS: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, dict[int, asyncio.Lock]] = (
+    weakref.WeakKeyDictionary()
+)
 
 
 def account_api_lock(account_id: int) -> asyncio.Lock:
     """Share one account-scoped lock between verification and collection calls."""
-    return _ACCOUNT_VERIFY_LOCKS.setdefault(int(account_id), asyncio.Lock())
+    loop = asyncio.get_running_loop()
+    locks = _ACCOUNT_VERIFY_LOCKS.setdefault(loop, {})
+    return locks.setdefault(int(account_id), asyncio.Lock())
 
 
 def _workload_metric_names(evidence: Mapping[str, Any], billing: str) -> tuple[str, ...]:
