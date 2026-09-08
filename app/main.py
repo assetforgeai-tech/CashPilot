@@ -922,7 +922,7 @@ async def _execute_earnapp_lifecycle_action(node: Mapping[str, Any], action: str
                 timeout=180,
             )
         except HTTPException as exc:
-            if exc.status_code != 404:
+            if exc.status_code not in {404, 409}:
                 raise
             worker = await database.get_worker(worker_id)
             if str((worker or {}).get("status") or "").strip().lower() != "online":
