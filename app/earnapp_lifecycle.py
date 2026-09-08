@@ -34,6 +34,8 @@ def earnings_cycle_id(
         return ""
     if counter < 0:
         return ""
+    if counter > 0:
+        return str(previous_cycle_id or "").strip()
     boundary = str(boundary_started_at or "").strip() if counter <= 0 else ""
     if counter <= 0 and not boundary:
         boundary = f"after:{str(previous_cycle_id or '').strip()}"
@@ -126,13 +128,10 @@ def evaluate_node(
     if counter_available and counter_value is not None and counter_value > 0:
         zero_seen = runtime.get("earnings_zero_observed_at")
         if zero_seen:
-            return LifecycleDecision(
-                "healthy" if usage > baseline else "observe",
-                0 if usage > baseline else same,
-                0 if usage > baseline else rotates,
-                "positive usage delta" if usage > baseline else "earnings update cycle active",
-                clear_earnings_zero_observed=True,
-            )
+            zero_at = _when(zero_seen, current)
+            if current - zero_at < timedelta(minutes=EARNINGS_ZERO_GRACE_MINUTES):
+                return LifecycleDecision("observe", same, rotates, "waiting for post-cycle earnings refresh")
+            flatline = True
     elif counter_available and flatline and not snapshot.get("banned"):
         zero_seen = runtime.get("earnings_zero_observed_at")
         if not zero_seen:

@@ -15,7 +15,7 @@
 - Proxy fail-closed; không fallback trực tiếp; mỗi node một proxy/egress độc lập.
 - Account suspended/locked: không quarantine; release proxy ngay sau khi local runtime bị dừng/xóa và lease CAS xác nhận. Remote device cleanup tiếp tục idempotent độc lập, không giữ proxy chỉ vì remote API chậm.
 - Không chuyển UUID/device đang link trực tiếp giữa account; failover account phải tạo node mới.
-- Không release proxy cũ trước khi remote device deletion thành công hoặc có xác nhận device không tồn tại.
+- Với `ACCOUNT_LOCKED`, local runtime phải được xóa và lease CAS xác nhận trước khi release; remote delete chỉ best-effort sau đó. Với banned/proxy rotation, remote delete bắt buộc trước khi release/replacement.
 - Không đụng provider khác hoặc protected baseline.
 - Không lộ cookie, OAuth token, XSRF token, SSH key, GHCR token trong log, test output, image hoặc PR.
 - Runtime/binary/image sau khi chốt phải pin digest/SHA-256; UUID, volume, credentials không clone từ reference VPS.
@@ -68,7 +68,7 @@ healthy       -> no mutation
 - Test: `tests/test_earnapp_account_pool.py`, `tests/test_earnapp_collector.py`
 
 - [x] Add durable auth evidence fields: `last_auth_success_at`, `last_auth_failure_at`, `auth_failure_kind`, `needs_token_refresh`.
-- [ ] Classify auth rejection, account suspended/locked, proxy blocked, and route failure separately.
+- [x] Classify auth rejection, account suspended/locked, proxy blocked, and route failure separately.
 - [x] On auth failure, mark account and expose dashboard-visible auth evidence; do not restart every node.
 - [ ] Implement failover as a transaction: remote-delete old device, retire old logical node, assign least-loaded `ACTIVE` account, lease eligible proxy, create fresh node.
 - [ ] If no active account exists, keep node pending and retry silently; do not release a healthy proxy solely because token is expired.
@@ -99,10 +99,10 @@ healthy       -> no mutation
 - Modify: `app/earnapp_lifecycle.py`
 - Test: `tests/test_earnapp_collector.py`, `tests/test_earnapp_lifecycle.py`
 
-- [ ] Keep collector interval at 60 minutes.
+- [x] Keep collector interval at 60 minutes.
 - [ ] Keep lifecycle interval at 5 minutes for observation and offline restart.
 - [ ] Persist `earnings_cycle_id`, `earnings_zero_observed_at`, and `last_recovery_cycle_id`.
-- [ ] Use account `earnings_update_in_ms` as the cycle boundary; reset counters only after a new positive cycle or explicit boundary.
+- [x] Use account `earnings_update_in_ms` as the cycle boundary; retain the boundary marker through the positive countdown and recover once after grace.
 - [ ] Prevent collector refresh and lifecycle refresh from issuing duplicate API calls for the same account within one scheduler pass.
 - [ ] Add tests for delayed dashboard data, usage increasing while status is stale, and banned after boundary.
 
@@ -141,7 +141,7 @@ healthy       -> no mutation
 - [x] Build a sanitized reference manifest containing binary/script hashes, container limits, mounts, bridge/LAN addressing, capabilities and restart policy for each OS: `docs/evidence/earnapp/reference-vps-2026-09-08.md`.
 - [x] Diff reference bundle metadata against CashPilot without copying UUID, account, volume, proxy, or credentials; emit `reference-bundle-manifest-2026-09-08.json`.
 - [x] Port only missing behavior after an exact per-OS contract diff: verified upgraded image digests and artifact hashes; no UUID, profile, proxy credential, or host fingerprint copied.
-- [ ] Gate every image build on a sanitized fidelity report for macOS/iOS/Ubuntu covering binary/image digest, entrypoint, supervisor/watchdog, `lan_ip`, interface selection, redsocks/iptables, DNS, proxy bypasses, link retry/cooldown, mounts, limits, capabilities and restart policy.
+- [ ] Gate every image build on a sanitized fidelity report for macOS/iOS/Ubuntu covering binary/image digest, entrypoint, supervisor/watchdog, `lan_ip`, interface selection, redsocks/iptables, DNS, proxy bypasses, link retry/cooldown, mounts, limits, capabilities and restart policy. Reference manifest captured; fresh verifier still required.
 - [x] Ensure all three platforms use Docker; remove accidental LXD selection without touching unrelated providers.
 - [ ] Add tests for identity uniqueness, platform contract, proxy egress, watchdog and reboot persistence.
 
