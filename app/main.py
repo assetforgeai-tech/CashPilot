@@ -712,6 +712,10 @@ async def _run_earnapp_lifecycle_scheduler() -> None:
     """Persist uniform EarnApp health decisions from the latest evidence."""
     refreshed_accounts: set[int] = set()
     failed_accounts: set[int] = set()
+    account_states = {
+        int(row.get("id") or 0): str(row.get("state") or "").strip().upper()
+        for row in await database.list_earnapp_accounts()
+    }
     for node in await database.list_earnapp_logical_nodes():
         # Only nodes with an assigned runtime participate in lifecycle actions.
         # RECOVERABLE/PLANNED rows intentionally retain history and affinity but
@@ -719,6 +723,9 @@ async def _run_earnapp_lifecycle_scheduler() -> None:
         if str(node.get("state") or "").upper() not in {"ACTIVE", "RECOVERY_HOLD"}:
             continue
         try:
+            if account_states.get(int(node.get("account_id") or 0)) == "ACCOUNT_LOCKED":
+                await _retire_locked_earnapp_runtime(node)
+                continue
             spec = await database.get_provider_instance_spec(str(node.get("logical_node_id") or ""))
             evidence = (spec or {}).get("earnapp_device_verification") if isinstance(spec, Mapping) else None
             account_id = int(node.get("account_id") or 0)
@@ -970,6 +977,38 @@ async def _delete_earnapp_remote_device(node: Mapping[str, Any]) -> bool:
         device_id
     )
     return str(result.get("status") or "").lower() == "deleted"
+
+
+async def _retire_locked_earnapp_runtime(node: Mapping[str, Any]) -> bool:
+    """Remove a locked account runtime and release its lease without proxy quarantine."""
+    node_id = str(node.get("logical_node_id") or "").strip()
+    worker_id = int(node.get("assigned_worker_id") or 0)
+    generation = int(node.get("generation") or 0)
+    device_id = str(node.get("device_id") or "").strip()
+    if not node_id or worker_id <= 0 or generation <= 0 or not device_id:
+        return False
+    removed = await _proxy_to_worker(
+        worker_id,
+        "DELETE",
+        f"/api/earnapp/docker-nodes/{node_id}",
+        json={"generation": generation, "device_id": device_id},
+        timeout=180,
+    )
+    if not isinstance(removed, Mapping) or str(removed.get("status") or "").lower() != "removed":
+        return False
+    # Remote cleanup is best-effort for locked accounts. Attempt it while the
+    # account-owned route still exists, but never retain a healthy proxy when
+    # the account itself is unusable.
+    with contextlib.suppress(Exception):
+        await _delete_earnapp_remote_device(node)
+    released = await database.finalize_earnapp_node_removal(
+        node_id,
+        worker_id,
+        generation=generation,
+        device_id=device_id,
+        reason="EARNAPP_ACCOUNT_LOCKED",
+    )
+    return released
 
 
 async def _retire_earnapp_node_for_fresh_replacement(node: Mapping[str, Any], *, preserve_proxy_affinity: bool) -> bool:
