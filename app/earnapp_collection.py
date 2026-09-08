@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app import database, earnapp_canary
@@ -49,11 +50,23 @@ async def _collection_routes(account_id: int) -> list[dict[str, Any]]:
     return [route] if route else []
 
 
-async def collect_account(account_id: int) -> dict[str, Any]:
+async def collect_account(account_id: int, *, reuse_recent_seconds: int = 0) -> dict[str, Any]:
     async with earnapp_canary.account_api_lock(account_id):
         account = await database.get_earnapp_account_credentials(account_id)
         if not account:
             return {"status": "error", "error_kind": "auth", "error": "EarnApp account unavailable"}
+        if reuse_recent_seconds > 0:
+            recent = await database.get_latest_earnapp_snapshot(account_id)
+            collected_at = str((recent or {}).get("collected_at") or "")
+            try:
+                collected_when = datetime.fromisoformat(collected_at.replace("Z", "+00:00"))
+                if collected_when.tzinfo is None:
+                    collected_when = collected_when.replace(tzinfo=UTC)
+            except (TypeError, ValueError):
+                collected_when = None
+            if recent and recent.get("status") == "ok" and collected_when:
+                if datetime.now(UTC) - collected_when <= timedelta(seconds=int(reuse_recent_seconds)):
+                    return {"status": "ok", "source": "recent_snapshot"}
         routes = await _collection_routes(account_id)
         if not routes:
             return {"status": "error", "error_kind": "route", "error": "EarnApp account proxy unavailable"}

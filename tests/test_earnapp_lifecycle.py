@@ -583,7 +583,7 @@ async def test_scheduler_refreshes_stale_account_snapshot_before_flatline_recrea
 
     await main._run_earnapp_lifecycle_scheduler()
 
-    collect.assert_awaited_once_with(470)
+    collect.assert_awaited_once_with(470, reuse_recent_seconds=60)
     execute.assert_not_awaited()
     assert update.await_args.args[1].action == "healthy"
 
@@ -874,6 +874,6 @@ async def test_scheduler_defers_all_account_nodes_when_refresh_auth_fails(monkey
 
     await main._run_earnapp_lifecycle_scheduler()
 
-    collect.assert_awaited_once_with(470)
+    collect.assert_awaited_once_with(470, reuse_recent_seconds=60)
     execute.assert_not_awaited()
     update.assert_not_awaited()

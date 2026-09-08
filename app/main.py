@@ -749,7 +749,7 @@ async def _run_earnapp_lifecycle_scheduler() -> None:
                 ):
                     refreshed_accounts.add(account_id)
                     failed_accounts.add(account_id)
-                    result = await earnapp_collection.collect_account(account_id)
+                    result = await earnapp_collection.collect_account(account_id, reuse_recent_seconds=60)
                     if result.get("status") != "ok":
                         continue
                     failed_accounts.discard(account_id)
