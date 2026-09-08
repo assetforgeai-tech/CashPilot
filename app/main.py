@@ -768,10 +768,19 @@ async def _run_earnapp_lifecycle_scheduler() -> None:
                 # Device metrics identify the node; the account-level balance
                 # counter defines the authoritative earnings update boundary.
                 evidence = {**snapshot_evidence}
-                if snapshot.get("earnings_update_in_ms") is not None:
-                    evidence["earnings_update_in_ms"] = snapshot.get("earnings_update_in_ms")
+            # Keep the account-level cycle marker even when the provider
+            # temporarily omits this device from its device-status payload.
+            # Without it, an offline node has no cycle key and is restarted
+            # on every five-minute poll.
             if not isinstance(evidence, Mapping):
-                continue
+                # A fresh account snapshot may omit a device briefly. Keep
+                # the cycle marker durable, but do not infer online/offline.
+                if snapshot:
+                    evidence = {}
+                else:
+                    continue
+            if snapshot and snapshot.get("earnings_update_in_ms") is not None:
+                evidence = {**evidence, "earnings_update_in_ms": snapshot.get("earnings_update_in_ms")}
             usage = earnapp_lifecycle.effective_usage(evidence)
             decision = earnapp_lifecycle.evaluate_node(
                 {
