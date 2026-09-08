@@ -22,6 +22,8 @@
 - Clone fidelity bắt buộc bao gồm binary, image filesystem, entrypoint, supervisor/watchdog, LAN identity/IP mapping, interface metadata, redsocks/iptables route, DNS behavior, proxy type/auth, registration, link retry, cooldown và follow; từng mục phải có hash/diff/evidence.
 - Không sao chép cấu hình làm yếu TLS như `NODE_TLS_REJECT_UNAUTHORIZED=0` sang production nếu canary không chứng minh bắt buộc; nếu bắt buộc phải ghi nhận risk và giới hạn riêng cho EarnApp container.
 - Token sync không chạy định kỳ vô điều kiện; chỉ chạy khi cookie thay đổi, operator bấm sync, hoặc server đánh dấu account cần refresh.
+- MacOS canary dùng proxy non-VN để tách lỗi upstream VN khỏi lỗi runtime; không đổi
+  hoặc rotate các node MacOS VN đang chạy.
 
 ## Current `Node recovery` Meaning
 
@@ -66,8 +68,45 @@ The scheduler must persist the cycle marker and restart marker atomically. One n
   poll, preserving identity, account binding, volume, and proxy lease.
 - [x] Per-cycle marker prevents duplicate restarts; positive usage clears the
   pending flatline marker.
-- [x] Focused regression suite passes: `46 passed` (`tests/test_earnapp_lifecycle.py`
+- [x] Focused regression suite passes: `50 passed` (`tests/test_earnapp_lifecycle.py`
   and `tests/test_earnapp_policy_matrix.py`).
+- [x] Scheduler regression proves a flatline restart is suppressed after the
+  recovery marker has been persisted for the same Earnings Update cycle.
+
+### Usage-flatline policy gate (added 2026-09-08)
+
+This is an execution policy, not merely a dashboard alert:
+
+1. The account collector supplies `earnings_update_in_ms`; a countdown reset
+   starts a new cycle marker.
+2. The first boundary observation records the marker and waits five minutes.
+3. If the node's effective usage is still not greater than its persisted
+   baseline after that grace period, the worker performs one in-place restart.
+4. The restart preserves UUID, volume, account binding, and proxy lease. It
+   does not delete, relink, release, or rotate anything.
+5. `last_recovery_cycle_id` suppresses duplicate restarts until the next
+   Earnings Update cycle. Positive usage clears the pending boundary marker.
+6. A stale or missing snapshot causes observation only; it cannot trigger a
+   restart. `offline` remains a separate five-minute in-place restart path.
+
+Acceptance evidence: `tests/test_earnapp_lifecycle.py::test_scheduler_does_not_restart_flatline_twice_in_same_earnings_cycle` plus the
+focused suite above.
+
+### MacOS non-VN isolation canary (added 2026-09-08)
+
+- Deploy one fresh MacOS node with a new identity and one distinct eligible
+  non-VN residential proxy.
+- Keep the existing MacOS VN nodes unchanged; no delete, relink, lease release,
+  or proxy rotation is allowed for them.
+- Require the same Docker runtime contract, fail-closed egress, collector link,
+  country evidence, Earnings Update boundary, and positive usage gate.
+- A successful non-VN MacOS result isolates the earlier VN-country hypothesis;
+  it does not by itself declare EarnApp production-ready until the normal
+  usage/reboot gates pass.
+- The canary deploy request now accepts `country_scope=non-vn`; the lease query
+  excludes `VN` even when both country policies allow MacOS. The default remains
+  `any` for backward compatibility, while production evidence must record the
+  explicit scope used.
 
 ## Task 1: Freeze and Test the Unified Policy
 

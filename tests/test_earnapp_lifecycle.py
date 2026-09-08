@@ -677,6 +677,53 @@ async def test_scheduler_executes_restart_decision_for_mutable_node(monkeypatch)
 
 
 @pytest.mark.asyncio
+async def test_scheduler_does_not_restart_flatline_twice_in_same_earnings_cycle(monkeypatch):
+    zero_at = (datetime.now(UTC) - timedelta(minutes=10)).isoformat()
+    cycle_id = __import__("app.earnapp_lifecycle", fromlist=["earnings_cycle_id"]).earnings_cycle_id(
+        2, 0, boundary_started_at=zero_at
+    )
+    node = {
+        "logical_node_id": "earnapp-mac-cycle-guard",
+        "account_id": 2,
+        "assigned_worker_id": 3098,
+        "device_id": "sdk-mac-cycle-guard",
+        "state": "ACTIVE",
+        "proxy_health": "healthy",
+        "usage_baseline": 10.0,
+        "window_started_at": (datetime.now(UTC) - timedelta(hours=2)).isoformat(),
+        "earnings_zero_observed_at": zero_at,
+        "earnings_cycle_id": cycle_id,
+        "last_recovery_cycle_id": cycle_id,
+        "same_proxy_recreates": 0,
+        "rotate_count": 0,
+    }
+    monkeypatch.setattr(main.database, "list_earnapp_logical_nodes", AsyncMock(return_value=[node]))
+    monkeypatch.setattr(
+        main.database,
+        "get_latest_earnapp_snapshot",
+        AsyncMock(
+            return_value={
+                "collected_at": datetime.now(UTC).isoformat(),
+                "earnings_update_in_ms": 0,
+                "devices_json": (
+                    '[{"device_id":"sdk-mac-cycle-guard","online":true,'
+                    '"country_code":"VN","usage_current":10}]'
+                ),
+            }
+        ),
+    )
+    execute = AsyncMock()
+    update = AsyncMock()
+    monkeypatch.setattr(main, "_execute_earnapp_lifecycle_action", execute)
+    monkeypatch.setattr(main.database, "update_earnapp_lifecycle", update)
+
+    await main._run_earnapp_lifecycle_scheduler()
+
+    execute.assert_not_awaited()
+    update.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_scheduler_does_not_advance_recovery_after_failed_mutation(monkeypatch):
     node = {
         "logical_node_id": "earnapp-mac-recover",
