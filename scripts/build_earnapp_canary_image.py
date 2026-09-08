@@ -208,6 +208,10 @@ def write_context(
     for name, payload in generated.items():
         (context / name).write_bytes(payload)
     (context / "Dockerfile").write_text(render_dockerfile(manifest, platform=selected), encoding="utf-8")
+    # Never hand Docker a partial or drifted runtime context.
+    from scripts import verify_earnapp_runtime_fidelity
+
+    verify_earnapp_runtime_fidelity.verify_context(context, selected)
     return context, hashlib.sha256(manifest_bytes).hexdigest()
 
 
