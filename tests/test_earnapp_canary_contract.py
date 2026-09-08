@@ -3488,10 +3488,10 @@ async def test_retry_running_ios_canary_reuses_identity_account_and_proxy(monkey
         "get_earnapp_logical_node",
         AsyncMock(
             return_value={
-                    "logical_node_id": node_id,
-                    "platform": "ios",
-                    "state": "ACTIVE",
-                    "account_id": 7,
+                "logical_node_id": node_id,
+                "platform": "ios",
+                "state": "ACTIVE",
+                "account_id": 7,
                 "current_proxy_id": 12,
                 "device_id": "sdk-ios-" + "4" * 32,
             }
@@ -3546,10 +3546,18 @@ async def test_stale_ios_provider_instance_is_redeployed_when_logical_node_is_pl
         identity_asset_id=node_id,
     )
     deploy = AsyncMock(return_value={"container_id": "fresh-ios"})
-    monkeypatch.setattr(database, "get_earnapp_logical_node", AsyncMock(return_value={"state": "PLANNED", "platform": "ios"}))
-    monkeypatch.setattr(database, "get_provider_instance", AsyncMock(return_value={"worker_id": 3, "status": "running", "container_id": "stale"}))
+    monkeypatch.setattr(
+        database, "get_earnapp_logical_node", AsyncMock(return_value={"state": "PLANNED", "platform": "ios"})
+    )
+    monkeypatch.setattr(
+        database,
+        "get_provider_instance",
+        AsyncMock(return_value={"worker_id": 3, "status": "running", "container_id": "stale"}),
+    )
     monkeypatch.setattr(earnapp_runtime, "runtime_asset_manifest_sha256", lambda platform: "same-contract")
-    monkeypatch.setattr(database, "get_provider_instance_spec", AsyncMock(return_value={"image_contract_sha256": "same-contract"}))
+    monkeypatch.setattr(
+        database, "get_provider_instance_spec", AsyncMock(return_value={"image_contract_sha256": "same-contract"})
+    )
     monkeypatch.setattr(database, "assign_earnapp_account", AsyncMock())
     monkeypatch.setattr(earnapp_deploy, "prepare_node", AsyncMock(return_value=prepared))
     monkeypatch.setattr(database, "save_provider_instance", AsyncMock())
