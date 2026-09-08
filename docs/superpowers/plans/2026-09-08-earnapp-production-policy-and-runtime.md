@@ -42,6 +42,19 @@
 - Lifecycle polling remains every 5 minutes. `last_recovery_cycle_id` prevents duplicate restarts in one Earnings Update cycle; a new boundary permits one new restart.
 - Flatline/offline never triggers proxy rotation or fresh identity by itself. `banned` and unhealthy proxy remain separate replacement paths.
 
+### Required acceptance evidence
+
+This policy is a production gate, not an advisory heuristic:
+
+| Signal | Decision | Preserved | Reset condition |
+| --- | --- | --- | --- |
+| `online=false` | restart node in place | UUID, volume, account, proxy lease | next 5-minute observation after restart |
+| usage unchanged when Earnings Update reaches `0` and grace expires | restart node in place | UUID, volume, account, proxy lease | next `earnings_update_in_ms` cycle |
+| usage increases before grace expires | no action | all state | clear the pending flatline marker |
+| stale/unknown account snapshot | observe only | all state | fresh collector snapshot |
+
+The scheduler must persist the cycle marker and restart marker atomically. One node receives at most one flatline restart per Earnings Update cycle. A restart must never call remote device delete, link, proxy release, or proxy rotation. These assertions require regression coverage and dated canary evidence before EarnApp is marked production-ready.
+
 ## Task 1: Freeze and Test the Unified Policy
 
 **Files:**
