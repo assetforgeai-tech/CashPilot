@@ -4029,9 +4029,7 @@ async def _proxy_earnapp_ubuntu_lifecycle(
     assigned_worker_id, cas, backend = await _resolve_earnapp_ubuntu_lifecycle(logical_node_id, worker_id)
     node_id = str(logical_node_id).strip()
     if backend == "docker":
-        if action == "restart":
-            result = await _proxy_worker_command(assigned_worker_id, "restart", node_id)
-        elif action == "remove":
+        if action == "remove":
             result = await _proxy_to_worker(
                 assigned_worker_id,
                 "DELETE",
@@ -4040,7 +4038,15 @@ async def _proxy_earnapp_ubuntu_lifecycle(
                 timeout=180,
             )
         else:
-            result = await _proxy_worker_command(assigned_worker_id, "stop" if action == "stop" else "start", node_id)
+            # EarnApp Docker runtimes require the CAS-aware endpoint. The
+            # generic container route rejects these nodes with 409.
+            result = await _proxy_to_worker(
+                assigned_worker_id,
+                "POST",
+                f"/api/earnapp/docker-nodes/{node_id}/{action}",
+                json=cas,
+                timeout=180,
+            )
         return assigned_worker_id, result
     if action == "restart":
         await _proxy_to_worker(
