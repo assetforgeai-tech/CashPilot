@@ -815,6 +815,22 @@ def test_worker_rejects_a_malformed_uuid_from_the_ubuntu_volume(monkeypatch):
         )
 
 
+def test_worker_waits_for_the_uuid_generated_inside_the_ios_volume(monkeypatch):
+    container = MagicMock()
+    container.exec_run.return_value = MagicMock(exit_code=0, output=b"sdk-ios-" + b"c" * 32 + b"\n")
+    monkeypatch.setattr(orchestrator, "_get_client", MagicMock(return_value=MagicMock()))
+    monkeypatch.setattr(orchestrator, "_find_earnapp_runtime_container", lambda *_args, **_kwargs: container)
+
+    device_id = orchestrator.wait_for_earnapp_device_id(
+        "earnapp-ios-reference-1",
+        device_prefix="sdk-ios-",
+        timeout_seconds=1,
+        poll_interval_seconds=0,
+    )
+
+    assert device_id == "sdk-ios-" + "c" * 32
+
+
 @pytest.mark.asyncio
 async def test_worker_deploy_returns_and_persists_the_runtime_generated_ubuntu_uuid(tmp_path, monkeypatch):
     device_id = "sdk-node-" + "b" * 32
@@ -853,6 +869,48 @@ async def test_worker_deploy_returns_and_persists_the_runtime_generated_ubuntu_u
     assert result["device_id"] == device_id
     state = json.loads((tmp_path / "earnapp-nodes" / "earnapp-ubuntu-reference-1.json").read_text())
     assert state["device_id"] == device_id
+
+
+@pytest.mark.asyncio
+async def test_worker_deploy_uses_runtime_generated_ios_uuid(tmp_path, monkeypatch):
+    generated = "sdk-ios-" + "d" * 32
+    spec = worker_api.DeploySpec(
+        **earnapp_canary.build_runtime_spec(
+            logical_node_id="earnapp-ios-reference-1",
+            account_id=7,
+            platform="ios",
+            device_id="sdk-ios-" + "e" * 32,
+            proxy={
+                "proxy_id": 12,
+                "host": "proxy.example",
+                "port": 1080,
+                "protocol": "socks5",
+                "exit_ip": "203.0.113.10",
+                "country_code": "VN",
+                "ip_type": "residential",
+            },
+            generation=4,
+        )
+    )
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(worker_api, "_verify_api_key", lambda _request: None)
+    monkeypatch.setattr(worker_api, "_materialize_runtime_assets", AsyncMock())
+    monkeypatch.setattr(worker_api.orchestrator, "deploy_raw", MagicMock(return_value="container-id"))
+    monkeypatch.setattr(
+        worker_api.orchestrator,
+        "wait_for_earnapp_device_id",
+        MagicMock(return_value=generated),
+    )
+
+    result = await worker_api.api_deploy_earnapp_docker_node(
+        _request("/api/earnapp/docker-nodes/earnapp-ios-reference-1/deploy"),
+        "earnapp-ios-reference-1",
+        spec,
+    )
+
+    assert result["device_id"] == generated
+    state = json.loads((tmp_path / "earnapp-nodes" / "earnapp-ios-reference-1.json").read_text())
+    assert state["device_id"] == generated
 
 
 @pytest.mark.asyncio
@@ -3212,10 +3270,12 @@ async def test_platform_canary_uses_matching_transport_and_persists_redacted_sta
         identity_asset_id=f"earnapp-{platform}-canary",
     )
     generated_device_id = "sdk-node-" + "9" * 32
+    generated_ios_device_id = "sdk-ios-" + "9" * 32
     deploy = AsyncMock(
-        return_value={"container_id": "ubuntu-node", "device_id": generated_device_id}
-        if platform == "ubuntu"
-        else {"container_id": "ios-node"}
+        return_value={
+            "container_id": "runtime-node",
+            "device_id": generated_device_id if platform == "ubuntu" else generated_ios_device_id,
+        }
     )
     save = AsyncMock()
     bind_generated = AsyncMock(
@@ -3257,14 +3317,15 @@ async def test_platform_canary_uses_matching_transport_and_persists_redacted_sta
         assert persisted["runtime_backend"] == "docker"
     assert save.await_args.kwargs["proxy_id"] == 12
     assert save.await_args.kwargs["status"] == "running"
-    assert result["device_id"] == (generated_device_id if platform == "ubuntu" else prepared.device_id)
-    if platform == "ubuntu":
+    assert result["device_id"] == (generated_device_id if platform == "ubuntu" else generated_ios_device_id)
+    if platform in {"ubuntu", "ios"}:
         bind_generated.assert_awaited_once_with(
             prepared.logical_node_id,
             3,
             generation=4,
             proxy_id=12,
-            device_id=generated_device_id,
+            device_id=generated_device_id if platform == "ubuntu" else generated_ios_device_id,
+            platform=platform,
         )
 
 
@@ -3545,7 +3606,7 @@ async def test_stale_ios_provider_instance_is_redeployed_when_logical_node_is_pl
         proxy={"proxy_id": 16, "exit_ip": "203.0.113.16", "country_code": "US", "ip_type": "residential"},
         identity_asset_id=node_id,
     )
-    deploy = AsyncMock(return_value={"container_id": "fresh-ios"})
+    deploy = AsyncMock(return_value={"container_id": "fresh-ios", "device_id": "sdk-ios-" + "7" * 32})
     monkeypatch.setattr(
         database, "get_earnapp_logical_node", AsyncMock(return_value={"state": "PLANNED", "platform": "ios"})
     )
@@ -3560,6 +3621,9 @@ async def test_stale_ios_provider_instance_is_redeployed_when_logical_node_is_pl
     )
     monkeypatch.setattr(database, "assign_earnapp_account", AsyncMock())
     monkeypatch.setattr(earnapp_deploy, "prepare_node", AsyncMock(return_value=prepared))
+    monkeypatch.setattr(
+        database, "bind_earnapp_generated_device_id", AsyncMock(return_value={"device_id": "sdk-ios-" + "7" * 32})
+    )
     monkeypatch.setattr(database, "save_provider_instance", AsyncMock())
 
     result = await earnapp_canary.deploy_platform_canary(
@@ -3599,6 +3663,9 @@ async def test_ios_provider_instance_persist_failure_cleans_only_matching_genera
     monkeypatch.setattr(database, "get_earnapp_logical_node", AsyncMock(return_value=None))
     monkeypatch.setattr(database, "assign_earnapp_account", AsyncMock())
     monkeypatch.setattr(earnapp_deploy, "prepare_node", AsyncMock(return_value=prepared))
+    monkeypatch.setattr(
+        database, "bind_earnapp_generated_device_id", AsyncMock(return_value={"device_id": "sdk-ios-" + "8" * 32})
+    )
     monkeypatch.setattr(database, "save_provider_instance", AsyncMock(side_effect=RuntimeError("db failed")))
     monkeypatch.setattr(database, "rollback_earnapp_canary_binding", rollback)
 
@@ -3607,11 +3674,11 @@ async def test_ios_provider_instance_persist_failure_cleans_only_matching_genera
             node_id,
             3,
             platform="ios",
-            worker_deploy=AsyncMock(return_value={"container_id": "ios-container"}),
+            worker_deploy=AsyncMock(return_value={"container_id": "ios-container", "device_id": "sdk-ios-" + "8" * 32}),
             worker_remove=remove,
         )
 
-    remove.assert_awaited_once_with(3, node_id, 6, device_id)
+    remove.assert_awaited_once_with(3, node_id, 6, "sdk-ios-" + "8" * 32)
     rollback.assert_awaited_once_with(
         node_id,
         3,

@@ -2824,11 +2824,15 @@ async def api_deploy_earnapp_docker_node(request: Request, slug: str, spec: Depl
         raise HTTPException(status_code=500, detail="EarnApp Docker deployment failed") from exc
     proxy = dict(spec.proxy or {})
     device_id = str(spec.labels.get("cashpilot.earnapp.device_id") or "")
-    if platform == "linux":
+    if platform in {"linux", "ios"}:
         try:
-            device_id = await asyncio.to_thread(orchestrator.wait_for_earnapp_device_id, slug)
+            device_id = await asyncio.to_thread(
+                orchestrator.wait_for_earnapp_device_id,
+                slug,
+                device_prefix="sdk-ios-" if platform == "ios" else "sdk-node-",
+            )
             expected_device_id = str(spec.expected_device_id or "")
-            if expected_device_id and expected_device_id != device_id:
+            if platform == "linux" and expected_device_id and expected_device_id != device_id:
                 raise RuntimeError("EarnApp Ubuntu runtime identity does not match assignment")
         except RuntimeError as exc:
             # The exact Docker runtime was created by this request, but its UUID

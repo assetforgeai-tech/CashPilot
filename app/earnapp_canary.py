@@ -73,10 +73,11 @@ def _mutable_node_id(value: str) -> str:
     return node_id
 
 
-def _valid_ubuntu_device_id(value: Any) -> str:
+def _valid_generated_device_id(value: Any, platform: str = "ubuntu") -> str:
     """Return a runtime UUID only when it is safe to use for CAS cleanup."""
     device_id = str(value or "").strip()
-    return device_id if re.fullmatch(r"sdk-node-[0-9a-f]{32}", device_id) else ""
+    prefix = "sdk-ios-" if str(platform).strip().lower() == "ios" else "sdk-node-"
+    return device_id if re.fullmatch(re.escape(prefix) + r"[0-9a-f]{32}", device_id) else ""
 
 
 def _identity_value(node_id: str) -> dict[str, Any]:
@@ -694,7 +695,7 @@ async def deploy_platform_canary(
 
     container_id = str(result.get("container_id") or result.get("instance_id") or "remote")
     runtime_device_id = prepared.device_id
-    if selected == "ubuntu":
+    if selected in {"ubuntu", "ios"}:
         runtime_device_id = str(result.get("device_id") or "").strip()
         try:
             bound = await database.bind_earnapp_generated_device_id(
@@ -703,11 +704,12 @@ async def deploy_platform_canary(
                 generation=prepared.generation,
                 proxy_id=int(prepared.proxy["proxy_id"]),
                 device_id=runtime_device_id,
+                platform=selected,
             )
         except Exception:
             # A bind failure must not leave a fresh runtime orphaned. The
             # worker-side delete is CAS-scoped, so only pass a valid UUID.
-            valid_runtime_id = _valid_ubuntu_device_id(runtime_device_id)
+            valid_runtime_id = _valid_generated_device_id(runtime_device_id, selected)
             if valid_runtime_id:
                 with contextlib.suppress(Exception):
                     await worker_remove(int(worker_id), node_id, prepared.generation, valid_runtime_id)
@@ -722,7 +724,7 @@ async def deploy_platform_canary(
                     )
             raise
         if not bound:
-            valid_runtime_id = _valid_ubuntu_device_id(runtime_device_id)
+            valid_runtime_id = _valid_generated_device_id(runtime_device_id, selected)
             if valid_runtime_id:
                 with contextlib.suppress(Exception):
                     await worker_remove(int(worker_id), node_id, prepared.generation, valid_runtime_id)
@@ -750,7 +752,9 @@ async def deploy_platform_canary(
         )
     except Exception:
         cleanup_device_id = (
-            _valid_ubuntu_device_id(runtime_device_id) if selected == "ubuntu" else str(runtime_device_id or "")
+            _valid_generated_device_id(runtime_device_id, selected)
+            if selected in {"ubuntu", "ios"}
+            else str(runtime_device_id or "")
         )
         if cleanup_device_id:
             with contextlib.suppress(Exception):
