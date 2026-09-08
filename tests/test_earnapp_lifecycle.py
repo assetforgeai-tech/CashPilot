@@ -560,6 +560,48 @@ async def test_scheduler_preserves_positive_earnings_counter_before_restart(monk
 
 
 @pytest.mark.asyncio
+async def test_scheduler_keeps_account_cycle_when_device_is_temporarily_missing(monkeypatch):
+    node = {
+        "logical_node_id": "earnapp-ios-missing-device",
+        "account_id": 470,
+        "assigned_worker_id": 3098,
+        "device_id": "sdk-ios-missing-device",
+        "state": "ACTIVE",
+        "proxy_health": "healthy",
+        "usage_baseline": 0.0,
+        "window_started_at": (datetime.now(UTC) - timedelta(minutes=90)).isoformat(),
+        "same_proxy_recreates": 0,
+        "rotate_count": 0,
+    }
+    monkeypatch.setattr(main.database, "list_earnapp_logical_nodes", AsyncMock(return_value=[node]))
+    monkeypatch.setattr(
+        main.database, "list_earnapp_accounts", AsyncMock(return_value=[{"id": 470, "state": "ACTIVE"}])
+    )
+    monkeypatch.setattr(main.database, "get_provider_instance_spec", AsyncMock(return_value={}))
+    monkeypatch.setattr(
+        main.database,
+        "get_latest_earnapp_snapshot",
+        AsyncMock(
+            return_value={
+                "collected_at": datetime.now(UTC).isoformat(),
+                "earnings_update_in_ms": 1_200_000,
+                "devices_json": "[]",
+            }
+        ),
+    )
+    update = AsyncMock(return_value=True)
+    execute = AsyncMock(return_value=True)
+    monkeypatch.setattr(main.database, "update_earnapp_lifecycle", update)
+    monkeypatch.setattr(main, "_execute_earnapp_lifecycle_action", execute)
+
+    await main._run_earnapp_lifecycle_scheduler()
+
+    execute.assert_not_awaited()
+    assert update.await_args.kwargs["earnings_cycle_id"]
+    assert update.await_args.kwargs["earnings_update_in_ms"] == 1_200_000
+
+
+@pytest.mark.asyncio
 async def test_scheduler_refreshes_stale_account_snapshot_before_flatline_recreate(monkeypatch):
     node = {
         "logical_node_id": "earnapp-mac-refresh",
