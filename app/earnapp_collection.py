@@ -64,9 +64,13 @@ async def collect_account(account_id: int, *, reuse_recent_seconds: int = 0) -> 
                     collected_when = collected_when.replace(tzinfo=UTC)
             except (TypeError, ValueError):
                 collected_when = None
-            if recent and recent.get("status") == "ok" and collected_when:
-                if datetime.now(UTC) - collected_when <= timedelta(seconds=int(reuse_recent_seconds)):
-                    return {"status": "ok", "source": "recent_snapshot"}
+            if (
+                recent
+                and recent.get("status") == "ok"
+                and collected_when
+                and datetime.now(UTC) - collected_when <= timedelta(seconds=int(reuse_recent_seconds))
+            ):
+                return {"status": "ok", "source": "recent_snapshot"}
         routes = await _collection_routes(account_id)
         if not routes:
             return {"status": "error", "error_kind": "route", "error": "EarnApp account proxy unavailable"}
