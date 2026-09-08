@@ -464,9 +464,7 @@ async def deploy_canary(
             "container_id": str(existing.get("container_id") or "remote"),
         }
 
-    provisioned = await provision_canary(
-        node_id, int(worker_id), profile["device_id"], country_scope=country_scope
-    )
+    provisioned = await provision_canary(node_id, int(worker_id), profile["device_id"], country_scope=country_scope)
     try:
         policy = earnapp_deploy.platform_policy_from_config(await database.get_config())
         country, excluded = earnapp_deploy.proxy_country_filter(country_scope, policy)
