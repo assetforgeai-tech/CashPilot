@@ -125,6 +125,19 @@ def evaluate_node(
         counter_value = None
         started = _when(runtime.get("window_started_at"), current)
         flatline = current - started >= timedelta(minutes=FLATLINE_MINUTES)
+    previous_counter = snapshot.get("previous_earnings_update_in_ms")
+    try:
+        boundary_reset = counter_value is not None and previous_counter is not None and counter_value > float(previous_counter)
+    except (TypeError, ValueError):
+        boundary_reset = False
+    if boundary_reset and not runtime.get("earnings_zero_observed_at"):
+        return LifecycleDecision(
+            "observe",
+            same,
+            rotates,
+            "earnings update boundary observed; waiting for post-cycle usage",
+            earnings_zero_observed_at=current.isoformat(),
+        )
     if counter_available and counter_value is not None and counter_value > 0:
         zero_seen = runtime.get("earnings_zero_observed_at")
         if zero_seen:

@@ -473,6 +473,7 @@ CREATE TABLE IF NOT EXISTS earnapp_logical_nodes (
     earnings_zero_observed_at TEXT,
     earnings_cycle_id   TEXT NOT NULL DEFAULT '',
     last_recovery_cycle_id TEXT NOT NULL DEFAULT '',
+    last_earnings_update_in_ms INTEGER,
     lifecycle_action    TEXT NOT NULL DEFAULT 'observe',
     quarantine_reason   TEXT NOT NULL DEFAULT '',
     created_at         TEXT    NOT NULL DEFAULT (datetime('now')),
@@ -649,6 +650,7 @@ _EARNAPP_CHILD_COLUMNS = {
         "earnings_zero_observed_at",
         "earnings_cycle_id",
         "last_recovery_cycle_id",
+        "last_earnings_update_in_ms",
         "lifecycle_action",
         "quarantine_reason",
         "created_at",
@@ -1960,6 +1962,7 @@ async def _ensure_earnapp_logical_node_proxy_health_schema(db: Any, applied: lis
         "earnings_zero_observed_at": "TEXT",
         "earnings_cycle_id": "TEXT NOT NULL DEFAULT ''",
         "last_recovery_cycle_id": "TEXT NOT NULL DEFAULT ''",
+        "last_earnings_update_in_ms": "INTEGER",
         "lifecycle_action": "TEXT NOT NULL DEFAULT 'observe'",
         "quarantine_reason": "TEXT NOT NULL DEFAULT ''",
     }
@@ -2232,6 +2235,7 @@ async def _create_earnapp_current_schema(db: Any) -> None:
             earnings_zero_observed_at TEXT,
             earnings_cycle_id TEXT NOT NULL DEFAULT '',
             last_recovery_cycle_id TEXT NOT NULL DEFAULT '',
+            last_earnings_update_in_ms INTEGER,
             lifecycle_action    TEXT NOT NULL DEFAULT 'observe',
             quarantine_reason   TEXT NOT NULL DEFAULT '',
             created_at         TEXT    NOT NULL DEFAULT (datetime('now')),
@@ -6310,6 +6314,7 @@ async def update_earnapp_lifecycle(
     usage: float | None = None,
     window_started_at: str | None = None,
     earnings_cycle_id: str | None = None,
+    earnings_update_in_ms: int | None = None,
 ) -> bool:
     """Persist the pure lifecycle decision without touching identity or leases."""
     db = await _get_db()
@@ -6338,6 +6343,9 @@ async def update_earnapp_lifecycle(
             if str(decision.action) in {"restart", "recreate", "rotate_recreate"}:
                 fields.append("last_recovery_cycle_id = ?")
                 values.append(str(earnings_cycle_id))
+        if earnings_update_in_ms is not None:
+            fields.append("last_earnings_update_in_ms = ?")
+            values.append(int(earnings_update_in_ms))
         values.append(str(logical_node_id))
         cursor = await db.execute(
             f"UPDATE earnapp_logical_nodes SET {', '.join(fields)} WHERE logical_node_id = ?", values

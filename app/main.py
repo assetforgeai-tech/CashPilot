@@ -783,6 +783,7 @@ async def _run_earnapp_lifecycle_scheduler() -> None:
                     "ip": evidence.get("ip") or evidence.get("public_ip"),
                     "billing": evidence.get("billing"),
                     "earnings_update_in_ms": evidence.get("earnings_update_in_ms"),
+                    "previous_earnings_update_in_ms": node.get("last_earnings_update_in_ms"),
                     "egress_ok": str(node.get("proxy_health") or "") != "unhealthy",
                 },
                 node,
@@ -822,6 +823,11 @@ async def _run_earnapp_lifecycle_scheduler() -> None:
                 usage=float(usage or 0),
                 window_started_at=window_started_at,
                 earnings_cycle_id=cycle_id or None,
+                earnings_update_in_ms=(
+                    int(evidence["earnings_update_in_ms"])
+                    if evidence.get("earnings_update_in_ms") is not None
+                    else None
+                ),
             )
         except Exception as exc:  # noqa: BLE001 - one node cannot block peers
             logger.debug("EarnApp lifecycle evaluation skipped: %s", type(exc).__name__)
