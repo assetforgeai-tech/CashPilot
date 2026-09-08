@@ -26,12 +26,14 @@ LINK_VERIFY_COOLDOWN_SECONDS = 300
 MAC_PROXY_TUN_IP = "10.255.255.1"
 _UPTIME_BILLING = frozenset({"uptime", "fixed", "qualified_uptime"})
 _BYTE_BILLING = frozenset({"bandwidth", "bytes", "byte", "traffic", "gb"})
-_ACCOUNT_VERIFY_LOCKS: dict[int, asyncio.Lock] = {}
+_ACCOUNT_VERIFY_LOCKS: dict[tuple[int, int], asyncio.Lock] = {}
 
 
 def account_api_lock(account_id: int) -> asyncio.Lock:
     """Share one account-scoped lock between verification and collection calls."""
-    return _ACCOUNT_VERIFY_LOCKS.setdefault(int(account_id), asyncio.Lock())
+    loop = asyncio.get_running_loop()
+    key = (id(loop), int(account_id))
+    return _ACCOUNT_VERIFY_LOCKS.setdefault(key, asyncio.Lock())
 
 
 def _workload_metric_names(evidence: Mapping[str, Any], billing: str) -> tuple[str, ...]:
