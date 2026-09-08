@@ -7693,6 +7693,21 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         apps=json.dumps(body.apps),
         system_info=json.dumps(body.system_info),
     )
+    # A successful Docker inventory is authoritative enough to retire stale
+    # EarnApp instance rows, but only after two consecutive misses.  An empty
+    # inventory from a failed Docker API call is never treated as proof.
+    reported_earnapp_ids = {
+        str(item.get("instance_slug") or item.get("name") or "").strip()
+        for item in body.containers
+        if isinstance(item, dict)
+        and str(item.get("slug") or "").strip().lower() == "earnapp"
+    }
+    with contextlib.suppress(Exception):
+        await database.reconcile_earnapp_provider_instances(
+            int(worker_id),
+            reported_instance_ids=reported_earnapp_ids,
+            inventory_confirmed=True,
+        )
     myst = body.provider_states.get("mysterium") or {}
     if myst:
         evidence = dict(myst.get("evidence") or {})
