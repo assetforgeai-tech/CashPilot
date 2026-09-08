@@ -574,7 +574,9 @@ async def test_scheduler_keeps_account_cycle_when_device_is_temporarily_missing(
         "rotate_count": 0,
     }
     monkeypatch.setattr(main.database, "list_earnapp_logical_nodes", AsyncMock(return_value=[node]))
-    monkeypatch.setattr(main.database, "list_earnapp_accounts", AsyncMock(return_value=[{"id": 470, "state": "ACTIVE"}]))
+    monkeypatch.setattr(
+        main.database, "list_earnapp_accounts", AsyncMock(return_value=[{"id": 470, "state": "ACTIVE"}])
+    )
     monkeypatch.setattr(main.database, "get_provider_instance_spec", AsyncMock(return_value={}))
     monkeypatch.setattr(
         main.database,
