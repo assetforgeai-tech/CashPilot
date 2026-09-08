@@ -37,7 +37,12 @@ def earnings_cycle_id(
     previous = str(previous_cycle_id or "").strip()
     boundary = str(boundary_started_at or "").strip()
     if counter > 0 and not boundary:
-        return previous
+        # First observation can arrive mid-cycle, before a persisted marker
+        # exists.  Anchor it once; otherwise flatline recovery has no cycle
+        # key and repeats on every five-minute poll.
+        if previous:
+            return previous
+        return hashlib.sha256(f"earnapp:{int(account_id)}:initial".encode()).hexdigest()[:24]
     # A zero countdown is not itself a new event. Keep the current cycle
     # stable until the subsequent counter increase marks the boundary.
     if counter <= 0 and previous and not boundary:
