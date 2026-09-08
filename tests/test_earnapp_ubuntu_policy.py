@@ -532,12 +532,12 @@ def _authoritative_node(
 @pytest.mark.parametrize(
     ("action", "expected_calls"),
     [
-            ("stop", [("POST", "/api/earnapp/docker-nodes/earnapp-ubuntu-policy/stop")]),
-            ("start", [("POST", "/api/earnapp/docker-nodes/earnapp-ubuntu-policy/start")]),
+        ("stop", [("POST", "/api/earnapp/docker-nodes/earnapp-ubuntu-policy/stop")]),
+        ("start", [("POST", "/api/earnapp/docker-nodes/earnapp-ubuntu-policy/start")]),
         (
             "restart",
             [
-                    ("POST", "/api/earnapp/docker-nodes/earnapp-ubuntu-policy/restart"),
+                ("POST", "/api/earnapp/docker-nodes/earnapp-ubuntu-policy/restart"),
             ],
         ),
         ("remove", [("DELETE", "/api/earnapp/docker-nodes/earnapp-ubuntu-policy")]),
