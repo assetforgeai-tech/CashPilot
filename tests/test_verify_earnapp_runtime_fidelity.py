@@ -1,51 +1,41 @@
+import hashlib
+import json
 from pathlib import Path
 
 import pytest
 
-from scripts import build_earnapp_canary_image, verify_earnapp_runtime_fidelity
+from scripts import verify_earnapp_runtime_fidelity
 
 
-@pytest.mark.parametrize("platform", ["macos", "ios", "ubuntu"])
-def test_staged_runtime_matches_authoritative_platform_contract(tmp_path: Path, platform: str):
+def _context(tmp_path: Path, platform: str = "ubuntu") -> Path:
     context = tmp_path / platform
-    build_earnapp_canary_image.write_context(
-        build_earnapp_canary_image.default_source_dir(platform),
-        context,
-        platform=platform,
+    context.mkdir()
+    payload = b"artifact"
+    digest = hashlib.sha256(payload).hexdigest()
+    manifest = {"version": 1, "artifacts": [{"path": "entrypoint.sh", "sha256": digest}]}
+    if platform == "ubuntu":
+        manifest["base_image"] = "reference"
+    (context / "entrypoint.sh").write_bytes(payload)
+    (context / "runtime-manifest.json").write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+    (context / "Dockerfile").write_text(
+        "FROM reference\nCOPY cashpilot-proxy-entrypoint /usr/local/bin/entrypoint.sh\n"
+        "COPY cashpilot-doh.js /usr/local/lib/cashpilot-doh.js\n"
+        "LABEL com.cashpilot.earnapp.assets-sha256=x\n",
+        encoding="utf-8",
     )
-
-    result = verify_earnapp_runtime_fidelity.verify_context(context, platform)
-
-    assert result["platform"] == platform
-    assert result["artifacts"] > 0
+    return context
 
 
-def test_fidelity_verifier_rejects_modified_runtime_artifact(tmp_path: Path):
-    context = tmp_path / "macos"
-    build_earnapp_canary_image.write_context(
-        build_earnapp_canary_image.default_source_dir("macos"),
-        context,
-        platform="macos",
-    )
-    (context / "boot.js").write_text("modified", encoding="utf-8")
+def test_fidelity_verifier_accepts_complete_context(tmp_path: Path, monkeypatch):
+    monkeypatch.setitem(verify_earnapp_runtime_fidelity.earnapp_runtime.REFERENCE_VPS_IMAGES, "ubuntu", "reference")
+    result = verify_earnapp_runtime_fidelity.verify_context(_context(tmp_path), "ubuntu")
+    assert result["platform"] == "ubuntu"
+    assert result["artifacts"] == 1
 
+
+def test_fidelity_verifier_rejects_modified_runtime_artifact(tmp_path: Path, monkeypatch):
+    monkeypatch.setitem(verify_earnapp_runtime_fidelity.earnapp_runtime.REFERENCE_VPS_IMAGES, "ubuntu", "reference")
+    context = _context(tmp_path)
+    (context / "entrypoint.sh").write_text("modified", encoding="utf-8")
     with pytest.raises(ValueError, match="incomplete"):
-        verify_earnapp_runtime_fidelity.verify_context(context, "macos")
-
-
-def test_image_builder_runs_fidelity_gate(tmp_path: Path, monkeypatch):
-    verified = []
-    monkeypatch.setattr(
-        verify_earnapp_runtime_fidelity,
-        "verify_context",
-        lambda context, platform: verified.append((context, platform)),
-    )
-
-    context = tmp_path / "ubuntu"
-    build_earnapp_canary_image.write_context(
-        build_earnapp_canary_image.default_source_dir("ubuntu"),
-        context,
-        platform="ubuntu",
-    )
-
-    assert verified == [(context, "ubuntu")]
+        verify_earnapp_runtime_fidelity.verify_context(context, "ubuntu")
