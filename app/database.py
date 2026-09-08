@@ -6991,6 +6991,76 @@ async def remove_provider_instance(instance_id: str) -> bool:
         await db.close()
 
 
+async def reconcile_earnapp_provider_instances(
+    worker_id: int,
+    *,
+    reported_instance_ids: Sequence[str],
+    inventory_confirmed: bool,
+) -> dict[str, list[str]]:
+    """Retire only runtimes absent from two confirmed worker inventories.
+
+    A transient heartbeat or Docker API failure must never free an EarnApp
+    lease.  The first confirmed miss is persisted as ``missing_once``; the
+    second consecutive miss removes only the provider-instance row and its
+    lease.  Logical-node state is left for the normal recovery/redeploy path.
+    """
+    if int(worker_id or 0) <= 0 or not inventory_confirmed:
+        return {"marked_missing": [], "removed": []}
+    reported = {str(value or "").strip() for value in reported_instance_ids if str(value or "").strip()}
+    async with _earnapp_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            rows = await (
+                await db.execute(
+                    "SELECT instance_id, status FROM provider_instances WHERE slug='earnapp' AND worker_id=?",
+                    (int(worker_id),),
+                )
+            ).fetchall()
+            marked: list[str] = []
+            removed: list[str] = []
+            for row in rows:
+                instance_id = str(row["instance_id"] or "")
+                if not instance_id or instance_id in reported:
+                    if str(row["status"] or "") == "missing_once":
+                        await db.execute(
+                            "UPDATE provider_instances SET status='verification_pending', updated_at=datetime('now') WHERE instance_id=?",
+                            (instance_id,),
+                        )
+                    continue
+                if str(row["status"] or "") == "missing_once":
+                    await db.execute(
+                        "UPDATE provider_proxy_leases SET released_at=datetime('now'), release_reason='EARNAPP_RUNTIME_CONFIRMED_ABSENT' "
+                        "WHERE provider_slug='earnapp' AND worker_id=? AND instance_id=? AND released_at IS NULL",
+                        (int(worker_id), instance_id),
+                    )
+                    await db.execute(
+                        """UPDATE earnapp_logical_nodes
+                           SET state='PLANNED', assigned_worker_id=NULL, last_worker_id=?,
+                               current_proxy_id=NULL, proxy_health='unknown', observed_egress_ip='',
+                               expected_egress_ip='', proxy_checked_at=NULL, proxy_health_reason='',
+                               last_heartbeat_at=NULL, recovery_started_at=NULL, recovery_hold_until=NULL,
+                               updated_at=datetime('now')
+                           WHERE logical_node_id=? AND assigned_worker_id=?""",
+                        (int(worker_id), instance_id, int(worker_id)),
+                    )
+                    await db.execute("DELETE FROM provider_instances WHERE instance_id=?", (instance_id,))
+                    removed.append(instance_id)
+                else:
+                    await db.execute(
+                        "UPDATE provider_instances SET status='missing_once', updated_at=datetime('now') WHERE instance_id=?",
+                        (instance_id,),
+                    )
+                    marked.append(instance_id)
+            await db.commit()
+            return {"marked_missing": marked, "removed": removed}
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
+
+
 # --- Users ---
 
 
