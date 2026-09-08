@@ -90,15 +90,26 @@ def test_flatline_waits_for_earnings_update_boundary_not_container_age():
     )
 
 
-def test_positive_earnings_counter_clears_previous_zero_boundary():
+def test_positive_earnings_counter_keeps_boundary_until_grace_expires():
     now = datetime.now(UTC)
     decision = evaluate_node(
         {"usage": 10.0, "banned": False, "earnings_update_in_ms": 120000},
         _runtime(earnings_zero_observed_at=(now - timedelta(minutes=10)).isoformat()),
         now,
     )
+    assert decision.action == "restart"
+    assert decision.clear_earnings_zero_observed is False
+
+
+def test_counter_reset_waits_for_grace_before_restarting_flatline_node():
+    now = datetime.now(UTC)
+    decision = evaluate_node(
+        {"usage": 10.0, "banned": False, "earnings_update_in_ms": 3_500_000},
+        _runtime(earnings_zero_observed_at=(now - timedelta(minutes=4)).isoformat()),
+        now,
+    )
     assert decision.action == "observe"
-    assert decision.clear_earnings_zero_observed is True
+    assert decision.clear_earnings_zero_observed is False
 
 
 def test_earnings_cycle_id_changes_at_counter_reset_and_is_stable_inside_cycle():
@@ -111,7 +122,8 @@ def test_earnings_cycle_id_changes_at_counter_reset_and_is_stable_inside_cycle()
     assert earnings_cycle_id(470, 0, previous_cycle_id="cycle-a") != earnings_cycle_id(
         470, 0, previous_cycle_id="cycle-b"
     )
-    assert earnings_cycle_id(470, 60_000) == earnings_cycle_id(470, 60_000)
+    assert earnings_cycle_id(470, 60_000, previous_cycle_id="cycle-a") == "cycle-a"
+    assert earnings_cycle_id(470, 30_000, previous_cycle_id="cycle-a") == "cycle-a"
     assert earnings_cycle_id(470, None) == ""
 
 
