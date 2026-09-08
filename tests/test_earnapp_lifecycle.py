@@ -450,7 +450,7 @@ async def test_remote_device_delete_uses_full_internal_account_route(monkeypatch
     monkeypatch.setattr(
         main.earnapp_collection,
         "EarnAppAccountCollector",
-        lambda credentials, route: (seen.update(route=route) or type("Collector", (), {"delete_device": delete})()),
+        lambda credentials, route: seen.update(route=route) or type("Collector", (), {"delete_device": delete})(),
     )
 
     assert await main._delete_earnapp_remote_device(node) is True
