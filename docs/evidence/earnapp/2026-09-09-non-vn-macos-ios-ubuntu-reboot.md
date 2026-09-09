@@ -156,3 +156,11 @@ The post-reboot live probe completed after the worker returned healthy:
 
 This proves reboot persistence, route isolation, and IPv6 fail-closed behavior. It does not substitute
 for device-level positive-usage evidence from the EarnApp dashboard.
+
+## Release closeout
+
+- PR `#211` merged at `4e032c1fff1bf4cba9d58f6fe40645047801bd4f` after all required
+  checks passed, including the full coverage suite.
+- Auto Release completed successfully as `v1.24.4`.
+- The release contains the Docker-only EarnApp UI wording correction and the
+  longer CI coverage timeout; it does not require a live-node restart.
