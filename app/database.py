@@ -1839,7 +1839,11 @@ async def _assert_known_earnapp_account_children(db: Any, parent_table: str) -> 
 
 
 async def _assert_known_earnapp_logical_node_children(db: Any, parent_table: str) -> None:
-    allowed = {"earnapp_proxy_reservations", "earnapp_replacement_tickets"}
+    allowed = {
+        "earnapp_proxy_reservations",
+        "earnapp_replacement_tickets",
+        "earnapp_remote_delete_confirmations",
+    }
     unknown = sorted(await _tables_referencing(db, parent_table) - allowed)
     if unknown:
         raise RuntimeError(f"unknown EarnApp logical-node child tables: {', '.join(unknown)}")
