@@ -6082,6 +6082,17 @@ async def create_earnapp_replacement_ticket(
                 await db.rollback()
                 return "node_not_recoverable"
 
+            # A replacement request is single-use per node/generation. Reissuing
+            # a ticket invalidates older copies before the new token is stored.
+            await db.execute(
+                """
+                UPDATE earnapp_replacement_tickets
+                SET used_at = COALESCE(used_at, datetime('now'))
+                WHERE logical_node_id = ? AND target_worker_id = ?
+                  AND generation = ? AND used_at IS NULL
+                """,
+                (node_id, int(target_worker_id), int(generation)),
+            )
             await db.execute(
                 """
                 INSERT INTO earnapp_replacement_tickets

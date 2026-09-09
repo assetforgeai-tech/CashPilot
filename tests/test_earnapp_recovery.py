@@ -347,6 +347,35 @@ def test_new_worker_needs_one_time_ticket_and_generation_blocks_old_worker(tmp_p
     asyncio.run(run())
 
 
+def test_new_replacement_ticket_revokes_older_ticket_for_same_claim(tmp_path):
+    async def run():
+        db_dir, db_path = _db_patch(tmp_path)
+        with db_dir, db_path:
+            old_worker, new_worker, _ = await _setup(tmp_path)
+            provisioned = await _provision_ubuntu_node("earnapp-node-a", old_worker, device_id="device-a")
+            await database.begin_earnapp_recovery_hold("earnapp-node-a", hold_seconds=3600)
+
+            stale_ticket = await earnapp_recovery.issue_replacement_ticket("earnapp-node-a", new_worker)
+            current_ticket = await earnapp_recovery.issue_replacement_ticket("earnapp-node-a", new_worker)
+
+            with pytest.raises(earnapp_recovery.RecoveryClaimDenied, match="replacement ticket"):
+                await earnapp_recovery.claim_node(
+                    "earnapp-node-a",
+                    new_worker,
+                    expected_generation=provisioned["generation"],
+                    replacement_ticket=stale_ticket,
+                )
+            replacement = await earnapp_recovery.claim_node(
+                "earnapp-node-a",
+                new_worker,
+                expected_generation=provisioned["generation"],
+                replacement_ticket=current_ticket,
+            )
+            assert replacement["worker_id"] == new_worker
+
+    asyncio.run(run())
+
+
 def test_original_worker_heartbeat_cancels_hold_and_revokes_an_outstanding_replacement_ticket(tmp_path):
     async def run():
         db_dir, db_path = _db_patch(tmp_path)
