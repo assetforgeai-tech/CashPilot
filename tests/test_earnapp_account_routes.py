@@ -70,8 +70,6 @@ def test_account_routes_are_registered_and_owner_only(client):
     assert "/api/admin/earnapp/accounts/import" in routes
     assert "/api/admin/earnapp/accounts/import-challenge" in routes
     assert "/api/admin/earnapp/accounts/import-extension" in routes
-    assert "/api/admin/earnapp/accounts/import-challenge" in routes
-    assert "/api/admin/earnapp/accounts/import-extension" in routes
     assert "/api/admin/earnapp/accounts/{account_id}/collect" in routes
     assert "/api/admin/earnapp/accounts/{account_id}/payment" in routes
     assert "/api/admin/earnapp/nodes/{logical_node_id}/replacement-ticket" in routes
@@ -79,19 +77,6 @@ def test_account_routes_are_registered_and_owner_only(client):
     with patch("app.deps.auth.get_current_user", return_value=None):
         response = client.get("/api/admin/earnapp/accounts")
     assert response.status_code == 401
-
-
-def test_extension_import_challenge_is_profile_bound_and_single_use(tmp_path, client):
-    with (
-        patch.object(database, "DB_DIR", tmp_path),
-        patch.object(database, "DB_PATH", tmp_path / "earnapp.db"),
-        patch("app.deps.auth.get_current_user", return_value=_owner()),
-    ):
-        asyncio.run(database.init_db())
-        state = client.post("/api/admin/earnapp/accounts/import-challenge", json={"profile_key": "profile-40"}).json()["import_state"]
-        assert client.post("/api/admin/earnapp/accounts/import-extension", json={**_import_body(), "profile_key": "profile-41", "import_state": state}).status_code == 400
-        assert client.post("/api/admin/earnapp/accounts/import-extension", json={**_import_body(), "import_state": state}).status_code == 200
-        assert client.post("/api/admin/earnapp/accounts/import-extension", json={**_import_body(), "import_state": state}).status_code == 400
 
 
 def test_extension_import_challenge_is_profile_bound_and_single_use(tmp_path, client):
