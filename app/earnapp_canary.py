@@ -19,8 +19,8 @@ WorkerDeploy = Callable[[int, str, dict[str, Any]], Awaitable[dict[str, Any]]]
 WorkerRemove = Callable[[int, str, int, str], Awaitable[Any]]
 PlatformWorkerRemove = WorkerRemove
 
-LINK_VERIFY_ATTEMPTS = 10
-LINK_VERIFY_INTERVAL_SECONDS = 15
+LINK_VERIFY_ATTEMPTS = 5
+LINK_VERIFY_INTERVAL_SECONDS = 5
 LINK_VERIFY_MIN_INTERVAL_SECONDS = 5
 LINK_VERIFY_BURST = 5
 LINK_VERIFY_COOLDOWN_SECONDS = 300
