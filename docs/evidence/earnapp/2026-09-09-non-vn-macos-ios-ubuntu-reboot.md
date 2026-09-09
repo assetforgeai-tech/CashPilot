@@ -2,6 +2,21 @@
 
 ## Additional macOS non-VN canary
 
+## Authoritative per-device usage verification (2026-09-09)
+
+After the `v1.25.0` UI rollout, the owner account payload exposed sanitized
+per-device metrics. The two non-VN macOS canaries now have authoritative
+EarnApp account-side evidence, not only container traffic:
+
+| UUID | Country | Online | Usage current | Earned | Egress |
+|---|---|---:|---:|---:|---|
+| `sdk-mac-ef2b9b18acb2e8d51445962e22b93dfc` | `US` | true | `7,464,525` | `0.028` | `130.180.231.27` |
+| `sdk-mac-bfd2da9630384b4366dc03e741cd8f10` | `US` | true | `12,479,355` | `0.048` | `130.180.237.99` |
+
+The snapshot was collected after the Earnings Update countdown had advanced to
+under one minute. Both devices report positive uptime/usage and earnings. This
+closes the earlier macOS non-VN positive-usage gate for the two-node lane.
+
 - `earnapp-canary-us-macos-nonvn-05` was deployed after upstream VN-path concern was reported.
 - UUID: `sdk-mac-bfd2da9630384b4366dc03e741cd8f10`.
 - Image: `cashpilot/earnapp-mac-canary:asset-bd8de3ac58d1`.
