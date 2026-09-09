@@ -262,6 +262,33 @@ async def test_fresh_replacement_enters_recovery_hold_when_worker_remove_is_unce
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("failure_stage", ["remote_delete", "worker_remove"])
+async def test_fresh_replacement_enters_recovery_hold_when_cleanup_raises(monkeypatch, failure_stage):
+    node = {
+        "logical_node_id": f"earnapp-mac-{failure_stage}-error",
+        "account_id": 2,
+        "assigned_worker_id": 3098,
+        "generation": 3,
+        "device_id": "sdk-mac-" + "e" * 32,
+    }
+    if failure_stage == "remote_delete":
+        monkeypatch.setattr(main, "_delete_earnapp_remote_device", AsyncMock(side_effect=TimeoutError()))
+        worker_remove = AsyncMock()
+    else:
+        monkeypatch.setattr(main, "_delete_earnapp_remote_device", AsyncMock(return_value=True))
+        worker_remove = AsyncMock(side_effect=TimeoutError())
+    monkeypatch.setattr(main, "_proxy_to_worker", worker_remove)
+    hold = AsyncMock(return_value={"state": "RECOVERY_HOLD"})
+    monkeypatch.setattr(main.database, "begin_earnapp_recovery_hold", hold)
+    prepare = AsyncMock()
+    monkeypatch.setattr(main.database, "prepare_fresh_earnapp_replacement", prepare)
+
+    assert await main._retire_earnapp_node_for_fresh_replacement(node, preserve_proxy_affinity=True) is False
+    hold.assert_awaited_once_with(node["logical_node_id"], hold_seconds=earnapp_recovery.RECOVERY_HOLD_SECONDS)
+    prepare.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_scheduler_persists_initial_flatline_window(monkeypatch):
     node = {
         "logical_node_id": "earnapp-mac-1",
