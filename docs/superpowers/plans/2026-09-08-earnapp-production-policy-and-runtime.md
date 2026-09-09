@@ -152,7 +152,7 @@ healthy       -> no mutation
 - [x] Implement account failover selection transaction: after local replacement preparation, a `PLANNED` node on a locked/deleted/disabled account moves atomically to the least-loaded `ACTIVE` account before proxy lease and fresh deploy.
 - [x] If no active account exists, keep node pending and retry silently; do not release a healthy proxy solely because token is expired.
 - [ ] If account is suspended/locked, stop/remove local runtime, release its proxy immediately after lease CAS confirmation, and retry remote device cleanup independently without quarantining the proxy.
-- [ ] Add race tests for two nodes failing against one account and for concurrent failover.
+- [x] Add a concurrent failover race test; the database transaction permits one winner and the second caller observes the already reassigned node.
 
 ## Task 3: Remote Device Deletion and Fresh Replacement Transaction
 

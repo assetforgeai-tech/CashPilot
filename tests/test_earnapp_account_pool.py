@@ -2220,6 +2220,28 @@ def test_planned_node_reassigns_from_locked_account_to_least_loaded_active_accou
     asyncio.run(run())
 
 
+def test_concurrent_account_failover_has_one_winner(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            await database.init_db()
+            locked_id = await earnapp_accounts.import_account(
+                _payload("profile-race-locked", "race-locked@example.com")
+            )
+            active_id = await earnapp_accounts.import_account(
+                _payload("profile-race-active", "race-active@example.com")
+            )
+            await database.assign_earnapp_account("earnapp-race-node", platform="ubuntu")
+            assert await database.set_earnapp_account_state(locked_id, "ACCOUNT_LOCKED")
+            results = await asyncio.gather(
+                database.reassign_earnapp_node_to_active_account("earnapp-race-node"),
+                database.reassign_earnapp_node_to_active_account("earnapp-race-node"),
+            )
+            assert sum(result is not None for result in results) == 1
+            assert (await database.get_earnapp_logical_node("earnapp-race-node"))["account_id"] == active_id
+
+    asyncio.run(run())
+
+
 def test_only_locked_accounts_can_be_deleted_and_credentials_are_removed(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
