@@ -3241,7 +3241,9 @@ async def test_macos_canary_defaults_to_non_vn_scope(monkeypatch):
     deploy = AsyncMock(return_value={"status": "deployed", "logical_node_id": "earnapp-mac-canary", "worker_id": 3})
     monkeypatch.setattr(main, "_resolve_worker_id", AsyncMock(return_value=3))
     monkeypatch.setattr(earnapp_canary, "deploy_canary", deploy)
-    monkeypatch.setattr(earnapp_canary, "verify_canary", AsyncMock(return_value={"workload_state": "workload_verified", "online": True}))
+    monkeypatch.setattr(
+        earnapp_canary, "verify_canary", AsyncMock(return_value={"workload_state": "workload_verified", "online": True})
+    )
     monkeypatch.setattr(main, "_persist_earnapp_canary_verification", AsyncMock(side_effect=lambda _n, v: v))
     monkeypatch.setattr(database, "get_config", AsyncMock(return_value={}))
     monkeypatch.setattr(database, "record_health_event", AsyncMock())
