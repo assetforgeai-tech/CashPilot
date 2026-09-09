@@ -1,5 +1,21 @@
 # EarnApp canary reboot evidence (2026-09-09)
 
+## Acceptance scope and current recheck
+
+The production acceptance gate is one positive-usage node per platform (one
+macOS, one iOS, one Ubuntu); extra canaries are observation-only and are not
+required for acceptance.
+
+The current `vps-test-us` iOS canaries remain excluded from acceptance because
+both containers repeatedly receive `tunnel_init_decline: earnapp_blacklist`
+from EarnApp. This is an upstream device/tunnel rejection, not a Docker,
+DNS, restart, or proxy-fail-closed failure. No additional iOS node was
+created during this recheck.
+
+The server UI was upgraded separately to `v1.26.0`; `cashpilot-worker` stayed
+on `1.23.6` and remained healthy. The UI release workflows and PR #232 checks
+are green.
+
 ## Additional macOS non-VN canary
 
 ## Authoritative per-device usage verification (2026-09-09)
