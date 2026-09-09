@@ -113,6 +113,63 @@ def test_recovery_constants_are_fifteen_minutes_then_exactly_one_hour():
     assert earnapp_recovery.RECOVERY_HOLD_SECONDS == 60 * 60
 
 
+@pytest.mark.parametrize(
+    ("platform", "country"),
+    (("macos", "US"), ("ios", "US"), ("ubuntu", "VN")),
+)
+def test_recovery_does_not_hardcode_platform_country_routes(monkeypatch, platform, country):
+    async def run():
+        monkeypatch.setattr(database, "assign_earnapp_account", AsyncMock())
+        monkeypatch.setattr(
+            database,
+            "get_earnapp_logical_node",
+            AsyncMock(
+                side_effect=[
+                    {"account_id": 1, "assigned_worker_id": None, "current_proxy_id": None},
+                    {
+                        "logical_node_id": "earnapp-route-test",
+                        "account_id": 1,
+                        "assigned_worker_id": 7,
+                        "device_id": "device-route-test",
+                        "current_proxy_id": 11,
+                        "preferred_proxy_id": 11,
+                        "state": "ACTIVE",
+                        "generation": 1,
+                    },
+                ]
+            ),
+        )
+        monkeypatch.setattr(database, "get_earnapp_account_control_route", AsyncMock(return_value=None))
+        monkeypatch.setattr(database, "transfer_earnapp_control_route_to_node", AsyncMock(return_value=None))
+        lease = AsyncMock(return_value={"proxy_id": 11})
+        monkeypatch.setattr(database, "lease_proxy_for_provider_instance", lease)
+        monkeypatch.setattr(
+            database,
+            "bind_earnapp_node_runtime",
+            AsyncMock(
+                return_value={
+                    "logical_node_id": "earnapp-route-test",
+                    "account_id": 1,
+                    "assigned_worker_id": 7,
+                    "device_id": "device-route-test",
+                    "current_proxy_id": 11,
+                    "preferred_proxy_id": 11,
+                    "state": "ACTIVE",
+                    "generation": 1,
+                }
+            ),
+        )
+
+        result = await earnapp_recovery.provision_node(
+            "earnapp-route-test", 7, device_id="device-route-test", platform=platform, proxy_country_code=country
+        )
+
+        assert result["proxy_id"] == 11
+        assert lease.await_args.kwargs["country_code"] == country
+
+    asyncio.run(run())
+
+
 def test_stale_sweep_excludes_protected_live_nodes(monkeypatch):
     async def run():
         sweep = AsyncMock(return_value={"held": [], "released": []})
