@@ -3237,6 +3237,47 @@ async def test_canary_deploy_route_dispatches_apple_runtime(monkeypatch, platfor
 
 
 @pytest.mark.asyncio
+async def test_macos_canary_defaults_to_non_vn_scope(monkeypatch):
+    deploy = AsyncMock(return_value={"status": "deployed", "logical_node_id": "earnapp-mac-canary", "worker_id": 3})
+    monkeypatch.setattr(main, "_resolve_worker_id", AsyncMock(return_value=3))
+    monkeypatch.setattr(earnapp_canary, "deploy_canary", deploy)
+    monkeypatch.setattr(
+        earnapp_canary, "verify_canary", AsyncMock(return_value={"workload_state": "workload_verified", "online": True})
+    )
+    monkeypatch.setattr(main, "_persist_earnapp_canary_verification", AsyncMock(side_effect=lambda _n, v: v))
+    monkeypatch.setattr(database, "get_config", AsyncMock(return_value={}))
+    monkeypatch.setattr(database, "record_health_event", AsyncMock())
+
+    await main.api_deploy_earnapp_canary(
+        _request("/api/admin/earnapp/canary/deploy"),
+        main.EarnAppCanaryDeployRequest(logical_node_id="earnapp-mac-canary", worker_id=3, platform="macos"),
+        _auth={"r": "owner"},
+    )
+
+    assert deploy.await_args.kwargs["country_scope"] == "non-vn"
+
+
+@pytest.mark.asyncio
+async def test_macos_canary_rejects_vn_scope(monkeypatch):
+    monkeypatch.setattr(main, "_resolve_worker_id", AsyncMock(return_value=3))
+
+    with pytest.raises(HTTPException) as exc:
+        await main.api_deploy_earnapp_canary(
+            _request("/api/admin/earnapp/canary/deploy"),
+            main.EarnAppCanaryDeployRequest(
+                logical_node_id="earnapp-mac-canary",
+                worker_id=3,
+                platform="macos",
+                country_scope="vn",
+            ),
+            _auth={"r": "owner"},
+        )
+
+    assert exc.value.status_code == 409
+    assert exc.value.detail == "EarnApp Mac canary temporarily requires a non-VN residential proxy"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("platform", ["ios", "ubuntu"])
 async def test_platform_canary_uses_matching_transport_and_persists_redacted_state(monkeypatch, platform):
     device_prefix = "sdk-ios-" if platform == "ios" else "sdk-node-"
