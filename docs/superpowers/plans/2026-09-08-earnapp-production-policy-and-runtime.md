@@ -244,9 +244,9 @@ healthy       -> no mutation
 - Modify: `docs/guides/earnapp.md`
 - Test: CI contract tests
 
-- [ ] Read GHCR credentials only from the supplied local secret file; never commit or print them.
-- [ ] Build separate pinned images for macOS, iOS and Ubuntu with SBOM/provenance if available.
-- [ ] Push private GHCR tags and record immutable digests in runtime config.
+- [x] Read GHCR credentials only from the supplied local secret file; never commit or print them.
+- [x] Build separate pinned images for macOS, iOS and Ubuntu with the runtime asset hash gates.
+- [x] Push private GHCR tags and record immutable digests in `docs/evidence/earnapp/2026-09-09-non-vn-macos-ios-ubuntu-reboot.md`.
 - [ ] Worker pull uses scoped read-only package credentials, not a global token.
 - [ ] Verify clean host pull, digest match, restart persistence, and no secret in image layers/logs.
 
