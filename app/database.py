@@ -4019,6 +4019,62 @@ async def assign_earnapp_account(logical_node_id: str, *, platform: str = "") ->
             await db.close()
 
 
+async def reassign_earnapp_node_to_active_account(logical_node_id: str) -> dict[str, Any] | None:
+    """Move a planned node off a failed account, atomically selecting least load."""
+    node_id = str(logical_node_id or "").strip()
+    if not node_id or earnapp_policy.is_protected_logical_node(node_id):
+        return None
+    async with _earnapp_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.executescript(_EARNAPP_ACCOUNTS_SCHEMA)
+            await db.execute("BEGIN IMMEDIATE")
+            node = await (
+                await db.execute(
+                    "SELECT account_id, platform, state FROM earnapp_logical_nodes WHERE logical_node_id = ?",
+                    (node_id,),
+                )
+            ).fetchone()
+            if not node or str(node["state"] or "").upper() != "PLANNED":
+                await db.rollback()
+                return None
+            current = await (
+                await db.execute("SELECT state FROM earnapp_accounts WHERE id = ?", (int(node["account_id"] or 0),))
+            ).fetchone()
+            if current and str(current["state"] or "").upper() == "ACTIVE":
+                await db.rollback()
+                return None
+            account = await (
+                await db.execute(
+                    """
+                    SELECT a.id, a.account_name, a.email, a.auth_method, a.state,
+                           COUNT(n.logical_node_id) AS assigned_nodes
+                    FROM earnapp_accounts a
+                    LEFT JOIN earnapp_logical_nodes n
+                      ON n.account_id = a.id AND n.state != 'RETIRED'
+                    WHERE a.state = 'ACTIVE'
+                    GROUP BY a.id
+                    ORDER BY assigned_nodes ASC, a.id ASC
+                    LIMIT 1
+                    """
+                )
+            ).fetchone()
+            if not account:
+                await db.rollback()
+                return None
+            await db.execute(
+                "UPDATE earnapp_logical_nodes SET account_id = ?, updated_at = datetime('now') WHERE logical_node_id = ? AND state = 'PLANNED'",
+                (int(account["id"]), node_id),
+            )
+            await db.commit()
+            return dict(account)
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
+
+
 async def set_earnapp_logical_node_state(logical_node_id: str, state: str) -> bool:
     allowed = {"PLANNED", "ACTIVE", "RECOVERY_HOLD", "RECOVERABLE", "RETIRED"}
     normalized = str(state or "").strip().upper()
@@ -4152,6 +4208,15 @@ async def set_earnapp_account_state(account_id: int, state: str) -> bool:
         )
         await db.commit()
         return bool(cursor.rowcount)
+    finally:
+        await db.close()
+
+
+async def get_earnapp_account_state(account_id: int) -> str | None:
+    db = await _get_db()
+    try:
+        row = await (await db.execute("SELECT state FROM earnapp_accounts WHERE id = ?", (int(account_id),))).fetchone()
+        return str(row["state"] or "") if row else None
     finally:
         await db.close()
 

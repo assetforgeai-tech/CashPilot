@@ -2204,6 +2204,22 @@ def test_account_assignment_is_least_assigned_and_recovery_nodes_still_count(tmp
     asyncio.run(run())
 
 
+def test_planned_node_reassigns_from_locked_account_to_least_loaded_active_account(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            await database.init_db()
+            locked_id = await earnapp_accounts.import_account(_payload("profile-locked", "locked@example.com"))
+            active_id = await earnapp_accounts.import_account(_payload("profile-active", "active@example.com"))
+            await database.assign_earnapp_account("earnapp-failover-node", platform="macos")
+            assert await database.set_earnapp_account_state(locked_id, "ACCOUNT_LOCKED")
+            result = await database.reassign_earnapp_node_to_active_account("earnapp-failover-node")
+            assert result and result["id"] == active_id
+            node = await database.get_earnapp_logical_node("earnapp-failover-node")
+            assert node["account_id"] == active_id
+
+    asyncio.run(run())
+
+
 def test_only_locked_accounts_can_be_deleted_and_credentials_are_removed(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):

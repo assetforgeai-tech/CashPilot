@@ -251,6 +251,14 @@ async def prepare_node(
     current = await database.get_earnapp_logical_node(plan.logical_node_id)
     if not current:
         raise RuntimeError("EarnApp logical node disappeared during preparation")
+    account_state = await database.get_earnapp_account_state(int(current.get("account_id") or 0))
+    if str(account_state or "").upper() in {"ACCOUNT_LOCKED", "DELETED", "DISABLED"}:
+        reassigned = await database.reassign_earnapp_node_to_active_account(plan.logical_node_id)
+        if not reassigned:
+            raise RuntimeError("no active EarnApp account available for failover")
+        current = await database.get_earnapp_logical_node(plan.logical_node_id)
+        if not current:
+            raise RuntimeError("EarnApp logical node disappeared during account failover")
     existing_platform = str(node.get("platform") or "").strip().lower()
     if existing_platform == "unknown":
         existing_platform = ""

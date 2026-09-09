@@ -149,8 +149,8 @@ healthy       -> no mutation
 - [x] Add durable auth evidence fields: `last_auth_success_at`, `last_auth_failure_at`, `auth_failure_kind`, `needs_token_refresh`.
 - [x] Classify auth rejection, account suspended/locked, proxy blocked, and route failure separately.
 - [x] On auth failure, mark account and expose dashboard-visible auth evidence; do not restart every node.
-- [ ] Implement failover as a transaction: remote-delete old device, retire old logical node, assign least-loaded `ACTIVE` account, lease eligible proxy, create fresh node.
-- [ ] If no active account exists, keep node pending and retry silently; do not release a healthy proxy solely because token is expired.
+- [x] Implement account failover selection transaction: after local replacement preparation, a `PLANNED` node on a locked/deleted/disabled account moves atomically to the least-loaded `ACTIVE` account before proxy lease and fresh deploy.
+- [x] If no active account exists, keep node pending and retry silently; do not release a healthy proxy solely because token is expired.
 - [ ] If account is suspended/locked, stop/remove local runtime, release its proxy immediately after lease CAS confirmation, and retry remote device cleanup independently without quarantining the proxy.
 - [ ] Add race tests for two nodes failing against one account and for concurrent failover.
 
