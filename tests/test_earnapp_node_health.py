@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app import database, earnapp_accounts, main, orchestrator, worker_api
+from app import database, earnapp_accounts, earnapp_lifecycle, main, orchestrator, worker_api
 
 
 @pytest.fixture(autouse=True)
@@ -3327,6 +3327,36 @@ def test_earnapp_proxy_rotation_candidate_reservation_is_exclusive_and_released(
                     "earnapp-reservation-node", binding_version="rotation_reservation_1"
                 )
             )["state"] == "RELEASED"
+
+    asyncio.run(run())
+
+
+def test_binding_fresh_earnapp_device_resets_stale_lifecycle_markers(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "fresh.db"):
+            await database.init_db()
+            await earnapp_accounts.import_account(_account("profile-fresh"))
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            proxy_id = await _proxy(provider_id, 32)
+            worker_id = await database.upsert_worker("worker-fresh", "worker-fresh", "http://worker")
+            await database.assign_earnapp_account("earnapp-fresh-node", platform="ios")
+            await database.update_earnapp_lifecycle(
+                "earnapp-fresh-node",
+                earnapp_lifecycle.LifecycleDecision("restart", 1, 0, "stale"),
+                usage=123,
+                window_started_at="2026-01-01T00:00:00+00:00",
+                earnings_cycle_id="old-cycle",
+                earnings_update_in_ms=0,
+            )
+            bound = await database.bind_earnapp_node_runtime(
+                "earnapp-fresh-node", worker_id, device_id="sdk-ios-" + "a" * 32, proxy_id=proxy_id
+            )
+            assert bound["usage_baseline"] == 0
+            assert bound["window_started_at"] is None
+            assert bound["earnings_zero_observed_at"] is None
+            assert bound["earnings_cycle_id"] == ""
+            assert bound["last_recovery_cycle_id"] == ""
+            assert bound["last_earnings_update_in_ms"] is None
 
     asyncio.run(run())
 

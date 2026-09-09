@@ -5711,7 +5711,12 @@ async def bind_earnapp_node_runtime(
                     proxy_health = 'unknown', observed_egress_ip = '', expected_egress_ip = ?,
                     proxy_checked_at = NULL, proxy_health_reason = '',
                     state = 'ACTIVE', last_heartbeat_at = datetime('now'), recovery_started_at = NULL,
-                    recovery_hold_until = NULL, updated_at = datetime('now')
+                    recovery_hold_until = NULL,
+                    usage_baseline = 0, window_started_at = NULL, same_proxy_recreates = 0,
+                    rotate_count = 0, lifecycle_action = 'observe', quarantine_reason = '',
+                    earnings_zero_observed_at = NULL, earnings_cycle_id = '',
+                    last_recovery_cycle_id = '', last_earnings_update_in_ms = NULL,
+                    updated_at = datetime('now')
                 WHERE logical_node_id = ?
                 """,
                 (
