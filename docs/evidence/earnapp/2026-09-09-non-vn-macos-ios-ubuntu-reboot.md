@@ -79,6 +79,25 @@
   and account `2` `online_nodes=6`; device-specific usage for the fresh iOS
   nodes remains pending their Earnings Update cycles.
 
+## Six-node network acceptance after worker `1.24.3`
+
+The selected pair for each platform remained `running` with restart count `0`:
+
+| Platform | Node | Observed IPv4 egress |
+| --- | --- | --- |
+| macOS | `earnapp-canary-us-macos-nonvn-05` | `130.180.237.99` |
+| macOS | `earnapp-canary-us-macos-nonvn-06` | `130.180.231.27` |
+| iOS | `earnapp-canary-us-ios-03` | `116.98.185.18` |
+| iOS | `earnapp-canary-us-ios-04` | `171.251.99.76` |
+| Ubuntu | `earnapp-canary-us-fresh-ubuntu-01` | `62.164.242.31` |
+| Ubuntu | `earnapp-canary-us-fresh-ubuntu-02` | `130.180.237.210` |
+
+- Every observed IPv4 matched that container's expected leased egress.
+- IPv6 HTTP probes returned no address on all six containers.
+- DNS resolution succeeded through the container-local resolver path.
+- Each container had `CP_EARNAPP_OUT` and `CP_EARNAPP6_OUT` attached to
+  `OUTPUT`; the IPv6 chain retained its terminal drop rule.
+
 ## Private GHCR runtime publication
 
 Tag `20260909-nonvn-macos-canary` was built from the pinned runtime contexts and pushed to private GHCR repositories. Immutable digests:
