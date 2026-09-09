@@ -4215,9 +4215,7 @@ async def set_earnapp_account_state(account_id: int, state: str) -> bool:
 async def get_earnapp_account_state(account_id: int) -> str | None:
     db = await _get_db()
     try:
-        row = await (
-            await db.execute("SELECT state FROM earnapp_accounts WHERE id = ?", (int(account_id),))
-        ).fetchone()
+        row = await (await db.execute("SELECT state FROM earnapp_accounts WHERE id = ?", (int(account_id),))).fetchone()
         return str(row["state"] or "") if row else None
     finally:
         await db.close()
