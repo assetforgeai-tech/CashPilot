@@ -117,7 +117,44 @@ def test_account_payload_exposes_sanitized_device_metrics(tmp_path):
         "money_total": 2,
         "online_nodes": 1,
         "offline_nodes": 0,
-        "devices_json": __import__("json").dumps([{
+        "devices_json": __import__("json").dumps(
+            [
+                {
+                    "device_id": "sdk-mac-test",
+                    "country_code": "US",
+                    "online": True,
+                    "usage_current": 12,
+                    "usage_total": 34,
+                    "usage_points": 2,
+                    "usage_available": True,
+                    "secret": "must-not-leak",
+                }
+            ]
+        ),
+    }
+    row = {
+        "id": 1,
+        "profile_key": "profile",
+        "account_name": "owner@example.com",
+        "email": "owner@example.com",
+        "auth_method": "google",
+        "state": "ACTIVE",
+        "last_auth_success_at": None,
+        "last_auth_failure_at": None,
+        "auth_failure_kind": "",
+        "needs_token_refresh": 0,
+        "token_expires_at": None,
+        "cookie_expires_at": None,
+        "assigned_nodes": 0,
+        "active_nodes": 0,
+        "recovery_nodes": 0,
+        "planned_nodes": 0,
+        "created_at": None,
+        "updated_at": None,
+    }
+    result = earnapp_accounts_router._public_account(row, snapshot, None)
+    assert result["collector"]["devices"] == [
+        {
             "device_id": "sdk-mac-test",
             "country_code": "US",
             "online": True,
@@ -125,39 +162,8 @@ def test_account_payload_exposes_sanitized_device_metrics(tmp_path):
             "usage_total": 34,
             "usage_points": 2,
             "usage_available": True,
-            "secret": "must-not-leak",
-        }]),
-    }
-    row = {
-            "id": 1,
-            "profile_key": "profile",
-            "account_name": "owner@example.com",
-            "email": "owner@example.com",
-            "auth_method": "google",
-            "state": "ACTIVE",
-            "last_auth_success_at": None,
-            "last_auth_failure_at": None,
-            "auth_failure_kind": "",
-            "needs_token_refresh": 0,
-            "token_expires_at": None,
-            "cookie_expires_at": None,
-            "assigned_nodes": 0,
-            "active_nodes": 0,
-            "recovery_nodes": 0,
-            "planned_nodes": 0,
-            "created_at": None,
-            "updated_at": None,
-    }
-    result = earnapp_accounts_router._public_account(row, snapshot, None)
-    assert result["collector"]["devices"] == [{
-        "device_id": "sdk-mac-test",
-        "country_code": "US",
-        "online": True,
-        "usage_current": 12,
-        "usage_total": 34,
-        "usage_points": 2,
-        "usage_available": True,
-    }]
+        }
+    ]
 
 
 def test_import_updates_the_same_profile_without_duplicating_the_account(tmp_path, client):
@@ -244,8 +250,8 @@ def test_list_includes_latest_collector_summary_and_recovery_countdown(tmp_path,
                     "online_nodes": 2,
                     "offline_nodes": 1,
                     "devices": [
-                            {
-                                "device_id": "sdk-mac-test",
+                        {
+                            "device_id": "sdk-mac-test",
                             "billing": "qualified_uptime",
                             "usage_current": 18142,
                             "usage_total": 18142,

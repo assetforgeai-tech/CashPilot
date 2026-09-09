@@ -182,13 +182,25 @@ def _public_account(
     except (TypeError, ValueError, __import__("json").JSONDecodeError):
         payment = {}
     allowed_device_fields = {
-        "device_id", "ip", "country_code", "online", "banned", "usage_current", "usage_total",
-        "usage_points", "usage_available", "bandwidth", "total_bandwidth", "earned", "earned_total",
-        "uptime", "total_uptime", "rate",
+        "device_id",
+        "ip",
+        "country_code",
+        "online",
+        "banned",
+        "usage_current",
+        "usage_total",
+        "usage_points",
+        "usage_available",
+        "bandwidth",
+        "total_bandwidth",
+        "earned",
+        "earned_total",
+        "uptime",
+        "total_uptime",
+        "rate",
     }
     devices_public = [
-        {key: value for key, value in device.items() if key in allowed_device_fields}
-        for device in devices
+        {key: value for key, value in device.items() if key in allowed_device_fields} for device in devices
     ]
     return {
         "id": int(row["id"]),
