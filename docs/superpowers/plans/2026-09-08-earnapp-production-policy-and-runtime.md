@@ -197,7 +197,7 @@ healthy       -> no mutation
 - Test: `tests/test_chrome_provider_importer.py`, `tests/test_earnapp_account_routes.py`
 
 - [ ] Keep one explicit Chrome/GPM profile bound to one EarnApp account.
-- [ ] Record expiry metadata with source `jwt`, `cookie`, or `unknown`; never claim opaque token expiry is known.
+- [x] Record expiry metadata with source `jwt`, `cookie`, or `unknown`; never claim opaque token expiry is known.
 - [ ] Remove unconditional 15-minute sync alarm. Keep cookie-change debounce and explicit “Sync now”.
 - [x] Add extension setting `autoLoginEnabled`, default false; enable only after operator checks it.
 - [ ] Add an event-driven refresh flow: server marks `needs_token_refresh`; extension, only when enabled, opens the already-bound EarnApp profile, performs `Settings -> logout`, then login flow, waits for dashboard success, imports new cookies, and reports result.

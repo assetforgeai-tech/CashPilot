@@ -39,6 +39,16 @@ def test_token_warning_reports_rejected_auth_even_with_future_expiry(state):
     )
 
 
+def test_token_warning_uses_cookie_expiry_when_jwt_expiry_is_unknown():
+    row = {
+        "state": "ACTIVE",
+        "token_expires_at": None,
+        "cookie_expires_at": "2099-01-01T00:00:00+00:00",
+    }
+    assert earnapp_accounts_router._token_expiry_source(row) == "cookie"
+    assert earnapp_accounts_router._token_warning(row) == "healthy"
+
+
 def _import_body() -> dict[str, object]:
     return {
         "profile_key": "profile-40",
@@ -94,6 +104,7 @@ def test_import_and_list_mask_every_credential_and_report_capacity(tmp_path, cli
     assert row["profile_key"] == "profile-40"
     assert row["credentials_present"]["oauth-refresh-token"] is True
     assert row["token_warning"] == "expiry_unknown"
+    assert row["token_expiry_source"] == "unknown"
     serialized = listed.text
     assert "refresh-secret" not in serialized
     assert "xsrf-secret" not in serialized
