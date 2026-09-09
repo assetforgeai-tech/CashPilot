@@ -259,6 +259,11 @@ class TestTheTagVerifierCanTellApartMissingAndUnreachable:
 
 
 class TestTheReleaseGateRunsWhatShips:
+    def test_codecov_v7_uses_files_input(self):
+        workflow = (WORKFLOWS / "test.yml").read_text(encoding="utf-8")
+        assert "files: ./coverage.xml" in workflow
+        assert "file: ./coverage.xml" not in workflow
+
     def _dockerfile_python(self, name):
         line = next(
             line for line in (ROOT / name).read_text(encoding="utf-8").splitlines() if line.startswith("FROM python:")
