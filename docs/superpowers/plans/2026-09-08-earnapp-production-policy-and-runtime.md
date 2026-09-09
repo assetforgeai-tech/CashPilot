@@ -176,7 +176,7 @@ healthy       -> no mutation
 - [x] Keep existing recreate endpoint for local recovery only; document that it preserves identity and does not link.
 - [x] Fail closed to `RECOVERY_HOLD` when remote deletion or worker acknowledgement is uncertain.
 - [x] Test replacement-ticket supersession/idempotency; stale tickets are revoked before a new ticket is issued.
-- [ ] Test remote-delete failure end to end.
+- [ ] Test remote-delete failure end to end; unit/regression coverage proves failure and uncertain worker removal enter `RECOVERY_HOLD`, with no lease release, but a live API simulation is still pending.
 - [x] Verify reboot recovery end to end on `vps-test-us`; Docker containers, identities, proxy chains and egress persisted.
 
 ## Task 4: Earnings Collector and Scheduler De-duplication
@@ -243,7 +243,7 @@ healthy       -> no mutation
 - [x] Supply complete profile-controlled `uname_r`, `os_version`, hostname, machine-id, serial, arch, model and interface metadata.
 - [ ] Prevent direct leakage of host kernel `Linux 6.17.0-1022-azure` where the binary contract permits spoofing.
 - [x] Do not claim kernel spoofing where Docker cannot alter a kernel-visible syscall; instead fail verification or document the remaining field.
-- [ ] Verify network egress and metadata from inside each container.
+- [x] Verify network egress and metadata from inside each container; dated reboot evidence records proxy-matched IPv4, DNS path, fail-closed chains, and blocked IPv6.
 
 ## Task 8: Private GHCR Release
 
@@ -266,10 +266,10 @@ healthy       -> no mutation
 - Create: `docs/evidence/earnapp/2026-09-08-production-canary.md`
 
 - [ ] Clean only non-protected EarnApp test runtimes on the reference/test VPS; preserve operator-owned scheduler behavior.
-- [ ] Reboot worker and verify baseline before deploy.
-- [ ] Create three acceptance nodes, one macOS, one iOS, one Ubuntu, each with a distinct eligible proxy and fresh identity. Additional canaries are optional observation nodes and must not block acceptance.
+- [x] Reboot worker and verify baseline before deploy; Docker, worker heartbeat, containers, identities and proxy routes recovered.
+- [x] Create acceptance coverage for macOS, iOS and Ubuntu with distinct eligible proxies and fresh identities; production gate uses one positive-usage node per OS, additional canaries remain observation-only.
 - [ ] Verify remote device creation, country, Earnings Update boundary, positive usage, proxy egress, DNS fail-closed, heartbeat, restart, banned recovery simulation, token warning and reboot persistence.
-- [ ] Run focused tests, full regression suite, image digest audit, secret scan and git diff audit.
+- [x] Run focused tests, full regression suite, image digest audit, secret scan and git diff audit; latest full suite is `2712 passed, 8 skipped`.
 - [x] Commit, open PR, review, merge, and release completed through PR #206 and release `v1.24.2`. Live redeploy/recheck remains pending verified SSH access.
 - [ ] Mark EarnApp production-ready only after all evidence is recorded.
 
