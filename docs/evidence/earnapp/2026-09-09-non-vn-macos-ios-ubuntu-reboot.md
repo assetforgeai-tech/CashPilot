@@ -22,6 +22,9 @@
 - Image: `cashpilot/earnapp-mac-canary:asset-bd8de3ac58d1`, binary `1.660.577`.
 - Docker state: `running`, restart policy `always`; proxy/WSS/tunnel-init
   completed and `ipv6_supported=false`.
+- A 60-second server status sample increased container traffic from
+  `1,446,732/1,297,435` to `2,792,372/2,643,626` RX/TX bytes while the
+  container stayed `running`; this is transport evidence only.
 - Initial transport evidence is positive; country and account-side usage remain
   pending the next collector/Earnings Update snapshot. No restart, recreate, or
   proxy rotation is justified before that authoritative observation.
