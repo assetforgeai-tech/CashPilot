@@ -295,7 +295,7 @@ class TestTheReleaseGateRunsWhatShips:
         ]
         assert test_steps
         step = test_steps[0]
-        assert step.get("timeout-minutes") == 15
+        assert step.get("timeout-minutes") == 30
         run = str(step.get("run") or "")
         assert "uv run pytest tests/ -v --tb=short --durations=25" in run
 
