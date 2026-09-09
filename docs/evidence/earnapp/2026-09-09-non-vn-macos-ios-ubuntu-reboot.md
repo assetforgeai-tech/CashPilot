@@ -1,5 +1,16 @@
 # EarnApp canary reboot evidence (2026-09-09)
 
+## Additional macOS non-VN canary
+
+- `earnapp-canary-us-macos-nonvn-05` was deployed after upstream VN-path concern was reported.
+- UUID: `sdk-mac-bfd2da9630384b4366dc03e741cd8f10`.
+- Image: `cashpilot/earnapp-mac-canary:asset-bd8de3ac58d1`.
+- Runtime proxy egress: `130.180.237.99` (residential non-VN lane).
+- Container state: running; Docker restart count: `0`.
+- Binary `1.660.577` established the proxy tunnel and three agent WebSocket connections; `tunnel_init` returned `platform=darwin`, `appid` alias, matching UUID, `status_send=true`, and `ipv6_supported=false`.
+- Country and positive usage remain pending authoritative account-side Earnings Update evidence; transport success alone is not treated as usage proof.
+- Worker heartbeat at `2026-09-09 00:50:56` reported the new node `running`, provider state `ACTIVE`, proxy health `healthy`, observed egress `130.180.237.99`, matching expected egress, with no restart.
+- Worker telemetry reported non-zero container traffic (`net_rx_bytes=3575881`, `net_tx_bytes=3420474`) for the new node. This proves transport activity only, not account-side earnings.
 Scope: `vps-test-us` worker `92161`. No provider outside EarnApp was changed.
 
 ## Runtime identity repair
