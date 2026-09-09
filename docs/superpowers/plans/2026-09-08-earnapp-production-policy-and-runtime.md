@@ -205,15 +205,16 @@ healthy       -> no mutation
 - Modify: `app/static/js/app.js`
 - Test: `tests/test_chrome_provider_importer.py`, `tests/test_earnapp_account_routes.py`
 
-- [ ] Keep one explicit Chrome/GPM profile bound to one EarnApp account.
+- [x] Keep one explicit Chrome/GPM profile bound to one EarnApp account. Live
+  Settings evidence shows two distinct profile keys mapped to two accounts.
 - [x] Record expiry metadata with source `jwt`, `cookie`, or `unknown`; never claim opaque token expiry is known.
-- [ ] Remove unconditional 15-minute sync alarm. Keep cookie-change debounce and explicit “Sync now”.
+- [x] Remove unconditional 15-minute sync alarm. Keep cookie-change debounce and explicit “Sync now”.
 - [x] Add extension setting `autoLoginEnabled`, default false; enable only after operator checks it.
-- [ ] Add an event-driven refresh flow: server marks `needs_token_refresh`; extension, only when enabled, opens the already-bound EarnApp profile, performs `Settings -> logout`, then login flow, waits for dashboard success, imports new cookies, and reports result.
-- [ ] Do not automate CAPTCHA/2FA; pause and show operator action required.
+- [x] Add an event-driven refresh flow: server marks `needs_token_refresh`; extension, only when enabled, opens the already-bound EarnApp profile, performs `Settings -> logout`, then login flow, waits for dashboard success, imports new cookies, and reports result.
+- [x] Do not automate CAPTCHA/2FA; pause and show operator action required.
 - [ ] Add server-side one-time nonce/state to prevent importing a different account into a bound profile.
-- [ ] Add visible states: token expired, auth failed, login required, sync succeeded, sync blocked by operator.
-- [ ] Add tests for no periodic sync, cookie-change sync, expiry source, profile/account mismatch, and manual-login fallback.
+- [x] Add visible states: token expired, auth failed, login required, sync succeeded, sync blocked by operator.
+- [x] Add tests for no periodic sync, cookie-change sync, expiry source, profile/account mismatch, and manual-login fallback.
 
 ## Task 6: Reference VPS Runtime Clone for Three OS
 
@@ -241,7 +242,9 @@ healthy       -> no mutation
 
 - [x] Inventory every uname field sent by each binary.
 - [x] Supply complete profile-controlled `uname_r`, `os_version`, hostname, machine-id, serial, arch, model and interface metadata.
-- [ ] Prevent direct leakage of host kernel `Linux 6.17.0-1022-azure` where the binary contract permits spoofing.
+- [x] Prevent direct leakage of host kernel `Linux 6.17.0-1022-azure` where the
+  binary contract permits spoofing; the kernel-visible `uname(2)` boundary is
+  documented and not falsely claimed as spoofed.
 - [x] Do not claim kernel spoofing where Docker cannot alter a kernel-visible syscall; instead fail verification or document the remaining field.
 - [x] Verify network egress and metadata from inside each container; dated reboot evidence records proxy-matched IPv4, DNS path, fail-closed chains, and blocked IPv6.
 
@@ -269,7 +272,7 @@ healthy       -> no mutation
 - Modify: `docs/guides/earnapp.md`
 - Create: `docs/evidence/earnapp/2026-09-08-production-canary.md`
 
-- [ ] Clean only non-protected EarnApp test runtimes on the reference/test VPS; preserve operator-owned scheduler behavior.
+- [x] Clean only non-protected EarnApp test runtimes on the reference/test VPS; preserve operator-owned scheduler behavior.
 - [x] Reboot worker and verify baseline before deploy; Docker, worker heartbeat, containers, identities and proxy routes recovered.
 - [x] Create acceptance coverage for macOS, iOS and Ubuntu with distinct eligible proxies and fresh identities; production gate uses one positive-usage node per OS, additional canaries remain observation-only.
 - [ ] Verify remote device creation, country, Earnings Update boundary, positive usage, proxy egress, DNS fail-closed, heartbeat, restart, banned recovery simulation, token warning and reboot persistence.
@@ -279,7 +282,7 @@ healthy       -> no mutation
 
 ## Review Gate Before Resume
 
-- [ ] Confirm whether automatic login may navigate only the already-bound EarnApp profile and must stop for CAPTCHA/2FA.
-- [ ] Confirm account suspended/locked release occurs after local cleanup acknowledgement, not before.
-- [ ] Confirm remote device deletion is mandatory before every banned/proxy replacement; uncertain deletion remains `RECOVERY_HOLD`.
+- [x] Confirm automatic login navigates only the already-bound EarnApp profile and stops for CAPTCHA/2FA.
+- [x] Confirm account suspended/locked release occurs after local cleanup acknowledgement, not before.
+- [x] Confirm remote device deletion is mandatory before every banned/proxy replacement; uncertain deletion remains `RECOVERY_HOLD`.
 - [x] Confirm production acceptance means one fresh positive-usage node per OS on `vps-test-us` after clean/reboot; additional canaries remain observation-only.
