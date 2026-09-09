@@ -28,6 +28,13 @@ def test_settings_prioritizes_token_and_proxy_route_health_without_secret_fields
     assert "credentials_enc" not in javascript
 
 
+def test_settings_displays_cookie_expiry_evidence_when_jwt_expiry_is_missing():
+    javascript = APP_JS.read_text(encoding="utf-8")
+    assert "account.cookie_expires_at" in javascript
+    assert "token_expiry_source" in javascript
+    assert "evidence" in javascript
+
+
 def test_settings_renders_sanitized_earnapp_payment_sync_state():
     template = SETTINGS.read_text(encoding="utf-8")
     javascript = APP_JS.read_text(encoding="utf-8")
