@@ -18,6 +18,25 @@ The server UI was upgraded separately to `v1.26.0`; `cashpilot-worker` stayed
 on `1.23.6` and remained healthy. The UI release workflows and PR #232 checks
 are green.
 
+### Controlled current-state retry
+
+Three existing `PLANNED` slots were reused; no new logical node was added:
+
+- macOS `earnapp-canary-us-macos-nonvn-05` deployed as
+  `sdk-mac-139da4afd032d07ed7d9731c4b997944`.
+- Ubuntu `earnapp-canary-us-fresh-ubuntu-01` deployed as
+  `sdk-node-1382946e92d74242b5d8651ba3658279`.
+- iOS `earnapp-canary-us-fresh-ios-02` deployed as
+  `sdk-ios-f952bab6fb6f39203578a4a826f6b09f`.
+
+All three worker deploy calls returned HTTP 200. EarnApp then rejected the new
+macOS and Ubuntu devices during authenticated verification. The production
+lifecycle performed its configured remote-device delete and local-runtime
+delete, returning both logical slots to `PLANNED`. The iOS container remained
+`ACTIVE` and established its proxy tunnel plus three agent WebSockets. This
+retry proves the deletion sequence is scheduler-owned and fail-closed; it does
+not supersede the earlier positive-usage acceptance evidence.
+
 ## Additional macOS non-VN canary
 
 ## Authoritative per-device usage verification (2026-09-09)
