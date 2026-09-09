@@ -2963,6 +2963,14 @@ def test_verify_canary_stops_immediately_when_earnapp_blocks_the_proxy(monkeypat
     sleep.assert_not_awaited()
 
 
+def test_verify_canary_defaults_to_five_second_five_attempt_link_policy():
+    assert earnapp_canary.LINK_VERIFY_ATTEMPTS == 5
+    assert earnapp_canary.LINK_VERIFY_INTERVAL_SECONDS == 5
+    assert earnapp_canary.LINK_VERIFY_MIN_INTERVAL_SECONDS == 5
+    assert earnapp_canary.LINK_VERIFY_BURST == 5
+    assert earnapp_canary.LINK_VERIFY_COOLDOWN_SECONDS == 300
+
+
 def test_verify_canary_observes_the_assigned_route_even_when_its_latest_probe_is_blocked(monkeypatch):
     device_id = "sdk-mac-" + "a" * 32
 

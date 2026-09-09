@@ -12,6 +12,38 @@
 - Worker heartbeat at `2026-09-09 00:50:56` reported the new node `running`, provider state `ACTIVE`, proxy health `healthy`, observed egress `130.180.237.99`, matching expected egress, with no restart.
 - Worker telemetry reported non-zero container traffic (`net_rx_bytes=3575881`, `net_tx_bytes=3420474`) for the new node. This proves transport activity only, not account-side earnings.
 
+### Follow-up macOS non-VN node
+
+- `earnapp-canary-us-macos-nonvn-06` was deployed through the owner API with
+  `country_scope=non-vn`; no VN macOS node or unrelated provider was changed.
+- UUID: `sdk-mac-ef2b9b18acb2e8d51445962e22b93dfc`.
+- Proxy egress: `130.180.231.27` (residential non-VN); the server lease and the
+  in-container `api.ipify.org` result match.
+- Image: `cashpilot/earnapp-mac-canary:asset-bd8de3ac58d1`, binary `1.660.577`.
+- Docker state: `running`, restart policy `always`; proxy/WSS/tunnel-init
+  completed and `ipv6_supported=false`.
+- A 60-second server status sample increased container traffic from
+  `1,446,732/1,297,435` to `2,792,372/2,643,626` RX/TX bytes while the
+  container stayed `running`; this is transport evidence only.
+- Manual account collection at `2026-09-09 04:44:31` returned `online_nodes=6`
+  for account `2`, up from `5` before this node was deployed. The account
+  `usage_current` value was unchanged, and the next Earnings Update counter was
+  still positive; this is online evidence, not positive-usage evidence.
+- Initial transport evidence is positive; country and account-side usage remain
+  pending the next collector/Earnings Update snapshot. No restart, recreate, or
+  proxy rotation is justified before that authoritative observation.
+
+## Kernel visibility boundary
+
+- Read-only probe on `vps-test-us` reports host and container kernel
+  `6.17.0-1022-azure`.
+- The runtime-controlled EarnApp profile still supplies emulated `uname_r`, OS,
+  hostname, serial, model and interface metadata in the application payload.
+- Docker cannot change a kernel-visible `uname(2)` result without a separate VM
+  or kernel namespace strategy. The implementation therefore does not claim
+  complete host-kernel spoofing; this residual is an explicit production risk
+  and remains outside the acceptance claim.
+
 ## Private GHCR runtime publication
 
 Tag `20260909-nonvn-macos-canary` was built from the pinned runtime contexts and pushed to private GHCR repositories. Immutable digests:
