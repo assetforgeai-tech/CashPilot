@@ -257,3 +257,16 @@ release the proxy lease when that marker is absent, and consumes the marker in
 the same transaction as lease release and identity reset. This closes the
 remote-delete-before-release evidence gate without changing in-place restart
 behavior.
+
+## UI-only production refresh
+
+- PR `#229` merged with documentation, lint, CodeQL, catalog and test checks
+  passing; auto-release published `v1.25.6`.
+- CashPilot server UI upgraded in isolation to
+  `ghcr.io/assetforgeai-tech/cashpilot:1.25.6`, preserving `/data`, `/fleet`,
+  port `8080`, environment and restart policy.
+- UI health is `healthy`; worker remains
+  `ghcr.io/assetforgeai-tech/cashpilot-worker:1.23.6` and healthy. No node or
+  non-EarnApp provider changed.
+- Settings copy now correctly describes all three EarnApp lanes as dedicated
+  Docker lanes; stale LXD/inspection-only wording was removed.
