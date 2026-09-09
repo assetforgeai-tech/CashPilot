@@ -22,6 +22,7 @@ class EarnAppAccountImportIn(BaseModel):
     cookies: dict[str, Any] = Field(default_factory=dict)
     import_state: str | None = Field(default=None, max_length=200)
 
+
 class EarnAppImportChallengeIn(BaseModel):
     profile_key: str = Field(min_length=1, max_length=200)
 
@@ -318,15 +319,19 @@ async def api_earnapp_accounts_import(request: Request, body: EarnAppAccountImpo
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"status": "ok", "account_id": account_id}
 
+
 @router.post("/api/admin/earnapp/accounts/import-challenge")
 async def api_earnapp_import_challenge(request: Request, body: EarnAppImportChallengeIn) -> dict[str, str]:
     deps._require_owner(request)
     return {"import_state": await database.issue_earnapp_import_challenge(body.profile_key)}
 
+
 @router.post("/api/admin/earnapp/accounts/import-extension")
 async def api_earnapp_import_extension(request: Request, body: EarnAppAccountImportIn) -> dict[str, Any]:
     deps._require_owner(request)
-    if not body.import_state or not await database.consume_earnapp_import_challenge(body.import_state, body.profile_key):
+    if not body.import_state or not await database.consume_earnapp_import_challenge(
+        body.import_state, body.profile_key
+    ):
         raise HTTPException(status_code=400, detail="Invalid or expired EarnApp import challenge")
     try:
         account_id = await earnapp_accounts.import_account(body.model_dump(exclude={"import_state"}))

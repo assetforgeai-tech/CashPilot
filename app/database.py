@@ -3712,6 +3712,7 @@ async def delete_config_keys(keys: list[str]) -> None:
 
 # --- EarnApp accounts and logical nodes ---
 
+
 async def issue_earnapp_import_challenge(profile_key: str) -> str:
     profile = str(profile_key or "").strip()
     if not profile:
@@ -3721,11 +3722,15 @@ async def issue_earnapp_import_challenge(profile_key: str) -> str:
     db = await _get_db()
     try:
         await db.executescript(_EARNAPP_ACCOUNTS_SCHEMA)
-        await db.execute("INSERT INTO earnapp_import_challenges(token_hash, profile_key, expires_at) VALUES (?, ?, datetime('now', '+10 minutes'))", (digest, profile))
+        await db.execute(
+            "INSERT INTO earnapp_import_challenges(token_hash, profile_key, expires_at) VALUES (?, ?, datetime('now', '+10 minutes'))",
+            (digest, profile),
+        )
         await db.commit()
     finally:
         await db.close()
     return token
+
 
 async def consume_earnapp_import_challenge(token: str, profile_key: str) -> bool:
     value, profile = str(token or "").strip(), str(profile_key or "").strip()
@@ -3735,7 +3740,10 @@ async def consume_earnapp_import_challenge(token: str, profile_key: str) -> bool
     db = await _get_db()
     try:
         await db.execute("BEGIN IMMEDIATE")
-        cursor = await db.execute("UPDATE earnapp_import_challenges SET used_at = datetime('now') WHERE token_hash = ? AND profile_key = ? AND used_at IS NULL AND expires_at > datetime('now')", (digest, profile))
+        cursor = await db.execute(
+            "UPDATE earnapp_import_challenges SET used_at = datetime('now') WHERE token_hash = ? AND profile_key = ? AND used_at IS NULL AND expires_at > datetime('now')",
+            (digest, profile),
+        )
         await db.commit()
         return cursor.rowcount == 1
     finally:
