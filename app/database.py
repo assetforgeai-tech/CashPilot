@@ -506,6 +506,14 @@ CREATE TABLE IF NOT EXISTS earnapp_replacement_tickets (
 CREATE INDEX IF NOT EXISTS idx_earnapp_replacement_tickets_target
     ON earnapp_replacement_tickets(logical_node_id, target_worker_id, used_at, expires_at);
 
+CREATE TABLE IF NOT EXISTS earnapp_remote_delete_confirmations (
+    logical_node_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    device_id TEXT NOT NULL,
+    confirmed_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (logical_node_id, generation, device_id)
+);
+
 CREATE TABLE IF NOT EXISTS earnapp_proxy_reservations (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
     logical_node_id    TEXT    NOT NULL,
@@ -1831,7 +1839,11 @@ async def _assert_known_earnapp_account_children(db: Any, parent_table: str) -> 
 
 
 async def _assert_known_earnapp_logical_node_children(db: Any, parent_table: str) -> None:
-    allowed = {"earnapp_proxy_reservations", "earnapp_replacement_tickets"}
+    allowed = {
+        "earnapp_proxy_reservations",
+        "earnapp_replacement_tickets",
+        "earnapp_remote_delete_confirmations",
+    }
     unknown = sorted(await _tables_referencing(db, parent_table) - allowed)
     if unknown:
         raise RuntimeError(f"unknown EarnApp logical-node child tables: {', '.join(unknown)}")
@@ -2260,6 +2272,17 @@ async def _create_earnapp_current_schema(db: Any) -> None:
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             FOREIGN KEY(logical_node_id) REFERENCES earnapp_logical_nodes(logical_node_id) ON DELETE CASCADE,
             FOREIGN KEY(target_worker_id) REFERENCES workers(id) ON DELETE CASCADE
+        )
+        """
+    )
+    await db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS earnapp_remote_delete_confirmations (
+            logical_node_id TEXT NOT NULL,
+            generation INTEGER NOT NULL,
+            device_id TEXT NOT NULL,
+            confirmed_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (logical_node_id, generation, device_id)
         )
         """
     )
@@ -5917,6 +5940,15 @@ async def prepare_fresh_earnapp_replacement(
                 await db.rollback()
                 return False
             proxy_id = int(row["current_proxy_id"] or 0)
+            confirmation = await (
+                await db.execute(
+                    "SELECT 1 FROM earnapp_remote_delete_confirmations WHERE logical_node_id = ? AND generation = ? AND device_id = ?",
+                    (node_id, int(generation), str(device_id)),
+                )
+            ).fetchone()
+            if not confirmation:
+                await db.rollback()
+                return False
             await db.execute(
                 "UPDATE provider_proxy_leases SET released_at = datetime('now'), release_reason = ? "
                 "WHERE provider_slug='earnapp' AND worker_id=? AND instance_id=? AND released_at IS NULL",
@@ -5928,6 +5960,7 @@ async def prepare_fresh_earnapp_replacement(
                 "proxy_health='unknown', updated_at=datetime('now') WHERE logical_node_id=? AND generation=?",
                 (int(worker_id), (proxy_id or None) if preserve_proxy_affinity else None, node_id, int(generation)),
             )
+            await db.execute("DELETE FROM earnapp_remote_delete_confirmations WHERE logical_node_id = ?", (node_id,))
             await db.commit()
             return True
         except Exception:
@@ -5935,6 +5968,23 @@ async def prepare_fresh_earnapp_replacement(
             raise
         finally:
             await db.close()
+
+
+async def record_earnapp_remote_delete_confirmation(logical_node_id: str, *, generation: int, device_id: str) -> bool:
+    """Persist successful remote deletion before releasing a lease."""
+    node_id, value = str(logical_node_id or "").strip(), str(device_id or "").strip()
+    if not node_id or int(generation or 0) <= 0 or not value:
+        return False
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "INSERT OR REPLACE INTO earnapp_remote_delete_confirmations (logical_node_id, generation, device_id) VALUES (?, ?, ?)",
+            (node_id, int(generation), value),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+    finally:
+        await db.close()
 
 
 async def begin_earnapp_recovery_hold(logical_node_id: str, *, hold_seconds: int) -> dict[str, Any] | None:

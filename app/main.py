@@ -1042,6 +1042,14 @@ async def _retire_earnapp_node_for_fresh_replacement(node: Mapping[str, Any], *,
     if not remote_deleted:
         await database.begin_earnapp_recovery_hold(node_id, hold_seconds=earnapp_recovery.RECOVERY_HOLD_SECONDS)
         return False
+    confirmed = await database.record_earnapp_remote_delete_confirmation(
+        node_id,
+        generation=generation,
+        device_id=device_id,
+    )
+    if not confirmed:
+        await database.begin_earnapp_recovery_hold(node_id, hold_seconds=earnapp_recovery.RECOVERY_HOLD_SECONDS)
+        return False
     try:
         removed = await _proxy_to_worker(
             worker_id,
