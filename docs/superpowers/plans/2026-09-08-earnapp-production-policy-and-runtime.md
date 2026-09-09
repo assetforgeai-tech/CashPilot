@@ -175,7 +175,8 @@ healthy       -> no mutation
 - [x] Banned path now performs remote delete -> remove runtime -> release local binding -> clear identity; next sequential deploy creates fresh identity. Proxy rotation uses the same remote-delete gate.
 - [x] Keep existing recreate endpoint for local recovery only; document that it preserves identity and does not link.
 - [x] Fail closed to `RECOVERY_HOLD` when remote deletion or worker acknowledgement is uncertain.
-- [ ] Test idempotency, remote-delete failure, duplicate replacement ticket, and reboot recovery.
+- [x] Test replacement-ticket supersession/idempotency; stale tickets are revoked before a new ticket is issued.
+- [ ] Test remote-delete failure and reboot recovery end to end.
 
 ## Task 4: Earnings Collector and Scheduler De-duplication
 
