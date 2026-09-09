@@ -1,5 +1,30 @@
 # EarnApp canary reboot evidence (2026-09-09)
 
+## Additional macOS non-VN canary
+
+- `earnapp-canary-us-macos-nonvn-05` was deployed after upstream VN-path concern was reported.
+- UUID: `sdk-mac-bfd2da9630384b4366dc03e741cd8f10`.
+- Image: `cashpilot/earnapp-mac-canary:asset-bd8de3ac58d1`.
+- Runtime proxy egress: `130.180.237.99` (residential non-VN lane).
+- Container state: running; Docker restart count: `0`.
+- Binary `1.660.577` established the proxy tunnel and three agent WebSocket connections; `tunnel_init` returned `platform=darwin`, `appid` alias, matching UUID, `status_send=true`, and `ipv6_supported=false`.
+- Country and positive usage remain pending authoritative account-side Earnings Update evidence; transport success alone is not treated as usage proof.
+- Worker heartbeat at `2026-09-09 00:50:56` reported the new node `running`, provider state `ACTIVE`, proxy health `healthy`, observed egress `130.180.237.99`, matching expected egress, with no restart.
+- Worker telemetry reported non-zero container traffic (`net_rx_bytes=3575881`, `net_tx_bytes=3420474`) for the new node. This proves transport activity only, not account-side earnings.
+
+## Private GHCR runtime publication
+
+Tag `20260909-nonvn-macos-canary` was built from the pinned runtime contexts and pushed to private GHCR repositories. Immutable digests:
+
+- `ghcr.io/assetforgeai-tech/cashpilot-earnapp-macos@sha256:45c62c73242a281f5e293a6249bae4706b3c2ff8f9ec23a01b3a01a7a879170d`
+- `ghcr.io/assetforgeai-tech/cashpilot-earnapp-ios@sha256:f7ca70ce9ef7bd72321bafa8be3f00047ceb056e67221ac93c10394592049930`
+- `ghcr.io/assetforgeai-tech/cashpilot-earnapp-ubuntu@sha256:70265ba720c27bb9398f97432fd9e151f841aedf679c1f82831080ac9d0109e3`
+
+The publish script used temporary credential files and removed them after the run; credentials were not written to the repository or output.
+
+Repository verification after tag-ref refresh: full suite `2691 passed, 8 skipped`.
+
+Account token evidence now reports `token_expiry_source`: `jwt` when JWT `exp` is known, `cookie` when only cookie expiration is known, otherwise `unknown`. Existing account snapshots had valid cookie expiry but no JWT `exp`; the dashboard no longer labels that evidence as unknown.
 Scope: `vps-test-us` worker `92161`. No provider outside EarnApp was changed.
 
 ## Runtime identity repair

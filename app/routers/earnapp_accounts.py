@@ -138,7 +138,7 @@ def _parse_timestamp(value: Any) -> datetime | None:
 def _token_warning(row: dict[str, Any]) -> str:
     if str(row.get("state") or "").upper() in {"AUTH_FAILED", "EXPIRED"}:
         return "expired"
-    expiry = _parse_timestamp(row.get("token_expires_at"))
+    expiry = _parse_timestamp(row.get("token_expires_at")) or _parse_timestamp(row.get("cookie_expires_at"))
     if expiry is None:
         return "expiry_unknown"
     remaining = (expiry - datetime.now(UTC)).total_seconds()
@@ -149,6 +149,15 @@ def _token_warning(row: dict[str, Any]) -> str:
     if remaining <= 7 * 24 * 60 * 60:
         return "expires_within_7d"
     return "healthy"
+
+
+def _token_expiry_source(row: dict[str, Any]) -> str:
+    """Identify the expiry evidence without overstating opaque JWT metadata."""
+    if _parse_timestamp(row.get("token_expires_at")):
+        return "jwt"
+    if _parse_timestamp(row.get("cookie_expires_at")):
+        return "cookie"
+    return "unknown"
 
 
 def _public_account(
@@ -185,6 +194,7 @@ def _public_account(
         "needs_token_refresh": bool(row.get("needs_token_refresh")),
         "token_expires_at": row.get("token_expires_at"),
         "cookie_expires_at": row.get("cookie_expires_at"),
+        "token_expiry_source": _token_expiry_source(row),
         "token_warning": _token_warning(row),
         "assigned_nodes": int(row.get("assigned_nodes") or 0),
         "active_nodes": int(row.get("active_nodes") or 0),

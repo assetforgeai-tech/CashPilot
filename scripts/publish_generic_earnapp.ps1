@@ -55,6 +55,9 @@ rm -f "$ROOT/ghcr-token.txt"
 rm -rf "$ROOT"
 '@
     $remoteScript = $remoteScript.Replace('__REMOTE_ROOT__', $remoteRoot).Replace('$publishTag', $publishTag)
+    # OpenSSH executes the uploaded script under Linux; normalize PowerShell's
+    # CRLF here so `set -euo pipefail` is parsed as one shell directive.
+    $remoteScript = $remoteScript -replace "`r`n", "`n"
     [IO.File]::WriteAllText((Join-Path $sourceBase 'remote.sh'), $remoteScript, (New-Object Text.UTF8Encoding($false)))
     & $pscp -batch -pwfile $passwordFile $tokenFile ($credential['user'] + '@' + $credential['ip'] + ":$remoteRoot/ghcr-token.txt") | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'GHCR token upload failed' }
