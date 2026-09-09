@@ -178,6 +178,9 @@ def test_prepare_fresh_earnapp_replacement_clears_identity_and_lease(tmp_path):
                 ("fresh-node", account_id, "sdk-mac-" + "a" * 32),
             )
             await db.commit()
+            assert await database.record_earnapp_remote_delete_confirmation(
+                "fresh-node", generation=2, device_id="sdk-mac-" + "a" * 32
+            )
             assert await database.prepare_fresh_earnapp_replacement(
                 "fresh-node", 7, generation=2, device_id="sdk-mac-" + "a" * 32
             )
