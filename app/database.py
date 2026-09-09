@@ -5936,10 +5936,12 @@ async def prepare_fresh_earnapp_replacement(
                 await db.rollback()
                 return False
             proxy_id = int(row["current_proxy_id"] or 0)
-            confirmation = await (await db.execute(
-                "SELECT 1 FROM earnapp_remote_delete_confirmations WHERE logical_node_id = ? AND generation = ? AND device_id = ?",
-                (node_id, int(generation), str(device_id)),
-            )).fetchone()
+            confirmation = await (
+                await db.execute(
+                    "SELECT 1 FROM earnapp_remote_delete_confirmations WHERE logical_node_id = ? AND generation = ? AND device_id = ?",
+                    (node_id, int(generation), str(device_id)),
+                )
+            ).fetchone()
             if not confirmation:
                 await db.rollback()
                 return False
