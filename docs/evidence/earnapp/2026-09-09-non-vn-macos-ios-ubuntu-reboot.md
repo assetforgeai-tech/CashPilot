@@ -44,6 +44,23 @@
   complete host-kernel spoofing; this residual is an explicit production risk
   and remains outside the acceptance claim.
 
+## Release and worker redeploy
+
+- PR #208 merged after Analyze, strict build, Ruff and test checks passed.
+- Release workflow completed successfully as `v1.24.3`.
+- `vps-test-us` worker `92161` was upgraded from `1.23.4` to `1.24.3` using
+  the existing `/data` volume, Docker socket, environment and worker config.
+- Post-redeploy worker health was `healthy`; all existing EarnApp containers
+  returned `running`. UUID and proxy environment remained unchanged for the
+  inspected nodes, including `-06`.
+- The next account snapshot (`2026-09-09 05:11:43`) reported account `2`
+  `online_nodes=6` and `usage_current=39,319,848`, up from `28,844,809`.
+  This proves aggregate account usage resumed; it does not attribute the full
+  delta to node `-06`.
+- Node `-06` remained `ACTIVE`, with matching proxy egress and increasing
+  container traffic. Device-specific verify was not used as a release gate
+  because its five-attempt/cooldown workflow exceeded the HTTP request window.
+
 ## Private GHCR runtime publication
 
 Tag `20260909-nonvn-macos-canary` was built from the pinned runtime contexts and pushed to private GHCR repositories. Immutable digests:
