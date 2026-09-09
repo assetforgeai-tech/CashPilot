@@ -35,6 +35,16 @@ without treating zero usage as a pass:
 The iOS zero-usage row remains an open platform gate; no restart or recreate is
 performed solely from this snapshot.
 
+## Boundary restart result (2026-09-09)
+
+At the Earnings Update boundary, `sdk-ios-8daa32a8efc12873c0b3488dada4863a`
+was restarted once through the CAS-scoped worker route. The worker returned
+`status=restarted`; UUID, account, proxy and image remained unchanged. The
+container returned `running`, re-established the proxy and all three agent WebSocket
+connections, with no restart crash. A follow-up collector still reported
+`online=true`, `usage_current=0`, `uptime=0`. This is recorded as an unresolved
+iOS EarnApp usage gate, not a production pass.
+
 - `earnapp-canary-us-macos-nonvn-05` was deployed after upstream VN-path concern was reported.
 - UUID: `sdk-mac-bfd2da9630384b4366dc03e741cd8f10`.
 - Image: `cashpilot/earnapp-mac-canary:asset-bd8de3ac58d1`.
