@@ -12,6 +12,20 @@
 - Worker heartbeat at `2026-09-09 00:50:56` reported the new node `running`, provider state `ACTIVE`, proxy health `healthy`, observed egress `130.180.237.99`, matching expected egress, with no restart.
 - Worker telemetry reported non-zero container traffic (`net_rx_bytes=3575881`, `net_tx_bytes=3420474`) for the new node. This proves transport activity only, not account-side earnings.
 
+### Follow-up macOS non-VN node
+
+- `earnapp-canary-us-macos-nonvn-06` was deployed through the owner API with
+  `country_scope=non-vn`; no VN macOS node or unrelated provider was changed.
+- UUID: `sdk-mac-ef2b9b18acb2e8d51445962e22b93dfc`.
+- Proxy egress: `130.180.231.27` (residential non-VN); the server lease and the
+  in-container `api.ipify.org` result match.
+- Image: `cashpilot/earnapp-mac-canary:asset-bd8de3ac58d1`, binary `1.660.577`.
+- Docker state: `running`, restart policy `always`; proxy/WSS/tunnel-init
+  completed and `ipv6_supported=false`.
+- Initial transport evidence is positive; country and account-side usage remain
+  pending the next collector/Earnings Update snapshot. No restart, recreate, or
+  proxy rotation is justified before that authoritative observation.
+
 ## Private GHCR runtime publication
 
 Tag `20260909-nonvn-macos-canary` was built from the pinned runtime contexts and pushed to private GHCR repositories. Immutable digests:
