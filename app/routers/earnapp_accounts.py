@@ -181,6 +181,15 @@ def _public_account(
         payment = __import__("json").loads(str(snapshot.get("payment_json") or "{}")) if snapshot else {}
     except (TypeError, ValueError, __import__("json").JSONDecodeError):
         payment = {}
+    allowed_device_fields = {
+        "device_id", "ip", "country_code", "online", "banned", "usage_current", "usage_total",
+        "usage_points", "usage_available", "bandwidth", "total_bandwidth", "earned", "earned_total",
+        "uptime", "total_uptime", "rate",
+    }
+    devices_public = [
+        {key: value for key, value in device.items() if key in allowed_device_fields}
+        for device in devices
+    ]
     return {
         "id": int(row["id"]),
         "profile_key": str(row.get("profile_key") or ""),
@@ -212,6 +221,7 @@ def _public_account(
             "usage_total": sum(float(device.get("usage_total") or 0) for device in usage_devices) if snapshot else None,
             "usage_available_nodes": len(usage_devices) if snapshot else None,
             "usage_missing_nodes": len(devices) - len(usage_devices) if snapshot else None,
+            "devices": devices_public,
             "earnings_update_in_ms": int(snapshot["earnings_update_in_ms"])
             if snapshot and snapshot.get("earnings_update_in_ms") is not None
             else None,
