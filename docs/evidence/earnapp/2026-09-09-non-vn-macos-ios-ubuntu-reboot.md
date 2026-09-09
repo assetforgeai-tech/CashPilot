@@ -29,6 +29,17 @@
   pending the next collector/Earnings Update snapshot. No restart, recreate, or
   proxy rotation is justified before that authoritative observation.
 
+## Kernel visibility boundary
+
+- Read-only probe on `vps-test-us` reports host and container kernel
+  `6.17.0-1022-azure`.
+- The runtime-controlled EarnApp profile still supplies emulated `uname_r`, OS,
+  hostname, serial, model and interface metadata in the application payload.
+- Docker cannot change a kernel-visible `uname(2)` result without a separate VM
+  or kernel namespace strategy. The implementation therefore does not claim
+  complete host-kernel spoofing; this residual is an explicit production risk
+  and remains outside the acceptance claim.
+
 ## Private GHCR runtime publication
 
 Tag `20260909-nonvn-macos-canary` was built from the pinned runtime contexts and pushed to private GHCR repositories. Immutable digests:
