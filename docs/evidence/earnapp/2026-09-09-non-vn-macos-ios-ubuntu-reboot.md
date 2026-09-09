@@ -141,3 +141,18 @@ The VPS rebooted cleanly. Docker returned active, all six target containers auto
 Worker provider state after reboot reported `EarnApp online=9, offline=0` across its active fleet. Account collector snapshots remained reachable: account `2` reported `7/6` online/offline and account `470` reported `6/4`; these account totals include nodes outside this six-node canary and are not proof of positive usage for every target node.
 
 Positive usage for the two new non-VN macOS nodes remains an open EarnApp dashboard observation gate; no further recreate or proxy rotation is justified while their route and identity remain healthy.
+
+## Post-reboot verification refresh
+
+The post-reboot live probe completed after the worker returned healthy:
+
+- Worker image: `ghcr.io/assetforgeai-tech/cashpilot-worker:1.24.3`; Docker health: `healthy`.
+- All six selected containers were `running`, with Docker restart count `0`.
+- Device IDs for macOS and iOS were unchanged from the pre-reboot assignments.
+- IPv4 egress matched the expected exclusive proxy for every selected node:
+  macOS `-05` `130.180.237.99`, macOS `-06` `130.180.231.27`, iOS `-03` `116.98.185.18`,
+  iOS `-04` `171.251.99.76`, Ubuntu `-01` `62.164.242.31`, Ubuntu `-02` `130.180.237.210`.
+- IPv6 HTTP probes returned no address on all six nodes; DNS resolution succeeded.
+
+This proves reboot persistence, route isolation, and IPv6 fail-closed behavior. It does not substitute
+for device-level positive-usage evidence from the EarnApp dashboard.
