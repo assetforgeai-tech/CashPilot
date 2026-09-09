@@ -75,17 +75,19 @@ def test_settings_save_preserves_explicitly_disabled_platform_checks():
     assert "if (input.type === 'checkbox' || val)" in script
 
 
-def test_settings_scopes_recovery_to_ubuntu_and_keeps_apple_inspection_only():
+def test_settings_scopes_recovery_to_all_docker_platforms():
     template = SETTINGS.read_text(encoding="utf-8")
     javascript = APP_JS.read_text(encoding="utf-8")
 
     assert "EarnApp Docker nodes support" in template
     assert "Issue ticket" in javascript
-    assert "MacOS/iOS runtime is inspection-only" in javascript
+    assert "MacOS/iOS runtime is inspection-only" not in javascript
+    assert "Docker runtime recovery" in javascript
 
 
 def test_earnapp_notice_matches_docker_only_runtime():
     javascript = APP_JS.read_text(encoding="utf-8")
 
     assert "official Ubuntu x64 in Docker" in javascript
+    assert "Ubuntu LXD CPU/RAM" not in javascript
     assert "official Ubuntu x64 in LXD" not in javascript

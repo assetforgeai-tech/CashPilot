@@ -2736,7 +2736,7 @@ const CP = (() => {
           <span class="badge badge-category">${escapeHtml(capFirst(svc.category))}</span>
         </div>
         ${dedicatedDeploymentNotice(svc)}
-        <p style="color:var(--text-secondary); margin:12px 0;">Configure the Account Pool and Ubuntu LXD CPU/RAM in Settings. Auto Deploy creates nodes one at a time on eligible non-VN residential proxies.</p>
+        <p style="color:var(--text-secondary); margin:12px 0;">Configure the Account Pool and Docker runtime limits in Settings. Auto Deploy creates nodes one at a time on eligible residential proxies.</p>
         ${svc.has_collector ? collectorCredentialsNotice(svc.slug) : ''}
         ${dashboardUrl ? `<a href="${escapeHtml(dashboardUrl)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Open Dashboard</a>` : ''}
       </div>`;
@@ -3593,7 +3593,7 @@ const CP = (() => {
         : (node.state === 'RECOVERABLE' ? 'Proxy released; affinity retained' : 'Not in recovery');
       const recoveryAction = ubuntuRecovery && ['RECOVERY_HOLD', 'RECOVERABLE'].includes(node.state)
         ? `<button class="btn btn-ghost btn-sm" data-action="issueEarnAppReplacementTicket" data-a1="${escapeHtml(node.logical_node_id)}">Issue ticket</button>`
-        : `<small>${ubuntuRecovery ? 'Replacement ticket becomes available during recovery' : 'MacOS/iOS runtime is inspection-only'}</small>`;
+        : '<small>Docker runtime recovery follows the provider policy</small>';
       return `<tr>
         <td><strong>${escapeHtml(node.logical_node_id)}</strong><small>${escapeHtml(platform)} · ${escapeHtml(node.device_id || 'Device identity pending')}</small></td>
         <td>${escapeHtml(account.account_name || `Account ${node.account_id}`)}</td>
