@@ -61,6 +61,24 @@
   container traffic. Device-specific verify was not used as a release gate
   because its five-attempt/cooldown workflow exceeded the HTTP request window.
 
+## iOS pair restored on `vps-test-us`
+
+- After the worker upgrade, the server had no active iOS node on worker `92161`;
+  nine iOS records were `PLANNED` and the active iOS fleet belonged to worker
+  `43406`. Two fresh iOS canaries were deployed sequentially to `92161`.
+- `earnapp-canary-us-ios-03`: UUID `sdk-ios-8daa32a8efc12873c0b3488dada4863a`,
+  proxy `12709`, egress `116.98.185.18` (VN residential).
+- `earnapp-canary-us-ios-04`: UUID `sdk-ios-625584f0e5d017fe988768d0a613bfad`,
+  proxy `12710`, egress `171.251.99.76` (VN residential).
+- Both use `cashpilot/earnapp-ios:asset-f384c554c3f8`, are `running`, have
+  restart count `0`, and their in-container egress matches the leased proxy.
+- The deploy HTTP calls returned Cloudflare `524` after the worker had already
+  committed; authoritative server/worker inspection confirmed both nodes
+  `ACTIVE` and both containers present. No duplicate retry was issued.
+- Account snapshots remained reachable: account `470` reported `online_nodes=7`
+  and account `2` `online_nodes=6`; device-specific usage for the fresh iOS
+  nodes remains pending their Earnings Update cycles.
+
 ## Private GHCR runtime publication
 
 Tag `20260909-nonvn-macos-canary` was built from the pinned runtime contexts and pushed to private GHCR repositories. Immutable digests:
