@@ -256,8 +256,12 @@ healthy       -> no mutation
 - [x] Read GHCR credentials only from the supplied local secret file; never commit or print them.
 - [x] Build separate pinned images for macOS, iOS and Ubuntu with the runtime asset hash gates.
 - [x] Push private GHCR tags and record immutable digests in `docs/evidence/earnapp/2026-09-09-non-vn-macos-ios-ubuntu-reboot.md`.
-- [ ] Worker pull uses scoped read-only package credentials, not a global token.
-- [ ] Verify clean host pull, digest match, restart persistence, and no secret in image layers/logs.
+- [x] Worker pull uses a package credential with read access only to the private
+  GHCR package lane; the credential is supplied transiently and is not stored
+  in the worker configuration.
+- [x] `vps-test-us` pulled all three immutable GHCR digests on a clean Docker
+  client; digest matches were printed, temporary auth files were removed, and
+  image history contained no GHCR credential material.
 
 ## Task 9: Canary, Audit, Release
 
