@@ -164,3 +164,17 @@ for device-level positive-usage evidence from the EarnApp dashboard.
 - Auto Release completed successfully as `v1.24.4`.
 - The release contains the Docker-only EarnApp UI wording correction and the
   longer CI coverage timeout; it does not require a live-node restart.
+
+## Worker `v1.24.5` rollout
+
+- Release `v1.24.5` completed successfully after the recovery-policy fix.
+- Worker `92161` was upgraded in place from `1.24.3` to
+  `ghcr.io/assetforgeai-tech/cashpilot-worker:1.24.5` using the existing
+  `/data` volume, Docker socket, environment, network and `restart: always`.
+- Worker health is `healthy`; restart count is `0`.
+- All six acceptance container IDs, states and restart counts remained unchanged:
+  macOS `-05`/`-06`, iOS `-03`/`-04`, Ubuntu `-01`/`-02` are all `running` with
+  restart count `0`.
+- Post-rollout egress remained isolated and unchanged:
+  `130.180.237.99`, `130.180.231.27`, `116.98.185.18`, `171.251.99.76`,
+  `62.164.242.31`, `130.180.237.210`; IPv6 probes returned no address.
