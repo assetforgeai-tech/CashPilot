@@ -25,6 +25,10 @@
 - A 60-second server status sample increased container traffic from
   `1,446,732/1,297,435` to `2,792,372/2,643,626` RX/TX bytes while the
   container stayed `running`; this is transport evidence only.
+- Manual account collection at `2026-09-09 04:44:31` returned `online_nodes=6`
+  for account `2`, up from `5` before this node was deployed. The account
+  `usage_current` value was unchanged, and the next Earnings Update counter was
+  still positive; this is online evidence, not positive-usage evidence.
 - Initial transport evidence is positive; country and account-side usage remain
   pending the next collector/Earnings Update snapshot. No restart, recreate, or
   proxy rotation is justified before that authoritative observation.
