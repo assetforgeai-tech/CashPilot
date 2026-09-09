@@ -173,8 +173,8 @@ healthy       -> no mutation
 - [x] Add authenticated remote-device delete with idempotent “already absent” success.
 - [ ] Add confirmation evidence to the replacement transaction before releasing a lease.
 - [x] Banned path now performs remote delete -> remove runtime -> release local binding -> clear identity; next sequential deploy creates fresh identity. Proxy rotation uses the same remote-delete gate.
-- [ ] Keep existing recreate endpoint for local recovery only; document that it preserves identity and does not link.
-- [ ] Fail closed to `RECOVERY_HOLD` when remote deletion or worker acknowledgement is uncertain.
+- [x] Keep existing recreate endpoint for local recovery only; document that it preserves identity and does not link.
+- [x] Fail closed to `RECOVERY_HOLD` when remote deletion or worker acknowledgement is uncertain.
 - [ ] Test idempotency, remote-delete failure, duplicate replacement ticket, and reboot recovery.
 
 ## Task 4: Earnings Collector and Scheduler De-duplication
@@ -237,10 +237,10 @@ healthy       -> no mutation
 - Modify: platform boot/entrypoint scripts discovered under `app/earnapp_runtime.py` and runtime assets
 - Test: `tests/test_earnapp_runtime_policy.py`
 
-- [ ] Inventory every uname field sent by each binary.
-- [ ] Supply complete profile-controlled `uname_r`, `os_version`, hostname, machine-id, serial, arch, model and interface metadata.
+- [x] Inventory every uname field sent by each binary.
+- [x] Supply complete profile-controlled `uname_r`, `os_version`, hostname, machine-id, serial, arch, model and interface metadata.
 - [ ] Prevent direct leakage of host kernel `Linux 6.17.0-1022-azure` where the binary contract permits spoofing.
-- [ ] Do not claim kernel spoofing where Docker cannot alter a kernel-visible syscall; instead fail verification or document the remaining field.
+- [x] Do not claim kernel spoofing where Docker cannot alter a kernel-visible syscall; instead fail verification or document the remaining field.
 - [ ] Verify network egress and metadata from inside each container.
 
 ## Task 8: Private GHCR Release

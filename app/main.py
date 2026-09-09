@@ -1035,16 +1035,23 @@ async def _retire_earnapp_node_for_fresh_replacement(node: Mapping[str, Any], *,
     worker_id = int(node.get("assigned_worker_id") or 0)
     generation = int(node.get("generation") or 0)
     device_id = str(node.get("device_id") or "").strip()
-    if not await _delete_earnapp_remote_device(node):
+    try:
+        remote_deleted = await _delete_earnapp_remote_device(node)
+    except Exception:
+        remote_deleted = False
+    if not remote_deleted:
         await database.begin_earnapp_recovery_hold(node_id, hold_seconds=earnapp_recovery.RECOVERY_HOLD_SECONDS)
         return False
-    removed = await _proxy_to_worker(
-        worker_id,
-        "DELETE",
-        f"/api/earnapp/docker-nodes/{node_id}",
-        json={"generation": generation, "device_id": device_id},
-        timeout=180,
-    )
+    try:
+        removed = await _proxy_to_worker(
+            worker_id,
+            "DELETE",
+            f"/api/earnapp/docker-nodes/{node_id}",
+            json={"generation": generation, "device_id": device_id},
+            timeout=180,
+        )
+    except Exception:
+        removed = None
     if not isinstance(removed, Mapping) or str(removed.get("status") or "").lower() != "removed":
         await database.begin_earnapp_recovery_hold(node_id, hold_seconds=earnapp_recovery.RECOVERY_HOLD_SECONDS)
         return False
