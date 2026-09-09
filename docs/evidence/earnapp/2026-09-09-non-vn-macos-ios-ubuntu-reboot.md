@@ -44,6 +44,60 @@
   complete host-kernel spoofing; this residual is an explicit production risk
   and remains outside the acceptance claim.
 
+## Release and worker redeploy
+
+- PR #208 merged after Analyze, strict build, Ruff and test checks passed.
+- Release workflow completed successfully as `v1.24.3`.
+- `vps-test-us` worker `92161` was upgraded from `1.23.4` to `1.24.3` using
+  the existing `/data` volume, Docker socket, environment and worker config.
+- Post-redeploy worker health was `healthy`; all existing EarnApp containers
+  returned `running`. UUID and proxy environment remained unchanged for the
+  inspected nodes, including `-06`.
+- The next account snapshot (`2026-09-09 05:11:43`) reported account `2`
+  `online_nodes=6` and `usage_current=39,319,848`, up from `28,844,809`.
+  This proves aggregate account usage resumed; it does not attribute the full
+  delta to node `-06`.
+- Node `-06` remained `ACTIVE`, with matching proxy egress and increasing
+  container traffic. Device-specific verify was not used as a release gate
+  because its five-attempt/cooldown workflow exceeded the HTTP request window.
+
+## iOS pair restored on `vps-test-us`
+
+- After the worker upgrade, the server had no active iOS node on worker `92161`;
+  nine iOS records were `PLANNED` and the active iOS fleet belonged to worker
+  `43406`. Two fresh iOS canaries were deployed sequentially to `92161`.
+- `earnapp-canary-us-ios-03`: UUID `sdk-ios-8daa32a8efc12873c0b3488dada4863a`,
+  proxy `12709`, egress `116.98.185.18` (VN residential).
+- `earnapp-canary-us-ios-04`: UUID `sdk-ios-625584f0e5d017fe988768d0a613bfad`,
+  proxy `12710`, egress `171.251.99.76` (VN residential).
+- Both use `cashpilot/earnapp-ios:asset-f384c554c3f8`, are `running`, have
+  restart count `0`, and their in-container egress matches the leased proxy.
+- The deploy HTTP calls returned Cloudflare `524` after the worker had already
+  committed; authoritative server/worker inspection confirmed both nodes
+  `ACTIVE` and both containers present. No duplicate retry was issued.
+- Account snapshots remained reachable: account `470` reported `online_nodes=7`
+  and account `2` `online_nodes=6`; device-specific usage for the fresh iOS
+  nodes remains pending their Earnings Update cycles.
+
+## Six-node network acceptance after worker `1.24.3`
+
+The selected pair for each platform remained `running` with restart count `0`:
+
+| Platform | Node | Observed IPv4 egress |
+| --- | --- | --- |
+| macOS | `earnapp-canary-us-macos-nonvn-05` | `130.180.237.99` |
+| macOS | `earnapp-canary-us-macos-nonvn-06` | `130.180.231.27` |
+| iOS | `earnapp-canary-us-ios-03` | `116.98.185.18` |
+| iOS | `earnapp-canary-us-ios-04` | `171.251.99.76` |
+| Ubuntu | `earnapp-canary-us-fresh-ubuntu-01` | `62.164.242.31` |
+| Ubuntu | `earnapp-canary-us-fresh-ubuntu-02` | `130.180.237.210` |
+
+- Every observed IPv4 matched that container's expected leased egress.
+- IPv6 HTTP probes returned no address on all six containers.
+- DNS resolution succeeded through the container-local resolver path.
+- Each container had `CP_EARNAPP_OUT` and `CP_EARNAPP6_OUT` attached to
+  `OUTPUT`; the IPv6 chain retained its terminal drop rule.
+
 ## Private GHCR runtime publication
 
 Tag `20260909-nonvn-macos-canary` was built from the pinned runtime contexts and pushed to private GHCR repositories. Immutable digests:
@@ -87,3 +141,18 @@ The VPS rebooted cleanly. Docker returned active, all six target containers auto
 Worker provider state after reboot reported `EarnApp online=9, offline=0` across its active fleet. Account collector snapshots remained reachable: account `2` reported `7/6` online/offline and account `470` reported `6/4`; these account totals include nodes outside this six-node canary and are not proof of positive usage for every target node.
 
 Positive usage for the two new non-VN macOS nodes remains an open EarnApp dashboard observation gate; no further recreate or proxy rotation is justified while their route and identity remain healthy.
+
+## Post-reboot verification refresh
+
+The post-reboot live probe completed after the worker returned healthy:
+
+- Worker image: `ghcr.io/assetforgeai-tech/cashpilot-worker:1.24.3`; Docker health: `healthy`.
+- All six selected containers were `running`, with Docker restart count `0`.
+- Device IDs for macOS and iOS were unchanged from the pre-reboot assignments.
+- IPv4 egress matched the expected exclusive proxy for every selected node:
+  macOS `-05` `130.180.237.99`, macOS `-06` `130.180.231.27`, iOS `-03` `116.98.185.18`,
+  iOS `-04` `171.251.99.76`, Ubuntu `-01` `62.164.242.31`, Ubuntu `-02` `130.180.237.210`.
+- IPv6 HTTP probes returned no address on all six nodes; DNS resolution succeeded.
+
+This proves reboot persistence, route isolation, and IPv6 fail-closed behavior. It does not substitute
+for device-level positive-usage evidence from the EarnApp dashboard.
