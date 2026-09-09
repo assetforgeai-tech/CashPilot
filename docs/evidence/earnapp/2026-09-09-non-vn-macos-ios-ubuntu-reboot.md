@@ -248,3 +248,12 @@ automatically. The representative containers returned `Up` with
 `127.0.0.1`, the fail-closed `CP_EARNAPP_OUT`/`CP_EARNAPP6_OUT` chains were
 present, and IPv4 egress remained proxy-routed (`130.180.237.99`,
 `171.251.99.76`, `62.164.242.31`). IPv6 remained blocked.
+
+## Replacement deletion confirmation
+
+Release `v1.25.4` persists a node/generation/device confirmation immediately
+after authenticated remote device deletion. Fresh replacement refuses to
+release the proxy lease when that marker is absent, and consumes the marker in
+the same transaction as lease release and identity reset. This closes the
+remote-delete-before-release evidence gate without changing in-place restart
+behavior.
