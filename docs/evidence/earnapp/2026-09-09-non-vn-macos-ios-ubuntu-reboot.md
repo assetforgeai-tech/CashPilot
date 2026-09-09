@@ -236,3 +236,15 @@ On 2026-09-09, worker `eapp` reported roughly six hours of uptime. Every
 EarnApp container inventory entry was `Up`, used `restart=always`, and used the
 Docker `bridge` network. No container was restarted, removed, or created during
 this audit. Additional canaries remain observation-only.
+
+## Clean reboot persistence
+
+Worker `eapp` was rebooted once on 2026-09-09. SSH and Docker returned
+automatically. The representative containers returned `Up` with
+`restart=always`; macOS retained device
+`sdk-mac-bfd2da9630384b4366dc03e741cd8f10`, iOS retained
+`sdk-ios-625584f0e5d017fe988768d0a613bfad`, and Ubuntu retained
+`sdk-node-cdaa3e82671e4283b5c87ec5bf7ee6b9`. Inside each container, DNS used
+`127.0.0.1`, the fail-closed `CP_EARNAPP_OUT`/`CP_EARNAPP6_OUT` chains were
+present, and IPv4 egress remained proxy-routed (`130.180.237.99`,
+`171.251.99.76`, `62.164.242.31`). IPv6 remained blocked.
