@@ -113,7 +113,9 @@ jobs:
         run: uv run pytest tests/ -v --tb=short
 
       - name: Run tests with coverage
-        timeout-minutes: 10
+        # The full suite runs twice in this job; keep the coverage gate from
+        # timing out after the assertion-only run has already passed.
+        timeout-minutes: 20
         run: uv run pytest tests/ -v --tb=short --durations=25 --cov=app --cov-report=term-missing --cov-report=xml --cov-fail-under=55
 
       - name: Upload coverage reports

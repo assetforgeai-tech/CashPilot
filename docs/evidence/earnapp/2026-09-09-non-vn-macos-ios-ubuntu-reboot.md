@@ -129,7 +129,7 @@ All six returned `running` with restart count `0` (Docker restart preserves the 
 
 ## VPS reboot
 
-The VPS rebooted cleanly. Docker returned active, all six target containers auto-started, and the worker heartbeat returned `online` with version `1.23.4`. Post-reboot UUIDs remained:
+The VPS rebooted cleanly. Docker returned active, all six target containers auto-started, and the worker heartbeat returned `online`. The worker was then verified on the intended `1.24.3` image in the post-reboot refresh below. Post-reboot UUIDs remained:
 
 - `sdk-mac-5a73bd21747433703f51a20a96d75230`
 - `sdk-mac-ce6f3d6ba4c1905a73728069f3a9f1ff`

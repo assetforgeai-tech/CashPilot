@@ -1028,7 +1028,7 @@ const CP = (() => {
 
   function dedicatedDeploymentNotice(svc) {
     if (dedicatedDeploymentLane(svc) !== 'earnapp') return '';
-    return `<div class="manual-notice" role="status"><strong>EarnApp dedicated platform lanes</strong><br>VN residential proxies use validated MacOS/iOS emulation; non-VN residential proxies use official Ubuntu x64 in LXD. Generic Docker deploy is unavailable.</div>`;
+    return `<div class="manual-notice" role="status"><strong>EarnApp dedicated platform lanes</strong><br>VN residential proxies use validated MacOS/iOS emulation; non-VN residential proxies use official Ubuntu x64 in Docker. Generic Docker deploy is unavailable.</div>`;
   }
 
   function renderServiceRow(svc, bk) {

@@ -82,3 +82,10 @@ def test_settings_scopes_recovery_to_ubuntu_and_keeps_apple_inspection_only():
     assert "EarnApp Docker nodes support" in template
     assert "Issue ticket" in javascript
     assert "MacOS/iOS runtime is inspection-only" in javascript
+
+
+def test_earnapp_notice_matches_docker_only_runtime():
+    javascript = APP_JS.read_text(encoding="utf-8")
+
+    assert "official Ubuntu x64 in Docker" in javascript
+    assert "official Ubuntu x64 in LXD" not in javascript
