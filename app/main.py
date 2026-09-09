@@ -3683,12 +3683,20 @@ async def api_deploy_earnapp_canary(
 
     try:
         if body.platform == "macos":
+            # Acceptance Mac canaries stay isolated from the suspect VN path;
+            # callers may still opt into an explicit scope for other lanes.
+            if body.country_scope == "vn":
+                raise HTTPException(
+                    status_code=409,
+                    detail="EarnApp Mac canary temporarily requires a non-VN residential proxy",
+                )
+            mac_country_scope = "non-vn" if body.country_scope == "any" else body.country_scope
             result = await earnapp_canary.deploy_canary(
                 body.logical_node_id,
                 int(worker_id),
                 worker_deploy=worker_deploy,
                 worker_remove=worker_remove,
-                country_scope=body.country_scope,
+                country_scope=mac_country_scope,
             )
         else:
             # Ubuntu canaries use Docker; retain parsed legacy limits for
@@ -3708,6 +3716,8 @@ async def api_deploy_earnapp_canary(
                 worker_remove=platform_remove,
                 lxd_settings=limits,
             )
+    except HTTPException:
+        raise
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except RuntimeError as exc:

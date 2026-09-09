@@ -24,6 +24,13 @@
 - Token sync không chạy định kỳ vô điều kiện; chỉ chạy khi cookie thay đổi, operator bấm sync, hoặc server đánh dấu account cần refresh.
 - MacOS canary dùng proxy non-VN để tách lỗi upstream VN khỏi lỗi runtime; không đổi
   hoặc rotate các node MacOS VN đang chạy.
+- Latest canary constraint (2026-09-09): create/recreate MacOS canary nodes only
+  with eligible **residential non-VN** proxies. Do not use VN proxies for the
+  MacOS acceptance gate while the upstream VN path remains suspect. Existing VN
+  MacOS nodes are protected baseline and must not be restarted, recreated,
+  relinked, rotated, or deleted by this canary.
+- The MacOS canary API defaults `country_scope=any` to `non-vn` and rejects an
+  explicit `vn` scope with HTTP 409, preventing accidental VN acceptance runs.
 
 ## Current `Node recovery` Meaning
 
