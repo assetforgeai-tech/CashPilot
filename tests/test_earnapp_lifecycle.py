@@ -256,6 +256,7 @@ async def test_fresh_replacement_enters_recovery_hold_when_worker_remove_is_unce
     hold = AsyncMock(return_value={"state": "RECOVERY_HOLD"})
     monkeypatch.setattr(main.database, "begin_earnapp_recovery_hold", hold)
     monkeypatch.setattr(main.database, "prepare_fresh_earnapp_replacement", AsyncMock())
+    monkeypatch.setattr(main.database, "record_earnapp_remote_delete_confirmation", AsyncMock(return_value=True))
 
     assert await main._retire_earnapp_node_for_fresh_replacement(node, preserve_proxy_affinity=True) is False
     hold.assert_awaited_once_with("earnapp-mac-remove-uncertain", hold_seconds=earnapp_recovery.RECOVERY_HOLD_SECONDS)
@@ -282,6 +283,7 @@ async def test_fresh_replacement_enters_recovery_hold_when_cleanup_raises(monkey
     monkeypatch.setattr(main.database, "begin_earnapp_recovery_hold", hold)
     prepare = AsyncMock()
     monkeypatch.setattr(main.database, "prepare_fresh_earnapp_replacement", prepare)
+    monkeypatch.setattr(main.database, "record_earnapp_remote_delete_confirmation", AsyncMock(return_value=True))
 
     assert await main._retire_earnapp_node_for_fresh_replacement(node, preserve_proxy_affinity=True) is False
     hold.assert_awaited_once_with(node["logical_node_id"], hold_seconds=earnapp_recovery.RECOVERY_HOLD_SECONDS)

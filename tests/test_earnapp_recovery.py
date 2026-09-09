@@ -612,6 +612,43 @@ def test_recovery_does_not_reuse_preferred_proxy_after_a_legacy_worker_claims_it
     asyncio.run(run())
 
 
+def test_fresh_replacement_requires_persisted_remote_delete_confirmation(tmp_path):
+    async def run():
+        db_dir, db_path = _db_patch(tmp_path)
+        with db_dir, db_path:
+            old_worker, _, _ = await _setup(tmp_path)
+            provisioned = await _provision_ubuntu_node(
+                "earnapp-node-confirmed-delete",
+                old_worker,
+                device_id="device-confirmed-delete",
+            )
+
+            assert not await database.prepare_fresh_earnapp_replacement(
+                "earnapp-node-confirmed-delete",
+                old_worker,
+                generation=provisioned["generation"],
+                device_id="device-confirmed-delete",
+            )
+            assert (await database.get_earnapp_logical_node("earnapp-node-confirmed-delete"))["state"] == "ACTIVE"
+
+            assert await database.record_earnapp_remote_delete_confirmation(
+                "earnapp-node-confirmed-delete",
+                generation=provisioned["generation"],
+                device_id="device-confirmed-delete",
+            )
+            assert await database.prepare_fresh_earnapp_replacement(
+                "earnapp-node-confirmed-delete",
+                old_worker,
+                generation=provisioned["generation"],
+                device_id="device-confirmed-delete",
+            )
+            node = await database.get_earnapp_logical_node("earnapp-node-confirmed-delete")
+            assert node["state"] == "PLANNED"
+            assert node["device_id"] == ""
+
+    asyncio.run(run())
+
+
 def test_recovery_does_not_reuse_preferred_proxy_after_another_account_controls_it(tmp_path):
     async def run():
         db_dir, db_path = _db_patch(tmp_path)
