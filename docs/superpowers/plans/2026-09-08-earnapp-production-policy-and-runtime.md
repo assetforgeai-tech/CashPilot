@@ -173,7 +173,7 @@ healthy       -> no mutation
 - [x] Add authenticated remote-device delete with idempotent “already absent” success.
 - [ ] Add confirmation evidence to the replacement transaction before releasing a lease.
 - [x] Banned path now performs remote delete -> remove runtime -> release local binding -> clear identity; next sequential deploy creates fresh identity. Proxy rotation uses the same remote-delete gate.
-- [ ] Keep existing recreate endpoint for local recovery only; document that it preserves identity and does not link.
+- [x] Keep existing recreate endpoint for local recovery only; document that it preserves identity and does not link.
 - [ ] Fail closed to `RECOVERY_HOLD` when remote deletion or worker acknowledgement is uncertain.
 - [ ] Test idempotency, remote-delete failure, duplicate replacement ticket, and reboot recovery.
 
