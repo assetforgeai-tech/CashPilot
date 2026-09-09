@@ -17,6 +17,24 @@ The snapshot was collected after the Earnings Update countdown had advanced to
 under one minute. Both devices report positive uptime/usage and earnings. This
 closes the earlier macOS non-VN positive-usage gate for the two-node lane.
 
+## Six-node per-device follow-up (2026-09-09)
+
+The subsequent owner snapshot confirms the two macOS devices remain online with
+positive usage and non-VN country; it also records the current iOS/Ubuntu state
+without treating zero usage as a pass:
+
+| Platform | UUID | Country | Online | Usage current | Earned | Egress |
+|---|---|---:|---:|---:|---:|---|
+| macOS | `sdk-mac-ef2b9b18acb2e8d51445962e22b93dfc` | `US` | true | `10,755,805` | `0.041` | `130.180.231.27` |
+| macOS | `sdk-mac-bfd2da9630384b4366dc03e741cd8f10` | `US` | true | `17,812,074` | `0.068` | `130.180.237.99` |
+| iOS | `sdk-ios-625584f0e5d017fe988768d0a613bfad` | `VN` | true | `5,359,671` | `0.01` | `171.251.99.76` |
+| iOS | `sdk-ios-8daa32a8efc12873c0b3488dada4863a` | `VN` | true | `0` | `0` | `116.98.185.18` |
+| Ubuntu | `sdk-node-cdaa3e82671e4283b5c87ec5bf7ee6b9` | `US` | true | `2,208,153` | `0.01` | `62.164.242.31` |
+| Ubuntu | `sdk-node-1be443257d284827b0f874966ce3cbcd` | `US` | true | `26,251,391` | `0.27` | `130.180.237.210` |
+
+The iOS zero-usage row remains an open platform gate; no restart or recreate is
+performed solely from this snapshot.
+
 - `earnapp-canary-us-macos-nonvn-05` was deployed after upstream VN-path concern was reported.
 - UUID: `sdk-mac-bfd2da9630384b4366dc03e741cd8f10`.
 - Image: `cashpilot/earnapp-mac-canary:asset-bd8de3ac58d1`.
