@@ -3484,10 +3484,14 @@ const CP = (() => {
     }
     container.innerHTML = urgent.map(account => {
       const token = earnAppTokenLabel(account);
-      const expiry = account.token_expires_at ? fmtTimestamp(account.token_expires_at).text : 'not provided';
+      const expiryValue = account.token_expires_at || account.cookie_expires_at;
+      const expiry = expiryValue ? fmtTimestamp(expiryValue).text : 'not provided';
+      const source = account.token_expiry_source && account.token_expiry_source !== 'unknown'
+        ? ` (${account.token_expiry_source} evidence)`
+        : '';
       return `<div class="earnapp-token-alert ${escapeHtml(token.css)}">
         <strong>${escapeHtml(account.account_name || account.email || `Account ${account.id}`)}: ${escapeHtml(token.label)}</strong>
-        <span>Token expiry: ${escapeHtml(expiry)}. Refresh this Chrome profile before collection stops.</span>
+        <span>Expiry: ${escapeHtml(expiry)}${escapeHtml(source)}. Refresh this Chrome profile before collection stops.</span>
       </div>`;
     }).join('');
   }
@@ -3556,7 +3560,7 @@ const CP = (() => {
       const canDelete = true;
       return `<tr>
         <td><strong>${escapeHtml(account.account_name || account.email || `Account ${account.id}`)}</strong><small>${escapeHtml(account.auth_method || '')} · ${escapeHtml(account.profile_key || '')}</small><span class="badge badge-category">${escapeHtml(account.state || '')}</span></td>
-        <td><span class="earnapp-token-state ${escapeHtml(token.css)}">${escapeHtml(token.label)}</span><small>${account.token_expires_at ? escapeHtml(fmtTimestamp(account.token_expires_at).text) : 'No expiry metadata'}</small></td>
+        <td><span class="earnapp-token-state ${escapeHtml(token.css)}">${escapeHtml(token.label)}</span><small>${expiryValue ? escapeHtml(fmtTimestamp(expiryValue).text) : 'No expiry metadata'}${escapeHtml(source)}</small></td>
         <td><strong>${escapeHtml(route.status || 'unavailable')}</strong><small>${route.source === 'node' ? 'Account node proxy' : (route.source === 'account_control' ? 'Pre-node control proxy' : 'No collector route')}</small><small>${route.egress_ip ? `${escapeHtml(route.country_code || '—')} · ${escapeHtml(route.egress_ip)} · proxy #${escapeHtml(route.proxy_id || '—')}` : 'No healthy account-owned egress'}</small><small>${route.checked_at ? `Checked ${escapeHtml(fmtTimestamp(route.checked_at).text)}` : 'Check time unavailable'}</small></td>
         <td><strong>${balance}</strong><small>${collector.money_total == null ? 'Lifetime unavailable' : `${Number(collector.money_total).toFixed(2)} USD lifetime`}</small><small>${escapeHtml(updateLabel)}</small><small>${collector.collected_at ? `Last collected ${escapeHtml(fmtTimestamp(collector.collected_at).text)}` : 'No successful collection yet'}</small></td>
         <td>${escapeHtml(nodes)}<small>${escapeHtml(usage)}</small>${usageCoverage ? `<small>${escapeHtml(usageCoverage)}</small>` : ''}</td>
