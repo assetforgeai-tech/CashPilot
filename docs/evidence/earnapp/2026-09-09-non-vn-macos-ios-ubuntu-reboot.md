@@ -229,3 +229,10 @@ positive representatives are macOS `sdk-mac-bfd2da9630384b4366dc03e741cd8f10`,
 iOS `sdk-ios-625584f0e5d017fe988768d0a613bfad`, and Ubuntu
 `sdk-node-1be443257d284827b0f874966ce3cbcd`. Other canaries remain observation
 nodes and do not block this one-per-OS acceptance gate.
+
+## Read-only post-merge worker audit
+
+On 2026-09-09, worker `eapp` reported roughly six hours of uptime. Every
+EarnApp container inventory entry was `Up`, used `restart=always`, and used the
+Docker `bridge` network. No container was restarted, removed, or created during
+this audit. Additional canaries remain observation-only.
