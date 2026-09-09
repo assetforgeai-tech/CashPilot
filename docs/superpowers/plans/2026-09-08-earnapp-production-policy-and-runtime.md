@@ -158,7 +158,7 @@ healthy       -> no mutation
 - [x] On auth failure, mark account and expose dashboard-visible auth evidence; do not restart every node.
 - [x] Implement account failover selection transaction: after local replacement preparation, a `PLANNED` node on a locked/deleted/disabled account moves atomically to the least-loaded `ACTIVE` account before proxy lease and fresh deploy.
 - [x] If no active account exists, keep node pending and retry silently; do not release a healthy proxy solely because token is expired.
-- [ ] If account is suspended/locked, stop/remove local runtime, release its proxy immediately after lease CAS confirmation, and retry remote device cleanup independently without quarantining the proxy.
+- [x] If account is suspended/locked, stop/remove local runtime, release its proxy immediately after lease CAS confirmation, and retry remote device cleanup independently without quarantining the proxy. Regression covers local acknowledgement before release and remote-delete failure.
 - [x] Add a concurrent failover race test; the database transaction permits one winner and the second caller observes the already reassigned node.
 
 ## Task 3: Remote Device Deletion and Fresh Replacement Transaction
@@ -190,7 +190,7 @@ healthy       -> no mutation
 - [x] Persist `earnings_cycle_id`, `earnings_zero_observed_at`, `last_recovery_cycle_id`, and the previous `earnings_update_in_ms` counter.
 - [x] Use account `earnings_update_in_ms` as the cycle boundary; retain the boundary marker through the positive countdown and recover once after grace.
 - [x] Prevent collector refresh and lifecycle refresh from issuing duplicate API calls for the same account within one scheduler pass; lifecycle reuses a successful snapshot collected within 60 seconds while the account lock serializes concurrent callers.
-- [ ] Add tests for delayed dashboard data, usage increasing while status is stale, and banned after boundary.
+- [x] Add tests for delayed dashboard data, usage increasing while status is stale, and banned after boundary. Existing lifecycle coverage exercises stale snapshot refresh, positive usage precedence, and banned policy precedence at the Earnings Update boundary.
 
 ## Task 5: Chrome Token Expiry and Opt-in Automatic Login
 
