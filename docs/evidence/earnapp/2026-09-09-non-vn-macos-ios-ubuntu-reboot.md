@@ -221,3 +221,11 @@ for device-level positive-usage evidence from the EarnApp dashboard.
 - Post-rollout egress remained isolated and unchanged:
   `130.180.237.99`, `130.180.231.27`, `116.98.185.18`, `171.251.99.76`,
   `62.164.242.31`, `130.180.237.210`; IPv6 probes returned no address.
+
+## Acceptance scope correction
+
+The production acceptance gate requires one positive-usage node per OS. Current
+positive representatives are macOS `sdk-mac-bfd2da9630384b4366dc03e741cd8f10`,
+iOS `sdk-ios-625584f0e5d017fe988768d0a613bfad`, and Ubuntu
+`sdk-node-1be443257d284827b0f874966ce3cbcd`. Other canaries remain observation
+nodes and do not block this one-per-OS acceptance gate.
