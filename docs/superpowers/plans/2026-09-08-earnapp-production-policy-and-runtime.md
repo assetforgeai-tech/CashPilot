@@ -176,7 +176,8 @@ healthy       -> no mutation
 - [x] Keep existing recreate endpoint for local recovery only; document that it preserves identity and does not link.
 - [x] Fail closed to `RECOVERY_HOLD` when remote deletion or worker acknowledgement is uncertain.
 - [x] Test replacement-ticket supersession/idempotency; stale tickets are revoked before a new ticket is issued.
-- [ ] Test remote-delete failure and reboot recovery end to end.
+- [ ] Test remote-delete failure end to end.
+- [x] Verify reboot recovery end to end on `vps-test-us`; Docker containers, identities, proxy chains and egress persisted.
 
 ## Task 4: Earnings Collector and Scheduler De-duplication
 
