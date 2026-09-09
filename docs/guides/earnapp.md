@@ -20,12 +20,10 @@ Ubuntu 20.04 as its tested distribution, and installs a service that starts
 automatically after reboot.
 
 The encrypted Account Pool, collector, token-expiry metadata, historical
-earnings and read-only inspection of existing Apple nodes remain available.
-The generic catalog/Docker route and raw worker Docker deploy remain blocked;
-Apple runtimes are available only through the dedicated platform contract, and
-Ubuntu is available only through the dedicated Docker contract. This source policy
-change does not release, deploy, migrate, rotate or otherwise alter the existing
-live baseline.
+earnings and platform-specific runtime lanes are available. The generic
+catalog/raw worker deploy route remains blocked; macOS, iOS and Ubuntu are
+available only through the dedicated EarnApp Docker contract. Existing nodes
+are not migrated or resized by a policy change.
 
 ## Earning Estimates
 
@@ -40,7 +38,7 @@ live baseline.
 | Requirement | Value |
 |-------------|-------|
 | Residential IP required | Yes |
-| CashPilot runtime | Official Linux x64 in dedicated Ubuntu Docker only |
+| CashPilot runtime | Dedicated Docker lanes for macOS, iOS and Ubuntu |
 | Devices per account | Not documented |
 | Devices per IP | 1 |
 
@@ -75,9 +73,8 @@ Current platform selection is immutable after a logical node is created:
 - Link verification is account-serialized, enforces a 5-second minimum relay,
   and sleeps 300 seconds after each five-attempt burst before retrying.
 
-MacOS and iOS artifacts are retained only as historical forensic evidence. They
-are not deployment-authorized by the current source policy. Their historical
-pinned tags were:
+macOS and iOS use the dedicated pinned Docker lanes. Their pinned artifact tags
+are:
 
 - `cashpilot/earnapp-mac-canary:asset-4a1e80cbb95d`
 - `cashpilot/earnapp-ios:asset-061a2a32d69d`
