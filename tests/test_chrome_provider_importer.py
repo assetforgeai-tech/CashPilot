@@ -239,6 +239,9 @@ def test_earnapp_sync_rejects_non_https_or_non_4gmt_destinations_and_hides_secre
     assert 'url.protocol !== "https:"' in background
     assert 'hostname === "4gmt.com" || hostname.endsWith(".4gmt.com")' in background
     assert '"/api/admin/earnapp/accounts/import"' in background
+    assert '"/api/admin/earnapp/accounts/import-challenge"' in background
+    assert '"/api/admin/earnapp/accounts/import-extension"' in background
+    assert "import_state" in background
     assert 'credentials: "same-origin"' in background
     assert "console.log" not in background
     assert "JSON.stringify(cookies)" not in popup

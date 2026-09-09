@@ -14,6 +14,7 @@ import logging
 import math
 import os
 import re
+import secrets
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -443,6 +444,11 @@ CREATE TABLE IF NOT EXISTS earnapp_accounts (
     needs_token_refresh  INTEGER NOT NULL DEFAULT 0,
     created_at           TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_at           TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS earnapp_import_challenges (
+    token_hash TEXT PRIMARY KEY, profile_key TEXT NOT NULL,
+    expires_at TEXT NOT NULL, used_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS earnapp_logical_nodes (
@@ -3705,6 +3711,43 @@ async def delete_config_keys(keys: list[str]) -> None:
 
 
 # --- EarnApp accounts and logical nodes ---
+
+
+async def issue_earnapp_import_challenge(profile_key: str) -> str:
+    profile = str(profile_key or "").strip()
+    if not profile:
+        raise ValueError("profile_key is required")
+    token = secrets.token_urlsafe(32)
+    digest = __import__("hashlib").sha256(token.encode()).hexdigest()
+    db = await _get_db()
+    try:
+        await db.executescript(_EARNAPP_ACCOUNTS_SCHEMA)
+        await db.execute(
+            "INSERT INTO earnapp_import_challenges(token_hash, profile_key, expires_at) VALUES (?, ?, datetime('now', '+10 minutes'))",
+            (digest, profile),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+    return token
+
+
+async def consume_earnapp_import_challenge(token: str, profile_key: str) -> bool:
+    value, profile = str(token or "").strip(), str(profile_key or "").strip()
+    if not value or not profile:
+        return False
+    digest = __import__("hashlib").sha256(value.encode()).hexdigest()
+    db = await _get_db()
+    try:
+        await db.execute("BEGIN IMMEDIATE")
+        cursor = await db.execute(
+            "UPDATE earnapp_import_challenges SET used_at = datetime('now') WHERE token_hash = ? AND profile_key = ? AND used_at IS NULL AND expires_at > datetime('now')",
+            (digest, profile),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+    finally:
+        await db.close()
 
 
 async def upsert_earnapp_account(

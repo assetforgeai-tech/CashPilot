@@ -164,6 +164,27 @@ async function postToCashPilot(server, payload) {
   return result.result.accountId;
 }
 
+async function postExtensionImport(server, payload) {
+  const origin = normalizeCashPilotServer(server);
+  const tabs = await chrome.tabs.query({ url: [`${origin}/*`] });
+  if (!tabs.length) throw new Error(`Open ${origin}/settings and sign in as owner first`);
+  const target = tabs.find(tab => String(tab.url || "").includes("/settings")) || tabs[0];
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId: target.id },
+    func: async importPayload => {
+      const challenge = await fetch("/api/admin/earnapp/accounts/import-challenge", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profile_key: importPayload.profile_key }) });
+      if (!challenge.ok) throw new Error("Unable to obtain import challenge");
+      const state = (await challenge.json()).import_state;
+      const response = await fetch("/api/admin/earnapp/accounts/import-extension", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...importPayload, import_state: state }) });
+      if (!response.ok) { const body = await response.json().catch(() => ({})); return { ok: false, detail: body.detail || "Import failed" }; }
+      return { ok: true, accountId: (await response.json()).account_id };
+    },
+    args: [payload],
+  });
+  if (!result?.result?.ok) throw new Error(result?.result?.detail || "CashPilot import failed");
+  return result.result.accountId;
+}
+
 async function refreshRequired(binding) {
   const origin = normalizeCashPilotServer(binding.server);
   const tabs = await chrome.tabs.query({ url: [`${origin}/*`] });
@@ -254,7 +275,7 @@ async function syncBoundEarnAppAccount() {
   try {
     const cookies = await collectEarnAppCookies();
     assertSameAccount(binding, cookies);
-    const accountId = await postToCashPilot(binding.server, {
+    const accountId = await postExtensionImport(binding.server, {
       profile_key: binding.profileKey,
       account_name: binding.accountName,
       email: binding.email,
@@ -302,7 +323,7 @@ async function importEarnAppAccount(message) {
     createdAt: new Date().toISOString(),
   };
   binding.autoLoginEnabled = autoLoginEnabled;
-  const accountId = await postToCashPilot(server, {
+  const accountId = await postExtensionImport(server, {
     profile_key: binding.profileKey,
     account_name: binding.accountName,
     email: binding.email,
