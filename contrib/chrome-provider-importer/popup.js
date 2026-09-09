@@ -175,6 +175,9 @@ document.getElementById("earnapp-auto-login").addEventListener("change", saveAut
 chrome.runtime.onMessage.addListener(message => {
   if (message?.type !== "EARNAPP_SYNC_STATUS") return;
   if (message.binding) applyEarnAppBinding(message.binding);
+  if (message.status === "operator_required") {
+    setEarnAppStatus('<div class="warn">Login verification required. Complete CAPTCHA/2FA in this bound profile, then click Sync.</div>');
+  }
   if (message.status === "error") {
     setEarnAppStatus(`<div class="warn">Automatic sync failed: ${escapeHtml(message.error || "Unknown error")}</div>`);
   }

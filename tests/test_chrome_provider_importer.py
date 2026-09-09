@@ -223,6 +223,15 @@ def test_earnapp_auto_login_requires_explicit_operator_checkbox():
     assert "[EARNAPP_AUTO_LOGIN_KEY]: false" in background
 
 
+def test_earnapp_auto_login_reports_operator_required_as_a_distinct_visible_state():
+    popup = (EXT / "popup.js").read_text(encoding="utf-8")
+    background = (EXT / "background.js").read_text(encoding="utf-8")
+
+    assert 'notifyStatus("operator_required"' in background
+    assert 'message.status === "operator_required"' in popup
+    assert "Login verification required" in popup
+
+
 def test_earnapp_sync_rejects_non_https_or_non_4gmt_destinations_and_hides_secrets():
     background = (EXT / "background.js").read_text(encoding="utf-8")
     popup = (EXT / "popup.js").read_text(encoding="utf-8")

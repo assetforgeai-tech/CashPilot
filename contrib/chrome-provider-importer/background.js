@@ -213,12 +213,18 @@ async function autoRefreshEarnAppLogin() {
   await chrome.tabs.update(tab.id, { url: "https://earnapp.com/settings", active: false });
   await new Promise(resolve => setTimeout(resolve, 3000));
   const logout = await clickEarnAppAuthControl(tab.id, "logout", binding.authMethod);
-  if (logout === "operator_required") throw new Error("EarnApp login requires operator verification");
+  if (logout === "operator_required") {
+    await notifyStatus("operator_required", { error: "EarnApp login requires operator verification" });
+    return;
+  }
   await new Promise(resolve => setTimeout(resolve, logout === "clicked" ? 3000 : 1000));
   await chrome.tabs.update(tab.id, { url: "https://earnapp.com/login", active: false });
   await new Promise(resolve => setTimeout(resolve, 3000));
   const login = await clickEarnAppAuthControl(tab.id, "login", binding.authMethod);
-  if (login === "operator_required") throw new Error("EarnApp login requires operator verification");
+  if (login === "operator_required") {
+    await notifyStatus("operator_required", { error: "EarnApp login requires operator verification" });
+    return;
+  }
   if (login !== "clicked") throw new Error("EarnApp login control was not found; operator action required");
   await new Promise(resolve => setTimeout(resolve, 8000));
   await syncBoundEarnAppAccount();
