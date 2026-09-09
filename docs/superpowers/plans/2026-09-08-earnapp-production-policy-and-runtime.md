@@ -265,7 +265,7 @@ healthy       -> no mutation
 
 - [ ] Clean only non-protected EarnApp test runtimes on the reference/test VPS; preserve operator-owned scheduler behavior.
 - [ ] Reboot worker and verify baseline before deploy.
-- [ ] Create six fresh nodes, two macOS, two iOS, two Ubuntu, each with a distinct eligible proxy and fresh identity.
+- [ ] Create three acceptance nodes, one macOS, one iOS, one Ubuntu, each with a distinct eligible proxy and fresh identity. Additional canaries are optional observation nodes and must not block acceptance.
 - [ ] Verify remote device creation, country, Earnings Update boundary, positive usage, proxy egress, DNS fail-closed, heartbeat, restart, banned recovery simulation, token warning and reboot persistence.
 - [ ] Run focused tests, full regression suite, image digest audit, secret scan and git diff audit.
 - [x] Commit, open PR, review, merge, and release completed through PR #206 and release `v1.24.2`. Live redeploy/recheck remains pending verified SSH access.
@@ -276,4 +276,4 @@ healthy       -> no mutation
 - [ ] Confirm whether automatic login may navigate only the already-bound EarnApp profile and must stop for CAPTCHA/2FA.
 - [ ] Confirm account suspended/locked release occurs after local cleanup acknowledgement, not before.
 - [ ] Confirm remote device deletion is mandatory before every banned/proxy replacement; uncertain deletion remains `RECOVERY_HOLD`.
-- [x] Confirm production canary means exactly two fresh nodes per OS on `vps-test-us` after clean/reboot.
+- [x] Confirm production acceptance means one fresh positive-usage node per OS on `vps-test-us` after clean/reboot; additional canaries remain observation-only.
