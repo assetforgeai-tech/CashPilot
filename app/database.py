@@ -511,8 +511,7 @@ CREATE TABLE IF NOT EXISTS earnapp_remote_delete_confirmations (
     generation INTEGER NOT NULL,
     device_id TEXT NOT NULL,
     confirmed_at TEXT NOT NULL DEFAULT (datetime('now')),
-    PRIMARY KEY (logical_node_id, generation, device_id),
-    FOREIGN KEY(logical_node_id) REFERENCES earnapp_logical_nodes(logical_node_id) ON DELETE CASCADE
+    PRIMARY KEY (logical_node_id, generation, device_id)
 );
 
 CREATE TABLE IF NOT EXISTS earnapp_proxy_reservations (
@@ -2279,8 +2278,7 @@ async def _create_earnapp_current_schema(db: Any) -> None:
             generation INTEGER NOT NULL,
             device_id TEXT NOT NULL,
             confirmed_at TEXT NOT NULL DEFAULT (datetime('now')),
-            PRIMARY KEY (logical_node_id, generation, device_id),
-            FOREIGN KEY(logical_node_id) REFERENCES earnapp_logical_nodes(logical_node_id) ON DELETE CASCADE
+            PRIMARY KEY (logical_node_id, generation, device_id)
         )
         """
     )
