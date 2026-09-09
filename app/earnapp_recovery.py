@@ -37,10 +37,11 @@ async def provision_node(
     country_code = database.canonical_proxy_country_code(proxy_country_code)
     if selected_platform not in {"macos", "ios", "ubuntu"}:
         raise RecoveryClaimDenied("EarnApp platform must be macos, ios, or ubuntu")
-    if selected_platform in {"macos", "ios"} and country_code != "VN":
-        raise RecoveryClaimDenied("EarnApp Mac/iOS node requires a VN proxy")
-    if selected_platform == "ubuntu" and (not country_code or country_code == "VN"):
-        raise RecoveryClaimDenied("EarnApp Ubuntu node requires a known non-VN proxy")
+    # Country/platform compatibility belongs to the server's platform policy
+    # and allocator. Recovery must preserve the selected route, not reapply
+    # the old VN=Apple/non-VN=Ubuntu rule.
+    if not country_code:
+        raise RecoveryClaimDenied("EarnApp node requires a known proxy country")
     await database.assign_earnapp_account(node_id, platform=selected_platform)
     current = await database.get_earnapp_logical_node(node_id)
     if not current:
