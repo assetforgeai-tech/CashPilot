@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import HTTPException
 
-from app import main
+from app import earnapp_recovery, main
 from app.earnapp_lifecycle import evaluate_node
 from app.version import at_least
 
@@ -240,6 +240,25 @@ async def test_banned_recreate_requires_remote_device_delete(monkeypatch):
 
     assert await main._execute_earnapp_lifecycle_action(node, "recreate") is True
     retire.assert_awaited_once_with(node, preserve_proxy_affinity=True)
+
+
+@pytest.mark.asyncio
+async def test_fresh_replacement_enters_recovery_hold_when_worker_remove_is_uncertain(monkeypatch):
+    node = {
+        "logical_node_id": "earnapp-mac-remove-uncertain",
+        "account_id": 2,
+        "assigned_worker_id": 3098,
+        "generation": 3,
+        "device_id": "sdk-mac-" + "d" * 32,
+    }
+    monkeypatch.setattr(main, "_delete_earnapp_remote_device", AsyncMock(return_value=True))
+    monkeypatch.setattr(main, "_proxy_to_worker", AsyncMock(return_value={"status": "timeout"}))
+    hold = AsyncMock(return_value={"state": "RECOVERY_HOLD"})
+    monkeypatch.setattr(main.database, "begin_earnapp_recovery_hold", hold)
+    monkeypatch.setattr(main.database, "prepare_fresh_earnapp_replacement", AsyncMock())
+
+    assert await main._retire_earnapp_node_for_fresh_replacement(node, preserve_proxy_affinity=True) is False
+    hold.assert_awaited_once_with("earnapp-mac-remove-uncertain", hold_seconds=earnapp_recovery.RECOVERY_HOLD_SECONDS)
 
 
 @pytest.mark.asyncio
