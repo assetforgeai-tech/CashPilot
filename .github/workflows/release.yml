@@ -55,7 +55,8 @@ jobs:
       - name: Lint
         run: uv run ruff check . && uv run ruff format --check .
       - name: Test
-        timeout-minutes: 15
+        # Full regression currently exceeds the old cap without indicating a test failure.
+        timeout-minutes: 30
         run: uv run pytest tests/ -v --tb=short --durations=25
 
   release:
