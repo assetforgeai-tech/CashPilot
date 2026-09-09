@@ -21,6 +21,8 @@ Tag `20260909-nonvn-macos-canary` was built from the pinned runtime contexts and
 - `ghcr.io/assetforgeai-tech/cashpilot-earnapp-ubuntu@sha256:70265ba720c27bb9398f97432fd9e151f841aedf679c1f82831080ac9d0109e3`
 
 The publish script used temporary credential files and removed them after the run; credentials were not written to the repository or output.
+
+Repository verification after tag-ref refresh: full suite `2691 passed, 8 skipped`.
 Scope: `vps-test-us` worker `92161`. No provider outside EarnApp was changed.
 
 ## Runtime identity repair
