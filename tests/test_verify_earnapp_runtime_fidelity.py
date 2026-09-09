@@ -1,6 +1,9 @@
 import hashlib
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -39,3 +42,15 @@ def test_fidelity_verifier_rejects_modified_runtime_artifact(tmp_path: Path, mon
     (context / "entrypoint.sh").write_text("modified", encoding="utf-8")
     with pytest.raises(ValueError, match="incomplete"):
         verify_earnapp_runtime_fidelity.verify_context(context, "ubuntu")
+
+
+def test_fidelity_cli_prefers_its_repository_over_a_foreign_pythonpath():
+    env = dict(os.environ, PYTHONPATH=r"D:\1. WORK_true\Tranfer Proxy\earn-proxy")
+    result = subprocess.run(
+        [sys.executable, "scripts/verify_earnapp_runtime_fidelity.py", "--help"],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
