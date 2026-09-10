@@ -2734,13 +2734,18 @@ def test_init_backfills_sticky_egress_ownership_for_existing_active_leases(tmp_p
             account_id = await earnapp_accounts.import_account(_payload("backfill", "backfill@example.com"))
             await database.assign_earnapp_account("sdk-mac-backfill", platform="macos")
             db = await database._get_db()
-            await db.execute("UPDATE earnapp_logical_nodes SET account_id = ? WHERE logical_node_id = ?", (account_id, "sdk-mac-backfill"))
+            await db.execute(
+                "UPDATE earnapp_logical_nodes SET account_id = ? WHERE logical_node_id = ?",
+                (account_id, "sdk-mac-backfill"),
+            )
             await db.commit()
             await db.close()
             provider_id = await database.upsert_proxy_provider("backfill-pool", "Backfill")
             proxy_id = await _seed_proxy_for_account_delete(database, provider_id, suffix=88)
             worker_id = await database.upsert_worker("backfill-worker", "backfill-worker", "http://worker")
-            await database.lease_proxy_for_provider_instance("earnapp", worker_id, "sdk-mac-backfill", country_code="VN")
+            await database.lease_proxy_for_provider_instance(
+                "earnapp", worker_id, "sdk-mac-backfill", country_code="VN"
+            )
             db = await database._get_db()
             await db.execute("DELETE FROM earnapp_account_egress_ownership")
             await db.commit()
@@ -2760,15 +2765,26 @@ def test_init_does_not_guess_owner_for_conflicting_legacy_egress(tmp_path):
             first = await earnapp_accounts.import_account(_payload("conflict-a", "a-conflict@example.com"))
             second = await earnapp_accounts.import_account(_payload("conflict-b", "b-conflict@example.com"))
             db = await database._get_db()
-            await db.execute("INSERT INTO earnapp_logical_nodes (logical_node_id, account_id) VALUES ('node-a', ?), ('node-b', ?)", (first, second))
-            await db.execute("INSERT INTO workers (id, client_id, name) VALUES (1, 'conflict-worker-a', 'a'), (2, 'conflict-worker-b', 'b')")
-            await db.execute("INSERT INTO proxy_endpoints (id, endpoint, host, port, protocol, exit_ip) VALUES (1, 'http://a:1', 'a', 1, 'http', '203.0.113.9'), (2, 'http://b:2', 'b', 2, 'http', '203.0.113.9')")
-            await db.execute("INSERT INTO provider_proxy_leases (provider_slug, worker_id, instance_id, proxy_id, exit_ip) VALUES ('earnapp', 1, 'node-a', 1, '203.0.113.9'), ('earnapp', 2, 'node-b', 2, '203.0.113.9')")
+            await db.execute(
+                "INSERT INTO earnapp_logical_nodes (logical_node_id, account_id) VALUES ('node-a', ?), ('node-b', ?)",
+                (first, second),
+            )
+            await db.execute(
+                "INSERT INTO workers (id, client_id, name) VALUES (1, 'conflict-worker-a', 'a'), (2, 'conflict-worker-b', 'b')"
+            )
+            await db.execute(
+                "INSERT INTO proxy_endpoints (id, endpoint, host, port, protocol, exit_ip) VALUES (1, 'http://a:1', 'a', 1, 'http', '203.0.113.9'), (2, 'http://b:2', 'b', 2, 'http', '203.0.113.9')"
+            )
+            await db.execute(
+                "INSERT INTO provider_proxy_leases (provider_slug, worker_id, instance_id, proxy_id, exit_ip) VALUES ('earnapp', 1, 'node-a', 1, '203.0.113.9'), ('earnapp', 2, 'node-b', 2, '203.0.113.9')"
+            )
             await db.commit()
             await db.close()
             await database.init_db()
             db = await database._get_db()
-            count = (await (await db.execute("SELECT COUNT(*) AS count FROM earnapp_account_egress_ownership")).fetchone())["count"]
+            count = (
+                await (await db.execute("SELECT COUNT(*) AS count FROM earnapp_account_egress_ownership")).fetchone()
+            )["count"]
             await db.close()
             assert count == 0
 
