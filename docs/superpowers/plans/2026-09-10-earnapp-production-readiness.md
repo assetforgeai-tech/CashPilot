@@ -64,6 +64,7 @@ Expose concise provider-group totals: eligible, assigned, available, sticky-owne
 
 - [x] Add provider-group `eligible`, `available`, `leased`, `sticky_owned`, and `duplicate_egress` counters.
 - [x] Surface compact counters in Proxy Pool capacity badges.
+- [ ] Replace provider account-pool placeholders with provider-specific adapters where credentials are actually modeled; do not infer accounts from deployment rows.
 
 ### Task 5: Heartbeat/rotation policy and reconciliation (EarnApp policy complete; provider drift reporting complete)
 
@@ -114,6 +115,13 @@ Move the legacy Wipter runtime behind the existing managed sing-box sidecar. Pre
 - [ ] Select a qualified residential proxy without exposing credentials.
 - [ ] Canary migration; verify account state, stable uptime, proxy egress, DNS, IPv6, and traffic.
 - [ ] Migrate the live Wipter runtime only after canary evidence passes.
+
+### Current execution boundary
+
+- [x] PR #241 merged and released as `v1.30.0`.
+- [x] PR #242 merged and released as `v1.31.0`.
+- [x] Server UI rolled out to `ghcr.io/assetforgeai-tech/cashpilot:1.31.0`; worker remains healthy at `1.29.0`.
+- [ ] Do not claim production closeout while Wipter remains direct-egress and provider-wide live leak evidence is incomplete.
 
 ## Verification gates
 

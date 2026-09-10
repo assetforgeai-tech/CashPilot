@@ -9,7 +9,6 @@ Status: read-only live audit completed for the currently running EarnApp contain
 | earnfm | Existing provider adapter/runtime | unverified | unverified | unverified | unverified | unverified |
 | iproyal | Existing provider adapter/runtime | unverified | unverified | unverified | unverified | unverified |
 | mysterium | Host/direct wallet runtime | unverified | unverified | unverified | unverified | unverified |
-| nkn | Direct node runtime | unverified | unverified | unverified | unverified | unverified |
 | packetstream | Existing provider adapter/runtime | unverified | unverified | unverified | unverified | unverified |
 | proxies-sx | Existing provider adapter/runtime | unverified | unverified | unverified | unverified | unverified |
 | proxybase | Existing provider adapter/runtime | unverified | unverified | unverified | unverified | unverified |
@@ -46,10 +45,10 @@ rollback evidence.
 
 ## Post-worker rollout evidence (2026-09-10)
 
-- Worker `v1.28.1` is healthy and sends confirmed container inventory.
+- Worker `v1.31.0` is healthy and sends confirmed container inventory.
 - The live reconciliation endpoint reports Wipter `attention` with the runtime
   untracked (`wipter`) rather than treating it as safe.
-- Wipter restart-loop evidence remains: `restart count 28473`, repeated
+- Wipter restart-loop evidence remains: `restart count 29277+`, repeated
   `/etc/machine-id: Permission denied`; `OOMKilled=false`. The current runtime
   was deployed before the catalog's `DAC_OVERRIDE` capability and managed
   proxy-sidecar contract were applied.
