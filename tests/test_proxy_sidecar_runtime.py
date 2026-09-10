@@ -62,6 +62,7 @@ def test_wipter_migration_keeps_legacy_container_until_proxy_probe_passes(monkey
     result = orchestrator.migrate_wipter_to_proxy("wipter", {"exit_ip": "1.2.3.4"})
 
     assert result["ok"] is True
+    assert result["sidecar_id"] == "old-id"
     old.rename.assert_called_once()
     old.remove.assert_called_once_with(force=True)
     orchestrator.deploy_raw.assert_called_once()

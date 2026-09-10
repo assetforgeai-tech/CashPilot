@@ -1,9 +1,63 @@
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
-from app import database
+from starlette.requests import Request
+
+from app import database, main
+
+
+def _request(path: str) -> Request:
+    return Request({"type": "http", "method": "POST", "path": path, "headers": []})
+
+
+def test_wipter_migration_commits_instance_only_after_worker_success(monkeypatch):
+    lease = {"proxy_id": 7, "exit_ip": "1.2.3.4", "host": "proxy", "port": 1080, "protocol": "socks5"}
+    monkeypatch.setattr(main, "_require_owner", lambda request: {})
+    monkeypatch.setattr(database, "lease_proxy_for_provider_instance", AsyncMock(return_value=lease))
+    monkeypatch.setattr(database, "release_proxy_for_provider_instance", AsyncMock())
+    monkeypatch.setattr(database, "save_provider_instance", AsyncMock())
+    monkeypatch.setattr(
+        main,
+        "_proxy_to_worker",
+        AsyncMock(return_value={"ok": True, "container_id": "new", "observed_egress_ip": "1.2.3.4"}),
+    )
+
+    result = asyncio.run(
+        main.api_migrate_wipter_proxy(
+            _request("/api/admin/providers/wipter/migrate-proxy"), main.WipterMigrationRequest(worker_id=3)
+        )
+    )
+
+    assert result["status"] == "migrated"
+    database.save_provider_instance.assert_awaited_once()
+    database.release_proxy_for_provider_instance.assert_not_awaited()
+
+
+def test_wipter_migration_releases_lease_when_worker_fails(monkeypatch):
+    monkeypatch.setattr(main, "_require_owner", lambda request: {})
+    monkeypatch.setattr(
+        database,
+        "lease_proxy_for_provider_instance",
+        AsyncMock(return_value={"proxy_id": 7, "exit_ip": "1.2.3.4"}),
+    )
+    release = AsyncMock()
+    monkeypatch.setattr(database, "release_proxy_for_provider_instance", release)
+    monkeypatch.setattr(main, "_proxy_to_worker", AsyncMock(side_effect=RuntimeError("worker failed")))
+
+    try:
+        asyncio.run(
+            main.api_migrate_wipter_proxy(
+                _request("/api/admin/providers/wipter/migrate-proxy"), main.WipterMigrationRequest(worker_id=3)
+            )
+        )
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("worker failure must propagate")
+
+    release.assert_awaited_once_with("wipter", 3, "wipter-proxy", reason="MIGRATION_FAILED")
 
 
 def test_provider_instances_round_trip_and_encrypt_spec(tmp_path):

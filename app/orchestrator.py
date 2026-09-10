@@ -1094,7 +1094,13 @@ def migrate_wipter_to_proxy(slug: str, proxy: dict[str, Any]) -> dict[str, Any]:
             old.start()
         raise
     old.remove(force=True)
-    return {"ok": True, "container_id": new_id, "observed_egress_ip": expected}
+    sidecar = client.containers.get(_sidecar_name(slug))
+    return {
+        "ok": True,
+        "container_id": new_id,
+        "sidecar_id": str(getattr(sidecar, "id", "") or ""),
+        "observed_egress_ip": expected,
+    }
 
 
 def apply_proxy_binding_batch(instance_slugs: list[str], proxy: dict[str, Any], binding_version: str) -> dict[str, Any]:

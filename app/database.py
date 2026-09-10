@@ -10071,6 +10071,7 @@ async def lease_proxy_for_provider_instance(
     *,
     country_code: str = "",
     exclude_country_code: str = "",
+    required_ip_type: str = "",
 ) -> dict[str, Any] | None:
     """Lease one canonical egress to a provider instance without touching legacy assignments."""
     slug = str(provider_slug or "").strip().lower()
@@ -10081,6 +10082,9 @@ async def lease_proxy_for_provider_instance(
         return None
     requested_country = str(country_code or "").strip().upper()
     excluded_country = str(exclude_country_code or "").strip().upper()
+    required_type = str(required_ip_type or "").strip().lower()
+    if required_type and not re.fullmatch(r"[a-z][a-z0-9_-]{1,31}", required_type):
+        return None
     if requested_country and not re.fullmatch(r"[A-Z]{2}", requested_country):
         return None
     if excluded_country and not re.fullmatch(r"[A-Z]{2}", excluded_country):
@@ -10227,6 +10231,7 @@ async def lease_proxy_for_provider_instance(
                    )
                     AND (? = '' OR upper(trim(coalesce(pe.country_code, ''))) = ?)
                     AND (? = '' OR upper(trim(coalesce(pe.country_code, ''))) != ?)
+                    AND (? = '' OR lower(trim(coalesce(pe.ip_type, ''))) = ?)
                 ORDER BY CASE WHEN pe.id = ? THEN 0 ELSE 1 END, pe.id
                 LIMIT 1
                 """,
@@ -10240,6 +10245,8 @@ async def lease_proxy_for_provider_instance(
                     requested_country,
                     excluded_country,
                     excluded_country,
+                    required_type,
+                    required_type,
                     preferred_proxy_id,
                 ),
             )
