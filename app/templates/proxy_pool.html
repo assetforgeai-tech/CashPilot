@@ -199,7 +199,7 @@ function renderProviderCapacity(items) {
   const container = document.getElementById('pool-provider-capacity');
   if (!container) return;
   container.innerHTML = items.length
-    ? items.map(item => `<span class="badge badge-category">${esc(item.provider_name)}: ${Number(item.available || 0)} free / ${Number(item.leased || 0)} used</span>`).join('')
+    ? items.map(item => `<span class="badge badge-category" title="Eligible ${Number(item.eligible || 0)}; sticky-owned ${Number(item.sticky_owned || 0)}; duplicates ${Number(item.duplicate_egress || 0)}">${esc(item.provider_name)}: ${Number(item.available || 0)} free / ${Number(item.leased || 0)} used · ${Number(item.eligible || 0)} eligible</span>`).join('')
     : '<span class="pool-status-unknown">No provider capacity.</span>';
 }
 function proxyLocationLabel(proxy) {
