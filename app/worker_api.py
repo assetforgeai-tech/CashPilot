@@ -1265,8 +1265,10 @@ async def _send_heartbeat() -> None:
     global _ui_connected, _last_heartbeat, _last_error, _consecutive_auth_failures
 
     containers = []
+    containers_inventory_confirmed = False
     try:
         containers = await asyncio.to_thread(orchestrator.get_status)
+        containers_inventory_confirmed = isinstance(containers, list)
     except Exception as exc:
         logger.warning("Failed to get container status for heartbeat: %s", exc)
 
@@ -1275,6 +1277,7 @@ async def _send_heartbeat() -> None:
         "client_id": CLIENT_ID,
         "url": WORKER_URL or f"http://{_get_local_ip()}:{WORKER_PORT}",
         "containers": containers,
+        "containers_inventory_confirmed": containers_inventory_confirmed,
         "system_info": {
             "os": f"{platform.system()} {platform.release()}",
             "arch": platform.machine(),
@@ -1294,6 +1297,7 @@ async def _send_heartbeat() -> None:
             "disk": await asyncio.to_thread(_disk_usage),
             "gpu": await asyncio.to_thread(_gpu_info),
             "public_ip_slots": _load_public_ip_slots(),
+            "containers_inventory_confirmed": containers_inventory_confirmed,
         },
     }
     provider_states: dict[str, dict[str, Any]] = {}

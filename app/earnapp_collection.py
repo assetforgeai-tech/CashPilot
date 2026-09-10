@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Mapping
 
 from app import database, earnapp_canary
 from app.collectors.earnapp import EarnAppAccountCollector
@@ -111,6 +112,54 @@ async def configure_payment(account_id: int, *, payment_method: str, destination
         return await collector.configure_payment(payment_method=payment_method, destination=destination)
 
 
+async def configure_payment_from_paypal_pool(
+    account_id: int, *, snapshot: Mapping[str, Any] | None = None
+) -> dict[str, Any]:
+    """Assign one fixed PayPal destination, then enable it on EarnApp."""
+    snapshot = snapshot or await database.get_latest_earnapp_snapshot(account_id)
+    payment = (snapshot or {}).get("payment") if isinstance(snapshot, Mapping) else None
+    if not isinstance(payment, Mapping):
+        try:
+            payment = json.loads(str((snapshot or {}).get("payment_json") or "{}"))
+        except (TypeError, ValueError):
+            payment = {}
+    methods = payment.get("methods") if isinstance(payment, dict) else []
+    paypal = next(
+        (item for item in methods if isinstance(item, dict) and "paypal" in str(item.get("id") or "").casefold()),
+        None,
+    )
+    if not paypal:
+        raise ValueError("EarnApp PayPal payment method is unavailable")
+    assigned = await database.assign_earnapp_paypal(account_id)
+    if not assigned:
+        raise ValueError("no available PayPal account in pool")
+    return await configure_payment(
+        account_id,
+        payment_method=str(paypal["id"]),
+        destination=str(assigned["destination"]),
+    )
+
+
+async def ensure_paypal_pool_payment(account_id: int, snapshot: Mapping[str, Any] | None = None) -> dict[str, Any] | None:
+    """Assign/configure PayPal once; never override an existing destination."""
+    current = snapshot or await database.get_latest_earnapp_snapshot(account_id)
+    payment: Any = current.get("payment") if isinstance(current, Mapping) else None
+    if not isinstance(payment, Mapping):
+        try:
+            payment = json.loads(str((current or {}).get("payment_json") or "{}"))
+        except (TypeError, ValueError):
+            payment = {}
+    if isinstance(payment, Mapping) and payment.get("configured"):
+        return dict(payment)
+    try:
+        return await configure_payment_from_paypal_pool(account_id, snapshot=current)
+    except ValueError:
+        return None
+    except Exception as exc:  # noqa: BLE001 - payout setup must not hide a healthy collection
+        logger.warning("EarnApp %s PayPal auto-configuration deferred: %s", account_id, type(exc).__name__)
+        return None
+
+
 async def disable_payment(account_id: int) -> dict[str, Any]:
     async with earnapp_canary.account_api_lock(account_id):
         collector = await _payment_collector(account_id)
@@ -131,6 +180,8 @@ async def collect_active_accounts(*, concurrency: int = 4) -> dict[str, Any]:
         try:
             async with semaphore:
                 result = await collect_account(account_id)
+                if result.get("status") == "ok":
+                    await ensure_paypal_pool_payment(account_id, result)
         except Exception as exc:  # noqa: BLE001 - scheduled peers must continue
             logger.warning("EarnApp account %s collection failed: %s", account_id, type(exc).__name__)
             return {"account_id": account_id, "status": "error", "error_kind": "internal"}

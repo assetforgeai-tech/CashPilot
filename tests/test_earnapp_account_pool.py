@@ -2676,3 +2676,52 @@ def test_refresh_rejects_changed_email_with_same_display_name(tmp_path):
             assert (await database.list_earnapp_accounts())[0]["email"] == "owner@example.com"
 
     asyncio.run(run())
+
+
+def test_earnapp_egress_ownership_survives_runtime_release_until_account_delete(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            await database.init_db()
+            first_account = await earnapp_accounts.import_account(_payload("owner-a", "a@example.com"))
+            second_account = await earnapp_accounts.import_account(_payload("owner-b", "b@example.com"))
+            await database.assign_earnapp_account("sdk-mac-owner-a", platform="macos")
+            await database.assign_earnapp_account("sdk-mac-owner-b", platform="macos")
+
+            db = await database._get_db()
+            await db.execute(
+                "UPDATE earnapp_logical_nodes SET account_id = ? WHERE logical_node_id = ?",
+                (first_account, "sdk-mac-owner-a"),
+            )
+            await db.execute(
+                "UPDATE earnapp_logical_nodes SET account_id = ? WHERE logical_node_id = ?",
+                (second_account, "sdk-mac-owner-b"),
+            )
+            await db.commit()
+            await db.close()
+
+            provider_id = await database.upsert_proxy_provider("sticky-test", "Sticky test")
+            proxy_id = await _seed_proxy_for_account_delete(database, provider_id, suffix=77)
+            worker_id = await database.upsert_worker("sticky-worker", "sticky-worker", "http://worker")
+
+            first = await database.lease_proxy_for_provider_instance(
+                "earnapp", worker_id, "sdk-mac-owner-a", country_code="VN"
+            )
+            assert first is not None and first["proxy_id"] == proxy_id
+            assert await database.release_proxy_for_provider_instance(
+                "earnapp", worker_id, "sdk-mac-owner-a", reason="runtime stopped"
+            )
+            capacity = await database.get_earnapp_proxy_capacity()
+            assert capacity["sticky_owned"] == 1
+            assert capacity["leaseable"] == 0
+
+            blocked = await database.lease_proxy_for_provider_instance(
+                "earnapp", worker_id, "sdk-mac-owner-b", country_code="VN"
+            )
+            assert blocked is None
+
+            same_owner = await database.lease_proxy_for_provider_instance(
+                "earnapp", worker_id, "sdk-mac-owner-a", country_code="VN"
+            )
+            assert same_owner is not None and same_owner["proxy_id"] == proxy_id
+
+    asyncio.run(run())

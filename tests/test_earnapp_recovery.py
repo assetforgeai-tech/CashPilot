@@ -673,15 +673,15 @@ def test_recovery_does_not_reuse_preferred_proxy_after_another_account_controls_
 
             other_account = await earnapp_accounts.import_account(_account("profile-b"))
             route = await earnapp_collection.ensure_collection_route(other_account)
-            assert route is not None and route["proxy_id"] == proxies[0]
+            assert route is not None and route["proxy_id"] == proxies[1]
 
             recovered = await _provision_ubuntu_node(
                 "earnapp-node-a",
                 old_worker,
                 device_id="device-a",
             )
-            assert recovered["proxy_id"] == proxies[1]
-            assert (await database.get_earnapp_account_control_route(other_account))["proxy_id"] == proxies[0]
+            assert recovered["proxy_id"] == proxies[0]
+            assert (await database.get_earnapp_account_control_route(other_account))["proxy_id"] == proxies[1]
 
     asyncio.run(run())
 
