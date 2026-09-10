@@ -25,6 +25,9 @@ def test_account_pool_summary_uses_provider_adapters_without_exposing_secrets(tm
             assert earnapp["total"] == 1
             assert earnapp["active"] == 1
             assert "credentials" not in earnapp
-            assert any(row["provider"] == "nkn" and row["adapter"] == "none" for row in pools)
+            nkn = next(row for row in pools if row["provider"] == "nkn")
+            assert nkn["adapter"] == "none"
+            assert nkn["modeled"] is False
+            assert nkn["total"] is None
 
     asyncio.run(run())
