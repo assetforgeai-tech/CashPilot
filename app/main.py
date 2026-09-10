@@ -66,8 +66,10 @@ from app import (
     power,
     preflight,
     producer_state,
+    provider_accounts,
     provider_automation,
     provider_modes,
+    provider_network_audit,
     provider_runtime,
     setup_token,
     update_check,
@@ -7379,6 +7381,7 @@ class WorkerHeartbeat(BaseModel):
     url: str = ""
     client_id: str = ""
     containers: list[dict[str, Any]] = []
+    containers_inventory_confirmed: bool = False
     apps: list[dict[str, Any]] = []
     system_info: dict[str, Any] = {}
     provider_states: dict[str, dict[str, Any]] = {}
@@ -7732,7 +7735,7 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         await database.reconcile_earnapp_provider_instances(
             int(worker_id),
             reported_instance_ids=reported_earnapp_ids,
-            inventory_confirmed=True,
+            inventory_confirmed=bool(body.containers_inventory_confirmed),
         )
     myst = body.provider_states.get("mysterium") or {}
     if myst:
@@ -8069,6 +8072,84 @@ async def api_list_workers(request: Request) -> list[dict[str, Any]]:
         # to a fully enrolled one on the fleet page.
         w["enrollment"] = enrollment_state(w.get("key_issued_at"), bool(w.get("key_confirmed")))
     return workers
+
+
+@app.get("/api/admin/earnapp/reconciliation")
+async def api_earnapp_reconciliation(request: Request) -> dict[str, Any]:
+    """Return DB/worker EarnApp inventory differences without mutating state."""
+    _require_owner(request)
+    reports = []
+    for worker in await database.list_workers():
+        worker_id = int(worker.get("id") or 0)
+        try:
+            containers = json.loads(str(worker.get("containers") or "[]"))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            containers = []
+        try:
+            system_info = json.loads(str(worker.get("system_info") or "{}"))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            system_info = {}
+        confirmed = bool(isinstance(system_info, Mapping) and system_info.get("containers_inventory_confirmed") is True)
+        reported = {
+            str(item.get("instance_slug") or item.get("name") or "").strip()
+            for item in containers
+            if isinstance(item, dict) and str(item.get("slug") or "").strip().lower() == "earnapp"
+        }
+        reports.append(
+            await database.get_earnapp_reconciliation_report(
+                worker_id, reported_instance_ids=reported, inventory_confirmed=confirmed
+            )
+        )
+    return {"reports": reports, "read_only": True}
+
+
+@app.get("/api/admin/provider-network/reconciliation")
+async def api_provider_network_reconciliation(request: Request) -> dict[str, Any]:
+    """Report provider network drift without mutating workers or leases."""
+    _require_owner(request)
+    reports: list[dict[str, Any]] = []
+    for worker in await database.list_workers():
+        worker_id = int(worker.get("id") or 0)
+        containers = _safe_json(worker.get("containers") or "[]", [])
+        if not isinstance(containers, list):
+            containers = []
+        system_info = _safe_json(worker.get("system_info") or "{}", {})
+        confirmed = isinstance(system_info, Mapping) and system_info.get("containers_inventory_confirmed") is True
+        rows = await database.list_provider_instances(worker_id=worker_id)
+        live_ids = {
+            str(item.get("instance_slug") or item.get("name") or "").strip()
+            for item in containers
+            if isinstance(item, dict)
+        }
+        # Bind a legacy worker-less row only to the worker currently reporting
+        # its exact runtime. This surfaces drift without inventing ownership.
+        rows += [
+            row
+            for row in await database.list_provider_instances()
+            if row.get("worker_id") is None and str(row.get("instance_id") or "").strip() in live_ids
+        ]
+        for slug in sorted(provider_runtime.ACTIVE_SLUGS):
+            instances = [row for row in rows if str(row.get("slug") or "").lower() == slug]
+            live = [
+                item for item in containers if isinstance(item, dict) and str(item.get("slug") or "").lower() == slug
+            ]
+            if not instances and not live:
+                continue
+            report = provider_network_audit.audit_provider_network_inventory(
+                slug,
+                instances=instances,
+                containers=live,
+                inventory_confirmed=confirmed,
+            )
+            report["worker_id"] = worker_id
+            reports.append(report)
+    return {"reports": reports, "read_only": True}
+
+
+@app.get("/api/admin/provider-account-pools")
+async def api_provider_account_pools(request: Request) -> dict[str, Any]:
+    _require_owner(request)
+    return {"items": await provider_accounts.list_provider_account_pools()}
 
 
 def _parse_worker_json(w: dict[str, Any]) -> None:

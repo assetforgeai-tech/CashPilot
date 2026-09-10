@@ -34,6 +34,8 @@ class ProviderRuntime:
     policy_message: str = ""
     allowed_platforms: tuple[str, ...] = ()
     blocked_platforms: tuple[str, ...] = ()
+    heartbeat_scope: str = "worker"
+    rotation_scope: str = "worker"
 
     @property
     def default_mode(self) -> str:
@@ -66,9 +68,11 @@ PROVIDERS: dict[str, ProviderRuntime] = {
         policy_message=EARNAPP_PLATFORM_BLOCK_MESSAGE,
         allowed_platforms=("macos", "ios", "ubuntu"),
         blocked_platforms=(),
+        heartbeat_scope="node",
+        rotation_scope="node",
     ),
-    "iproyal": ProviderRuntime("iproyal", "pawns.py", "pawns.py", ("proxy",), "earnings"),
-    "mysterium": ProviderRuntime("mysterium", "MYST.py", "MYST.py", ("direct",), "earnings"),
+    "iproyal": ProviderRuntime("iproyal", "pawns.py", "pawns.py", ("proxy",), "earnings", rotation_scope="instance"),
+    "mysterium": ProviderRuntime("mysterium", "MYST.py", "MYST.py", ("direct",), "earnings", heartbeat_scope="wallet"),
     "nkn": ProviderRuntime("nkn", "nkn.py", "nkn.py", ("direct",), "dashboard_only"),
     "packetstream": ProviderRuntime("packetstream", "packetstream.py", "packetstream.py", ("proxy",), "earnings"),
     "proxies-sx": ProviderRuntime("proxies-sx", "proxies.sx.py", "proxies.sx.py", ("proxy",), "earnings"),
@@ -231,6 +235,8 @@ def catalog_runtime(slug: str) -> dict[str, object]:
         "deployment_policy_message": provider.deployment_policy_message,
         "allowed_platforms": list(provider.allowed_platforms),
         "blocked_platforms": list(provider.blocked_platforms),
+        "heartbeat_scope": provider.heartbeat_scope,
+        "rotation_scope": provider.rotation_scope,
         "setup_source": provider.setup_file,
         "collector_source": provider.collector_file,
     }

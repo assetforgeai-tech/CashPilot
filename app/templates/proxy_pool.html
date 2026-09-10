@@ -50,6 +50,7 @@
     <h2>Proxy pool</h2>
   </div>
   <div id="pool-summary" class="pool-summary-grid" aria-label="Proxy pool summary"></div>
+  <div id="pool-provider-capacity" class="pool-command-bar" aria-label="Capacity by proxy provider"></div>
   <div id="pool-counts" class="sr-only" aria-live="polite"></div>
   <div id="pool-type-counts" class="sr-only"></div>
   <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:12px;padding:12px;border:1px solid var(--border-color);border-radius:var(--radius);">
@@ -173,9 +174,10 @@ async function loadPool() {
   const request = poolRequestController;
   const params = currentPoolParams();
   try {
-    const [page, scheduler] = await Promise.all([
+    const [page, scheduler, capacity] = await Promise.all([
       proxyPoolJson('/api/proxy-pool/page?' + params.toString(), {signal:request.signal}),
       poolSchedulerLoaded ? Promise.resolve(null) : proxyPoolJson('/api/proxy-pool/scheduler').catch(() => null),
+      proxyPoolJson('/api/proxy-pool/capacity', {signal:request.signal}).catch(() => ({items:[]})),
     ]);
     if (request !== poolRequestController) return;
     poolRows = Array.isArray(page.items) ? page.items : [];
@@ -185,12 +187,20 @@ async function loadPool() {
     poolCounts = page.counts || {};
     poolTypeCounts = page.type_counts || {};
     poolFilterOptions = page.filters || {};
+    renderProviderCapacity(capacity.items || []);
     if (scheduler) { renderScheduler(scheduler); poolSchedulerLoaded = true; }
     renderPool();
   } catch (error) {
     if (error.name === 'AbortError') return;
     result.textContent = `Proxy pool load failed: ${error.message}`;
   }
+}
+function renderProviderCapacity(items) {
+  const container = document.getElementById('pool-provider-capacity');
+  if (!container) return;
+  container.innerHTML = items.length
+    ? items.map(item => `<span class="badge badge-category">${esc(item.provider_name)}: ${Number(item.available || 0)} free / ${Number(item.leased || 0)} used</span>`).join('')
+    : '<span class="pool-status-unknown">No provider capacity.</span>';
 }
 function proxyLocationLabel(proxy) {
   const status = String(proxy.status || '').toLowerCase();

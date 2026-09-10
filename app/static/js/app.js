@@ -3503,6 +3503,7 @@ const CP = (() => {
       capacity.used || 0,
       capacity.ready ?? capacity.leaseable ?? 0,
       capacity.eligible || 0,
+      capacity.sticky_owned || 0,
       capacity.active_nodes || 0,
     ];
     container.querySelectorAll('strong').forEach((node, index) => {
@@ -3568,6 +3569,7 @@ const CP = (() => {
         <td><div class="earnapp-row-actions">
           <button class="btn btn-ghost btn-sm" data-action="collectEarnAppAccount" data-a1="${escapeHtml(account.id)}">Collect now</button>
           <button class="btn btn-ghost btn-sm" data-action="configureEarnAppPayment" data-a1="${escapeHtml(account.id)}" data-a2="${escapeHtml(JSON.stringify(paymentMethods.map(method => ({ id: method.id, label: method.label, disabled: Boolean(method.disabled) }))))}">Set auto-redeem</button>
+          <button class="btn btn-ghost btn-sm" data-action="configureEarnAppPayPalPool" data-a1="${escapeHtml(account.id)}">Use PayPal pool</button>
           ${payment.configured ? `<button class="btn btn-ghost btn-sm danger-action" data-action="disableEarnAppPayment" data-a1="${escapeHtml(account.id)}">Disable auto-redeem</button>` : ''}
           ${canDelete ? `<button class="btn btn-ghost btn-sm danger-action" data-action="deleteEarnAppAccount" data-a1="${escapeHtml(account.id)}" data-a2="${escapeHtml(account.account_name)}">Delete local account</button>` : ''}
         </div></td>
@@ -3613,6 +3615,10 @@ const CP = (() => {
       const payload = await api('/api/admin/earnapp/accounts');
       renderEarnAppAccounts(payload);
       renderEarnAppRecovery(payload);
+      await loadEarnAppPayPalPool();
+      await loadProviderAccountPools();
+      await loadEarnAppReconciliation();
+      await loadProviderNetworkReconciliation();
     } catch (err) {
       rows.innerHTML = `<tr><td colspan="7" style="color:var(--error);">Could not load EarnApp accounts: ${escapeHtml(err.message)}</td></tr>`;
       const recovery = document.getElementById('earnapp-recovery-rows');
@@ -3673,16 +3679,103 @@ const CP = (() => {
       toast('Collect the account first to load available payment methods', 'warning');
       return;
     }
-    const choices = available.map(method => `${method.id}: ${method.label || method.id}`).join('\n');
-    const paymentMethod = window.prompt(`Payment method ID:\n${choices}`, available[0].id);
-    if (paymentMethod === null) return;
-    if (!available.some(method => method.id === paymentMethod)) {
-      toast('Choose an available payment method ID exactly as listed', 'warning');
+    const accountInput = document.getElementById('earnapp-payment-account-id');
+    const methodSelect = document.getElementById('earnapp-payment-method');
+    const destinationInput = document.getElementById('earnapp-payment-destination');
+    if (!accountInput || !methodSelect || !destinationInput) return;
+    accountInput.value = String(accountId);
+    methodSelect.innerHTML = available.map(method =>
+      `<option value="${escapeHtml(method.id)}">${escapeHtml(method.label || method.id)}</option>`
+    ).join('');
+    destinationInput.value = '';
+    openModal('earnapp-payment-modal');
+    destinationInput.focus();
+  }
+
+  async function loadProviderAccountPools() {
+    const container = document.getElementById('provider-account-pool-list');
+    if (!container) return;
+    try {
+      const payload = await api('/api/admin/provider-account-pools');
+      const items = Array.isArray(payload.items) ? payload.items : [];
+      container.innerHTML = items.length
+        ? items.map(item => `${escapeHtml(item.provider)}: ${Number(item.active || 0)}/${Number(item.total || 0)} active · ${Number(item.assigned_nodes || 0)} nodes`).join('<br>')
+        : 'No provider accounts configured.';
+    } catch (err) {
+      container.textContent = `Account pools unavailable: ${err.message}`;
+    }
+  }
+
+  async function loadEarnAppReconciliation() {
+    const container = document.getElementById('earnapp-reconciliation-list');
+    if (!container) return;
+    try {
+      const payload = await api('/api/admin/earnapp/reconciliation');
+      const reports = Array.isArray(payload.reports) ? payload.reports : [];
+      container.innerHTML = reports.length ? reports.map(report => {
+        const missing = (report.missing_from_worker || []).length;
+        const extra = (report.untracked_on_worker || []).length;
+        const state = !report.inventory_confirmed ? 'inventory unconfirmed' : (missing || extra ? 'attention' : 'in sync');
+        return `Worker ${escapeHtml(report.worker_id)}: ${escapeHtml(state)} · missing ${missing} · untracked ${extra}`;
+      }).join('<br>') : 'No workers registered.';
+    } catch (err) {
+      container.textContent = `Reconciliation unavailable: ${err.message}`;
+    }
+  }
+
+  async function loadProviderNetworkReconciliation() {
+    const container = document.getElementById('provider-network-reconciliation-list');
+    if (!container) return;
+    try {
+      const payload = await api('/api/admin/provider-network/reconciliation');
+      const reports = Array.isArray(payload.reports) ? payload.reports : [];
+      container.innerHTML = reports.length ? reports.map(report => {
+        const missing = Array.isArray(report.missing_sidecar) ? report.missing_sidecar.length : 0;
+        const untracked = Array.isArray(report.untracked) ? report.untracked.length : 0;
+        return `Worker ${escapeHtml(report.worker_id)} · ${escapeHtml(report.provider)}: ${escapeHtml(report.status || 'unverified')} · sidecar drift ${missing} · untracked ${untracked}`;
+      }).join('<br>') : 'No active provider instances recorded.';
+    } catch (err) {
+      container.textContent = `Network reconciliation unavailable: ${err.message}`;
+    }
+  }
+
+  async function loadEarnAppPayPalPool() {
+    const container = document.getElementById('earnapp-paypal-pool-list');
+    if (!container) return;
+    try {
+      const payload = await api('/api/admin/earnapp/paypal-pool');
+      const items = Array.isArray(payload.items) ? payload.items : [];
+      container.innerHTML = items.length
+        ? items.map(item => `<span class="badge badge-category">${escapeHtml(item.destination_masked || 'masked')} · ${escapeHtml(item.state || 'UNKNOWN')}</span>`).join(' ')
+        : 'No PayPal destination imported.';
+    } catch (err) {
+      container.textContent = `PayPal Pool unavailable: ${err.message}`;
+    }
+  }
+
+  async function addEarnAppPayPal() {
+    const input = document.getElementById('earnapp-paypal-destination');
+    const destination = input?.value.trim() || '';
+    if (!destination) {
+      toast('PayPal email is required', 'warning');
       return;
     }
-    const destination = window.prompt('Payment destination email or account identifier. CashPilot sends it to EarnApp but stores only a masked value:');
-    if (destination === null || destination.trim().length < 3) {
-      if (destination !== null) toast('Payment destination is required', 'warning');
+    try {
+      await api('/api/admin/earnapp/paypal-pool', { method: 'POST', body: { destination } });
+      input.value = '';
+      toast('PayPal destination added', 'success');
+      await loadEarnAppPayPalPool();
+    } catch (err) {
+      toast(`PayPal Pool import failed: ${err.message}`, 'error');
+    }
+  }
+
+  async function saveEarnAppPayment() {
+    const accountId = document.getElementById('earnapp-payment-account-id')?.value || '';
+    const paymentMethod = document.getElementById('earnapp-payment-method')?.value || '';
+    const destination = document.getElementById('earnapp-payment-destination')?.value.trim() || '';
+    if (!accountId || !paymentMethod || destination.length < 3) {
+      toast('Choose a payment method and enter a valid destination', 'warning');
       return;
     }
     try {
@@ -3690,10 +3783,21 @@ const CP = (() => {
         method: 'POST',
         body: { payment_method: paymentMethod, destination: destination.trim() },
       });
+      closeModal('earnapp-payment-modal');
       toast('EarnApp auto-redeem settings updated', 'success');
       await collectEarnAppAccount(accountId);
     } catch (err) {
       toast(`EarnApp payment update failed: ${err.message}`, 'error');
+    }
+  }
+
+  async function configureEarnAppPayPalPool(accountId) {
+    try {
+      await api(`/api/admin/earnapp/accounts/${encodeURIComponent(accountId)}/payment/paypal-pool`, { method: 'POST' });
+      toast('Fixed PayPal pool destination enabled', 'success');
+      await collectEarnAppAccount(accountId);
+    } catch (err) {
+      toast(`PayPal pool setup failed: ${err.message}`, 'error');
     }
   }
 
@@ -4622,9 +4726,13 @@ const CP = (() => {
     saveEnvSettings,
     deployNknChaindbPublisher,
     loadEarnAppAccounts,
+    loadEarnAppPayPalPool,
+    addEarnAppPayPal,
     importEarnAppAccount,
     collectEarnAppAccount,
     configureEarnAppPayment,
+    saveEarnAppPayment,
+    configureEarnAppPayPalPool,
     disableEarnAppPayment,
     deleteEarnAppAccount,
     issueEarnAppReplacementTicket,

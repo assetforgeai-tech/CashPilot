@@ -52,6 +52,45 @@ def test_settings_renders_sanitized_earnapp_payment_sync_state():
     assert "paypal_email" not in javascript
 
 
+def test_earnapp_payment_uses_inline_modal_instead_of_prompt():
+    template = SETTINGS.read_text(encoding="utf-8")
+    javascript = APP_JS.read_text(encoding="utf-8")
+    start = javascript.index("async function configureEarnAppPayment")
+    end = javascript.index("async function disableEarnAppPayment", start)
+    payment_function = javascript[start:end]
+    assert 'id="earnapp-payment-modal"' in template
+    assert "earnapp-payment-method" in template
+    assert "earnapp-payment-destination" in template
+    assert "window.prompt" not in payment_function
+
+
+def test_earnapp_capacity_exposes_sticky_owned_egress():
+    template = SETTINGS.read_text(encoding="utf-8")
+    javascript = APP_JS.read_text(encoding="utf-8")
+    assert "Owned egress" in template
+    assert "capacity.sticky_owned" in javascript
+    assert "/payment/paypal-pool" in javascript
+
+
+def test_settings_exposes_paypal_pool_controls_without_raw_destinations():
+    template = SETTINGS.read_text(encoding="utf-8")
+    javascript = APP_JS.read_text(encoding="utf-8")
+    assert 'id="earnapp-paypal-pool"' in template
+    assert "loadEarnAppPayPalPool" in javascript
+    assert "addEarnAppPayPal" in javascript
+    assert "destination_masked" in javascript
+
+
+def test_settings_shows_read_only_earnapp_reconciliation():
+    template = SETTINGS.read_text(encoding="utf-8")
+    javascript = APP_JS.read_text(encoding="utf-8")
+    assert 'id="earnapp-reconciliation"' in template
+    assert 'id="earnapp-reconciliation-list"' in template
+    assert "/api/admin/earnapp/reconciliation" in javascript
+    assert "missing_from_worker" in javascript
+    assert "untracked_on_worker" in javascript
+
+
 def test_fleet_renders_earnapp_node_health_from_worker_provider_state():
     template = FLEET.read_text(encoding="utf-8")
 

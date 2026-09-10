@@ -37,6 +37,10 @@ class EarnAppPaymentIn(BaseModel):
     destination: str = Field(min_length=3, max_length=320)
 
 
+class EarnAppPayPalIn(BaseModel):
+    destination: str = Field(min_length=3, max_length=320)
+
+
 class ReplacementTicketIn(BaseModel):
     target_worker_id: int = Field(gt=0)
 
@@ -369,6 +373,32 @@ async def api_earnapp_account_payment_disable(request: Request, account_id: int)
         return await earnapp_collection.disable_payment(account_id)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/api/admin/earnapp/accounts/{account_id}/payment/paypal-pool")
+async def api_earnapp_account_paypal_pool_payment(request: Request, account_id: int) -> dict[str, Any]:
+    deps._require_owner(request)
+    try:
+        return await earnapp_collection.configure_payment_from_paypal_pool(account_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get("/api/admin/earnapp/paypal-pool")
+async def api_earnapp_paypal_pool(request: Request) -> dict[str, Any]:
+    deps._require_owner(request)
+    rows = await database.list_earnapp_paypal_pool()
+    return {"items": rows, "available": sum(row["state"] == "AVAILABLE" for row in rows)}
+
+
+@router.post("/api/admin/earnapp/paypal-pool")
+async def api_earnapp_paypal_pool_add(request: Request, body: EarnAppPayPalIn) -> dict[str, Any]:
+    deps._require_owner(request)
+    try:
+        paypal_id = await database.add_earnapp_paypal(body.destination)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "ok", "id": paypal_id}
 
 
 @router.delete("/api/admin/earnapp/accounts/{account_id}")

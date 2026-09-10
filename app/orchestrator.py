@@ -1727,6 +1727,7 @@ def get_status() -> list[dict[str, Any]]:
                     "instance_mode": instance_mode,
                     "name": c.name,
                     "status": c.status,
+                    "network_mode": _container_network_mode(c),
                     "image": c.image.tags[0] if c.image.tags else str(c.image.short_id),
                     "cpu_percent": cpu_pct,
                     "memory_mb": mem_mb,
@@ -1834,6 +1835,13 @@ def _build_image_slug_map() -> dict[str, str]:
     return mapping
 
 
+def _container_network_mode(container: Any) -> str:
+    """Return Docker's effective network mode without exposing container attrs."""
+    attrs = getattr(container, "attrs", {}) or {}
+    host = attrs.get("HostConfig") or {}
+    return str(host.get("NetworkMode") or "").strip()
+
+
 def get_status_light() -> list[dict[str, Any]]:
     """Return container list/status WITHOUT resource stats (fast).
 
@@ -1872,6 +1880,7 @@ def get_status_light() -> list[dict[str, Any]]:
                     "instance_mode": instance_mode,
                     "name": c.name,
                     "status": c.status,
+                    "network_mode": _container_network_mode(c),
                     "image": c.image.tags[0] if c.image.tags else str(c.image.short_id),
                     "cpu_percent": 0.0,
                     "memory_mb": 0.0,

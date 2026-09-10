@@ -1122,6 +1122,12 @@ async def api_proxy_pool(request: Request) -> list[dict[str, Any]]:
     return [{key: value for key, value in row.items() if key not in {"username", "password"}} for row in rows]
 
 
+@router.get("/api/proxy-pool/capacity")
+async def api_proxy_pool_capacity(request: Request) -> dict[str, Any]:
+    deps._require_owner(request)
+    return {"items": await database.get_provider_proxy_capacity()}
+
+
 @router.get("/api/proxy-pool/page")
 async def api_proxy_pool_page(
     request: Request,

@@ -1838,6 +1838,7 @@ async def _assert_known_earnapp_account_children(db: Any, parent_table: str) -> 
         "earnapp_logical_nodes",
         "earnapp_account_control_routes",
         "earnapp_account_snapshots",
+        "earnapp_account_egress_ownership",
     }
     unknown = sorted(await _tables_referencing(db, parent_table) - allowed)
     if unknown:
@@ -2838,6 +2839,41 @@ async def init_db() -> None:
                     applied.append(f"earnapp_accounts.{column}")
         await _migrate_legacy_earnapp_accounts(db, applied)
         await db.executescript(_EARNAPP_ACCOUNTS_SCHEMA)
+        await db.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS earnapp_account_egress_ownership (
+                account_id INTEGER NOT NULL,
+                egress_ip TEXT NOT NULL,
+                proxy_id INTEGER,
+                owned_at TEXT NOT NULL DEFAULT (datetime('now')),
+                released_at TEXT,
+                release_reason TEXT NOT NULL DEFAULT '',
+                PRIMARY KEY (account_id, egress_ip),
+                UNIQUE (egress_ip),
+                FOREIGN KEY(account_id) REFERENCES earnapp_accounts(id) ON DELETE CASCADE,
+                FOREIGN KEY(proxy_id) REFERENCES proxy_endpoints(id) ON DELETE SET NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_earnapp_egress_owner_account
+                ON earnapp_account_egress_ownership(account_id);
+            CREATE TABLE IF NOT EXISTS earnapp_paypal_pool (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                destination_hash TEXT NOT NULL UNIQUE,
+                destination_enc TEXT NOT NULL,
+                destination_masked TEXT NOT NULL,
+                state TEXT NOT NULL DEFAULT 'AVAILABLE'
+                    CHECK(state IN ('AVAILABLE', 'ASSIGNED', 'QUARANTINED')),
+                assigned_account_id INTEGER UNIQUE,
+                assigned_at TEXT,
+                quarantined_at TEXT,
+                quarantine_reason TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY(assigned_account_id) REFERENCES earnapp_accounts(id) ON DELETE RESTRICT
+            );
+            CREATE INDEX IF NOT EXISTS idx_earnapp_paypal_pool_state
+                ON earnapp_paypal_pool(state, id);
+            """
+        )
         account_columns = await _table_columns(db, "earnapp_accounts")
         for column, definition in {
             "last_auth_success_at": "TEXT",
@@ -4512,6 +4548,19 @@ async def delete_locked_earnapp_account(account_id: int, *, runtime_instance_ids
                 (int(account_id),),
             )
             await db.execute(
+                "DELETE FROM earnapp_account_egress_ownership WHERE account_id = ?",
+                (int(account_id),),
+            )
+            await db.execute(
+                """
+                UPDATE earnapp_paypal_pool
+                SET state = 'QUARANTINED', quarantined_at = datetime('now'),
+                    quarantine_reason = 'EARNAPP_ACCOUNT_DELETED', updated_at = datetime('now')
+                WHERE assigned_account_id = ? AND state = 'ASSIGNED'
+                """,
+                (int(account_id),),
+            )
+            await db.execute(
                 """
                 UPDATE earnapp_accounts
                 SET state = 'DELETED', credentials_enc = '', credential_keys_json = '[]',
@@ -4998,7 +5047,7 @@ async def reserve_earnapp_proxy_candidate(
             node = await (
                 await db.execute(
                     """
-                    SELECT platform
+                        SELECT platform, account_id
                     FROM earnapp_logical_nodes
                     WHERE logical_node_id = ? AND assigned_worker_id = ? AND generation = ?
                       AND current_proxy_id = ? AND state = 'ACTIVE'
@@ -5215,6 +5264,7 @@ async def commit_earnapp_proxy_rotation(
                     return None
 
             platform = str(node["platform"] or "unknown").strip().lower()
+            account_id = int(node["account_id"] or 0)
             country_clause = ""
             if platform in {"macos", "ios"}:
                 country_clause = "AND upper(trim(coalesce(pe.country_code, ''))) = 'VN'"
@@ -5263,6 +5313,10 @@ async def commit_earnapp_proxy_rotation(
                                 reserved_proxy.exit_ip != '' AND reserved_proxy.exit_ip = pe.exit_ip
                             ))
                       )
+                      AND NOT EXISTS (
+                          SELECT 1 FROM earnapp_account_egress_ownership sticky
+                          WHERE sticky.egress_ip = pe.exit_ip AND sticky.account_id != ?
+                      )
                     LIMIT 1
                     """,
                     (
@@ -5272,6 +5326,7 @@ async def commit_earnapp_proxy_rotation(
                         int(expected_proxy_id),
                         node_id,
                         reservation_version,
+                        account_id,
                     ),
                 )
             ).fetchone()
@@ -5299,6 +5354,15 @@ async def commit_earnapp_proxy_rotation(
                 """,
                 (int(worker_id), node_id, int(new_proxy_id), str(candidate["exit_ip"] or "")),
             )
+            if str(candidate["exit_ip"] or "").strip():
+                await db.execute(
+                    """
+                    INSERT INTO earnapp_account_egress_ownership (account_id, egress_ip, proxy_id)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(egress_ip) DO UPDATE SET proxy_id = COALESCE(excluded.proxy_id, proxy_id)
+                    """,
+                    (account_id, str(candidate["exit_ip"]), int(new_proxy_id)),
+                )
             updated_node = await db.execute(
                 """
                 UPDATE earnapp_logical_nodes
@@ -5648,6 +5712,17 @@ async def bind_earnapp_node_runtime(
                 raise ValueError("EarnApp logical node not found")
             if node["assigned_worker_id"] is not None and int(node["assigned_worker_id"]) != int(worker_id):
                 raise ValueError("EarnApp logical node is already assigned to another worker")
+            owner = await (
+                await db.execute(
+                    """
+                    SELECT account_id FROM earnapp_account_egress_ownership
+                    WHERE egress_ip = (SELECT exit_ip FROM proxy_endpoints WHERE id = ?)
+                    """,
+                    (int(proxy_id),),
+                )
+            ).fetchone()
+            if owner and int(owner["account_id"]) != int(node["account_id"]):
+                raise ValueError("EarnApp proxy egress is owned by another account")
             proxy = await (
                 await db.execute(
                     f"""
@@ -5703,6 +5778,15 @@ async def bind_earnapp_node_runtime(
                     VALUES ('earnapp', ?, ?, ?, ?)
                     """,
                     (int(worker_id), node_id, int(proxy_id), str(proxy["exit_ip"] or "")),
+                )
+            if str(proxy["exit_ip"] or "").strip():
+                await db.execute(
+                    """
+                    INSERT INTO earnapp_account_egress_ownership (account_id, egress_ip, proxy_id)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(egress_ip) DO UPDATE SET proxy_id = COALESCE(excluded.proxy_id, proxy_id)
+                    """,
+                    (int(node["account_id"]), str(proxy["exit_ip"]), int(proxy_id)),
                 )
             await db.execute(
                 """
@@ -6350,6 +6434,16 @@ async def claim_earnapp_node(
                 await db.rollback()
                 return None
 
+            sticky_owner = await (
+                await db.execute(
+                    "SELECT account_id FROM earnapp_account_egress_ownership WHERE egress_ip = ?",
+                    (str(preferred["exit_ip"] or ""),),
+                )
+            ).fetchone()
+            if sticky_owner and int(sticky_owner["account_id"] or 0) != int(node["account_id"] or 0):
+                await db.rollback()
+                return None
+
             await db.execute(
                 """
                 UPDATE provider_proxy_leases
@@ -6366,6 +6460,15 @@ async def claim_earnapp_node(
                 """,
                 (int(worker_id), node_id, int(preferred["id"]), str(preferred["exit_ip"] or "")),
             )
+            if str(preferred["exit_ip"] or "").strip():
+                await db.execute(
+                    """
+                    INSERT INTO earnapp_account_egress_ownership (account_id, egress_ip, proxy_id)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(egress_ip) DO UPDATE SET proxy_id = COALESCE(excluded.proxy_id, proxy_id)
+                    """,
+                    (int(node["account_id"]), str(preferred["exit_ip"]), int(preferred["id"])),
+                )
             new_generation = int(expected_generation) + (1 if replacing else 0)
             await db.execute(
                 """
@@ -6664,10 +6767,15 @@ async def lease_earnapp_account_control_proxy(account_id: int) -> dict[str, Any]
                             AND (control.proxy_id = pe.id
                                  OR (trim(coalesce(pe.exit_ip, '')) != '' AND control_proxy.exit_ip = pe.exit_ip))
                       )
+                      AND NOT EXISTS (
+                          SELECT 1 FROM earnapp_account_egress_ownership sticky
+                          WHERE sticky.egress_ip = pe.exit_ip AND sticky.account_id != ?
+                      )
                       AND {_active_earnapp_reservation_exclusion_sql("pe")}
                     ORDER BY pe.id
                     LIMIT 1
-                    """
+                    """,
+                    (int(account_id),),
                 )
             ).fetchone()
             if not candidate:
@@ -6683,6 +6791,15 @@ async def lease_earnapp_account_control_proxy(account_id: int) -> dict[str, Any]
                 """,
                 (int(account_id), int(candidate["id"])),
             )
+            if str(candidate["exit_ip"] or "").strip():
+                await db.execute(
+                    """
+                    INSERT INTO earnapp_account_egress_ownership (account_id, egress_ip, proxy_id)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(egress_ip) DO UPDATE SET proxy_id = COALESCE(excluded.proxy_id, proxy_id)
+                    """,
+                    (int(account_id), str(candidate["exit_ip"]), int(candidate["id"])),
+                )
             await db.commit()
             data = dict(candidate)
             data["account_id"] = int(account_id)
@@ -6805,6 +6922,104 @@ async def get_latest_earnapp_snapshot(account_id: int) -> dict[str, Any] | None:
         await db.close()
 
 
+def _mask_paypal_destination(destination: str) -> str:
+    local, _, domain = destination.partition("@")
+    if not domain:
+        return "***"
+    visible = local[:1]
+    return f"{visible}***@{domain}"
+
+
+async def add_earnapp_paypal(destination: str) -> int:
+    value = str(destination or "").strip()
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", value):
+        raise ValueError("valid PayPal email required")
+    digest = __import__("hashlib").sha256(value.casefold().encode("utf-8")).hexdigest()
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            """
+            INSERT INTO earnapp_paypal_pool (destination_hash, destination_enc, destination_masked)
+            VALUES (?, ?, ?)
+            ON CONFLICT(destination_hash) DO UPDATE SET updated_at = datetime('now')
+            RETURNING id
+            """,
+            (digest, encrypt_value(value), _mask_paypal_destination(value)),
+        )
+        row = await cursor.fetchone()
+        await db.commit()
+        return int(row["id"])
+    finally:
+        await db.close()
+
+
+async def assign_earnapp_paypal(account_id: int) -> dict[str, Any] | None:
+    async with _earnapp_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            account = await (
+                await db.execute(
+                    "SELECT 1 FROM earnapp_accounts WHERE id = ? AND state = 'ACTIVE'",
+                    (int(account_id),),
+                )
+            ).fetchone()
+            if not account:
+                await db.rollback()
+                return None
+            row = await (
+                await db.execute(
+                    "SELECT id, destination_enc FROM earnapp_paypal_pool WHERE assigned_account_id = ? LIMIT 1",
+                    (int(account_id),),
+                )
+            ).fetchone()
+            if not row:
+                row = await (
+                    await db.execute(
+                        "SELECT id, destination_enc FROM earnapp_paypal_pool WHERE state = 'AVAILABLE' ORDER BY id LIMIT 1"
+                    )
+                ).fetchone()
+                if not row:
+                    await db.rollback()
+                    return None
+                updated = await db.execute(
+                    """
+                    UPDATE earnapp_paypal_pool
+                    SET state = 'ASSIGNED', assigned_account_id = ?, assigned_at = datetime('now'),
+                        updated_at = datetime('now')
+                    WHERE id = ? AND state = 'AVAILABLE'
+                    """,
+                    (int(account_id), int(row["id"])),
+                )
+                if int(updated.rowcount or 0) != 1:
+                    await db.rollback()
+                    return None
+            await db.commit()
+            return {"id": int(row["id"]), "destination": decrypt_value(str(row["destination_enc"]))}
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
+
+
+async def list_earnapp_paypal_pool() -> list[dict[str, Any]]:
+    db = await _get_db()
+    try:
+        rows = await (
+            await db.execute(
+                """
+                SELECT id, destination_masked, state, assigned_account_id, assigned_at,
+                       quarantined_at, quarantine_reason, created_at, updated_at
+                FROM earnapp_paypal_pool ORDER BY id
+                """
+            )
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        await db.close()
+
+
 async def get_earnapp_proxy_capacity() -> dict[str, int]:
     """Return residential, canonical, currently free EarnApp capacity."""
     db = await _get_db()
@@ -6843,6 +7058,10 @@ async def get_earnapp_proxy_capacity() -> dict[str, int]:
                                              AND control_proxy.exit_ip = pe.exit_ip))
                               )
                               AND {_active_earnapp_reservation_exclusion_sql("pe")}
+                              AND NOT EXISTS (
+                                  SELECT 1 FROM earnapp_account_egress_ownership sticky
+                                  WHERE sticky.egress_ip = pe.exit_ip
+                              )
                          THEN pe.exit_ip END) AS leaseable,
                     COUNT(DISTINCT CASE WHEN EXISTS (
                                   SELECT 1
@@ -6862,8 +7081,10 @@ async def get_earnapp_proxy_capacity() -> dict[str, int]:
                                     AND (control.proxy_id = pe.id
                                          OR (trim(coalesce(pe.exit_ip, '')) != ''
                                              AND control_proxy.exit_ip = pe.exit_ip))
-                              ) THEN pe.exit_ip END) AS control_routes
+                              ) THEN pe.exit_ip END) AS control_routes,
+                    COUNT(DISTINCT sticky.egress_ip) AS sticky_owned
                 FROM proxy_endpoints pe
+                LEFT JOIN earnapp_account_egress_ownership sticky ON sticky.egress_ip = pe.exit_ip
                 WHERE {eligible_sql}
                 """
             )
@@ -6886,10 +7107,52 @@ async def get_earnapp_proxy_capacity() -> dict[str, int]:
             "used": int(row["occupied"] or 0) + int(row["control_routes"] or 0),
             "occupied": int(row["occupied"] or 0),
             "control_routes": int(row["control_routes"] or 0),
+            "sticky_owned": int(row["sticky_owned"] or 0),
             "active_nodes": int(nodes["active_nodes"] or 0),
             "recovery_hold_nodes": int(nodes["recovery_hold_nodes"] or 0),
             "recovery_hold_seconds": 3600,
         }
+    finally:
+        await db.close()
+
+
+async def get_provider_proxy_capacity() -> list[dict[str, int | str]]:
+    """Return compact endpoint capacity grouped by imported proxy provider."""
+    db = await _get_db()
+    try:
+        rows = await (
+            await db.execute(
+                """
+                SELECT p.id AS provider_id, p.name AS provider_name,
+                       COUNT(DISTINCT pe.exit_ip) AS total,
+                       COUNT(DISTINCT CASE WHEN lower(coalesce(pe.status, 'unknown')) = 'alive'
+                           AND coalesce(pe.duplicate_egress, 0) = 0
+                           AND NOT EXISTS (
+                               SELECT 1 FROM provider_proxy_leases l
+                               WHERE l.released_at IS NULL
+                                 AND (l.proxy_id = pe.id OR l.exit_ip = pe.exit_ip)
+                           ) THEN pe.exit_ip END) AS available,
+                       COUNT(DISTINCT CASE WHEN EXISTS (
+                           SELECT 1 FROM provider_proxy_leases l
+                           WHERE l.released_at IS NULL
+                             AND (l.proxy_id = pe.id OR l.exit_ip = pe.exit_ip)
+                       ) THEN pe.exit_ip END) AS leased
+                FROM proxy_providers p
+                LEFT JOIN proxy_endpoints pe ON pe.provider_id = p.id
+                GROUP BY p.id, p.name ORDER BY p.name, p.id
+                """
+            )
+        ).fetchall()
+        return [
+            {
+                "provider_id": int(row["provider_id"]),
+                "provider_name": str(row["provider_name"]),
+                "total": int(row["total"] or 0),
+                "available": int(row["available"] or 0),
+                "leased": int(row["leased"] or 0),
+            }
+            for row in rows
+        ]
     finally:
         await db.close()
 
@@ -7167,6 +7430,23 @@ async def remove_provider_instance(instance_id: str) -> bool:
         return bool(cursor.rowcount)
     finally:
         await db.close()
+
+
+async def get_earnapp_reconciliation_report(
+    worker_id: int, *, reported_instance_ids: Sequence[str], inventory_confirmed: bool
+) -> dict[str, Any]:
+    """Compare persisted EarnApp rows with one confirmed worker inventory; read-only."""
+    db_rows = await list_provider_instances(slug="earnapp", worker_id=int(worker_id))
+    db_ids = sorted(str(row.get("instance_id") or "") for row in db_rows if str(row.get("instance_id") or ""))
+    reported = sorted({str(value or "").strip() for value in reported_instance_ids if str(value or "").strip()})
+    return {
+        "worker_id": int(worker_id),
+        "db_instances": db_ids,
+        "reported_instances": reported,
+        "missing_from_worker": sorted(set(db_ids) - set(reported)) if inventory_confirmed else [],
+        "untracked_on_worker": sorted(set(reported) - set(db_ids)) if inventory_confirmed else [],
+        "inventory_confirmed": bool(inventory_confirmed),
+    }
 
 
 async def reconcile_earnapp_provider_instances(
@@ -9811,6 +10091,16 @@ async def lease_proxy_for_provider_instance(
             await db.execute("BEGIN IMMEDIATE")
             if slug == "earnapp":
                 await _expire_earnapp_provider_masks(db)
+            earnapp_account_id = 0
+            if slug == "earnapp":
+                account_row = await (
+                    await db.execute(
+                        "SELECT account_id FROM earnapp_logical_nodes WHERE logical_node_id = ? AND state != 'RETIRED'",
+                        (instance,),
+                    )
+                ).fetchone()
+                if account_row:
+                    earnapp_account_id = int(account_row["account_id"] or 0)
             cursor = await db.execute(
                 """
                 SELECT leases.proxy_id, leases.exit_ip, pe.endpoint, pe.host, pe.port, pe.protocol,
@@ -9855,6 +10145,16 @@ async def lease_proxy_for_provider_instance(
                     )
                 ).fetchone()
                 preferred_proxy_id = int(preferred_row["preferred_proxy_id"] or 0) if preferred_row else 0
+            sticky_clause = ""
+            sticky_params: list[Any] = []
+            if slug == "earnapp" and earnapp_account_id > 0:
+                sticky_clause = """
+                  AND NOT EXISTS (
+                      SELECT 1 FROM earnapp_account_egress_ownership sticky
+                      WHERE sticky.egress_ip = pe.exit_ip AND sticky.account_id != ?
+                  )
+                """
+                sticky_params.append(earnapp_account_id)
             cursor = await db.execute(
                 f"""
                 SELECT pe.id AS proxy_id, pe.endpoint, pe.host, pe.port, pe.protocol, pe.username,
@@ -9900,6 +10200,7 @@ async def lease_proxy_for_provider_instance(
                        SELECT 1 FROM proxy_provider_masks ppm
                        WHERE ppm.proxy_id = pe.id AND ppm.provider_slug = ?
                    )
+                  {sticky_clause}
                   AND (
                       ? != 'earnapp'
                       OR EXISTS (
@@ -9932,6 +10233,7 @@ async def lease_proxy_for_provider_instance(
                 (
                     slug,
                     slug,
+                    *sticky_params,
                     slug,
                     slug,
                     requested_country,
@@ -9946,6 +10248,28 @@ async def lease_proxy_for_provider_instance(
                 await db.rollback()
                 return None
             data = dict(row)
+            if slug == "earnapp" and earnapp_account_id > 0:
+                exit_ip = str(data.get("exit_ip") or "").strip()
+                if not exit_ip:
+                    await db.rollback()
+                    return None
+                owner = await (
+                    await db.execute(
+                        "SELECT account_id FROM earnapp_account_egress_ownership WHERE egress_ip = ?",
+                        (exit_ip,),
+                    )
+                ).fetchone()
+                if owner and int(owner["account_id"] or 0) != earnapp_account_id:
+                    await db.rollback()
+                    return None
+                await db.execute(
+                    """
+                    INSERT INTO earnapp_account_egress_ownership (account_id, egress_ip, proxy_id)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(egress_ip) DO UPDATE SET proxy_id = COALESCE(excluded.proxy_id, proxy_id)
+                    """,
+                    (earnapp_account_id, exit_ip, int(data["proxy_id"])),
+                )
             await db.execute(
                 """
                 INSERT INTO provider_proxy_leases
