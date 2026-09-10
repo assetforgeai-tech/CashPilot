@@ -3617,6 +3617,7 @@ const CP = (() => {
       renderEarnAppRecovery(payload);
       await loadEarnAppPayPalPool();
       await loadProviderAccountPools();
+      await loadEarnAppReconciliation();
     } catch (err) {
       rows.innerHTML = `<tr><td colspan="7" style="color:var(--error);">Could not load EarnApp accounts: ${escapeHtml(err.message)}</td></tr>`;
       const recovery = document.getElementById('earnapp-recovery-rows');
@@ -3701,6 +3702,23 @@ const CP = (() => {
         : 'No provider accounts configured.';
     } catch (err) {
       container.textContent = `Account pools unavailable: ${err.message}`;
+    }
+  }
+
+  async function loadEarnAppReconciliation() {
+    const container = document.getElementById('earnapp-reconciliation-list');
+    if (!container) return;
+    try {
+      const payload = await api('/api/admin/earnapp/reconciliation');
+      const reports = Array.isArray(payload.reports) ? payload.reports : [];
+      container.innerHTML = reports.length ? reports.map(report => {
+        const missing = (report.missing_from_worker || []).length;
+        const extra = (report.untracked_on_worker || []).length;
+        const state = !report.inventory_confirmed ? 'inventory unconfirmed' : (missing || extra ? 'attention' : 'in sync');
+        return `Worker ${escapeHtml(report.worker_id)}: ${escapeHtml(state)} · missing ${missing} · untracked ${extra}`;
+      }).join('<br>') : 'No workers registered.';
+    } catch (err) {
+      container.textContent = `Reconciliation unavailable: ${err.message}`;
     }
   }
 

@@ -81,6 +81,16 @@ def test_settings_exposes_paypal_pool_controls_without_raw_destinations():
     assert "destination_masked" in javascript
 
 
+def test_settings_shows_read_only_earnapp_reconciliation():
+    template = SETTINGS.read_text(encoding="utf-8")
+    javascript = APP_JS.read_text(encoding="utf-8")
+    assert 'id="earnapp-reconciliation"' in template
+    assert 'id="earnapp-reconciliation-list"' in template
+    assert "/api/admin/earnapp/reconciliation" in javascript
+    assert "missing_from_worker" in javascript
+    assert "untracked_on_worker" in javascript
+
+
 def test_fleet_renders_earnapp_node_health_from_worker_provider_state():
     template = FLEET.read_text(encoding="utf-8")
 
