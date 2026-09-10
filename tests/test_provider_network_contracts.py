@@ -24,7 +24,7 @@ def test_earnapp_runtime_contract_contains_fail_closed_tcp_and_dns_rules():
     source = earnapp_runtime.__file__
     text = Path(source).read_text(encoding="utf-8")
     assert "CP_EARNAPP_OUT" in text
-    assert 'iptables -A CP_EARNAPP_OUT -j DROP' in text
+    assert "iptables -A CP_EARNAPP_OUT -j DROP" in text
     assert "CP_EARNAPP_DNS" in text
     assert "cloudflare-dns.com" in text
 
@@ -56,7 +56,9 @@ def test_audit_ignores_retired_instances_and_accepts_container_namespace_sidecar
             {"instance_id": "retired", "status": "RETIRED"},
             {"instance_id": "w-2", "status": "ACTIVE"},
         ],
-        containers=[{"instance_slug": "w-2", "slug": "wipter", "status": "running", "network_mode": "container:sidecar"}],
+        containers=[
+            {"instance_slug": "w-2", "slug": "wipter", "status": "running", "network_mode": "container:sidecar"}
+        ],
         inventory_confirmed=True,
     )
     assert report["status"] == "pass"

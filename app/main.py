@@ -8089,9 +8089,7 @@ async def api_earnapp_reconciliation(request: Request) -> dict[str, Any]:
             system_info = json.loads(str(worker.get("system_info") or "{}"))
         except (TypeError, ValueError, json.JSONDecodeError):
             system_info = {}
-        confirmed = bool(
-            isinstance(system_info, Mapping) and system_info.get("containers_inventory_confirmed") is True
-        )
+        confirmed = bool(isinstance(system_info, Mapping) and system_info.get("containers_inventory_confirmed") is True)
         reported = {
             str(item.get("instance_slug") or item.get("name") or "").strip()
             for item in containers
@@ -8132,7 +8130,9 @@ async def api_provider_network_reconciliation(request: Request) -> dict[str, Any
         ]
         for slug in sorted(provider_runtime.ACTIVE_SLUGS):
             instances = [row for row in rows if str(row.get("slug") or "").lower() == slug]
-            live = [item for item in containers if isinstance(item, dict) and str(item.get("slug") or "").lower() == slug]
+            live = [
+                item for item in containers if isinstance(item, dict) and str(item.get("slug") or "").lower() == slug
+            ]
             if not instances and not live:
                 continue
             report = provider_network_audit.audit_provider_network_inventory(

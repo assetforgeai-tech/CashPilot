@@ -14,8 +14,20 @@ def test_provider_capacity_groups_endpoints_and_active_leases(tmp_path):
             ids = await database.upsert_proxy_endpoints_returning_ids(
                 provider,
                 [
-                    {"provider_proxy_id": "a", "host": "1.1.1.1", "port": 1, "status": "alive", "exit_ip": "198.51.100.1"},
-                    {"provider_proxy_id": "b", "host": "2.2.2.2", "port": 2, "status": "alive", "exit_ip": "198.51.100.2"},
+                    {
+                        "provider_proxy_id": "a",
+                        "host": "1.1.1.1",
+                        "port": 1,
+                        "status": "alive",
+                        "exit_ip": "198.51.100.1",
+                    },
+                    {
+                        "provider_proxy_id": "b",
+                        "host": "2.2.2.2",
+                        "port": 2,
+                        "status": "alive",
+                        "exit_ip": "198.51.100.2",
+                    },
                 ],
             )
             groups = await database.get_provider_proxy_capacity()

@@ -141,7 +141,9 @@ async def configure_payment_from_paypal_pool(
     )
 
 
-async def ensure_paypal_pool_payment(account_id: int, snapshot: Mapping[str, Any] | None = None) -> dict[str, Any] | None:
+async def ensure_paypal_pool_payment(
+    account_id: int, snapshot: Mapping[str, Any] | None = None
+) -> dict[str, Any] | None:
     """Assign/configure PayPal once; never override an existing destination."""
     current = snapshot or await database.get_latest_earnapp_snapshot(account_id)
     payment: Any = current.get("payment") if isinstance(current, Mapping) else None
