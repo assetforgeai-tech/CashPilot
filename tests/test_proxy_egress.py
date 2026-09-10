@@ -262,6 +262,34 @@ def test_worker_proxy_probe_rejects_untrusted_target_before_network():
     probe.assert_not_awaited()
 
 
+def test_worker_wipter_migration_probes_before_mutating_runtime():
+    from app import worker_api
+
+    @asynccontextmanager
+    async def noop_lifespan(_app):
+        yield
+
+    worker_api.app.router.lifespan_context = noop_lifespan
+    with (
+        patch.object(worker_api, "_verify_api_key", lambda _request: None),
+        patch.object(
+            worker_api,
+            "_probe_proxy_targets",
+            new_callable=AsyncMock,
+            return_value={"ok": False, "results": []},
+        ),
+        patch.object(worker_api.orchestrator, "migrate_wipter_to_proxy") as migrate,
+        TestClient(worker_api.app, raise_server_exceptions=False) as client,
+    ):
+        resp = client.post(
+            "/api/providers/wipter/migrate-proxy",
+            json={"proxy": {"host": "proxy.example.com", "port": 1080, "protocol": "socks5", "exit_ip": "1.2.3.4"}},
+        )
+
+    assert resp.status_code == 409
+    migrate.assert_not_called()
+
+
 def test_worker_proxy_binding_apply_returns_redacted_ack():
     from app import worker_api
 

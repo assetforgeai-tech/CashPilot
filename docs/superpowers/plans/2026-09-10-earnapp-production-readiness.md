@@ -92,6 +92,26 @@ Inventory every provider runtime. Verify direct IPv4/IPv6, DNS/DoH, UDP/WebRTC, 
 
 Validate expiry extraction, manual-login-gated auto-import, retry on expiry, and alerting. Then run full tests, release, and controlled worker rollout only after compatibility checks.
 
+### Task 8: Wipter proxy migration (worker implementation complete; live canary pending)
+
+**Files:**
+- Modify: `app/orchestrator.py`
+- Modify: `app/worker_api.py`
+- Modify: `app/provider_network_audit.py`
+- Modify: `tests/test_proxy_sidecar_runtime.py`
+- Modify: `tests/test_proxy_egress.py`
+- Modify: `tests/test_provider_network_contracts.py`
+
+Move the legacy Wipter runtime behind the existing managed sing-box sidecar. Preserve its account volume and old container until worker-local proxy preflight and replacement egress verification pass. Restore the old container on any failure. Report missing Wipter catalog capabilities as runtime drift.
+
+- [x] Add failing migration and rollback tests.
+- [x] Add a dedicated authenticated worker route with proxy preflight.
+- [x] Preserve the named Wipter account volume and catalog capabilities.
+- [x] Add effective capability inventory and reconciliation findings.
+- [ ] Select a qualified residential proxy without exposing credentials.
+- [ ] Canary migration; verify account state, stable uptime, proxy egress, DNS, IPv6, and traffic.
+- [ ] Migrate the live Wipter runtime only after canary evidence passes.
+
 ## Verification gates
 
 - Targeted tests fail before each implementation and pass after.

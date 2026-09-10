@@ -1757,6 +1757,16 @@ class ProxyTargetProbeSpec(BaseModel):
     targets: list[str] = Field(default_factory=list)
 
 
+class WipterProxyMigrationSpec(BaseModel):
+    proxy: dict[str, Any]
+
+    @model_validator(mode="after")
+    def validate_proxy(self) -> WipterProxyMigrationSpec:
+        if not str(self.proxy.get("exit_ip") or "").strip():
+            raise ValueError("Wipter migration requires a proxy egress IP")
+        return self
+
+
 class ProxyBindingApplySpec(BaseModel):
     binding_version: str = Field(min_length=8, max_length=128, pattern=r"^[A-Za-z0-9._-]+$")
     proxy: dict[str, Any]
@@ -3341,6 +3351,19 @@ async def api_probe_proxy_targets(request: Request, spec: ProxyTargetProbeSpec) 
     targets = _DEFAULT_PROXY_PROBE_TARGETS
     result = await _probe_proxy_targets(spec.proxy, targets)
     return {"ok": result["ok"], "results": result["results"]}
+
+
+@app.post("/api/providers/wipter/migrate-proxy")
+async def api_migrate_wipter_proxy(request: Request, spec: WipterProxyMigrationSpec) -> dict[str, Any]:
+    """One-shot legacy Wipter migration after a worker-local proxy preflight."""
+    _verify_api_key(request)
+    probe = await _probe_proxy_targets(spec.proxy, _PROXY_BINDING_PROBE_TARGETS)
+    if not probe.get("ok"):
+        raise HTTPException(status_code=409, detail="Wipter proxy is not reachable from this worker")
+    try:
+        return await asyncio.to_thread(orchestrator.migrate_wipter_to_proxy, "wipter", spec.proxy)
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.post("/api/egress/bindings/apply")

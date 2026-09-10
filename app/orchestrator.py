@@ -1031,6 +1031,72 @@ def deploy_raw(
     return container.id
 
 
+def migrate_wipter_to_proxy(slug: str, proxy: dict[str, Any]) -> dict[str, Any]:
+    """Move a legacy Wipter container behind a managed proxy, with rollback.
+
+    The old container is renamed, not removed, until the replacement passes the
+    egress probe. Its named volume and login state therefore survive failures.
+    """
+    if str(slug or "").strip() != "wipter":
+        raise ValueError("Wipter migration requires the wipter slug")
+    expected = str((proxy or {}).get("exit_ip") or "").strip()
+    if not expected:
+        raise ValueError("Wipter migration requires a proxy exit_ip")
+    client = _get_client()
+    try:
+        # Legacy Wipter deployments may predate CashPilot labels; exact name is
+        # the safe migration selector in that case.
+        old = client.containers.get(_container_name(slug))
+    except NotFound:
+        old = _find_container(slug)
+    old_name = str(getattr(old, "name", _container_name(slug))).lstrip("/")
+    backup_name = f"{old_name}-cashpilot-migration-{secrets.token_hex(4)}"
+    attrs = getattr(old, "attrs", {}) or {}
+    config = attrs.get("Config") or {}
+    host = attrs.get("HostConfig") or {}
+    volumes = _docker_volumes(attrs.get("Mounts"))
+    if not any(mount.get("bind") == "/root/.config/wipter-app" for mount in volumes.values()):
+        raise RuntimeError("legacy Wipter account volume is missing")
+    env = _docker_environment(config.get("Env"))
+    old.stop(timeout=30)
+    old.rename(backup_name)
+    try:
+        new_id = deploy_raw(
+            slug=slug,
+            provider_slug="wipter",
+            image=str(config.get("Image") or ""),
+            env=env,
+            volumes=volumes,
+            ports={},
+            command=config.get("Cmd") or None,
+            user=str(config.get("User") or "root") or "root",
+            resources={
+                "mem_limit": host.get("Memory") or None,
+                "mem_reservation": host.get("MemoryReservation") or None,
+                "oom_score_adj": host.get("OomScoreAdj"),
+            },
+            cap_add=["NET_ADMIN", "NET_RAW", "DAC_OVERRIDE"],
+            sysctls={"net.ipv4.ip_forward": "1"},
+            shm_size="2gb",
+            proxy=proxy,
+        )
+        evidence = wait_for_service_egress(slug, expected)
+        if evidence.get("probe_ok") is not True or str(evidence.get("observed_egress_ip") or "") != expected:
+            raise RuntimeError("Wipter proxy probe failed")
+    except Exception:
+        with contextlib.suppress(Exception):
+            client.containers.get(_container_name(slug)).remove(force=True)
+        with contextlib.suppress(Exception):
+            client.containers.get(_sidecar_name(slug)).remove(force=True)
+        try:
+            old.rename(old_name)
+        finally:
+            old.start()
+        raise
+    old.remove(force=True)
+    return {"ok": True, "container_id": new_id, "observed_egress_ip": expected}
+
+
 def apply_proxy_binding_batch(instance_slugs: list[str], proxy: dict[str, Any], binding_version: str) -> dict[str, Any]:
     """Atomically replace and restart only the requested persistent egress sidecars."""
     slugs = list(dict.fromkeys(str(slug or "").strip() for slug in instance_slugs if str(slug or "").strip()))
@@ -1728,6 +1794,7 @@ def get_status() -> list[dict[str, Any]]:
                     "name": c.name,
                     "status": c.status,
                     "network_mode": _container_network_mode(c),
+                    "cap_add": _container_cap_add(c),
                     "image": c.image.tags[0] if c.image.tags else str(c.image.short_id),
                     "cpu_percent": cpu_pct,
                     "memory_mb": mem_mb,
@@ -1842,6 +1909,12 @@ def _container_network_mode(container: Any) -> str:
     return str(host.get("NetworkMode") or "").strip()
 
 
+def _container_cap_add(container: Any) -> list[str]:
+    attrs = getattr(container, "attrs", {}) or {}
+    host = attrs.get("HostConfig") or {}
+    return sorted(str(cap).upper() for cap in (host.get("CapAdd") or []))
+
+
 def get_status_light() -> list[dict[str, Any]]:
     """Return container list/status WITHOUT resource stats (fast).
 
@@ -1881,6 +1954,7 @@ def get_status_light() -> list[dict[str, Any]]:
                     "name": c.name,
                     "status": c.status,
                     "network_mode": _container_network_mode(c),
+                    "cap_add": _container_cap_add(c),
                     "image": c.image.tags[0] if c.image.tags else str(c.image.short_id),
                     "cpu_percent": 0.0,
                     "memory_mb": 0.0,

@@ -56,6 +56,14 @@ def audit_provider_network_inventory(
         if not sidecar and not mode.startswith("container:"):
             missing.append(instance_id)
             findings.append(f"{instance_id}: managed sidecar missing; direct egress risk")
+            continue
+        if slug == "wipter":
+            required = {"NET_ADMIN", "NET_RAW", "DAC_OVERRIDE"}
+            actual = {str(cap).upper() for cap in (container.get("cap_add") or [])}
+            absent = sorted(required - actual)
+            if absent:
+                missing.append(instance_id)
+                findings.append(f"{instance_id}: required capabilities missing: {', '.join(absent)}")
     for instance_id in untracked:
         live = by_id.get(instance_id)
         if live is None and len(containers) == 1:
