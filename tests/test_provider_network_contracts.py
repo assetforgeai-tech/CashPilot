@@ -73,3 +73,4 @@ def test_audit_flags_live_proxy_container_without_database_instance():
     )
     assert report["status"] == "attention"
     assert report["untracked"] == ["wipter-proxy"]
+    assert "direct egress risk" in report["findings"][0]

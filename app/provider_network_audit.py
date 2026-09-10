@@ -58,6 +58,8 @@ def audit_provider_network_inventory(
             findings.append(f"{instance_id}: managed sidecar missing; direct egress risk")
     for instance_id in untracked:
         live = by_id.get(instance_id)
+        if live is None and len(containers) == 1:
+            live = containers[0]
         mode = str((live or {}).get("network_mode") or (live or {}).get("NetworkMode") or "").lower()
         suffix = "; direct egress risk" if mode and not mode.startswith("container:") else ""
         findings.append(f"{instance_id}: live runtime is not tracked in CashPilot{suffix}")
