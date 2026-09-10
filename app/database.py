@@ -5059,7 +5059,6 @@ async def reserve_earnapp_proxy_candidate(
                 await db.rollback()
                 return None
             platform = str(node["platform"] or "unknown").strip().lower()
-            account_id = int(node["account_id"] or 0)
             if platform in {"macos", "ios"}:
                 country_clause = "AND upper(trim(coalesce(pe.country_code, ''))) = 'VN'"
             elif platform == "ubuntu":

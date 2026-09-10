@@ -3,8 +3,7 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import patch
 
-from app import database, earnapp_accounts
-from app import earnapp_collection
+from app import database, earnapp_accounts, earnapp_collection
 from tests.test_earnapp_account_pool import _payload
 
 

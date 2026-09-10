@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from app import earnapp_runtime, provider_runtime
 from app.provider_network_audit import audit_provider_network_inventory
 
@@ -20,7 +22,7 @@ def test_active_provider_matrix_is_explicit_and_earnapp_is_docker_only():
 
 def test_earnapp_runtime_contract_contains_fail_closed_tcp_and_dns_rules():
     source = earnapp_runtime.__file__
-    text = open(source, encoding="utf-8").read()
+    text = Path(source).read_text(encoding="utf-8")
     assert "CP_EARNAPP_OUT" in text
     assert 'iptables -A CP_EARNAPP_OUT -j DROP' in text
     assert "CP_EARNAPP_DNS" in text
