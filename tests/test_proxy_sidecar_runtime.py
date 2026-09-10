@@ -41,6 +41,67 @@ def test_proxy_instance_runs_provider_inside_singbox_sidecar_namespace():
     assert provider_call.kwargs["labels"]["cashpilot.instance_mode"] == "proxy"
 
 
+def test_wipter_migration_keeps_legacy_container_until_proxy_probe_passes(monkeypatch):
+    old = MagicMock(name="cashpilot-wipter", id="old-id")
+    old.name = "cashpilot-wipter"
+    old.attrs = {
+        "Config": {"Image": "wipter:image", "Env": ["WIPTER_EMAIL=x"]},
+        "Mounts": [{"Name": "wipter-data", "Destination": "/root/.config/wipter-app", "RW": True}],
+        "HostConfig": {"RestartPolicy": {"Name": "always"}},
+    }
+    client = MagicMock()
+    client.containers.get.return_value = old
+    monkeypatch.setattr(orchestrator, "_get_client", lambda: client)
+    monkeypatch.setattr(orchestrator, "deploy_raw", MagicMock(return_value="new-id"))
+    monkeypatch.setattr(orchestrator, "wait_for_service_egress", lambda slug, expected: {"probe_ok": True, "observed_egress_ip": expected})
+
+    result = orchestrator.migrate_wipter_to_proxy("wipter", {"exit_ip": "1.2.3.4"})
+
+    assert result["ok"] is True
+    old.rename.assert_called_once()
+    old.remove.assert_called_once_with(force=True)
+    orchestrator.deploy_raw.assert_called_once()
+    deploy = orchestrator.deploy_raw.call_args.kwargs
+    assert deploy["volumes"] == {"wipter-data": {"bind": "/root/.config/wipter-app", "mode": "rw"}}
+    assert deploy["cap_add"] == ["NET_ADMIN", "NET_RAW", "DAC_OVERRIDE"]
+    assert deploy["proxy"]["exit_ip"] == "1.2.3.4"
+
+
+def test_wipter_migration_rolls_back_when_proxy_probe_fails(monkeypatch):
+    old = MagicMock(name="cashpilot-wipter", id="old-id")
+    old.name = "cashpilot-wipter"
+    old.attrs = {
+        "Config": {"Image": "wipter:image"},
+        "Mounts": [{"Name": "wipter-data", "Destination": "/root/.config/wipter-app", "RW": True}],
+        "HostConfig": {},
+    }
+    client = MagicMock()
+    client.containers.get.return_value = old
+    monkeypatch.setattr(orchestrator, "_get_client", lambda: client)
+    monkeypatch.setattr(orchestrator, "deploy_raw", MagicMock(return_value="new-id"))
+    monkeypatch.setattr(orchestrator, "wait_for_service_egress", lambda slug, expected: {"probe_ok": False, "observed_egress_ip": ""})
+
+    with pytest.raises(RuntimeError, match="proxy probe"):
+        orchestrator.migrate_wipter_to_proxy("wipter", {"exit_ip": "1.2.3.4"})
+
+    old.rename.assert_called()
+    old.start.assert_called_once()
+
+
+def test_wipter_migration_refuses_missing_account_volume_before_stop(monkeypatch):
+    old = MagicMock(name="cashpilot-wipter")
+    old.name = "cashpilot-wipter"
+    old.attrs = {"Config": {"Image": "wipter:image"}, "Mounts": [], "HostConfig": {}}
+    client = MagicMock()
+    client.containers.get.return_value = old
+    monkeypatch.setattr(orchestrator, "_get_client", lambda: client)
+
+    with pytest.raises(RuntimeError, match="account volume"):
+        orchestrator.migrate_wipter_to_proxy("wipter", {"exit_ip": "1.2.3.4"})
+
+    old.stop.assert_not_called()
+
+
 def test_earnapp_operator_artifact_is_never_pulled_from_a_public_registry():
     client = MagicMock()
     client.containers.get.side_effect = [orchestrator.NotFound("provider"), orchestrator.NotFound("sidecar")]

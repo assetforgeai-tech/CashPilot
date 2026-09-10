@@ -57,7 +57,13 @@ def test_audit_ignores_retired_instances_and_accepts_container_namespace_sidecar
             {"instance_id": "w-2", "status": "ACTIVE"},
         ],
         containers=[
-            {"instance_slug": "w-2", "slug": "wipter", "status": "running", "network_mode": "container:sidecar"}
+            {
+                "instance_slug": "w-2",
+                "slug": "wipter",
+                "status": "running",
+                "network_mode": "container:sidecar",
+                "cap_add": ["NET_ADMIN", "NET_RAW", "DAC_OVERRIDE"],
+            }
         ],
         inventory_confirmed=True,
     )
@@ -74,3 +80,22 @@ def test_audit_flags_live_proxy_container_without_database_instance():
     assert report["status"] == "attention"
     assert report["untracked"] == ["wipter-proxy"]
     assert "direct egress risk" in report["findings"][0]
+
+
+def test_wipter_audit_reports_missing_catalog_capabilities():
+    report = audit_provider_network_inventory(
+        "wipter",
+        instances=[{"instance_id": "w-1", "status": "active"}],
+        containers=[
+            {
+                "instance_slug": "w-1",
+                "slug": "wipter",
+                "status": "running",
+                "network_mode": "container:w-1-egress",
+                "cap_add": [],
+            }
+        ],
+        inventory_confirmed=True,
+    )
+    assert report["status"] == "attention"
+    assert "DAC_OVERRIDE" in report["findings"][0]
