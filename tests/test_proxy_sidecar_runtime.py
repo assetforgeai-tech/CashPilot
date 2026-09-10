@@ -53,7 +53,11 @@ def test_wipter_migration_keeps_legacy_container_until_proxy_probe_passes(monkey
     client.containers.get.return_value = old
     monkeypatch.setattr(orchestrator, "_get_client", lambda: client)
     monkeypatch.setattr(orchestrator, "deploy_raw", MagicMock(return_value="new-id"))
-    monkeypatch.setattr(orchestrator, "wait_for_service_egress", lambda slug, expected: {"probe_ok": True, "observed_egress_ip": expected})
+    monkeypatch.setattr(
+        orchestrator,
+        "wait_for_service_egress",
+        lambda slug, expected: {"probe_ok": True, "observed_egress_ip": expected},
+    )
 
     result = orchestrator.migrate_wipter_to_proxy("wipter", {"exit_ip": "1.2.3.4"})
 
@@ -79,7 +83,9 @@ def test_wipter_migration_rolls_back_when_proxy_probe_fails(monkeypatch):
     client.containers.get.return_value = old
     monkeypatch.setattr(orchestrator, "_get_client", lambda: client)
     monkeypatch.setattr(orchestrator, "deploy_raw", MagicMock(return_value="new-id"))
-    monkeypatch.setattr(orchestrator, "wait_for_service_egress", lambda slug, expected: {"probe_ok": False, "observed_egress_ip": ""})
+    monkeypatch.setattr(
+        orchestrator, "wait_for_service_egress", lambda slug, expected: {"probe_ok": False, "observed_egress_ip": ""}
+    )
 
     with pytest.raises(RuntimeError, match="proxy probe"):
         orchestrator.migrate_wipter_to_proxy("wipter", {"exit_ip": "1.2.3.4"})
