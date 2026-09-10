@@ -3761,6 +3761,46 @@ def test_provider_scoped_lease_is_idempotent_for_the_same_instance(tmp_path):
     asyncio.run(run())
 
 
+def test_provider_scoped_lease_can_require_residential_proxy(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            proxy_ids = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id,
+                [
+                    {"provider_proxy_id": "dch", "host": "1.1.1.1", "port": 1000},
+                    {"provider_proxy_id": "res", "host": "2.2.2.2", "port": 2000},
+                ],
+            )
+            for proxy_id, exit_ip, ip_type in zip(
+                proxy_ids, ("8.8.8.8", "9.9.9.9"), ("dch", "residential"), strict=True
+            ):
+                await database.save_proxy_probe_result(
+                    proxy_id,
+                    profile="generic",
+                    probe_status="alive",
+                    verdict="ALIVE",
+                    eligibility="eligible",
+                    reason="",
+                    exit_ip=exit_ip,
+                    latency_ms=10,
+                    probe_version="test",
+                )
+                await database.update_proxy_endpoint_intelligence(
+                    proxy_id, {"ip_type": ip_type, "ip_type_source": "test", "ip_type_confidence": "high"}
+                )
+            worker_id = await database.upsert_worker("worker-a", "a", "http://a")
+
+            lease = await database.lease_proxy_for_provider_instance(
+                "wipter", worker_id, "wipter-proxy", required_ip_type="residential"
+            )
+
+            assert lease and lease["proxy_id"] == proxy_ids[1]
+
+    asyncio.run(run())
+
+
 def test_earnapp_lease_skips_proxy_still_referenced_by_runtime_instance(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):

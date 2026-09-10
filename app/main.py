@@ -8146,6 +8146,48 @@ async def api_provider_network_reconciliation(request: Request) -> dict[str, Any
     return {"reports": reports, "read_only": True}
 
 
+class WipterMigrationRequest(BaseModel):
+    worker_id: int = Field(gt=0)
+
+
+@app.post("/api/admin/providers/wipter/migrate-proxy")
+async def api_migrate_wipter_proxy(request: Request, body: WipterMigrationRequest) -> dict[str, Any]:
+    """Lease, migrate, then record the one legacy Wipter runtime."""
+    _require_owner(request)
+    instance_id = "wipter-proxy"
+    lease = await database.lease_proxy_for_provider_instance(
+        "wipter", body.worker_id, instance_id, required_ip_type="residential"
+    )
+    if not lease:
+        raise HTTPException(status_code=409, detail="No qualified proxy is available for Wipter")
+    try:
+        result = await _proxy_to_worker(
+            body.worker_id,
+            "POST",
+            "/api/providers/wipter/migrate-proxy",
+            json={"proxy": lease},
+            timeout=120,
+        )
+        if result.get("ok") is not True or result.get("observed_egress_ip") != lease.get("exit_ip"):
+            raise RuntimeError("Wipter migration returned invalid egress evidence")
+        await database.save_provider_instance(
+            "wipter",
+            instance_id,
+            worker_id=body.worker_id,
+            mode="proxy",
+            container_id=str(result.get("container_id") or ""),
+            sidecar_id=str(result.get("sidecar_id") or ""),
+            proxy_id=int(lease["proxy_id"]),
+            status="running",
+        )
+    except Exception:
+        await database.release_proxy_for_provider_instance(
+            "wipter", body.worker_id, instance_id, reason="MIGRATION_FAILED"
+        )
+        raise
+    return {"status": "migrated", "worker_id": body.worker_id, "instance_id": instance_id}
+
+
 @app.get("/api/admin/provider-account-pools")
 async def api_provider_account_pools(request: Request) -> dict[str, Any]:
     _require_owner(request)
