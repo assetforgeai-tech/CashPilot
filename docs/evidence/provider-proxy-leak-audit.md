@@ -54,3 +54,13 @@ rollback evidence.
   proxy-sidecar contract were applied.
 - No Wipter proxy lease, account, volume, or container was changed during this
   audit.
+
+## v1.32.0 rollout and ownership backfill (2026-09-10)
+
+- UI and worker run `v1.32.0`, both healthy.
+- EarnApp API reports `sticky_owned=8`, `eligible=309`, `leaseable=301`, and
+  `occupied=8` after the idempotent legacy-lease backfill.
+- Proxy Pool reports the `zlproxy` group with `817` eligible, `804` available,
+  `13` leased, `12` sticky-owned, and `139` duplicate-egress endpoints.
+- Wipter container ID and `wipter-data` volume remain unchanged; its direct
+  egress and restart loop remain an open finding.

@@ -123,7 +123,9 @@ Move the legacy Wipter runtime behind the existing managed sing-box sidecar. Pre
 
 - [x] PR #241 merged and released as `v1.30.0`.
 - [x] PR #242 merged and released as `v1.31.0`.
-- [x] Server UI rolled out to `ghcr.io/assetforgeai-tech/cashpilot:1.31.0`; worker remains healthy at `1.29.0`.
+- [x] PR #244 merged and released as `v1.32.0`.
+- [x] Server UI and worker rolled out to `v1.32.0`; provider containers remain unchanged.
+- [x] Production sticky ownership backfill verified: EarnApp `sticky_owned=8`.
 - [ ] Do not claim production closeout while Wipter remains direct-egress and provider-wide live leak evidence is incomplete.
 
 ## Verification gates
