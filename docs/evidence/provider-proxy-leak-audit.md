@@ -45,10 +45,10 @@ rollback evidence.
 
 ## Post-worker rollout evidence (2026-09-10)
 
-- Worker `v1.29.0` is healthy and sends confirmed container inventory.
+- Worker `v1.31.0` is healthy and sends confirmed container inventory.
 - The live reconciliation endpoint reports Wipter `attention` with the runtime
   untracked (`wipter`) rather than treating it as safe.
-- Wipter restart-loop evidence remains: `restart count 28473`, repeated
+- Wipter restart-loop evidence remains: `restart count 29277+`, repeated
   `/etc/machine-id: Permission denied`; `OOMKilled=false`. The current runtime
   was deployed before the catalog's `DAC_OVERRIDE` capability and managed
   proxy-sidecar contract were applied.
