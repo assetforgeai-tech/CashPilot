@@ -2874,6 +2874,22 @@ async def init_db() -> None:
                 ON earnapp_paypal_pool(state, id);
             """
         )
+        # Existing active leases predate sticky ownership. Recover ownership
+        # from the authoritative logical-node/account mapping on each boot.
+        await db.execute(
+            """
+            INSERT OR IGNORE INTO earnapp_account_egress_ownership (account_id, egress_ip, proxy_id)
+            SELECT min(n.account_id), l.exit_ip, min(l.proxy_id)
+            FROM provider_proxy_leases l
+            JOIN earnapp_logical_nodes n ON n.logical_node_id = l.instance_id
+            WHERE l.provider_slug = 'earnapp'
+              AND l.released_at IS NULL
+              AND n.account_id > 0
+              AND trim(coalesce(l.exit_ip, '')) != ''
+            GROUP BY l.exit_ip
+            HAVING count(DISTINCT n.account_id) = 1
+            """
+        )
         account_columns = await _table_columns(db, "earnapp_accounts")
         for column, definition in {
             "last_auth_success_at": "TEXT",

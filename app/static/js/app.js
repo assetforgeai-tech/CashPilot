@@ -3699,7 +3699,9 @@ const CP = (() => {
       const payload = await api('/api/admin/provider-account-pools');
       const items = Array.isArray(payload.items) ? payload.items : [];
       container.innerHTML = items.length
-        ? items.map(item => `${escapeHtml(item.provider)}: ${Number(item.active || 0)}/${Number(item.total || 0)} active · ${Number(item.assigned_nodes || 0)} nodes`).join('<br>')
+        ? items.map(item => item.modeled === false
+          ? `${escapeHtml(item.provider)}: account pool not modeled`
+          : `${escapeHtml(item.provider)}: ${Number(item.active || 0)}/${Number(item.total || 0)} active · ${Number(item.assigned_nodes || 0)} nodes`).join('<br>')
         : 'No provider accounts configured.';
     } catch (err) {
       container.textContent = `Account pools unavailable: ${err.message}`;

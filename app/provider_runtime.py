@@ -237,6 +237,11 @@ def catalog_runtime(slug: str) -> dict[str, object]:
         "blocked_platforms": list(provider.blocked_platforms),
         "heartbeat_scope": provider.heartbeat_scope,
         "rotation_scope": provider.rotation_scope,
+        "lifecycle_actions": {
+            "offline": "restart",
+            "banned": "recreate",
+            "proxy_unhealthy": "rotate" if "proxy" in provider.modes else "observe",
+        },
         "setup_source": provider.setup_file,
         "collector_source": provider.collector_file,
     }

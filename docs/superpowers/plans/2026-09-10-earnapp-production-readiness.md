@@ -77,6 +77,9 @@ Expose concise provider-group totals: eligible, assigned, available, sticky-owne
 
 Normalize restart/offline, banned/replace, token retry, and provider-group rotation decisions. Add read-only reconciliation report comparing DB rows, heartbeat inventory, and Docker inventory; alert first, never delete automatically.
 
+- [x] Publish a shared read-only lifecycle decision helper and expose per-provider action policy in the runtime catalog.
+- [ ] Wire the helper into every provider mutation scheduler after provider-specific adapters are mapped.
+
 ### Task 6: Provider-wide proxy leak audit (source matrix and drift reporting complete; live proof pending)
 
 **Files:**

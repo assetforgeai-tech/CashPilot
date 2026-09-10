@@ -1,0 +1,14 @@
+from app.provider_lifecycle import decide
+
+
+def test_offline_provider_restarts_without_rotating_proxy():
+    assert decide("packetstream", online=False, banned=False, proxy_healthy=True) == "restart"
+
+
+def test_banned_provider_recreates_and_rotates_when_provider_requires_instance_rotation():
+    assert decide("iproyal", online=True, banned=True, proxy_healthy=True) == "recreate"
+
+
+def test_unhealthy_proxy_rotates_only_for_proxy_runtime():
+    assert decide("packetstream", online=True, banned=False, proxy_healthy=False) == "rotate"
+    assert decide("mysterium", online=True, banned=False, proxy_healthy=False) == "observe"
