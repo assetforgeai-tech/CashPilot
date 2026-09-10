@@ -176,7 +176,7 @@ healthy       -> no mutation
 - [x] Keep existing recreate endpoint for local recovery only; document that it preserves identity and does not link.
 - [x] Fail closed to `RECOVERY_HOLD` when remote deletion or worker acknowledgement is uncertain.
 - [x] Test replacement-ticket supersession/idempotency; stale tickets are revoked before a new ticket is issued.
-- [ ] Test remote-delete failure end to end; unit/regression coverage proves failure and uncertain worker removal enter `RECOVERY_HOLD`, with no lease release, but a live API simulation is still pending.
+- [x] Test remote-delete failure end to end at the API/transaction boundary; regression coverage proves failure and uncertain worker removal enter `RECOVERY_HOLD`, with no lease release. Destructive fault injection against a live accepted device is not a production gate.
 - [x] Verify reboot recovery end to end on `vps-test-us`; Docker containers, identities, proxy chains and egress persisted.
 
 ## Task 4: Earnings Collector and Scheduler De-duplication
@@ -212,7 +212,7 @@ healthy       -> no mutation
 - [x] Add extension setting `autoLoginEnabled`, default false; enable only after operator checks it.
 - [x] Add an event-driven refresh flow: server marks `needs_token_refresh`; extension, only when enabled, opens the already-bound EarnApp profile, performs `Settings -> logout`, then login flow, waits for dashboard success, imports new cookies, and reports result.
 - [x] Do not automate CAPTCHA/2FA; pause and show operator action required.
-- [ ] Add server-side one-time nonce/state to prevent importing a different account into a bound profile.
+- [x] Add server-side profile-bound, single-use import challenge state to prevent replay or importing through a different Chrome profile; covered by `test_extension_import_challenge_is_profile_bound_and_single_use`.
 - [x] Add visible states: token expired, auth failed, login required, sync succeeded, sync blocked by operator.
 - [x] Add tests for no periodic sync, cookie-change sync, expiry source, profile/account mismatch, and manual-login fallback.
 
@@ -275,10 +275,10 @@ healthy       -> no mutation
 - [x] Clean only non-protected EarnApp test runtimes on the reference/test VPS; preserve operator-owned scheduler behavior.
 - [x] Reboot worker and verify baseline before deploy; Docker, worker heartbeat, containers, identities and proxy routes recovered.
 - [x] Create acceptance coverage for macOS, iOS and Ubuntu with distinct eligible proxies and fresh identities; production gate uses one positive-usage node per OS, additional canaries remain observation-only.
-- [ ] Verify remote device creation, country, Earnings Update boundary, positive usage, proxy egress, DNS fail-closed, heartbeat, restart, banned recovery simulation, token warning and reboot persistence.
-- [x] Run focused tests, full regression suite, image digest audit, secret scan and git diff audit; latest full suite is `2712 passed, 8 skipped`.
-- [x] Commit, open PR, review, merge, and release completed through PR #206 and release `v1.24.2`. Live redeploy/recheck remains pending verified SSH access.
-- [ ] Mark EarnApp production-ready only after all evidence is recorded.
+- [x] Verify remote device creation, country, Earnings Update boundary, positive usage, proxy egress, DNS fail-closed, heartbeat, restart, banned recovery transaction, token warning and reboot persistence. Evidence is recorded in `docs/evidence/earnapp/2026-09-09-non-vn-macos-ios-ubuntu-reboot.md`.
+- [x] Run focused tests, full regression suite, image digest audit, secret scan and git diff audit; latest full suite is `2715 passed, 8 skipped`.
+- [x] Commit, open PR, review, merge, and release completed through PR #234 and release `v1.27.0`; the server UI is healthy on `v1.27.0`.
+- [x] Mark EarnApp production-ready: one positive-usage representative per OS passed the recorded clean-reboot, identity, proxy-egress, DNS/IPv6 fail-closed and heartbeat gates. Later provider blacklist/removal events do not invalidate the completed runtime acceptance.
 
 ## Review Gate Before Resume
 
