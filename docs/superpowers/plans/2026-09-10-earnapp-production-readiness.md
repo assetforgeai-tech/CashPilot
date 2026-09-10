@@ -52,7 +52,7 @@ Add encrypted destination records, fixed account assignment, default auto-redeem
 
 - Automatic setup runs only for an unconfigured account after a successful collection; existing payment choices are never overwritten.
 
-### Task 4: Unified capacity and account views (EarnApp/provider capacity complete; common account abstraction pending)
+### Task 4: Unified capacity and account views (provider counters complete; common account abstraction pending)
 
 **Files:**
 - Modify: `app/database.py`
@@ -61,6 +61,9 @@ Add encrypted destination records, fixed account assignment, default auto-redeem
 - Create: `tests/test_provider_capacity.py`
 
 Expose concise provider-group totals: eligible, assigned, available, sticky-owned, masked. Keep provider-specific adapters where required and paginate account lists.
+
+- [x] Add provider-group `eligible`, `available`, `leased`, `sticky_owned`, and `duplicate_egress` counters.
+- [x] Surface compact counters in Proxy Pool capacity badges.
 
 ### Task 5: Heartbeat/rotation policy and reconciliation (EarnApp policy complete; provider drift reporting complete)
 

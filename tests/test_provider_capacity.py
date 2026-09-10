@@ -33,8 +33,11 @@ def test_provider_capacity_groups_endpoints_and_active_leases(tmp_path):
             groups = await database.get_provider_proxy_capacity()
             row = next(item for item in groups if item["provider_id"] == provider)
             assert row["total"] == 2
+            assert row["eligible"] == 2
             assert row["available"] == 2
             assert row["leased"] == 0
+            assert row["sticky_owned"] == 0
+            assert row["duplicate_egress"] == 0
             assert ids
 
     asyncio.run(run())

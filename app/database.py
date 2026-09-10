@@ -7127,6 +7127,13 @@ async def get_provider_proxy_capacity() -> list[dict[str, int | str]]:
                        COUNT(DISTINCT pe.exit_ip) AS total,
                        COUNT(DISTINCT CASE WHEN lower(coalesce(pe.status, 'unknown')) = 'alive'
                            AND coalesce(pe.duplicate_egress, 0) = 0
+                           THEN pe.exit_ip END) AS eligible,
+                       COUNT(DISTINCT CASE WHEN lower(coalesce(pe.status, 'unknown')) = 'alive'
+                           AND coalesce(pe.duplicate_egress, 0) = 0
+                           AND NOT EXISTS (
+                               SELECT 1 FROM earnapp_account_egress_ownership sticky
+                               WHERE sticky.egress_ip = pe.exit_ip
+                           )
                            AND NOT EXISTS (
                                SELECT 1 FROM provider_proxy_leases l
                                WHERE l.released_at IS NULL
@@ -7134,9 +7141,15 @@ async def get_provider_proxy_capacity() -> list[dict[str, int | str]]:
                            ) THEN pe.exit_ip END) AS available,
                        COUNT(DISTINCT CASE WHEN EXISTS (
                            SELECT 1 FROM provider_proxy_leases l
-                           WHERE l.released_at IS NULL
-                             AND (l.proxy_id = pe.id OR l.exit_ip = pe.exit_ip)
-                       ) THEN pe.exit_ip END) AS leased
+                               WHERE l.released_at IS NULL
+                                 AND (l.proxy_id = pe.id OR l.exit_ip = pe.exit_ip)
+                           ) THEN pe.exit_ip END) AS leased
+                       ,COUNT(DISTINCT CASE WHEN EXISTS (
+                               SELECT 1 FROM earnapp_account_egress_ownership sticky
+                               WHERE sticky.egress_ip = pe.exit_ip
+                           ) THEN pe.exit_ip END) AS sticky_owned
+                       ,COUNT(DISTINCT CASE WHEN coalesce(pe.duplicate_egress, 0) != 0
+                           THEN pe.exit_ip END) AS duplicate_egress
                 FROM proxy_providers p
                 LEFT JOIN proxy_endpoints pe ON pe.provider_id = p.id
                 GROUP BY p.id, p.name ORDER BY p.name, p.id
@@ -7148,8 +7161,11 @@ async def get_provider_proxy_capacity() -> list[dict[str, int | str]]:
                 "provider_id": int(row["provider_id"]),
                 "provider_name": str(row["provider_name"]),
                 "total": int(row["total"] or 0),
+                "eligible": int(row["eligible"] or 0),
                 "available": int(row["available"] or 0),
                 "leased": int(row["leased"] or 0),
+                "sticky_owned": int(row["sticky_owned"] or 0),
+                "duplicate_egress": int(row["duplicate_egress"] or 0),
             }
             for row in rows
         ]
