@@ -2725,3 +2725,29 @@ def test_earnapp_egress_ownership_survives_runtime_release_until_account_delete(
             assert same_owner is not None and same_owner["proxy_id"] == proxy_id
 
     asyncio.run(run())
+
+
+def test_init_backfills_sticky_egress_ownership_for_existing_active_leases(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "backfill.db"):
+            await database.init_db()
+            account_id = await earnapp_accounts.import_account(_payload("backfill", "backfill@example.com"))
+            await database.assign_earnapp_account("sdk-mac-backfill", platform="macos")
+            db = await database._get_db()
+            await db.execute("UPDATE earnapp_logical_nodes SET account_id = ? WHERE logical_node_id = ?", (account_id, "sdk-mac-backfill"))
+            await db.commit()
+            await db.close()
+            provider_id = await database.upsert_proxy_provider("backfill-pool", "Backfill")
+            proxy_id = await _seed_proxy_for_account_delete(database, provider_id, suffix=88)
+            worker_id = await database.upsert_worker("backfill-worker", "backfill-worker", "http://worker")
+            await database.lease_proxy_for_provider_instance("earnapp", worker_id, "sdk-mac-backfill", country_code="VN")
+            db = await database._get_db()
+            await db.execute("DELETE FROM earnapp_account_egress_ownership")
+            await db.commit()
+            await db.close()
+            await database.init_db()
+            owners = await database.get_earnapp_proxy_capacity()
+            assert owners["sticky_owned"] == 1
+            assert proxy_id
+
+    asyncio.run(run())
