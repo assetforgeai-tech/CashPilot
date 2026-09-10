@@ -1,6 +1,12 @@
 from __future__ import annotations
 
 from app import earnapp_runtime, provider_runtime
+from app.provider_network_audit import audit_provider_network_inventory
+
+
+def test_network_audit_reports_unverified_when_provider_has_no_live_inventory():
+    report = audit_provider_network_inventory("packetstream", instances=[], containers=[], inventory_confirmed=False)
+    assert report["status"] == "unverified"
 
 
 def test_active_provider_matrix_is_explicit_and_earnapp_is_docker_only():
@@ -19,3 +25,47 @@ def test_earnapp_runtime_contract_contains_fail_closed_tcp_and_dns_rules():
     assert 'iptables -A CP_EARNAPP_OUT -j DROP' in text
     assert "CP_EARNAPP_DNS" in text
     assert "cloudflare-dns.com" in text
+
+
+def test_proxy_only_runtime_without_managed_sidecar_is_attention():
+    report = audit_provider_network_inventory(
+        "wipter",
+        instances=[{"instance_id": "w-1", "status": "active"}],
+        containers=[{"instance_slug": "w-1", "slug": "wipter", "status": "running", "network_mode": "bridge"}],
+        inventory_confirmed=True,
+    )
+    assert report["status"] == "attention"
+    assert report["missing_sidecar"] == ["w-1"]
+    assert "direct egress risk" in report["findings"][0]
+
+
+def test_unconfirmed_inventory_does_not_claim_proxy_runtime_safe():
+    report = audit_provider_network_inventory(
+        "wipter", instances=[{"instance_id": "w-1", "status": "active"}], containers=[], inventory_confirmed=False
+    )
+    assert report["status"] == "unverified"
+    assert report["missing_sidecar"] == []
+
+
+def test_audit_ignores_retired_instances_and_accepts_container_namespace_sidecar():
+    report = audit_provider_network_inventory(
+        "wipter",
+        instances=[
+            {"instance_id": "retired", "status": "RETIRED"},
+            {"instance_id": "w-2", "status": "ACTIVE"},
+        ],
+        containers=[{"instance_slug": "w-2", "slug": "wipter", "status": "running", "network_mode": "container:sidecar"}],
+        inventory_confirmed=True,
+    )
+    assert report["status"] == "pass"
+
+
+def test_audit_flags_live_proxy_container_without_database_instance():
+    report = audit_provider_network_inventory(
+        "wipter",
+        instances=[],
+        containers=[{"instance_slug": "wipter-proxy", "slug": "wipter", "network_mode": "bridge"}],
+        inventory_confirmed=True,
+    )
+    assert report["status"] == "attention"
+    assert report["untracked"] == ["wipter-proxy"]

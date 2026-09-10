@@ -3618,6 +3618,7 @@ const CP = (() => {
       await loadEarnAppPayPalPool();
       await loadProviderAccountPools();
       await loadEarnAppReconciliation();
+      await loadProviderNetworkReconciliation();
     } catch (err) {
       rows.innerHTML = `<tr><td colspan="7" style="color:var(--error);">Could not load EarnApp accounts: ${escapeHtml(err.message)}</td></tr>`;
       const recovery = document.getElementById('earnapp-recovery-rows');
@@ -3719,6 +3720,22 @@ const CP = (() => {
       }).join('<br>') : 'No workers registered.';
     } catch (err) {
       container.textContent = `Reconciliation unavailable: ${err.message}`;
+    }
+  }
+
+  async function loadProviderNetworkReconciliation() {
+    const container = document.getElementById('provider-network-reconciliation-list');
+    if (!container) return;
+    try {
+      const payload = await api('/api/admin/provider-network/reconciliation');
+      const reports = Array.isArray(payload.reports) ? payload.reports : [];
+      container.innerHTML = reports.length ? reports.map(report => {
+        const missing = Array.isArray(report.missing_sidecar) ? report.missing_sidecar.length : 0;
+        const untracked = Array.isArray(report.untracked) ? report.untracked.length : 0;
+        return `Worker ${escapeHtml(report.worker_id)} · ${escapeHtml(report.provider)}: ${escapeHtml(report.status || 'unverified')} · sidecar drift ${missing} · untracked ${untracked}`;
+      }).join('<br>') : 'No active provider instances recorded.';
+    } catch (err) {
+      container.textContent = `Network reconciliation unavailable: ${err.message}`;
     }
   }
 

@@ -20,7 +20,7 @@ Status: read-only live audit completed for the currently running EarnApp contain
 | traffmonetizer | Existing provider adapter/runtime | unverified | unverified | unverified | unverified | unverified |
 | uprock | Existing provider adapter/runtime | unverified | unverified | unverified | unverified | unverified |
 | urnetwork | Existing provider adapter/runtime | unverified | unverified | unverified | unverified | unverified |
-| wipter | Existing provider adapter/runtime | unverified | unverified | unverified | unverified | unverified |
+| wipter | Proxy-only contract; managed sing-box sidecar required | **attention** | unverified | **host DNS observed** | unverified | unverified |
 
 Live EarnApp observations:
 
@@ -29,3 +29,17 @@ Live EarnApp observations:
 - `cashpilot-earnapp-prod-us-20260908-macos-10`: IPv4 `14.243.208.175`; same fail-closed/DNS contract; IPv6 HTTP probe failed; Docker `restart=always`.
 
 Unknown is intentionally not treated as pass. A complete fleet audit still requires each active provider runtime on each worker, DB lease-to-egress correlation, packet capture for UDP/WebRTC, and a controlled reboot check. No mutation was performed during this audit.
+
+## Wipter finding (2026-09-10)
+
+The active `cashpilot-wipter` container on the CashPilot server is running in
+Docker `bridge` mode without a managed egress sidecar. Its observed IPv4
+egress is the VPS address `42.96.13.215`, and its resolver uses host DNS
+`103.121.88.11`/`103.121.88.12`. This is a direct-egress risk and does not
+satisfy the proxy-only contract in `services/depin/wipter.yml`.
+
+CashPilot now exposes this drift through the read-only
+`/api/admin/provider-network/reconciliation` endpoint and Settings UI. It does
+not mutate, stop, or redeploy Wipter. Migration requires a provider-specific
+canary with volume/account preservation, proxy egress verification, and
+rollback evidence.

@@ -73,13 +73,16 @@ Expose concise provider-group totals: eligible, assigned, available, sticky-owne
 
 Normalize restart/offline, banned/replace, token retry, and provider-group rotation decisions. Add read-only reconciliation report comparing DB rows, heartbeat inventory, and Docker inventory; alert first, never delete automatically.
 
-### Task 6: Provider-wide proxy leak audit (source matrix complete; live worker evidence pending)
+### Task 6: Provider-wide proxy leak audit (source matrix and drift reporting complete; live proof pending)
 
 **Files:**
 - Create: `docs/evidence/provider-proxy-leak-audit.md`
 - Create: `tests/test_provider_network_contracts.py`
 
 Inventory every provider runtime. Verify direct IPv4/IPv6, DNS/DoH, UDP/WebRTC, bypass process, and reboot persistence. Mark unknown as unverified; do not infer from EarnApp evidence.
+
+- [x] Add read-only provider network reconciliation for proxy-only instances missing a managed sidecar.
+- [x] Record the live Wipter direct-egress finding; defer migration until a canary/rollback plan is approved.
 
 ### Task 7: Token refresh and rollout (token refresh/import complete; rollout pending)
 

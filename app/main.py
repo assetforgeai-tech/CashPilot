@@ -69,6 +69,7 @@ from app import (
     provider_accounts,
     provider_automation,
     provider_modes,
+    provider_network_audit,
     provider_runtime,
     setup_token,
     update_check,
@@ -8101,6 +8102,47 @@ async def api_earnapp_reconciliation(request: Request) -> dict[str, Any]:
                 worker_id, reported_instance_ids=reported, inventory_confirmed=confirmed
             )
         )
+    return {"reports": reports, "read_only": True}
+
+
+@app.get("/api/admin/provider-network/reconciliation")
+async def api_provider_network_reconciliation(request: Request) -> dict[str, Any]:
+    """Report provider network drift without mutating workers or leases."""
+    _require_owner(request)
+    reports: list[dict[str, Any]] = []
+    for worker in await database.list_workers():
+        worker_id = int(worker.get("id") or 0)
+        containers = _safe_json(worker.get("containers") or "[]", [])
+        if not isinstance(containers, list):
+            containers = []
+        system_info = _safe_json(worker.get("system_info") or "{}", {})
+        confirmed = isinstance(system_info, Mapping) and system_info.get("containers_inventory_confirmed") is True
+        rows = await database.list_provider_instances(worker_id=worker_id)
+        live_ids = {
+            str(item.get("instance_slug") or item.get("name") or "").strip()
+            for item in containers
+            if isinstance(item, dict)
+        }
+        # Bind a legacy worker-less row only to the worker currently reporting
+        # its exact runtime. This surfaces drift without inventing ownership.
+        rows += [
+            row
+            for row in await database.list_provider_instances()
+            if row.get("worker_id") is None and str(row.get("instance_id") or "").strip() in live_ids
+        ]
+        for slug in sorted(provider_runtime.ACTIVE_SLUGS):
+            instances = [row for row in rows if str(row.get("slug") or "").lower() == slug]
+            live = [item for item in containers if isinstance(item, dict) and str(item.get("slug") or "").lower() == slug]
+            if not instances and not live:
+                continue
+            report = provider_network_audit.audit_provider_network_inventory(
+                slug,
+                instances=instances,
+                containers=live,
+                inventory_confirmed=confirmed,
+            )
+            report["worker_id"] = worker_id
+            reports.append(report)
     return {"reports": reports, "read_only": True}
 
 
