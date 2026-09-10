@@ -21,6 +21,8 @@ def audit_provider_network_inventory(
     inventory is ``unverified`` rather than evidence of a safe deployment.
     """
     slug = str(provider or "").strip().lower()
+    instances = list(instances)
+    containers = list(containers)
     runtime = provider_runtime.get(slug)
     if runtime is None or not inventory_confirmed:
         return {"provider": slug, "status": "unverified", "missing_sidecar": [], "untracked": [], "findings": []}
