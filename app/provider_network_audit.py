@@ -57,7 +57,10 @@ def audit_provider_network_inventory(
             missing.append(instance_id)
             findings.append(f"{instance_id}: managed sidecar missing; direct egress risk")
     for instance_id in untracked:
-        findings.append(f"{instance_id}: live runtime is not tracked in CashPilot")
+        live = by_id.get(instance_id)
+        mode = str((live or {}).get("network_mode") or (live or {}).get("NetworkMode") or "").lower()
+        suffix = "; direct egress risk" if mode and not mode.startswith("container:") else ""
+        findings.append(f"{instance_id}: live runtime is not tracked in CashPilot{suffix}")
     return {
         "provider": slug,
         "status": "attention" if missing or untracked else "pass",

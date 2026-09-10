@@ -43,3 +43,15 @@ CashPilot now exposes this drift through the read-only
 not mutate, stop, or redeploy Wipter. Migration requires a provider-specific
 canary with volume/account preservation, proxy egress verification, and
 rollback evidence.
+
+## Post-worker rollout evidence (2026-09-10)
+
+- Worker `v1.28.1` is healthy and sends confirmed container inventory.
+- The live reconciliation endpoint reports Wipter `attention` with the runtime
+  untracked (`wipter`) rather than treating it as safe.
+- Wipter restart-loop evidence remains: `restart count 28473`, repeated
+  `/etc/machine-id: Permission denied`; `OOMKilled=false`. The current runtime
+  was deployed before the catalog's `DAC_OVERRIDE` capability and managed
+  proxy-sidecar contract were applied.
+- No Wipter proxy lease, account, volume, or container was changed during this
+  audit.

@@ -62,7 +62,7 @@ Add encrypted destination records, fixed account assignment, default auto-redeem
 
 Expose concise provider-group totals: eligible, assigned, available, sticky-owned, masked. Keep provider-specific adapters where required and paginate account lists.
 
-### Task 5: Heartbeat/rotation policy and reconciliation (EarnApp policy complete; read-only reconciliation complete)
+### Task 5: Heartbeat/rotation policy and reconciliation (EarnApp policy complete; provider drift reporting complete)
 
 **Files:**
 - Modify: `app/earnapp_lifecycle.py`
@@ -84,7 +84,7 @@ Inventory every provider runtime. Verify direct IPv4/IPv6, DNS/DoH, UDP/WebRTC, 
 - [x] Add read-only provider network reconciliation for proxy-only instances missing a managed sidecar.
 - [x] Record the live Wipter direct-egress finding; defer migration until a canary/rollback plan is approved.
 
-### Task 7: Token refresh and rollout (token refresh/import complete; rollout pending)
+### Task 7: Token refresh and rollout (token refresh/import complete; UI/worker rollout complete; provider migration pending)
 
 **Files:**
 - Inspect/modify: EarnApp token import/extension integration paths only
