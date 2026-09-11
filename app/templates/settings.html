@@ -118,6 +118,17 @@
     <button class="btn btn-ghost" data-action="saveEnvSettings">Save platform policy</button>
   </div>
 
+  <div class="earnapp-runtime-settings" id="earnapp-paypal-pool">
+    <div>
+      <h4>PayPal Pool</h4>
+      <p>Add payout emails once. CashPilot permanently assigns each destination to one EarnApp account.</p>
+    </div>
+    <label class="form-label" for="earnapp-paypal-destination">PayPal email</label>
+    <input class="form-input" id="earnapp-paypal-destination" type="email" autocomplete="off" placeholder="payout@example.com">
+    <button class="btn btn-ghost" data-action="addEarnAppPayPal">Add PayPal</button>
+    <div id="earnapp-paypal-pool-list" class="form-hint">Loading PayPal Pool...</div>
+  </div>
+
   <div class="earnapp-account-grid">
     <div class="earnapp-import-panel">
       <h4>Import or refresh one account</h4>
@@ -181,16 +192,6 @@
     </div>
   </div>
 
-  <div class="earnapp-runtime-settings" id="earnapp-paypal-pool">
-    <div>
-      <h4>PayPal Pool</h4>
-      <p>Each PayPal destination is fixed to one EarnApp account. Deleted accounts quarantine that destination permanently.</p>
-    </div>
-    <label class="form-label" for="earnapp-paypal-destination">PayPal email</label>
-    <input class="form-input" id="earnapp-paypal-destination" type="email" autocomplete="off" placeholder="payout@example.com">
-    <button class="btn btn-ghost" data-action="addEarnAppPayPal">Add PayPal</button>
-    <div id="earnapp-paypal-pool-list" class="form-hint">Loading PayPal Pool...</div>
-  </div>
 </section>
 
 <div class="modal-overlay" id="earnapp-payment-modal" role="dialog" aria-modal="true" aria-labelledby="earnapp-payment-title">
