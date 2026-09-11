@@ -35,3 +35,12 @@ without mutating state: 6 workers, 1,254 proxy endpoints (981 currently
 `alive`), 4 EarnApp account rows, 85 EarnApp logical-node rows, and 20 active
 provider proxy leases. These counts are reconciliation inputs, not proof that
 all provider/runtime rows are healthy or that every lease is correctly routed.
+
+## UI-only rollout (2026-09-12)
+
+- Release `v1.33.0` deployed to `cashpilot-ui` only.
+- UI is `healthy`; observed image digest: `sha256:23f17e1d2d472e72a6b8a4d940aabc8811109a3137e503ae6c441762a631aa7d`.
+- Worker remained unchanged: healthy, restart count `0`.
+- SQLite integrity: `ok`.
+- `cashpilot_auto_deploy_enabled=false`; worker scope unset.
+- Pre-deploy database backup succeeded outside container `/tmp`.
