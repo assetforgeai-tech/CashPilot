@@ -6,6 +6,7 @@ import re
 from datetime import UTC, datetime
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
@@ -382,6 +383,8 @@ async def api_earnapp_account_paypal_pool_payment(request: Request, account_id: 
         return await earnapp_collection.configure_payment_from_paypal_pool(account_id)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="EarnApp payment provider rejected the request") from exc
 
 
 @router.get("/api/admin/earnapp/paypal-pool")

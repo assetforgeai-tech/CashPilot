@@ -4,6 +4,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
@@ -433,6 +434,19 @@ def test_payment_routes_are_owner_only_and_return_only_sanitized_state(client):
     assert removed.status_code == 200
     assert removed.json() == disabled
     disable.assert_awaited_once_with(7)
+
+
+def test_paypal_pool_external_http_failure_is_sanitized_as_bad_gateway(client):
+    response = httpx.Response(406, request=httpx.Request("GET", "https://earnapp.com/dashboard/api/payment_methods"))
+    error = httpx.HTTPStatusError("provider rejected request", request=response.request, response=response)
+    with (
+        patch("app.deps.auth.get_current_user", return_value=_owner()),
+        patch.object(earnapp_collection, "configure_payment_from_paypal_pool", AsyncMock(side_effect=error)),
+    ):
+        result = client.post("/api/admin/earnapp/accounts/2/payment/paypal-pool")
+
+    assert result.status_code == 502
+    assert result.json() == {"detail": "EarnApp payment provider rejected the request"}
 
 
 @pytest.mark.asyncio
