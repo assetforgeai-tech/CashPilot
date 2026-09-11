@@ -15,7 +15,8 @@ from app.collectors.base import BaseCollector, EarningsResult
 
 logger = logging.getLogger(__name__)
 
-API_BASE = "https://app.traffmonetizer.com/monetizer_api/api"
+# The dashboard bundle publishes data.traffmonetizer.com as its API origin.
+API_BASE = "https://data.traffmonetizer.com/api"
 
 
 class TraffmonetizerCollector(BaseCollector):
