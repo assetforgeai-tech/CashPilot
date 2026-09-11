@@ -79,8 +79,10 @@ No completion claim is made until the remaining gates have authoritative evidenc
   Unix sockets' Docker-group authority is intentional host administration and
   remains a deployment hardening note, not an auth bypass.
 - `pip-audit -r requirements.txt`: `No known vulnerabilities found`.
-- Bandit was not installed in the audit environment; this remains a tooling
-  gap, not a clean Bandit result.
+- Bandit audit-only scan completed: `0` high-severity findings. Medium/low
+  results were manually triaged as intentional fixed URLs, validated SQL
+  identifiers, bounded subprocess wrappers, and expected runtime/socket
+  operations.
 
 ## TLS qualification remediation
 

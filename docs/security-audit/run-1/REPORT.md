@@ -41,9 +41,13 @@ behavior; those require deployment/browser evidence.
   reboot evidence on every provider/runtime family.
 - Chrome profile 40 and token auto-import require an authenticated CDP session;
   source/tests are not a substitute for that live gate.
-- Bandit was unavailable in the audit environment. `pip-audit -r
-  requirements.txt` returned `No known vulnerabilities found`; compile, Ruff,
-  baseline, and full pytest checks passed.
+- Bandit scan completed after installing the audit-only tool: `0` high-severity
+  findings. Its medium/low results are known intentional patterns (allowlisted
+  SQL identifier construction, fixed HTTPS URLs, bounded subprocess wrappers,
+  Docker/Unix socket permissions, and provider runtime bindings) and require no
+  confirmed exploit in this run. `pip-audit -r requirements.txt` returned `No
+  known vulnerabilities found`; compile, Ruff, baseline, and full pytest checks
+  passed.
 
 ## Positive controls
 
