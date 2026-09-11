@@ -82,6 +82,20 @@ No completion claim is made until the remaining gates have authoritative evidenc
 - Bandit was not installed in the audit environment; this remains a tooling
   gap, not a clean Bandit result.
 
+## TLS qualification remediation
+
+- PR #266 merged as `7d5b97b2` after CodeQL, tests, lint, strict build, and
+  image verification passed.
+- Release `v1.32.15` published and UI redeployed alone to digest
+  `sha256:5e87c960b6d6bad715c9f4e981c14639443c36d157c9ba5b3688d28f68d13913`.
+- Live UI reports `CASHPILOT_VERSION=1.32.15`, healthy, restart count `0`;
+  worker remains `1.32.0`, same ID/start time, healthy, restart count `0`.
+- EarnApp TLS context now requires `CERT_REQUIRED` and hostname verification.
+  Targeted proxy/EarnApp tests: `145 passed`; findings schema validation passed.
+- Read-only live qualification of an existing candidate returned sanitized
+  `CID_SET` / `eligible` with TLS peer verification enabled. No proxy lease or
+  account/node mutation was performed.
+
 ## Follow-up fix and live verification
 
 - PR #262 fixed a false-positive network audit: EarnApp's current contract is
