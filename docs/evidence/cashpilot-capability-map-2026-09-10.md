@@ -64,3 +64,5 @@ inventory, not permission to mutate live providers.
 - Provider-wide zero-leak: incomplete; non-tested providers remain `unverified`.
 - Full UI/UX browser interaction sweep: blocked by unavailable Chrome connector.
 - PayPal live pool behavior, token auto-import, common provider account adapters, and lifecycle wiring for every provider: incomplete.
+- Azure live-test environment is provisioned in East Asia and Japan East with 10 public IPv4 slots per worker; Japan East reboot persistence is verified separately in `azure-live-test-preflight-2026-09-11.md`.
+- The authoritative gate-by-gate status is maintained in `live-gate-matrix-2026-09-12.md`; infrastructure/repository checks must not be conflated with provider live proof.
