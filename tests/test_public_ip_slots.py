@@ -112,6 +112,17 @@ def test_existing_slot_ids_survive_metadata_reordering_and_new_addresses():
     }
 
 
+def test_existing_bridge_subnets_survive_reboot_recalculation():
+    first = public_ip_slots.discover_slots(_azure_metadata(), _addresses(), _routes())
+    second = public_ip_slots.discover_slots(
+        _azure_metadata(), _addresses(), _routes(), previous_slots=list(reversed(first))
+    )
+
+    assert {slot["slot_id"]: slot["bridge_subnet"] for slot in second} == {
+        slot["slot_id"]: slot["bridge_subnet"] for slot in first
+    }
+
+
 def test_single_ip_fallback_requires_one_unambiguous_default_route_address():
     slots = public_ip_slots.discover_slots({}, _addresses(), _routes(), fallback_public_ip="9.9.9.9")
     assert len(slots) == 1
