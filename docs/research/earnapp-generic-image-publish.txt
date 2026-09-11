@@ -12,43 +12,43 @@ Sending build context to Docker daemon  33.79kB
 Step 1/13 : FROM ghcr.io/assetforgeai-tech/cashpilot-earnapp-macos@sha256:3f2a7b9998e6940616c0ec2beec2bfda73e12b598c2da5c80d7ec57ba5178a6d
  ---> 3f2a7b9998e6
 Step 2/13 : ENV DEBIAN_FRONTEND=noninteractive     EARNAPP_WATCHDOG=1     NODE_TLS_REJECT_UNAUTHORIZED=0
- ---> Running in 2e28a66e1402
- ---> Removed intermediate container 2e28a66e1402
+ ---> Using cache
  ---> e556ec4947a9
 Step 3/13 : RUN test "$(sha256sum /opt/earnapp-mac | cut -d' ' -f1)" = "d140b41ad1d7e851e2775aed4a77dc72fc306a206287c440829d6b47f35d6911"
- ---> Running in 3c924e9039da
- ---> Removed intermediate container 3c924e9039da
+ ---> Using cache
  ---> 37b7b628b137
 Step 4/13 : COPY boot.js /usr/local/lib/node/boot.js
+ ---> Using cache
  ---> e0c478ab6c73
 Step 5/13 : COPY earn-supervisor /usr/local/bin/earn-supervisor
+ ---> Using cache
  ---> 1bc6051af4eb
 Step 6/13 : COPY entrypoint.sh /usr/local/bin/entrypoint-original.sh
+ ---> Using cache
  ---> 39edef58757f
 Step 7/13 : COPY cashpilot-proxy-entrypoint /usr/local/bin/entrypoint.sh
+ ---> Using cache
  ---> 3391655f8d2a
 Step 8/13 : COPY cashpilot-doh.js /usr/local/lib/cashpilot-doh.js
+ ---> Using cache
  ---> 8b1915953fd1
 Step 9/13 : COPY runtime-manifest.json /opt/cashpilot/runtime-manifest.json
+ ---> Using cache
  ---> b710f2a13b41
 Step 10/13 : RUN chmod 0755 /opt/earnapp-mac /usr/local/bin/earn-supervisor /usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-original.sh     && node --check /usr/local/lib/node/boot.js     && node --check /usr/local/lib/cashpilot-doh.js     && bash -n /usr/local/bin/earn-supervisor /usr/local/bin/entrypoint.sh
- ---> Running in 6484b6342a87
- ---> Removed intermediate container 6484b6342a87
+ ---> Using cache
  ---> 2480a7bb37c9
 Step 11/13 : LABEL com.cashpilot.earnapp.runtime=earnapp_mac_canary       com.cashpilot.earnapp.platform=darwin       com.cashpilot.earnapp.appid=mac_com.earnapp       com.cashpilot.earnapp.device-prefix=sdk-mac-       com.cashpilot.earnapp.assets-sha256=bd8de3ac58d15eb3d67849b8abde4dcebfdb57927edaa095c90eeae560d6d403
- ---> Running in fc6097449037
- ---> Removed intermediate container fc6097449037
+ ---> Using cache
  ---> 4682aafc1368
 Step 12/13 : VOLUME ["/etc/earnapp"]
- ---> Running in da5822d51a49
- ---> Removed intermediate container da5822d51a49
+ ---> Using cache
  ---> 4afe646f8773
 Step 13/13 : ENTRYPOINT ["/usr/local/bin/earn-supervisor"]
- ---> Running in 40e2a539f0d1
- ---> Removed intermediate container 40e2a539f0d1
+ ---> Using cache
  ---> 45c62c73242a
 Successfully built 45c62c73242a
-Successfully tagged cashpilot/earnapp-mac-canary:20260909-nonvn-macos-canary
+Successfully tagged cashpilot/earnapp-mac-canary:20260912-production-candidate
 DEPRECATED: The legacy builder is deprecated and will be removed in a future release.
             Install the buildx component to build images with BuildKit:
             https://docs.docker.com/go/buildx/
@@ -58,47 +58,49 @@ Sending build context to Docker daemon  38.91kB
 Step 1/15 : FROM ghcr.io/assetforgeai-tech/cashpilot-earnapp-ios@sha256:915875703413a2192c0995bbfc3af4921ed26755a8fe43d329d6f3ebc7d9e0bb
  ---> 915875703413
 Step 2/15 : ENV DEBIAN_FRONTEND=noninteractive     EARNAPP_WATCHDOG=1     NODE_TLS_REJECT_UNAUTHORIZED=0
- ---> Running in bab4fd0a5cec
- ---> Removed intermediate container bab4fd0a5cec
+ ---> Using cache
  ---> 6b788e0bd7dc
 Step 3/15 : RUN test "$(sha256sum /opt/earnapp-ios | cut -d' ' -f1)" = "be9c4f6865134c87dbae373304e4b20bc55e91f60d2744ac03ebb864ca7fc2ee"
- ---> Running in 27c15e6aab23
- ---> Removed intermediate container 27c15e6aab23
+ ---> Using cache
  ---> c03b59bba053
 Step 4/15 : COPY boot.js /usr/local/lib/node/boot.js
+ ---> Using cache
  ---> e88888fd8ea9
 Step 5/15 : COPY earn-supervisor /usr/local/bin/earn-supervisor
+ ---> Using cache
  ---> a749084b0495
 Step 6/15 : COPY entrypoint.sh /usr/local/bin/entrypoint-original.sh
+ ---> Using cache
  ---> e89da57a9ed4
 Step 7/15 : COPY ios-entrypoint /usr/local/bin/ios-entrypoint
+ ---> Using cache
  ---> 0568cfff0b96
 Step 8/15 : COPY ios-register-device /usr/local/bin/ios-register-device
+ ---> Using cache
  ---> 8237d5b27245
 Step 9/15 : COPY cashpilot-proxy-entrypoint /usr/local/bin/entrypoint.sh
+ ---> Using cache
  ---> 3d8e51fb64a5
 Step 10/15 : COPY cashpilot-doh.js /usr/local/lib/cashpilot-doh.js
+ ---> Using cache
  ---> e42eae579511
 Step 11/15 : COPY runtime-manifest.json /opt/cashpilot/runtime-manifest.json
+ ---> Using cache
  ---> c0dcaf9dd1d2
 Step 12/15 : RUN chmod 0755 /opt/earnapp-ios /usr/local/bin/earn-supervisor /usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-original.sh /usr/local/bin/ios-entrypoint /usr/local/bin/ios-register-device     && node --check /usr/local/lib/node/boot.js     && node --check /usr/local/lib/cashpilot-doh.js     && bash -n /usr/local/bin/earn-supervisor /usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-original.sh /usr/local/bin/ios-register-device
- ---> Running in 26364cbaa861
- ---> Removed intermediate container 26364cbaa861
+ ---> Using cache
  ---> 4ae8ff66b8fd
 Step 13/15 : LABEL com.cashpilot.earnapp.runtime=earnapp_ios       com.cashpilot.earnapp.platform=ios       com.cashpilot.earnapp.appid=com.brd.earnapp       com.cashpilot.earnapp.device-prefix=sdk-ios-       com.cashpilot.earnapp.assets-sha256=f384c554c3f851f472a2beee159df6d9f639d973b12654ccb8909bd7757c6ee1
- ---> Running in 6cde95ab6f62
- ---> Removed intermediate container 6cde95ab6f62
+ ---> Using cache
  ---> 02cdee43030f
 Step 14/15 : VOLUME ["/etc/earnapp"]
- ---> Running in 6b8c31bf6c0d
- ---> Removed intermediate container 6b8c31bf6c0d
+ ---> Using cache
  ---> 30934d06a132
 Step 15/15 : ENTRYPOINT ["/usr/local/bin/earn-supervisor"]
- ---> Running in ed9eceff75e6
- ---> Removed intermediate container ed9eceff75e6
+ ---> Using cache
  ---> f7ca70ce9ef7
 Successfully built f7ca70ce9ef7
-Successfully tagged cashpilot/earnapp-ios:20260909-nonvn-macos-canary
+Successfully tagged cashpilot/earnapp-ios:20260912-production-candidate
 DEPRECATED: The legacy builder is deprecated and will be removed in a future release.
             Install the buildx component to build images with BuildKit:
             https://docs.docker.com/go/buildx/
@@ -108,816 +110,646 @@ Sending build context to Docker daemon  24.58kB
 Step 1/9 : FROM ghcr.io/assetforgeai-tech/cashpilot-earnapp-ubuntu@sha256:3e63d79166d493c55879635071c85da298e0d7c13f186dedcb579f9512abdc41
  ---> 3e63d79166d4
 Step 2/9 : RUN apt-get update     && apt-get install -y --no-install-recommends nodejs ca-certificates     && rm -rf /var/lib/apt/lists/*
- ---> Running in c4139dc6df79
-Get:1 http://archive.ubuntu.com/ubuntu jammy InRelease [270 kB]
-Get:2 http://security.ubuntu.com/ubuntu jammy-security InRelease [129 kB]
-Get:3 http://security.ubuntu.com/ubuntu jammy-security/universe amd64 Packages [1317 kB]
-Get:4 http://archive.ubuntu.com/ubuntu jammy-updates InRelease [128 kB]
-Get:5 http://archive.ubuntu.com/ubuntu jammy-backports InRelease [127 kB]
-Get:6 http://archive.ubuntu.com/ubuntu jammy/main amd64 Packages [1792 kB]
-Get:7 http://security.ubuntu.com/ubuntu jammy-security/restricted amd64 Packages [7714 kB]
-Get:8 http://archive.ubuntu.com/ubuntu jammy/universe amd64 Packages [17.5 MB]
-Get:9 http://security.ubuntu.com/ubuntu jammy-security/multiverse amd64 Packages [84.1 kB]
-Get:10 http://security.ubuntu.com/ubuntu jammy-security/main amd64 Packages [4289 kB]
-Get:11 http://archive.ubuntu.com/ubuntu jammy/multiverse amd64 Packages [266 kB]
-Get:12 http://archive.ubuntu.com/ubuntu jammy/restricted amd64 Packages [164 kB]
-Get:13 http://archive.ubuntu.com/ubuntu jammy-updates/restricted amd64 Packages [8007 kB]
-Get:14 http://archive.ubuntu.com/ubuntu jammy-updates/multiverse amd64 Packages [93.2 kB]
-Get:15 http://archive.ubuntu.com/ubuntu jammy-updates/universe amd64 Packages [1620 kB]
-Get:16 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages [4623 kB]
-Get:17 http://archive.ubuntu.com/ubuntu jammy-backports/main amd64 Packages [82.8 kB]
-Get:18 http://archive.ubuntu.com/ubuntu jammy-backports/universe amd64 Packages [35.6 kB]
-Fetched 48.2 MB in 7s (7150 kB/s)
-Reading package lists...
-Reading package lists...
-Building dependency tree...
-Reading state information...
-ca-certificates is already the newest version (20260601~22.04.1).
-The following additional packages will be installed:
-  libc-ares2 libicu70 libnode72 libuv1
-Suggested packages:
-  npm
-Recommended packages:
-  nodejs-doc
-The following NEW packages will be installed:
-  libc-ares2 libicu70 libnode72 libuv1 nodejs
-0 upgraded, 5 newly installed, 0 to remove and 26 not upgraded.
-Need to get 21.6 MB of archives.
-After this operation, 77.8 MB of additional disk space will be used.
-Get:1 http://archive.ubuntu.com/ubuntu jammy/main amd64 libicu70 amd64 70.1-2 [10.6 MB]
-Get:2 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libuv1 amd64 1.43.0-1ubuntu0.1 [92.7 kB]
-Get:3 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libc-ares2 amd64 1.18.1-1ubuntu0.22.04.3 [45.1 kB]
-Get:4 http://archive.ubuntu.com/ubuntu jammy-updates/universe amd64 libnode72 amd64 12.22.9~dfsg-1ubuntu3.6 [10.8 MB]
-Get:5 http://archive.ubuntu.com/ubuntu jammy-updates/universe amd64 nodejs amd64 12.22.9~dfsg-1ubuntu3.6 [122 kB]
-[91mdebconf: delaying package configuration, since apt-utils is not installed
-[0mFetched 21.6 MB in 5s (4444 kB/s)
-Selecting previously unselected package libicu70:amd64.
-(Reading database ... 
-(Reading database ... 5%
-(Reading database ... 10%
-(Reading database ... 15%
-(Reading database ... 20%
-(Reading database ... 25%
-(Reading database ... 30%
-(Reading database ... 35%
-(Reading database ... 40%
-(Reading database ... 45%
-(Reading database ... 50%
-(Reading database ... 55%
-(Reading database ... 60%
-(Reading database ... 65%
-(Reading database ... 70%
-(Reading database ... 75%
-(Reading database ... 80%
-(Reading database ... 85%
-(Reading database ... 90%
-(Reading database ... 95%
-(Reading database ... 100%
-(Reading database ... 5520 files and directories currently installed.)
-Preparing to unpack .../libicu70_70.1-2_amd64.deb ...
-Unpacking libicu70:amd64 (70.1-2) ...
-Selecting previously unselected package libuv1:amd64.
-Preparing to unpack .../libuv1_1.43.0-1ubuntu0.1_amd64.deb ...
-Unpacking libuv1:amd64 (1.43.0-1ubuntu0.1) ...
-Selecting previously unselected package libc-ares2:amd64.
-Preparing to unpack .../libc-ares2_1.18.1-1ubuntu0.22.04.3_amd64.deb ...
-Unpacking libc-ares2:amd64 (1.18.1-1ubuntu0.22.04.3) ...
-Selecting previously unselected package libnode72:amd64.
-Preparing to unpack .../libnode72_12.22.9~dfsg-1ubuntu3.6_amd64.deb ...
-Unpacking libnode72:amd64 (12.22.9~dfsg-1ubuntu3.6) ...
-Selecting previously unselected package nodejs.
-Preparing to unpack .../nodejs_12.22.9~dfsg-1ubuntu3.6_amd64.deb ...
-Unpacking nodejs (12.22.9~dfsg-1ubuntu3.6) ...
-Setting up libc-ares2:amd64 (1.18.1-1ubuntu0.22.04.3) ...
-Setting up libuv1:amd64 (1.43.0-1ubuntu0.1) ...
-Setting up libicu70:amd64 (70.1-2) ...
-Setting up libnode72:amd64 (12.22.9~dfsg-1ubuntu3.6) ...
-Setting up nodejs (12.22.9~dfsg-1ubuntu3.6) ...
-update-alternatives: using /usr/bin/nodejs to provide /usr/bin/js (js) in auto mode
-update-alternatives: warning: skip creation of /usr/share/man/man1/js.1.gz because associated file /usr/share/man/man1/nodejs.1.gz (of link group js) doesn't exist
-Processing triggers for libc-bin (2.35-0ubuntu3.14) ...
- ---> Removed intermediate container c4139dc6df79
+ ---> Using cache
  ---> deb0f25bad57
 Step 3/9 : RUN mv /usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-base.sh
- ---> Running in cc08723fea38
- ---> Removed intermediate container cc08723fea38
+ ---> Using cache
  ---> 8b1eed89e098
 Step 4/9 : COPY entrypoint.sh /usr/local/bin/entrypoint-original.sh
+ ---> Using cache
  ---> 74babf278fbf
 Step 5/9 : COPY cashpilot-proxy-entrypoint /usr/local/bin/entrypoint.sh
+ ---> Using cache
  ---> 3971203ab851
 Step 6/9 : COPY cashpilot-doh.js /usr/local/lib/cashpilot-doh.js
+ ---> Using cache
  ---> 33f5951f0bf1
 Step 7/9 : RUN chmod 0755 /usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-original.sh
- ---> Running in 56a36ec2b91f
- ---> Removed intermediate container 56a36ec2b91f
+ ---> Using cache
  ---> b11970618fcd
 Step 8/9 : LABEL com.cashpilot.earnapp.runtime=earnapp_ubuntu       com.cashpilot.earnapp.platform=linux       com.cashpilot.earnapp.appid=node_earnapp.com       com.cashpilot.earnapp.device-prefix=sdk-node-       com.cashpilot.earnapp.assets-sha256=89902b056dc4b31c6cdc756f42f0514bbdc48d4cc3863dc270bf7af80384baeb
- ---> Running in 2bff43058c31
- ---> Removed intermediate container 2bff43058c31
+ ---> Using cache
  ---> c87f6f8cfb06
 Step 9/9 : ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
- ---> Running in efb4b490e42f
- ---> Removed intermediate container efb4b490e42f
+ ---> Using cache
  ---> 70265ba720c2
 Successfully built 70265ba720c2
-Successfully tagged cashpilot/earnapp-ubuntu:20260909-nonvn-macos-canary
+Successfully tagged cashpilot/earnapp-ubuntu:20260912-production-candidate
 The push refers to repository [ghcr.io/assetforgeai-tech/cashpilot-earnapp-macos]
-68cf9fcb5782: Waiting
-c11062a40413: Waiting
-938bdce871a8: Waiting
-d53706fb2f52: Waiting
-6499713bf2a7: Waiting
-d544298cabd5: Waiting
-bf721afd1e8f: Waiting
 4df52974a240: Waiting
-4738a5aab53b: Waiting
-dff810632f79: Waiting
+6499713bf2a7: Waiting
+d53706fb2f52: Waiting
 d57cba7e2fc0: Waiting
+4738a5aab53b: Waiting
+c11062a40413: Waiting
+e85d80939604: Waiting
+bf721afd1e8f: Waiting
+938bdce871a8: Waiting
+d544298cabd5: Waiting
+68cf9fcb5782: Waiting
+c92a07d1eb25: Waiting
 f249a079b12d: Waiting
 8f6f09ffbf65: Waiting
 05b0516d989c: Waiting
-e85d80939604: Waiting
+dff810632f79: Waiting
+d544298cabd5: Waiting
+68cf9fcb5782: Waiting
 c92a07d1eb25: Waiting
-d57cba7e2fc0: Waiting
 f249a079b12d: Waiting
 8f6f09ffbf65: Waiting
 05b0516d989c: Waiting
-e85d80939604: Waiting
-c92a07d1eb25: Waiting
-68cf9fcb5782: Waiting
-c11062a40413: Waiting
-938bdce871a8: Waiting
-d53706fb2f52: Waiting
+dff810632f79: Waiting
+4df52974a240: Waiting
 6499713bf2a7: Waiting
-d544298cabd5: Waiting
-bf721afd1e8f: Waiting
-4df52974a240: Waiting
-4738a5aab53b: Waiting
-dff810632f79: Waiting
-bf721afd1e8f: Waiting
-4df52974a240: Waiting
-4738a5aab53b: Waiting
-dff810632f79: Waiting
+d53706fb2f52: Waiting
 d57cba7e2fc0: Waiting
+4738a5aab53b: Waiting
+c11062a40413: Waiting
+e85d80939604: Waiting
+bf721afd1e8f: Waiting
+938bdce871a8: Waiting
+938bdce871a8: Waiting
+d544298cabd5: Waiting
+68cf9fcb5782: Waiting
+c92a07d1eb25: Waiting
 f249a079b12d: Waiting
 8f6f09ffbf65: Waiting
 05b0516d989c: Waiting
-e85d80939604: Waiting
-c92a07d1eb25: Waiting
-68cf9fcb5782: Waiting
-c11062a40413: Waiting
-938bdce871a8: Waiting
-d53706fb2f52: Waiting
-6499713bf2a7: Waiting
-d544298cabd5: Waiting
-c11062a40413: Waiting
-938bdce871a8: Waiting
-d53706fb2f52: Waiting
-6499713bf2a7: Waiting
-d544298cabd5: Waiting
-bf721afd1e8f: Waiting
-4df52974a240: Waiting
-4738a5aab53b: Waiting
 dff810632f79: Waiting
+4df52974a240: Waiting
+6499713bf2a7: Waiting
+d53706fb2f52: Waiting
 d57cba7e2fc0: Waiting
+4738a5aab53b: Waiting
+c11062a40413: Waiting
+e85d80939604: Waiting
+bf721afd1e8f: Waiting
+d544298cabd5: Waiting
+68cf9fcb5782: Waiting
+c92a07d1eb25: Waiting
 f249a079b12d: Waiting
 8f6f09ffbf65: Waiting
 05b0516d989c: Waiting
-e85d80939604: Waiting
-c92a07d1eb25: Waiting
-68cf9fcb5782: Waiting
-4738a5aab53b: Waiting
 dff810632f79: Waiting
+4df52974a240: Waiting
+6499713bf2a7: Waiting
+d53706fb2f52: Waiting
 d57cba7e2fc0: Waiting
+4738a5aab53b: Waiting
+c11062a40413: Waiting
+e85d80939604: Waiting
+bf721afd1e8f: Waiting
+938bdce871a8: Waiting
+c11062a40413: Waiting
+e85d80939604: Waiting
+bf721afd1e8f: Waiting
+938bdce871a8: Waiting
+d544298cabd5: Waiting
+68cf9fcb5782: Waiting
+c92a07d1eb25: Waiting
 f249a079b12d: Waiting
 8f6f09ffbf65: Waiting
 05b0516d989c: Waiting
-e85d80939604: Waiting
-c92a07d1eb25: Waiting
-68cf9fcb5782: Waiting
-c11062a40413: Waiting
-938bdce871a8: Waiting
-d53706fb2f52: Waiting
-6499713bf2a7: Waiting
-d544298cabd5: Waiting
-bf721afd1e8f: Waiting
-4df52974a240: Waiting
 dff810632f79: Waiting
+4df52974a240: Waiting
+6499713bf2a7: Waiting
+d53706fb2f52: Waiting
 d57cba7e2fc0: Waiting
+4738a5aab53b: Waiting
+d57cba7e2fc0: Waiting
+4738a5aab53b: Waiting
+c11062a40413: Waiting
+e85d80939604: Waiting
+bf721afd1e8f: Waiting
+938bdce871a8: Waiting
+d544298cabd5: Waiting
+68cf9fcb5782: Waiting
+c92a07d1eb25: Waiting
 f249a079b12d: Waiting
 8f6f09ffbf65: Waiting
 05b0516d989c: Waiting
-e85d80939604: Waiting
-c92a07d1eb25: Waiting
-68cf9fcb5782: Waiting
-c11062a40413: Waiting
-938bdce871a8: Waiting
-d53706fb2f52: Waiting
-6499713bf2a7: Waiting
-d544298cabd5: Waiting
-bf721afd1e8f: Waiting
-4df52974a240: Waiting
-4738a5aab53b: Waiting
-05b0516d989c: Waiting
-e85d80939604: Waiting
-c92a07d1eb25: Waiting
-68cf9fcb5782: Waiting
-c11062a40413: Waiting
-938bdce871a8: Waiting
-d53706fb2f52: Waiting
-6499713bf2a7: Waiting
-d544298cabd5: Waiting
-bf721afd1e8f: Waiting
-4df52974a240: Waiting
-4738a5aab53b: Waiting
 dff810632f79: Waiting
-d57cba7e2fc0: Waiting
-f249a079b12d: Waiting
-8f6f09ffbf65: Waiting
-6499713bf2a7: Waiting
-d544298cabd5: Waiting
-bf721afd1e8f: Waiting
 4df52974a240: Waiting
-4738a5aab53b: Waiting
-dff810632f79: Waiting
-d57cba7e2fc0: Waiting
+6499713bf2a7: Waiting
+d53706fb2f52: Waiting
+e85d80939604: Waiting
+bf721afd1e8f: Waiting
+938bdce871a8: Waiting
+d544298cabd5: Waiting
+68cf9fcb5782: Waiting
+c92a07d1eb25: Waiting
 f249a079b12d: Waiting
 8f6f09ffbf65: Waiting
 05b0516d989c: Waiting
-e85d80939604: Waiting
-c92a07d1eb25: Waiting
-68cf9fcb5782: Waiting
-c11062a40413: Waiting
-938bdce871a8: Waiting
-d53706fb2f52: Waiting
-e85d80939604: Waiting
-c92a07d1eb25: Waiting
-68cf9fcb5782: Waiting
-c11062a40413: Waiting
-938bdce871a8: Waiting
-d53706fb2f52: Waiting
-6499713bf2a7: Waiting
-d544298cabd5: Waiting
-bf721afd1e8f: Waiting
-4df52974a240: Waiting
-4738a5aab53b: Waiting
 dff810632f79: Waiting
+4df52974a240: Waiting
+6499713bf2a7: Waiting
+d53706fb2f52: Waiting
 d57cba7e2fc0: Waiting
+4738a5aab53b: Waiting
+c11062a40413: Waiting
+e85d80939604: Waiting
+bf721afd1e8f: Waiting
+938bdce871a8: Waiting
+d544298cabd5: Waiting
+68cf9fcb5782: Waiting
+c92a07d1eb25: Waiting
 f249a079b12d: Waiting
 8f6f09ffbf65: Waiting
 05b0516d989c: Waiting
-68cf9fcb5782: Waiting
-c11062a40413: Waiting
-938bdce871a8: Waiting
-d53706fb2f52: Waiting
-6499713bf2a7: Waiting
-d544298cabd5: Waiting
-bf721afd1e8f: Waiting
-4df52974a240: Waiting
-4738a5aab53b: Waiting
 dff810632f79: Waiting
+4df52974a240: Waiting
+6499713bf2a7: Waiting
+d53706fb2f52: Waiting
 d57cba7e2fc0: Waiting
+4738a5aab53b: Waiting
+c11062a40413: Waiting
+d544298cabd5: Waiting
+68cf9fcb5782: Waiting
+c92a07d1eb25: Waiting
 f249a079b12d: Waiting
 8f6f09ffbf65: Waiting
 05b0516d989c: Waiting
-e85d80939604: Waiting
-c92a07d1eb25: Waiting
+dff810632f79: Waiting
+4df52974a240: Waiting
 6499713bf2a7: Waiting
+d53706fb2f52: Waiting
+d57cba7e2fc0: Waiting
+4738a5aab53b: Waiting
+c11062a40413: Waiting
+e85d80939604: Waiting
+bf721afd1e8f: Waiting
+938bdce871a8: Waiting
+6499713bf2a7: Waiting
+d53706fb2f52: Waiting
+d57cba7e2fc0: Waiting
+4738a5aab53b: Waiting
+c11062a40413: Waiting
+e85d80939604: Waiting
+bf721afd1e8f: Waiting
+938bdce871a8: Waiting
+d544298cabd5: Waiting
+68cf9fcb5782: Waiting
+c92a07d1eb25: Waiting
+f249a079b12d: Waiting
+8f6f09ffbf65: Waiting
+05b0516d989c: Waiting
+dff810632f79: Waiting
+4df52974a240: Waiting
+d57cba7e2fc0: Layer already exists
+4738a5aab53b: Layer already exists
+c11062a40413: Layer already exists
+e85d80939604: Layer already exists
+bf721afd1e8f: Layer already exists
+938bdce871a8: Layer already exists
 d544298cabd5: Layer already exists
-bf721afd1e8f: Waiting
-4df52974a240: Layer already exists
-4738a5aab53b: Waiting
-dff810632f79: Layer already exists
-d57cba7e2fc0: Waiting
+68cf9fcb5782: Layer already exists
+c92a07d1eb25: Layer already exists
 f249a079b12d: Layer already exists
 8f6f09ffbf65: Layer already exists
 05b0516d989c: Layer already exists
-e85d80939604: Layer already exists
-c92a07d1eb25: Waiting
-68cf9fcb5782: Waiting
-c11062a40413: Waiting
-938bdce871a8: Waiting
-d53706fb2f52: Layer already exists
-c92a07d1eb25: Waiting
-68cf9fcb5782: Waiting
-c11062a40413: Waiting
-938bdce871a8: Waiting
-6499713bf2a7: Waiting
-bf721afd1e8f: Layer already exists
-4738a5aab53b: Waiting
-d57cba7e2fc0: Waiting
-c92a07d1eb25: Waiting
-68cf9fcb5782: Waiting
-c11062a40413: Waiting
-938bdce871a8: Waiting
-6499713bf2a7: Waiting
-4738a5aab53b: Waiting
-d57cba7e2fc0: Waiting
-68cf9fcb5782: Waiting
-938bdce871a8: Waiting
-6499713bf2a7: Waiting
-d57cba7e2fc0: Waiting
-c92a07d1eb25: Waiting
-c92a07d1eb25: Pushed
-68cf9fcb5782: Pushed
-c11062a40413: Pushed
-938bdce871a8: Pushed
-6499713bf2a7: Pushed
-4738a5aab53b: Pushed
-d57cba7e2fc0: Pushed
-20260909-nonvn-macos-canary: digest: sha256:45c62c73242a281f5e293a6249bae4706b3c2ff8f9ec23a01b3a01a7a879170d size: 3829
-The push refers to repository [ghcr.io/assetforgeai-tech/cashpilot-earnapp-ios]
-4df52974a240: Waiting
-00ec53b593a3: Waiting
-0f5b0f65f3e9: Waiting
-b7b39435dfe0: Waiting
-81485dc198a7: Waiting
-6800336144aa: Waiting
-222ad9525ef7: Waiting
-ef8521c85468: Waiting
-2133c3b84d04: Waiting
-1a48f865f9e4: Waiting
-de8279669c23: Waiting
-1b7a8dc7d391: Waiting
-8225bd3668ec: Waiting
-c46ba521ff13: Waiting
-28bcce6f90cc: Waiting
-e7b5ae40f5af: Waiting
-d544298cabd5: Waiting
-a7f8e4dda08b: Waiting
-2aa4b706b48b: Waiting
-1d5948c8e011: Waiting
-81485dc198a7: Waiting
-6800336144aa: Waiting
-222ad9525ef7: Waiting
-ef8521c85468: Waiting
-2133c3b84d04: Waiting
-1a48f865f9e4: Waiting
-de8279669c23: Waiting
-1b7a8dc7d391: Waiting
-8225bd3668ec: Waiting
-c46ba521ff13: Waiting
-28bcce6f90cc: Waiting
-e7b5ae40f5af: Waiting
-d544298cabd5: Waiting
-a7f8e4dda08b: Waiting
-2aa4b706b48b: Waiting
-1d5948c8e011: Waiting
-4df52974a240: Waiting
-00ec53b593a3: Waiting
-0f5b0f65f3e9: Waiting
-b7b39435dfe0: Waiting
-de8279669c23: Waiting
-1b7a8dc7d391: Waiting
-8225bd3668ec: Waiting
-c46ba521ff13: Waiting
-28bcce6f90cc: Waiting
-e7b5ae40f5af: Waiting
-d544298cabd5: Waiting
-a7f8e4dda08b: Waiting
-2aa4b706b48b: Waiting
-1d5948c8e011: Waiting
-4df52974a240: Waiting
-00ec53b593a3: Waiting
-0f5b0f65f3e9: Waiting
-b7b39435dfe0: Waiting
-81485dc198a7: Waiting
-6800336144aa: Waiting
-222ad9525ef7: Waiting
-ef8521c85468: Waiting
-2133c3b84d04: Waiting
-1a48f865f9e4: Waiting
-e7b5ae40f5af: Waiting
-d544298cabd5: Waiting
-a7f8e4dda08b: Waiting
-2aa4b706b48b: Waiting
-1d5948c8e011: Waiting
-4df52974a240: Waiting
-00ec53b593a3: Waiting
-0f5b0f65f3e9: Waiting
-b7b39435dfe0: Waiting
-81485dc198a7: Waiting
-6800336144aa: Waiting
-222ad9525ef7: Waiting
-ef8521c85468: Waiting
-2133c3b84d04: Waiting
-1a48f865f9e4: Waiting
-de8279669c23: Waiting
-1b7a8dc7d391: Waiting
-8225bd3668ec: Waiting
-c46ba521ff13: Waiting
-28bcce6f90cc: Waiting
-e7b5ae40f5af: Waiting
-d544298cabd5: Waiting
-a7f8e4dda08b: Waiting
-2aa4b706b48b: Waiting
-1d5948c8e011: Waiting
-4df52974a240: Waiting
-00ec53b593a3: Waiting
-0f5b0f65f3e9: Waiting
-b7b39435dfe0: Waiting
-81485dc198a7: Waiting
-6800336144aa: Waiting
-222ad9525ef7: Waiting
-ef8521c85468: Waiting
-2133c3b84d04: Waiting
-1a48f865f9e4: Waiting
-de8279669c23: Waiting
-1b7a8dc7d391: Waiting
-8225bd3668ec: Waiting
-c46ba521ff13: Waiting
-28bcce6f90cc: Waiting
-c46ba521ff13: Waiting
-28bcce6f90cc: Waiting
-e7b5ae40f5af: Waiting
-d544298cabd5: Waiting
-a7f8e4dda08b: Waiting
-2aa4b706b48b: Waiting
-1d5948c8e011: Waiting
-4df52974a240: Waiting
-00ec53b593a3: Waiting
-0f5b0f65f3e9: Waiting
-b7b39435dfe0: Waiting
-81485dc198a7: Waiting
-6800336144aa: Waiting
-222ad9525ef7: Waiting
-ef8521c85468: Waiting
-2133c3b84d04: Waiting
-1a48f865f9e4: Waiting
-de8279669c23: Waiting
-1b7a8dc7d391: Waiting
-8225bd3668ec: Waiting
-2133c3b84d04: Waiting
-1a48f865f9e4: Waiting
-de8279669c23: Waiting
-1b7a8dc7d391: Waiting
-8225bd3668ec: Waiting
-c46ba521ff13: Waiting
-28bcce6f90cc: Waiting
-e7b5ae40f5af: Waiting
-d544298cabd5: Waiting
-a7f8e4dda08b: Waiting
-2aa4b706b48b: Waiting
-1d5948c8e011: Waiting
-4df52974a240: Waiting
-00ec53b593a3: Waiting
-0f5b0f65f3e9: Waiting
-b7b39435dfe0: Waiting
-81485dc198a7: Waiting
-6800336144aa: Waiting
-222ad9525ef7: Waiting
-ef8521c85468: Waiting
-b7b39435dfe0: Waiting
-81485dc198a7: Waiting
-6800336144aa: Waiting
-222ad9525ef7: Waiting
-ef8521c85468: Waiting
-2133c3b84d04: Waiting
-1a48f865f9e4: Waiting
-de8279669c23: Waiting
-1b7a8dc7d391: Waiting
-8225bd3668ec: Waiting
-c46ba521ff13: Waiting
-28bcce6f90cc: Waiting
-e7b5ae40f5af: Waiting
-d544298cabd5: Waiting
-a7f8e4dda08b: Waiting
-2aa4b706b48b: Waiting
-1d5948c8e011: Waiting
-4df52974a240: Waiting
-00ec53b593a3: Waiting
-0f5b0f65f3e9: Waiting
-e7b5ae40f5af: Waiting
-d544298cabd5: Waiting
-a7f8e4dda08b: Waiting
-2aa4b706b48b: Waiting
-1d5948c8e011: Waiting
-4df52974a240: Waiting
-00ec53b593a3: Waiting
-0f5b0f65f3e9: Waiting
-b7b39435dfe0: Waiting
-81485dc198a7: Waiting
-6800336144aa: Waiting
-222ad9525ef7: Waiting
-ef8521c85468: Waiting
-2133c3b84d04: Waiting
-1a48f865f9e4: Waiting
-de8279669c23: Waiting
-1b7a8dc7d391: Waiting
-8225bd3668ec: Waiting
-c46ba521ff13: Waiting
-28bcce6f90cc: Waiting
-81485dc198a7: Waiting
-6800336144aa: Waiting
-222ad9525ef7: Waiting
-ef8521c85468: Waiting
-2133c3b84d04: Waiting
-1a48f865f9e4: Waiting
-de8279669c23: Waiting
-1b7a8dc7d391: Waiting
-8225bd3668ec: Waiting
-c46ba521ff13: Waiting
-28bcce6f90cc: Waiting
-e7b5ae40f5af: Waiting
-d544298cabd5: Waiting
-a7f8e4dda08b: Waiting
-2aa4b706b48b: Waiting
-1d5948c8e011: Waiting
-4df52974a240: Waiting
-00ec53b593a3: Waiting
-0f5b0f65f3e9: Waiting
-b7b39435dfe0: Waiting
-0f5b0f65f3e9: Waiting
-b7b39435dfe0: Layer already exists
-81485dc198a7: Layer already exists
-6800336144aa: Waiting
-222ad9525ef7: Layer already exists
-ef8521c85468: Layer already exists
-2133c3b84d04: Waiting
-1a48f865f9e4: Waiting
-de8279669c23: Waiting
-1b7a8dc7d391: Layer already exists
-8225bd3668ec: Layer already exists
-c46ba521ff13: Layer already exists
-28bcce6f90cc: Waiting
-e7b5ae40f5af: Waiting
-d544298cabd5: Layer already exists
-a7f8e4dda08b: Waiting
-2aa4b706b48b: Layer already exists
-1d5948c8e011: Layer already exists
+dff810632f79: Layer already exists
 4df52974a240: Layer already exists
-00ec53b593a3: Waiting
-de8279669c23: Waiting
-28bcce6f90cc: Waiting
-e7b5ae40f5af: Waiting
-a7f8e4dda08b: Waiting
-00ec53b593a3: Waiting
+6499713bf2a7: Layer already exists
+d53706fb2f52: Layer already exists
+20260912-production-candidate: digest: sha256:45c62c73242a281f5e293a6249bae4706b3c2ff8f9ec23a01b3a01a7a879170d size: 3829
+The push refers to repository [ghcr.io/assetforgeai-tech/cashpilot-earnapp-ios]
+222ad9525ef7: Waiting
+b7b39435dfe0: Waiting
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+1d5948c8e011: Waiting
 0f5b0f65f3e9: Waiting
-6800336144aa: Waiting
-2133c3b84d04: Waiting
-1a48f865f9e4: Waiting
-0f5b0f65f3e9: Waiting
-6800336144aa: Waiting
-2133c3b84d04: Waiting
-1a48f865f9e4: Waiting
-de8279669c23: Waiting
-28bcce6f90cc: Waiting
-e7b5ae40f5af: Waiting
-a7f8e4dda08b: Waiting
 00ec53b593a3: Waiting
-6800336144aa: Pushed
-de8279669c23: Pushed
-28bcce6f90cc: Pushed
-e7b5ae40f5af: Pushed
-a7f8e4dda08b: Pushed
-00ec53b593a3: Pushed
-0f5b0f65f3e9: Pushed
-2133c3b84d04: Pushed
-1a48f865f9e4: Pushed
-20260909-nonvn-macos-canary: digest: sha256:f7ca70ce9ef7bd72321bafa8be3f00047ceb056e67221ac93c10394592049930 size: 4711
-The push refers to repository [ghcr.io/assetforgeai-tech/cashpilot-earnapp-ubuntu]
-2f84dce6cee8: Waiting
-4f4fb700ef54: Waiting
-6a3c293df4d2: Waiting
-e101f0fdb263: Waiting
-6cfb66bf1350: Waiting
-120c7c2a5424: Waiting
-e8b519e89321: Waiting
-6481255e7ad5: Waiting
-fa09349ca998: Waiting
-482070501b2f: Waiting
-75439219a6aa: Waiting
-feb3fa14bea3: Waiting
-365dbae00467: Waiting
-38ddd2d6b72c: Waiting
-a00092fb6748: Waiting
+28bcce6f90cc: Waiting
+4df52974a240: Waiting
+8225bd3668ec: Waiting
+81485dc198a7: Waiting
+c46ba521ff13: Waiting
+de8279669c23: Waiting
+e7b5ae40f5af: Waiting
+1a48f865f9e4: Waiting
+a7f8e4dda08b: Waiting
+6800336144aa: Waiting
 d544298cabd5: Waiting
-695268cc464b: Waiting
-9f6bc89699a5: Waiting
-cb91c09823c2: Waiting
-75439219a6aa: Waiting
-feb3fa14bea3: Waiting
-365dbae00467: Waiting
-38ddd2d6b72c: Waiting
-a00092fb6748: Waiting
+2aa4b706b48b: Waiting
+2133c3b84d04: Waiting
+a7f8e4dda08b: Waiting
+6800336144aa: Waiting
 d544298cabd5: Waiting
-695268cc464b: Waiting
-9f6bc89699a5: Waiting
-cb91c09823c2: Waiting
-2f84dce6cee8: Waiting
-4f4fb700ef54: Waiting
-6a3c293df4d2: Waiting
-e101f0fdb263: Waiting
-6cfb66bf1350: Waiting
-120c7c2a5424: Waiting
-e8b519e89321: Waiting
-6481255e7ad5: Waiting
-fa09349ca998: Waiting
-482070501b2f: Waiting
-6a3c293df4d2: Waiting
-e101f0fdb263: Waiting
-6cfb66bf1350: Waiting
-120c7c2a5424: Waiting
-e8b519e89321: Waiting
-6481255e7ad5: Waiting
-fa09349ca998: Waiting
-482070501b2f: Waiting
-75439219a6aa: Waiting
-feb3fa14bea3: Waiting
-365dbae00467: Waiting
-38ddd2d6b72c: Waiting
-a00092fb6748: Waiting
+2aa4b706b48b: Waiting
+2133c3b84d04: Waiting
+222ad9525ef7: Waiting
+b7b39435dfe0: Waiting
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+1d5948c8e011: Waiting
+0f5b0f65f3e9: Waiting
+00ec53b593a3: Waiting
+28bcce6f90cc: Waiting
+4df52974a240: Waiting
+8225bd3668ec: Waiting
+81485dc198a7: Waiting
+c46ba521ff13: Waiting
+de8279669c23: Waiting
+e7b5ae40f5af: Waiting
+1a48f865f9e4: Waiting
+222ad9525ef7: Waiting
+b7b39435dfe0: Waiting
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+1d5948c8e011: Waiting
+0f5b0f65f3e9: Waiting
+00ec53b593a3: Waiting
+28bcce6f90cc: Waiting
+4df52974a240: Waiting
+8225bd3668ec: Waiting
+81485dc198a7: Waiting
+c46ba521ff13: Waiting
+de8279669c23: Waiting
+e7b5ae40f5af: Waiting
+1a48f865f9e4: Waiting
+a7f8e4dda08b: Waiting
+6800336144aa: Waiting
 d544298cabd5: Waiting
-695268cc464b: Waiting
-9f6bc89699a5: Waiting
-cb91c09823c2: Waiting
-2f84dce6cee8: Waiting
-4f4fb700ef54: Waiting
-a00092fb6748: Waiting
+2aa4b706b48b: Waiting
+2133c3b84d04: Waiting
+81485dc198a7: Waiting
+c46ba521ff13: Waiting
+de8279669c23: Waiting
+e7b5ae40f5af: Waiting
+1a48f865f9e4: Waiting
+a7f8e4dda08b: Waiting
+6800336144aa: Waiting
 d544298cabd5: Waiting
-695268cc464b: Waiting
-9f6bc89699a5: Waiting
-cb91c09823c2: Waiting
-2f84dce6cee8: Waiting
-4f4fb700ef54: Waiting
-6a3c293df4d2: Waiting
-e101f0fdb263: Waiting
-6cfb66bf1350: Waiting
-120c7c2a5424: Waiting
-e8b519e89321: Waiting
-6481255e7ad5: Waiting
-fa09349ca998: Waiting
-482070501b2f: Waiting
-75439219a6aa: Waiting
-feb3fa14bea3: Waiting
-365dbae00467: Waiting
-38ddd2d6b72c: Waiting
-75439219a6aa: Waiting
-feb3fa14bea3: Waiting
-365dbae00467: Waiting
-38ddd2d6b72c: Waiting
-a00092fb6748: Waiting
+2aa4b706b48b: Waiting
+2133c3b84d04: Waiting
+222ad9525ef7: Waiting
+b7b39435dfe0: Waiting
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+1d5948c8e011: Waiting
+0f5b0f65f3e9: Waiting
+00ec53b593a3: Waiting
+28bcce6f90cc: Waiting
+4df52974a240: Waiting
+8225bd3668ec: Waiting
+81485dc198a7: Waiting
+c46ba521ff13: Waiting
+de8279669c23: Waiting
+e7b5ae40f5af: Waiting
+1a48f865f9e4: Waiting
+a7f8e4dda08b: Waiting
+6800336144aa: Waiting
 d544298cabd5: Waiting
-695268cc464b: Waiting
-9f6bc89699a5: Waiting
-cb91c09823c2: Waiting
-2f84dce6cee8: Waiting
-4f4fb700ef54: Waiting
-6a3c293df4d2: Waiting
-e101f0fdb263: Waiting
-6cfb66bf1350: Waiting
-120c7c2a5424: Waiting
-e8b519e89321: Waiting
-6481255e7ad5: Waiting
-fa09349ca998: Waiting
-482070501b2f: Waiting
-e8b519e89321: Waiting
-6481255e7ad5: Waiting
-fa09349ca998: Waiting
-482070501b2f: Waiting
-75439219a6aa: Waiting
-feb3fa14bea3: Waiting
-365dbae00467: Waiting
-38ddd2d6b72c: Waiting
-a00092fb6748: Waiting
+2aa4b706b48b: Waiting
+2133c3b84d04: Waiting
+222ad9525ef7: Waiting
+b7b39435dfe0: Waiting
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+1d5948c8e011: Waiting
+0f5b0f65f3e9: Waiting
+00ec53b593a3: Waiting
+28bcce6f90cc: Waiting
+4df52974a240: Waiting
+8225bd3668ec: Waiting
+6800336144aa: Waiting
 d544298cabd5: Waiting
-695268cc464b: Waiting
-9f6bc89699a5: Waiting
-cb91c09823c2: Waiting
-2f84dce6cee8: Waiting
-4f4fb700ef54: Waiting
-6a3c293df4d2: Waiting
-e101f0fdb263: Waiting
-6cfb66bf1350: Waiting
-120c7c2a5424: Waiting
-4f4fb700ef54: Waiting
-6a3c293df4d2: Waiting
-e101f0fdb263: Waiting
-6cfb66bf1350: Waiting
-120c7c2a5424: Waiting
-e8b519e89321: Waiting
-6481255e7ad5: Waiting
-fa09349ca998: Waiting
-482070501b2f: Waiting
-75439219a6aa: Waiting
-feb3fa14bea3: Waiting
-365dbae00467: Waiting
-38ddd2d6b72c: Waiting
-a00092fb6748: Waiting
+2aa4b706b48b: Waiting
+2133c3b84d04: Waiting
+222ad9525ef7: Waiting
+b7b39435dfe0: Waiting
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+1d5948c8e011: Waiting
+0f5b0f65f3e9: Waiting
+00ec53b593a3: Waiting
+28bcce6f90cc: Waiting
+4df52974a240: Waiting
+8225bd3668ec: Waiting
+81485dc198a7: Waiting
+c46ba521ff13: Waiting
+de8279669c23: Waiting
+e7b5ae40f5af: Waiting
+1a48f865f9e4: Waiting
+a7f8e4dda08b: Waiting
+6800336144aa: Waiting
 d544298cabd5: Waiting
-695268cc464b: Waiting
-9f6bc89699a5: Waiting
-cb91c09823c2: Waiting
-2f84dce6cee8: Waiting
-9f6bc89699a5: Waiting
-cb91c09823c2: Waiting
-2f84dce6cee8: Waiting
-4f4fb700ef54: Waiting
-6a3c293df4d2: Waiting
-e101f0fdb263: Waiting
-6cfb66bf1350: Waiting
-120c7c2a5424: Waiting
-e8b519e89321: Waiting
-6481255e7ad5: Waiting
-fa09349ca998: Waiting
-482070501b2f: Waiting
-75439219a6aa: Waiting
-feb3fa14bea3: Waiting
-365dbae00467: Waiting
-38ddd2d6b72c: Waiting
-a00092fb6748: Waiting
+2aa4b706b48b: Waiting
+2133c3b84d04: Waiting
+222ad9525ef7: Waiting
+b7b39435dfe0: Waiting
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+1d5948c8e011: Waiting
+0f5b0f65f3e9: Waiting
+00ec53b593a3: Waiting
+28bcce6f90cc: Waiting
+4df52974a240: Waiting
+8225bd3668ec: Waiting
+81485dc198a7: Waiting
+c46ba521ff13: Waiting
+de8279669c23: Waiting
+e7b5ae40f5af: Waiting
+1a48f865f9e4: Waiting
+a7f8e4dda08b: Waiting
+81485dc198a7: Waiting
+c46ba521ff13: Waiting
+de8279669c23: Waiting
+e7b5ae40f5af: Waiting
+1a48f865f9e4: Waiting
+a7f8e4dda08b: Waiting
+6800336144aa: Waiting
 d544298cabd5: Waiting
-695268cc464b: Waiting
-a00092fb6748: Waiting
+2aa4b706b48b: Waiting
+2133c3b84d04: Waiting
+222ad9525ef7: Waiting
+b7b39435dfe0: Waiting
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+1d5948c8e011: Waiting
+0f5b0f65f3e9: Waiting
+00ec53b593a3: Waiting
+28bcce6f90cc: Waiting
+4df52974a240: Waiting
+8225bd3668ec: Waiting
+e7b5ae40f5af: Waiting
+1a48f865f9e4: Waiting
+a7f8e4dda08b: Waiting
+6800336144aa: Waiting
 d544298cabd5: Waiting
-695268cc464b: Waiting
-9f6bc89699a5: Waiting
-cb91c09823c2: Waiting
-2f84dce6cee8: Waiting
-4f4fb700ef54: Waiting
-6a3c293df4d2: Waiting
-e101f0fdb263: Waiting
-6cfb66bf1350: Waiting
-120c7c2a5424: Waiting
-e8b519e89321: Waiting
-6481255e7ad5: Waiting
-fa09349ca998: Waiting
-482070501b2f: Waiting
-75439219a6aa: Waiting
-feb3fa14bea3: Waiting
-365dbae00467: Waiting
-38ddd2d6b72c: Waiting
-a00092fb6748: Waiting
+2aa4b706b48b: Waiting
+2133c3b84d04: Waiting
+222ad9525ef7: Waiting
+b7b39435dfe0: Waiting
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+1d5948c8e011: Waiting
+0f5b0f65f3e9: Waiting
+00ec53b593a3: Waiting
+28bcce6f90cc: Waiting
+4df52974a240: Waiting
+8225bd3668ec: Waiting
+81485dc198a7: Waiting
+c46ba521ff13: Waiting
+de8279669c23: Waiting
+4df52974a240: Waiting
+8225bd3668ec: Waiting
+81485dc198a7: Waiting
+c46ba521ff13: Waiting
+de8279669c23: Waiting
+e7b5ae40f5af: Waiting
+1a48f865f9e4: Waiting
+a7f8e4dda08b: Waiting
+6800336144aa: Waiting
 d544298cabd5: Waiting
-695268cc464b: Waiting
-9f6bc89699a5: Waiting
-cb91c09823c2: Waiting
-2f84dce6cee8: Waiting
-4f4fb700ef54: Waiting
-6a3c293df4d2: Waiting
-e101f0fdb263: Waiting
-6cfb66bf1350: Waiting
-120c7c2a5424: Waiting
-e8b519e89321: Waiting
-6481255e7ad5: Waiting
-fa09349ca998: Waiting
-482070501b2f: Waiting
-75439219a6aa: Waiting
-feb3fa14bea3: Waiting
-365dbae00467: Waiting
-38ddd2d6b72c: Waiting
-9f6bc89699a5: Layer already exists
-cb91c09823c2: Waiting
-2f84dce6cee8: Waiting
-4f4fb700ef54: Waiting
-6a3c293df4d2: Waiting
-e101f0fdb263: Layer already exists
-6cfb66bf1350: Waiting
-120c7c2a5424: Layer already exists
-e8b519e89321: Waiting
-6481255e7ad5: Waiting
-fa09349ca998: Waiting
-482070501b2f: Waiting
-75439219a6aa: Layer already exists
-feb3fa14bea3: Waiting
-365dbae00467: Waiting
-38ddd2d6b72c: Waiting
-a00092fb6748: Waiting
+2aa4b706b48b: Waiting
+2133c3b84d04: Waiting
+222ad9525ef7: Waiting
+b7b39435dfe0: Waiting
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+1d5948c8e011: Waiting
+0f5b0f65f3e9: Waiting
+00ec53b593a3: Waiting
+28bcce6f90cc: Waiting
+1a48f865f9e4: Layer already exists
+a7f8e4dda08b: Waiting
+6800336144aa: Layer already exists
 d544298cabd5: Layer already exists
-695268cc464b: Layer already exists
-feb3fa14bea3: Layer already exists
-365dbae00467: Layer already exists
-38ddd2d6b72c: Waiting
-a00092fb6748: Layer already exists
-cb91c09823c2: Waiting
+2aa4b706b48b: Layer already exists
+2133c3b84d04: Waiting
+222ad9525ef7: Layer already exists
+b7b39435dfe0: Layer already exists
+1b7a8dc7d391: Layer already exists
+ef8521c85468: Waiting
+1d5948c8e011: Layer already exists
+0f5b0f65f3e9: Layer already exists
+00ec53b593a3: Layer already exists
+28bcce6f90cc: Layer already exists
+4df52974a240: Layer already exists
+8225bd3668ec: Layer already exists
+81485dc198a7: Layer already exists
+c46ba521ff13: Waiting
+de8279669c23: Layer already exists
+e7b5ae40f5af: Layer already exists
+2133c3b84d04: Layer already exists
+ef8521c85468: Layer already exists
+c46ba521ff13: Layer already exists
+a7f8e4dda08b: Layer already exists
+20260912-production-candidate: digest: sha256:f7ca70ce9ef7bd72321bafa8be3f00047ceb056e67221ac93c10394592049930 size: 4711
+The push refers to repository [ghcr.io/assetforgeai-tech/cashpilot-earnapp-ubuntu]
+d544298cabd5: Waiting
+482070501b2f: Waiting
+fa09349ca998: Waiting
 2f84dce6cee8: Waiting
-4f4fb700ef54: Layer already exists
-6a3c293df4d2: Layer already exists
-6cfb66bf1350: Layer already exists
+6cfb66bf1350: Waiting
+feb3fa14bea3: Waiting
+a00092fb6748: Waiting
 e8b519e89321: Waiting
+38ddd2d6b72c: Waiting
+120c7c2a5424: Waiting
+e101f0fdb263: Waiting
+cb91c09823c2: Waiting
+6a3c293df4d2: Waiting
 6481255e7ad5: Waiting
+4f4fb700ef54: Waiting
+9f6bc89699a5: Waiting
+365dbae00467: Waiting
+695268cc464b: Waiting
+75439219a6aa: Waiting
+fa09349ca998: Waiting
+2f84dce6cee8: Waiting
+6cfb66bf1350: Waiting
+feb3fa14bea3: Waiting
+a00092fb6748: Waiting
+e8b519e89321: Waiting
+38ddd2d6b72c: Waiting
+120c7c2a5424: Waiting
+e101f0fdb263: Waiting
+cb91c09823c2: Waiting
+6a3c293df4d2: Waiting
+6481255e7ad5: Waiting
+4f4fb700ef54: Waiting
+9f6bc89699a5: Waiting
+365dbae00467: Waiting
+695268cc464b: Waiting
+75439219a6aa: Waiting
+d544298cabd5: Waiting
+482070501b2f: Waiting
+4f4fb700ef54: Waiting
+9f6bc89699a5: Waiting
+365dbae00467: Waiting
+695268cc464b: Waiting
+75439219a6aa: Waiting
+d544298cabd5: Waiting
+482070501b2f: Waiting
+fa09349ca998: Waiting
+2f84dce6cee8: Waiting
+6cfb66bf1350: Waiting
+feb3fa14bea3: Waiting
+a00092fb6748: Waiting
+e8b519e89321: Waiting
+38ddd2d6b72c: Waiting
+120c7c2a5424: Waiting
+e101f0fdb263: Waiting
+cb91c09823c2: Waiting
+6a3c293df4d2: Waiting
+6481255e7ad5: Waiting
+e101f0fdb263: Waiting
+cb91c09823c2: Waiting
+6a3c293df4d2: Waiting
+6481255e7ad5: Waiting
+4f4fb700ef54: Waiting
+9f6bc89699a5: Waiting
+365dbae00467: Waiting
+695268cc464b: Waiting
+75439219a6aa: Waiting
+d544298cabd5: Waiting
+482070501b2f: Waiting
+fa09349ca998: Waiting
+2f84dce6cee8: Waiting
+6cfb66bf1350: Waiting
+feb3fa14bea3: Waiting
+a00092fb6748: Waiting
+e8b519e89321: Waiting
+38ddd2d6b72c: Waiting
+120c7c2a5424: Waiting
+695268cc464b: Waiting
+75439219a6aa: Waiting
+d544298cabd5: Waiting
+482070501b2f: Waiting
+fa09349ca998: Waiting
+2f84dce6cee8: Waiting
+6cfb66bf1350: Waiting
+feb3fa14bea3: Waiting
+a00092fb6748: Waiting
+e8b519e89321: Waiting
+38ddd2d6b72c: Waiting
+120c7c2a5424: Waiting
+e101f0fdb263: Waiting
+cb91c09823c2: Waiting
+6a3c293df4d2: Waiting
+6481255e7ad5: Waiting
+4f4fb700ef54: Waiting
+9f6bc89699a5: Waiting
+365dbae00467: Waiting
+cb91c09823c2: Waiting
+6a3c293df4d2: Waiting
+6481255e7ad5: Waiting
+4f4fb700ef54: Waiting
+9f6bc89699a5: Waiting
+365dbae00467: Waiting
+695268cc464b: Waiting
+75439219a6aa: Waiting
+d544298cabd5: Waiting
+482070501b2f: Waiting
+fa09349ca998: Waiting
+2f84dce6cee8: Waiting
+6cfb66bf1350: Waiting
+feb3fa14bea3: Waiting
+a00092fb6748: Waiting
+e8b519e89321: Waiting
+38ddd2d6b72c: Waiting
+120c7c2a5424: Waiting
+e101f0fdb263: Waiting
+365dbae00467: Waiting
+695268cc464b: Waiting
+75439219a6aa: Waiting
+d544298cabd5: Waiting
+482070501b2f: Waiting
+fa09349ca998: Waiting
+2f84dce6cee8: Waiting
+6cfb66bf1350: Waiting
+feb3fa14bea3: Waiting
+a00092fb6748: Waiting
+e8b519e89321: Waiting
+38ddd2d6b72c: Waiting
+120c7c2a5424: Waiting
+e101f0fdb263: Waiting
+cb91c09823c2: Waiting
+6a3c293df4d2: Waiting
+6481255e7ad5: Waiting
+4f4fb700ef54: Waiting
+9f6bc89699a5: Waiting
+75439219a6aa: Waiting
+d544298cabd5: Waiting
+482070501b2f: Waiting
+fa09349ca998: Waiting
+2f84dce6cee8: Waiting
+6cfb66bf1350: Waiting
+feb3fa14bea3: Waiting
+a00092fb6748: Waiting
+e8b519e89321: Waiting
+38ddd2d6b72c: Waiting
+120c7c2a5424: Waiting
+e101f0fdb263: Waiting
+cb91c09823c2: Waiting
+6a3c293df4d2: Waiting
+6481255e7ad5: Waiting
+4f4fb700ef54: Waiting
+9f6bc89699a5: Waiting
+365dbae00467: Waiting
+695268cc464b: Waiting
+365dbae00467: Waiting
+695268cc464b: Waiting
+75439219a6aa: Waiting
+d544298cabd5: Waiting
+482070501b2f: Waiting
+fa09349ca998: Waiting
+2f84dce6cee8: Waiting
+6cfb66bf1350: Waiting
+feb3fa14bea3: Waiting
+a00092fb6748: Waiting
+e8b519e89321: Waiting
+38ddd2d6b72c: Waiting
+120c7c2a5424: Waiting
+e101f0fdb263: Waiting
+cb91c09823c2: Waiting
+6a3c293df4d2: Waiting
+6481255e7ad5: Waiting
+4f4fb700ef54: Waiting
+9f6bc89699a5: Waiting
+6a3c293df4d2: Waiting
+6481255e7ad5: Waiting
+4f4fb700ef54: Waiting
+9f6bc89699a5: Waiting
+365dbae00467: Waiting
+695268cc464b: Waiting
+75439219a6aa: Waiting
+d544298cabd5: Waiting
+482070501b2f: Waiting
+fa09349ca998: Waiting
+2f84dce6cee8: Waiting
+6cfb66bf1350: Waiting
+feb3fa14bea3: Waiting
+a00092fb6748: Waiting
+e8b519e89321: Waiting
+38ddd2d6b72c: Waiting
+120c7c2a5424: Waiting
+e101f0fdb263: Waiting
+cb91c09823c2: Waiting
 fa09349ca998: Layer already exists
-482070501b2f: Waiting
-38ddd2d6b72c: Waiting
-cb91c09823c2: Waiting
-2f84dce6cee8: Waiting
-e8b519e89321: Waiting
-6481255e7ad5: Waiting
-482070501b2f: Waiting
-482070501b2f: Waiting
-38ddd2d6b72c: Waiting
-cb91c09823c2: Waiting
-2f84dce6cee8: Waiting
-e8b519e89321: Waiting
-6481255e7ad5: Waiting
-2f84dce6cee8: Pushed
-6481255e7ad5: Pushed
-482070501b2f: Pushed
-38ddd2d6b72c: Pushed
-cb91c09823c2: Pushed
-e8b519e89321: Pushed
-20260909-nonvn-macos-canary: digest: sha256:70265ba720c27bb9398f97432fd9e151f841aedf679c1f82831080ac9d0109e3 size: 4864
-[cashpilot/earnapp-mac-canary:20260909-nonvn-macos-canary ghcr.io/assetforgeai-tech/cashpilot-earnapp-macos:20260909-nonvn-macos-canary] sha256:45c62c73242a281f5e293a6249bae4706b3c2ff8f9ec23a01b3a01a7a879170d
-[cashpilot/earnapp-ios:20260909-nonvn-macos-canary ghcr.io/assetforgeai-tech/cashpilot-earnapp-ios:20260909-nonvn-macos-canary] sha256:f7ca70ce9ef7bd72321bafa8be3f00047ceb056e67221ac93c10394592049930
-[cashpilot/earnapp-ubuntu:20260909-nonvn-macos-canary ghcr.io/assetforgeai-tech/cashpilot-earnapp-ubuntu:20260909-nonvn-macos-canary] sha256:70265ba720c27bb9398f97432fd9e151f841aedf679c1f82831080ac9d0109e3
+2f84dce6cee8: Layer already exists
+6cfb66bf1350: Layer already exists
+feb3fa14bea3: Layer already exists
+a00092fb6748: Layer already exists
+e8b519e89321: Layer already exists
+38ddd2d6b72c: Layer already exists
+120c7c2a5424: Layer already exists
+e101f0fdb263: Layer already exists
+cb91c09823c2: Layer already exists
+6a3c293df4d2: Layer already exists
+6481255e7ad5: Layer already exists
+4f4fb700ef54: Layer already exists
+9f6bc89699a5: Layer already exists
+365dbae00467: Layer already exists
+695268cc464b: Layer already exists
+75439219a6aa: Layer already exists
+d544298cabd5: Layer already exists
+482070501b2f: Layer already exists
+20260912-production-candidate: digest: sha256:70265ba720c27bb9398f97432fd9e151f841aedf679c1f82831080ac9d0109e3 size: 4864
+[cashpilot/earnapp-mac-canary:20260909-nonvn-macos-canary cashpilot/earnapp-mac-canary:20260912-production-candidate ghcr.io/assetforgeai-tech/cashpilot-earnapp-macos:20260909-nonvn-macos-canary ghcr.io/assetforgeai-tech/cashpilot-earnapp-macos:20260912-production-candidate] sha256:45c62c73242a281f5e293a6249bae4706b3c2ff8f9ec23a01b3a01a7a879170d
+[cashpilot/earnapp-ios:20260909-nonvn-macos-canary cashpilot/earnapp-ios:20260912-production-candidate ghcr.io/assetforgeai-tech/cashpilot-earnapp-ios:20260909-nonvn-macos-canary ghcr.io/assetforgeai-tech/cashpilot-earnapp-ios:20260912-production-candidate] sha256:f7ca70ce9ef7bd72321bafa8be3f00047ceb056e67221ac93c10394592049930
+[cashpilot/earnapp-ubuntu:20260909-nonvn-macos-canary cashpilot/earnapp-ubuntu:20260912-production-candidate ghcr.io/assetforgeai-tech/cashpilot-earnapp-ubuntu:20260909-nonvn-macos-canary ghcr.io/assetforgeai-tech/cashpilot-earnapp-ubuntu:20260912-production-candidate] sha256:70265ba720c27bb9398f97432fd9e151f841aedf679c1f82831080ac9d0109e3
