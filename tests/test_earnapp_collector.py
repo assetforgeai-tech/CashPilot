@@ -735,7 +735,14 @@ class _Client:
         if url.endswith("/user_data"):
             return _Response(200, {"email": "owner@example.com", "money_total": "98.76"})
         if url.endswith("/money"):
-            return _Response(200, {"money_balance": "12.34", "money_total": "98.76"})
+            return _Response(
+                200,
+                {
+                    "money_balance": "12.34",
+                    "money_total": "98.76",
+                    "redeem_details": {"payment_method": "paypal.com", "email": "owner@example.com"},
+                },
+            )
         if url.endswith("/devices"):
             return _Response(
                 200,
@@ -769,8 +776,6 @@ class _Client:
                     "wise.com": {"value": "wise.com", "min_redeem": 10, "fixed_fee": 0.5, "disabled": False},
                 },
             )
-        if url.endswith("/redeem_details"):
-            return _Response(404, {"error": "not configured"})
         if url.endswith("/transactions"):
             return _Response(200, [])
         raise AssertionError(url)
@@ -824,7 +829,6 @@ def test_collector_rotates_xsrf_routes_every_request_through_account_proxy_and_n
         ("GET", "https://earnapp.com/dashboard/api/usage"),
         ("GET", "https://earnapp.com/dashboard/api/counters"),
         ("GET", "https://earnapp.com/dashboard/api/payment_methods"),
-        ("GET", "https://earnapp.com/dashboard/api/redeem_details"),
         ("GET", "https://earnapp.com/dashboard/api/transactions"),
         ("POST", "https://earnapp.com/dashboard/api/device_statuses"),
     ]
@@ -840,9 +844,9 @@ def test_collector_rotates_xsrf_routes_every_request_through_account_proxy_and_n
         "usage_missing_nodes": 2,
         "earnings_update_in_ms": 123456,
         "payment": {
-            "configured": False,
-            "method": "",
-            "destination_masked": "",
+            "configured": True,
+            "method": "paypal.com",
+            "destination_masked": "o***@example.com",
             "methods": [
                 {
                     "id": "paypal.com",

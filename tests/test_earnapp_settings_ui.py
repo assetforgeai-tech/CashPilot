@@ -60,7 +60,10 @@ def test_earnapp_payment_uses_inline_modal_instead_of_prompt():
     payment_function = javascript[start:end]
     assert 'id="earnapp-payment-modal"' in template
     assert "earnapp-payment-method" in template
-    assert "earnapp-payment-destination" in template
+    assert 'id="earnapp-payment-modal-destination"' in template
+    assert template.count('id="earnapp-paypal-destination"') == 1
+    assert template.count('id="earnapp-payment-modal-destination"') == 1
+    assert "getElementById('earnapp-payment-modal-destination')" in payment_function
     assert "window.prompt" not in payment_function
 
 
