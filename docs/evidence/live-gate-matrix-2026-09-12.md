@@ -264,3 +264,8 @@ all provider/runtime rows are healthy or that every lease is correctly routed.
   still reports the default `ulimit -n 1024`; this is not the worker limit and
   must not be used as runtime evidence.
 - No provider deployment or destructive mutation was performed.
+- Direct guest runtime snapshot: both workers use `assetforgeai/cashpilot-worker:dev`,
+  Docker restart policy `always`, health `healthy`, and contain `10` public-IP
+  slots. Default routes are `10.41.1.1` (East Asia) and `10.42.1.1` (Japan
+  East); Docker reports `14` networks on each host. API-key presence was checked
+  without reading or recording its value.
