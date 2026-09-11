@@ -269,3 +269,7 @@ all provider/runtime rows are healthy or that every lease is correctly routed.
   slots. Default routes are `10.41.1.1` (East Asia) and `10.42.1.1` (Japan
   East); Docker reports `14` networks on each host. API-key presence was checked
   without reading or recording its value.
+- The API key is currently injected into the worker container environment (value
+  not recorded). This is the concrete exposure behind CodeQL alert `#1`; a
+  production hardening change should move it to a Docker secret or equivalent
+  protected file before the final release.
