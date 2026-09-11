@@ -84,6 +84,13 @@ def test_settings_exposes_paypal_pool_controls_without_raw_destinations():
     assert "destination_masked" in javascript
 
 
+def test_settings_exposes_a_paypal_quick_link_before_long_sections():
+    template = SETTINGS.read_text(encoding="utf-8")
+    assert 'id="settings-quick-links"' in template
+    assert 'href="#earnapp-paypal-pool"' in template
+    assert template.index('id="settings-quick-links"') < template.index('id="earnapp-account-pool"')
+
+
 def test_settings_shows_read_only_earnapp_reconciliation():
     template = SETTINGS.read_text(encoding="utf-8")
     javascript = APP_JS.read_text(encoding="utf-8")
