@@ -324,6 +324,8 @@ async def test_ip_intelligence_uses_exact_quality_source_for_country_fallback():
     assert result["country_code"] == "VN"
     assert result["country_name"] == ""
     assert result["geo_source"] == "api.ipapi.is"
+
+
 def test_websocket_sha1_is_explicitly_protocol_only():
     source = Path(earnapp.__file__).read_text(encoding="utf-8")
 
