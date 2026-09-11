@@ -41,6 +41,11 @@ def _json_list(path: Path | None) -> list[dict[str, Any]]:
     return [dict(item) for item in value if isinstance(item, dict)] if isinstance(value, list) else []
 
 
+def _slot_map(path: Path | None) -> list[dict[str, Any]]:
+    """Load an external Azure NIC/PIP map when IMDS omits secondary public IPs."""
+    return _json_list(path)
+
+
 def _ipv4(value: object, *, public: bool = False) -> ipaddress.IPv4Address | None:
     try:
         address = ipaddress.ip_address(str(value or "").strip())
@@ -224,6 +229,7 @@ def discover_slots(
     *,
     fallback_public_ip: str = "",
     previous_slots: Iterable[Mapping[str, Any]] = (),
+    external_slots: Iterable[Mapping[str, Any]] = (),
 ) -> list[dict[str, Any]]:
     """Return stable, deduplicated public IPv4 slot records.
 
@@ -233,7 +239,13 @@ def discover_slots(
     """
     interface_inventory, by_mac = _interface_inventory(addresses)
     gateways = _default_gateways(routes)
-    candidates = _azure_candidates(azure_metadata, by_mac)
+    candidates = [
+        dict(item)
+        for item in external_slots
+        if _ipv4(item.get("public_ip"), public=True) and _ipv4(item.get("private_ip"))
+    ]
+    if not candidates:
+        candidates = _azure_candidates(azure_metadata, by_mac)
     if not candidates:
         candidates = _fallback_candidate(fallback_public_ip, interface_inventory, gateways)
 
@@ -341,6 +353,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--addresses-file", type=Path, required=True)
     parser.add_argument("--routes-file", type=Path, required=True)
     parser.add_argument("--fallback-public-ip", default="")
+    parser.add_argument("--slot-map-file", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
 
@@ -351,6 +364,7 @@ def main(argv: list[str] | None = None) -> int:
         _json_list(args.routes_file),
         fallback_public_ip=args.fallback_public_ip,
         previous_slots=previous,
+        external_slots=_slot_map(args.slot_map_file),
     )
     _write_state(args.output, slots)
     return 0 if slots else 2

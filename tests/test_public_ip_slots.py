@@ -64,6 +64,35 @@ def test_azure_imds_maps_every_public_ip_to_one_stable_route_ready_slot():
     }
 
 
+def test_external_azure_slot_map_fills_secondary_public_ips_missing_from_imds():
+    external = [
+        {
+            "public_ip": "8.8.8.8",
+            "private_ip": "10.20.0.4",
+            "interface": "eth0",
+            "subnet": "10.20.0.0/24",
+            "gateway": "10.20.0.1",
+            "source": "azure_cli_manifest",
+        },
+        {
+            "public_ip": "1.1.1.1",
+            "private_ip": "10.20.0.5",
+            "interface": "eth0",
+            "subnet": "10.20.0.0/24",
+            "gateway": "10.20.0.1",
+            "source": "azure_cli_manifest",
+        },
+    ]
+
+    slots = public_ip_slots.discover_slots(
+        {}, _addresses(private_ips=("10.20.0.4", "10.20.0.5")), _routes(), external_slots=external
+    )
+
+    assert [slot["public_ip"] for slot in slots] == ["1.1.1.1", "8.8.8.8"]
+    assert all(slot["route_ready"] for slot in slots)
+    assert all(slot["source"] == "azure_cli_manifest" for slot in slots)
+
+
 def test_existing_slot_ids_survive_metadata_reordering_and_new_addresses():
     previous = [
         {
