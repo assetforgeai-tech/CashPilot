@@ -119,6 +119,20 @@ No completion claim is made until the remaining gates have authoritative evidenc
 
 ## Private GHCR package verification
 
+## PayPal Pool UI v1.32.16 rollout
+
+- PR #273 merged as `31a539005cd3ce79ca3f7f27ed0dc6b926f97190` after the full
+  CI release gate passed; release `v1.32.16` published.
+- Only `cashpilot-ui` was recreated on the server, pinned to
+  `ghcr.io/assetforgeai-tech/cashpilot@sha256:53b13d05f94d351ff2a90c213da84f27a00bb792508b3472b797871cce00dcda`.
+- Live UI is `running|healthy`, restart count `0`; the worker ID, image,
+  start time, and restart count remain unchanged.
+- The live template contains the labelled PayPal Pool input,
+  `earnapp-paypal-destination`, and `Add PayPal` action. SQLite remains
+  `integrity=ok` with one PayPal pool record.
+- Direct authenticated Chrome interaction remains unverified because the
+  connector still reports `Codex auth token is unavailable`.
+
 - GitHub API verification on 2026-09-11 confirms all three EarnApp runtime
   packages are `private` and expose the canary tag
   `20260909-nonvn-macos-canary`.
