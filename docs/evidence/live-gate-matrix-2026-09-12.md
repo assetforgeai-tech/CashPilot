@@ -239,3 +239,6 @@ all provider/runtime rows are healthy or that every lease is correctly routed.
   remediation or an explicit security-owner disposition.
 - Chrome profile 40 remains `blocked`: CUA reports `Codex auth token is
   unavailable`; no authenticated UI evidence is claimed.
+- Azure NSGs currently expose `AllowAllTcp` and `AllowAllUdp` from `Internet`
+  on both live-test VNets. This remains temporary test-only exposure and is a
+  production blocker until narrowed to required ports.
