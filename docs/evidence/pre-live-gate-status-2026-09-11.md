@@ -19,7 +19,7 @@
 - PayPal pool assignment/auto-redeem/quarantine: no live evidence.
 - Non-EarnApp lifecycle mutation wiring: not enabled; providers remain adapter-specific/unverified.
 - EarnApp `NODE_TLS_REJECT_UNAUTHORIZED=0`: existing emulation contract; transport hardening decision remains open.
-- Local audit worktree is dirty and PR #246 still points at `efe4ce1`; the audit evidence/source changes are not yet part of a CI-verified commit.
+- Audit changes are committed in `b7c1d12`, merged by PR #246 at `67f855b154e72284321299c36fbe807f3dc688cb`, and released as `v1.32.1`; preserved `.tmp-*` artifacts remain untracked by design.
 
 ## Gate
 

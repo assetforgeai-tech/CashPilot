@@ -10,13 +10,15 @@
 - Compose examples pin both UI and worker to `ghcr.io/assetforgeai-tech/...:1.32`.
 - Release workflow has `contents: write` and `packages: write`, builds both multi-arch images, and verifies published tags with `docker manifest inspect`.
 - Release workflow gates publication on Python 3.14, frozen dependencies, Ruff, and the full test suite.
+- Audit commit `b7c1d12` was pushed and merged through PR #246 at merge commit `67f855b154e72284321299c36fbe807f3dc688cb`.
+- Auto Release run `34548997821` completed successfully; release `v1.32.1` was published.
+- UI and worker multi-arch builds completed and `verify-tags` confirmed every published tag and in-image version.
 
 ## Local limitations
 
 - Docker CLI is not installed in this Windows audit environment; local `docker compose config` and manifest inspection cannot run here. CI remains the authoritative Docker/build evidence.
-- Local audit changes are not committed or pushed.
 - Registry digest verification for the current deployed environment remains pending.
-- Local GHCR manifest query returns `401`; the configured `gh` token lacks `read:packages`, so registry digest cannot be independently verified from this session.
+- Local GHCR manifest query returns `401`; the configured `gh` token lacks `read:packages`, so registry digest cannot be independently verified from this session. CI's authenticated `verify-tags` passed.
 
 ## Security note
 
