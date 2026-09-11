@@ -38,3 +38,21 @@
 | Token auto-import live proof | unverified | No authenticated Chrome-profile evidence |
 
 No completion claim is made until the remaining gates have authoritative evidence.
+
+## Follow-up fix and live verification
+
+- PR #262 fixed a false-positive network audit: EarnApp's current contract is
+  main-container Redsocks + DNS forwarding + fail-closed iptables, not a
+  required sidecar.
+- PR #262 passed CI and merged; release `v1.32.11` published.
+- `cashpilot-ui` redeployed alone to `v1.32.11`; it is healthy with restart
+  count `0`.
+- `cashpilot-worker` remains `v1.32.0`, same container ID/start time, healthy,
+  restart count `0`.
+- Live provider-network reconciliation now reports EarnApp `pass` on the
+  confirmed worker with no missing sidecars or untracked runtimes. Workers
+  without confirmed inventory remain `unverified`.
+- Live EarnApp reconciliation reports no missing or untracked instances on
+  workers with confirmed inventory.
+- Full regression suite after the reconciliation fix: `2798 passed, 8
+  skipped`.

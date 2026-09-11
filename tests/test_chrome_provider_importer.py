@@ -213,6 +213,13 @@ def test_earnapp_auto_login_checks_server_refresh_state_without_periodic_token_s
     assert "password entry" not in background.lower()
 
 
+def test_earnapp_auto_login_uses_recorded_expiry_before_authentication_fails():
+    background = (EXT / "background.js").read_text(encoding="utf-8")
+    assert "function expiryRefreshRequired" in background
+    assert "AUTO_LOGIN_EXPIRY_WINDOW_SECONDS" in background
+    assert "expiryRefreshRequired(binding)" in background
+
+
 def test_earnapp_auto_login_requires_explicit_operator_checkbox():
     popup_html = (EXT / "popup.html").read_text(encoding="utf-8")
     popup = (EXT / "popup.js").read_text(encoding="utf-8")

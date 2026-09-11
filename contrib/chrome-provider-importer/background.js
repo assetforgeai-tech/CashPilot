@@ -3,6 +3,7 @@ const EARNAPP_BINDING_KEY = "earnappAccountBinding";
 const EARNAPP_AUTO_LOGIN_KEY = "earnappAutoLoginEnabled";
 const EARNAPP_COOKIE_DEBOUNCE_ALARM = "earnapp-cookie-debounce";
 const EARNAPP_REFRESH_STATE_ALARM = "earnapp-refresh-state";
+const AUTO_LOGIN_EXPIRY_WINDOW_SECONDS = 5 * 60;
 const EARNAPP_COOKIE_ALLOWLIST = Object.freeze([
   "auth",
   "auth-method",
@@ -204,6 +205,14 @@ async function refreshRequired(binding) {
   return result?.result === true;
 }
 
+function expiryRefreshRequired(binding) {
+  const expiries = [binding?.tokenExpiresAt, binding?.cookieExpiresAt]
+    .map(value => Number(value || 0))
+    .filter(value => Number.isFinite(value) && value > 0);
+  if (!expiries.length) return false;
+  return Math.min(...expiries) - Math.floor(Date.now() / 1000) <= AUTO_LOGIN_EXPIRY_WINDOW_SECONDS;
+}
+
 async function clickEarnAppAuthControl(tabId, action, authMethod) {
   const [result] = await chrome.scripting.executeScript({
     target: { tabId },
@@ -228,7 +237,8 @@ async function clickEarnAppAuthControl(tabId, action, authMethod) {
 
 async function autoRefreshEarnAppLogin() {
   const binding = await getBinding();
-  if (!binding || !(await getAutoLoginEnabled()) || !(await refreshRequired(binding))) return;
+  if (!binding || !(await getAutoLoginEnabled())) return;
+  if (!(expiryRefreshRequired(binding) || (await refreshRequired(binding)))) return;
   const tabs = await chrome.tabs.query({ url: ["https://earnapp.com/*", "https://*.earnapp.com/*"] });
   const tab = tabs[0] || (await chrome.tabs.create({ url: "https://earnapp.com/dashboard", active: false }));
   await chrome.tabs.update(tab.id, { url: "https://earnapp.com/settings", active: false });
