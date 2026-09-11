@@ -57,3 +57,11 @@ all provider/runtime rows are healthy or that every lease is correctly routed.
   were removed. GHCR package API visibility could not be queried from this
   workstation because its token lacks `read:packages`; package privacy remains
   `unverified` until an authenticated read-only query is run.
+
+## Read-only credential/worker snapshot (2026-09-12)
+
+- EarnApp accounts: 2 `ACTIVE`, 2 `DELETED`.
+- Rows with persisted `token_expires_at`: `0`; rows marked
+  `needs_token_refresh`: `0`. This is missing expiry evidence, not proof that
+  upstream tokens cannot expire.
+- Workers: 5 `online` of 6 total.
