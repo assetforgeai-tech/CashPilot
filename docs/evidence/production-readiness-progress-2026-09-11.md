@@ -60,7 +60,7 @@ No completion claim is made until the remaining gates have authoritative evidenc
 
 ## Current regression sweep
 
-- Full suite after the release changes: `2800 passed, 8 skipped` in `226.63s`.
+- Full suite after the TLS remediation: `2806 passed, 8 skipped` in `223.97s`.
 - The suite includes EarnApp account deletion confirmation, sticky egress
   ownership, PayPal pool assignment/quarantine, payment readback, UI markup,
   lifecycle decisions, and provider capacity contracts.
