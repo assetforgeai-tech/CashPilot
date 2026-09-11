@@ -248,3 +248,8 @@ all provider/runtime rows are healthy or that every lease is correctly routed.
 - Runtime code still pins the prior EarnApp digests (`app/earnapp_runtime.py`);
   the newer candidate digests are published but intentionally not activated
   until an authenticated canary compares behavior and identity.
+- Fresh guest observation from this workstation is currently unavailable: the
+  local SSH keys are not accepted by the Azure VM and Azure Run Command did not
+  return bounded output. Existing guest evidence remains historical; new
+  Docker/Compose/runtime claims require restoration of an approved read-only
+  observation channel.
