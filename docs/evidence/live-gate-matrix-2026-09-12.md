@@ -277,6 +277,10 @@ all provider/runtime rows are healthy or that every lease is correctly routed.
   merge remains review-gated by the protected `main` branch.
 - Current GitHub token lacks `read:packages`; authenticated GHCR package listing
   is still unverified and no credential was changed.
+- The operator bootstrap file at `D:\\1. WORK_true\\CashPilot\\client command
+  setup script.txt` is outside this Git repository. Its local private-clone
+  enhancement is not part of the reviewed PR/release until copied into a
+  tracked, reviewed deployment artifact.
 - The API key is currently injected into the worker container environment (value
   not recorded). This is a separate hardening opportunity, not the source of
   CodeQL alert `#1`.
