@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import patch
 
+import httpx
+
 from app import database, earnapp_accounts, earnapp_collection
 from tests.test_earnapp_account_pool import _payload
 
@@ -52,3 +54,34 @@ def test_collection_auto_configures_paypal_only_when_payment_is_unconfigured(mon
 
     asyncio.run(run())
     assert calls == [7]
+
+
+def test_payment_configuration_tries_each_healthy_route_owned_by_the_account(monkeypatch):
+    attempted = []
+
+    async def credentials(_account_id):
+        return {"id": 7, "credentials": {"oauth-refresh-token": "encrypted-in-real-use"}}
+
+    async def routes(_account_id):
+        return [{"proxy_id": 11}, {"proxy_id": 12}]
+
+    class Collector:
+        def __init__(self, _credentials, route):
+            self.route = route
+
+        async def configure_payment(self, **_kwargs):
+            attempted.append(self.route["proxy_id"])
+            if self.route["proxy_id"] == 11:
+                response = httpx.Response(406, request=httpx.Request("GET", "https://earnapp.com/payment_methods"))
+                raise httpx.HTTPStatusError("not acceptable", request=response.request, response=response)
+            return {"configured": True, "method": "paypal.com"}
+
+    monkeypatch.setattr(earnapp_collection.database, "get_earnapp_account_credentials", credentials)
+    monkeypatch.setattr(earnapp_collection, "_collection_routes", routes)
+    monkeypatch.setattr(earnapp_collection, "EarnAppAccountCollector", Collector)
+
+    result = asyncio.run(
+        earnapp_collection.configure_payment(7, payment_method="paypal.com", destination="owner@example.com")
+    )
+    assert result["configured"] is True
+    assert attempted == [11, 12]
