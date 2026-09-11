@@ -58,6 +58,15 @@ No completion claim is made until the remaining gates have authoritative evidenc
   PayPal pool `1` total / `1` assigned. Account `2` has configured PayPal
   payment with masked destination; no raw payout address was printed.
 
+## Current regression sweep
+
+- Full suite after the release changes: `2800 passed, 8 skipped` in `226.63s`.
+- The suite includes EarnApp account deletion confirmation, sticky egress
+  ownership, PayPal pool assignment/quarantine, payment readback, UI markup,
+  lifecycle decisions, and provider capacity contracts.
+- Remaining unverified gates are external-observation gates only; no failing
+  source regression is currently known.
+
 ## Follow-up fix and live verification
 
 - PR #262 fixed a false-positive network audit: EarnApp's current contract is
