@@ -57,3 +57,22 @@ all provider/runtime rows are healthy or that every lease is correctly routed.
   were removed. GHCR package API visibility could not be queried from this
   workstation because its token lacks `read:packages`; package privacy remains
   `unverified` until an authenticated read-only query is run.
+
+## Read-only credential/worker snapshot (2026-09-12)
+
+- EarnApp accounts: 2 `ACTIVE`, 2 `DELETED`.
+- Rows with persisted `token_expires_at`: `0`; rows marked
+  `needs_token_refresh`: `0`. This is missing expiry evidence, not proof that
+  upstream tokens cannot expire.
+- Workers: 5 `online` of 6 total.
+
+## Azure firewall snapshot (2026-09-12)
+
+- Both Azure workers report `cashpilot-worker` healthy and `UFW active`.
+- East Asia exposes the explicitly requested test ports, including TCP/UDP
+  ranges for provider testing.
+- Japan East currently has additional `1:65535/tcp` and `1:65535/udp` rules for
+  IPv4 and IPv6. This is an accepted isolated-test exposure, not a production
+  default; remove before production and retain only the minimum provider ports.
+- Firewall state alone does not prove proxy no-leak behavior; packet capture is
+  still required.
