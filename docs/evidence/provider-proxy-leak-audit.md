@@ -78,3 +78,14 @@ rollback evidence.
   `traffic_seen=true`; Wipter logs show HTTPS upload/download and PONG traffic.
 - A reconciliation alias fix maps the durable DB instance `wipter-proxy` to the
   legacy heartbeat slug `wipter`; no runtime rename is required.
+
+## Wipter live recheck (2026-09-11)
+
+- Read-only inspection confirms `cashpilot-wipter` runs in the exact network
+  namespace of `cashpilot-wipter-egress` (`network_mode=container:<sidecar-id>`),
+  with `NET_ADMIN`, `NET_RAW`, and `DAC_OVERRIDE`.
+- Both containers are running with `restart=always`, restart count `0`; the
+  original `wipter-data` volume remains mounted read-write.
+- Recent Wipter logs contain repeated `PONG` traffic. This supersedes the
+  earlier pre-migration direct-egress/restart-loop finding; no direct-egress
+  claim is made without a fresh packet capture.
