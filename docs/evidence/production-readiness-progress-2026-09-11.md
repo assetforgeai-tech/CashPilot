@@ -133,6 +133,17 @@ No completion claim is made until the remaining gates have authoritative evidenc
 - Direct authenticated Chrome interaction remains unverified because the
   connector still reports `Codex auth token is unavailable`.
 
+## Current worker storage blocker
+
+- Read-only inspection of `vps-test-sing` on 2026-09-11 found `/` at `100%`
+  (`29G/29G`, `0` available). The worker heartbeat process is alive and
+  returns HTTP `200`, but its Docker healthcheck is `unhealthy` because
+  `runc` cannot create `/tmp` processes with `no space left on device`.
+- Largest stores are `/var/snap/lxd` (`17G`), `/var/lib/containerd` (`7.5G`),
+  and `/var/log` (`1.2G`, journal `1.3G`). Protected NKN and active EarnApp
+  containers were not changed. Recovery requires an explicitly approved,
+  targeted cleanup or storage migration; no destructive cleanup was run.
+
 - GitHub API verification on 2026-09-11 confirms all three EarnApp runtime
   packages are `private` and expose the canary tag
   `20260909-nonvn-macos-canary`.
