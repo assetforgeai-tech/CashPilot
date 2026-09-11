@@ -34,3 +34,13 @@ Production caveat: the current bootstrap source embeds a CashPilot API key and c
 - Japan East reboot verification (2026-09-12): `cashpilot-network-slots.service` active; `cashpilot-worker` healthy; 10 direct bridge networks present; slot file present with 10 slots. This confirms service/worker/slot persistence for this reboot. Route-rule detail and provider-level leak proof remain in the full matrix.
 - Merge/release the bootstrap correction so a brand-new Japan East cloud-init attempt proves the canonical startup path without recovery intervention.
 - Run provider inputs, auto-deploy, lifecycle, reboot, one-hour shutdown, lease/rotation, collector/payment, and packet-leak matrices.
+
+## Repository verification (2026-09-12)
+
+- Full pytest: `2821 passed, 8 skipped`.
+- Ruff: passed.
+- Bandit: no high-severity findings in the current application scan.
+- `pip-audit -r requirements.txt`: no known vulnerabilities.
+- PR `#288` merged; CodeQL, tests, Ruff, and documentation build passed.
+
+These checks establish repository and worker-infrastructure readiness only. They do not substitute for authenticated provider, browser, packet-capture, or failure-matrix evidence.
