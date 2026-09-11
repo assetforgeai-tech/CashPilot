@@ -270,6 +270,12 @@ all provider/runtime rows are healthy or that every lease is correctly routed.
   East); Docker reports `14` networks on each host. API-key presence was checked
   without reading or recording its value.
 - The API key is currently injected into the worker container environment (value
-  not recorded). This is the concrete exposure behind CodeQL alert `#1`; a
-  production hardening change should move it to a Docker secret or equivalent
-  protected file before the final release.
+  not recorded). This is a separate hardening opportunity, not the source of
+  CodeQL alert `#1`.
+- CodeQL alert `#1` points to the transient `spec.proxy` argument passed from the
+  authenticated worker endpoint into `orchestrator.apply_proxy_binding_batch`.
+  The proxy password is encrypted at rest in SQLite, then necessarily decrypted
+  in memory to render the runtime proxy configuration. No logging of the value
+  was found. The alert needs a security-owner false-positive/accepted-runtime
+  disposition unless a credential-agent design replaces plaintext runtime
+  configuration.
