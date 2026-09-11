@@ -20,6 +20,10 @@
 - Do not clean, migrate, or reuse the two legacy test VPSs as a release gate; preserve their NKN/EarnApp data.
 - Keep Azure, CashPilot, GHCR, provider, proxy, and browser secrets outside Git and evidence output.
 - The clean Azure test topology is exactly two Ubuntu 24.04 x64 `Standard_D8s_v4` VMs with 10 public IPv4 addresses each.
+- User-approved live-test topology: East Asia runs the canonical client bootstrap manually; Japan East runs startup/cloud-init bootstrap and serves as the auto-deploy target.
+- Azure subscription is pinned to `0e4b9f20-f92f-4883-a598-3251b0016d65`; both VMs use 512 GB Premium SSD P20 OS disks and 10 one-to-one public IPv4 slots.
+- Full TCP/UDP exposure is restricted to this isolated live-test resource group and must be recorded as an accepted temporary attack surface; never copy this exposure into production defaults.
+- The two legacy VPSs remain untouched and are not cleanup prerequisites.
 
 ## Task 1: Baseline and change control
 
@@ -98,6 +102,8 @@
 - Keep the administrator password and embedded CashPilot API key out of Git, console output, and inventory artifacts.
 - East Asia verifies the canonical bootstrap by manual execution of `client command setup script.txt`.
 - Japan East verifies cloud-init bootstrap plus CashPilot server auto-deploy without manual provider installation.
+- Save the reproducible Azure create/startup commands in `azure_create_vps_cli.txt`; keep passwords, API keys, provider credentials, and GHCR credentials out of the file and inject them at execution time.
+- Before live deployment, verify both VMs after reboot, then use the East Asia/Japan East pair for the full failure matrix; do not claim readiness from provisioning alone.
 - Verify 20 unique public IPv4 slots, route readiness, Docker/runtime disk use, `LimitNOFILE`, worker enrollment, heartbeat, reboot persistence, and no direct-IP fallback.
 
 ## Task 9: Provider input completion
@@ -108,6 +114,7 @@
 - Inventory collector/runtime/account/payment inputs; import only values required by current provider adapters.
 - Record missing values by provider and field name without printing secret values.
 - Do not begin destructive/full live deployment until every required input is either verified or explicitly waived.
+- Use the already-open Chrome profile 40 sessions only for authenticated provider inspection/input completion; record missing fields by name, never secret values. Live testing starts only after the user supplies or explicitly waives each missing required field.
 
 ## Task 10: Full live failure matrix
 
@@ -133,3 +140,5 @@
 - Fleet-wide packet/reboot proof is incomplete; the clean Azure matrix in Tasks 8-10 replaces the legacy VPS cleanup blocker.
 - PayPal live behavior, non-EarnApp account adapters, and live token auto-import remain unverified.
 - Local audit changes are not yet committed/pushed/released.
+- Japan East reboot persistence still requires a final post-reboot service/route/heartbeat evidence pass; until then the Azure reboot gate is incomplete.
+- Full-live execution remains gated on provider-input inventory and authenticated Chrome profile 40 access; no global auto-deploy enablement is implied by this plan.

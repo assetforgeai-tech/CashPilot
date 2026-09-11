@@ -31,5 +31,6 @@ Production caveat: the current bootstrap source embeds a CashPilot API key and c
 
 ## Remaining gate
 
+- Japan East reboot verification (2026-09-12): `cashpilot-network-slots.service` active; `cashpilot-worker` healthy; 10 direct bridge networks present; slot file present with 10 slots. This confirms service/worker/slot persistence for this reboot. Route-rule detail and provider-level leak proof remain in the full matrix.
 - Merge/release the bootstrap correction so a brand-new Japan East cloud-init attempt proves the canonical startup path without recovery intervention.
 - Run provider inputs, auto-deploy, lifecycle, reboot, one-hour shutdown, lease/rotation, collector/payment, and packet-leak matrices.
