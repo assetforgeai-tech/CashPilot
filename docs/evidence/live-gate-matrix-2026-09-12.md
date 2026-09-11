@@ -45,3 +45,15 @@ all provider/runtime rows are healthy or that every lease is correctly routed.
 - `cashpilot_auto_deploy_enabled=false`; worker scope pinned to Azure workers
   `112494,112444`. No provider deployment was triggered.
 - Pre-deploy database backup succeeded outside container `/tmp`.
+
+## EarnApp runtime image publication (2026-09-12)
+
+- Published private GHCR candidate tag `20260912-production-candidate` for
+  MacOS, iOS, and Ubuntu runtime images.
+- Digests: MacOS `sha256:45c62c73242a281f5e293a6249bae4706b3c2ff8f9ec23a01b3a01a7a879170d`; iOS `sha256:f7ca70ce9ef7bd72321bafa8be3f00047ceb056e67221ac93c10394592049930`; Ubuntu `sha256:70265ba720c27bb9398f97432fd9e151f841aedf679c1f82831080ac9d0109e3`.
+- Build/push completed through the existing controlled script; temporary token
+  and staging files were removed. Secret values are absent from the publish log.
+- The server-side GHCR session was logged out and the staging token/script files
+  were removed. GHCR package API visibility could not be queried from this
+  workstation because its token lacks `read:packages`; package privacy remains
+  `unverified` until an authenticated read-only query is run.
