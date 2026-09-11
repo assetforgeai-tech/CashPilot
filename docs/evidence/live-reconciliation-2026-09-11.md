@@ -15,9 +15,10 @@ proxy, account, or worker mutation was performed.
 - Worker `92161`: inventory confirmed; EarnApp DB/runtime sets match; 3/3 nodes
   reported online; network reconciliation `pass`.
 - Worker `43406` (`test-sing-nkn-canary`): heartbeat online, but inventory is
-  `unverified`; 18 EarnApp instances are reported and 17 are classified online
-  by the worker snapshot. Several rows have stale/unhealthy proxy observations,
-  so this worker is not production evidence. NKN runtime is reported exited.
+  `unverified`; 18 EarnApp instances are reported, while provider state totals
+  classify only 17 (`7` online, `10` offline). Several rows have
+  stale/unhealthy proxy observations, so this worker is not production
+  evidence. NKN runtime is reported exited.
 - Worker `3113`: Wipter inventory confirmed and network reconciliation `pass`.
 - Worker `90241`: stale/offline heartbeat; no current live evidence.
 
