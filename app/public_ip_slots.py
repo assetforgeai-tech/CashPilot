@@ -127,8 +127,11 @@ def _bridge_network(slot_number: int, used: list[ipaddress.IPv4Network]) -> ipad
     raise ValueError("No non-overlapping bridge subnet is available for public-IP slot")
 
 
-def _previous_ids(previous_slots: Iterable[Mapping[str, Any]]) -> tuple[dict[tuple[str, str], str], int]:
+def _previous_ids(
+    previous_slots: Iterable[Mapping[str, Any]],
+) -> tuple[dict[tuple[str, str], str], dict[tuple[str, str], dict[str, Any]], int]:
     by_identity: dict[tuple[str, str], str] = {}
+    by_record: dict[tuple[str, str], dict[str, Any]] = {}
     maximum = 0
     for slot in previous_slots:
         slot_id = str(slot.get("slot_id") or "")
@@ -138,8 +141,9 @@ def _previous_ids(previous_slots: Iterable[Mapping[str, Any]]) -> tuple[dict[tup
         if not match or public_ip is None or private_ip is None:
             continue
         by_identity[(str(public_ip), str(private_ip))] = slot_id
+        by_record[(str(public_ip), str(private_ip))] = dict(slot)
         maximum = max(maximum, int(match.group(1)))
-    return by_identity, maximum
+    return by_identity, by_record, maximum
 
 
 def _azure_candidates(metadata: Mapping[str, Any], by_mac: Mapping[str, str]) -> list[dict[str, str]]:
@@ -254,7 +258,7 @@ def discover_slots(
         public_ip = candidate["public_ip"]
         deduplicated.setdefault(public_ip, candidate)
 
-    previous, next_number = _previous_ids(previous_slots)
+    previous, previous_records, next_number = _previous_ids(previous_slots)
     used = _used_networks(interface_inventory)
     slots: list[dict[str, Any]] = []
     for candidate in sorted(deduplicated.values(), key=lambda item: ipaddress.ip_address(item["public_ip"])):
@@ -280,7 +284,15 @@ def discover_slots(
             and _ipv4(gateway) is not None
             and ipaddress.ip_address(candidate["private_ip"]) in subnet_value
         )
-        bridge = _bridge_network(int(match.group(1)), used)
+        prior = previous_records.get(identity) or {}
+        try:
+            bridge = ipaddress.ip_network(str(prior.get("bridge_subnet")), strict=False)
+            if bridge.prefixlen != 24 or any(bridge.overlaps(existing) for existing in used):
+                raise ValueError
+            bridge_gateway = str(prior.get("bridge_gateway") or next(bridge.hosts()))
+        except (ValueError, StopIteration):
+            bridge = _bridge_network(int(match.group(1)), used)
+            bridge_gateway = str(next(bridge.hosts()))
         used.append(bridge)
         slots.append(
             {
@@ -292,7 +304,7 @@ def discover_slots(
                 "gateway": gateway,
                 "docker_network": f"cashpilot-direct-{slot_id}",
                 "bridge_subnet": str(bridge),
-                "bridge_gateway": str(next(bridge.hosts())),
+                "bridge_gateway": bridge_gateway,
                 "source": candidate["source"],
                 "route_ready": route_ready,
             }
