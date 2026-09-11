@@ -234,6 +234,9 @@ all provider/runtime rows are healthy or that every lease is correctly routed.
 - Full repository suite rerun: `2824 passed, 8 skipped` in `228.22s`.
 - Ruff: clean. `pip-audit`: no known vulnerabilities. Bandit: `0` high-severity
   findings.
+- Python `compileall`: pass. Docker CLI is unavailable on this workstation, so
+  local Compose rendering remains `unverified`; deployed-worker checks are the
+  authoritative path for image/runtime validation.
 - GitHub CodeQL: historical alerts are fixed except alert `#1`
   (`py/clear-text-storage-sensitive-data`), which remains open and requires
   remediation or an explicit security-owner disposition.
