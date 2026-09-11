@@ -9,6 +9,8 @@ from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import httpx
+
 from app import database, earnapp_canary
 from app.collectors.earnapp import EarnAppAccountCollector
 
@@ -109,8 +111,21 @@ async def _payment_collector(account_id: int) -> EarnAppAccountCollector:
 
 async def configure_payment(account_id: int, *, payment_method: str, destination: str) -> dict[str, Any]:
     async with earnapp_canary.account_api_lock(account_id):
-        collector = await _payment_collector(account_id)
-        return await collector.configure_payment(payment_method=payment_method, destination=destination)
+        account = await database.get_earnapp_account_credentials(account_id)
+        if not account:
+            raise ValueError("EarnApp account unavailable")
+        routes = await _collection_routes(account_id)
+        if not routes:
+            raise ValueError("EarnApp account proxy unavailable")
+        last_error: Exception | None = None
+        for route in routes:
+            collector = EarnAppAccountCollector(account.get("credentials") or {}, route)
+            try:
+                return await collector.configure_payment(payment_method=payment_method, destination=destination)
+            except (httpx.TimeoutException, httpx.NetworkError, httpx.ProxyError, httpx.HTTPStatusError) as exc:
+                last_error = exc
+        assert last_error is not None
+        raise last_error
 
 
 async def configure_payment_from_paypal_pool(
