@@ -242,3 +242,6 @@ all provider/runtime rows are healthy or that every lease is correctly routed.
 - Azure NSGs currently expose `AllowAllTcp` and `AllowAllUdp` from `Internet`
   on both live-test VNets. This remains temporary test-only exposure and is a
   production blocker until narrowed to required ports.
+- Runtime code still pins the prior EarnApp digests (`app/earnapp_runtime.py`);
+  the newer candidate digests are published but intentionally not activated
+  until an authenticated canary compares behavior and identity.
