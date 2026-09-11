@@ -97,6 +97,11 @@ No completion claim is made until the remaining gates have authoritative evidenc
 - Read-only live qualification of an existing candidate returned sanitized
   `CID_SET` / `eligible` with TLS peer verification enabled. No proxy lease or
   account/node mutation was performed.
+- Rechecked live after release: UI `1.32.15` healthy/restart `0`; worker
+  container ID/start time unchanged, healthy/restart `0`; SQLite integrity
+  `ok`, foreign-key errors `0`.
+- Chrome profile connector was retried and still returned `Codex auth token is
+  unavailable`; no browser state was altered.
 
 ## Follow-up fix and live verification
 
