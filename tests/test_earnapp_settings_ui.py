@@ -76,6 +76,7 @@ def test_settings_exposes_paypal_pool_controls_without_raw_destinations():
     template = SETTINGS.read_text(encoding="utf-8")
     javascript = APP_JS.read_text(encoding="utf-8")
     assert 'id="earnapp-paypal-pool"' in template
+    assert template.index('id="earnapp-paypal-pool"') < template.index('id="earnapp-payment-modal"')
     assert "loadEarnAppPayPalPool" in javascript
     assert "addEarnAppPayPal" in javascript
     assert "destination_masked" in javascript
