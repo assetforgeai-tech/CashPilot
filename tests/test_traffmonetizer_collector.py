@@ -1,6 +1,8 @@
-from app.collectors import traffmonetizer
 import asyncio
+
 import httpx
+
+from app.collectors import traffmonetizer
 
 
 def test_collector_uses_the_api_host_published_by_the_current_dashboard_bundle():
