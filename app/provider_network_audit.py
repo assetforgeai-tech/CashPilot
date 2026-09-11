@@ -58,9 +58,11 @@ def audit_provider_network_inventory(
         mode = str(container.get("network_mode") or container.get("NetworkMode") or "").lower()
         # EarnApp installs redsocks, DNS forwarding, and fail-closed iptables
         # inside its main container. It intentionally has no sidecar.
-        in_container = slug == "earnapp" or str(
-            container.get("network_contract") or instance.get("network_contract") or ""
-        ).strip().lower() == "in_container"
+        in_container = (
+            slug == "earnapp"
+            or str(container.get("network_contract") or instance.get("network_contract") or "").strip().lower()
+            == "in_container"
+        )
         sidecar = bool(container.get("sidecar_id") or container.get("sidecar_container_id"))
         if not in_container and not sidecar and not mode.startswith("container:"):
             missing.append(instance_id)
