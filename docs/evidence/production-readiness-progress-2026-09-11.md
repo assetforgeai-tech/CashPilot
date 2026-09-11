@@ -39,6 +39,25 @@
 
 No completion claim is made until the remaining gates have authoritative evidence.
 
+## PayPal input fix and UI-only release
+
+- PR #265 merged as `a5d3435` after CodeQL, tests, and lint passed.
+- Release `v1.32.14` published; UI and worker image tags resolved and embedded
+  version checks passed.
+- `cashpilot-ui` redeployed alone to digest
+  `sha256:f30f2a0d9588c5e6130f8586f15b8dd4a125cb10bbda4d339097d0af6ca07f38`;
+  it reports `CASHPILOT_VERSION=1.32.14`, healthy, restart count `0`.
+- `cashpilot-worker` remains image `1.32.0`, same container ID/start time,
+  healthy, restart count `0`.
+- PayPal pool input and account payment-modal input now have distinct DOM IDs.
+  Collector snapshots read `redeem_details` from the authenticated `/money`
+  payload, matching the EarnApp dashboard contract instead of the legacy
+  standalone endpoint.
+- Targeted EarnApp/payment/UI suite: `84 passed`; Ruff and diff checks passed.
+- Live DB after redeploy: SQLite integrity `ok`, foreign-key errors `0`,
+  PayPal pool `1` total / `1` assigned. Account `2` has configured PayPal
+  payment with masked destination; no raw payout address was printed.
+
 ## Follow-up fix and live verification
 
 - PR #262 fixed a false-positive network audit: EarnApp's current contract is
