@@ -136,9 +136,67 @@
 
 ## Current known blockers
 
+- GitHub still reports one open CodeQL alert (`py/clear-text-storage-sensitive-data`)
+  and one open historical Google API-key secret alert. Revoke/rotate the exposed
+  key and either remediate or document the CodeQL finding before production.
+- The Azure administrator password supplied for live-test setup must be rotated
+  after provisioning; it is not retained in scripts or evidence.
 - Chrome profile 40 CDP/connector is unavailable in the current session; authenticated browser evidence cannot be claimed until it is exposed safely.
 - Fleet-wide packet/reboot proof is incomplete; the clean Azure matrix in Tasks 8-10 replaces the legacy VPS cleanup blocker.
 - PayPal live behavior, non-EarnApp account adapters, and live token auto-import remain unverified.
 - Local audit changes are not yet committed/pushed/released.
 - Japan East reboot persistence still requires a final post-reboot service/route/heartbeat evidence pass; until then the Azure reboot gate is incomplete.
+- Japan East cloud-init must receive `CASHPILOT_API_KEY` through a protected
+  injection path (Key Vault/managed identity or an extension protected setting).
+  The current bootstrap intentionally fails closed when the variable is absent;
+  putting the key in custom-data, Git, or evidence is disallowed.
 - Full-live execution remains gated on provider-input inventory and authenticated Chrome profile 40 access; no global auto-deploy enablement is implied by this plan.
+
+## Addendum: Azure full-live pair (2026-09-12)
+
+The user-approved live-test topology is now explicitly part of this goal. It
+does not authorize cleanup of either legacy VPS.
+
+- Subscription: `0e4b9f20-f92f-4883-a598-3251b0016d65`.
+- East Asia: `cashpilot-live-ea`, Ubuntu 24.04 x64, `Standard_D8s_v4`, 512 GB
+  Premium SSD P20, 10 Standard static public IPv4 addresses; run
+  `client command setup script.txt` manually.
+- Japan East: `cashpilot-live-je`, same VM/disk/IP shape; use cloud-init/startup
+  bootstrap and make it the scoped auto-deploy target after gates pass.
+- The reproducible, idempotent command is
+  `D:\\1. WORK_true\\CashPilot\\azure_create_vps_cli.txt`; credentials remain
+  process-local and must never be written to that file or evidence.
+- Full TCP/UDP exposure is temporary test-only scope. Record it as an accepted
+  attack surface; reduce NSG/UFW to provider-required ports before production.
+- Live scenarios: fresh enrollment, 20-slot route readiness, sequential
+  provider/node deployment, lease/release/sticky ownership, proxy rotation,
+  token expiry/suspension, heartbeat/reconciliation, collector/payment flows,
+  packet-leak checks, and VPS shutdown exceeding one hour.
+- Required evidence: Azure resource inventory, bootstrap logs, worker heartbeat,
+  `LimitNOFILE`, unique IPv4 slot map, Docker/runtime health, packet captures,
+  lifecycle state transitions, recovery timing, and final cost/security review.
+- Guardrails: preserve existing `.tmp-*` artifacts; keep global auto-deploy off;
+  do not use or reread the previously exposed GHCR credential; rotate it before
+  any private-package verification.
+
+## Addendum: User-approved full-live execution scope (2026-09-12)
+
+- The two new Azure VMs are the controlled full-live test environment; the two
+  legacy VPSs are not cleaned, migrated, or used as prerequisites.
+- East Asia runs the canonical `client command setup script.txt` manually.
+- Japan East runs the startup/cloud-init variant and is the only scoped target
+  for auto-deploy during this phase; the global auto-deploy switch stays off.
+- The provisioning command remains reproducible and stores no administrator
+  password, CashPilot API key, provider token, SSH key, or GHCR credential.
+  Secrets are injected at execution time through a protected local mechanism.
+- The requested 20 public IPv4 slots are validated as unique one-to-one
+  mappings. Full TCP/UDP exposure is temporary test scope only, logged as an
+  accepted attack surface, and must be reduced to provider-required ports before
+  production.
+- Before any provider live test: verify reboot persistence, worker enrollment,
+  heartbeat, route readiness, disk/file limits, proxy fail-closed behavior,
+  authenticated GHCR pulls, and provider-input readiness.
+- Full-live success requires evidence for fresh bootstrap, sequential provider
+  and node deployment, lease/release/rotation, token expiry and suspension,
+  collector/payment flows, one-hour VPS shutdown recovery, and packet-level
+  no-direct-egress checks. Missing evidence remains `unverified`.
