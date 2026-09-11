@@ -103,6 +103,20 @@ No completion claim is made until the remaining gates have authoritative evidenc
 - Chrome profile connector was retried and still returned `Codex auth token is
   unavailable`; no browser state was altered.
 
+## Fresh PayPal UI/live-image cross-check
+
+- Authoritative server inspection on 2026-09-11 found `cashpilot-ui` running
+  `CASHPILOT_VERSION=1.32.15` from
+  `ghcr.io/assetforgeai-tech/cashpilot@sha256:5e87c960b6d6bad715c9f4e981c14639443c36d157c9ba5b3688d28f68d13913`;
+  status `running`, health `healthy`, restart count `0`.
+- The live image contains the PayPal Pool controls under
+  `Settings -> EarnApp Account Pool -> PayPal Pool`: the
+  `earnapp-paypal-destination` input, `Add PayPal` action, and masked pool
+  list. No duplicate payment input was added.
+- Direct authenticated browser interaction remains unverified because the
+  Chrome connector returns `Codex auth token is unavailable`; this is a
+  tooling blocker, not evidence that the live control is absent.
+
 ## Follow-up fix and live verification
 
 - PR #262 fixed a false-positive network audit: EarnApp's current contract is
