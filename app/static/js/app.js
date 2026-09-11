@@ -3681,7 +3681,7 @@ const CP = (() => {
     }
     const accountInput = document.getElementById('earnapp-payment-account-id');
     const methodSelect = document.getElementById('earnapp-payment-method');
-    const destinationInput = document.getElementById('earnapp-payment-destination');
+    const destinationInput = document.getElementById('earnapp-payment-modal-destination');
     if (!accountInput || !methodSelect || !destinationInput) return;
     accountInput.value = String(accountId);
     methodSelect.innerHTML = available.map(method =>
@@ -3775,7 +3775,7 @@ const CP = (() => {
   async function saveEarnAppPayment() {
     const accountId = document.getElementById('earnapp-payment-account-id')?.value || '';
     const paymentMethod = document.getElementById('earnapp-payment-method')?.value || '';
-    const destination = document.getElementById('earnapp-payment-destination')?.value.trim() || '';
+    const destination = document.getElementById('earnapp-payment-modal-destination')?.value.trim() || '';
     if (!accountId || !paymentMethod || destination.length < 3) {
       toast('Choose a payment method and enter a valid destination', 'warning');
       return;

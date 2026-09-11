@@ -684,9 +684,6 @@ class EarnAppAccountCollector:
                 payment_methods_response = await client.get(
                     f"{API_BASE}/payment_methods", params=API_PARAMS, headers=headers
                 )
-                redeem_details_response = await client.get(
-                    f"{API_BASE}/redeem_details", params=API_PARAMS, headers=headers
-                )
                 transactions_response = await client.get(f"{API_BASE}/transactions", params=API_PARAMS, headers=headers)
                 for response in (user_response, money_response, devices_response, usage_response):
                     rejection = _rejection_result(response)
@@ -708,6 +705,8 @@ class EarnAppAccountCollector:
                         return {"status": "error", "error_kind": "auth", "error": "authentication rejected"}
                     status_response.raise_for_status()
                     statuses = status_response.json()
+                money_payload = money_response.json()
+                redeem_details = money_payload.get("redeem_details", {}) if isinstance(money_payload, Mapping) else {}
                 return normalize_snapshot(
                     user_response.json(),
                     money_response.json(),
@@ -720,7 +719,7 @@ class EarnAppAccountCollector:
                 ) | {
                     "payment": normalize_payment(
                         payment_methods_response.json() if payment_methods_response.status_code == 200 else {},
-                        redeem_details_response.json() if redeem_details_response.status_code == 200 else {},
+                        redeem_details,
                         transactions_response.json() if transactions_response.status_code == 200 else [],
                     )
                 }
