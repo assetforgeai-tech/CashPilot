@@ -78,6 +78,7 @@ def test_settings_exposes_paypal_pool_controls_without_raw_destinations():
     assert 'id="earnapp-paypal-pool"' in template
     assert template.index('id="earnapp-paypal-pool"') < template.index('id="earnapp-payment-modal"')
     assert template.index('id="earnapp-paypal-pool"') < template.index('class="earnapp-account-grid"')
+    assert template.index('id="earnapp-paypal-pool"') < template.index('id="earnapp-proxy-capacity"')
     assert "loadEarnAppPayPalPool" in javascript
     assert "addEarnAppPayPal" in javascript
     assert "destination_masked" in javascript
