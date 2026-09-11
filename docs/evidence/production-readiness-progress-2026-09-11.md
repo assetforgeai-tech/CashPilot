@@ -54,3 +54,5 @@ No completion claim is made until the remaining gates have authoritative evidenc
   without confirmed inventory remain `unverified`.
 - Live EarnApp reconciliation reports no missing or untracked instances on
   workers with confirmed inventory.
+- Full regression suite after the reconciliation fix: `2798 passed, 8
+  skipped`.
