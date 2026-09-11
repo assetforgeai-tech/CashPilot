@@ -17,6 +17,9 @@
 - Destructive UI actions require two confirmations and are not clicked during audit.
 - Do not claim zero-leak without packet capture plus reboot-persistence evidence.
 - Keep provider-specific behavior behind adapters; do not mutate unsupported providers through generic policy code.
+- Do not clean, migrate, or reuse the two legacy test VPSs as a release gate; preserve their NKN/EarnApp data.
+- Keep Azure, CashPilot, GHCR, provider, proxy, and browser secrets outside Git and evidence output.
+- The clean Azure test topology is exactly two Ubuntu 24.04 x64 `Standard_D8s_v4` VMs with 10 public IPv4 addresses each.
 
 ## Task 1: Baseline and change control
 
@@ -85,6 +88,39 @@
 - Produce a findings report with statuses only: `fixed`, `verified`, `unverified`, `blocked`, `requires user decision`.
 - Propose live canary only when all required gates pass; otherwise list exact blockers and evidence.
 
+## Task 8: Clean Azure live-test environment
+
+**Files:** `D:\1. WORK_true\CashPilot\azure_create_vps_cli.txt`, local redacted Azure inventory, `docs/evidence/azure-live-test-2026-09-11.md`.
+
+- Pin subscription `0e4b9f20-f92f-4883-a598-3251b0016d65`; preflight `Standard_D8s_v4`, DSv4/regional vCPU quota, Ubuntu 24.04 x64 Gen2 image, and 10 Standard static IPv4 addresses in both `eastasia` and `japaneast`.
+- Create one 512 GB Premium SSD P20 OS disk per VM, one regional VNet/subnet/NSG/NIC, and 10 one-to-one public/private IPv4 mappings per NIC.
+- Require an explicit switch for full Internet TCP/UDP exposure at both Azure NSG and Ubuntu UFW layers; record the accepted attack surface in evidence.
+- Keep the administrator password and embedded CashPilot API key out of Git, console output, and inventory artifacts.
+- East Asia verifies the canonical bootstrap by manual execution of `client command setup script.txt`.
+- Japan East verifies cloud-init bootstrap plus CashPilot server auto-deploy without manual provider installation.
+- Verify 20 unique public IPv4 slots, route readiness, Docker/runtime disk use, `LimitNOFILE`, worker enrollment, heartbeat, reboot persistence, and no direct-IP fallback.
+
+## Task 9: Provider input completion
+
+**Files:** encrypted runtime settings only, `docs/evidence/provider-input-readiness-2026-09-11.md`.
+
+- Connect to the already authenticated provider sessions in Chrome profile 40 without restarting Chrome.
+- Inventory collector/runtime/account/payment inputs; import only values required by current provider adapters.
+- Record missing values by provider and field name without printing secret values.
+- Do not begin destructive/full live deployment until every required input is either verified or explicitly waived.
+
+## Task 10: Full live failure matrix
+
+**Files:** `docs/evidence/full-live-matrix-2026-09-11.md`, packet captures with credentials redacted.
+
+- Deploy providers sequentially; deploy nodes sequentially inside each provider so one failure cannot block the queue.
+- Verify node count follows 10 public IPv4 slots for direct/proxy provider modes.
+- Exercise lease, release, sticky egress ownership, rotation, account/token expiry, PayPal assignment, collector cadence, heartbeat, reconciliation, retry/backoff, and auto-deploy.
+- Stop a test VPS for more than one hour; verify recovery hold, stale-worker behavior, proxy/account ownership, re-enrollment, and restart persistence.
+- Capture IPv4, IPv6, DNS/DoH, UDP/WebRTC, and direct-IP bypass evidence per provider; mark missing proof `unverified`.
+- Rerun the UI/UX, security, consistency, test, CI, image-digest, and deployed-version gates after live fixes.
+- Produce the final production-readiness report, remaining risk list, cost/security optimizations, and private-repository production recommendation.
+
 ## Required outputs
 
 - Baseline, security, policy/data-flow, proxy-leak, UI/UX, and final findings reports under `docs/evidence/`.
@@ -94,6 +130,6 @@
 ## Current known blockers
 
 - Chrome profile 40 CDP/connector is unavailable in the current session; authenticated browser evidence cannot be claimed until it is exposed safely.
-- Fleet-wide packet/reboot proof is incomplete.
+- Fleet-wide packet/reboot proof is incomplete; the clean Azure matrix in Tasks 8-10 replaces the legacy VPS cleanup blocker.
 - PayPal live behavior, non-EarnApp account adapters, and live token auto-import remain unverified.
 - Local audit changes are not yet committed/pushed/released.

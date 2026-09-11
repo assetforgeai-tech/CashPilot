@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SLOTS_FILE="${CASHPILOT_PUBLIC_IP_SLOTS_FILE:-/etc/cashpilot/public-ip-slots.json}"
+SLOT_MAP_FILE="${CASHPILOT_PUBLIC_IP_SLOT_MAP_FILE:-/etc/cashpilot/public-ip-slot-map.json}"
 SLOTS_VOLUME="${CASHPILOT_PUBLIC_IP_SLOTS_VOLUME:-cashpilot_public_ip_slots}"
 INSTALLED_SCRIPT="/usr/local/sbin/cashpilot-bootstrap-worker"
 INSTALL_ROOT="/usr/local/lib/cashpilot"
@@ -138,9 +139,9 @@ install -m 0755 "${BASH_SOURCE[0]}" "${INSTALLED_SCRIPT}"
 # not present on a freshly provisioned VPS.
 install -m 0644 "${REPO_ROOT}/app/public_ip_slots.py" "${DISCOVERY}"
 install -m 0755 "${NKN_HELPER_INSTALLER}" "${INSTALL_ROOT}/install-nkn-host-helper.sh"
-"${NKN_HELPER_INSTALLER}" "${REPO_ROOT}"
+bash "${NKN_HELPER_INSTALLER}" "${REPO_ROOT}"
 install -m 0755 "${EARNAPP_HELPER_INSTALLER}" "${INSTALL_ROOT}/install-earnapp-host-helper.sh"
-"${EARNAPP_HELPER_INSTALLER}" "${REPO_ROOT}"
+bash "${EARNAPP_HELPER_INSTALLER}" "${REPO_ROOT}"
 
 task_tmp="$(mktemp -d)"
 trap 'rm -rf -- "${task_tmp}"' EXIT
@@ -157,6 +158,7 @@ python3 "${DISCOVERY}" discover \
   --imds-file "${task_tmp}/imds.json" \
   --addresses-file "${task_tmp}/addresses.json" \
   --routes-file "${task_tmp}/routes.json" \
+  --slot-map-file "${SLOT_MAP_FILE}" \
   --fallback-public-ip "${fallback_public_ip}" \
   --output "${SLOTS_FILE}"
 
