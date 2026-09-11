@@ -253,3 +253,14 @@ all provider/runtime rows are healthy or that every lease is correctly routed.
   return bounded output. Existing guest evidence remains historical; new
   Docker/Compose/runtime claims require restoration of an approved read-only
   observation channel.
+
+## Guest observation update (2026-09-12)
+
+- Read-only SSH access restored with the existing local Ed25519 key.
+- East Asia and Japan East: Docker `active`; `cashpilot-worker` is healthy;
+  `cashpilot-network-slots.service` is enabled and exited successfully;
+  root filesystem has about `490G` free.
+- Worker systemd unit reports `LimitNOFILE=524288`. An interactive SSH shell
+  still reports the default `ulimit -n 1024`; this is not the worker limit and
+  must not be used as runtime evidence.
+- No provider deployment or destructive mutation was performed.
