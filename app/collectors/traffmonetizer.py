@@ -96,6 +96,21 @@ class TraffmonetizerCollector(BaseCollector):
                 balance=round(float(raw), 4),
                 currency="USD",
             )
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code in (401, 403, 422):
+                return EarningsResult(
+                    platform=self.platform,
+                    balance=0.0,
+                    error="Traffmonetizer credentials rejected - update the collector credentials",
+                    error_kind=base.KIND_AUTH,
+                )
+            base.log_failure(logger, "Traffmonetizer", exc)
+            return EarningsResult(
+                platform=self.platform,
+                balance=0.0,
+                error="Traffmonetizer API request failed",
+                error_kind=base.classify_exception(exc),
+            )
         except Exception as exc:
             base.log_failure(logger, "Traffmonetizer", exc)
             return EarningsResult(
