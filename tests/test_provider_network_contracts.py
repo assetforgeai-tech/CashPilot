@@ -41,6 +41,24 @@ def test_proxy_only_runtime_without_managed_sidecar_is_attention():
     assert "direct egress risk" in report["findings"][0]
 
 
+def test_earnapp_main_container_network_contract_does_not_require_sidecar():
+    report = audit_provider_network_inventory(
+        "earnapp",
+        instances=[{"instance_id": "e-1", "status": "verification_pending"}],
+        containers=[
+            {
+                "instance_slug": "e-1",
+                "slug": "earnapp",
+                "status": "running",
+                "network_mode": "bridge",
+            }
+        ],
+        inventory_confirmed=True,
+    )
+    assert report["status"] == "pass"
+    assert report["missing_sidecar"] == []
+
+
 def test_unconfirmed_inventory_does_not_claim_proxy_runtime_safe():
     report = audit_provider_network_inventory(
         "wipter", instances=[{"instance_id": "w-1", "status": "active"}], containers=[], inventory_confirmed=False
