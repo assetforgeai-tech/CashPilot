@@ -59,6 +59,10 @@
     <label class="form-label" for="autodeploy-delay">Provider delay seconds</label>
     <input class="form-input settings-config-input" type="number" min="0" step="1" id="autodeploy-delay" data-config="cashpilot_auto_deploy_delay_seconds" value="10">
   </div>
+  <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:center;padding:10px 0;">
+    <label class="form-label" for="autodeploy-worker-ids">Worker IDs (optional scope)</label>
+    <input class="form-input settings-config-input" type="text" id="autodeploy-worker-ids" data-config="cashpilot_autodeploy_worker_ids" placeholder="112444,112494" autocomplete="off">
+  </div>
   <div style="display:flex;justify-content:flex-end;margin-top:12px;">
     <button class="btn btn-ghost" data-action="saveEnvSettings">Save auto deploy</button>
   </div>
