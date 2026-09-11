@@ -426,7 +426,10 @@ class EarnAppAccountCollector:
                 json={"to": destination, "payment_method": payment_method},
             )
             response.raise_for_status()
-            return await self._payment_state(client, headers)
+            state = await self._payment_state(client, headers)
+            if not state.get("configured") or state.get("method") != payment_method:
+                raise ValueError("payment configuration could not be verified")
+            return state
         finally:
             await client.aclose()
 

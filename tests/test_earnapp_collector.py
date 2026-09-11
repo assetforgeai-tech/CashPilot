@@ -998,6 +998,27 @@ def test_payment_configuration_uses_account_proxy_and_never_returns_raw_destinat
     assert "refresh-secret" not in json.dumps(configured)
 
 
+def test_payment_configuration_rejects_unverified_post_result():
+    calls = []
+
+    class UnverifiedPaymentClient(_PaymentClient):
+        async def get(self, url, **kwargs):
+            self.calls.append(("GET", url, None))
+            if url.endswith("/redeem_details"):
+                return _Response(404, {})
+            return await super().get(url, **kwargs)
+
+    credentials = {"cookies": {"oauth-refresh-token": "refresh-secret", "xsrf-token": "old-xsrf-secret"}}
+    proxy = {"protocol": "socks5", "host": "proxy.example", "port": 1080}
+    with patch(
+        "app.collectors.earnapp.httpx.AsyncClient",
+        side_effect=lambda **kwargs: UnverifiedPaymentClient(calls, **kwargs),
+    ):
+        collector = EarnAppAccountCollector(credentials, proxy)
+        with pytest.raises(ValueError, match="payment configuration could not be verified"):
+            asyncio.run(collector.configure_payment(payment_method="paypal.com", destination="owner@example.com"))
+
+
 def test_delete_device_uses_authenticated_account_proxy_and_is_idempotent():
     calls = []
 
