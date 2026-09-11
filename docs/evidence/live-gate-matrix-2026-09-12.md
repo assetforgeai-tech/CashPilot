@@ -21,6 +21,7 @@ unavailable. No status below authorizes production deployment by itself.
 | One-hour shutdown/recovery | unverified | Reboot persistence only | Stop worker/VPS >1h, verify recovery |
 | GHCR private image publication | unverified | Candidate digests exist, but authenticated private pull with a rotated `read:packages` token is not evidenced | Rotate credential, verify pull, record digest |
 | Global auto-deploy | intentionally disabled | `cashpilot_auto_deploy_enabled=false` | Enable only after scoped live matrix passes |
+| Main branch protection | verified | Required PR review (1), strict Analyze/build/ruff/test checks, no force-push/delete, admin enforcement | Keep rules aligned with release policy |
 
 ## Decision
 
