@@ -13,6 +13,7 @@ Status: `infrastructure-pass`, provider live matrix pending.
 - Provisioned: `cashpilot-live-ea` and `cashpilot-live-je`; both report `VM running`.
 - Addressing: 20 unique Standard static public IPv4 addresses; 10 NIC IP configurations and 10 route-ready CashPilot slots per VM.
 - Runtime: both `cashpilot-worker` containers are healthy and send authenticated heartbeat responses (`HTTP 200`) every minute.
+- Enrollment: CashPilot DB shows both new workers online: East Asia worker `112494`, Japan East worker `112444`; raw client IDs are intentionally omitted from this report.
 - Storage: both managed OS disks are 512 GB `Premium_LRS`; the guest root partition is expanded and Docker uses `/opt/cashpilot-runtime/docker`.
 - Safety: no password, API key, provider token, proxy credential, or GHCR token is recorded in this evidence.
 - Exposure: full TCP/UDP requires explicit `-AllowInternetAllPorts`; NSG and UFW are both opened only in that mode.
