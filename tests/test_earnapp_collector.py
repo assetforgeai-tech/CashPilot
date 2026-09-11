@@ -924,6 +924,8 @@ class _PaymentClient:
             return _Response(200, {"ok": 1})
         if url.endswith("/payment_methods"):
             return _Response(200, {"paypal.com": {"value": "paypal.com", "min_redeem": 10}})
+        if url.endswith("/money"):
+            return _Response(200, {"redeem_details": {"payment_method": "paypal.com", "email": "owner@example.com"}})
         if url.endswith("/redeem_details"):
             return _Response(200, {"payment_method": "paypal.com", "email": "owner@example.com"})
         if url.endswith("/transactions"):
@@ -998,13 +1000,29 @@ def test_payment_configuration_uses_account_proxy_and_never_returns_raw_destinat
     assert "refresh-secret" not in json.dumps(configured)
 
 
+def test_payment_state_reads_redeem_details_from_money_payload_like_dashboard():
+    calls = []
+    credentials = {"cookies": {"oauth-refresh-token": "refresh-secret", "xsrf-token": "old-xsrf-secret"}}
+    proxy = {"protocol": "socks5", "host": "proxy.example", "port": 1080}
+    with patch(
+        "app.collectors.earnapp.httpx.AsyncClient", side_effect=lambda **kwargs: _PaymentClient(calls, **kwargs)
+    ):
+        collector = EarnAppAccountCollector(credentials, proxy)
+        state = asyncio.run(collector._payment_state(collector._client(), {}))
+
+    assert state["configured"] is True
+    assert state["method"] == "paypal.com"
+    assert state["destination_masked"] == "o***@example.com"
+    assert not any(url.endswith("/redeem_details") for _method, url, _body in calls)
+
+
 def test_payment_configuration_rejects_unverified_post_result():
     calls = []
 
     class UnverifiedPaymentClient(_PaymentClient):
         async def get(self, url, **kwargs):
             self.calls.append(("GET", url, None))
-            if url.endswith("/redeem_details"):
+            if url.endswith("/money"):
                 return _Response(404, {})
             return await super().get(url, **kwargs)
 

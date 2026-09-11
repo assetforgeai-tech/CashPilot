@@ -399,11 +399,15 @@ class EarnAppAccountCollector:
 
     async def _payment_state(self, client: httpx.AsyncClient, headers: Mapping[str, str]) -> dict[str, Any]:
         methods = await client.get(f"{API_BASE}/payment_methods", params=API_PARAMS, headers=headers)
-        details = await client.get(f"{API_BASE}/redeem_details", params=API_PARAMS, headers=headers)
+        # The dashboard reads redeem_details from the authenticated money
+        # payload; the standalone endpoint is legacy and often returns 404.
+        money = await client.get(f"{API_BASE}/money", params=API_PARAMS, headers=headers)
         transactions = await client.get(f"{API_BASE}/transactions", params=API_PARAMS, headers=headers)
+        money_payload = money.json() if money.status_code == 200 else {}
+        details = money_payload.get("redeem_details", {}) if isinstance(money_payload, Mapping) else {}
         return normalize_payment(
             methods.json() if methods.status_code == 200 else {},
-            details.json() if details.status_code == 200 else {},
+            details,
             transactions.json() if transactions.status_code == 200 else [],
         )
 
