@@ -273,6 +273,10 @@ all provider/runtime rows are healthy or that every lease is correctly routed.
   slots. Default routes are `10.41.1.1` (East Asia) and `10.42.1.1` (Japan
   East); Docker reports `14` networks on each host. API-key presence was checked
   without reading or recording its value.
+- PR #297 CI completed successfully for Analyze, build (strict), Ruff, and test;
+  merge remains review-gated by the protected `main` branch.
+- Current GitHub token lacks `read:packages`; authenticated GHCR package listing
+  is still unverified and no credential was changed.
 - The API key is currently injected into the worker container environment (value
   not recorded). This is a separate hardening opportunity, not the source of
   CodeQL alert `#1`.
