@@ -572,6 +572,13 @@ async def _deploy_nkn_slots(
 
 
 def _worker_allowed_for_auto_deploy(worker: dict[str, Any], config: dict[str, str]) -> bool:
+    scoped_ids = {
+        int(value.strip())
+        for value in str(config.get("cashpilot_autodeploy_worker_ids", "") or "").split(",")
+        if value.strip().isdigit() and int(value.strip()) > 0
+    }
+    if scoped_ids and int(worker.get("id") or 0) not in scoped_ids:
+        return False
     return not (
         str(worker.get("name") or "").strip().lower() == "cashpilot"
         and not _auto_deploy_settings(config)["include_server"]

@@ -27,3 +27,11 @@ unavailable. No status below authorizes production deployment by itself.
 Infrastructure and repository gates pass. Production gate remains open until
 the external-observation rows are directly verified. Legacy VPS cleanup is not
 a prerequisite and remains out of scope.
+
+## Read-only server snapshot (2026-09-12)
+
+The CashPilot UI database was queried through the pinned server SSH helper,
+without mutating state: 6 workers, 1,254 proxy endpoints (981 currently
+`alive`), 4 EarnApp account rows, 85 EarnApp logical-node rows, and 20 active
+provider proxy leases. These counts are reconciliation inputs, not proof that
+all provider/runtime rows are healthy or that every lease is correctly routed.

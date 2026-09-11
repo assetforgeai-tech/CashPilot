@@ -28,6 +28,13 @@ def test_auto_deploy_skips_server_worker_by_default():
         )
         is False
     )
+
+
+def test_auto_deploy_worker_scope_defaults_open_and_restricts_when_configured():
+    assert main._worker_allowed_for_auto_deploy({"id": 7, "name": "worker"}, {}) is True
+    config = {"cashpilot_autodeploy_worker_ids": "112444, 112494"}
+    assert main._worker_allowed_for_auto_deploy({"id": 112444, "name": "worker"}, config) is True
+    assert main._worker_allowed_for_auto_deploy({"id": 7, "name": "worker"}, config) is False
     assert (
         main._worker_allowed_for_auto_deploy(
             {"id": 1, "name": "cashpilot"}, {"cashpilot_autodeploy_include_server": "true"}
