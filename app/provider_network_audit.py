@@ -34,8 +34,12 @@ def audit_provider_network_inventory(
         for item in containers
         if isinstance(item, Mapping)
     }
+    if slug == "wipter" and "wipter" in by_id and "wipter-proxy" not in by_id:
+        by_id["wipter-proxy"] = by_id["wipter"]
     missing: list[str] = []
     tracked = {str(item.get("instance_id") or "").strip() for item in instances}
+    if slug == "wipter" and "wipter-proxy" in tracked:
+        tracked.add("wipter")
     untracked = sorted(
         str(item.get("instance_slug") or item.get("name") or "").strip()
         for item in containers

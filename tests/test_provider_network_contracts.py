@@ -99,3 +99,22 @@ def test_wipter_audit_reports_missing_catalog_capabilities():
     )
     assert report["status"] == "attention"
     assert "DAC_OVERRIDE" in report["findings"][0]
+
+
+def test_wipter_legacy_runtime_name_matches_managed_instance_alias():
+    report = audit_provider_network_inventory(
+        "wipter",
+        instances=[{"instance_id": "wipter-proxy", "status": "running"}],
+        containers=[
+            {
+                "instance_slug": "wipter",
+                "network_mode": "container:sidecar-id",
+                "sidecar_id": "sidecar-id",
+                "cap_add": ["NET_ADMIN", "NET_RAW", "DAC_OVERRIDE"],
+            }
+        ],
+        inventory_confirmed=True,
+    )
+    assert report["status"] == "pass"
+    assert report["missing_sidecar"] == []
+    assert report["untracked"] == []

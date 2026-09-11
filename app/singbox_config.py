@@ -27,7 +27,7 @@ def render_tun_proxy_config(
     if proxy.get("password"):
         outbound["password"] = proxy["password"]
     route_rules = [
-        {"port": 53, "outbound": "direct"},
+        {"port": 53, "action": "hijack-dns"},
         {"domain": [proxy["host"]], "outbound": "direct"},
     ]
     if udp_direct:
@@ -40,7 +40,13 @@ def render_tun_proxy_config(
     return {
         "log": {"level": "info"},
         "dns": {
-            "servers": [{"tag": "cf", "address": "1.1.1.1", "detour": "direct"}],
+            "servers": [
+                {
+                    "tag": "cf",
+                    "address": "https://cloudflare-dns.com/dns-query",
+                    "detour": "proxy-out",
+                }
+            ],
             "strategy": "ipv4_only",
         },
         "inbounds": [

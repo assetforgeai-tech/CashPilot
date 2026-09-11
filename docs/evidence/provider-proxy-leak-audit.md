@@ -64,3 +64,17 @@ rollback evidence.
   `13` leased, `12` sticky-owned, and `139` duplicate-egress endpoints.
 - Wipter container ID and `wipter-data` volume remain unchanged; its direct
   egress and restart loop remain an open finding.
+
+## Wipter guarded migration (2026-09-10)
+
+- The owner-gated migration leased one residential proxy and completed through
+  the worker rollback transaction.
+- Main runtime uses `network_mode=container:<sidecar-id>`; managed sing-box
+  sidecar is running.
+- Main runtime has `NET_ADMIN`, `NET_RAW`, and `DAC_OVERRIDE`; restart count is
+  `0` after migration.
+- The original `wipter-data:/root/.config/wipter-app` volume is mounted.
+- Worker evidence reports `authenticated=true`, `earning=true`, and
+  `traffic_seen=true`; Wipter logs show HTTPS upload/download and PONG traffic.
+- A reconciliation alias fix maps the durable DB instance `wipter-proxy` to the
+  legacy heartbeat slug `wipter`; no runtime rename is required.
