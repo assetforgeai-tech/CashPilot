@@ -239,7 +239,11 @@ def discover_slots(
     """
     interface_inventory, by_mac = _interface_inventory(addresses)
     gateways = _default_gateways(routes)
-    candidates = [dict(item) for item in external_slots if _ipv4(item.get("public_ip"), public=True) and _ipv4(item.get("private_ip"))]
+    candidates = [
+        dict(item)
+        for item in external_slots
+        if _ipv4(item.get("public_ip"), public=True) and _ipv4(item.get("private_ip"))
+    ]
     if not candidates:
         candidates = _azure_candidates(azure_metadata, by_mac)
     if not candidates:

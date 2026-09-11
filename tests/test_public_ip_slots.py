@@ -84,7 +84,9 @@ def test_external_azure_slot_map_fills_secondary_public_ips_missing_from_imds():
         },
     ]
 
-    slots = public_ip_slots.discover_slots({}, _addresses(private_ips=("10.20.0.4", "10.20.0.5")), _routes(), external_slots=external)
+    slots = public_ip_slots.discover_slots(
+        {}, _addresses(private_ips=("10.20.0.4", "10.20.0.5")), _routes(), external_slots=external
+    )
 
     assert [slot["public_ip"] for slot in slots] == ["1.1.1.1", "8.8.8.8"]
     assert all(slot["route_ready"] for slot in slots)
