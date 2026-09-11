@@ -80,14 +80,17 @@
 
   <div id="earnapp-token-alerts" class="earnapp-token-alerts" aria-live="assertive"></div>
 
-  <div class="earnapp-runtime-settings earnapp-paypal-settings" id="earnapp-paypal-pool">
+  <div class="earnapp-runtime-settings earnapp-paypal-settings" id="earnapp-paypal-pool" aria-labelledby="earnapp-paypal-pool-title">
     <div>
-      <h4>PayPal Pool</h4>
+      <p class="earnapp-eyebrow">Settings &gt; EarnApp Account Pool</p>
+      <h4 id="earnapp-paypal-pool-title">PayPal Pool</h4>
       <p>Add payout emails once. CashPilot permanently assigns each destination to one EarnApp account.</p>
     </div>
-    <label class="form-label" for="earnapp-paypal-destination">PayPal email</label>
-    <input class="form-input" id="earnapp-paypal-destination" type="email" autocomplete="off" placeholder="payout@example.com">
-    <button class="btn btn-ghost" data-action="addEarnAppPayPal">Add PayPal</button>
+    <div class="earnapp-paypal-entry">
+      <label class="form-label" for="earnapp-paypal-destination">PayPal email</label>
+      <input class="form-input" id="earnapp-paypal-destination" type="email" autocomplete="off" placeholder="payout@example.com">
+      <button class="btn btn-primary" data-action="addEarnAppPayPal">Add PayPal</button>
+    </div>
     <div id="earnapp-paypal-pool-list" class="form-hint">Loading PayPal Pool...</div>
   </div>
 
