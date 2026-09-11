@@ -42,5 +42,6 @@ all provider/runtime rows are healthy or that every lease is correctly routed.
 - UI is `healthy`; observed image digest: `sha256:23f17e1d2d472e72a6b8a4d940aabc8811109a3137e503ae6c441762a631aa7d`.
 - Worker remained unchanged: healthy, restart count `0`.
 - SQLite integrity: `ok`.
-- `cashpilot_auto_deploy_enabled=false`; worker scope unset.
+- `cashpilot_auto_deploy_enabled=false`; worker scope pinned to Azure workers
+  `112494,112444`. No provider deployment was triggered.
 - Pre-deploy database backup succeeded outside container `/tmp`.
