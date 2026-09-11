@@ -14,7 +14,7 @@
 - UI image: `ghcr.io/assetforgeai-tech/cashpilot:1.32.9`, healthy.
 - Worker image: `ghcr.io/assetforgeai-tech/cashpilot-worker:1.32.0`, healthy and unchanged.
 - Live UI container exposes port `8080`; unauthenticated `/settings` redirects to `/login`.
-- Security headers observed on the live redirect: `X-Content-Type-Options`, `X-Frame-Options`, `Permissions-Policy`, CSP, `Referrer-Policy`, and `Strict-Transport-Security` where terminated upstream.
+- Security headers observed on the direct HTTP redirect: `X-Content-Type-Options`, `X-Frame-Options`, `Permissions-Policy`, CSP, and `Referrer-Policy`. HTTPS-edge `Strict-Transport-Security` remains unverified from this host.
 - Live DB snapshot: `workers=4`, `provider_instances=50`, `proxy_endpoints=1254`, `provider_proxy_leases=199`, `earnapp_accounts=4`, `earnapp_logical_nodes=85`, `earnapp_account_egress_ownership=20`, `earnapp_paypal_pool=1`, `earnapp_account_snapshots=1292`.
 - SQLite integrity: `ok`; foreign-key errors: `0`.
 
