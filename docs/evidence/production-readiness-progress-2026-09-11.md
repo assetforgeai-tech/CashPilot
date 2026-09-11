@@ -117,6 +117,16 @@ No completion claim is made until the remaining gates have authoritative evidenc
   Chrome connector returns `Codex auth token is unavailable`; this is a
   tooling blocker, not evidence that the live control is absent.
 
+## Private GHCR package verification
+
+- GitHub API verification on 2026-09-11 confirms all three EarnApp runtime
+  packages are `private` and expose the canary tag
+  `20260909-nonvn-macos-canary`.
+- The package metadata matches the recorded immutable digests for macOS, iOS,
+  and Ubuntu in `docs/evidence/earnapp/2026-09-09-non-vn-macos-ios-ubuntu-reboot.md`.
+- Verification used the local operator credential without printing or storing
+  it in repository artifacts. No package mutation was performed.
+
 ## Follow-up fix and live verification
 
 - PR #262 fixed a false-positive network audit: EarnApp's current contract is
