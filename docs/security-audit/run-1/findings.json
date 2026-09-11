@@ -1,0 +1,6 @@
+[
+  {
+    "verdict": "rejected",
+    "reason": "No confirmed exploitable vulnerability was established in this source-first run. The helper socket's Docker-group authority is intentional host administration and is documented as hardening, not a bypass."
+  }
+]

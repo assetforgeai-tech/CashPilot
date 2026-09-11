@@ -67,6 +67,19 @@ No completion claim is made until the remaining gates have authoritative evidenc
 - Remaining unverified gates are external-observation gates only; no failing
   source regression is currently known.
 
+## Source security audit
+
+- Phase-1 reconnaissance covered UI/API, worker API, helper sockets, auth
+  roles, imports, Docker/subprocess/tar sinks, collectors, and client rendering.
+- No exploitable vulnerability was confirmed in the source-first review;
+  report: `docs/security-audit/run-1/REPORT.md`.
+- Structured report validated successfully with the audit schema. The helper
+  Unix sockets' Docker-group authority is intentional host administration and
+  remains a deployment hardening note, not an auth bypass.
+- `pip-audit -r requirements.txt`: `No known vulnerabilities found`.
+- Bandit was not installed in the audit environment; this remains a tooling
+  gap, not a clean Bandit result.
+
 ## Follow-up fix and live verification
 
 - PR #262 fixed a false-positive network audit: EarnApp's current contract is
