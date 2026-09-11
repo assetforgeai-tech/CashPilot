@@ -60,3 +60,13 @@ def test_update_banner_links_to_the_fork_release():
 
     assert expected in app_js
     assert "https://github.com/GeiserX/CashPilot/releases/tag/" not in app_js
+
+
+def test_public_repo_links_do_not_send_operators_to_upstream_cashpilot():
+    base = (ROOT / "app" / "templates" / "base.html").read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert 'href="https://github.com/assetforgeai-tech/CashPilot"' in base
+    assert "https://github.com/GeiserX/CashPilot" not in base
+    assert "github.com/assetforgeai-tech/CashPilot/actions/workflows/test.yml" in readme
+    assert "github.com/GeiserX/CashPilot/actions/workflows/test.yml" not in readme

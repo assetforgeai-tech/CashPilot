@@ -259,7 +259,11 @@ async def _open_wss_tunnel(
         status, headers = await _read_http_headers(reader, timeout=timeout)
         if " 101 " not in f" {status} ":
             raise ConnectionError(f"WSS handshake rejected: {status}")
-        expected = base64.b64encode(hashlib.sha1((key + _WEBSOCKET_GUID).encode("ascii")).digest()).decode("ascii")
+        # RFC 6455 requires SHA-1 for Sec-WebSocket-Accept; this is protocol
+        # framing, not password/signature hashing.
+        expected = base64.b64encode(
+            hashlib.sha1((key + _WEBSOCKET_GUID).encode("ascii"), usedforsecurity=False).digest()
+        ).decode("ascii")
         if headers.get("sec-websocket-accept") != expected:
             raise ConnectionError("WSS handshake returned an invalid accept token")
         return reader, writer

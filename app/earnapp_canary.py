@@ -216,8 +216,9 @@ def build_canary_spec(
             "EARNAPP_DEVICE_ID": device,
             "EARNAPP_LOGICAL_NODE_ID": node_id,
             "EARNAPP_EXPECTED_EGRESS_IP": str(proxy_meta.get("exit_ip") or ""),
-            # Matches the upgraded reference image; TLS pinning is enforced
-            # by the image's upstream client contract, not this wrapper.
+            # The reference emulation runtime requires Node certificate
+            # verification disabled. Fail-closed proxy routing prevents direct
+            # egress, but does not authenticate the upstream TLS peer.
             "NODE_TLS_REJECT_UNAUTHORIZED": "0",
             **_in_container_proxy_env(proxy),
         },

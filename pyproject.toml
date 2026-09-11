@@ -20,7 +20,7 @@ classifiers = [
 dependencies = [
     "fastapi>=0.136.1",
     "uvicorn>=0.47.0",
-    "uvloop>=0.22.1",
+    "uvloop>=0.22.1; sys_platform != 'win32'",
     "httptools>=0.6",
     "jinja2>=3.1.6",
     "pyyaml>=6.0.3",

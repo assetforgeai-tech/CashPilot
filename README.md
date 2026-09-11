@@ -4,10 +4,10 @@
 
 <p align="center">
   <a href="https://github.com/assetforgeai-tech/CashPilot/pkgs/container/cashpilot"><img alt="GHCR Image" src="https://img.shields.io/badge/GHCR-cashpilot-2496ED?style=flat-square&logo=github"></a>
-  <a href="https://github.com/GeiserX/CashPilot/stargazers"><img alt="GitHub Stars" src="https://img.shields.io/github/stars/GeiserX/CashPilot?style=flat-square&logo=github"></a>
-  <a href="LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/github/license/GeiserX/CashPilot?style=flat-square"></a>
-  <a href="https://github.com/GeiserX/CashPilot/actions/workflows/test.yml"><img alt="Tests" src="https://img.shields.io/github/actions/workflow/status/GeiserX/CashPilot/test.yml?style=flat-square&label=tests"></a>
-  <a href="https://codecov.io/gh/GeiserX/CashPilot"><img alt="codecov" src="https://codecov.io/gh/GeiserX/CashPilot/graph/badge.svg"></a>
+  <a href="https://github.com/assetforgeai-tech/CashPilot/stargazers"><img alt="GitHub Stars" src="https://img.shields.io/github/stars/assetforgeai-tech/CashPilot?style=flat-square&logo=github"></a>
+  <a href="LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/github/license/assetforgeai-tech/CashPilot?style=flat-square"></a>
+  <a href="https://github.com/assetforgeai-tech/CashPilot/actions/workflows/test.yml"><img alt="Tests" src="https://img.shields.io/github/actions/workflow/status/assetforgeai-tech/CashPilot/test.yml?style=flat-square&label=tests"></a>
+  <a href="https://codecov.io/gh/assetforgeai-tech/CashPilot"><img alt="codecov" src="https://codecov.io/gh/assetforgeai-tech/CashPilot/graph/badge.svg"></a>
 </p>
 
 ---

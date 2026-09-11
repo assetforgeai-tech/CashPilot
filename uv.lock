@@ -139,7 +139,7 @@ dependencies = [
     { name = "python-multipart" },
     { name = "pyyaml" },
     { name = "uvicorn" },
-    { name = "uvloop" },
+    { name = "uvloop", marker = "sys_platform != 'win32'" },
 ]
 
 [package.optional-dependencies]
@@ -174,7 +174,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15.13" },
     { name = "tzdata", marker = "extra == 'dev'", specifier = ">=2025.1" },
     { name = "uvicorn", specifier = ">=0.47.0" },
-    { name = "uvloop", specifier = ">=0.22.1" },
+    { name = "uvloop", marker = "sys_platform != 'win32'", specifier = ">=0.22.1" },
 ]
 provides-extras = ["dev"]
 
