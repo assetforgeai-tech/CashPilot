@@ -1551,6 +1551,8 @@ img { max-width: 100%; }
 .earnapp-runtime-settings > div { grid-column: 1 / -1; }
 .earnapp-runtime-settings h4 { margin: 0 0 4px; }
 .earnapp-runtime-settings p { margin: 0; color: var(--text-muted); font-size: 0.76rem; }
+.earnapp-paypal-entry { display: grid; grid-template-columns: minmax(180px, 0.4fr) minmax(220px, 1fr) auto; gap: 10px 12px; align-items: end; }
+.earnapp-paypal-entry .form-label { margin: 0; }
 .earnapp-account-grid { display: grid; grid-template-columns: minmax(240px, 0.75fr) minmax(0, 1.5fr); gap: 22px; }
 .earnapp-import-panel, .earnapp-inventory-panel, .earnapp-recovery-panel {
   border-top: 1px solid var(--border-color); padding-top: 16px;
@@ -1694,6 +1696,7 @@ img { max-width: 100%; }
   .earnapp-capacity-strip { grid-template-columns: 1fr 1fr; }
   .earnapp-runtime-settings { grid-template-columns: 1fr; }
   .earnapp-runtime-settings > div { grid-column: auto; }
+  .earnapp-paypal-entry { grid-template-columns: 1fr; }
   .earnapp-section-heading, .earnapp-panel-title { align-items: stretch; flex-direction: column; gap: 8px; }
   .earnapp-section-heading > .btn { align-self: flex-start; }
 

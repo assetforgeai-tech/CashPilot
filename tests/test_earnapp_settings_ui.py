@@ -87,6 +87,14 @@ def test_settings_exposes_paypal_pool_controls_without_raw_destinations():
     assert "destination_masked" in javascript
 
 
+def test_paypal_pool_is_prominent_and_self_describing():
+    template = SETTINGS.read_text(encoding="utf-8")
+    assert 'aria-labelledby="earnapp-paypal-pool-title"' in template
+    assert 'id="earnapp-paypal-pool-title"' in template
+    assert "Settings &gt; EarnApp Account Pool" in template
+    assert "earnapp-paypal-settings" in template
+
+
 def test_settings_exposes_a_paypal_quick_link_before_long_sections():
     template = SETTINGS.read_text(encoding="utf-8")
     assert 'id="settings-quick-links"' in template
