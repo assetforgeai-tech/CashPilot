@@ -27,9 +27,10 @@ _WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 def build_tls_context() -> ssl.SSLContext:
     context = ssl.create_default_context()
-    # The supplied EarnApp probe accepts the proxy tunnel's interception certificate.
-    context.check_hostname = False
-    context.verify_mode = ssl.CERT_NONE
+    # Qualification must fail closed: forged WSS frames could otherwise mark
+    # an untrusted proxy as CID_SET and make it leaseable.
+    context.check_hostname = True
+    context.verify_mode = ssl.CERT_REQUIRED
     return context
 
 

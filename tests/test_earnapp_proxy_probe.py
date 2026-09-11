@@ -48,11 +48,11 @@ def test_tunnel_identity_preserves_the_supplied_earnapp_contract():
     assert json.loads(identity["usage"]["app_bytes"])["wifi_connected"] is True
 
 
-def test_earnapp_tls_context_matches_the_supplied_probe_certificate_contract():
+def test_earnapp_tls_context_requires_an_authenticated_provider_certificate():
     context = earnapp.build_tls_context()
 
-    assert context.check_hostname is False
-    assert context.verify_mode == ssl.CERT_NONE
+    assert context.check_hostname is True
+    assert context.verify_mode == ssl.CERT_REQUIRED
 
 
 def test_client_websocket_text_frames_are_masked_and_round_trip():

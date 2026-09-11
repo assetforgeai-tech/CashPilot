@@ -71,8 +71,10 @@ No completion claim is made until the remaining gates have authoritative evidenc
 
 - Phase-1 reconnaissance covered UI/API, worker API, helper sockets, auth
   roles, imports, Docker/subprocess/tar sinks, collectors, and client rendering.
-- No exploitable vulnerability was confirmed in the source-first review;
-  report: `docs/security-audit/run-1/REPORT.md`.
+- One MEDIUM vulnerability was confirmed and remediated in the source-first
+  review: the EarnApp WSS qualification probe disabled certificate and
+  hostname verification, allowing forged `CID_SET` evidence to influence
+  lease eligibility. Report: `docs/security-audit/run-1/REPORT.md`.
 - Structured report validated successfully with the audit schema. The helper
   Unix sockets' Docker-group authority is intentional host administration and
   remains a deployment hardening note, not an auth bypass.
