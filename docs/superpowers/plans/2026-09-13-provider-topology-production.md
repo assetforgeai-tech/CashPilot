@@ -75,6 +75,9 @@ Per-instance CAS replacement is now available for provider-scoped runtimes;
 worker-level rotation remains reserved for legacy shared assignments until
 the worker ACK contract exposes a provider-instance binding endpoint.
 
+The owner-only `POST /api/proxy-pool/provider-rotate` route now uses that
+per-instance ACK/CAS path. Full regression remains required before release.
+
 ### Task 4: Normalize health and recovery policy
 
 **Files:**
