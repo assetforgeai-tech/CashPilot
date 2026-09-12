@@ -32,10 +32,14 @@ Implementation status: planner and focused contract tests landed in the provider
 - Consumes: `provider_runtime.ProviderRuntime`, worker id, ready slot records.
 - Produces: `plan_provider_nodes(worker_id, slug, slots, mode=None)` and immutable node plans.
 
-- [ ] Write failing tests for all three topology classes, deterministic IDs, non-ready slots, duplicates, and mode filtering.
+- [x] Write tests for all three topology classes, deterministic IDs, non-ready slots, duplicates, and mode filtering.
 - [ ] Run `pytest tests/test_provider_topology.py -q` and confirm failure because the module is absent.
-- [ ] Implement the smallest pure planner satisfying the tests.
-- [ ] Re-run the focused test and confirm it passes.
+- [x] Implement the smallest pure planner satisfying the tests.
+- [x] Re-run the focused test and confirm it passes.
+
+Implementation note: non-ready direct routes remain in desired state as blocked
+capacity; a hybrid provider can still deploy its proxy lane. Proxy plans expose
+an independent capacity slot and never imply direct-route readiness.
 
 ### Task 2: Slot-aware generic deployment
 
@@ -50,10 +54,10 @@ Implementation status: planner and focused contract tests landed in the provider
 - Produces: sequential per-slot deployment with durable slot metadata.
 
 - [ ] Write failing tests proving one node per ready slot and both lanes for direct-and-proxy providers.
-- [ ] Add deterministic instance naming and slot labels/spec metadata.
-- [ ] Pass the selected direct slot network contract to the worker.
-- [ ] Lease one distinct eligible proxy per proxy plan and fail that node closed when capacity is unavailable.
-- [ ] Persist failures per instance, continue with later plans, return desired/running/pending/failed counts.
+- [x] Add deterministic instance naming and slot labels/spec metadata.
+- [x] Pass the selected direct slot network contract to the worker.
+- [x] Lease one distinct eligible proxy per proxy plan and fail that node closed when capacity is unavailable.
+- [x] Persist failures per instance, continue with later plans, return desired/running/pending/failed counts.
 - [ ] Run focused deployment tests.
 
 ### Task 3: Reconciliation and auto-deploy safety
@@ -68,9 +72,9 @@ Implementation status: planner and focused contract tests landed in the provider
 - Consumes: desired plans plus recorded provider instances.
 - Produces: idempotent missing-node reconciliation without mutating healthy matching instances.
 
-- [ ] Write failing tests for idempotency, retry of failed nodes, provider failure isolation, and node failure isolation.
-- [ ] Implement reconciliation and dry-run response.
-- [ ] Keep dedicated NKN/EarnApp ordering and add generic slot reconciliation between them.
+- [x] Write tests for idempotency, retry of failed nodes, provider failure isolation, and node failure isolation.
+- [x] Implement reconciliation and dry-run response.
+- [x] Keep dedicated NKN/EarnApp ordering and add generic slot reconciliation between them.
 - [ ] Run focused reconciliation tests.
 
 ### Task 4: Capacity and dashboard truth

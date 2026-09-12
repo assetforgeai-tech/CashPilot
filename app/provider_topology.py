@@ -20,34 +20,37 @@ class ProviderNodePlan:
     slot_id: str
     public_ip: str = ""
     network: str = ""
+    route_ready: bool = True
+    capacity_slot: str = ""
+    deployable: bool = True
+    blocked_reason: str = ""
 
     @property
     def instance_id(self) -> str:
         return f"{self.provider_slug}-{self.mode}-w{self.worker_id}-{self.slot_id}"
 
 
-def _normalise_slots(slots: int | list[Any] | tuple[Any, ...]) -> list[tuple[str, str, str]]:
+def _normalise_slots(slots: int | list[Any] | tuple[Any, ...]) -> list[tuple[str, str, str, bool]]:
     if isinstance(slots, int):
         if slots < 0:
             raise ValueError("public IPv4 slot count cannot be negative")
         raw: list[Any] = [f"ipv4-{index:03d}" for index in range(1, slots + 1)]
     else:
         raw = list(slots or [])
-    result: dict[str, tuple[str, str]] = {}
+    result: dict[str, tuple[str, str, bool]] = {}
     for item in raw:
         if isinstance(item, Mapping):
-            if item.get("route_ready") is False:
-                continue
             slot = str(item.get("slot_id") or "").strip().lower()
             public_ip = str(item.get("public_ip") or "").strip()
             network = str(item.get("docker_network") or "").strip()
+            route_ready = item.get("route_ready") is True
         else:
-            slot, public_ip, network = str(item or "").strip().lower(), "", ""
+            slot, public_ip, network, route_ready = str(item or "").strip().lower(), "", "", True
         if not _SLOT_RE.fullmatch(slot):
             raise ValueError("invalid public IPv4 slot")
-        result.setdefault(slot, (public_ip, network))
+        result.setdefault(slot, (public_ip, network, route_ready))
     return [
-        (slot, values[0], values[1])
+        (slot, values[0], values[1], values[2])
         for slot, values in sorted(result.items(), key=lambda pair: int(pair[0].split("-", 1)[1]))
     ]
 
@@ -75,9 +78,23 @@ def plan_provider_nodes(
     modes = provider_modes.expand_requested(slug, mode)
     slots = _normalise_slots(public_ipv4_slots)
     plans: list[ProviderNodePlan] = []
-    for slot_id, public_ip, network in slots:
+    for slot_id, public_ip, network, route_ready in slots:
         for selected_mode in modes:
-            plans.append(ProviderNodePlan(int(worker_id), slug, selected_mode, slot_id, public_ip, network))
+            deployable = selected_mode != "direct" or route_ready
+            plans.append(
+                ProviderNodePlan(
+                    int(worker_id),
+                    slug,
+                    selected_mode,
+                    slot_id,
+                    public_ip,
+                    network,
+                    route_ready,
+                    f"{slot_id if selected_mode == 'direct' else slot_id.replace('ipv4-', 'proxy-')}",
+                    deployable,
+                    "direct_route_not_ready" if not deployable else "",
+                )
+            )
     return plans
 
 
@@ -87,20 +104,23 @@ def summarize_provider_plan(plans: list[ProviderNodePlan], instances: list[Mappi
     rows = {
         str(row.get("instance_id") or "").strip(): row for row in instances if str(row.get("instance_id") or "").strip()
     }
+    deployable_ids = {plan.instance_id for plan in plans if plan.deployable}
     running = sorted(
         instance_id
-        for instance_id in desired_ids
+        for instance_id in deployable_ids
         if str(rows.get(instance_id, {}).get("status") or "").lower() in {"running", "deployed"}
     )
     retry = sorted(
         instance_id
-        for instance_id in desired_ids
+        for instance_id in deployable_ids
         if str(rows.get(instance_id, {}).get("status") or "").lower() in {"failed", "missing", "verification_pending"}
     )
     return {
         "desired": len(desired_ids),
         "running": len(running),
         "retry": retry,
-        "missing": sorted(desired_ids - set(rows)),
+        "missing": sorted(deployable_ids - set(rows)),
         "stale": sorted(set(rows) - desired_ids),
+        "blocked_slots": sorted({plan.slot_id for plan in plans if not plan.deployable}),
+        "blocked": sum(1 for plan in plans if not plan.deployable),
     }

@@ -241,6 +241,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -258,7 +259,7 @@ jobs:
       # The check was a tripwire on other people's work when it should have been
       # a guard on the release. Now the release moves the pin itself before the
       # tag and GitHub Release are published. (CashPilot-9fg.)
-      - name: Bump the example compose pins to this series
+      - name: Read compose pins (deferred until release exists)
         env:
           # gh needs a token for the branch-protection preflight.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -305,51 +306,10 @@ jobs:
           fi
           echo "Bumping the example pins [$CURRENT] -> $SERIES"
 
-          sed -i -E "s|(${IMAGE_REPO}(-worker)?):[0-9]+\\.[0-9]+|\1:$SERIES|g" \
-            docker-compose.yml docker-compose.fleet.yml
-
-          # Prove the edit did what it claims before committing it. A silently
-          # unmatched sed would otherwise commit nothing and report success,
-          # leaving the drift in place with no red build to reveal it.
-          #
-          # Plain ERE, no negative lookahead: that needs -P, and GNU grep
-          # REFUSES -E and -P together ("conflicting matchers specified"). The
-          # first version of this used both and appeared to work locally only
-          # because that shell's `grep` is a ugrep shim, which accepts it.
-          STRAY=$(grep -ohE "${IMAGE_REPO}(-worker)?:[0-9]+\\.[0-9]+" \
-                    docker-compose.yml docker-compose.fleet.yml \
-                  | awk -F: '{print $NF}' | sort -u | grep -vx "$SERIES" || true)
-          if [ -n "$STRAY" ]; then
-            echo "::error::a pin did not move to $SERIES (still on: $STRAY)"; exit 1
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docker-compose.yml docker-compose.fleet.yml
-          # [skip ci] because this must not start another release. The paths
-          # filter on this workflow does not list the compose files, so it would
-          # not fire anyway -- the marker is what keeps that true if the filter
-          # ever widens.
-          git commit -m "chore(compose): pin the examples to $SERIES [skip ci]"
-
-          # A direct push is safe only while the target branch is unprotected.
-          # Query the branch API first and fail closed if the policy changes or
-          # the API cannot be read; a stale pin must never be hidden by a green
-          # release.
-          if ! BRANCH_PROTECTED=$(gh api "repos/${GITHUB_REPOSITORY}/branches/${GITHUB_REF_NAME}" --jq '.protected'); then
-            echo "::error::could not query branch protection for ${GITHUB_REF_NAME}"
-            exit 1
-          fi
-          if [ "$BRANCH_PROTECTED" != "false" ]; then
-            echo "::error::branch ${GITHUB_REF_NAME} is protected; could not push the compose pin directly"
-            exit 1
-          fi
-
-          if ! git push origin "HEAD:${GITHUB_REF_NAME}"; then
-            echo "::error::could not push the compose pin to ${GITHUB_REF_NAME}"
-            exit 1
-          fi
-          echo "Pins bumped to $SERIES on ${GITHUB_REF_NAME}."
+          # The release tag must exist before the compose-pin PR runs. This
+          # preflight deliberately does not mutate protected main.
+          echo "Deferring compose pin update until after the GitHub Release."
+          exit 0
 
       - name: Create and push tag
         run: |
@@ -378,3 +338,39 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bump the example compose pins to this series
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ needs.release.outputs.new_tag }}"
+          SERIES="${TAG#v}"; SERIES="${SERIES%.*}"
+          OWNER="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
+          IMAGE_REPO="ghcr.io/${OWNER}/cashpilot"
+          PIN_BRANCH="chore/compose-pin-${SERIES}"
+          UI_CURRENT=$(grep -ohE "${IMAGE_REPO}:[0-9]+\\.[0-9]+" docker-compose.yml docker-compose.fleet.yml | awk -F: '{print $NF}' | sort -u | xargs || true)
+          WORKER_CURRENT=$(grep -ohE "${IMAGE_REPO}-worker:[0-9]+\\.[0-9]+" docker-compose.yml docker-compose.fleet.yml | awk -F: '{print $NF}' | sort -u | xargs || true)
+          if [ -z "$UI_CURRENT" ] || [ -z "$WORKER_CURRENT" ]; then
+            echo "::error::no canonical CashPilot UI and worker image pins found"
+            exit 1
+          fi
+          if [ "$UI_CURRENT" = "$SERIES" ] && [ "$WORKER_CURRENT" = "$SERIES" ]; then
+            echo "Pins already on $SERIES; nothing to do."
+            exit 0
+          fi
+          sed -i -E "s|(${IMAGE_REPO}(-worker)?):[0-9]+\\.[0-9]+|\1:$SERIES|g" docker-compose.yml docker-compose.fleet.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git switch -c "$PIN_BRANCH"
+          git add docker-compose.yml docker-compose.fleet.yml
+          git commit -m "chore(compose): pin the examples to $SERIES [skip ci]"
+          git push --force-with-lease origin "HEAD:${PIN_BRANCH}"
+          if gh pr view "$PIN_BRANCH" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "Compose pin PR already exists: $PIN_BRANCH"
+          else
+            gh pr create --repo "${GITHUB_REPOSITORY}" --head "$PIN_BRANCH" --base main \
+              --title "chore(compose): pin examples to $SERIES" \
+              --body "Automated compose pin update for released ${TAG}. Release already exists before this PR."
+          fi
+          echo "compose pin PR: ${PIN_BRANCH}"
