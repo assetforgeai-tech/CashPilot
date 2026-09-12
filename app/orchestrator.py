@@ -721,7 +721,17 @@ def discard_proxy_binding(slug: str, binding_version: str) -> dict[str, Any]:
     version = str(binding_version or "").strip()
     if not re.fullmatch(r"[A-Za-z0-9._-]{8,128}", version):
         raise ValueError("invalid binding_version")
-    sidecar = _earnapp_sidecar(slug)
+    try:
+        sidecar = _earnapp_sidecar(slug)
+    except RuntimeError as exc:
+        # Main-only EarnApp runtimes have no sidecar to clean. A clean marker
+        # snapshot is already rolled back; make reconciliation idempotent.
+        if "sidecar" not in str(exc).lower():
+            raise
+        status = proxy_binding_status(slug)
+        if not status["previous_present"] and not status["candidate_present"] and not status["binding_version"]:
+            return {"binding_version": version, "action": "rolled_back", "idempotent": True}
+        raise
     status = proxy_binding_status(slug)
     marker = str(status.get("binding_version") or "")
     if status["previous_present"]:

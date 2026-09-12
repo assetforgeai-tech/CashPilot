@@ -653,6 +653,31 @@ def test_discard_proxy_binding_removes_only_inactive_candidate_artifacts():
     assert "config.json.cashpilot-prev" not in cleanup
 
 
+def test_discard_proxy_binding_accepts_clean_main_only_runtime():
+    """A legacy main-only rollback is complete when no binding artifacts remain."""
+    client = MagicMock()
+    main = MagicMock()
+    main.labels = {orchestrator.LABEL_MANAGED: "true", orchestrator.LABEL_SERVICE: "earnapp-main-only"}
+    main.attrs = {"Config": {"Env": []}}
+    client.containers.get.side_effect = orchestrator.NotFound("missing sidecar")
+
+    with (
+        patch.object(orchestrator, "_get_client", return_value=client),
+        patch.object(
+            orchestrator,
+            "proxy_binding_status",
+            return_value={"binding_version": "", "previous_present": False, "candidate_present": False},
+        ),
+    ):
+        result = orchestrator.discard_proxy_binding("earnapp-main-only", "rotation_1234567890")
+
+    assert result == {
+        "binding_version": "rotation_1234567890",
+        "action": "rolled_back",
+        "idempotent": True,
+    }
+
+
 def test_deploy_raw_replaces_ephemeral_config_volume_before_seeding_new_proxy():
     client = MagicMock()
     client.containers.get.side_effect = [orchestrator.NotFound("provider"), orchestrator.NotFound("sidecar")]

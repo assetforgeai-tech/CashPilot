@@ -3545,6 +3545,9 @@ const CP = (() => {
       const usageCoverage = collector.usage_available_nodes == null
         ? ''
         : `${Number(collector.usage_available_nodes) || 0} measured / ${Math.max(0, (Number(collector.usage_available_nodes) || 0) + (Number(collector.usage_missing_nodes) || 0))} devices`;
+      const mapping = collector.mapped_devices == null
+        ? ''
+        : `${Number(collector.mapped_devices) || 0} mapped / ${Number(collector.dashboard_only_devices) || 0} dashboard-only / ${Number(collector.active_without_dashboard_device) || 0} CashPilot-only`;
       const payment = collector.payment || {};
       const paymentState = payment.configured
         ? `Auto-redeem: ${payment.method || 'configured'}`
@@ -3568,7 +3571,7 @@ const CP = (() => {
         <td><span class="earnapp-token-state ${escapeHtml(token.css)}">${escapeHtml(token.label)}</span><small>${expiryValue ? escapeHtml(fmtTimestamp(expiryValue).text) : 'No expiry metadata'}${escapeHtml(source)}</small></td>
         <td><strong>${escapeHtml(route.status || 'unavailable')}</strong><small>${route.source === 'node' ? 'Account node proxy' : (route.source === 'account_control' ? 'Pre-node control proxy' : 'No collector route')}</small><small>${route.egress_ip ? `${escapeHtml(route.country_code || '—')} · ${escapeHtml(route.egress_ip)} · proxy #${escapeHtml(route.proxy_id || '—')}` : 'No healthy account-owned egress'}</small><small>${route.checked_at ? `Checked ${escapeHtml(fmtTimestamp(route.checked_at).text)}` : 'Check time unavailable'}</small></td>
         <td><strong>${balance}</strong><small>${collector.money_total == null ? 'Lifetime unavailable' : `${Number(collector.money_total).toFixed(2)} USD lifetime`}</small><small>${escapeHtml(updateLabel)}</small><small>${collector.collected_at ? `Last collected ${escapeHtml(fmtTimestamp(collector.collected_at).text)}` : 'No successful collection yet'}</small></td>
-        <td>${escapeHtml(nodes)}<small>${escapeHtml(usage)}</small>${usageCoverage ? `<small>${escapeHtml(usageCoverage)}</small>` : ''}</td>
+        <td>${escapeHtml(nodes)}<small>${escapeHtml(usage)}</small>${usageCoverage ? `<small>${escapeHtml(usageCoverage)}</small>` : ''}${mapping ? `<small>${escapeHtml(mapping)}</small>` : ''}</td>
         <td><strong>${escapeHtml(paymentState)}</strong><small>${escapeHtml(paymentDestination)}</small><small>${escapeHtml(paymentMethodSummary)}</small><small>${escapeHtml(transactionSummary)}</small></td>
         <td><div class="earnapp-row-actions">
           <button class="btn btn-ghost btn-sm" data-action="collectEarnAppAccount" data-a1="${escapeHtml(account.id)}">Collect now</button>

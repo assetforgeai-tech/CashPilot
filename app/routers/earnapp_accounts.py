@@ -266,11 +266,36 @@ def _public_account(
 
 async def _account_payload() -> dict[str, Any]:
     rows = await database.list_earnapp_accounts()
+    logical_nodes = await database.list_earnapp_logical_nodes()
     accounts: list[dict[str, Any]] = []
     for row in rows:
         snapshot = await database.get_latest_earnapp_snapshot(int(row["id"]))
         route = await earnapp_collection.account_route_status(int(row["id"]))
-        accounts.append(_public_account(row, snapshot, route))
+        account = _public_account(row, snapshot, route)
+        account_nodes = [
+            node
+            for node in logical_nodes
+            if int(node.get("account_id") or 0) == int(row["id"])
+            and str(node.get("state") or "").upper() != "RETIRED"
+            and str(node.get("device_id") or "").strip()
+        ]
+        collector = account["collector"]
+        dashboard_ids = {
+            str(device.get("device_id") or "").strip()
+            for device in collector.get("devices", [])
+            if isinstance(device, dict) and str(device.get("device_id") or "").strip()
+        }
+        mapped = sum(str(node.get("device_id") or "").strip() in dashboard_ids for node in account_nodes)
+        collector["mapped_devices"] = mapped
+        collector["dashboard_only_devices"] = max(
+            0, len(dashboard_ids - {str(node.get("device_id") or "").strip() for node in account_nodes})
+        )
+        collector["active_without_dashboard_device"] = sum(
+            str(node.get("device_id") or "").strip() not in dashboard_ids
+            and str(node.get("state") or "").upper() == "ACTIVE"
+            for node in account_nodes
+        )
+        accounts.append(account)
     nodes = []
     now = datetime.now(UTC)
     for row in await database.list_earnapp_logical_nodes():

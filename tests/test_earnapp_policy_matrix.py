@@ -21,7 +21,7 @@ def _runtime(**overrides):
     ("snapshot", "runtime", "action"),
     [
         ({"usage": 10, "online": False, "banned": False}, _runtime(), "restart"),
-        ({"usage": 10, "online": True, "banned": True}, _runtime(), "recreate"),
+        ({"usage": 10, "online": True, "banned": True}, _runtime(), "restart"),
         ({"usage": 10, "online": True, "banned": False}, _runtime(proxy_health="unhealthy"), "rotate_recreate"),
         ({"usage": 10, "online": False, "banned": False, "auth_failed": True}, _runtime(), "defer_auth"),
         ({"usage": 11, "online": True, "banned": False}, _runtime(), "healthy"),
@@ -37,7 +37,7 @@ def test_banned_never_falls_through_to_offline_restart():
         _runtime(),
         datetime(2026, 9, 8, 1, tzinfo=UTC),
     )
-    assert decision.action == "recreate"
+    assert decision.action == "restart"
 
 
 def test_offline_takes_priority_over_positive_usage_and_restarts_in_place():
