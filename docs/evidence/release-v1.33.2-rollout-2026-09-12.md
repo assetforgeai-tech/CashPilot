@@ -9,6 +9,10 @@
 - Server-local Wipter and its egress sidecar retained their container IDs and running state during worker migration.
 - EarnApp containers on worker `43406` remained present; rollout did not delete, recreate, unlink, release, or rotate an EarnApp node.
 - Server SQLite checks: `integrity_check=ok`; `foreign_key_check` returned `0` rows.
+- Follow-up release `v1.33.3` was published from merge commit `8c505e23198df1e89bfb163d0b1fd2f5135eb484`; GHCR tag verification passed.
+- Server UI and server-local worker now run `v1.33.3`, both healthy; worker heartbeat returned HTTP `200`.
+- Server-local Wipter and its egress sidecar remained running with unchanged container IDs during the worker upgrade.
+- Post-`v1.33.3` SQLite checks: `integrity_check=ok`; `foreign_key_check` returned `0` rows.
 - Worker logs after rollout contained heartbeat success and no `proxy/finalize` or reconciliation error loop.
 - Post-release local gates: full suite `2849 passed, 8 skipped`; `pip-audit` reported no known vulnerabilities; Bandit reported `0 HIGH` findings.
 - Worker `90241` remains offline with an internal URL and no matching credential file in the workspace; no mutation was attempted.
