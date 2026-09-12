@@ -11,5 +11,12 @@ Authenticated API inspection completed without mutation.
 - Wipter worker `3113`: `pass`, no missing sidecars/untracked entries.
 - Wipter worker `90241`: `unverified`.
 
+Detailed EarnApp reconciliation: worker `92161` has `2` DB/reported
+instances with `inventory_confirmed=true`; workers `112494` and `112444` have
+no tracked instances and are confirmed empty. Worker `43406` has `18` DB and
+reported instances with no missing/untracked rows, but
+`inventory_confirmed=false`; this remains unverified rather than being treated
+as healthy.
+
 `unverified` is retained where the API lacks positive runtime evidence; it is
 not promoted to `pass` from an empty findings list.
