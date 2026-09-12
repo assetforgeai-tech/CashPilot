@@ -30,3 +30,11 @@ and hybrid canaries, not successful provider earning or complete leak absence.
 Required next evidence: one direct-only canary, one hybrid canary, per-lane
 egress/DNS/IPv6/UDP/DoH probes, restart/reboot persistence, lease rotation, and
 failure isolation.
+
+## Heartbeat probe
+
+- Worker health endpoint `http://127.0.0.1:8081/api/health` returned `200` on
+  both workers and identified the expected worker IP.
+- Worker logs show successful POST heartbeats to the CashPilot server at roughly
+  60-second intervals on both workers.
+- This proves worker liveness only; it does not prove provider-node health.
