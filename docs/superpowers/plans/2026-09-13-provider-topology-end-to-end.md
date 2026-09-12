@@ -27,7 +27,7 @@
 - Preserve hybrid desired count while reporting per-lane deployable/blocked/free counts.
 - Add tests for direct-only, proxy-only, hybrid, and proxy shortage.
 
-Progress: lane metadata (`lanes`, `capacity_basis`, `lane_isolation`) now flows through topology, catalog, deployment specs, and network reconciliation. Planner/API now consume direct IPv4 slots and proxy capacity independently: proxy-only workers can plan without public slots; hybrid lanes do not multiply capacities. Plan desired count includes existing non-retired proxy instances plus currently available proxy capacity, preserving idempotent reruns; summaries expose available proxy capacity separately. Runtime matrix declares `egress_ownership_scope`: EarnApp is `account_sticky`; other providers remain `runtime_lease`. Live evidence is still required.
+Progress: lane metadata (`lanes`, `capacity_basis`, `lane_isolation`) now flows through topology, catalog, deployment specs, and network reconciliation. Planner/API now consume direct IPv4 slots and proxy capacity independently: proxy-only workers can plan without public slots; hybrid lanes do not multiply capacities. Plan desired count includes existing non-retired proxy instances plus currently available proxy capacity, preserving idempotent reruns; summaries expose available proxy capacity separately. Runtime matrix declares `egress_ownership_scope`: EarnApp is `account_sticky`; other providers remain `runtime_lease`. Hybrid callers can now submit explicit `direct_desired` and `proxy_desired` targets; omitted targets retain all-available behavior, while over-capacity targets are returned as blocked/pending rather than silently reduced. Live evidence is still required.
 
 ### Task 2: Lease ownership and lifecycle state machine
 
@@ -102,7 +102,7 @@ Progress: implemented and pushed in `4afe4ab`; explicit deploy-capacity test cov
 - Mark direct-only providers that are provisioned per public IPv4 as `slot_direct`.
 - Keep genuinely dedicated/manual providers on their dedicated adapters.
 - Expose `public_ipv4_slot`, expected egress, and route state in API payloads.
-- [ ] Add API tests proving direct-only count equals route-ready slots and never proxy capacity.
+- [x] Add API tests proving direct-only count equals route-ready slots and never proxy capacity.
 
 Progress: Azure live preflight confirms both workers expose 10/10 route-ready
 IPv4 slot manifests with dedicated Docker network metadata. NKN/Mysterium remain
@@ -120,7 +120,7 @@ and host-agent lifecycle.
 
 Progress: deploy status now renders per-lane running/desired/free/pending values
 from the API response (`83f6167`). Lease/ownership/expected-vs-observed egress
-remains a separate reconciliation view and still requires browser verification.
+ remains a separate reconciliation view and still requires browser verification. Hybrid deploy forms now expose optional independent direct/proxy targets and include them in deploy requests; browser verification remains pending.
 
 ### Task 10: End-to-end live gates
 

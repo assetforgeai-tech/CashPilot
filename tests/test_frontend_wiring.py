@@ -146,7 +146,9 @@ class TestDeployModeSelect:
     def test_deploy_posts_selected_mode(self):
         source = js_function("_deployToWorkers")
         assert "data-deploy-mode-for" in source
-        assert "body: { env, mode }" in source
+        assert "const body = { env, mode }" in source
+        assert "direct_desired" in source
+        assert "proxy_desired" in source
 
 
 class TestMystWalletImportIsReachable:

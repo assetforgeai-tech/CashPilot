@@ -120,8 +120,10 @@ def plan_provider_nodes(
     *,
     mode: str | None = None,
     proxy_capacity: int | None = None,
+    direct_desired: int | None = None,
+    proxy_desired: int | None = None,
 ) -> list[ProviderNodePlan]:
-    """Plan direct slots and proxy candidates as independent capacities."""
+    """Plan independent lanes, optionally against explicit lane targets."""
     if int(worker_id) <= 0:
         raise ValueError("invalid worker id")
     slug = str(provider_slug or "").strip().lower()
@@ -135,15 +137,33 @@ def plan_provider_nodes(
     if runtime and runtime.topology == "manual":
         raise ValueError("provider is manual-only")
     modes = provider_modes.expand_requested(slug, mode)
+    for target in (direct_desired, proxy_desired):
+        if target is not None and int(target) < 0:
+            raise ValueError("lane desired count cannot be negative")
+    if direct_desired is not None and "direct" not in modes:
+        raise ValueError("unsupported lane target: direct")
+    if proxy_desired is not None and "proxy" not in modes:
+        raise ValueError("unsupported lane target: proxy")
     slots = _normalise_slots(public_ipv4_slots)
     plans: list[ProviderNodePlan] = []
     # Proxy capacity is an independent discovery result. Unknown capacity must
     # stay pending; inferring it from public IPv4 slots creates unsafe proxy
     # nodes before the pool has been checked.
-    direct_slots = slots if "direct" in modes else []
+    direct_target = direct_desired if direct_desired is not None else len(slots)
+    direct_slots = slots[:direct_target] if "direct" in modes else []
+    if "direct" in modes and direct_target > len(slots):
+        direct_slots.extend((f"ipv4-{index:03d}", "", "", False) for index in range(len(slots) + 1, direct_target + 1))
+    proxy_target = (
+        proxy_desired
+        if proxy_desired is not None
+        else (max(0, int(proxy_capacity)) if proxy_capacity is not None else 0)
+    )
     proxy_slots = (
-        [(f"proxy-{index:03d}", "", "", True) for index in range(1, max(0, int(proxy_capacity)) + 1)]
-        if proxy_capacity is not None and "proxy" in modes
+        [
+            (f"proxy-{index:03d}", "", "", index <= max(0, int(proxy_capacity or 0)))
+            for index in range(1, proxy_target + 1)
+        ]
+        if "proxy" in modes
         else []
     )
     direct_plans: list[ProviderNodePlan] = []
@@ -179,8 +199,8 @@ def plan_provider_nodes(
                 network,
                 route_ready,
                 f"proxy-{proxy_index:03d}",
-                True,
-                "",
+                route_ready,
+                "" if route_ready else "proxy_capacity_unavailable",
             )
         )
     plans.extend(direct_plans)

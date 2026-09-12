@@ -93,6 +93,47 @@ def test_hybrid_plans_keep_direct_and_proxy_capacity_independent():
     ]
 
 
+def test_hybrid_plans_accept_explicit_lane_targets():
+    plans = plan_provider_nodes(
+        7,
+        "earnfm",
+        ["ipv4-001", "ipv4-002", "ipv4-003"],
+        mode="both",
+        proxy_capacity=5,
+        direct_desired=2,
+        proxy_desired=1,
+    )
+    assert [(plan.mode, plan.slot_id) for plan in plans] == [
+        ("direct", "ipv4-001"),
+        ("direct", "ipv4-002"),
+        ("proxy", "proxy-001"),
+    ]
+
+
+def test_hybrid_lane_target_cannot_exceed_capacity():
+    plans = plan_provider_nodes(
+        7,
+        "earnfm",
+        ["ipv4-001"],
+        mode="both",
+        proxy_capacity=0,
+        direct_desired=2,
+        proxy_desired=1,
+    )
+    assert len(plans) == 3
+    assert sum(plan.deployable for plan in plans if plan.mode == "direct") == 1
+    assert sum(plan.deployable for plan in plans if plan.mode == "proxy") == 0
+
+
+@pytest.mark.parametrize(
+    ("provider", "mode", "target"),
+    [("iproyal", "proxy", {"direct_desired": 1}), ("earnfm", "direct", {"proxy_desired": 1})],
+)
+def test_lane_target_for_unsupported_mode_fails_closed(provider, mode, target):
+    with pytest.raises(ValueError, match="unsupported lane target"):
+        plan_provider_nodes(7, provider, ["ipv4-001"], mode=mode, proxy_capacity=1, **target)
+
+
 def test_manual_provider_cannot_auto_plan():
     with pytest.raises(ValueError, match="manual-only"):
         plan_provider_nodes(7, "wipter", 1)

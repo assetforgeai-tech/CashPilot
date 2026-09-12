@@ -990,7 +990,15 @@ const CP = (() => {
       const allowed = mode === 'both' ? canBoth : modes.includes(mode);
       return `<option value="${mode}"${mode === selected ? ' selected' : ''}${allowed ? '' : ' disabled'}>${mode}</option>`;
     }).join('');
-    return `
+    const laneTargets = canBoth ? `
+      <div class="form-group" data-lane-targets-for="${svc.slug}">
+        <label class="form-label" for="${prefix}-direct-desired-${svc.slug}">Direct nodes</label>
+        <input class="form-input" type="number" min="0" step="1" id="${prefix}-direct-desired-${svc.slug}" data-direct-desired-for="${svc.slug}" placeholder="All available slots">
+        <label class="form-label" for="${prefix}-proxy-desired-${svc.slug}">Proxy nodes</label>
+        <input class="form-input" type="number" min="0" step="1" id="${prefix}-proxy-desired-${svc.slug}" data-proxy-desired-for="${svc.slug}" placeholder="All eligible proxies">
+        <div class="form-hint">Hybrid targets are independent. Empty means use all available capacity.</div>
+      </div>` : '';
+    return `${laneTargets}
       <div class="form-group">
         <label class="form-label">Mode</label>
         <select class="form-input" data-deploy-mode-for="${svc.slug}" id="${prefix}-${svc.slug}">
@@ -2911,6 +2919,12 @@ const CP = (() => {
 
     const modeSelect = document.querySelector(`[data-deploy-mode-for="${slug}"]`);
     const mode = modeSelect ? modeSelect.value : null;
+    const laneTarget = (selector) => {
+      const value = document.querySelector(selector)?.value;
+      return value === undefined || value === '' ? undefined : Math.max(0, Number.parseInt(value, 10));
+    };
+    const directDesired = laneTarget(`[data-direct-desired-for="${slug}"]`);
+    const proxyDesired = laneTarget(`[data-proxy-desired-for="${slug}"]`);
 
     // Preflight, at the deploy step — which is where the backend's own comments
     // say it belongs, "not buried in an FAQ". It has been computed since 1.10.x
@@ -2935,7 +2949,10 @@ const CP = (() => {
     const laneTotals = {};
     for (const wid of workerIds) {
       try {
-        const result = await api(`/api/deploy/${slug}?worker_id=${wid}`, { method: 'POST', body: { env, mode } });
+        const body = { env, mode };
+        if (directDesired !== undefined && Number.isInteger(directDesired)) body.direct_desired = directDesired;
+        if (proxyDesired !== undefined && Number.isInteger(proxyDesired)) body.proxy_desired = proxyDesired;
+        const result = await api(`/api/deploy/${slug}?worker_id=${wid}`, { method: 'POST', body });
         Object.entries(result.lanes || {}).forEach(([lane, stats]) => {
           const current = laneTotals[lane] || { desired: 0, running: 0, failed: 0, pending: 0, free: 0, blocked: 0 };
           Object.keys(current).forEach(key => { current[key] += Number(stats[key] || 0); });

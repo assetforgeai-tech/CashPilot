@@ -3008,11 +3008,15 @@ class DeployRequest(BaseModel):
     env: dict[str, str] = {}
     hostname: str | None = None
     mode: str | None = None
+    direct_desired: int | None = Field(default=None, ge=0)
+    proxy_desired: int | None = Field(default=None, ge=0)
 
 
 class ProviderPlanRequest(BaseModel):
     worker_id: int = Field(gt=0)
     mode: str | None = None
+    direct_desired: int | None = Field(default=None, ge=0)
+    proxy_desired: int | None = Field(default=None, ge=0)
 
 
 class EarnAppCanaryDeployRequest(BaseModel):
@@ -3466,7 +3470,13 @@ async def api_plan_provider(
     planned_proxy_capacity = available_proxy_count + existing_proxy_count if available_proxy_count is not None else None
     try:
         plans = provider_topology.plan_provider_nodes(
-            body.worker_id, slug, slots, mode=body.mode, proxy_capacity=planned_proxy_capacity
+            body.worker_id,
+            slug,
+            slots,
+            mode=body.mode,
+            proxy_capacity=planned_proxy_capacity,
+            direct_desired=body.direct_desired,
+            proxy_desired=body.proxy_desired,
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -3777,7 +3787,13 @@ async def api_deploy(
         }
     if topology_managed:
         topology_plans = provider_topology.plan_provider_nodes(
-            worker_id, slug, slot_records, mode=body.mode, proxy_capacity=proxy_capacity
+            worker_id,
+            slug,
+            slot_records,
+            mode=body.mode,
+            proxy_capacity=proxy_capacity,
+            direct_desired=body.direct_desired,
+            proxy_desired=body.proxy_desired,
         )
     deployed: list[dict[str, str]] = []
     pending_proxy = 0
