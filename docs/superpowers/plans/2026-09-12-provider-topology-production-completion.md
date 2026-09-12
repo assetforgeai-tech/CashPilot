@@ -132,4 +132,5 @@
 - [x] Add failing tests for scoped capacity.
 - [x] Implement scoped capacity and topology summary fields.
 - [x] Run focused tests and full static checks.
-- [ ] Add proxy-only minimum-capacity planning and live evidence.
+- [x] Add proxy-only minimum-capacity planning (read-only summary and deploy pending state).
+- [ ] Capture live proxy-only minimum-capacity and egress evidence.
