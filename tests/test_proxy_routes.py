@@ -3765,6 +3765,47 @@ def test_provider_scoped_lease_is_idempotent_for_the_same_instance(tmp_path):
     asyncio.run(run())
 
 
+def test_provider_slot_leases_are_deterministic_across_reruns(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            proxy_ids = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id,
+                [
+                    {"provider_proxy_id": "one", "host": "1.1.1.1", "port": 1000, "ip_type": "residential"},
+                    {"provider_proxy_id": "two", "host": "2.2.2.2", "port": 2000, "ip_type": "residential"},
+                ],
+            )
+            for proxy_id, exit_ip in zip(proxy_ids, ("8.8.8.8", "9.9.9.9"), strict=True):
+                await database.save_proxy_probe_result(
+                    proxy_id,
+                    profile="generic",
+                    probe_status="alive",
+                    verdict="ALIVE",
+                    eligibility="eligible",
+                    reason="",
+                    exit_ip=exit_ip,
+                    latency_ms=10,
+                    probe_version="test",
+                )
+            worker_id = await database.upsert_worker("worker-a", "a", "http://a")
+            slot_one = "earnfm-proxy-w7-ipv4-001"
+            slot_two = "earnfm-proxy-w7-ipv4-002"
+
+            first_one = await database.lease_proxy_for_provider_instance("earnfm", worker_id, slot_one)
+            first_two = await database.lease_proxy_for_provider_instance("earnfm", worker_id, slot_two)
+            rerun_one = await database.lease_proxy_for_provider_instance("earnfm", worker_id, slot_one)
+            rerun_two = await database.lease_proxy_for_provider_instance("earnfm", worker_id, slot_two)
+
+            assert first_one and first_two and rerun_one and rerun_two
+            assert first_one["proxy_id"] == rerun_one["proxy_id"]
+            assert first_two["proxy_id"] == rerun_two["proxy_id"]
+            assert first_one["proxy_id"] != first_two["proxy_id"]
+
+    asyncio.run(run())
+
+
 def test_provider_scoped_lease_can_require_residential_proxy(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
