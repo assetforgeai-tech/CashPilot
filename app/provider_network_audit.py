@@ -84,6 +84,16 @@ def audit_provider_network_inventory(
             missing.append(instance_id)
             findings.append(f"{instance_id}: runtime inventory missing; direct egress risk")
             continue
+        spec = instance.get("spec") if isinstance(instance.get("spec"), Mapping) else {}
+        proxy = spec.get("proxy") if isinstance(spec.get("proxy"), Mapping) else {}
+        expected_egress = str(
+            instance.get("expected_egress_ip") or proxy.get("exit_ip") or instance.get("exit_ip") or ""
+        ).strip()
+        observed_egress = str(container.get("observed_egress_ip") or container.get("actual_egress_ip") or "").strip()
+        if expected_egress and observed_egress and expected_egress != observed_egress:
+            findings.append(
+                f"{instance_id}: proxy egress mismatch; expected {expected_egress}, observed {observed_egress}"
+            )
         mode = str(container.get("network_mode") or container.get("NetworkMode") or "").lower()
         # EarnApp installs redsocks, DNS forwarding, and fail-closed iptables
         # inside its main container. It intentionally has no sidecar.
@@ -113,7 +123,7 @@ def audit_provider_network_inventory(
         findings.append(f"{instance_id}: live runtime is not tracked in CashPilot{suffix}")
     return {
         "provider": slug,
-        "status": "attention" if missing or untracked else "pass",
+        "status": "attention" if missing or untracked or findings else "pass",
         "missing_sidecar": missing,
         "untracked": untracked,
         "findings": findings,
