@@ -11,7 +11,7 @@ unavailable. No status below authorizes production deployment by itself.
 | Japan East cloud-init | verified | Worker enrollment evidence | Fresh VM rebuild, then auto-deploy |
 | Japan East reboot persistence | verified | Service active, worker healthy, 10 bridge networks, 10 slots after reboot | Route-rule and heartbeat log sample |
 | Repository tests/lint/security | verified | Local Windows run: `2824 passed, 8 skipped`; skips are documented POSIX/collector-shape conditions. CI: `2828 passed, 4 skipped`; Lint, Documentation, Catalog Check, CodeQL, and Tests successful for `010dc81c212c5c0cea3b56083f0c185167871065`; Ruff/build/pip-audit clean | Repeat after runtime fixes |
-| Chrome profile 40 UI sweep | blocked | CDP unavailable in current session | Expose approved CDP session |
+| Chrome profile 40 UI sweep | verified | Isolated CDP session for authenticated `Profile 40` at `127.0.0.1:9227`; ten navigation surfaces captured with full-page PNG/text evidence | Complete destructive-control, responsive, keyboard, and provider-input interaction pass |
 | Provider credentials/input | unverified | Inventory report only; secret values redacted | Authenticated provider inspection |
 | Proxy metadata/location/IP type | unverified | API/UI implementation present | Live recheck sample across providers |
 | UDP/DNS/IPv4/IPv6/DoH leak matrix | unverified | Unit coverage only | Packet capture per runtime/provider |
