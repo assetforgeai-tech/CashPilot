@@ -10477,6 +10477,81 @@ async def release_proxy_for_provider_instance(
         await db.close()
 
 
+async def rotate_provider_proxy_lease(
+    provider_slug: str,
+    worker_id: int,
+    instance_id: str,
+    *,
+    expected_proxy_id: int,
+    new_proxy_id: int,
+) -> bool:
+    """CAS-replace one instance lease and its recorded runtime proxy."""
+    slug = str(provider_slug or "").strip().lower()
+    instance = str(instance_id or "").strip()
+    if not slug or not instance or int(expected_proxy_id or 0) <= 0 or int(new_proxy_id or 0) <= 0:
+        return False
+    if int(expected_proxy_id) == int(new_proxy_id):
+        return False
+    async with _proxy_assignment_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            current = await (
+                await db.execute(
+                    "SELECT exit_ip FROM provider_proxy_leases WHERE provider_slug=? AND worker_id=? "
+                    "AND instance_id=? AND proxy_id=? AND released_at IS NULL",
+                    (slug, int(worker_id), instance, int(expected_proxy_id)),
+                )
+            ).fetchone()
+            candidate = await (
+                await db.execute(
+                    "SELECT exit_ip, status, duplicate_egress FROM proxy_endpoints WHERE id=?", (int(new_proxy_id),)
+                )
+            ).fetchone()
+            if (
+                not current
+                or not candidate
+                or str(candidate["status"] or "").lower() != "alive"
+                or candidate["duplicate_egress"]
+            ):
+                await db.rollback()
+                return False
+            new_exit = str(candidate["exit_ip"] or "").strip()
+            if not new_exit:
+                await db.rollback()
+                return False
+            occupied = await (
+                await db.execute(
+                    "SELECT 1 FROM provider_proxy_leases WHERE released_at IS NULL "
+                    "AND (proxy_id=? OR (exit_ip != '' AND exit_ip=?)) LIMIT 1",
+                    (int(new_proxy_id), new_exit),
+                )
+            ).fetchone()
+            if occupied:
+                await db.rollback()
+                return False
+            changed = await db.execute(
+                "UPDATE provider_proxy_leases SET proxy_id=?, exit_ip=?, release_reason='' "
+                "WHERE provider_slug=? AND worker_id=? AND instance_id=? AND proxy_id=? AND released_at IS NULL",
+                (int(new_proxy_id), new_exit, slug, int(worker_id), instance, int(expected_proxy_id)),
+            )
+            if int(changed.rowcount or 0) != 1:
+                await db.rollback()
+                return False
+            await db.execute(
+                "UPDATE provider_instances SET proxy_id=?, updated_at=datetime('now') "
+                "WHERE worker_id=? AND instance_id=? AND mode='proxy' AND proxy_id=?",
+                (int(new_proxy_id), int(worker_id), instance, int(expected_proxy_id)),
+            )
+            await db.commit()
+            return True
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
+
+
 async def delete_all_proxy_pool() -> int:
     """Delete every endpoint and every assignment owned by the Proxy Pool."""
     async with _proxy_assignment_lock():

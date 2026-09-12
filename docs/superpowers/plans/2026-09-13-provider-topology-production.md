@@ -71,6 +71,10 @@ releasing a replacement lease. Existing callers remain backward compatible.
 All deploy/bind failure cleanup callers now pass the proxy they acquired, so
 late failures cannot release a newer rotation assignment.
 
+Per-instance CAS replacement is now available for provider-scoped runtimes;
+worker-level rotation remains reserved for legacy shared assignments until
+the worker ACK contract exposes a provider-instance binding endpoint.
+
 ### Task 4: Normalize health and recovery policy
 
 **Files:**
