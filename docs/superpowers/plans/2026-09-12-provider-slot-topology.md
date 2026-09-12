@@ -22,6 +22,8 @@
 
 ### Task 1: Pure topology planner
 
+Implementation status: planner and focused contract tests landed in the provider topology rollout PR.
+
 **Files:**
 - Create: `app/provider_topology.py`
 - Test: `tests/test_provider_topology.py`
@@ -113,4 +115,3 @@
 - [ ] Verify instance identity, direct egress binding, proxy fail-closed behavior, unique egress, heartbeat, reboot persistence, and failure continuation.
 - [ ] Enable scoped auto-deploy only after all gates pass, then reconcile both Azure workers.
 - [ ] Recheck dashboard truth against worker containers and durable leases.
-
