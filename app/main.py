@@ -3616,7 +3616,8 @@ async def api_deploy(
             1
             for plan in topology_plans
             if plan.deployable
-            and str(existing_instances.get(plan.instance_id, {}).get("status") or "").lower() in {"running", "deployed"}
+            and str(existing_instances.get(plan.instance_id, {}).get("status") or "").lower()
+            in {"running", "deployed"}
         )
     deployment_items = (
         [
