@@ -341,6 +341,51 @@ def test_list_includes_latest_collector_summary_and_recovery_countdown(tmp_path,
     assert "secretly-not-returned" not in response.text
 
 
+def test_list_exposes_dashboard_to_active_node_mapping_counts(tmp_path, client):
+    with (
+        patch.object(database, "DB_DIR", tmp_path),
+        patch.object(database, "DB_PATH", tmp_path / "earnapp.db"),
+        patch("app.deps.auth.get_current_user", return_value=_owner()),
+    ):
+        asyncio.run(database.init_db())
+        account_id = client.post("/api/admin/earnapp/accounts/import", json=_import_body()).json()["account_id"]
+
+        async def seed():
+            await database.assign_earnapp_account("earnapp-mapped")
+            await database.set_earnapp_logical_node_state("earnapp-mapped", "ACTIVE")
+            await database.assign_earnapp_account("earnapp-unmapped")
+            await database.set_earnapp_logical_node_state("earnapp-unmapped", "ACTIVE")
+            db = await database._get_db()
+            await db.execute(
+                "UPDATE earnapp_logical_nodes SET device_id=? WHERE logical_node_id=?",
+                ("sdk-mac-mapped", "earnapp-mapped"),
+            )
+            await db.execute(
+                "UPDATE earnapp_logical_nodes SET device_id=? WHERE logical_node_id=?",
+                ("sdk-mac-cashpilot-only", "earnapp-unmapped"),
+            )
+            await db.commit()
+            await database.save_earnapp_snapshot(
+                account_id,
+                {
+                    "online_nodes": 1,
+                    "offline_nodes": 1,
+                    "devices": [
+                        {"device_id": "sdk-mac-mapped", "online": True},
+                        {"device_id": "sdk-mac-dashboard-only", "online": False},
+                    ],
+                },
+            )
+
+        asyncio.run(seed())
+        response = client.get("/api/admin/earnapp/accounts")
+
+    collector = response.json()["accounts"][0]["collector"]
+    assert collector["mapped_devices"] == 1
+    assert collector["dashboard_only_devices"] == 1
+    assert collector["active_without_dashboard_device"] == 1
+
+
 def test_account_payload_separates_active_and_recovery_node_counts(tmp_path, client):
     with (
         patch.object(database, "DB_DIR", tmp_path),
