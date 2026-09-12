@@ -2814,7 +2814,7 @@ async def init_db() -> None:
             CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_instances_active_direct_slot
             ON provider_instances(worker_id, slug, capacity_slot)
             WHERE mode = 'direct' AND trim(capacity_slot) != ''
-              AND status NOT IN ('retired', 'deleted')
+              AND status IN ('planned', 'starting', 'running', 'deployed', 'verification_pending')
             """
         )
         # Add snapshot payment metadata before the completed-migration validator
