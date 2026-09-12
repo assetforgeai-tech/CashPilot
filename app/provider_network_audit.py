@@ -131,11 +131,7 @@ def audit_provider_network_inventory(
         ).strip()
         observed_egress = str(container.get("observed_egress_ip") or container.get("actual_egress_ip") or "").strip()
         lease_id = str(
-            instance.get("proxy_lease_id")
-            or instance.get("lease_id")
-            or proxy.get("proxy_id")
-            or proxy.get("id")
-            or ""
+            instance.get("proxy_lease_id") or instance.get("lease_id") or proxy.get("proxy_id") or proxy.get("id") or ""
         ).strip()
         if expected_egress or observed_egress or lease_id:
             evidence = validate_provider_egress(

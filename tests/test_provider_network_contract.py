@@ -2,9 +2,7 @@ from app.provider_network_audit import validate_provider_egress
 
 
 def test_direct_lane_requires_matching_observed_egress():
-    result = validate_provider_egress(
-        "nkn", mode="direct", expected_egress_ip="198.51.100.10", observed_egress_ip=""
-    )
+    result = validate_provider_egress("nkn", mode="direct", expected_egress_ip="198.51.100.10", observed_egress_ip="")
     assert result == {"status": "attention", "findings": ["missing observed direct egress"]}
 
 
@@ -27,4 +25,3 @@ def test_hybrid_lane_does_not_allow_implicit_fallback():
         fallback_mode="direct",
     )
     assert result == {"status": "attention", "findings": ["unsafe egress fallback: direct"]}
-
