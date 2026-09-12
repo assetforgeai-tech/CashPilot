@@ -38,6 +38,7 @@ def _common(monkeypatch, deploy):
     monkeypatch.setattr(main.database, "get_config", config)
     monkeypatch.setattr(main.database, "save_provider_instance", none)
     monkeypatch.setattr(main.database, "record_health_event", none)
+    monkeypatch.setattr(main.database, "list_provider_instances", lambda **_: __import__("asyncio").sleep(0, result=[]))
     monkeypatch.setattr(main, "_worker_public_ip_slots", slots)
     monkeypatch.setattr(main, "_proxy_worker_deploy", deploy)
     monkeypatch.setattr(main, "_spawn", close_spawn)
@@ -92,3 +93,36 @@ async def test_provider_plan_endpoint_is_read_only(monkeypatch):
     )
     assert result["desired"] == 1
     assert result["plans"][0]["mode"] == "proxy"
+
+
+@pytest.mark.asyncio
+async def test_slot_deploy_skips_existing_running_instance(monkeypatch):
+    calls = []
+
+    async def deploy(_worker_id, instance_id, _spec):
+        calls.append(instance_id)
+        return {"container_id": instance_id}
+
+    _common(monkeypatch, deploy)
+    monkeypatch.setattr(
+        main.database,
+        "list_provider_instances",
+        lambda **_: __import__("asyncio").sleep(
+            0,
+            result=[
+                {
+                    "instance_id": "earnfm-direct-w7-ipv4-001",
+                    "worker_id": 7,
+                    "mode": "direct",
+                    "status": "running",
+                    "container_id": "cid-1",
+                }
+            ],
+        ),
+    )
+    result = await main.api_deploy(
+        _request(), "earnfm", main.DeployRequest(env={}, mode="direct"), worker_id=7, _auth={"r": "owner"}
+    )
+    assert calls == ["earnfm-direct-w7-ipv4-002"]
+    assert result["skipped"] == 1
+    assert result["running"] == 2

@@ -3604,9 +3604,28 @@ async def api_deploy(
         topology_plans = provider_topology.plan_provider_nodes(worker_id, slug, slot_records, mode=body.mode)
     deployed: list[dict[str, str]] = []
     pending_proxy = 0
+    skipped_existing = 0
     identity_worker: dict[str, Any] | None = None
+    existing_instances: dict[str, dict[str, Any]] = {}
+    if topology_plans:
+        existing_instances = {
+            str(row.get("instance_id") or ""): row
+            for row in await database.list_provider_instances(slug=slug, worker_id=worker_id)
+        }
+        skipped_existing = sum(
+            1
+            for plan in topology_plans
+            if str(existing_instances.get(plan.instance_id, {}).get("status") or "").lower() in {"running", "deployed"}
+        )
     deployment_items = (
-        [(plan, plan.mode) for plan in topology_plans] if topology_plans else [(None, mode) for mode in modes]
+        [
+            (plan, plan.mode)
+            for plan in topology_plans
+            if str(existing_instances.get(plan.instance_id, {}).get("status") or "").lower()
+            not in {"running", "deployed"}
+        ]
+        if topology_plans
+        else [(None, mode) for mode in modes]
     )
     for idx, (topology_plan, mode) in enumerate(deployment_items):
         instance_slug = topology_plan.instance_id if topology_plan else (slug if mode == "legacy" else f"{slug}-{mode}")
@@ -3735,9 +3754,10 @@ async def api_deploy(
     if topology_plans:
         response.update(
             desired=len(topology_plans),
-            running=sum(1 for item in deployed if item.get("status") == "running"),
+            running=skipped_existing + sum(1 for item in deployed if item.get("status") == "running"),
             failed=sum(1 for item in deployed if item.get("status") == "failed"),
             pending_proxy=pending_proxy,
+            skipped=skipped_existing,
         )
     if deployed:
         response["container_id"] = deployed[-1]["container_id"]
