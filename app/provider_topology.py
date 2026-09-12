@@ -152,17 +152,35 @@ def plan_provider_nodes(
         deployable = route_ready
         direct_plans.append(
             ProviderNodePlan(
-                int(worker_id), slug, "direct", slot_id, "direct", runtime.topology if runtime else "",
-                public_ip, network, route_ready, slot_id, deployable,
+                int(worker_id),
+                slug,
+                "direct",
+                slot_id,
+                "direct",
+                runtime.topology if runtime else "",
+                public_ip,
+                network,
+                route_ready,
+                slot_id,
+                deployable,
                 "direct_route_not_ready" if not deployable else "",
             )
         )
     for proxy_index, (slot_id, public_ip, network, route_ready) in enumerate(proxy_slots, 1):
         proxy_plans.append(
             ProviderNodePlan(
-                int(worker_id), slug, "proxy", slot_id, "proxy", runtime.topology if runtime else "",
-                public_ip, network, route_ready,
-                f"proxy-{proxy_index:03d}", True, "",
+                int(worker_id),
+                slug,
+                "proxy",
+                slot_id,
+                "proxy",
+                runtime.topology if runtime else "",
+                public_ip,
+                network,
+                route_ready,
+                f"proxy-{proxy_index:03d}",
+                True,
+                "",
             )
         )
     plans.extend(direct_plans)

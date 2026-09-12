@@ -183,8 +183,12 @@ def audit_provider_network_inventory(
         if active and runtime.topology in {"slot_proxy", "slot_both"}:
             network = validate_provider_network_evidence(
                 mode="proxy",
-                dns_via_proxy=instance.get("dns_via_proxy") if "dns_via_proxy" in instance else container.get("dns_via_proxy"),
-                ipv6_blocked=instance.get("ipv6_blocked") if "ipv6_blocked" in instance else container.get("ipv6_blocked"),
+                dns_via_proxy=instance.get("dns_via_proxy")
+                if "dns_via_proxy" in instance
+                else container.get("dns_via_proxy"),
+                ipv6_blocked=instance.get("ipv6_blocked")
+                if "ipv6_blocked" in instance
+                else container.get("ipv6_blocked"),
                 udp_blocked=instance.get("udp_blocked") if "udp_blocked" in instance else container.get("udp_blocked"),
             )
             network_findings.extend(f"{instance_id}: {item}" for item in network["findings"])

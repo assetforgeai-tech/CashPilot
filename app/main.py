@@ -3463,11 +3463,7 @@ async def api_plan_provider(
         if str(row.get("mode") or "").strip().lower() == "proxy"
         and str(row.get("status") or "").strip().lower() not in {"retired", "deleted"}
     )
-    planned_proxy_capacity = (
-        available_proxy_count + existing_proxy_count
-        if available_proxy_count is not None
-        else None
-    )
+    planned_proxy_capacity = available_proxy_count + existing_proxy_count if available_proxy_count is not None else None
     try:
         plans = provider_topology.plan_provider_nodes(
             body.worker_id, slug, slots, mode=body.mode, proxy_capacity=planned_proxy_capacity
@@ -3789,10 +3785,7 @@ async def api_deploy(
     identity_worker: dict[str, Any] | None = None
     existing_instances: dict[str, dict[str, Any]] = {}
     if topology_managed:
-        existing_instances = {
-            str(row.get("instance_id") or ""): row
-            for row in existing_rows
-        }
+        existing_instances = {str(row.get("instance_id") or ""): row for row in existing_rows}
         skipped_existing = sum(
             1
             for plan in topology_plans
@@ -3966,13 +3959,10 @@ async def api_deploy(
                 "desired": len(lane_plans),
                 "running": lane_skipped,
                 "failed": sum(1 for item in lane_instances if item.get("status") == "failed"),
-                "pending": sum(1 for plan in lane_plans if not plan.deployable) + sum(
-                    1 for item in lane_instances if item.get("status") == "pending_proxy"
-                ),
+                "pending": sum(1 for plan in lane_plans if not plan.deployable)
+                + sum(1 for item in lane_instances if item.get("status") == "pending_proxy"),
             }
-            lane_response[lane]["running"] += sum(
-                1 for item in lane_instances if item.get("status") == "running"
-            )
+            lane_response[lane]["running"] += sum(1 for item in lane_instances if item.get("status") == "running")
             lane_response[lane]["free"] = max(
                 0, lane_response[lane]["desired"] - lane_response[lane]["running"] - lane_response[lane]["pending"]
             )

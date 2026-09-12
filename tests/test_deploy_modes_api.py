@@ -53,7 +53,9 @@ async def test_proxy_only_unavailable_capacity_fails_closed_without_legacy_deplo
     async def unavailable(**_kwargs):
         raise RuntimeError("pool unavailable")
 
-    monkeypatch.setattr(main.database, "get_config", AsyncMock(return_value={"iproyal_email": "a", "iproyal_password": "b"}))
+    monkeypatch.setattr(
+        main.database, "get_config", AsyncMock(return_value={"iproyal_email": "a", "iproyal_password": "b"})
+    )
     monkeypatch.setattr(main.database, "get_deployment_spec", AsyncMock(return_value=None))
     monkeypatch.setattr(main.database, "list_provider_instances", AsyncMock(return_value=[]))
     monkeypatch.setattr(main.database, "get_provider_proxy_capacity", unavailable)

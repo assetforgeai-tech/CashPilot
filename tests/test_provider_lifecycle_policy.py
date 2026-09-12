@@ -90,15 +90,17 @@ def test_offline_provider_restarts_without_rotating_proxy():
 
 def test_usage_stalled_restarts_same_lane_without_recreating_identity():
     assert decide("packetstream", online=True, banned=False, proxy_healthy=True, usage_stalled=True) == "restart"
-    assert decide_lane(
-        "earnfm", mode="direct", online=True, banned=False, proxy_healthy=True, usage_stalled=True
-    ) == "restart"
+    assert (
+        decide_lane("earnfm", mode="direct", online=True, banned=False, proxy_healthy=True, usage_stalled=True)
+        == "restart"
+    )
 
 
 def test_unhealthy_proxy_rotation_precedes_usage_restart():
-    assert decide_lane(
-        "earnfm", mode="proxy", online=True, banned=False, proxy_healthy=False, usage_stalled=True
-    ) == "rotate"
+    assert (
+        decide_lane("earnfm", mode="proxy", online=True, banned=False, proxy_healthy=False, usage_stalled=True)
+        == "rotate"
+    )
 
 
 def test_banned_provider_recreates_and_rotates_when_provider_requires_instance_rotation():
