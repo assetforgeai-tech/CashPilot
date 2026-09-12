@@ -259,6 +259,14 @@ class TestEarnAppAccountPoolIsReachable:
         assert "issueEarnAppReplacementTicket" in exported
         assert "loadEarnAppAccounts();" in app_js
 
+    def test_account_rows_define_token_expiry_values_in_their_scope(self):
+        app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+        renderer = js_function("renderEarnAppAccounts")
+
+        assert "const expiryValue = account.token_expires_at || account.cookie_expires_at;" in renderer
+        assert "const source = account.token_expiry_source" in renderer
+        assert renderer.index("const expiryValue") < renderer.index("${expiryValue ?")
+
 
 class TestEarnAppUbuntuDedicatedCatalogLane:
     def test_catalog_and_setup_do_not_offer_generic_docker_deploy_for_earnapp(self):
