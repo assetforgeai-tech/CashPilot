@@ -3752,7 +3752,13 @@ const CP = (() => {
       container.innerHTML = reports.length ? reports.map(report => {
         const missing = Array.isArray(report.missing_sidecar) ? report.missing_sidecar.length : 0;
         const untracked = Array.isArray(report.untracked) ? report.untracked.length : 0;
-        return `Worker ${escapeHtml(report.worker_id)} · ${escapeHtml(report.provider)}: ${escapeHtml(report.status || 'unverified')} · sidecar drift ${missing} · untracked ${untracked}`;
+        const lanes = report.lane_counts || {};
+        const laneText = Object.entries(lanes).map(([lane, count]) => `${lane} ${Number(count || 0)}`).join(', ');
+        const evidence = Array.isArray(report.network_evidence?.findings) && report.network_evidence.findings.length
+          ? ` · network ${report.network_evidence.findings.length} finding(s)` : '';
+        const egress = Array.isArray(report.findings) && report.findings.length
+          ? ` · egress attention` : '';
+        return `Worker ${escapeHtml(report.worker_id)} · ${escapeHtml(report.provider)}: ${escapeHtml(report.status || 'unverified')} · ${escapeHtml(laneText || 'no lanes')} · sidecar drift ${missing} · untracked ${untracked}${egress}${evidence}`;
       }).join('<br>') : 'No active provider instances recorded.';
     } catch (err) {
       container.textContent = `Network reconciliation unavailable: ${err.message}`;

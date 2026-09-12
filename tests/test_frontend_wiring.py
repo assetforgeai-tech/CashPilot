@@ -1081,3 +1081,9 @@ def test_deploy_ui_renders_lane_capacity_from_deploy_response():
     assert "laneTotals" in app_js
     assert "stats.running" in app_js
     assert "stats.pending" in app_js
+
+
+def test_network_reconciliation_ui_exposes_lane_and_egress_evidence():
+    app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+    assert "lane_counts" in app_js
+    assert "network_evidence" in app_js
