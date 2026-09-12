@@ -102,7 +102,7 @@
 
 - [x] Add failing preflight tests for insufficient proxy capacity and expose `pending_capacity` in topology summary.
 - [x] Implement proxy-capacity aggregation in the read-only provider plan endpoint without destructive cleanup.
-- [ ] Run full test suite, Ruff, compileall, and diff check.
+- [x] Run full test suite, Ruff, compileall, and diff check.
 - [ ] Record evidence for workers `112444` and `112494` via worker API/SSH only.
 - [ ] Run sequential canary: direct-only, hybrid, proxy-only; verify reboot, rerun, failure isolation, lease/release, and egress.
 - [ ] Enable scoped auto-deploy only after evidence passes.
