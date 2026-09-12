@@ -1584,6 +1584,37 @@ async def test_proxy_rotation_commits_candidate_only_after_matching_worker_ack()
 
 
 @pytest.mark.asyncio
+async def test_provider_instance_rotation_commits_only_after_scoped_ack():
+    current = {"proxy_id": 1, "exit_ip": "8.8.8.8"}
+    candidate = {"proxy_id": 2, "exit_ip": "9.9.9.9", "host": "2.2.2.2", "port": 1080}
+    with (
+        patch(
+            "app.routers.proxies.database.get_active_provider_proxy_lease", new_callable=AsyncMock, return_value=current
+        ),
+        patch(
+            "app.routers.proxies.database.rotate_provider_proxy_lease", new_callable=AsyncMock, return_value=True
+        ) as rotate,
+        patch(
+            "app.main._proxy_to_worker",
+            new_callable=AsyncMock,
+            return_value={
+                "ok": True,
+                "binding_version": "placeholder",
+                "proxy_id": 2,
+                "observed_exit_ip": "9.9.9.9",
+                "applied_instances": ["earnfm-proxy-001"],
+            },
+        ),
+    ):
+        # The random binding token is intentionally validated by the ACK; a
+        # placeholder response must be rejected before the DB CAS.
+        assert (
+            await proxy_routes._rotate_provider_instance_after_ack(7, "earnfm", "earnfm-proxy-001", candidate) is False
+        )
+        rotate.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_proxy_rotation_uses_explicit_fallback_override():
     old = {"worker_id": 7, "proxy_id": 1, "fallback": "rotate", "assignment_version": 4}
     candidate = {"id": 2, "proxy_id": 2, "host": "2.2.2.2", "port": 1080, "protocol": "socks5"}

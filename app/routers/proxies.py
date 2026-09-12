@@ -699,6 +699,53 @@ async def _rotate_worker_proxy_after_ack(
         return await _rotate_worker_proxy_after_ack_locked(worker_id, candidate, fallback=fallback)
 
 
+async def _rotate_provider_instance_after_ack(
+    worker_id: int, provider_slug: str, instance_id: str, candidate: dict[str, Any]
+) -> bool:
+    """Rotate one topology instance only, then commit its scoped lease CAS."""
+    current = await database.get_active_provider_proxy_lease(
+        worker_id=worker_id, instance_id=instance_id, provider_slug=provider_slug
+    )
+    if not current:
+        return False
+    candidate_id = int(candidate.get("proxy_id") or candidate.get("id") or 0)
+    if candidate_id <= 0 or candidate_id == int(current.get("proxy_id") or 0):
+        return False
+    binding_version = f"rotation_{secrets.token_hex(16)}"
+    payload = {
+        "binding_version": binding_version,
+        "proxy": {**candidate, "proxy_id": candidate_id},
+        "instances": [instance_id],
+    }
+    from app.main import _proxy_to_worker
+
+    try:
+        ack = await _proxy_to_worker(worker_id, "POST", "/api/egress/bindings/apply", json=payload, timeout=60)
+        if not (
+            isinstance(ack, dict)
+            and ack.get("ok")
+            and str(ack.get("binding_version") or "") == binding_version
+            and int(ack.get("proxy_id") or 0) == candidate_id
+            and list(ack.get("applied_instances") or []) == [instance_id]
+            and str(ack.get("observed_exit_ip") or "") == str(candidate.get("exit_ip") or "")
+        ):
+            raise RuntimeError("provider instance proxy ACK mismatch")
+        if not await database.rotate_provider_proxy_lease(
+            provider_slug,
+            worker_id,
+            instance_id,
+            expected_proxy_id=int(current["proxy_id"]),
+            new_proxy_id=candidate_id,
+        ):
+            raise RuntimeError("provider instance proxy CAS lost")
+        await _finalize_worker_proxy_binding(worker_id, binding_version, [instance_id], commit=True)
+        return True
+    except Exception:
+        with contextlib.suppress(Exception):
+            await _finalize_worker_proxy_binding(worker_id, binding_version, [instance_id], commit=False)
+        return False
+
+
 async def _rotate_worker_proxy_after_ack_locked(
     worker_id: int, candidate: dict[str, Any], *, fallback: str | None = None
 ) -> bool:
