@@ -84,7 +84,7 @@
 - Missing container requires fresh worker inventory before any cleanup.
 
 - [x] Add failing tests proving direct and proxy egress mismatches are attention-worthy.
-- [ ] Implement the smallest lane-scoped dispatch changes.
+- [x] Implement the smallest lane-scoped dispatch changes.
 - [x] Run lifecycle/network tests.
 
 ### Task 5: Verify actual egress and capacity before enabling deployment
