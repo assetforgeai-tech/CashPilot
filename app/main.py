@@ -4016,7 +4016,11 @@ async def api_deploy(
             if topology_plan and instance_spec.get("proxy"):
                 with contextlib.suppress(Exception):
                     await database.release_proxy_for_provider_instance(
-                        slug, worker_id, instance_slug, reason="DEPLOY_FAILED"
+                        slug,
+                        worker_id,
+                        instance_slug,
+                        reason="DEPLOY_FAILED",
+                        expected_proxy_id=int((instance_spec.get("proxy") or {}).get("proxy_id") or 0) or None,
                     )
             await database.save_provider_instance(
                 slug,

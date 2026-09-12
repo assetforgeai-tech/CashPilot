@@ -645,6 +645,7 @@ async def deploy_platform_canary(
                     int(worker_id),
                     node_id,
                     reason="EARNAPP_CANARY_PREPARE_FAILED",
+                    expected_proxy_id=int((prepared.proxy or {}).get("proxy_id") or 0) or None,
                 )
         raise
     created_binding = not bool((before or {}).get("current_proxy_id"))
