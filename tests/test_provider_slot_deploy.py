@@ -1,0 +1,70 @@
+import pytest
+from starlette.requests import Request
+
+from app import main
+
+
+def _request() -> Request:
+    return Request({"type": "http", "method": "POST", "path": "/api/deploy/earnfm", "headers": []})
+
+
+def _common(monkeypatch, deploy):
+    async def none(*_args, **_kwargs):
+        return None
+
+    async def config(*_args, **_kwargs):
+        return {"earnfm_token": "token"}
+
+    async def slots(_worker_id):
+        return [
+            {"slot_id": "ipv4-001", "public_ip": "198.51.100.1", "docker_network": "cashpilot-direct-ipv4-001", "route_ready": True},
+            {"slot_id": "ipv4-002", "public_ip": "198.51.100.2", "docker_network": "cashpilot-direct-ipv4-002", "route_ready": True},
+        ]
+
+    def close_spawn(coro):
+        coro.close()
+
+    monkeypatch.setattr(main.database, "get_deployment_spec", none)
+    monkeypatch.setattr(main.database, "get_config", config)
+    monkeypatch.setattr(main.database, "save_provider_instance", none)
+    monkeypatch.setattr(main.database, "record_health_event", none)
+    monkeypatch.setattr(main, "_worker_public_ip_slots", slots)
+    monkeypatch.setattr(main, "_proxy_worker_deploy", deploy)
+    monkeypatch.setattr(main, "_spawn", close_spawn)
+
+
+@pytest.mark.asyncio
+async def test_direct_slot_uses_bootstrap_network_not_host(monkeypatch):
+    specs = {}
+
+    async def deploy(_worker_id, instance_id, spec):
+        specs[instance_id] = spec
+        return {"container_id": instance_id}
+
+    _common(monkeypatch, deploy)
+    result = await main.api_deploy(
+        _request(), "earnfm", main.DeployRequest(env={}, mode="direct"), worker_id=7, _auth={"r": "owner"}
+    )
+    assert result["desired"] == 2
+    assert specs["earnfm-direct-w7-ipv4-001"]["network"] == "cashpilot-direct-ipv4-001"
+    assert specs["earnfm-direct-w7-ipv4-002"]["network"] == "cashpilot-direct-ipv4-002"
+
+
+@pytest.mark.asyncio
+async def test_failed_slot_does_not_block_later_slot(monkeypatch):
+    calls = []
+
+    async def deploy(_worker_id, instance_id, _spec):
+        calls.append(instance_id)
+        if instance_id.endswith("ipv4-001"):
+            raise RuntimeError("boom")
+        return {"container_id": instance_id}
+
+    _common(monkeypatch, deploy)
+    result = await main.api_deploy(
+        _request(), "earnfm", main.DeployRequest(env={}, mode="direct"), worker_id=7, _auth={"r": "owner"}
+    )
+    assert calls == ["earnfm-direct-w7-ipv4-001", "earnfm-direct-w7-ipv4-002"]
+    assert result["desired"] == 2
+    assert result["running"] == 1
+    assert result["failed"] == 1

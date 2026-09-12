@@ -824,6 +824,7 @@ def deploy_raw(
     ports: dict[str, int] | None = None,
     volumes: dict[str, dict[str, str]] | None = None,
     network_mode: str | None = None,
+    network: str | None = None,
     cap_add: list[str] | None = None,
     devices: list[str] | None = None,
     command: str | None = None,
@@ -994,6 +995,7 @@ def deploy_raw(
         ports=ports if ports and not network_mode else None,
         volumes=volumes if volumes else None,
         network_mode=network_mode,
+        network=network if not network_mode else None,
         # These images are third-party and closed-source, so they get the minimum
         # kernel surface: every capability dropped, then only the ones the service's
         # own catalog entry declares added back (today that is mysterium's NET_ADMIN

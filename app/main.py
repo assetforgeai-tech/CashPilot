@@ -69,6 +69,7 @@ from app import (
     provider_accounts,
     provider_automation,
     provider_modes,
+    provider_topology,
     provider_network_audit,
     provider_runtime,
     setup_token,
@@ -3192,6 +3193,25 @@ async def _proxy_for_worker_instance(worker_id: int, *, provider_slug: str | Non
     raise HTTPException(status_code=409, detail="No proxy available for this worker")
 
 
+async def _proxy_for_provider_instance(
+    worker_id: int, provider_slug: str, instance_id: str | None = None
+) -> dict[str, Any]:
+    """Keep legacy test/integration adapters compatible with scoped leasing."""
+    if instance_id:
+        lease = await database.lease_proxy_for_provider_instance(
+            provider_slug, worker_id, instance_id, required_ip_type="residential"
+        )
+        if lease:
+            return lease
+        raise HTTPException(status_code=409, detail="No qualified proxy available for provider instance")
+    try:
+        return await _proxy_for_worker_instance(worker_id, provider_slug=provider_slug)
+    except TypeError as exc:
+        if "provider_slug" not in str(exc):
+            raise
+        return await _proxy_for_worker_instance(worker_id)
+
+
 def _proxy_location_is_vietnam(proxy: dict[str, Any]) -> bool:
     loc = str(proxy.get("location") or "").strip().lower()
     return loc in {"vn", "viet nam", "vietnam", "việt nam"} or "vietnam" in loc or "viet nam" in loc
@@ -3244,11 +3264,12 @@ async def _deploy_iproyal_proxy_with_retry(
     spec: dict[str, Any],
     *,
     attempts: int = 20,
+    scoped_instance_id: str | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     last_error: str | None = None
     for attempt in range(1, max(1, attempts) + 1):
         attempt_spec = json.loads(json.dumps(spec))
-        raw_proxy = await _proxy_for_worker_instance(worker_id, provider_slug="iproyal")
+        raw_proxy = await _proxy_for_provider_instance(worker_id, "iproyal", scoped_instance_id)
         proxy = await _resolve_pawns_proxy_protocol(raw_proxy)
         if not proxy:
             proxy_id = int((raw_proxy or {}).get("proxy_id") or 0)
@@ -3527,18 +3548,45 @@ async def api_deploy(
 
     if slug == "traffmonetizer" and set(modes) == {"direct", "proxy"}:
         modes = ["direct", "proxy"]
+    # Generic providers become slot-aware when bootstrap exposes authoritative
+    # ready public IPv4 routes. Keep the legacy single-instance path only for
+    # workers that have not enrolled the slot contract yet.
+    topology_plans = []
+    try:
+        slot_records = await _worker_public_ip_slots(worker_id)
+    except Exception as exc:  # noqa: BLE001 - legacy workers may not expose slots
+        logger.debug("Public IPv4 slot discovery unavailable for worker %s: %s", worker_id, type(exc).__name__)
+        slot_records = []
+    runtime_topology = provider_runtime.get(slug)
+    if slot_records and runtime_topology and runtime_topology.topology.startswith("slot_"):
+        topology_plans = provider_topology.plan_provider_nodes(worker_id, slug, slot_records, mode=body.mode)
     deployed: list[dict[str, str]] = []
+    pending_proxy = 0
     identity_worker: dict[str, Any] | None = None
-    for idx, mode in enumerate(modes):
-        instance_slug = slug if mode == "legacy" else f"{slug}-{mode}"
+    deployment_items = (
+        [(plan, plan.mode) for plan in topology_plans]
+        if topology_plans
+        else [(None, mode) for mode in modes]
+    )
+    for idx, (topology_plan, mode) in enumerate(deployment_items):
+        instance_slug = topology_plan.instance_id if topology_plan else (slug if mode == "legacy" else f"{slug}-{mode}")
         instance_spec = json.loads(json.dumps(spec))
         instance_spec["provider_slug"] = slug
         instance_spec.setdefault("labels", {})
         instance_spec["labels"]["cashpilot.provider"] = slug
         instance_spec["labels"]["cashpilot.instance_mode"] = mode
+        if topology_plan:
+            instance_spec["labels"]["cashpilot.public_ip_slot"] = topology_plan.slot_id
+            instance_spec["public_ip_slot"] = topology_plan.slot_id
+            if topology_plan.public_ip:
+                instance_spec["public_ip"] = topology_plan.public_ip
+            if mode == "direct" and topology_plan.network:
+                instance_spec["network"] = topology_plan.network
+                instance_spec["network_mode"] = None
         if slug == "earnfm" and mode == "direct":
             instance_spec.setdefault("env", {})["GODEBUG"] = "http2client=0"
-            instance_spec["network_mode"] = "host"
+            if not topology_plan:
+                instance_spec["network_mode"] = "host"
             instance_spec["hostname"] = "eapp"
         if slug == "mysterium" and mode == "proxy":
             instance_spec["network_mode"] = None
@@ -3568,7 +3616,17 @@ async def api_deploy(
         if instance_spec.get("volumes"):
             instance_spec["volumes"] = _mode_scoped_named_volumes(instance_spec["volumes"], mode)
         if mode == "proxy" and slug != "iproyal":
-            instance_spec["proxy"] = await _proxy_for_worker_instance(worker_id)
+            try:
+                instance_spec["proxy"] = await _proxy_for_provider_instance(
+                    worker_id, slug, instance_slug if topology_plan else None
+                )
+            except Exception:
+                if not topology_plan:
+                    raise
+                pending_proxy += 1
+                deployed.append({"instance_id": instance_slug, "container_id": "", "mode": mode, "status": "pending_proxy"})
+                await database.record_health_event(slug, "proxy_pending", f"no qualified proxy for {instance_slug}; continuing")
+                continue
             instance_spec["egress_mode"] = "proxy"
         elif mode == "direct":
             instance_spec["egress_mode"] = "direct"
@@ -3578,13 +3636,23 @@ async def api_deploy(
             myst_wallet = await _attach_myst_wallet_for_deploy(slug, worker_id, instance_spec)
         try:
             if slug == "iproyal" and mode == "proxy":
-                result, instance_spec = await _deploy_iproyal_proxy_with_retry(worker_id, instance_slug, instance_spec)
+                result, instance_spec = await _deploy_iproyal_proxy_with_retry(
+                    worker_id,
+                    instance_slug,
+                    instance_spec,
+                    scoped_instance_id=instance_slug if topology_plan else None,
+                )
             else:
                 result = await _proxy_worker_deploy(worker_id, instance_slug, instance_spec)
         except Exception:
             if myst_wallet and (instance_spec.get("deploy_credentials") or {}).get("myst_wallet_client_id"):
                 with contextlib.suppress(Exception):
                     await _release_myst_wallet_from_spec(instance_spec, reason="DEPLOY_FAILED")
+            if topology_plan and instance_spec.get("proxy"):
+                with contextlib.suppress(Exception):
+                    await database.release_proxy_for_provider_instance(
+                        slug, worker_id, instance_slug, reason="DEPLOY_FAILED"
+                    )
             await database.save_provider_instance(
                 slug,
                 instance_slug,
@@ -3593,6 +3661,10 @@ async def api_deploy(
                 status="failed",
                 spec=instance_spec,
             )
+            if topology_plan:
+                deployed.append({"instance_id": instance_slug, "container_id": "", "mode": mode, "status": "failed"})
+                await database.record_health_event(slug, "deploy_failed", f"failed {instance_slug}; continuing")
+                continue
             raise
         container_id = result.get("container_id", "remote")
         await database.save_provider_instance(
@@ -3607,7 +3679,7 @@ async def api_deploy(
         )
         if mode == "legacy":
             await database.save_deployment(slug=slug, container_id=container_id, spec=instance_spec)
-        deployed.append({"instance_id": instance_slug, "container_id": container_id, "mode": mode})
+        deployed.append({"instance_id": instance_slug, "container_id": container_id, "mode": mode, "status": "running"})
         await database.record_health_event(slug, "start", f"deployed {instance_slug} to worker {worker_id}")
         metrics.record_container_lifecycle("deploy", slug)
         if slug == "traffmonetizer" and idx == 0 and len(modes) > 1:
@@ -3616,6 +3688,13 @@ async def api_deploy(
     _spawn(_run_post_deploy_automation(slug, worker_id, hn, [d["mode"] for d in deployed]))
     _spawn(_run_collection())
     response: dict[str, Any] = {"status": "deployed", "instances": deployed}
+    if topology_plans:
+        response.update(
+            desired=len(topology_plans),
+            running=sum(1 for item in deployed if item.get("status") == "running"),
+            failed=sum(1 for item in deployed if item.get("status") == "failed"),
+            pending_proxy=pending_proxy,
+        )
     if deployed:
         response["container_id"] = deployed[-1]["container_id"]
     if divergence:

@@ -1606,6 +1606,8 @@ class DeploySpec(BaseModel):
     ports: dict[str, int] = {}
     volumes: dict[str, dict[str, str]] = {}
     network_mode: str | None = None
+    network: str | None = None
+    public_ip_slot: str = ""
     cap_add: list[str] | None = None
     devices: list[str] | None = None
     privileged: bool = False
@@ -2102,6 +2104,10 @@ def _catalog_host_network_slugs() -> set[str]:
 # catalog services that declare it (checked separately below, by slug). `container:<id>`
 # (namespace join) and any other value are rejected outright.
 _ALLOWED_NETWORK_MODES = {None, "", "bridge", "none", "host"}
+
+
+def _allowed_slot_network(value: str | None) -> bool:
+    return bool(re.fullmatch(r"cashpilot-direct-ipv4-\d{3,6}", str(value or "").strip()))
 _HOST_NETWORK_DIRECT_EXCEPTIONS = {"earnfm"}
 
 
@@ -2157,8 +2163,22 @@ def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
                 status_code=403,
                 detail=f"Blocked devices: {', '.join(sorted(blocked_devices))}",
             )
-    if spec.network_mode not in _ALLOWED_NETWORK_MODES:
+    if spec.network_mode not in _ALLOWED_NETWORK_MODES and not _allowed_slot_network(spec.network_mode):
         raise HTTPException(status_code=403, detail=f"Network mode '{spec.network_mode}' is not allowed")
+    if _allowed_slot_network(spec.network_mode):
+        expected_slot = str(spec.public_ip_slot or "").strip()
+        slots = {str(item.get("slot_id") or ""): item for item in _load_public_ip_slots()}
+        slot = slots.get(expected_slot)
+        if not slot or slot.get("route_ready") is not True or str(slot.get("docker_network") or "") != spec.network_mode:
+            raise HTTPException(status_code=409, detail="Direct public-IP slot network is not ready or mismatched")
+    if spec.network and not _allowed_slot_network(spec.network):
+        raise HTTPException(status_code=403, detail="Custom network is not allowed")
+    if _allowed_slot_network(spec.network):
+        expected_slot = str(spec.public_ip_slot or "").strip()
+        slots = {str(item.get("slot_id") or ""): item for item in _load_public_ip_slots()}
+        slot = slots.get(expected_slot)
+        if not slot or slot.get("route_ready") is not True or str(slot.get("docker_network") or "") != spec.network:
+            raise HTTPException(status_code=409, detail="Direct public-IP slot network is not ready or mismatched")
     if spec.network_mode == "host" and provider_slug not in (
         _catalog_host_network_slugs() | _HOST_NETWORK_DIRECT_EXCEPTIONS
     ):
@@ -3292,6 +3312,7 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             ports=spec.ports,
             volumes=spec.volumes,
             network_mode=spec.network_mode,
+            network=spec.network,
             cap_add=spec.cap_add,
             devices=spec.devices,
             # spec.privileged is rejected outright by _validate_deploy_spec above, and

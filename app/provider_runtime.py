@@ -9,6 +9,7 @@ from typing import Literal
 Mode = Literal["direct", "proxy"]
 CollectorKind = Literal["earnings", "dashboard_only", "count_only"]
 DeploymentPolicy = Literal["enabled", "platform_restricted", "vps_runtime_prohibited"]
+TopologyPolicy = Literal["slot_direct", "slot_proxy", "slot_both", "dedicated", "manual"]
 
 # Keep the compliance decision in the provider truth matrix so the catalog,
 # API and UI all expose the same policy without inferring it from a Docker
@@ -36,6 +37,7 @@ class ProviderRuntime:
     blocked_platforms: tuple[str, ...] = ()
     heartbeat_scope: str = "worker"
     rotation_scope: str = "worker"
+    topology: TopologyPolicy = "slot_direct"
 
     @property
     def default_mode(self) -> str:
@@ -56,7 +58,7 @@ class ProviderRuntime:
 
 
 PROVIDERS: dict[str, ProviderRuntime] = {
-    "earnfm": ProviderRuntime("earnfm", "earn.fm.py", "earn.fm.py", ("direct", "proxy"), "earnings"),
+    "earnfm": ProviderRuntime("earnfm", "earn.fm.py", "earn.fm.py", ("direct", "proxy"), "earnings", topology="slot_both"),
     "earnapp": ProviderRuntime(
         slug="earnapp",
         setup_file="earnapp.py",
@@ -70,27 +72,28 @@ PROVIDERS: dict[str, ProviderRuntime] = {
         blocked_platforms=(),
         heartbeat_scope="node",
         rotation_scope="node",
+        topology="slot_proxy",
     ),
-    "iproyal": ProviderRuntime("iproyal", "pawns.py", "pawns.py", ("proxy",), "earnings", rotation_scope="instance"),
-    "mysterium": ProviderRuntime("mysterium", "MYST.py", "MYST.py", ("direct",), "earnings", heartbeat_scope="wallet"),
-    "nkn": ProviderRuntime("nkn", "nkn.py", "nkn.py", ("direct",), "dashboard_only"),
-    "packetstream": ProviderRuntime("packetstream", "packetstream.py", "packetstream.py", ("proxy",), "earnings"),
-    "proxies-sx": ProviderRuntime("proxies-sx", "proxies.sx.py", "proxies.sx.py", ("proxy",), "earnings"),
+    "iproyal": ProviderRuntime("iproyal", "pawns.py", "pawns.py", ("proxy",), "earnings", rotation_scope="instance", topology="slot_proxy"),
+    "mysterium": ProviderRuntime("mysterium", "MYST.py", "MYST.py", ("direct",), "earnings", heartbeat_scope="wallet", topology="dedicated"),
+    "nkn": ProviderRuntime("nkn", "nkn.py", "nkn.py", ("direct",), "dashboard_only", topology="dedicated"),
+    "packetstream": ProviderRuntime("packetstream", "packetstream.py", "packetstream.py", ("proxy",), "earnings", topology="slot_proxy"),
+    "proxies-sx": ProviderRuntime("proxies-sx", "proxies.sx.py", "proxies.sx.py", ("proxy",), "earnings", topology="slot_proxy"),
     "proxybase": ProviderRuntime(
-        "proxybase", "proxybase.org.py", "proxybase.org.py", ("direct", "proxy"), "dashboard_only"
+        "proxybase", "proxybase.org.py", "proxybase.org.py", ("direct", "proxy"), "dashboard_only", topology="slot_both"
     ),
     "proxybase-xyz": ProviderRuntime(
-        "proxybase-xyz", "proxybase.xyz.py", "proxybase.xyz.py", ("direct", "proxy"), "count_only"
+        "proxybase-xyz", "proxybase.xyz.py", "proxybase.xyz.py", ("direct", "proxy"), "count_only", topology="manual"
     ),
-    "proxyrack": ProviderRuntime("proxyrack", "proxyrack.org.py", "proxyrack.org.py", ("direct", "proxy"), "earnings"),
-    "repocket": ProviderRuntime("repocket", "repocket.py", "repocket.py", ("direct", "proxy"), "earnings"),
-    "spide": ProviderRuntime("spide", "spide.py", "spide.py", ("direct", "proxy"), "dashboard_only"),
+    "proxyrack": ProviderRuntime("proxyrack", "proxyrack.org.py", "proxyrack.org.py", ("direct", "proxy"), "earnings", topology="slot_both"),
+    "repocket": ProviderRuntime("repocket", "repocket.py", "repocket.py", ("direct", "proxy"), "earnings", topology="slot_both"),
+    "spide": ProviderRuntime("spide", "spide.py", "spide.py", ("direct", "proxy"), "dashboard_only", topology="slot_both"),
     "traffmonetizer": ProviderRuntime(
-        "traffmonetizer", "traffmonetizer.py", "traffmonetizer.py", ("direct", "proxy"), "earnings"
+        "traffmonetizer", "traffmonetizer.py", "traffmonetizer.py", ("direct", "proxy"), "earnings", topology="slot_both"
     ),
-    "uprock": ProviderRuntime("uprock", "Uprock.py", "Uprock.py", ("proxy",), "count_only"),
-    "urnetwork": ProviderRuntime("urnetwork", "URNetwork.py", "URNetwork.py", ("direct", "proxy"), "dashboard_only"),
-    "wipter": ProviderRuntime("wipter", "Wipter.py", "Wipter.py", ("proxy",), "count_only"),
+    "uprock": ProviderRuntime("uprock", "Uprock.py", "Uprock.py", ("proxy",), "count_only", topology="manual"),
+    "urnetwork": ProviderRuntime("urnetwork", "URNetwork.py", "URNetwork.py", ("direct", "proxy"), "dashboard_only", topology="slot_both"),
+    "wipter": ProviderRuntime("wipter", "Wipter.py", "Wipter.py", ("proxy",), "count_only", topology="manual"),
 }
 
 ACTIVE_SLUGS = frozenset(PROVIDERS)
@@ -237,6 +240,7 @@ def catalog_runtime(slug: str) -> dict[str, object]:
         "blocked_platforms": list(provider.blocked_platforms),
         "heartbeat_scope": provider.heartbeat_scope,
         "rotation_scope": provider.rotation_scope,
+        "topology": provider.topology,
         "lifecycle_actions": {
             "offline": "restart",
             "banned": "restart" if provider.slug == "earnapp" else "recreate",
