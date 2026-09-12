@@ -3774,12 +3774,7 @@ async def api_deploy(
         logger.debug("Public IPv4 slot discovery unavailable for worker %s: %s", worker_id, type(exc).__name__)
         slot_records = []
     runtime_topology = provider_runtime.get(slug)
-    if (
-        runtime_topology
-        and "direct" in modes
-        and runtime_topology.topology in {"slot_direct", "slot_both"}
-        and not slot_discovery_ok
-    ):
+    if runtime_topology and "direct" in modes and runtime_topology.topology == "slot_direct" and not slot_discovery_ok:
         await database.record_health_event(
             slug, "slots_pending", "public IPv4 slot manifest unavailable; deployment deferred"
         )
