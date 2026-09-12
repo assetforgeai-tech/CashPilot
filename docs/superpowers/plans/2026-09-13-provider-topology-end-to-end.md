@@ -47,6 +47,10 @@ Progress: lane metadata (`lanes`, `capacity_basis`, `lane_isolation`) now flows 
 - Ensure usage checks start at the earnings-update boundary and do not recreate identity implicitly.
 - Add idempotence and failure-isolation tests.
 
+Progress: shared lifecycle dispatcher now accepts `usage_stalled`; it restarts
+the same lane, while an unhealthy proxy still takes precedence and rotates.
+Existing EarnApp account authentication remains a separate `defer_auth` path.
+
 ### Task 4: Fail-closed network verification
 
 **Files:** `app/provider_network_audit.py`, runtime network adapters, API response models; network tests.

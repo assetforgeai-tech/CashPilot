@@ -3731,6 +3731,13 @@ async def api_deploy(
         logger.debug("Public IPv4 slot discovery unavailable for worker %s: %s", worker_id, type(exc).__name__)
         slot_records = []
     runtime_topology = provider_runtime.get(slug)
+    existing_rows = await database.list_provider_instances(slug=slug, worker_id=worker_id)
+    existing_proxy_count = sum(
+        1
+        for row in existing_rows
+        if str(row.get("mode") or "").strip().lower() == "proxy"
+        and str(row.get("status") or "").strip().lower() not in {"retired", "deleted"}
+    )
     proxy_capacity = None
     proxy_capacity_known = False
     if runtime_topology and runtime_topology.topology.startswith("slot_") and "proxy" in modes:
@@ -3739,7 +3746,7 @@ async def api_deploy(
                 provider_slug=slug,
                 required_ip_type="residential",
             )
-            proxy_capacity = sum(int(row.get("available") or 0) for row in capacity_rows)
+            proxy_capacity = sum(int(row.get("available") or 0) for row in capacity_rows) + existing_proxy_count
             proxy_capacity_known = True
     topology_managed = bool(
         runtime_topology
@@ -3761,7 +3768,7 @@ async def api_deploy(
     if topology_managed:
         existing_instances = {
             str(row.get("instance_id") or ""): row
-            for row in await database.list_provider_instances(slug=slug, worker_id=worker_id)
+            for row in existing_rows
         }
         skipped_existing = sum(
             1

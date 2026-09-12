@@ -11,7 +11,14 @@ from collections.abc import Mapping
 from app import provider_runtime
 
 
-def decide(provider: str, *, online: bool | None, banned: bool, proxy_healthy: bool | None) -> str:
+def decide(
+    provider: str,
+    *,
+    online: bool | None,
+    banned: bool,
+    proxy_healthy: bool | None,
+    usage_stalled: bool = False,
+) -> str:
     """Return ``restart``, ``recreate``, ``rotate`` or ``observe``."""
     runtime = provider_runtime.get(str(provider or "").strip().lower())
     if runtime is None:
@@ -24,6 +31,8 @@ def decide(provider: str, *, online: bool | None, banned: bool, proxy_healthy: b
         return "restart"
     if proxy_healthy is False and "proxy" in runtime.modes:
         return "rotate"
+    if usage_stalled:
+        return "restart"
     return "observe"
 
 
@@ -34,6 +43,7 @@ def decide_lane(
     online: bool | None,
     banned: bool,
     proxy_healthy: bool | None,
+    usage_stalled: bool = False,
 ) -> str:
     """Apply lifecycle signals to one explicit direct/proxy lane."""
     runtime = provider_runtime.get(str(provider or "").strip().lower())
@@ -48,6 +58,8 @@ def decide_lane(
         return "restart"
     if selected == "proxy" and proxy_healthy is False:
         return "rotate"
+    if usage_stalled:
+        return "restart"
     return "observe"
 
 
@@ -63,4 +75,5 @@ def decide_instance(instance: Mapping[str, object]) -> str:
         online=instance.get("online") if "online" in instance else None,
         banned=bool(instance.get("banned")),
         proxy_healthy=instance.get("proxy_healthy") if "proxy_healthy" in instance else None,
+        usage_stalled=bool(instance.get("usage_stalled")),
     )
