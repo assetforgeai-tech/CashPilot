@@ -259,58 +259,6 @@ jobs:
       # The check was a tripwire on other people's work when it should have been
       # a guard on the release. Now the release moves the pin itself before the
       # tag and GitHub Release are published. (CashPilot-9fg.)
-      - name: Read compose pins (deferred until release exists)
-        env:
-          # gh needs a token for the branch-protection preflight.
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          TAG="${{ needs.release.outputs.new_tag }}"
-          SERIES="${TAG#v}"; SERIES="${SERIES%.*}"   # v1.16.2 -> 1.16
-          OWNER="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
-          IMAGE_REPO="ghcr.io/${OWNER}/cashpilot"
-
-          # Read the UI and worker pins independently from BOTH files. Under
-          # `set -o pipefail`, grep matching nothing must be handled explicitly
-          # so a partially edited compose pair fails the release visibly.
-          UI_CURRENT=$(grep -ohE "${IMAGE_REPO}:[0-9]+\\.[0-9]+" \
-                       docker-compose.yml docker-compose.fleet.yml \
-                     | awk -F: '{print $NF}' | sort -u | tr '\n' ' ' || true)
-          WORKER_CURRENT=$(grep -ohE "${IMAGE_REPO}-worker:[0-9]+\\.[0-9]+" \
-                           docker-compose.yml docker-compose.fleet.yml \
-                         | awk -F: '{print $NF}' | sort -u | tr '\n' ' ' || true)
-          UI_CURRENT=$(echo "$UI_CURRENT" | xargs || true)
-          WORKER_CURRENT=$(echo "$WORKER_CURRENT" | xargs || true)
-
-          if [ -z "$UI_CURRENT" ] || [ -z "$WORKER_CURRENT" ]; then
-            echo "::error::no canonical CashPilot UI and worker image pins found"
-            exit 1
-          fi
-          CURRENT=$(printf '%s\n%s\n' "$UI_CURRENT" "$WORKER_CURRENT" \
-                    | tr ' ' '\n' | sort -u | tr '\n' ' ')
-          CURRENT=$(echo "$CURRENT" | xargs || true)   # trim
-          if [ "$CURRENT" = "$SERIES" ]; then
-            # A patch release does not change the series. Committing an
-            # unchanged file would push an empty commit on every patch.
-            #
-            # Both files are read, not just docker-compose.yml: if one had
-            # drifted and the other had not, reading only the first would report
-            # "already on $SERIES" and leave the other stale forever -- a silent
-            # no-op that looks exactly like success.
-            if [ "$UI_CURRENT" != "$SERIES" ] || [ "$WORKER_CURRENT" != "$SERIES" ]; then
-              echo "::error::compose pins are inconsistent (UI: $UI_CURRENT; worker: $WORKER_CURRENT)"
-              exit 1
-            fi
-            echo "Pins already on $SERIES; nothing to do."
-            exit 0
-          fi
-          echo "Bumping the example pins [$CURRENT] -> $SERIES"
-
-          # The release tag must exist before the compose-pin PR runs. This
-          # preflight deliberately does not mutate protected main.
-          echo "Deferring compose pin update until after the GitHub Release."
-          exit 0
-
       - name: Create and push tag
         run: |
           TAG="${{ needs.release.outputs.new_tag }}"
@@ -355,7 +303,9 @@ jobs:
             echo "::error::no canonical CashPilot UI and worker image pins found"
             exit 1
           fi
-          if [ "$UI_CURRENT" = "$SERIES" ] && [ "$WORKER_CURRENT" = "$SERIES" ]; then
+          if [ "$UI_CURRENT" != "$SERIES" ] || [ "$WORKER_CURRENT" != "$SERIES" ]; then
+            echo "Bumping compose pins to $SERIES."
+          else
             echo "Pins already on $SERIES; nothing to do."
             exit 0
           fi
