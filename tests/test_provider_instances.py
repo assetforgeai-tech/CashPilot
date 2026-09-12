@@ -204,3 +204,66 @@ def test_unconfirmed_container_inventory_never_marks_earnapp_runtime_missing(tmp
             assert (await database.get_provider_instance("earnapp-live-node"))["status"] == "running"
 
     asyncio.run(run())
+
+
+def test_generic_provider_missing_runtime_requires_two_confirmed_inventories(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "generic.db"):
+            await database.init_db()
+            worker_id = await database.upsert_worker("worker-a", "worker-a", "http://worker")
+            await database.save_provider_instance(
+                "earnfm",
+                "earnfm-proxy-w1-proxy-001",
+                worker_id=worker_id,
+                mode="proxy",
+                container_id="old-container",
+                status="running",
+            )
+
+            first = await database.reconcile_provider_instances(
+                worker_id,
+                reported_instance_ids=(),
+                inventory_confirmed=True,
+            )
+            assert first == {"marked_missing": ["earnfm-proxy-w1-proxy-001"], "removed": []}
+            assert (await database.get_provider_instance("earnfm-proxy-w1-proxy-001"))["status"] == "missing_once"
+
+            second = await database.reconcile_provider_instances(
+                worker_id,
+                reported_instance_ids=(),
+                inventory_confirmed=True,
+            )
+            assert second == {"marked_missing": [], "removed": ["earnfm-proxy-w1-proxy-001"]}
+            assert await database.get_provider_instance("earnfm-proxy-w1-proxy-001") is None
+
+    asyncio.run(run())
+
+
+def test_generic_reconciliation_excludes_earnapp_and_unconfirmed_inventory(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "safe.db"):
+            await database.init_db()
+            worker_id = await database.upsert_worker("worker-a", "worker-a", "http://worker")
+            await database.save_provider_instance(
+                "earnapp", "earnapp-node", worker_id=worker_id, mode="proxy", status="running"
+            )
+            await database.save_provider_instance(
+                "earnfm", "earnfm-node", worker_id=worker_id, mode="direct", status="running"
+            )
+
+            result = await database.reconcile_provider_instances(
+                worker_id,
+                reported_instance_ids=(),
+                inventory_confirmed=False,
+            )
+            assert result == {"marked_missing": [], "removed": []}
+            assert (await database.get_provider_instance("earnfm-node"))["status"] == "running"
+
+            await database.reconcile_provider_instances(
+                worker_id,
+                reported_instance_ids=(),
+                inventory_confirmed=True,
+            )
+            assert (await database.get_provider_instance("earnapp-node"))["status"] == "running"
+
+    asyncio.run(run())

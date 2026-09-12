@@ -8136,6 +8136,17 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
             reported_instance_ids=reported_earnapp_ids,
             inventory_confirmed=bool(body.containers_inventory_confirmed),
         )
+    reported_provider_ids = {
+        str(item.get("instance_slug") or item.get("name") or "").strip()
+        for item in body.containers
+        if isinstance(item, dict) and str(item.get("instance_slug") or item.get("name") or "").strip()
+    }
+    with contextlib.suppress(Exception):
+        await database.reconcile_provider_instances(
+            int(worker_id),
+            reported_instance_ids=reported_provider_ids,
+            inventory_confirmed=bool(body.containers_inventory_confirmed),
+        )
     myst = body.provider_states.get("mysterium") or {}
     if myst:
         evidence = dict(myst.get("evidence") or {})

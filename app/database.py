@@ -7581,6 +7581,60 @@ async def reconcile_earnapp_provider_instances(
             await db.close()
 
 
+async def reconcile_provider_instances(
+    worker_id: int,
+    *,
+    reported_instance_ids: Sequence[str],
+    inventory_confirmed: bool,
+) -> dict[str, list[str]]:
+    """Retire non-EarnApp runtimes only after two confirmed inventory misses."""
+    if int(worker_id or 0) <= 0 or not inventory_confirmed:
+        return {"marked_missing": [], "removed": []}
+    reported = {str(value or "").strip() for value in reported_instance_ids if str(value or "").strip()}
+    async with _earnapp_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            rows = await (
+                await db.execute(
+                    "SELECT instance_id, status FROM provider_instances WHERE worker_id=? AND slug != 'earnapp'",
+                    (int(worker_id),),
+                )
+            ).fetchall()
+            marked: list[str] = []
+            removed: list[str] = []
+            for row in rows:
+                instance_id = str(row["instance_id"] or "")
+                if not instance_id or instance_id in reported:
+                    if str(row["status"] or "") == "missing_once":
+                        await db.execute(
+                            "UPDATE provider_instances SET status='verification_pending', updated_at=datetime('now') WHERE instance_id=?",
+                            (instance_id,),
+                        )
+                    continue
+                if str(row["status"] or "") == "missing_once":
+                    await db.execute(
+                        "UPDATE provider_proxy_leases SET released_at=datetime('now'), release_reason='RUNTIME_CONFIRMED_ABSENT' "
+                        "WHERE worker_id=? AND instance_id=? AND released_at IS NULL",
+                        (int(worker_id), instance_id),
+                    )
+                    await db.execute("DELETE FROM provider_instances WHERE instance_id=?", (instance_id,))
+                    removed.append(instance_id)
+                else:
+                    await db.execute(
+                        "UPDATE provider_instances SET status='missing_once', updated_at=datetime('now') WHERE instance_id=?",
+                        (instance_id,),
+                    )
+                    marked.append(instance_id)
+            await db.commit()
+            return {"marked_missing": marked, "removed": removed}
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
+
+
 # --- Users ---
 
 
