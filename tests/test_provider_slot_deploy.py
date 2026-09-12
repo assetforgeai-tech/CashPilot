@@ -68,3 +68,14 @@ async def test_failed_slot_does_not_block_later_slot(monkeypatch):
     assert result["desired"] == 2
     assert result["running"] == 1
     assert result["failed"] == 1
+
+
+@pytest.mark.asyncio
+async def test_provider_plan_endpoint_is_read_only(monkeypatch):
+    async def slots(_worker_id):
+        return [{"slot_id": "ipv4-001", "public_ip": "198.51.100.1", "route_ready": True}]
+    monkeypatch.setattr(main, "_worker_public_ip_slots", slots)
+    monkeypatch.setattr(main.database, "list_provider_instances", lambda **_: __import__("asyncio").sleep(0, result=[]))
+    result = await main.api_plan_provider(_request(), "iproyal", main.ProviderPlanRequest(worker_id=7), _auth={"r": "owner"})
+    assert result["desired"] == 1
+    assert result["plans"][0]["mode"] == "proxy"

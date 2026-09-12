@@ -2941,6 +2941,11 @@ class DeployRequest(BaseModel):
     mode: str | None = None
 
 
+class ProviderPlanRequest(BaseModel):
+    worker_id: int = Field(gt=0)
+    mode: str | None = None
+
+
 class EarnAppCanaryDeployRequest(BaseModel):
     logical_node_id: str = Field(min_length=3, max_length=128, pattern=r"^[a-z0-9][a-z0-9-]{2,120}$")
     worker_id: int | None = Field(default=None, gt=0)
@@ -3335,6 +3340,27 @@ def _apply_standard_device_identity(
         identity = _proxies_sx_agent_name(identity)
     for key in _DEVICE_IDENTITY_ENV_KEYS.get(slug, ()):
         env[key] = identity
+
+
+@app.post("/api/admin/providers/{slug}/plan")
+async def api_plan_provider(request: Request, slug: str, body: ProviderPlanRequest, _auth: dict[str, Any] = Depends(_require_owner)) -> dict[str, Any]:
+    """Read-only slot topology plan; never leases proxies or mutates workers."""
+    runtime = provider_runtime.get(slug)
+    if not runtime:
+        raise HTTPException(status_code=404, detail="Unknown provider")
+    if runtime.topology in {"dedicated", "manual"}:
+        return {"provider": slug, "topology": runtime.topology, "status": "manual", "plans": []}
+    try:
+        slots = await _worker_public_ip_slots(body.worker_id)
+    except Exception as exc:  # noqa: BLE001 - report unavailable slots explicitly
+        return {"provider": slug, "worker_id": body.worker_id, "topology": runtime.topology, "status": "slots_unavailable", "error": type(exc).__name__, "plans": []}
+    try:
+        plans = provider_topology.plan_provider_nodes(body.worker_id, slug, slots, mode=body.mode)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    instances = await database.list_provider_instances(slug=slug, worker_id=body.worker_id)
+    summary = provider_topology.summarize_provider_plan(plans, instances)
+    return {"provider": slug, "worker_id": body.worker_id, "topology": runtime.topology, "status": "ready", "plans": [plan.__dict__ | {"instance_id": plan.instance_id} for plan in plans], **summary}
 
 
 @app.post("/api/deploy/{slug}")

@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock
 
-from app.provider_topology import plan_provider_nodes
+from app.provider_topology import plan_provider_nodes, summarize_provider_plan
 from app import main
 
 
@@ -49,6 +49,19 @@ def test_unknown_provider_and_bad_slots_fail_closed():
         plan_provider_nodes(7, "missing", 1)
     with pytest.raises(ValueError, match="invalid public IPv4 slot"):
         plan_provider_nodes(7, "earnapp", ["bad-slot"])
+
+def test_summary_is_read_only_and_identifies_missing_retry_and_stale_rows():
+    plans = plan_provider_nodes(7, "earnfm", 2, mode="direct")
+    summary = summarize_provider_plan(plans, [
+        {"instance_id": "earnfm-direct-w7-ipv4-001", "status": "running"},
+        {"instance_id": "earnfm-direct-w7-ipv4-002", "status": "failed"},
+        {"instance_id": "earnfm-direct-w7-ipv4-999", "status": "running"},
+    ])
+    assert summary["desired"] == 2
+    assert summary["running"] == 1
+    assert summary["retry"] == ["earnfm-direct-w7-ipv4-002"]
+    assert summary["missing"] == []
+    assert summary["stale"] == ["earnfm-direct-w7-ipv4-999"]
 
 
 @pytest.mark.asyncio

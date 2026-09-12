@@ -75,3 +75,18 @@ def plan_provider_nodes(
         for selected_mode in modes:
             plans.append(ProviderNodePlan(int(worker_id), slug, selected_mode, slot_id, public_ip, network))
     return plans
+
+
+def summarize_provider_plan(plans: list[ProviderNodePlan], instances: list[Mapping[str, Any]]) -> dict[str, Any]:
+    """Return a read-only convergence summary for a planned provider lane."""
+    desired_ids = {plan.instance_id for plan in plans}
+    rows = {str(row.get("instance_id") or "").strip(): row for row in instances if str(row.get("instance_id") or "").strip()}
+    running = sorted(instance_id for instance_id in desired_ids if str(rows.get(instance_id, {}).get("status") or "").lower() in {"running", "deployed"})
+    retry = sorted(instance_id for instance_id in desired_ids if str(rows.get(instance_id, {}).get("status") or "").lower() in {"failed", "missing", "verification_pending"})
+    return {
+        "desired": len(desired_ids),
+        "running": len(running),
+        "retry": retry,
+        "missing": sorted(desired_ids - set(rows)),
+        "stale": sorted(set(rows) - desired_ids),
+    }
