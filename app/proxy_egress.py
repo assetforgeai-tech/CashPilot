@@ -37,8 +37,14 @@ def proxy_supports_udp(proxy: dict[str, Any] | None) -> bool:
 def choose_mode(requested_mode: Any, service_udp: Any = "none", proxy: dict[str, Any] | None = None) -> str:
     mode = normalize_mode(requested_mode, AUTO)
     udp = str(service_udp or "none").strip().lower()
-    if mode == DIRECT or not proxy:
+    if mode == DIRECT:
         return DIRECT
-    if udp == "required" and not proxy_supports_udp(proxy):
+    # Explicit proxy mode is fail-closed. Never silently expose the worker's
+    # direct address when the requested proxy route is unavailable.
+    if mode == PROXY and not proxy:
+        raise ValueError("proxy mode requires a proxy")
+    if not proxy:
         return DIRECT
+    if udp == "required" and not proxy_supports_udp(proxy) and mode in (PROXY, AUTO):
+        raise ValueError("proxy cannot satisfy required UDP")
     return PROXY

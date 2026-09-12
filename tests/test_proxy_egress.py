@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app import catalog, database
@@ -128,25 +129,23 @@ def test_singbox_config_can_route_udp_direct_for_traffmonetizer_proxy():
 def test_http_proxy_never_satisfies_udp_required():
     from app import proxy_egress
 
-    mode = proxy_egress.choose_mode(
-        requested_mode="proxy",
-        service_udp="required",
-        proxy={"protocol": "http", "udp_ok": True},
-    )
-    assert mode == "direct"
+    with pytest.raises(ValueError, match="cannot satisfy required UDP"):
+        proxy_egress.choose_mode(
+            requested_mode="proxy",
+            service_udp="required",
+            proxy={"protocol": "http", "udp_ok": True},
+        )
 
 
 def test_socks5_proxy_satisfies_udp_only_when_marked_ok():
     from app import proxy_egress
 
-    assert (
+    with pytest.raises(ValueError, match="cannot satisfy required UDP"):
         proxy_egress.choose_mode(
             requested_mode="auto",
             service_udp="required",
             proxy={"protocol": "socks5", "udp_ok": False},
         )
-        == "direct"
-    )
     assert (
         proxy_egress.choose_mode(
             requested_mode="auto",
@@ -173,14 +172,19 @@ def test_direct_provider_bypasses_fake_proxy():
 def test_auto_chooses_direct_for_udp_when_proxy_cannot_udp():
     from app import proxy_egress
 
-    assert (
+    with pytest.raises(ValueError, match="cannot satisfy required UDP"):
         proxy_egress.choose_mode(
             requested_mode="auto",
             service_udp="required",
             proxy={"protocol": "http"},
         )
-        == "direct"
-    )
+
+
+def test_proxy_mode_never_falls_back_to_direct_when_proxy_missing():
+    from app import proxy_egress
+
+    with pytest.raises(ValueError, match="requires a proxy"):
+        proxy_egress.choose_mode(requested_mode="proxy", service_udp="none", proxy=None)
 
 
 def test_init_db_creates_proxy_tables(tmp_path):
@@ -227,10 +231,10 @@ def test_worker_egress_apply_writes_singbox_config(tmp_path):
                 "proxy": {"host": "proxy.example.com", "port": 8080, "protocol": "http", "password": "secret-pass"},
             },
         )
-    assert resp.status_code == 200
-    assert resp.json()["mode"] == "direct"
+    assert resp.status_code == 409
+    assert "cannot satisfy required UDP" in resp.json()["detail"]
     assert "secret-pass" not in resp.text
-    assert config_file.read_text(encoding="utf-8")
+    assert not config_file.exists()
 
 
 def test_worker_proxy_probe_rejects_untrusted_target_before_network():

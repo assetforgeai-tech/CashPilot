@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app import main
-from app.provider_topology import plan_provider_nodes, summarize_provider_plan
+from app.provider_topology import build_capacity_preflight, plan_provider_nodes, summarize_provider_plan
 
 
 def test_dedicated_direct_provider_cannot_use_generic_planner():
@@ -132,6 +132,27 @@ def test_summary_marks_proxy_shortage_as_pending_capacity():
     assert summary["proxy_capacity"] == 1
     assert summary["proxy_capacity_shortfall"] == 2
     assert summary["capacity_target"] == 1
+
+
+def test_capacity_preflight_reports_compute_disk_ports_slots_and_proxy_capacity():
+    result = build_capacity_preflight(
+        slots=[{"slot_id": "ipv4-001", "route_ready": True}, {"slot_id": "ipv4-002", "route_ready": False}],
+        system_info={
+            "resources": {"cpu_cores": 8, "memory": {"total_bytes": 16_000}},
+            "disk": {"free_bytes": 99_000},
+        },
+        ports=["30000:30000/tcp", "30001:30001/udp"],
+        available_proxy_count=3,
+    )
+    assert result == {
+        "cpu_cores": 8,
+        "memory_total_bytes": 16_000,
+        "disk_free_bytes": 99_000,
+        "ports": ["30000/tcp", "30001/udp"],
+        "public_ipv4_slots": 2,
+        "ready_public_ipv4_slots": 1,
+        "proxy_capacity": 3,
+    }
 
 
 @pytest.mark.asyncio

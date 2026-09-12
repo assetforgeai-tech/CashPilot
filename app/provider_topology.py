@@ -12,6 +12,29 @@ from app import provider_modes
 _SLOT_RE = re.compile(r"^ipv4-(\d{3,6})$")
 
 
+def build_capacity_preflight(
+    *,
+    slots: list[Mapping[str, Any]] | tuple[Mapping[str, Any], ...],
+    system_info: Mapping[str, Any] | None = None,
+    ports: list[str] | tuple[str, ...] = (),
+    available_proxy_count: int | None = None,
+) -> dict[str, Any]:
+    """Normalize worker capacity facts for a read-only deployment preflight."""
+    info = system_info if isinstance(system_info, Mapping) else {}
+    resources = info.get("resources") if isinstance(info.get("resources"), Mapping) else {}
+    memory = resources.get("memory") if isinstance(resources.get("memory"), Mapping) else {}
+    disk = info.get("disk") if isinstance(info.get("disk"), Mapping) else {}
+    return {
+        "cpu_cores": resources.get("cpu_cores"),
+        "memory_total_bytes": memory.get("total_bytes"),
+        "disk_free_bytes": disk.get("free_bytes"),
+        "ports": [str(port).split(":", 1)[-1] for port in ports],
+        "public_ipv4_slots": len(slots),
+        "ready_public_ipv4_slots": sum(1 for slot in slots if slot.get("route_ready") is True),
+        "proxy_capacity": None if available_proxy_count is None else max(0, int(available_proxy_count)),
+    }
+
+
 @dataclass(frozen=True)
 class ProviderNodePlan:
     worker_id: int
