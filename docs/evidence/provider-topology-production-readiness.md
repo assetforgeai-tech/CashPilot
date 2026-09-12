@@ -7,7 +7,12 @@ Date: 2026-09-12
 - CashPilot worker container: healthy.
 - CashPilot UI container: healthy.
 - Existing Wipter runtime and managed egress sidecar: running.
-- Worker runtime reports version `1.33.3`.
+- Server upgraded to `v1.37.0`; UI and worker containers healthy.
+- Azure workers `20.187.79.110` and `20.210.93.220` upgraded to worker `1.37`
+  with `restart=always`, original `/data` volume, and healthy status.
+- East Asia worker reports 10/10 NKN LXD direct slots running.
+- Read-only plan preflight: Earn.fm hybrid `20/20` deployable (10 direct + 10
+  proxy); EarnApp proxy-only `10/10` deployable; no pending capacity.
 - No mutation was performed during this inspection.
 
 ## Code gates
