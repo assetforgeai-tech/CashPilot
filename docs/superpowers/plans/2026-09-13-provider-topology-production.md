@@ -49,6 +49,9 @@ capacity shortage stays pending instead of shrinking desired topology. Direct
 slot deploy fails closed without a slot manifest. Per-instance topology state
 uses lane/slot-scoped volumes and device identity seeds.
 
+Additional guard: hybrid planning retains its proxy target as blocked when
+proxy discovery is unknown; it never silently collapses to direct-only.
+
 ### Task 3: Make lease selection deterministic and lane-scoped
 
 **Files:**
