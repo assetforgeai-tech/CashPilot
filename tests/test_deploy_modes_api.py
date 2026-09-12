@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
@@ -18,6 +19,33 @@ def _patch_alive_proxy_probe(monkeypatch):
         return {"status": "alive", "protocol": "socks5"}
 
     monkeypatch.setattr("app.routers.proxies._probe_proxy_confirmed", fake_probe)
+
+
+@pytest.mark.asyncio
+async def test_proxy_only_zero_capacity_fails_closed_without_legacy_deploy(monkeypatch):
+    async def config(*_args, **_kwargs):
+        return {"iproyal_email": "user@example.com", "iproyal_password": "secret"}
+
+    monkeypatch.setattr(main.database, "get_config", config)
+    monkeypatch.setattr(main.database, "get_deployment_spec", AsyncMock(return_value=None))
+    monkeypatch.setattr(main.database, "list_provider_instances", AsyncMock(return_value=[]))
+    monkeypatch.setattr(main.database, "get_provider_proxy_capacity", AsyncMock(return_value=[]))
+    monkeypatch.setattr(main.database, "record_health_event", AsyncMock())
+    monkeypatch.setattr(main, "_worker_public_ip_slots", AsyncMock(return_value=[]))
+    deploy = AsyncMock()
+    monkeypatch.setattr(main, "_proxy_worker_deploy", deploy)
+
+    result = await main.api_deploy(
+        _request("/api/deploy/iproyal"),
+        "iproyal",
+        main.DeployRequest(env={}, mode="proxy"),
+        worker_id=7,
+        _auth={"r": "owner"},
+    )
+
+    assert result["status"] == "pending_capacity"
+    assert result["pending_proxy"] == 1
+    deploy.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -51,6 +51,10 @@ Progress: shared lifecycle dispatcher now accepts `usage_stalled`; it restarts
 the same lane, while an unhealthy proxy still takes precedence and rotates.
 Existing EarnApp account authentication remains a separate `defer_auth` path.
 
+Progress: proxy-only deployment now fails closed when the provider capacity query
+proves zero eligible proxies; it returns `pending_capacity` and never falls back
+to a direct or legacy deployment.
+
 ### Task 4: Fail-closed network verification
 
 **Files:** `app/provider_network_audit.py`, runtime network adapters, API response models; network tests.

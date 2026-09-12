@@ -3761,6 +3761,15 @@ async def api_deploy(
             or (proxy_capacity_known and proxy_capacity and proxy_capacity > 0)
         )
     )
+    if runtime_topology and runtime_topology.topology == "slot_proxy" and proxy_capacity_known and not proxy_capacity:
+        await database.record_health_event(slug, "proxy_pending", "no qualified proxy capacity; deployment deferred")
+        return {
+            "status": "pending_capacity",
+            "provider": slug,
+            "worker_id": worker_id,
+            "pending_proxy": 1,
+            "deployed": [],
+        }
     if topology_managed:
         topology_plans = provider_topology.plan_provider_nodes(
             worker_id, slug, slot_records, mode=body.mode, proxy_capacity=proxy_capacity
