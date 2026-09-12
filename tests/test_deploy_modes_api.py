@@ -21,15 +21,6 @@ def _patch_alive_proxy_probe(monkeypatch):
     monkeypatch.setattr("app.routers.proxies._probe_proxy_confirmed", fake_probe)
 
 
-@pytest.fixture(autouse=True)
-def _proxy_capacity_discovery(monkeypatch):
-    monkeypatch.setattr(
-        main.database,
-        "get_provider_proxy_capacity",
-        AsyncMock(return_value=[{"available": 100}]),
-    )
-
-
 @pytest.mark.asyncio
 async def test_proxy_only_zero_capacity_fails_closed_without_legacy_deploy(monkeypatch):
     async def config(*_args, **_kwargs):
