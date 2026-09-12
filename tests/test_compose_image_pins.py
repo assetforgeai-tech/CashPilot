@@ -79,15 +79,14 @@ def test_build_and_release_workflows_use_the_fork_ghcr_images():
     assert "ghcr.io/${OWNER}/cashpilot" in release
 
 
-def test_release_pin_update_is_direct_and_precedes_release_publication():
-    """A pin failure must stop the tag/release instead of leaving a green stale release."""
+def test_release_pin_update_uses_pr_after_release_publication():
+    """Protected main receives compose pin updates through an auditable PR."""
     release = (PROJECT_ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
-    assert "gh pr create" not in release
+    assert "gh pr create" in release
     assert "gh pr merge" not in release
-    assert 'git push origin "HEAD:${GITHUB_REF_NAME}"' in release
-    assert 'gh api "repos/${GITHUB_REPOSITORY}/branches/${GITHUB_REF_NAME}"' in release
-    assert release.index("Bump the example compose pins") < release.index("Create and push tag")
-    assert "could not push the compose pin" in release
+    assert 'git push --force-with-lease origin "HEAD:${PIN_BRANCH}"' in release
+    assert release.index("Create and push tag") < release.index("Bump the example compose pins")
+    assert "compose pin PR" in release
 
 
 def test_release_pin_preflight_fails_closed_when_images_have_no_pin():
