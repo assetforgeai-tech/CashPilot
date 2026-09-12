@@ -104,7 +104,7 @@
 - [x] Implement proxy-capacity aggregation in the read-only provider plan endpoint without destructive cleanup.
 - [x] Expose compute, disk, ports, IPv4-slot, and proxy-capacity preflight in the read-only provider plan endpoint.
 - [x] Run full test suite, Ruff, compileall, and diff check.
-- [ ] Record evidence for workers `112444` and `112494` via worker API/SSH only.
+- [x] Record evidence for workers `112444` and `112494` via worker API/SSH only.
 - [ ] Run sequential canary: direct-only, hybrid, proxy-only; verify reboot, rerun, failure isolation, lease/release, and egress.
 - [ ] Enable scoped auto-deploy only after evidence passes.
 
@@ -134,4 +134,5 @@
 - [x] Implement scoped capacity and topology summary fields.
 - [x] Run focused tests and full static checks.
 - [x] Add proxy-only minimum-capacity planning (read-only summary and deploy pending state).
+- [x] Prove deterministic proxy reservation across provider slot reruns.
 - [ ] Capture live proxy-only minimum-capacity and egress evidence.
