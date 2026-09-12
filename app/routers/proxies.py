@@ -19,7 +19,7 @@ from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app import database, deps, egress, proxy_egress
 from app.proxy_intelligence import lookup_ip_intelligence
@@ -112,6 +112,10 @@ class ProviderProxyLeaseIn(BaseModel):
     provider_slug: str
     worker_id: int
     instance_id: str
+
+
+class ProviderProxyRotateIn(ProviderProxyLeaseIn):
+    new_proxy_id: int = Field(gt=0)
 
 
 def _utc_timestamp() -> str:
@@ -1459,6 +1463,18 @@ async def api_proxy_pool_provider_release(request: Request, body: ProviderProxyL
         body.provider_slug, body.worker_id, body.instance_id, reason="manual release"
     )
     return {"status": "ok", "released": released}
+
+
+@router.post("/api/proxy-pool/provider-rotate")
+async def api_proxy_pool_provider_rotate(request: Request, body: ProviderProxyRotateIn) -> dict[str, Any]:
+    deps._require_owner(request)
+    candidate = await database.get_proxy_endpoint(body.new_proxy_id)
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Replacement proxy not found")
+    ok = await _rotate_provider_instance_after_ack(body.worker_id, body.provider_slug, body.instance_id, candidate)
+    if not ok:
+        raise HTTPException(status_code=409, detail="Provider instance proxy rotation was not committed")
+    return {"status": "ok", "rotated": True, "provider_slug": body.provider_slug, "instance_id": body.instance_id}
 
 
 @router.post("/api/proxy-pool/earnapp-recheck")

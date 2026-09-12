@@ -1615,6 +1615,24 @@ async def test_provider_instance_rotation_commits_only_after_scoped_ack():
 
 
 @pytest.mark.asyncio
+async def test_provider_rotate_route_requires_replacement_and_commits(monkeypatch):
+    from starlette.requests import Request
+
+    monkeypatch.setattr(proxy_routes.database, "get_proxy_endpoint", AsyncMock(return_value={"proxy_id": 2}))
+    monkeypatch.setattr(proxy_routes.deps, "_require_owner", lambda _request: {"r": "owner"})
+    rotate = AsyncMock(return_value=True)
+    monkeypatch.setattr(proxy_routes, "_rotate_provider_instance_after_ack", rotate)
+    result = await proxy_routes.api_proxy_pool_provider_rotate(
+        Request({"type": "http", "method": "POST", "path": "/api/proxy-pool/provider-rotate", "headers": []}),
+        proxy_routes.ProviderProxyRotateIn(
+            provider_slug="earnfm", worker_id=7, instance_id="earnfm-proxy-001", new_proxy_id=2
+        ),
+    )
+    assert result["rotated"] is True
+    rotate.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_proxy_rotation_uses_explicit_fallback_override():
     old = {"worker_id": 7, "proxy_id": 1, "fallback": "rotate", "assignment_version": 4}
     candidate = {"id": 2, "proxy_id": 2, "host": "2.2.2.2", "port": 1080, "protocol": "socks5"}
