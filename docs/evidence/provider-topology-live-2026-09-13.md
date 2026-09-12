@@ -8,6 +8,8 @@ worker container and Docker socket path; no container was created or removed.
 ## Observed runtime
 
 - `cashpilot-worker`: healthy, `ghcr.io/assetforgeai-tech/cashpilot-worker:1.33.3`.
+- This worker is older than the released `v1.40.0`; the observation is therefore
+  useful for network shape only, not proof of the current production worker.
 - iOS EarnApp node: running, bridge network, proxy egress probe returned `116.98.229.8`.
 - macOS EarnApp node: running, bridge network, proxy egress probe returned `14.243.208.175`.
 - The two nodes had distinct observed egress addresses; no paired egress was observed.
