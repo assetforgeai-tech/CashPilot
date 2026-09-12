@@ -239,7 +239,7 @@ def catalog_runtime(slug: str) -> dict[str, object]:
         "rotation_scope": provider.rotation_scope,
         "lifecycle_actions": {
             "offline": "restart",
-            "banned": "recreate",
+            "banned": "restart" if provider.slug == "earnapp" else "recreate",
             "proxy_unhealthy": "rotate" if "proxy" in provider.modes else "observe",
         },
         "setup_source": provider.setup_file,

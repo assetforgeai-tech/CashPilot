@@ -12,3 +12,7 @@ def test_banned_provider_recreates_and_rotates_when_provider_requires_instance_r
 def test_unhealthy_proxy_rotates_only_for_proxy_runtime():
     assert decide("packetstream", online=True, banned=False, proxy_healthy=False) == "rotate"
     assert decide("mysterium", online=True, banned=False, proxy_healthy=False) == "observe"
+
+
+def test_earnapp_banned_nodes_use_restart_policy():
+    assert decide("earnapp", online=True, banned=True, proxy_healthy=True) == "restart"

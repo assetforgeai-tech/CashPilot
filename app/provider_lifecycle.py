@@ -14,6 +14,8 @@ def decide(provider: str, *, online: bool | None, banned: bool, proxy_healthy: b
     runtime = provider_runtime.get(str(provider or "").strip().lower())
     if runtime is None:
         return "observe"
+    if banned and str(provider or "").strip().lower() == "earnapp":
+        return "restart"
     if banned:
         return "recreate"
     if online is False:
