@@ -104,6 +104,11 @@ Progress: implemented and pushed in `4afe4ab`; explicit deploy-capacity test cov
 - Expose `public_ipv4_slot`, expected egress, and route state in API payloads.
 - [ ] Add API tests proving direct-only count equals route-ready slots and never proxy capacity.
 
+Progress: Azure live preflight confirms both workers expose 10/10 route-ready
+IPv4 slot manifests with dedicated Docker network metadata. NKN/Mysterium remain
+dedicated adapters by design; generic slot planner is not used for their wallet
+and host-agent lifecycle.
+
 ### Task 9: Lane-scoped counters and reconciliation UI
 
 **Files:** existing provider catalog/API/UI components; tests in `tests/test_deploy_modes_api.py` and UI tests.
