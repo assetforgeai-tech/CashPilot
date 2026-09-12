@@ -287,7 +287,9 @@ async def _account_payload() -> dict[str, Any]:
         }
         mapped = sum(str(node.get("device_id") or "").strip() in dashboard_ids for node in account_nodes)
         collector["mapped_devices"] = mapped
-        collector["dashboard_only_devices"] = max(0, len(dashboard_ids - {str(node.get("device_id") or "").strip() for node in account_nodes}))
+        collector["dashboard_only_devices"] = max(
+            0, len(dashboard_ids - {str(node.get("device_id") or "").strip() for node in account_nodes})
+        )
         collector["active_without_dashboard_device"] = sum(
             str(node.get("device_id") or "").strip() not in dashboard_ids
             and str(node.get("state") or "").upper() == "ACTIVE"
