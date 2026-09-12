@@ -3765,6 +3765,45 @@ def test_provider_scoped_lease_is_idempotent_for_the_same_instance(tmp_path):
     asyncio.run(run())
 
 
+def test_provider_release_cas_does_not_release_replaced_lease(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            ids = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id,
+                [
+                    {"provider_proxy_id": "one", "host": "1.1.1.1", "port": 1000},
+                    {"provider_proxy_id": "two", "host": "2.2.2.2", "port": 1000},
+                ],
+            )
+            for proxy_id, exit_ip in zip(ids, ("8.8.8.8", "9.9.9.9"), strict=True):
+                await database.save_proxy_probe_result(
+                    proxy_id,
+                    profile="generic",
+                    probe_status="alive",
+                    verdict="ALIVE",
+                    eligibility="eligible",
+                    reason="",
+                    exit_ip=exit_ip,
+                    latency_ms=10,
+                    probe_version="test",
+                )
+            worker_id = await database.upsert_worker("worker-a", "a", "http://a")
+            first = await database.lease_proxy_for_provider_instance("future", worker_id, "future-1")
+            assert first
+            assert (
+                await database.release_proxy_for_provider_instance(
+                    "future", worker_id, "future-1", expected_proxy_id=int(first["proxy_id"]) + 1
+                )
+                is False
+            )
+            active = await database.get_active_provider_proxy_lease("future", worker_id, "future-1")
+            assert active and int(active["proxy_id"]) == int(first["proxy_id"])
+
+    asyncio.run(run())
+
+
 def test_provider_slot_leases_are_deterministic_across_reruns(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):

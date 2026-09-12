@@ -10442,7 +10442,12 @@ async def lease_proxy_for_provider_instance(
 
 
 async def release_proxy_for_provider_instance(
-    provider_slug: str, worker_id: int, instance_id: str, *, reason: str = "released"
+    provider_slug: str,
+    worker_id: int,
+    instance_id: str,
+    *,
+    reason: str = "released",
+    expected_proxy_id: int | None = None,
 ) -> bool:
     if str(provider_slug or "").strip().lower() == "earnapp" and earnapp_policy.is_protected_runtime_reference(
         instance_id
@@ -10455,12 +10460,15 @@ async def release_proxy_for_provider_instance(
             UPDATE provider_proxy_leases
             SET released_at = datetime('now'), release_reason = ?
             WHERE provider_slug = ? AND worker_id = ? AND instance_id = ? AND released_at IS NULL
+              AND (? IS NULL OR proxy_id = ?)
             """,
             (
                 str(reason or "released")[:300],
                 str(provider_slug or "").strip().lower(),
                 int(worker_id),
                 str(instance_id or "").strip(),
+                expected_proxy_id,
+                expected_proxy_id,
             ),
         )
         await db.commit()
