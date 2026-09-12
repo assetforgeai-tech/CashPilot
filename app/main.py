@@ -8425,6 +8425,11 @@ async def api_provider_network_reconciliation(request: Request) -> dict[str, Any
                 inventory_confirmed=confirmed,
             )
             report["worker_id"] = worker_id
+            report["contract"] = provider_topology.topology_contract(slug)
+            report["lane_counts"] = {
+                lane: sum(1 for row in instances if str(row.get("mode") or "").strip().lower() == lane)
+                for lane in ("direct", "proxy")
+            }
             reports.append(report)
     return {"reports": reports, "read_only": True}
 
