@@ -1304,7 +1304,10 @@ async def _resolve_worker_id(worker_id: int | None) -> int:
                 row
                 for row in await database.list_workers()
                 if row.get("status") == "online"
-                and ((endpoint and str(row.get("url") or "").strip() == endpoint) or (name and str(row.get("name") or "").strip() == name))
+                and (
+                    (endpoint and str(row.get("url") or "").strip() == endpoint)
+                    or (name and str(row.get("name") or "").strip() == name)
+                )
             ]
             if candidates:
                 return max(candidates, key=lambda row: int(row.get("id") or 0))["id"]

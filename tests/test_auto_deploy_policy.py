@@ -11,7 +11,14 @@ def test_resolve_worker_id_adopts_online_reenrollment_with_same_endpoint(monkeyp
         monkeypatch.setattr(
             main.database,
             "get_worker",
-            AsyncMock(return_value={"id": 112494, "status": "offline", "url": "http://20.187.79.110:8081", "name": "20.187.79.110"}),
+            AsyncMock(
+                return_value={
+                    "id": 112494,
+                    "status": "offline",
+                    "url": "http://20.187.79.110:8081",
+                    "name": "20.187.79.110",
+                }
+            ),
         )
         monkeypatch.setattr(
             main.database,
