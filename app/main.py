@@ -3858,6 +3858,31 @@ async def api_deploy(
             if mode == "direct" and topology_plan.network:
                 instance_spec["network"] = topology_plan.network
                 instance_spec["network_mode"] = None
+        # Reserve a direct capacity slot before any remote mutation. The
+        # database uniqueness constraint makes concurrent deploy requests for
+        # the same provider/worker/slot converge instead of creating two
+        # containers that claim one public IPv4 route.
+        if topology_plan and mode == "direct":
+            try:
+                await database.save_provider_instance(
+                    slug,
+                    instance_slug,
+                    worker_id=worker_id,
+                    mode="direct",
+                    capacity_slot=topology_plan.capacity_slot,
+                    status="planned",
+                    spec=instance_spec,
+                )
+            except Exception as exc:  # noqa: BLE001 - one occupied slot cannot stop peer lanes
+                if exc.__class__.__name__ != "IntegrityError":
+                    raise
+                deployed.append(
+                    {"instance_id": instance_slug, "container_id": "", "mode": mode, "status": "slot_conflict"}
+                )
+                await database.record_health_event(
+                    slug, "capacity_conflict", f"direct slot {topology_plan.capacity_slot} already reserved"
+                )
+                continue
         if slug == "earnfm" and mode == "direct":
             instance_spec.setdefault("env", {})["GODEBUG"] = "http2client=0"
             if not topology_plan:
@@ -3946,6 +3971,7 @@ async def api_deploy(
                 instance_slug,
                 worker_id=worker_id,
                 mode="direct" if mode == "legacy" else mode,
+                capacity_slot=topology_plan.capacity_slot if topology_plan else "",
                 status="failed",
                 spec=instance_spec,
             )
@@ -3960,6 +3986,7 @@ async def api_deploy(
             instance_slug,
             worker_id=worker_id,
             mode="direct" if mode == "legacy" else mode,
+            capacity_slot=topology_plan.capacity_slot if topology_plan else "",
             container_id=container_id,
             proxy_id=int((instance_spec.get("proxy") or {}).get("proxy_id") or 0) or None,
             status="running",

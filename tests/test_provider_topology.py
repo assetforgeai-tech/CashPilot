@@ -317,6 +317,17 @@ def test_lane_summary_reports_free_capacity_without_collapsing_lanes():
     assert summary["proxy_capacity"] == 1
 
 
+def test_direct_slot_identity_is_explicit_and_stable():
+    plan = plan_provider_nodes(
+        7,
+        "earnfm",
+        [{"slot_id": "ipv4-001", "public_ip": "198.51.100.1", "route_ready": True}],
+        mode="direct",
+    )[0]
+    assert plan.capacity_slot == "ipv4-001"
+    assert plan.lane == "direct"
+
+
 @pytest.mark.asyncio
 async def test_slot_proxy_uses_exclusive_provider_instance_lease(monkeypatch):
     lease = {"proxy_id": 9, "exit_ip": "203.0.113.9"}

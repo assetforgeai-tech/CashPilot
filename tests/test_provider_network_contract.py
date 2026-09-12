@@ -38,7 +38,10 @@ def test_hybrid_lane_does_not_allow_implicit_fallback():
 
 def test_network_evidence_requires_dns_isolation_and_ipv6_udp_blocking():
     result = validate_provider_network_evidence(mode="proxy", dns_via_proxy=True, ipv6_blocked=True, udp_blocked=True)
-    assert result == {"status": "pass", "findings": []}
+    assert result == {
+        "status": "attention",
+        "findings": ["doh_isolation_unverified", "dot_isolation_unverified", "direct_fallback_unverified"],
+    }
 
 
 def test_network_evidence_fails_closed_on_missing_or_leaking_controls():

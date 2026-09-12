@@ -966,6 +966,7 @@ CREATE TABLE IF NOT EXISTS provider_instances (
     slug           TEXT NOT NULL,
     worker_id      INTEGER,
     mode           TEXT NOT NULL DEFAULT 'direct' CHECK(mode IN ('direct', 'proxy')),
+    capacity_slot  TEXT NOT NULL DEFAULT '',
     container_id   TEXT NOT NULL DEFAULT '',
     sidecar_id     TEXT NOT NULL DEFAULT '',
     proxy_id       INTEGER,
@@ -2803,6 +2804,19 @@ async def init_db() -> None:
     try:
         await _dedupe_earnings_before_indexing(db)
         await db.executescript(_SCHEMA)
+        provider_instance_columns = await _table_columns(db, "provider_instances")
+        if "capacity_slot" not in provider_instance_columns:
+            await db.execute("ALTER TABLE provider_instances ADD COLUMN capacity_slot TEXT NOT NULL DEFAULT ''")
+            applied.append("provider_instances.capacity_slot")
+        await db.execute("DROP INDEX IF EXISTS idx_provider_instances_active_direct_slot")
+        await db.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_instances_active_direct_slot
+            ON provider_instances(worker_id, slug, capacity_slot)
+            WHERE mode = 'direct' AND trim(capacity_slot) != ''
+              AND status NOT IN ('retired', 'deleted')
+            """
+        )
         # Add snapshot payment metadata before the completed-migration validator
         # compares the canonical child schema.
         if await _table_exists(db, "earnapp_account_snapshots"):
@@ -7376,6 +7390,7 @@ async def save_provider_instance(
     *,
     worker_id: int | None = None,
     mode: str = "direct",
+    capacity_slot: str = "",
     container_id: str = "",
     sidecar_id: str = "",
     proxy_id: int | None = None,
@@ -7400,12 +7415,15 @@ async def save_provider_instance(
         await db.execute(
             """
             INSERT INTO provider_instances
-                (instance_id, slug, worker_id, mode, container_id, sidecar_id, proxy_id, status, spec_encrypted, deployed_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? != '' THEN datetime('now') ELSE NULL END, datetime('now'))
+                (instance_id, slug, worker_id, mode, capacity_slot, container_id, sidecar_id, proxy_id, status, spec_encrypted, deployed_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? != '' THEN datetime('now') ELSE NULL END, datetime('now'))
             ON CONFLICT(instance_id) DO UPDATE SET
                 slug = excluded.slug,
                 worker_id = excluded.worker_id,
                 mode = excluded.mode,
+                capacity_slot = CASE WHEN trim(excluded.capacity_slot) != ''
+                                     THEN excluded.capacity_slot
+                                     ELSE provider_instances.capacity_slot END,
                 container_id = excluded.container_id,
                 sidecar_id = excluded.sidecar_id,
                 proxy_id = excluded.proxy_id,
@@ -7419,6 +7437,7 @@ async def save_provider_instance(
                 slug,
                 worker_id,
                 mode,
+                str(capacity_slot or "").strip(),
                 container_id,
                 sidecar_id,
                 proxy_id,
