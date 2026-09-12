@@ -3030,12 +3030,14 @@ const CP = (() => {
       ? runtime.modes.join('+')
       : (svc.egress && svc.egress.mode) || 'unknown';
     const egress = `mode: ${modes}`;
+    const topology = runtime.topology ? `topology: ${runtime.topology.replaceAll('_', ' ')}` : '';
     return `
       <div class="platform-badges" style="margin-top:8px;">
         <span class="platform-badge"${!deployment_allowed && deployment_policy_message ? ` title="${escapeHtml(deployment_policy_message)}"` : ''}>${escapeHtml(deploy)}</span>
         <span class="platform-badge">${escapeHtml(collector)}</span>
         <span class="platform-badge">${escapeHtml(dashboard)}</span>
         <span class="platform-badge">${escapeHtml(egress)}</span>
+        ${topology ? `<span class="platform-badge">${escapeHtml(topology)}</span>` : ''}
       </div>`;
   }
 
