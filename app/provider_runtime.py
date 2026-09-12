@@ -38,6 +38,7 @@ class ProviderRuntime:
     heartbeat_scope: str = "worker"
     rotation_scope: str = "worker"
     topology: TopologyPolicy = "slot_direct"
+    egress_ownership_scope: str = "runtime_lease"
 
     @property
     def default_mode(self) -> str:
@@ -75,6 +76,7 @@ PROVIDERS: dict[str, ProviderRuntime] = {
         heartbeat_scope="node",
         rotation_scope="node",
         topology="slot_proxy",
+        egress_ownership_scope="account_sticky",
     ),
     "iproyal": ProviderRuntime(
         "iproyal", "pawns.py", "pawns.py", ("proxy",), "earnings", rotation_scope="instance", topology="slot_proxy"
@@ -264,6 +266,7 @@ def catalog_runtime(slug: str) -> dict[str, object]:
         "blocked_platforms": list(provider.blocked_platforms),
         "heartbeat_scope": provider.heartbeat_scope,
         "rotation_scope": provider.rotation_scope,
+        "egress_ownership_scope": provider.egress_ownership_scope,
         "topology": provider.topology,
         "lanes": lanes,
         "capacity_basis": {
