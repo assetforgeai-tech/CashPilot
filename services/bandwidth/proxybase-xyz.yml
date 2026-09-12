@@ -104,3 +104,8 @@ payout:
   model: external
   address_source: manual
   notes: "CashPilot imports the operator-provided wallet phrase before login; there is no generated throwaway wallet to back up."
+egress:
+  mode: auto
+  udp: optional
+  fallback: none
+  reason: "Manual runtime must declare its selected egress lane; no unsafe fallback."

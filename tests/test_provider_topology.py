@@ -102,6 +102,20 @@ def test_not_ready_direct_route_does_not_block_proxy_capacity():
     assert [(plan.mode, plan.deployable) for plan in plans] == [("direct", False), ("proxy", True)]
 
 
+def test_summary_reports_deployable_and_lane_capacity():
+    plans = plan_provider_nodes(
+        7,
+        "earnfm",
+        [{"slot_id": "ipv4-001", "route_ready": False}],
+    )
+    summary = summarize_provider_plan(plans, [])
+    assert summary["deployable"] == 1
+    assert summary["lanes"] == {
+        "direct": {"desired": 1, "deployable": 0, "running": 0},
+        "proxy": {"desired": 1, "deployable": 1, "running": 0},
+    }
+
+
 def test_proxy_plan_exposes_independent_capacity_slot():
     plan = plan_provider_nodes(7, "iproyal", 1, mode="proxy")[0]
     assert plan.capacity_slot == "proxy-001"
@@ -115,3 +129,21 @@ async def test_slot_proxy_uses_exclusive_provider_instance_lease(monkeypatch):
     result = await main._proxy_for_provider_instance(7, "earnfm", "earnfm-proxy-w7-ipv4-001")
     assert result == lease
     scoped.assert_awaited_once_with("earnfm", 7, "earnfm-proxy-w7-ipv4-001", required_ip_type="residential")
+
+
+@pytest.mark.asyncio
+async def test_worker_slots_can_include_unready_capacity_for_generic_planning(monkeypatch):
+    monkeypatch.setattr(
+        main,
+        "_proxy_to_worker",
+        AsyncMock(
+            return_value={
+                "slots": [
+                    {"slot_id": "ipv4-001", "public_ip": "198.51.100.1", "route_ready": True},
+                    {"slot_id": "ipv4-002", "public_ip": "198.51.100.2", "route_ready": False},
+                ]
+            }
+        ),
+    )
+    slots = await main._worker_public_ip_slots(7, include_unready=True)
+    assert [slot["slot_id"] for slot in slots] == ["ipv4-001", "ipv4-002"]

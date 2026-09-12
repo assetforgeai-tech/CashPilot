@@ -283,8 +283,8 @@ async def _get_nkn_instance_for_worker(worker_id: int, slot_id: str) -> tuple[st
     return scoped_id, None
 
 
-async def _worker_public_ip_slots(worker_id: int) -> list[dict[str, Any]]:
-    """Read bootstrap-owned slots from a worker; never discover or mutate routes here."""
+async def _worker_public_ip_slots(worker_id: int, *, include_unready: bool = False) -> list[dict[str, Any]]:
+    """Read bootstrap-owned slots; optionally hide routes not ready for mutation."""
     payload = await _proxy_to_worker(worker_id, "GET", "/api/network/slots", timeout=15)
     if isinstance(payload, list):
         raw_slots = payload
@@ -306,7 +306,8 @@ async def _worker_public_ip_slots(worker_id: int) -> list[dict[str, Any]]:
             continue
         seen_ids.add(slot_id)
         seen_ips.add(public_ip)
-        slots.append(dict(raw))
+        if include_unready or raw.get("route_ready") is True:
+            slots.append(dict(raw))
     return sorted(slots, key=lambda item: int(str(item["slot_id"])[6:]))
 
 
@@ -3353,7 +3354,13 @@ async def api_plan_provider(
     if runtime.topology in {"dedicated", "manual"}:
         return {"provider": slug, "topology": runtime.topology, "status": "manual", "plans": []}
     try:
-        slots = await _worker_public_ip_slots(body.worker_id)
+        try:
+            slots = await _worker_public_ip_slots(body.worker_id, include_unready=True)
+        except TypeError as exc:
+            # Keep compatibility with test/legacy adapters exposing the old signature.
+            if "include_unready" not in str(exc):
+                raise
+            slots = await _worker_public_ip_slots(body.worker_id)
     except Exception as exc:  # noqa: BLE001 - report unavailable slots explicitly
         return {
             "provider": slug,
@@ -3595,7 +3602,14 @@ async def api_deploy(
     # workers that have not enrolled the slot contract yet.
     topology_plans = []
     try:
-        slot_records = await _worker_public_ip_slots(worker_id)
+        # Plan all bootstrap capacity, including blocked direct slots; mutation
+        # below filters non-deployable plans while proxy lanes remain eligible.
+        try:
+            slot_records = await _worker_public_ip_slots(worker_id, include_unready=True)
+        except TypeError as exc:
+            if "include_unready" not in str(exc):
+                raise
+            slot_records = await _worker_public_ip_slots(worker_id)
     except Exception as exc:  # noqa: BLE001 - legacy workers may not expose slots
         logger.debug("Public IPv4 slot discovery unavailable for worker %s: %s", worker_id, type(exc).__name__)
         slot_records = []

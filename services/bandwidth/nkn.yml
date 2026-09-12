@@ -32,6 +32,7 @@ docker:
 egress:
   mode: direct
   udp: required
+  fallback: none
   reason: "NKN direct nodes use the bootstrap public-IP slot and do not use Proxy Pool."
 
 requirements:

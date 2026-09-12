@@ -87,3 +87,8 @@ collector:
 payout:
   model: internal
   notes: "Balance held by PacketStream; withdrawn on request."
+egress:
+  mode: proxy
+  udp: none
+  fallback: none
+  reason: "Proxy-only runtime uses its leased proxy egress."

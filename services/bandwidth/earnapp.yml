@@ -53,6 +53,7 @@ deploy:
 egress:
   mode: proxy
   udp: none
+  fallback: none
   reason: >-
     EarnApp nodes use one account-scoped, exclusive residential proxy through
     an in-container redsocks/iptables fail-closed route. The worker public IP is not used.

@@ -34,6 +34,7 @@ _CATEGORIES = {"bandwidth", "depin", "storage", "compute"}
 _VALID_STATUSES = {"active", "beta", "broken", "dead", "dropped"}
 _EGRESS_MODES = {"proxy", "direct", "auto"}
 _EGRESS_UDP = {"required", "optional", "none"}
+_EGRESS_FALLBACKS = {"none"}
 _CREDENTIAL_KINDS = {"email", "password", "api_key", "token", "cookie", "cid", "device_id", "text", "file"}
 
 
@@ -130,6 +131,11 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
             udp = egress.get("udp")
             if udp is not None and udp not in _EGRESS_UDP:
                 errors.append(f"{path.name}: egress.udp must be one of {sorted(_EGRESS_UDP)}, not {udp!r}")
+            fallback = egress.get("fallback")
+            if fallback is not None and fallback not in _EGRESS_FALLBACKS:
+                errors.append(
+                    f"{path.name}: egress.fallback must be one of {sorted(_EGRESS_FALLBACKS)}, not {fallback!r}"
+                )
             reason = egress.get("reason")
             if reason is not None and not isinstance(reason, str):
                 errors.append(f"{path.name}: egress.reason must be a string")

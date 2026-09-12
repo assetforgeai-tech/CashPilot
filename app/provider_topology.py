@@ -105,6 +105,21 @@ def summarize_provider_plan(plans: list[ProviderNodePlan], instances: list[Mappi
         str(row.get("instance_id") or "").strip(): row for row in instances if str(row.get("instance_id") or "").strip()
     }
     deployable_ids = {plan.instance_id for plan in plans if plan.deployable}
+    lanes = {
+        mode: {
+            "desired": sum(1 for plan in plans if plan.mode == mode),
+            "deployable": sum(1 for plan in plans if plan.mode == mode and plan.deployable),
+            "running": sum(
+                1
+                for plan in plans
+                if plan.mode == mode
+                and plan.deployable
+                and str(rows.get(plan.instance_id, {}).get("status") or "").lower() in {"running", "deployed"}
+            ),
+        }
+        for mode in ("direct", "proxy")
+        if any(plan.mode == mode for plan in plans)
+    }
     running = sorted(
         instance_id
         for instance_id in deployable_ids
@@ -117,6 +132,8 @@ def summarize_provider_plan(plans: list[ProviderNodePlan], instances: list[Mappi
     )
     return {
         "desired": len(desired_ids),
+        "deployable": len(deployable_ids),
+        "lanes": lanes,
         "running": len(running),
         "retry": retry,
         "missing": sorted(deployable_ids - set(rows)),

@@ -26,6 +26,21 @@ def audit_provider_network_inventory(
     runtime = provider_runtime.get(slug)
     if runtime is None or not inventory_confirmed:
         return {"provider": slug, "status": "unverified", "missing_sidecar": [], "untracked": [], "findings": []}
+    by_id = {
+        str(item.get("instance_id") or item.get("instance_slug") or item.get("name") or "").strip(): item
+        for item in containers
+        if isinstance(item, Mapping)
+    }
+    findings: list[str] = []
+    for instance in instances:
+        if str(instance.get("mode") or "").strip().lower() != "direct":
+            continue
+        instance_id = str(instance.get("instance_id") or "").strip()
+        container = by_id.get(instance_id)
+        expected = str(instance.get("public_ip") or "").strip()
+        actual = str((container or {}).get("actual_egress_ip") or "").strip()
+        if expected and actual and expected != actual:
+            findings.append(f"{instance_id}: direct egress mismatch; expected {expected}, observed {actual}")
     proxy_instances = [
         item
         for item in instances
@@ -39,15 +54,16 @@ def audit_provider_network_inventory(
                 for item in containers
             ]
         elif runtime.modes != ("proxy",):
-            return {"provider": slug, "status": "pass", "missing_sidecar": [], "untracked": [], "findings": []}
+            return {
+                "provider": slug,
+                "status": "attention" if findings else "pass",
+                "missing_sidecar": [],
+                "untracked": [],
+                "findings": findings,
+            }
     if not proxy_instances:
         return {"provider": slug, "status": "not_applicable", "missing_sidecar": [], "untracked": [], "findings": []}
 
-    by_id = {
-        str(item.get("instance_id") or item.get("instance_slug") or item.get("name") or "").strip(): item
-        for item in containers
-        if isinstance(item, Mapping)
-    }
     if slug == "wipter" and "wipter" in by_id and "wipter-proxy" not in by_id:
         by_id["wipter-proxy"] = by_id["wipter"]
     missing: list[str] = []
@@ -59,7 +75,6 @@ def audit_provider_network_inventory(
         for item in containers
         if str(item.get("instance_slug") or item.get("name") or "").strip() not in tracked
     )
-    findings: list[str] = []
     for instance in proxy_instances:
         instance_id = str(instance.get("instance_id") or instance.get("logical_node_id") or "").strip()
         if not instance_id or str(instance.get("status") or "").lower() in {"retired", "stopped"}:

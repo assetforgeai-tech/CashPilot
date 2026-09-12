@@ -107,3 +107,8 @@ collector:
 payout:
   model: unknown
   notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."
+egress:
+  mode: auto
+  udp: optional
+  fallback: none
+  reason: "Direct and proxy lanes are selected explicitly per node; no unsafe fallback."
