@@ -122,6 +122,15 @@ def test_proxy_plan_exposes_independent_capacity_slot():
     assert plan.capacity_slot == "proxy-001"
 
 
+def test_summary_marks_proxy_shortage_as_pending_capacity():
+    plans = plan_provider_nodes(7, "iproyal", 3, mode="proxy")
+    summary = summarize_provider_plan(plans, [], available_proxy_count=1)
+    assert summary["desired"] == 3
+    assert summary["deployable"] == 1
+    assert summary["pending_proxy"] == 2
+    assert summary["pending_capacity"] == 2
+
+
 @pytest.mark.asyncio
 async def test_slot_proxy_uses_exclusive_provider_instance_lease(monkeypatch):
     lease = {"proxy_id": 9, "exit_ip": "203.0.113.9"}

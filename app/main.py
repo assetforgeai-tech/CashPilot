@@ -3375,7 +3375,12 @@ async def api_plan_provider(
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     instances = await database.list_provider_instances(slug=slug, worker_id=body.worker_id)
-    summary = provider_topology.summarize_provider_plan(plans, instances)
+    available_proxy_count = None
+    if "proxy" in {plan.mode for plan in plans}:
+        with contextlib.suppress(Exception):
+            capacity_rows = await database.get_provider_proxy_capacity()
+            available_proxy_count = sum(int(row.get("available") or 0) for row in capacity_rows)
+    summary = provider_topology.summarize_provider_plan(plans, instances, available_proxy_count=available_proxy_count)
     return {
         "provider": slug,
         "worker_id": body.worker_id,

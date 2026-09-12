@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from app import provider_modes
@@ -98,20 +98,35 @@ def plan_provider_nodes(
     return plans
 
 
-def summarize_provider_plan(plans: list[ProviderNodePlan], instances: list[Mapping[str, Any]]) -> dict[str, Any]:
+def summarize_provider_plan(
+    plans: list[ProviderNodePlan],
+    instances: list[Mapping[str, Any]],
+    *,
+    available_proxy_count: int | None = None,
+) -> dict[str, Any]:
     """Return a read-only convergence summary for a planned provider lane."""
     desired_ids = {plan.instance_id for plan in plans}
     rows = {
         str(row.get("instance_id") or "").strip(): row for row in instances if str(row.get("instance_id") or "").strip()
     }
-    deployable_ids = {plan.instance_id for plan in plans if plan.deployable}
+    effective_plans = list(plans)
+    if available_proxy_count is not None:
+        proxy_seen = 0
+        effective_plans = []
+        for plan in plans:
+            deployable = plan.deployable
+            if plan.mode == "proxy":
+                deployable = deployable and proxy_seen < max(0, int(available_proxy_count))
+                proxy_seen += 1
+            effective_plans.append(plan if deployable == plan.deployable else replace(plan, deployable=deployable))
+    deployable_ids = {plan.instance_id for plan in effective_plans if plan.deployable}
     lanes = {
         mode: {
-            "desired": sum(1 for plan in plans if plan.mode == mode),
-            "deployable": sum(1 for plan in plans if plan.mode == mode and plan.deployable),
+            "desired": sum(1 for plan in effective_plans if plan.mode == mode),
+            "deployable": sum(1 for plan in effective_plans if plan.mode == mode and plan.deployable),
             "running": sum(
                 1
-                for plan in plans
+                for plan in effective_plans
                 if plan.mode == mode
                 and plan.deployable
                 and str(rows.get(plan.instance_id, {}).get("status") or "").lower() in {"running", "deployed"}
@@ -133,12 +148,13 @@ def summarize_provider_plan(plans: list[ProviderNodePlan], instances: list[Mappi
     return {
         "desired": len(desired_ids),
         "deployable": len(deployable_ids),
-        "pending_capacity": sum(1 for plan in plans if not plan.deployable),
+        "pending_capacity": sum(1 for plan in effective_plans if not plan.deployable),
         "lanes": lanes,
         "running": len(running),
         "retry": retry,
         "missing": sorted(deployable_ids - set(rows)),
         "stale": sorted(set(rows) - desired_ids),
+        "pending_proxy": sum(1 for plan in effective_plans if plan.mode == "proxy" and not plan.deployable),
         "blocked_slots": sorted({plan.slot_id for plan in plans if not plan.deployable}),
         "blocked": sum(1 for plan in plans if not plan.deployable),
     }
