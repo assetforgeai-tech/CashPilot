@@ -287,8 +287,16 @@ def catalog_runtime(slug: str) -> dict[str, object]:
             "proxy_unhealthy": "rotate" if "proxy" in provider.modes else "observe",
         },
         "lane_lifecycle": {
-            "direct": {"offline": "restart", "banned": "recreate", "proxy_unhealthy": "observe"},
-            "proxy": {"offline": "restart", "banned": "recreate", "proxy_unhealthy": "rotate"},
+            "direct": {
+                "offline": "restart",
+                "banned": "restart" if provider.slug == "earnapp" else "recreate",
+                "proxy_unhealthy": "observe",
+            },
+            "proxy": {
+                "offline": "restart",
+                "banned": "restart" if provider.slug == "earnapp" else "recreate",
+                "proxy_unhealthy": "rotate",
+            },
         },
         "setup_source": provider.setup_file,
         "collector_source": provider.collector_file,

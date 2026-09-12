@@ -59,3 +59,10 @@ def test_earnapp_runtime_policy_allows_dedicated_multiplatform_lanes_without_cha
     assert catalog_policy["lifecycle_actions"]["banned"] == "restart"
     assert catalog_policy["lane_lifecycle"]["direct"]["proxy_unhealthy"] == "observe"
     assert catalog_policy["lane_lifecycle"]["proxy"]["proxy_unhealthy"] == "rotate"
+
+
+def test_catalog_lifecycle_matches_lane_dispatch_policy():
+    earnapp = provider_runtime.catalog_runtime("earnapp")
+    assert earnapp["lane_lifecycle"]["proxy"]["banned"] == "restart"
+    packetstream = provider_runtime.catalog_runtime("packetstream")
+    assert packetstream["lane_lifecycle"]["proxy"]["banned"] == "recreate"
