@@ -1,3 +1,4 @@
+from sqlite3 import IntegrityError
 from unittest.mock import AsyncMock
 
 import pytest
@@ -354,6 +355,52 @@ def test_direct_slot_identity_is_explicit_and_stable():
     )[0]
     assert plan.capacity_slot == "ipv4-001"
     assert plan.lane == "direct"
+
+
+@pytest.mark.asyncio
+async def test_direct_slot_is_exclusive_across_providers(tmp_path, monkeypatch):
+    from app import database
+
+    db_path = tmp_path / "slots.db"
+    monkeypatch.setattr(database, "DB_PATH", str(db_path))
+    await database.init_db()
+    db = await database._get_db()
+    await db.execute("INSERT INTO workers (id, client_id, name, url, status) VALUES (1, 'c1', 'w1', 'http://w1', 'online')")
+    await db.commit()
+    await db.close()
+    await database.save_provider_instance(
+        "earnfm", "earnfm-direct-w1-ipv4-001", worker_id=1, mode="direct", capacity_slot="ipv4-001"
+    )
+    with pytest.raises(IntegrityError):
+        await database.save_provider_instance(
+            "proxyrack", "proxyrack-direct-w1-ipv4-001", worker_id=1, mode="direct", capacity_slot="ipv4-001"
+        )
+
+
+@pytest.mark.asyncio
+async def test_direct_slot_migration_quarantines_historical_duplicates(tmp_path, monkeypatch):
+    from app import database
+
+    db_path = tmp_path / "slots-migration.db"
+    monkeypatch.setattr(database, "DB_PATH", str(db_path))
+    await database.init_db()
+    db = await database._get_db()
+    await db.execute("INSERT INTO workers (id, client_id, name, url, status) VALUES (1, 'c1', 'w1', 'http://w1', 'online')")
+    await db.commit()
+    await db.close()
+    await database.save_provider_instance(
+        "earnfm", "earnfm-direct-w1-ipv4-001", worker_id=1, mode="direct", capacity_slot="ipv4-001", status="running"
+    )
+    db = await database._get_db()
+    await db.execute("DROP INDEX idx_provider_instances_active_direct_slot")
+    await db.commit()
+    await db.close()
+    await database.save_provider_instance(
+        "proxyrack", "proxyrack-direct-w1-ipv4-001", worker_id=1, mode="direct", capacity_slot="ipv4-001", status="planned"
+    )
+    await database.init_db()
+    rows = await database.list_provider_instances(worker_id=1)
+    assert {row["status"] for row in rows} == {"running", "capacity_conflict"}
 
 
 @pytest.mark.asyncio

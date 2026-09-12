@@ -84,6 +84,61 @@ def test_generic_lifecycle_scheduler_does_not_guess_missing_container_state(monk
     command.assert_not_awaited()
 
 
+def test_generic_lifecycle_scheduler_rotates_only_verified_unhealthy_proxy_lane(monkeypatch):
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    from app import main
+
+    monkeypatch.setattr(
+        main.database,
+        "list_workers",
+        AsyncMock(
+            return_value=[
+                {
+                    "id": 7,
+                    "status": "online",
+                    "containers": (
+                        '[{"name":"earnfm-direct-w7-ipv4-001","status":"running","proxy_healthy":false},'
+                        '{"name":"earnfm-proxy-w7-proxy-001","status":"running","proxy_healthy":false}]'
+                    ),
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        main.database,
+        "list_provider_instances",
+        AsyncMock(
+            return_value=[
+                {
+                    "slug": "earnfm",
+                    "instance_id": "earnfm-direct-w7-ipv4-001",
+                    "worker_id": 7,
+                    "mode": "direct",
+                },
+                {
+                    "slug": "earnfm",
+                    "instance_id": "earnfm-proxy-w7-proxy-001",
+                    "worker_id": 7,
+                    "mode": "proxy",
+                },
+            ]
+        ),
+    )
+    candidate = {"proxy_id": 22, "exit_ip": "203.0.113.22"}
+    find_candidate = AsyncMock(return_value=candidate)
+    rotate = AsyncMock(return_value=True)
+    monkeypatch.setattr(main.database, "find_available_proxy_for_worker", find_candidate)
+    monkeypatch.setattr("app.routers.proxies._rotate_provider_instance_after_ack", rotate)
+    monkeypatch.setattr(main.database, "record_health_event", AsyncMock())
+
+    asyncio.run(main._run_provider_lifecycle_scheduler())
+
+    find_candidate.assert_awaited_once_with(7, provider_slug="earnfm")
+    rotate.assert_awaited_once_with(7, "earnfm", "earnfm-proxy-w7-proxy-001", candidate)
+
+
 def test_offline_provider_restarts_without_rotating_proxy():
     assert decide("packetstream", online=False, banned=False, proxy_healthy=True) == "restart"
 

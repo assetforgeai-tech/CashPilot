@@ -1402,11 +1402,7 @@ async def _run_health_check() -> None:
 
 
 async def _run_provider_lifecycle_scheduler() -> None:
-    """Restart confirmed-offline generic lanes without touching peer lanes.
-
-    Rotation/recreate remain provider-specific and require their own ACK/CAS
-    path; this scheduler deliberately performs only the universally safe action.
-    """
+    """Recover generic lanes independently, using only verified signals."""
     try:
         workers = await database.list_workers()
         by_worker = {int(w.get("id") or 0): w for w in workers if w.get("status") == "online"}
@@ -1437,7 +1433,30 @@ async def _run_provider_lifecycle_scheduler() -> None:
                 ),
                 None,
             )
-            if not live or str(live.get("status") or "").lower() in {"running", "deployed"}:
+            if not live:
+                continue
+            live_status = str(live.get("status") or "").lower()
+            proxy_health = instance.get("proxy_healthy")
+            if proxy_health is None and "proxy_healthy" in live:
+                proxy_health = live.get("proxy_healthy")
+            # A proxy rotation requires explicit failure evidence. Missing
+            # health data is unknown, never permission to rotate.
+            if live_status in {"running", "deployed"} and proxy_health is False and instance.get("mode") == "proxy":
+                try:
+                    candidate = await database.find_available_proxy_for_worker(worker_id, provider_slug=slug)
+                    if candidate:
+                        from app.routers.proxies import _rotate_provider_instance_after_ack
+
+                        rotated = await _rotate_provider_instance_after_ack(
+                            worker_id, slug, instance_id, candidate
+                        )
+                        if rotated:
+                            await database.record_health_event(slug, "rotate", f"lane {instance_id} proxy unhealthy")
+                    continue
+                except Exception as exc:  # noqa: BLE001 - one lane cannot block peers
+                    logger.warning("Lifecycle rotation failed for %s: %s", instance_id, type(exc).__name__)
+                    continue
+            if live_status in {"running", "deployed"}:
                 continue
             decision = provider_lifecycle.decide_instance(
                 {
