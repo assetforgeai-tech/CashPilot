@@ -26,6 +26,21 @@ def audit_provider_network_inventory(
     runtime = provider_runtime.get(slug)
     if runtime is None or not inventory_confirmed:
         return {"provider": slug, "status": "unverified", "missing_sidecar": [], "untracked": [], "findings": []}
+    by_id = {
+        str(item.get("instance_id") or item.get("instance_slug") or item.get("name") or "").strip(): item
+        for item in containers
+        if isinstance(item, Mapping)
+    }
+    findings: list[str] = []
+    for instance in instances:
+        if str(instance.get("mode") or "").strip().lower() != "direct":
+            continue
+        instance_id = str(instance.get("instance_id") or "").strip()
+        container = by_id.get(instance_id)
+        expected = str(instance.get("public_ip") or "").strip()
+        actual = str((container or {}).get("actual_egress_ip") or "").strip()
+        if expected and actual and expected != actual:
+            findings.append(f"{instance_id}: direct egress mismatch; expected {expected}, observed {actual}")
     proxy_instances = [
         item
         for item in instances
@@ -39,15 +54,16 @@ def audit_provider_network_inventory(
                 for item in containers
             ]
         elif runtime.modes != ("proxy",):
-            return {"provider": slug, "status": "pass", "missing_sidecar": [], "untracked": [], "findings": []}
+            return {
+                "provider": slug,
+                "status": "attention" if findings else "pass",
+                "missing_sidecar": [],
+                "untracked": [],
+                "findings": findings,
+            }
     if not proxy_instances:
         return {"provider": slug, "status": "not_applicable", "missing_sidecar": [], "untracked": [], "findings": []}
 
-    by_id = {
-        str(item.get("instance_id") or item.get("instance_slug") or item.get("name") or "").strip(): item
-        for item in containers
-        if isinstance(item, Mapping)
-    }
     if slug == "wipter" and "wipter" in by_id and "wipter-proxy" not in by_id:
         by_id["wipter-proxy"] = by_id["wipter"]
     missing: list[str] = []
@@ -59,7 +75,6 @@ def audit_provider_network_inventory(
         for item in containers
         if str(item.get("instance_slug") or item.get("name") or "").strip() not in tracked
     )
-    findings: list[str] = []
     for instance in proxy_instances:
         instance_id = str(instance.get("instance_id") or instance.get("logical_node_id") or "").strip()
         if not instance_id or str(instance.get("status") or "").lower() in {"retired", "stopped"}:
@@ -69,6 +84,16 @@ def audit_provider_network_inventory(
             missing.append(instance_id)
             findings.append(f"{instance_id}: runtime inventory missing; direct egress risk")
             continue
+        spec = instance.get("spec") if isinstance(instance.get("spec"), Mapping) else {}
+        proxy = spec.get("proxy") if isinstance(spec.get("proxy"), Mapping) else {}
+        expected_egress = str(
+            instance.get("expected_egress_ip") or proxy.get("exit_ip") or instance.get("exit_ip") or ""
+        ).strip()
+        observed_egress = str(container.get("observed_egress_ip") or container.get("actual_egress_ip") or "").strip()
+        if expected_egress and observed_egress and expected_egress != observed_egress:
+            findings.append(
+                f"{instance_id}: proxy egress mismatch; expected {expected_egress}, observed {observed_egress}"
+            )
         mode = str(container.get("network_mode") or container.get("NetworkMode") or "").lower()
         # EarnApp installs redsocks, DNS forwarding, and fail-closed iptables
         # inside its main container. It intentionally has no sidecar.
@@ -98,7 +123,7 @@ def audit_provider_network_inventory(
         findings.append(f"{instance_id}: live runtime is not tracked in CashPilot{suffix}")
     return {
         "provider": slug,
-        "status": "attention" if missing or untracked else "pass",
+        "status": "attention" if missing or untracked or findings else "pass",
         "missing_sidecar": missing,
         "untracked": untracked,
         "findings": findings,

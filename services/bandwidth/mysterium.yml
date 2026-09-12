@@ -62,6 +62,7 @@ deploy:
 egress:
   mode: direct
   udp: required
+  fallback: none
   reason: "MYST is direct-only. It uses the worker public IP, host networking, UDP, and /dev/net/tun; it does not use Proxy Pool or a proxy sidecar."
 
 requirements:

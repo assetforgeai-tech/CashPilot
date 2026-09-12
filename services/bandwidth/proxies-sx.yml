@@ -105,6 +105,7 @@ collector:
 egress:
   mode: proxy
   udp: none
+  fallback: none
   reason: "The tested provider-runtime source runs Proxies.sx as a proxy-node only."
 
 disclosure:

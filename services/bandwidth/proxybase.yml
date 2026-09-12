@@ -92,3 +92,8 @@ payout:
     wallet and the container keeps no state -- docker.volumes is empty.
     Not to be confused with proxybase-xyz (ProxyBase Markets, same org), which
     genuinely does mint a local wallet and declares it a critical volume.
+egress:
+  mode: auto
+  udp: optional
+  fallback: none
+  reason: "Direct and proxy lanes are selected explicitly per node; no unsafe fallback."

@@ -13,7 +13,11 @@ def _common(monkeypatch, deploy):
         return None
 
     async def config(*_args, **_kwargs):
-        return {"earnfm_token": "token"}
+        return {
+            "earnfm_token": "token",
+            "iproyal_collector_email": "a@b.com",
+            "iproyal_collector_password": "pw",
+        }
 
     async def slots(_worker_id):
         return [
@@ -57,6 +61,7 @@ async def test_direct_slot_uses_bootstrap_network_not_host(monkeypatch):
         _request(), "earnfm", main.DeployRequest(env={}, mode="direct"), worker_id=7, _auth={"r": "owner"}
     )
     assert result["desired"] == 2
+    assert result["pending_capacity"] == 0
     assert specs["earnfm-direct-w7-ipv4-001"]["network"] == "cashpilot-direct-ipv4-001"
     assert specs["earnfm-direct-w7-ipv4-002"]["network"] == "cashpilot-direct-ipv4-002"
 
@@ -79,6 +84,7 @@ async def test_failed_slot_does_not_block_later_slot(monkeypatch):
     assert result["desired"] == 2
     assert result["running"] == 1
     assert result["failed"] == 1
+    assert result["pending_capacity"] == 0
 
 
 @pytest.mark.asyncio

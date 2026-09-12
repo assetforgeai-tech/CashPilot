@@ -81,6 +81,9 @@
 #     `required` services should normally be direct unless the assigned proxy is
 #     a tested SOCKS5 endpoint with working UDP and the provider does not need
 #     inbound traffic. HTTP proxies cannot satisfy UDP.
+#   fallback: none
+#     Proxy failure is fail-closed. `auto` selects an allowed lane before
+#     deployment; it never changes a running proxy lane to direct egress.
 #   reason: "Plain-English note shown to the operator."
 
 # disclosure: (optional but strongly encouraged) what this service does with the

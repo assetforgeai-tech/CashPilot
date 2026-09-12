@@ -68,6 +68,7 @@ from app import (
     producer_state,
     provider_accounts,
     provider_automation,
+    provider_lifecycle,
     provider_modes,
     provider_network_audit,
     provider_runtime,
@@ -283,8 +284,8 @@ async def _get_nkn_instance_for_worker(worker_id: int, slot_id: str) -> tuple[st
     return scoped_id, None
 
 
-async def _worker_public_ip_slots(worker_id: int) -> list[dict[str, Any]]:
-    """Read bootstrap-owned slots from a worker; never discover or mutate routes here."""
+async def _worker_public_ip_slots(worker_id: int, *, include_unready: bool = False) -> list[dict[str, Any]]:
+    """Read bootstrap-owned slots; optionally hide routes not ready for mutation."""
     payload = await _proxy_to_worker(worker_id, "GET", "/api/network/slots", timeout=15)
     if isinstance(payload, list):
         raw_slots = payload
@@ -306,7 +307,8 @@ async def _worker_public_ip_slots(worker_id: int) -> list[dict[str, Any]]:
             continue
         seen_ids.add(slot_id)
         seen_ips.add(public_ip)
-        slots.append(dict(raw))
+        if include_unready or raw.get("route_ready") is True:
+            slots.append(dict(raw))
     return sorted(slots, key=lambda item: int(str(item["slot_id"])[6:]))
 
 
@@ -1376,6 +1378,64 @@ async def _run_health_check() -> None:
         logger.warning("Health check skipped: %s", exc)
 
 
+async def _run_provider_lifecycle_scheduler() -> None:
+    """Restart confirmed-offline generic lanes without touching peer lanes.
+
+    Rotation/recreate remain provider-specific and require their own ACK/CAS
+    path; this scheduler deliberately performs only the universally safe action.
+    """
+    try:
+        workers = await database.list_workers()
+        by_worker = {int(w.get("id") or 0): w for w in workers if w.get("status") == "online"}
+        for instance in await database.list_provider_instances():
+            slug = str(instance.get("slug") or "").strip().lower()
+            if not slug or slug in {"earnapp", "nkn", "mysterium"}:
+                continue
+            worker_id = int(instance.get("worker_id") or 0)
+            worker = by_worker.get(worker_id)
+            if not worker:
+                continue
+            containers = _safe_json(worker.get("containers") or "[]", [])
+            if not isinstance(containers, list):
+                continue
+            instance_id = str(instance.get("instance_id") or "").strip()
+            live = next(
+                (
+                    item
+                    for item in containers
+                    if isinstance(item, Mapping)
+                    and instance_id
+                    and instance_id
+                    in {
+                        str(item.get("name") or "").lstrip("/"),
+                        str(item.get("instance_id") or ""),
+                        str(item.get("service") or ""),
+                    }
+                ),
+                None,
+            )
+            if not live or str(live.get("status") or "").lower() in {"running", "deployed"}:
+                continue
+            decision = provider_lifecycle.decide_instance(
+                {
+                    "provider_slug": slug,
+                    "mode": instance.get("mode"),
+                    "online": False,
+                    "banned": False,
+                    "proxy_healthy": None,
+                }
+            )
+            if decision != "restart":
+                continue
+            try:
+                await _proxy_worker_command(worker_id, "restart", instance_id)
+                await database.record_health_event(slug, "restart", f"lane {instance_id} offline")
+            except Exception as exc:  # noqa: BLE001 - one lane cannot block peers
+                logger.warning("Lifecycle restart failed for %s: %s", instance_id, type(exc).__name__)
+    except Exception as exc:  # noqa: BLE001 - scheduler must remain best-effort
+        logger.warning("Provider lifecycle scheduler skipped: %s", type(exc).__name__)
+
+
 async def _detect_payout(result: Any) -> dict[str, str] | None:
     """Notice a balance drop that looks like a cashout, and ask.
 
@@ -2191,6 +2251,15 @@ async def lifespan(app: FastAPI):
         "interval",
         minutes=5,
         id="earnapp_lifecycle",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=300,
+    )
+    scheduler.add_job(
+        _run_provider_lifecycle_scheduler,
+        "interval",
+        minutes=5,
+        id="provider_lifecycle",
         max_instances=1,
         coalesce=True,
         misfire_grace_time=300,
@@ -3353,7 +3422,13 @@ async def api_plan_provider(
     if runtime.topology in {"dedicated", "manual"}:
         return {"provider": slug, "topology": runtime.topology, "status": "manual", "plans": []}
     try:
-        slots = await _worker_public_ip_slots(body.worker_id)
+        try:
+            slots = await _worker_public_ip_slots(body.worker_id, include_unready=True)
+        except TypeError as exc:
+            # Keep compatibility with test/legacy adapters exposing the old signature.
+            if "include_unready" not in str(exc):
+                raise
+            slots = await _worker_public_ip_slots(body.worker_id)
     except Exception as exc:  # noqa: BLE001 - report unavailable slots explicitly
         return {
             "provider": slug,
@@ -3368,7 +3443,15 @@ async def api_plan_provider(
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     instances = await database.list_provider_instances(slug=slug, worker_id=body.worker_id)
-    summary = provider_topology.summarize_provider_plan(plans, instances)
+    available_proxy_count = None
+    if "proxy" in {plan.mode for plan in plans}:
+        with contextlib.suppress(Exception):
+            capacity_rows = await database.get_provider_proxy_capacity(
+                provider_slug=slug,
+                required_ip_type="residential",
+            )
+            available_proxy_count = sum(int(row.get("available") or 0) for row in capacity_rows)
+    summary = provider_topology.summarize_provider_plan(plans, instances, available_proxy_count=available_proxy_count)
     return {
         "provider": slug,
         "worker_id": body.worker_id,
@@ -3595,7 +3678,14 @@ async def api_deploy(
     # workers that have not enrolled the slot contract yet.
     topology_plans = []
     try:
-        slot_records = await _worker_public_ip_slots(worker_id)
+        # Plan all bootstrap capacity, including blocked direct slots; mutation
+        # below filters non-deployable plans while proxy lanes remain eligible.
+        try:
+            slot_records = await _worker_public_ip_slots(worker_id, include_unready=True)
+        except TypeError as exc:
+            if "include_unready" not in str(exc):
+                raise
+            slot_records = await _worker_public_ip_slots(worker_id)
     except Exception as exc:  # noqa: BLE001 - legacy workers may not expose slots
         logger.debug("Public IPv4 slot discovery unavailable for worker %s: %s", worker_id, type(exc).__name__)
         slot_records = []
@@ -3761,6 +3851,7 @@ async def api_deploy(
             pending_proxy=pending_proxy,
             skipped=skipped_existing,
             blocked=sum(1 for plan in topology_plans if not plan.deployable),
+            pending_capacity=sum(1 for plan in topology_plans if not plan.deployable) + pending_proxy,
             blocked_slots=sorted({plan.slot_id for plan in topology_plans if not plan.deployable}),
         )
     if deployed:

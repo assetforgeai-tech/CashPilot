@@ -89,3 +89,8 @@ payout:
   chain: solana
   address_source: app
   notes: "Wallet is linked inside the URnetwork app. AN UNLINKED WALLET FORFEITS PAYOUT AFTER 30 DAYS."
+egress:
+  mode: auto
+  udp: optional
+  fallback: none
+  reason: "Direct and proxy lanes are selected explicitly per node; no unsafe fallback."

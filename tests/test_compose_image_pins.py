@@ -87,6 +87,7 @@ def test_release_pin_update_uses_pr_after_release_publication():
     assert 'git push --force-with-lease origin "HEAD:${PIN_BRANCH}"' in release
     assert release.index("Create and push tag") < release.index("Bump the example compose pins")
     assert "compose pin PR" in release
+    assert "cannot create pull requests" in release
 
 
 def test_release_pin_preflight_fails_closed_when_images_have_no_pin():

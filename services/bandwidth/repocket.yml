@@ -110,3 +110,8 @@ collector:
 payout:
   model: internal
   notes: "Balance held by Repocket; withdrawn on request."
+egress:
+  mode: auto
+  udp: optional
+  fallback: none
+  reason: "Direct and proxy lanes are selected explicitly per node; no unsafe fallback."

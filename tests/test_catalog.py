@@ -226,6 +226,7 @@ def test_proxies_sx_bandwidth_service_contract():
     assert data["egress"] == {
         "mode": "proxy",
         "udp": "none",
+        "fallback": "none",
         "reason": data["egress"]["reason"],
     }
 
