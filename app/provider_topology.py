@@ -161,7 +161,7 @@ def plan_provider_nodes(
         proxy_desired
         if proxy_desired is not None
         else len(slots)
-        if slots and proxy_capacity is not None
+        if slots
         else (max(0, int(proxy_capacity)) if proxy_capacity is not None else 0)
     )
     proxy_slots = (

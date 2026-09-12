@@ -75,7 +75,8 @@ def test_proxy_only_plans_use_proxy_capacity_without_public_ipv4_slots():
 
 def test_unknown_proxy_capacity_never_infers_proxy_nodes_from_public_ipv4_slots():
     plans = plan_provider_nodes(7, "iproyal", ["ipv4-001", "ipv4-002"], mode="proxy")
-    assert plans == []
+    assert len(plans) == 2
+    assert all(not plan.deployable and plan.blocked_reason == "proxy_capacity_unavailable" for plan in plans)
 
 
 def test_hybrid_unknown_proxy_capacity_plans_only_the_direct_lane():
@@ -83,7 +84,10 @@ def test_hybrid_unknown_proxy_capacity_plans_only_the_direct_lane():
     assert [(plan.mode, plan.slot_id) for plan in plans] == [
         ("direct", "ipv4-001"),
         ("direct", "ipv4-002"),
+        ("proxy", "proxy-001"),
+        ("proxy", "proxy-002"),
     ]
+    assert all(not plan.deployable for plan in plans if plan.mode == "proxy")
 
 
 def test_hybrid_plans_keep_direct_and_proxy_capacity_independent():
