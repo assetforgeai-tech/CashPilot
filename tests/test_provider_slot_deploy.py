@@ -1,9 +1,10 @@
+from dataclasses import replace
 from unittest.mock import AsyncMock
 
 import pytest
 from starlette.requests import Request
 
-from app import main
+from app import main, provider_runtime
 
 
 def _request() -> Request:
@@ -204,3 +205,28 @@ async def test_slot_deploy_skips_existing_running_instance(monkeypatch):
     assert calls == ["earnfm-direct-w7-ipv4-002"]
     assert result["skipped"] == 1
     assert result["running"] == 2
+
+
+@pytest.mark.asyncio
+async def test_slot_direct_deploy_fails_closed_without_bootstrap_manifest(monkeypatch):
+    deployed = AsyncMock(return_value={"container_id": "unsafe"})
+
+    async def none(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setitem(
+        provider_runtime.PROVIDERS,
+        "earnfm",
+        replace(provider_runtime.PROVIDERS["earnfm"], modes=("direct",), topology="slot_direct"),
+    )
+    monkeypatch.setattr(main.database, "get_deployment_spec", none)
+    monkeypatch.setattr(main.database, "get_config", AsyncMock(return_value={"earnfm_token": "token"}))
+    monkeypatch.setattr(main.database, "list_provider_instances", AsyncMock(return_value=[]))
+    monkeypatch.setattr(main.database, "record_health_event", none)
+    monkeypatch.setattr(main, "_worker_public_ip_slots", AsyncMock(side_effect=RuntimeError("offline")))
+    monkeypatch.setattr(main, "_proxy_worker_deploy", deployed)
+    result = await main.api_deploy(
+        _request(), "earnfm", main.DeployRequest(env={}, mode="direct"), worker_id=7, _auth={"r": "owner"}
+    )
+    assert result["status"] == "pending_capacity"
+    deployed.assert_not_awaited()

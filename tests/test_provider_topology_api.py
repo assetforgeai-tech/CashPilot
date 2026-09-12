@@ -83,3 +83,20 @@ async def test_proxy_only_plan_keeps_existing_leases_in_target_capacity(monkeypa
         {},
     )
     assert result["desired"] == 2
+
+
+@pytest.mark.asyncio
+async def test_slot_direct_plan_is_pending_when_slot_manifest_is_unavailable(monkeypatch):
+    from app import provider_runtime
+
+    monkeypatch.setitem(
+        provider_runtime.PROVIDERS,
+        "slot-direct-test",
+        provider_runtime.ProviderRuntime("slot-direct-test", "x.py", "x.py", ("direct",), "dashboard_only"),
+    )
+    monkeypatch.setattr(main, "_worker_public_ip_slots", AsyncMock(side_effect=RuntimeError("offline")))
+    try:
+        result = await main.api_plan_provider(None, "slot-direct-test", main.ProviderPlanRequest(worker_id=7), {})
+        assert result["status"] == "slots_unavailable"
+    finally:
+        provider_runtime.PROVIDERS.pop("slot-direct-test", None)

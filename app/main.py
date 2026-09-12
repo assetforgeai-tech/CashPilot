@@ -3774,6 +3774,22 @@ async def api_deploy(
         logger.debug("Public IPv4 slot discovery unavailable for worker %s: %s", worker_id, type(exc).__name__)
         slot_records = []
     runtime_topology = provider_runtime.get(slug)
+    if (
+        runtime_topology
+        and "direct" in modes
+        and runtime_topology.topology in {"slot_direct", "slot_both"}
+        and not slot_discovery_ok
+    ):
+        await database.record_health_event(
+            slug, "slots_pending", "public IPv4 slot manifest unavailable; deployment deferred"
+        )
+        return {
+            "status": "pending_capacity",
+            "provider": slug,
+            "worker_id": worker_id,
+            "pending_direct": 1,
+            "deployed": [],
+        }
     existing_rows = await database.list_provider_instances(slug=slug, worker_id=worker_id)
     existing_proxy_count = sum(
         1
