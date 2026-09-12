@@ -2932,9 +2932,15 @@ const CP = (() => {
     }
 
     let ok = 0, fail = 0;
+    const laneTotals = {};
     for (const wid of workerIds) {
       try {
-        await api(`/api/deploy/${slug}?worker_id=${wid}`, { method: 'POST', body: { env, mode } });
+        const result = await api(`/api/deploy/${slug}?worker_id=${wid}`, { method: 'POST', body: { env, mode } });
+        Object.entries(result.lanes || {}).forEach(([lane, stats]) => {
+          const current = laneTotals[lane] || { desired: 0, running: 0, failed: 0, pending: 0, free: 0, blocked: 0 };
+          Object.keys(current).forEach(key => { current[key] += Number(stats[key] || 0); });
+          laneTotals[lane] = current;
+        });
         ok++;
       } catch (err) {
         fail++;
@@ -2943,7 +2949,10 @@ const CP = (() => {
     }
 
     if (statusEl) {
-      statusEl.textContent = fail === 0 ? `Deployed to ${ok} node(s)` : `${ok} ok, ${fail} failed`;
+      const laneText = Object.entries(laneTotals).map(([lane, stats]) =>
+        `${lane}: ${stats.running}/${stats.desired} running, ${stats.free} free, ${stats.pending} pending`
+      ).join(' | ');
+      statusEl.textContent = `${fail === 0 ? `Deployed to ${ok} node(s)` : `${ok} ok, ${fail} failed`}${laneText ? ` — ${laneText}` : ''}`;
       statusEl.style.color = fail === 0 ? 'var(--success)' : 'var(--error)';
     }
     if (ok > 0) {
