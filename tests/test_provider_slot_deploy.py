@@ -102,6 +102,28 @@ async def test_provider_plan_endpoint_is_read_only(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_provider_plan_exposes_capacity_preflight(monkeypatch):
+    async def slots(_worker_id, **_kwargs):
+        return [{"slot_id": "ipv4-001", "public_ip": "198.51.100.1", "route_ready": True}]
+
+    monkeypatch.setattr(main, "_worker_public_ip_slots", slots)
+    monkeypatch.setattr(main.database, "list_provider_instances", lambda **_: __import__("asyncio").sleep(0, result=[]))
+    monkeypatch.setattr(
+        main.database,
+        "get_worker",
+        lambda _worker_id: __import__("asyncio").sleep(
+            0,
+            result={"system_info": '{"resources":{"cpu_cores":4}}'},
+        ),
+    )
+    result = await main.api_plan_provider(
+        _request(), "iproyal", main.ProviderPlanRequest(worker_id=7), _auth={"r": "owner"}
+    )
+    assert result["preflight"]["cpu_cores"] == 4
+    assert result["preflight"]["public_ipv4_slots"] == 1
+
+
+@pytest.mark.asyncio
 async def test_slot_deploy_skips_existing_running_instance(monkeypatch):
     calls = []
 
