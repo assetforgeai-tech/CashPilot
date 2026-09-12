@@ -14,6 +14,9 @@ def validate_provider_network_evidence(
     dns_via_proxy: bool | None,
     ipv6_blocked: bool | None,
     udp_blocked: bool | None,
+    doh_blocked: bool | None = None,
+    dot_blocked: bool | None = None,
+    direct_fallback_blocked: bool | None = None,
 ) -> dict[str, Any]:
     """Validate leak controls without treating missing evidence as safe."""
     findings: list[str] = []
@@ -30,6 +33,18 @@ def validate_provider_network_evidence(
             findings.append("udp_isolation_unverified")
         elif udp_blocked is False:
             findings.append("udp_not_blocked")
+        if doh_blocked is None:
+            findings.append("doh_isolation_unverified")
+        elif doh_blocked is False:
+            findings.append("doh_bypass_detected")
+        if dot_blocked is None:
+            findings.append("dot_isolation_unverified")
+        elif dot_blocked is False:
+            findings.append("dot_bypass_detected")
+        if direct_fallback_blocked is None:
+            findings.append("direct_fallback_unverified")
+        elif direct_fallback_blocked is False:
+            findings.append("direct_fallback_detected")
     return {"status": "attention" if findings else "pass", "findings": findings}
 
 
@@ -190,6 +205,11 @@ def audit_provider_network_inventory(
                 if "ipv6_blocked" in instance
                 else container.get("ipv6_blocked"),
                 udp_blocked=instance.get("udp_blocked") if "udp_blocked" in instance else container.get("udp_blocked"),
+                doh_blocked=instance.get("doh_blocked") if "doh_blocked" in instance else container.get("doh_blocked"),
+                dot_blocked=instance.get("dot_blocked") if "dot_blocked" in instance else container.get("dot_blocked"),
+                direct_fallback_blocked=instance.get("direct_fallback_blocked")
+                if "direct_fallback_blocked" in instance
+                else container.get("direct_fallback_blocked"),
             )
             network_findings.extend(f"{instance_id}: {item}" for item in network["findings"])
         mode = str(container.get("network_mode") or container.get("NetworkMode") or "").lower()
