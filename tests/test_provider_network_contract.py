@@ -6,6 +6,15 @@ def test_direct_lane_requires_matching_observed_egress():
     assert result == {"status": "attention", "findings": ["missing observed direct egress"]}
 
 
+def test_each_lane_requires_authoritative_expected_egress():
+    direct = validate_provider_egress("nkn", mode="direct", expected_egress_ip="", observed_egress_ip="198.51.100.10")
+    proxy = validate_provider_egress(
+        "earnapp", mode="proxy", expected_egress_ip="", observed_egress_ip="198.51.100.10", proxy_lease_id="lease-1"
+    )
+    assert direct["findings"] == ["missing expected direct egress"]
+    assert proxy["findings"] == ["missing expected proxy egress"]
+
+
 def test_proxy_lane_requires_lease_and_matching_egress():
     result = validate_provider_egress(
         "earnapp", mode="proxy", expected_egress_ip="198.51.100.11", observed_egress_ip="198.51.100.12"

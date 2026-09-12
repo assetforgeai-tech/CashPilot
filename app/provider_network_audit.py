@@ -23,11 +23,15 @@ def validate_provider_egress(
     expected = str(expected_egress_ip or "").strip()
     observed = str(observed_egress_ip or "").strip()
     if selected == "direct":
+        if not expected:
+            findings.append("missing expected direct egress")
         if not observed:
             findings.append("missing observed direct egress")
         elif expected and observed != expected:
             findings.append("direct egress mismatch")
     elif selected == "proxy":
+        if not expected:
+            findings.append("missing expected proxy egress")
         if expected and observed and observed != expected:
             findings.append("proxy egress mismatch")
         if not proxy_lease_id:
