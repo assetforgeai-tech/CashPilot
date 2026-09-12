@@ -18,7 +18,7 @@ async def test_dedicated_plan_response_exposes_the_shared_topology_contract():
     assert result["contract"] == {
         "topology": "dedicated",
         "lanes": ["direct"],
-        "capacity_basis": {"direct": "public_ipv4_slot"},
+        "capacity_basis": {"direct": "dedicated_runtime"},
         "lane_isolation": False,
         "direct_required": True,
         "proxy_required": False,

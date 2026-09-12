@@ -26,7 +26,14 @@ def topology_contract(provider_slug: str) -> dict[str, Any]:
         "topology": topology,
         "lanes": lanes,
         "capacity_basis": {
-            lane: ("public_ipv4_slot" if lane == "direct" else "eligible_proxy") for lane in lanes
+            lane: (
+                "dedicated_runtime"
+                if runtime.topology in {"dedicated", "manual"}
+                else "public_ipv4_slot"
+                if lane == "direct"
+                else "eligible_proxy"
+            )
+            for lane in lanes
         },
         "lane_isolation": len(lanes) > 1,
         "direct_required": "direct" in lanes,

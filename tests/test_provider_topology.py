@@ -166,7 +166,7 @@ def test_topology_contract_distinguishes_direct_proxy_and_hybrid_capacity():
     assert topology_contract("nkn") == {
         "topology": "dedicated",
         "lanes": ["direct"],
-        "capacity_basis": {"direct": "public_ipv4_slot"},
+        "capacity_basis": {"direct": "dedicated_runtime"},
         "lane_isolation": False,
         "direct_required": True,
         "proxy_required": False,
@@ -198,7 +198,7 @@ def test_topology_contract_exposes_single_lane_semantics():
 
 
 def test_topology_contract_declares_capacity_basis_for_each_lane():
-    assert topology_contract("nkn")["capacity_basis"] == {"direct": "public_ipv4_slot"}
+    assert topology_contract("nkn")["capacity_basis"] == {"direct": "dedicated_runtime"}
     assert topology_contract("earnapp")["capacity_basis"] == {"proxy": "eligible_proxy"}
 
 
