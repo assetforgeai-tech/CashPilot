@@ -118,6 +118,56 @@ async def test_proxy_mode_attaches_proxy_and_direct_mode_does_not(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_hybrid_deployment_records_independent_lane_targets(monkeypatch):
+    specs: dict[str, dict] = {}
+
+    async def fake_deploy(_worker_id: int, instance_slug: str, spec: dict) -> dict[str, str]:
+        specs[instance_slug] = spec
+        return {"container_id": f"{instance_slug}-cid"}
+
+    async def noop(*_args, **_kwargs):
+        return None
+
+    async def config(*_args, **_kwargs):
+        return {"earnfm_token": "api-key"}
+
+    async def proxy(_worker_id: int, **_kwargs):
+        return {"proxy_id": 9, "host": "1.2.3.4", "port": 1080, "protocol": "socks5"}
+
+    def close_spawn(coro):
+        coro.close()
+
+    monkeypatch.setattr(main.database, "get_deployment_spec", noop)
+    monkeypatch.setattr(main.database, "get_config", config)
+    monkeypatch.setattr(main.database, "save_provider_instance", noop)
+    monkeypatch.setattr(main.database, "record_health_event", noop)
+    monkeypatch.setattr(
+        main.database,
+        "get_provider_proxy_capacity",
+        AsyncMock(return_value=[{"available": 2}]),
+    )
+    monkeypatch.setattr(
+        main,
+        "_worker_public_ip_slots",
+        AsyncMock(return_value=[{"slot_id": "ipv4-001", "public_ip": "198.51.100.1", "route_ready": True}]),
+    )
+    monkeypatch.setattr(main, "_proxy_for_worker_instance", proxy)
+    monkeypatch.setattr(main, "_proxy_worker_deploy", fake_deploy)
+    monkeypatch.setattr(main, "_spawn", close_spawn)
+
+    await main.api_deploy(
+        _request(),
+        "earnfm",
+        main.DeployRequest(env={}, mode="both", direct_desired=1, proxy_desired=2),
+        worker_id=7,
+        _auth={"r": "owner"},
+    )
+
+    assert specs
+    assert all(spec["lane_targets"] == {"direct": 1, "proxy": 2} for spec in specs.values())
+
+
+@pytest.mark.asyncio
 async def test_proxyrack_parallel_modes_get_separate_uuid_and_device_names(monkeypatch):
     specs: dict[str, dict] = {}
 

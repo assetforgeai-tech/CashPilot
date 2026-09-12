@@ -3841,6 +3841,10 @@ async def api_deploy(
             instance_spec["topology"] = runtime_topology.topology
             instance_spec["lane"] = mode
             instance_spec["slot_id"] = topology_plan.slot_id
+            instance_spec["lane_targets"] = {
+                "direct": body.direct_desired,
+                "proxy": body.proxy_desired,
+            }
             if mode == "direct":
                 instance_spec["expected_egress_ip"] = topology_plan.public_ip
         instance_spec.setdefault("labels", {})
