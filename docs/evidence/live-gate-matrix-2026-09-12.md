@@ -10,7 +10,7 @@ unavailable. No status below authorizes production deployment by itself.
 | East Asia bootstrap | verified | Worker enrollment and heartbeat evidence | Fresh bootstrap without recovery intervention |
 | Japan East cloud-init | verified | Worker enrollment evidence | Fresh VM rebuild, then auto-deploy |
 | Japan East reboot persistence | verified | Service active, worker healthy, 10 bridge networks, 10 slots after reboot | Route-rule and heartbeat log sample |
-| Repository tests/lint/security | verified | Local Windows run: `2824 passed, 8 skipped`; PR #297 head `31a3990` CI: Analyze, build (strict), Ruff, and test all successful; focused proxy/UI regressions pass; Ruff/build/pip-audit clean | Repeat after runtime fixes |
+| Repository tests/lint/security | verified | Full local suite: `2831 passed, 8 skipped`; PR #297 CI for latest tested head passed Analyze, build (strict), Ruff, and test; focused proxy/UI regressions pass; Ruff/build/pip-audit clean | Repeat after runtime fixes |
 | Chrome profile 40 UI sweep | verified | Isolated CDP session for authenticated `Profile 40` at `127.0.0.1:9227`; ten navigation surfaces captured with full-page PNG/text evidence | Complete destructive-control, responsive, keyboard, and provider-input interaction pass |
 | Provider credentials/input | unverified | Inventory report only; secret values redacted | Authenticated provider inspection |
 | Proxy metadata/location/IP type | unverified | API/UI implementation present | Live recheck sample across providers |
