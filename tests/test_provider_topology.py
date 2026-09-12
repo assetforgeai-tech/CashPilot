@@ -1,8 +1,9 @@
-import pytest
 from unittest.mock import AsyncMock
 
-from app.provider_topology import plan_provider_nodes, summarize_provider_plan
+import pytest
+
 from app import main
+from app.provider_topology import plan_provider_nodes, summarize_provider_plan
 
 
 def test_dedicated_direct_provider_cannot_use_generic_planner():
