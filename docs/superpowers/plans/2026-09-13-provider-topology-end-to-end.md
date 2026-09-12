@@ -118,6 +118,10 @@ and host-agent lifecycle.
 - Show lane, capacity source, expected/observed egress, lease and ownership state per node.
 - [ ] Exercise every control and empty/error state through the existing browser test flow.
 
+Progress: deploy status now renders per-lane running/desired/free/pending values
+from the API response (`83f6167`). Lease/ownership/expected-vs-observed egress
+remains a separate reconciliation view and still requires browser verification.
+
 ### Task 10: End-to-end live gates
 
 **Files:** `docs/evidence/provider-topology-production-readiness.md`, runbook evidence.
