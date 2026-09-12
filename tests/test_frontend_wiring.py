@@ -1080,4 +1080,4 @@ def test_deploy_ui_renders_lane_capacity_from_deploy_response():
     app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
     assert "laneTotals" in app_js
     assert "stats.running" in app_js
-    assert "pending_capacity" in app_js
+    assert "stats.pending" in app_js
