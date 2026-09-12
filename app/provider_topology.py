@@ -119,7 +119,7 @@ def summarize_provider_plan(plans: list[ProviderNodePlan], instances: list[Mappi
         "desired": len(desired_ids),
         "running": len(running),
         "retry": retry,
-        "missing": sorted(desired_ids - set(rows)),
+        "missing": sorted(deployable_ids - set(rows)),
         "stale": sorted(set(rows) - desired_ids),
         "blocked_slots": sorted({plan.slot_id for plan in plans if not plan.deployable}),
         "blocked": sum(1 for plan in plans if not plan.deployable),
