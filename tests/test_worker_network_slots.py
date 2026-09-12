@@ -98,3 +98,9 @@ def test_heartbeat_includes_slots_as_system_metadata_without_secret_fields(tmp_p
     assert captured["system_info"]["public_ip_slots"] == slots  # type: ignore[index]
     assert "wallet_json" not in json.dumps(captured)
     assert "wallet_pswd" not in json.dumps(captured)
+
+
+def test_worker_resource_capacity_is_reported(monkeypatch):
+    monkeypatch.setattr(worker_api.os, "cpu_count", lambda: 8)
+    monkeypatch.setattr(worker_api, "_memory_capacity", lambda: {"total_bytes": 16 * 1024**3})
+    assert worker_api._resource_capacity() == {"cpu_cores": 8, "memory": {"total_bytes": 16 * 1024**3}}

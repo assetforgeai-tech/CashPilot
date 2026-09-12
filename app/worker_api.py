@@ -1083,6 +1083,21 @@ def _disk_usage() -> dict[str, Any] | None:
     return {"path": str(_WORKER_ID_FILE.parent), "free_bytes": usage.free, "total_bytes": usage.total}
 
 
+def _memory_capacity() -> dict[str, int] | None:
+    """Read total RAM without adding a platform dependency."""
+    try:
+        for line in Path("/proc/meminfo").read_text(encoding="utf-8").splitlines():
+            if line.startswith("MemTotal:"):
+                return {"total_bytes": int(line.split()[1]) * 1024}
+    except (OSError, ValueError, IndexError):
+        return None
+    return None
+
+
+def _resource_capacity() -> dict[str, Any]:
+    return {"cpu_cores": int(os.cpu_count() or 0), "memory": _memory_capacity()}
+
+
 def _gpu_info() -> dict[str, Any]:
     """What this worker can see of a GPU, and how sure it is.
 
@@ -1295,6 +1310,7 @@ async def _send_heartbeat() -> None:
             # services can earn at all. Both are None/unknown-aware -- see the
             # helpers (CashPilot-cle).
             "disk": await asyncio.to_thread(_disk_usage),
+            "resources": await asyncio.to_thread(_resource_capacity),
             "gpu": await asyncio.to_thread(_gpu_info),
             "public_ip_slots": _load_public_ip_slots(),
             "containers_inventory_confirmed": containers_inventory_confirmed,
