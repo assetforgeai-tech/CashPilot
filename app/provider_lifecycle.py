@@ -6,6 +6,8 @@ specific execution (for example EarnApp's cycle guard).
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from app import provider_runtime
 
 
@@ -45,3 +47,18 @@ def decide_lane(
     if selected == "proxy" and proxy_healthy is False:
         return "rotate"
     return "observe"
+
+
+def decide_instance(instance: Mapping[str, object]) -> str:
+    """Dispatch one persisted provider instance using its explicit lane."""
+    provider = str(instance.get("provider_slug") or instance.get("slug") or "").strip().lower()
+    mode = str(instance.get("mode") or "").strip().lower()
+    if not provider or not mode:
+        return "observe"
+    return decide_lane(
+        provider,
+        mode=mode,
+        online=instance.get("online") if "online" in instance else None,
+        banned=bool(instance.get("banned")),
+        proxy_healthy=instance.get("proxy_healthy") if "proxy_healthy" in instance else None,
+    )

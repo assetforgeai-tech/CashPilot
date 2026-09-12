@@ -129,6 +129,7 @@
 - Catalog responses distinguish `topology` (`slot_direct`, `slot_both`, `slot_proxy`) from selected egress mode; `fallback` remains `none`.
 - Proxy-only desired capacity is the minimum of ready public-IP slots and scoped qualified proxies; hybrid proxy capacity is calculated independently from direct capacity.
 
-- [ ] Add failing tests for scoped capacity and proxy-only minimum capacity.
-- [ ] Implement the scoped query and topology summary fields.
-- [ ] Run focused tests and full static checks.
+- [x] Add failing tests for scoped capacity.
+- [x] Implement scoped capacity and topology summary fields.
+- [x] Run focused tests and full static checks.
+- [ ] Add proxy-only minimum-capacity planning and live evidence.

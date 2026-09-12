@@ -1,4 +1,4 @@
-from app.provider_lifecycle import decide, decide_lane
+from app.provider_lifecycle import decide, decide_instance, decide_lane
 
 
 def test_offline_provider_restarts_without_rotating_proxy():
@@ -28,3 +28,22 @@ def test_hybrid_proxy_lane_rotates_when_proxy_health_is_bad():
 
 def test_invalid_lane_fails_closed_to_observe():
     assert decide_lane("earnfm", mode="bogus", online=False, banned=False, proxy_healthy=True) == "observe"
+
+
+def test_decide_instance_requires_explicit_lane_and_returns_observe_without_signals():
+    assert decide_instance({"provider_slug": "earnfm", "mode": "direct"}) == "observe"
+    assert decide_instance(
+        {
+            "provider_slug": "earnfm",
+            "mode": "proxy",
+            "online": True,
+            "banned": False,
+            "proxy_healthy": False,
+        }
+    ) == "rotate"
+
+
+def test_decide_instance_uses_provider_and_lane_identity():
+    assert decide_instance(
+        {"slug": "earnfm", "mode": "direct", "online": False, "banned": False, "proxy_healthy": True}
+    ) == "restart"
