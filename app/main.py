@@ -1294,7 +1294,7 @@ async def _resolve_worker_id(worker_id: int | None) -> int:
             # Unit/test adapters and pre-enrollment callers may not have a
             # workers table yet; preserve the explicit ID in that case.
             return worker_id
-        if selected and selected.get("status") != "online":
+        if selected and selected.get("status") and selected.get("status") != "online":
             # A worker reinstall/enrollment can mint a new durable client ID
             # while retaining the same endpoint. Prefer that live successor
             # over sending a canary to the stale database row.
@@ -4008,7 +4008,7 @@ async def api_deploy(
         await database.save_provider_instance(
             slug,
             instance_slug,
-            worker_id=body.worker_id,
+            worker_id=worker_id,
             mode="direct" if mode == "legacy" else mode,
             capacity_slot=topology_plan.capacity_slot if topology_plan else "",
             container_id=container_id,

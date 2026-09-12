@@ -37,11 +37,11 @@
 - Test: `tests/test_provider_topology.py`
 - Test: `tests/test_provider_topology_api.py`
 
-- [ ] Add failing tests for direct-only refusing proxy targets, proxy-only not consuming IPv4 slots, and hybrid targets remaining independent.
-- [ ] Add tests for unavailable proxy capacity returning pending/blocked rather than shrinking desired topology.
-- [ ] Run focused tests and confirm expected failures.
-- [ ] Implement only the minimum planner/API changes if a gap is found.
-- [ ] Re-run focused tests.
+- [x] Add failing tests for direct-only refusing proxy targets, proxy-only not consuming IPv4 slots, and hybrid targets remaining independent.
+- [x] Add tests for unavailable proxy capacity returning pending/blocked rather than shrinking desired topology.
+- [x] Run focused tests and confirm expected failures.
+- [x] Implement only the minimum planner/API changes if a gap is found.
+- [x] Re-run focused tests.
 
 ### Task 3: Make lease selection deterministic and lane-scoped
 

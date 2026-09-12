@@ -153,9 +153,15 @@ def plan_provider_nodes(
     direct_slots = slots[:direct_target] if "direct" in modes else []
     if "direct" in modes and direct_target > len(slots):
         direct_slots.extend((f"ipv4-{index:03d}", "", "", False) for index in range(len(slots) + 1, direct_target + 1))
+    # Bootstrap public-IP count is the default node cardinality for every
+    # proxy lane. Capacity remains a gate; it must not silently expand the
+    # requested topology. Workers without slot discovery retain the legacy
+    # proxy-capacity fallback until bootstrap enrollment is available.
     proxy_target = (
         proxy_desired
         if proxy_desired is not None
+        else len(slots)
+        if slots and proxy_capacity is not None
         else (max(0, int(proxy_capacity)) if proxy_capacity is not None else 0)
     )
     proxy_slots = (

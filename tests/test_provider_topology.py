@@ -83,14 +83,27 @@ def test_hybrid_plans_keep_direct_and_proxy_capacity_independent():
         proxy_capacity=5,
     )
     assert sum(plan.mode == "direct" for plan in plans) == 3
-    assert sum(plan.mode == "proxy" for plan in plans) == 5
+    assert sum(plan.mode == "proxy" for plan in plans) == 3
     assert [plan.capacity_slot for plan in plans if plan.mode == "proxy"] == [
         "proxy-001",
         "proxy-002",
         "proxy-003",
-        "proxy-004",
-        "proxy-005",
     ]
+
+
+def test_hybrid_default_target_is_one_proxy_lane_per_direct_slot():
+    plans = plan_provider_nodes(7, "earnfm", ["ipv4-001", "ipv4-002"], proxy_capacity=5)
+    assert [(plan.mode, plan.slot_id) for plan in plans] == [
+        ("direct", "ipv4-001"),
+        ("direct", "ipv4-002"),
+        ("proxy", "proxy-001"),
+        ("proxy", "proxy-002"),
+    ]
+
+
+def test_proxy_only_default_target_uses_bootstrap_slot_count():
+    plans = plan_provider_nodes(7, "iproyal", ["ipv4-001", "ipv4-002"], mode="proxy", proxy_capacity=5)
+    assert [plan.slot_id for plan in plans] == ["proxy-001", "proxy-002"]
 
 
 def test_hybrid_plans_accept_explicit_lane_targets():
