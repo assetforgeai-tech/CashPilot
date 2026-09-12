@@ -264,6 +264,12 @@ def catalog_runtime(slug: str) -> dict[str, object]:
         "heartbeat_scope": provider.heartbeat_scope,
         "rotation_scope": provider.rotation_scope,
         "topology": provider.topology,
+        "direct_required": provider.topology == "slot_direct"
+        or (provider.topology == "dedicated" and "direct" in provider.modes),
+        "proxy_required": provider.topology == "slot_proxy"
+        or (provider.topology in {"manual", "dedicated"} and "proxy" in provider.modes),
+        "direct_fallback": False,
+        "proxy_fallback": False,
         "lifecycle_actions": {
             "offline": "restart",
             "banned": "restart" if provider.slug == "earnapp" else "recreate",

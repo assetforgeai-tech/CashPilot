@@ -3470,6 +3470,7 @@ async def api_plan_provider(
         "provider": slug,
         "worker_id": body.worker_id,
         "topology": runtime.topology,
+        "contract": provider_topology.topology_contract(slug),
         "status": "ready",
         "preflight": preflight,
         "plans": [plan.__dict__ | {"instance_id": plan.instance_id} for plan in plans],
