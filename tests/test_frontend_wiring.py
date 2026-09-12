@@ -266,6 +266,13 @@ class TestEarnAppAccountPoolIsReachable:
         assert "const source = account.token_expiry_source" in renderer
         assert renderer.index("const expiryValue") < renderer.index("${expiryValue ?")
 
+    def test_account_rows_show_dashboard_mapping_drift(self):
+        renderer = js_function("renderEarnAppAccounts")
+
+        assert "mapped_devices" in renderer
+        assert "dashboard_only_devices" in renderer
+        assert "active_without_dashboard_device" in renderer
+
 
 class TestEarnAppUbuntuDedicatedCatalogLane:
     def test_catalog_and_setup_do_not_offer_generic_docker_deploy_for_earnapp(self):
