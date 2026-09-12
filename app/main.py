@@ -3780,6 +3780,7 @@ async def api_deploy(
             pending_proxy=pending_proxy,
             skipped=skipped_existing,
             blocked=sum(1 for plan in topology_plans if not plan.deployable),
+            pending_capacity=sum(1 for plan in topology_plans if not plan.deployable) + pending_proxy,
             blocked_slots=sorted({plan.slot_id for plan in topology_plans if not plan.deployable}),
         )
     if deployed:
