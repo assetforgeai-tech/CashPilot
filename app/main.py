@@ -3746,6 +3746,12 @@ async def api_deploy(
         instance_slug = topology_plan.instance_id if topology_plan else (slug if mode == "legacy" else f"{slug}-{mode}")
         instance_spec = json.loads(json.dumps(spec))
         instance_spec["provider_slug"] = slug
+        if topology_plan:
+            instance_spec["topology"] = runtime_topology.topology
+            instance_spec["lane"] = mode
+            instance_spec["slot_id"] = topology_plan.slot_id
+            if mode == "direct":
+                instance_spec["expected_egress_ip"] = topology_plan.public_ip
         instance_spec.setdefault("labels", {})
         instance_spec["labels"]["cashpilot.provider"] = slug
         instance_spec["labels"]["cashpilot.instance_mode"] = mode
@@ -3806,6 +3812,9 @@ async def api_deploy(
                 )
                 continue
             instance_spec["egress_mode"] = "proxy"
+            if topology_plan:
+                instance_spec["proxy_lease_id"] = str((instance_spec["proxy"] or {}).get("proxy_id") or "")
+                instance_spec["expected_egress_ip"] = str((instance_spec["proxy"] or {}).get("exit_ip") or "")
         elif mode == "direct":
             instance_spec["egress_mode"] = "direct"
 
@@ -3820,6 +3829,12 @@ async def api_deploy(
                     instance_spec,
                     scoped_instance_id=instance_slug if topology_plan else None,
                 )
+                if topology_plan:
+                    instance_spec["topology"] = runtime_topology.topology
+                    instance_spec["lane"] = mode
+                    instance_spec["slot_id"] = topology_plan.slot_id
+                    instance_spec["proxy_lease_id"] = str((instance_spec.get("proxy") or {}).get("proxy_id") or "")
+                    instance_spec["expected_egress_ip"] = str((instance_spec.get("proxy") or {}).get("exit_ip") or "")
             else:
                 result = await _proxy_worker_deploy(worker_id, instance_slug, instance_spec)
         except Exception:

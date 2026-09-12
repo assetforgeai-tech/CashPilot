@@ -64,6 +64,36 @@ async def test_direct_slot_uses_bootstrap_network_not_host(monkeypatch):
     assert result["pending_capacity"] == 0
     assert specs["earnfm-direct-w7-ipv4-001"]["network"] == "cashpilot-direct-ipv4-001"
     assert specs["earnfm-direct-w7-ipv4-002"]["network"] == "cashpilot-direct-ipv4-002"
+    assert specs["earnfm-direct-w7-ipv4-001"]["topology"] == "slot_both"
+    assert specs["earnfm-direct-w7-ipv4-001"]["lane"] == "direct"
+    assert specs["earnfm-direct-w7-ipv4-001"]["expected_egress_ip"] == "198.51.100.1"
+
+
+@pytest.mark.asyncio
+async def test_proxy_slot_records_lane_lease_and_expected_egress(monkeypatch):
+    specs = {}
+
+    async def deploy(_worker_id, instance_id, spec):
+        specs[instance_id] = spec
+        return {"container_id": instance_id}
+
+    _common(monkeypatch, deploy)
+    monkeypatch.setattr(
+        main,
+        "_proxy_for_provider_instance",
+        lambda *_args, **_kwargs: __import__("asyncio").sleep(
+            0, result={"proxy_id": 41, "exit_ip": "203.0.113.41", "endpoint": "http://proxy.invalid:8080"}
+        ),
+    )
+    result = await main.api_deploy(
+        _request(), "earnfm", main.DeployRequest(env={}, mode="proxy"), worker_id=7, _auth={"r": "owner"}
+    )
+    assert result["running"] == 2
+    spec = specs["earnfm-proxy-w7-ipv4-001"]
+    assert spec["topology"] == "slot_both"
+    assert spec["lane"] == "proxy"
+    assert spec["proxy_lease_id"] == "41"
+    assert spec["expected_egress_ip"] == "203.0.113.41"
 
 
 @pytest.mark.asyncio

@@ -16,9 +16,9 @@ def decide(provider: str, *, online: bool | None, banned: bool, proxy_healthy: b
     runtime = provider_runtime.get(str(provider or "").strip().lower())
     if runtime is None:
         return "observe"
-    if banned and str(provider or "").strip().lower() == "earnapp":
-        return "restart"
     if banned:
+        if str(provider or "").strip().lower() == "earnapp":
+            return "restart"
         return "recreate"
     if online is False:
         return "restart"
@@ -41,6 +41,8 @@ def decide_lane(
     if runtime is None or selected not in runtime.modes:
         return "observe"
     if banned:
+        if str(provider or "").strip().lower() == "earnapp":
+            return "restart"
         return "recreate"
     if online is False:
         return "restart"
