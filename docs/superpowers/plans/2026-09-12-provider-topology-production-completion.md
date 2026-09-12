@@ -140,3 +140,22 @@
 - [x] Add proxy-only minimum-capacity planning (read-only summary and deploy pending state).
 - [x] Prove deterministic proxy reservation across provider slot reruns.
 - [ ] Capture live proxy-only minimum-capacity and egress evidence.
+
+### Task 8: Fail-closed lane egress evidence
+
+**Files:**
+- Modify: `app/provider_network_audit.py`
+- Modify: `app/main.py`
+- Test: `tests/test_provider_network_contract.py`, `tests/test_provider_topology_api.py`
+
+**Interfaces:**
+- `validate_provider_egress()` requires observed egress for every direct/proxy lane.
+- Proxy lanes require a lease identifier and matching observed egress.
+- Any implicit direct/proxy fallback is an attention finding.
+- Dedicated and unavailable-slot plan responses expose the same topology contract.
+
+- [x] Add failing tests for missing direct evidence, missing proxy lease, mismatch, and fallback.
+- [x] Implement the shared fail-closed validator and integrate it into inventory audit.
+- [x] Expose topology contracts on dedicated and unavailable plan responses.
+- [x] Run focused topology/network tests.
+- [ ] Capture live evidence for all provider topology classes.

@@ -77,6 +77,13 @@ def test_bootstrap_installs_the_restricted_nkn_lxd_host_helper_without_deploying
     assert "nknorg/nkn" not in text
 
 
+def test_bootstrap_allows_lxd_dhcp_dns_and_forwarding_through_ufw():
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert "ufw allow in on lxdbr0" in text
+    assert "ufw route allow in on lxdbr0" in text
+    assert "ufw route allow out on lxdbr0" in text
+
+
 def test_bootstrap_uses_supported_lxc_storage_list_syntax():
     text = SCRIPT.read_text(encoding="utf-8")
     assert "lxc storage list --format csv -c n" not in text

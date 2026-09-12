@@ -3420,7 +3420,13 @@ async def api_plan_provider(
     if not runtime:
         raise HTTPException(status_code=404, detail="Unknown provider")
     if runtime.topology in {"dedicated", "manual"}:
-        return {"provider": slug, "topology": runtime.topology, "status": "manual", "plans": []}
+        return {
+            "provider": slug,
+            "topology": runtime.topology,
+            "contract": provider_topology.topology_contract(slug),
+            "status": "manual",
+            "plans": [],
+        }
     try:
         try:
             slots = await _worker_public_ip_slots(body.worker_id, include_unready=True)
@@ -3434,6 +3440,7 @@ async def api_plan_provider(
             "provider": slug,
             "worker_id": body.worker_id,
             "topology": runtime.topology,
+            "contract": provider_topology.topology_contract(slug),
             "status": "slots_unavailable",
             "error": type(exc).__name__,
             "plans": [],

@@ -130,6 +130,11 @@ ufw allow 30000:30005/tcp
 ufw allow 30000:30005/udp
 ufw allow 32768:65535/tcp
 ufw allow 32768:65535/udp
+# LXD guests need DHCP/DNS on the managed bridge and routed return traffic.
+# The default routed-deny policy otherwise leaves eth0 up with no IPv4 lease.
+ufw allow in on lxdbr0
+ufw route allow in on lxdbr0
+ufw route allow out on lxdbr0
 ufw --force enable
 
 install -d -m 0755 /etc/cashpilot /etc/systemd/system/docker.service.d "${INSTALL_ROOT}"

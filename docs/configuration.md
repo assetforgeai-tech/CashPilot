@@ -72,11 +72,21 @@ Legacy EarnApp Ubuntu LXD limits remain database-backed Settings values for hist
 
 The server validates these values before planning the dedicated lane. Existing guests are not resized automatically. MacOS/iOS identity and runtime contracts use the dedicated Docker lane and do not use the LXD limits.
 
+Provider topology is explicit: direct-only providers consume ready public IPv4
+slots and never lease proxies; proxy-only providers consume qualified proxy leases
+and never fall back to direct egress; hybrid providers keep direct and proxy lanes
+independent. Plan responses expose desired, deployable, running, free, and blocked
+capacity per lane. `auto` is a UI choice only and never changes a running lane's
+egress mode.
+
 Proxy Pool leases are currently worker-level. The server is the only pool and lease authority: it probes the pool, sends one exact candidate to the worker, and keeps the old database assignment until the worker has probed that candidate from the VPS, staged it in every named sing-box sidecar, restarted only those sidecars, and returned a redacted ACK with the binding token and observed exit IP. The server then CAS-commits the assignment and affected provider-instance rows in one transaction. Proxy assignment transactions are serialized on the server; a stale assignment generation, a candidate claimed by another worker, or mixed per-instance proxy rows loses the CAS/fails closed and the worker restores the previous sidecar configuration.
 
 A failed probe, apply, ACK validation, or pre-commit CAS leaves the old lease in place. If the apply response is lost, the server makes a token-checked best-effort rollback because the worker may have restarted with the candidate. After a successful CAS, failure to delete the worker's backup config is cleanup-pending only: database and runtime already agree on the new candidate, so CashPilot retries confirmation and never rolls the committed assignment back blindly. Legacy sidecars without the persistent `/etc/sing-box` config volume fail closed and require an isolated redeploy before they can rotate. Manual assignment and lease routes use the same ACK path whenever proxy instances are active; direct providers continue without a Proxy Pool lease.
 
-This worker-level assignment is an intentional compatibility limit, not the final topology. Per-provider private bindings (including IPRoyal Pawns) and multiple public-IP slots still require a future `(worker, public_ip_slot, provider, instance)` lease model.
+Provider proxy assignments are scoped by `(worker, provider, lane, instance)` and
+are selected deterministically. A proxy lease is exclusive across conflicting
+instances; EarnApp sticky egress ownership remains until account deletion. Direct
+providers continue without a Proxy Pool lease.
 
 MYST Wallet is a separate asset inventory. Wallet lease/reclaim follows the normal worker heartbeat plus `provider_states`, and funding state is derived from the node registration status when it can be read.
 

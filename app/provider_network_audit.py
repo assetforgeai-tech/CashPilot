@@ -8,6 +8,44 @@ from typing import Any
 from app import provider_runtime
 
 
+def validate_provider_egress(
+    provider: str,
+    *,
+    mode: str,
+    expected_egress_ip: str,
+    observed_egress_ip: str,
+    proxy_lease_id: str = "",
+    fallback_mode: str = "",
+) -> dict[str, Any]:
+    """Validate one lane's egress evidence without permitting fallback."""
+    selected = str(mode or "").strip().lower()
+    findings: list[str] = []
+    expected = str(expected_egress_ip or "").strip()
+    observed = str(observed_egress_ip or "").strip()
+    if selected == "direct":
+        if not expected:
+            findings.append("missing expected direct egress")
+        if not observed:
+            findings.append("missing observed direct egress")
+        elif expected and observed != expected:
+            findings.append("direct egress mismatch")
+    elif selected == "proxy":
+        if not expected:
+            findings.append("missing expected proxy egress")
+        if expected and observed and observed != expected:
+            findings.append("proxy egress mismatch")
+        if not proxy_lease_id:
+            findings.append("missing proxy lease")
+        if not observed:
+            findings.append("missing observed proxy egress")
+    else:
+        findings.append(f"unsupported egress mode: {selected or 'empty'}")
+    fallback = str(fallback_mode or "").strip().lower()
+    if fallback:
+        findings.append(f"unsafe egress fallback: {fallback}")
+    return {"status": "attention" if findings else "pass", "findings": findings}
+
+
 def audit_provider_network_inventory(
     provider: str,
     *,
@@ -39,8 +77,14 @@ def audit_provider_network_inventory(
         container = by_id.get(instance_id)
         expected = str(instance.get("public_ip") or "").strip()
         actual = str((container or {}).get("actual_egress_ip") or "").strip()
-        if expected and actual and expected != actual:
-            findings.append(f"{instance_id}: direct egress mismatch; expected {expected}, observed {actual}")
+        if expected:
+            evidence = validate_provider_egress(
+                slug,
+                mode="direct",
+                expected_egress_ip=expected,
+                observed_egress_ip=actual,
+            )
+            findings.extend(f"{instance_id}: {item}" for item in evidence["findings"])
     proxy_instances = [
         item
         for item in instances
@@ -90,10 +134,18 @@ def audit_provider_network_inventory(
             instance.get("expected_egress_ip") or proxy.get("exit_ip") or instance.get("exit_ip") or ""
         ).strip()
         observed_egress = str(container.get("observed_egress_ip") or container.get("actual_egress_ip") or "").strip()
-        if expected_egress and observed_egress and expected_egress != observed_egress:
-            findings.append(
-                f"{instance_id}: proxy egress mismatch; expected {expected_egress}, observed {observed_egress}"
+        lease_id = str(
+            instance.get("proxy_lease_id") or instance.get("lease_id") or proxy.get("proxy_id") or proxy.get("id") or ""
+        ).strip()
+        if expected_egress or observed_egress or lease_id:
+            evidence = validate_provider_egress(
+                slug,
+                mode="proxy",
+                expected_egress_ip=expected_egress,
+                observed_egress_ip=observed_egress,
+                proxy_lease_id=lease_id,
             )
+            findings.extend(f"{instance_id}: {item}" for item in evidence["findings"])
         mode = str(container.get("network_mode") or container.get("NetworkMode") or "").lower()
         # EarnApp installs redsocks, DNS forwarding, and fail-closed iptables
         # inside its main container. It intentionally has no sidecar.
