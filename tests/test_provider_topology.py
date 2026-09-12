@@ -90,6 +90,7 @@ def test_not_ready_slot_is_reported_without_becoming_silent_capacity():
     summary = summarize_provider_plan(plans, [])
     assert summary["desired"] == 2
     assert summary["blocked_slots"] == ["ipv4-002"]
+    assert summary["missing"] == ["earnfm-direct-w7-ipv4-001"]
 
 
 def test_not_ready_direct_route_does_not_block_proxy_capacity():
