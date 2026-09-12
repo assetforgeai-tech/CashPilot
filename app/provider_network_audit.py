@@ -137,7 +137,15 @@ def audit_provider_network_inventory(
         lease_id = str(
             instance.get("proxy_lease_id") or instance.get("lease_id") or proxy.get("proxy_id") or proxy.get("id") or ""
         ).strip()
-        if expected_egress or observed_egress or lease_id:
+        # Managed slot lanes must always prove both the lease and observed
+        # egress. Manual runtimes retain their legacy capability-only audit.
+        active = str(instance.get("status") or "").strip().lower() in {"active", "running", "deployed"}
+        if (
+            (active and runtime.topology in {"slot_proxy", "slot_both"})
+            or expected_egress
+            or observed_egress
+            or lease_id
+        ):
             evidence = validate_provider_egress(
                 slug,
                 mode="proxy",
