@@ -10,6 +10,8 @@
 - EarnApp containers on worker `43406` remained present; rollout did not delete, recreate, unlink, release, or rotate an EarnApp node.
 - Server SQLite checks: `integrity_check=ok`; `foreign_key_check` returned `0` rows.
 - Worker logs after rollout contained heartbeat success and no `proxy/finalize` or reconciliation error loop.
+- Post-release local gates: full suite `2849 passed, 8 skipped`; `pip-audit` reported no known vulnerabilities; Bandit reported `0 HIGH` findings.
+- Worker `90241` remains offline with an internal URL and no matching credential file in the workspace; no mutation was attempted.
 
 ## Scope note
 
