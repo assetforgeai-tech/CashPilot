@@ -155,6 +155,39 @@ def test_capacity_preflight_reports_compute_disk_ports_slots_and_proxy_capacity(
     }
 
 
+def test_topology_contract_distinguishes_direct_proxy_and_hybrid_capacity():
+    from app.provider_topology import topology_contract
+
+    assert topology_contract("nkn") == {
+        "topology": "dedicated",
+        "direct_required": True,
+        "proxy_required": False,
+        "direct_fallback": False,
+        "proxy_fallback": False,
+    }
+    assert topology_contract("earnfm")["topology"] == "slot_both"
+    assert topology_contract("earnfm")["direct_required"] is False
+    assert topology_contract("earnfm")["proxy_required"] is False
+    assert topology_contract("earnapp") == {
+        "topology": "slot_proxy",
+        "direct_required": False,
+        "proxy_required": True,
+        "direct_fallback": False,
+        "proxy_fallback": False,
+    }
+    assert topology_contract("wipter")["proxy_required"] is True
+
+
+def test_lane_summary_reports_free_capacity_without_collapsing_lanes():
+    plans = plan_provider_nodes(7, "earnfm", 2)
+    summary = summarize_provider_plan(plans, [], available_proxy_count=1)
+    assert summary["lane_capacity"]["direct"]["free"] == 2
+    assert summary["lane_capacity"]["proxy"]["free"] == 1
+    assert summary["lane_capacity"]["proxy"]["blocked"] == 1
+    assert summary["direct_capacity"] == 2
+    assert summary["proxy_capacity"] == 1
+
+
 @pytest.mark.asyncio
 async def test_slot_proxy_uses_exclusive_provider_instance_lease(monkeypatch):
     lease = {"proxy_id": 9, "exit_ip": "203.0.113.9"}

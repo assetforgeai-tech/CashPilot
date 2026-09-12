@@ -12,6 +12,24 @@ from app import provider_modes
 _SLOT_RE = re.compile(r"^ipv4-(\d{3,6})$")
 
 
+def topology_contract(provider_slug: str) -> dict[str, Any]:
+    """Return the explicit egress contract used by planning and UI code."""
+    from app import provider_runtime
+
+    runtime = provider_runtime.get(str(provider_slug or "").strip().lower())
+    if runtime is None:
+        raise ValueError("unknown provider")
+    topology = runtime.topology
+    modes = set(runtime.modes)
+    return {
+        "topology": topology,
+        "direct_required": topology == "slot_direct" or (topology == "dedicated" and "direct" in modes),
+        "proxy_required": topology == "slot_proxy" or (topology in {"manual", "dedicated"} and "proxy" in modes),
+        "direct_fallback": False,
+        "proxy_fallback": False,
+    }
+
+
 def build_capacity_preflight(
     *,
     slots: list[Mapping[str, Any]] | tuple[Mapping[str, Any], ...],
@@ -158,6 +176,31 @@ def summarize_provider_plan(
         for mode in ("direct", "proxy")
         if any(plan.mode == mode for plan in plans)
     }
+    lane_capacity = {}
+    for mode in ("direct", "proxy"):
+        lane_plans = [plan for plan in effective_plans if plan.mode == mode]
+        if not lane_plans:
+            continue
+        deployable_count = sum(1 for plan in lane_plans if plan.deployable)
+        running_count = sum(
+            1
+            for plan in lane_plans
+            if plan.deployable
+            and str(rows.get(plan.instance_id, {}).get("status") or "").lower() in {"running", "deployed"}
+        )
+        lane_capacity[mode] = {
+            "desired": len(lane_plans),
+            "deployable": deployable_count,
+            "running": running_count,
+            "free": max(0, deployable_count - running_count),
+            "blocked": len(lane_plans) - deployable_count,
+        }
+    direct_capacity = lane_capacity.get("direct", {}).get("deployable", 0)
+    proxy_capacity = (
+        max(0, int(available_proxy_count))
+        if available_proxy_count is not None and any(plan.mode == "proxy" for plan in plans)
+        else None
+    )
     running = sorted(
         instance_id
         for instance_id in deployable_ids
@@ -181,6 +224,9 @@ def summarize_provider_plan(
         "deployable": len(deployable_ids),
         "pending_capacity": sum(1 for plan in effective_plans if not plan.deployable),
         "lanes": lanes,
+        "lane_capacity": lane_capacity,
+        "direct_capacity": direct_capacity if any(plan.mode == "direct" for plan in plans) else None,
+        "proxy_capacity": proxy_capacity,
         "running": len(running),
         "retry": retry,
         "missing": sorted(deployable_ids - set(rows)),
@@ -188,11 +234,6 @@ def summarize_provider_plan(
         "pending_proxy": sum(1 for plan in effective_plans if plan.mode == "proxy" and not plan.deployable),
         "blocked_slots": sorted({plan.slot_id for plan in plans if not plan.deployable}),
         "blocked": sum(1 for plan in plans if not plan.deployable),
-        "proxy_capacity": (
-            max(0, int(available_proxy_count))
-            if available_proxy_count is not None and any(plan.mode == "proxy" for plan in plans)
-            else None
-        ),
         "proxy_capacity_shortfall": (
             max(
                 0,
