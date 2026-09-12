@@ -82,3 +82,40 @@ to a direct or legacy deployment.
 - Run focused tests, full suite, Ruff, compileall, and diff checks.
 - Enable auto-deploy only after redacted live evidence proves every lane contract.
 Progress: PR #314 merged; `v1.40.0` published; Compose pin PR #315 is open and requires normal approval. Proxy-only live evidence is recorded for `vps-test-us` (worker `1.33.3`, therefore network-shape evidence only); direct-only and hybrid evidence remain pending. Full local suite: `2926 passed, 8 skipped, 2 failed`; both failures are the known Compose-pin mismatch (`1.39` versus repository-visible newest release `1.35`) and are not caused by this change. Network inventory now exposes fail-closed `network_evidence` findings for missing DNS/IPv6/UDP proof. Read-only follow-up on iOS/macOS confirmed distinct egress, loopback DNS, redsocks, and explicit IPv4/IPv6 terminal-drop chains; UDP behavior and direct/hybrid live proof remain unverified.
+
+### Task 7: Fail closed on unknown proxy capacity
+
+**Files:** `app/provider_topology.py`; tests in `tests/test_provider_topology.py`.
+
+- Treat `proxy_capacity=None` as discovery pending, never as an IPv4-shaped proxy target.
+- Preserve explicit `proxy_capacity=0` as zero capacity and return blocked proxy plans.
+- Keep direct and hybrid planning unchanged.
+- [ ] Add regression tests for unknown capacity and explicit zero capacity.
+- [ ] Run `pytest tests/test_provider_topology.py -q`.
+
+### Task 8: Slot-based direct-only contract
+
+**Files:** `app/provider_runtime.py`, `app/provider_topology.py`, `app/main.py`; tests in `tests/test_provider_topology_api.py`.
+
+- Mark direct-only providers that are provisioned per public IPv4 as `slot_direct`.
+- Keep genuinely dedicated/manual providers on their dedicated adapters.
+- Expose `public_ipv4_slot`, expected egress, and route state in API payloads.
+- [ ] Add API tests proving direct-only count equals route-ready slots and never proxy capacity.
+
+### Task 9: Lane-scoped counters and reconciliation UI
+
+**Files:** existing provider catalog/API/UI components; tests in `tests/test_deploy_modes_api.py` and UI tests.
+
+- Render direct/proxy counters separately: desired, running, free, blocked, pending.
+- Show proxy `eligible`, `leased`, `owned`, `available`, and duplicate egress counts.
+- Show lane, capacity source, expected/observed egress, lease and ownership state per node.
+- [ ] Exercise every control and empty/error state through the existing browser test flow.
+
+### Task 10: End-to-end live gates
+
+**Files:** `docs/evidence/provider-topology-production-readiness.md`, runbook evidence.
+
+- Capture direct-only, proxy-only, and hybrid evidence using the current released worker.
+- Verify sequential deployment, restart/reboot persistence, proxy rotation, lease/release, orphan reconciliation, and provider failure isolation.
+- Run DNS, IPv6, UDP, DoH/DoT, and direct-fallback probes for every lane.
+- [ ] Do not mark production-ready until every gate has redacted evidence.

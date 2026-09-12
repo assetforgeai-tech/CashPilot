@@ -137,17 +137,14 @@ def plan_provider_nodes(
     modes = provider_modes.expand_requested(slug, mode)
     slots = _normalise_slots(public_ipv4_slots)
     plans: list[ProviderNodePlan] = []
-    # A supplied proxy capacity is authoritative. Without it, retain the
-    # legacy slot-shaped proxy plan for callers that have not discovered pool
-    # capacity yet; deployment can then mark those plans pending_proxy.
+    # Proxy capacity is an independent discovery result. Unknown capacity must
+    # stay pending; inferring it from public IPv4 slots creates unsafe proxy
+    # nodes before the pool has been checked.
     direct_slots = slots if "direct" in modes else []
     proxy_slots = (
         [(f"proxy-{index:03d}", "", "", True) for index in range(1, max(0, int(proxy_capacity)) + 1)]
-        if proxy_capacity is not None
-        else [
-            (slot_id, public_ip, network, route_ready)
-            for slot_id, public_ip, network, route_ready in slots
-        ] if "proxy" in modes else []
+        if proxy_capacity is not None and "proxy" in modes
+        else []
     )
     direct_plans: list[ProviderNodePlan] = []
     proxy_plans: list[ProviderNodePlan] = []
@@ -168,12 +165,8 @@ def plan_provider_nodes(
                 f"proxy-{proxy_index:03d}", True, "",
             )
         )
-    if proxy_capacity is None and len(modes) == 2:
-        for direct, proxy in zip(direct_plans, proxy_plans, strict=False):
-            plans.extend((direct, proxy))
-    else:
-        plans.extend(direct_plans)
-        plans.extend(proxy_plans)
+    plans.extend(direct_plans)
+    plans.extend(proxy_plans)
     return plans
 
 

@@ -36,17 +36,17 @@ def test_plan_carries_bootstrap_network_contract():
 
 def test_both_plans_direct_then_proxy_for_each_slot():
     slots = ["ipv4-002", "ipv4-001"]
-    plans = plan_provider_nodes(7, "earnfm", slots)
+    plans = plan_provider_nodes(7, "earnfm", slots, proxy_capacity=2)
     assert [(p.mode, p.slot_id) for p in plans] == [
         ("direct", "ipv4-001"),
-        ("proxy", "ipv4-001"),
         ("direct", "ipv4-002"),
-        ("proxy", "ipv4-002"),
+        ("proxy", "proxy-001"),
+        ("proxy", "proxy-002"),
     ]
 
 
 def test_proxy_only_can_select_one_mode_and_rejects_invalid_input():
-    plans = plan_provider_nodes(7, "iproyal", 2, mode="proxy")
+    plans = plan_provider_nodes(7, "iproyal", 2, mode="proxy", proxy_capacity=2)
     assert len(plans) == 2
     assert all(p.mode == "proxy" for p in plans)
     with pytest.raises(ValueError, match="does not support direct"):
@@ -59,6 +59,19 @@ def test_proxy_only_plans_use_proxy_capacity_without_public_ipv4_slots():
         ("proxy", "proxy-001"),
         ("proxy", "proxy-002"),
         ("proxy", "proxy-003"),
+    ]
+
+
+def test_unknown_proxy_capacity_never_infers_proxy_nodes_from_public_ipv4_slots():
+    plans = plan_provider_nodes(7, "iproyal", ["ipv4-001", "ipv4-002"], mode="proxy")
+    assert plans == []
+
+
+def test_hybrid_unknown_proxy_capacity_plans_only_the_direct_lane():
+    plans = plan_provider_nodes(7, "earnfm", ["ipv4-001", "ipv4-002"])
+    assert [(plan.mode, plan.slot_id) for plan in plans] == [
+        ("direct", "ipv4-001"),
+        ("direct", "ipv4-002"),
     ]
 
 
@@ -130,6 +143,7 @@ def test_not_ready_direct_route_does_not_block_proxy_capacity():
         7,
         "earnfm",
         [{"slot_id": "ipv4-001", "public_ip": "198.51.100.1", "route_ready": False}],
+        proxy_capacity=1,
     )
     assert [(plan.mode, plan.deployable) for plan in plans] == [("direct", False), ("proxy", True)]
 
@@ -139,6 +153,7 @@ def test_summary_reports_deployable_and_lane_capacity():
         7,
         "earnfm",
         [{"slot_id": "ipv4-001", "route_ready": False}],
+        proxy_capacity=1,
     )
     summary = summarize_provider_plan(plans, [])
     assert summary["deployable"] == 1
@@ -150,12 +165,12 @@ def test_summary_reports_deployable_and_lane_capacity():
 
 
 def test_proxy_plan_exposes_independent_capacity_slot():
-    plan = plan_provider_nodes(7, "iproyal", 1, mode="proxy")[0]
+    plan = plan_provider_nodes(7, "iproyal", 1, mode="proxy", proxy_capacity=1)[0]
     assert plan.capacity_slot == "proxy-001"
 
 
 def test_summary_marks_proxy_shortage_as_pending_capacity():
-    plans = plan_provider_nodes(7, "iproyal", 3, mode="proxy")
+    plans = plan_provider_nodes(7, "iproyal", 3, mode="proxy", proxy_capacity=3)
     summary = summarize_provider_plan(plans, [], available_proxy_count=1)
     assert summary["desired"] == 3
     assert summary["deployable"] == 1
@@ -252,7 +267,7 @@ def test_catalog_runtime_exposes_the_same_lane_contract():
 
 
 def test_lane_summary_reports_free_capacity_without_collapsing_lanes():
-    plans = plan_provider_nodes(7, "earnfm", 2)
+    plans = plan_provider_nodes(7, "earnfm", 2, proxy_capacity=2)
     summary = summarize_provider_plan(plans, [], available_proxy_count=1)
     assert summary["lane_capacity"]["direct"]["free"] == 2
     assert summary["lane_capacity"]["proxy"]["free"] == 1
