@@ -27,7 +27,7 @@
 - Preserve hybrid desired count while reporting per-lane deployable/blocked/free counts.
 - Add tests for direct-only, proxy-only, hybrid, and proxy shortage.
 
-Progress: lane metadata (`lanes`, `capacity_basis`, `lane_isolation`) now flows through topology and catalog contracts; independent database capacity scoping remains to be completed.
+Progress: lane metadata (`lanes`, `capacity_basis`, `lane_isolation`) now flows through topology, catalog, deployment specs, and network reconciliation; independent database capacity scoping remains provider-specific and live evidence is still required.
 
 ### Task 2: Lease ownership and lifecycle state machine
 
