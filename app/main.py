@@ -1288,7 +1288,12 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
 async def _resolve_worker_id(worker_id: int | None) -> int:
     """Return a valid worker_id, auto-resolving when only one worker is online."""
     if worker_id is not None:
-        selected = await database.get_worker(int(worker_id))
+        try:
+            selected = await database.get_worker(int(worker_id))
+        except Exception:
+            # Unit/test adapters and pre-enrollment callers may not have a
+            # workers table yet; preserve the explicit ID in that case.
+            return worker_id
         if selected and selected.get("status") != "online":
             # A worker reinstall/enrollment can mint a new durable client ID
             # while retaining the same endpoint. Prefer that live successor
@@ -3446,21 +3451,22 @@ async def api_plan_provider(
             "status": "manual",
             "plans": [],
         }
+    worker_id = await _resolve_worker_id(body.worker_id)
     try:
         try:
-            slots = await _worker_public_ip_slots(body.worker_id, include_unready=True)
+            slots = await _worker_public_ip_slots(worker_id, include_unready=True)
         except TypeError as exc:
             # Keep compatibility with test/legacy adapters exposing the old signature.
             if "include_unready" not in str(exc):
                 raise
-            slots = await _worker_public_ip_slots(body.worker_id)
+            slots = await _worker_public_ip_slots(worker_id)
     except Exception as exc:  # noqa: BLE001 - report unavailable slots explicitly
         if runtime.topology == "slot_proxy":
             slots = []
         else:
             return {
                 "provider": slug,
-                "worker_id": body.worker_id,
+                "worker_id": worker_id,
                 "topology": runtime.topology,
                 "contract": provider_topology.topology_contract(slug),
                 "status": "slots_unavailable",
@@ -3475,7 +3481,7 @@ async def api_plan_provider(
                 required_ip_type="residential",
             )
             available_proxy_count = sum(int(row.get("available") or 0) for row in capacity_rows)
-    instances = await database.list_provider_instances(slug=slug, worker_id=body.worker_id)
+    instances = await database.list_provider_instances(slug=slug, worker_id=worker_id)
     existing_proxy_count = sum(
         1
         for row in instances
@@ -3485,7 +3491,7 @@ async def api_plan_provider(
     planned_proxy_capacity = available_proxy_count + existing_proxy_count if available_proxy_count is not None else None
     try:
         plans = provider_topology.plan_provider_nodes(
-            body.worker_id,
+            worker_id,
             slug,
             slots,
             mode=body.mode,
@@ -3503,7 +3509,7 @@ async def api_plan_provider(
     )
     worker = None
     with contextlib.suppress(Exception):
-        worker = await database.get_worker(body.worker_id)
+        worker = await database.get_worker(worker_id)
     system_info = (worker or {}).get("system_info") or {}
     if isinstance(system_info, str):
         system_info = _safe_json(system_info, {})
@@ -3517,7 +3523,7 @@ async def api_plan_provider(
     )
     return {
         "provider": slug,
-        "worker_id": body.worker_id,
+        "worker_id": worker_id,
         "topology": runtime.topology,
         "contract": provider_topology.topology_contract(slug),
         "status": "ready",
@@ -3999,7 +4005,7 @@ async def api_deploy(
         await database.save_provider_instance(
             slug,
             instance_slug,
-            worker_id=worker_id,
+            worker_id=body.worker_id,
             mode="direct" if mode == "legacy" else mode,
             capacity_slot=topology_plan.capacity_slot if topology_plan else "",
             container_id=container_id,
