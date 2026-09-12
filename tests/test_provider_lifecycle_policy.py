@@ -1,6 +1,14 @@
 from app.provider_lifecycle import decide, decide_instance, decide_lane
 
 
+def test_provider_lifecycle_dispatcher_is_scheduled_separately():
+    import inspect
+
+    from app import main
+
+    assert inspect.iscoroutinefunction(main._run_provider_lifecycle_scheduler)
+
+
 def test_offline_provider_restarts_without_rotating_proxy():
     assert decide("packetstream", online=False, banned=False, proxy_healthy=True) == "restart"
 
