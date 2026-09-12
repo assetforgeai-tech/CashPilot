@@ -2615,7 +2615,7 @@ def _service_deploy_surface(svc: dict[str, Any] | None) -> str:
     return str(deploy.get("deploy_surface") or "docker")
 
 
-def _mode_scoped_named_volumes(volumes: dict[str, Any], mode: str) -> dict[str, Any]:
+def _mode_scoped_named_volumes(volumes: dict[str, Any], mode: str, instance_id: str = "") -> dict[str, Any]:
     if mode == "legacy":
         return volumes
     scoped: dict[str, Any] = {}
@@ -2623,7 +2623,10 @@ def _mode_scoped_named_volumes(volumes: dict[str, Any], mode: str) -> dict[str, 
         if str(source).startswith(("/", ".", "~")):
             scoped[source] = mount
         else:
-            scoped[f"{source}-{mode}"] = mount
+            suffix = f"-{mode}"
+            if instance_id:
+                suffix += f"-{re.sub(r'[^A-Za-z0-9_.-]+', '-', instance_id).strip('-')}"
+            scoped[f"{source}{suffix}"] = mount
     return scoped
 
 
@@ -3412,9 +3415,13 @@ _DEVICE_IDENTITY_ENV_KEYS: dict[str, tuple[str, ...]] = {
 }
 
 
-def _standard_device_identity(worker: dict[str, Any] | None, mode: str, fallback_hostname: str) -> str:
+def _standard_device_identity(
+    worker: dict[str, Any] | None, mode: str, fallback_hostname: str, identity_seed: str = ""
+) -> str:
     suffix = "p" if mode == "proxy" else "d"
     source = egress.egress_of(worker) or str((worker or {}).get("name") or "").strip() or fallback_hostname
+    if identity_seed:
+        source = f"{source}-{re.sub(r'[^A-Za-z0-9_.-]+', '-', identity_seed).strip('-')}"
     return f"{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}.{source}.{suffix}"
 
 
@@ -3430,8 +3437,9 @@ def _apply_standard_device_identity(
     worker: dict[str, Any] | None,
     mode: str,
     fallback_hostname: str,
+    identity_seed: str = "",
 ) -> None:
-    identity = _standard_device_identity(worker, mode, fallback_hostname)
+    identity = _standard_device_identity(worker, mode, fallback_hostname, identity_seed)
     if slug == "proxies-sx":
         identity = _proxies_sx_agent_name(identity)
     for key in _DEVICE_IDENTITY_ENV_KEYS.get(slug, ()):
@@ -3930,7 +3938,14 @@ async def api_deploy(
             if slug in _DEVICE_IDENTITY_ENV_KEYS and identity_worker is None:
                 with contextlib.suppress(Exception):
                     identity_worker = await database.get_worker(worker_id)
-            _apply_standard_device_identity(slug, instance_env, worker=identity_worker, mode=mode, fallback_hostname=hn)
+            _apply_standard_device_identity(
+                slug,
+                instance_env,
+                worker=identity_worker,
+                mode=mode,
+                fallback_hostname=hn,
+                identity_seed=instance_slug if topology_plan else "",
+            )
             if raw_command and slug in _DEVICE_IDENTITY_ENV_KEYS:
                 instance_spec["command"] = re.sub(
                     r"\$\{(\w+)\}",
@@ -3938,7 +3953,9 @@ async def api_deploy(
                     raw_command,
                 )
         if instance_spec.get("volumes"):
-            instance_spec["volumes"] = _mode_scoped_named_volumes(instance_spec["volumes"], mode)
+            instance_spec["volumes"] = _mode_scoped_named_volumes(
+                instance_spec["volumes"], mode, instance_slug if topology_plan else ""
+            )
         if mode == "proxy" and slug != "iproyal":
             try:
                 instance_spec["proxy"] = await _proxy_for_provider_instance(

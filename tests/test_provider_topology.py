@@ -11,6 +11,17 @@ from app.provider_topology import (
 )
 
 
+def test_instance_scoping_helpers_are_unique_per_lane_slot():
+    from app.main import _mode_scoped_named_volumes, _standard_device_identity
+
+    volumes = _mode_scoped_named_volumes({"provider-data": {"bind": "/data"}}, "proxy", "proxy-001")
+    assert list(volumes) == ["provider-data-proxy-proxy-001"]
+    worker = {"id": 7, "system_info": '{"egress_ip":"8.8.8.8"}'}
+    first = _standard_device_identity(worker, "proxy", "worker", "proxy-001")
+    second = _standard_device_identity(worker, "proxy", "worker", "proxy-002")
+    assert first != second
+
+
 def test_dedicated_direct_provider_cannot_use_generic_planner():
     with pytest.raises(ValueError, match="dedicated planner"):
         plan_provider_nodes(7, "mysterium", 2)
