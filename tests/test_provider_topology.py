@@ -166,6 +166,19 @@ def test_summary_marks_proxy_shortage_as_pending_capacity():
     assert summary["capacity_target"] == 1
 
 
+def test_summary_counts_existing_proxy_instances_without_calling_them_available():
+    plans = plan_provider_nodes(7, "iproyal", [], mode="proxy", proxy_capacity=2)
+    summary = summarize_provider_plan(
+        plans,
+        [{"instance_id": "iproyal-proxy-w7-proxy-001", "status": "running"}],
+        available_proxy_count=1,
+        existing_proxy_count=1,
+    )
+    assert summary["capacity_target"] == 2
+    assert summary["proxy_capacity"] == 1
+    assert summary["lane_capacity"]["proxy"]["running"] == 1
+
+
 def test_capacity_preflight_reports_compute_disk_ports_slots_and_proxy_capacity():
     result = build_capacity_preflight(
         slots=[{"slot_id": "ipv4-001", "route_ready": True}, {"slot_id": "ipv4-002", "route_ready": False}],

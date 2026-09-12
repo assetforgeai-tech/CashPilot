@@ -182,6 +182,7 @@ def summarize_provider_plan(
     instances: list[Mapping[str, Any]],
     *,
     available_proxy_count: int | None = None,
+    existing_proxy_count: int = 0,
 ) -> dict[str, Any]:
     """Return a read-only convergence summary for a planned provider lane."""
     desired_ids = {plan.instance_id for plan in plans}
@@ -255,7 +256,7 @@ def summarize_provider_plan(
         # currently satisfiable without unsafe fallback. Keeping both prevents
         # proxy shortage from silently shrinking the operator's target.
         "capacity_target": (
-            min(len(desired_ids), max(0, int(available_proxy_count)))
+            min(len(desired_ids), max(0, int(available_proxy_count)) + max(0, int(existing_proxy_count)))
             if available_proxy_count is not None and all(plan.mode == "proxy" for plan in plans)
             else len(desired_ids)
         ),
