@@ -117,3 +117,18 @@
 - [ ] Rebase and run fresh checks.
 - [ ] Merge only with required checks; no admin bypass.
 - [ ] Verify deployed server/worker digest and record redacted evidence.
+
+### Task 7: Scope proxy capacity and topology policy
+
+**Files:**
+- Modify: `app/database.py`, `app/main.py`, `app/provider_runtime.py`, `app/provider_topology.py`
+- Test: `tests/test_provider_capacity.py`, `tests/test_provider_topology.py`, `tests/test_provider_modes.py`
+
+**Interfaces:**
+- Capacity queries accept optional provider/group filters and never count a proxy that is leased, duplicate, sticky-owned, or unqualified.
+- Catalog responses distinguish `topology` (`slot_direct`, `slot_both`, `slot_proxy`) from selected egress mode; `fallback` remains `none`.
+- Proxy-only desired capacity is the minimum of ready public-IP slots and scoped qualified proxies; hybrid proxy capacity is calculated independently from direct capacity.
+
+- [ ] Add failing tests for scoped capacity and proxy-only minimum capacity.
+- [ ] Implement the scoped query and topology summary fields.
+- [ ] Run focused tests and full static checks.

@@ -7132,20 +7132,49 @@ async def get_earnapp_proxy_capacity() -> dict[str, int]:
         await db.close()
 
 
-async def get_provider_proxy_capacity() -> list[dict[str, int | str]]:
-    """Return compact endpoint capacity grouped by imported proxy provider."""
+async def get_provider_proxy_capacity(
+    *, provider_slug: str = "", country_code: str = "", required_ip_type: str = ""
+) -> list[dict[str, int | str]]:
+    """Return endpoint capacity, optionally scoped to one consumer lane.
+
+    ``provider_slug`` applies provider masks; country and IP type are hard
+    filters. ``total`` remains the raw imported count, while eligible/available
+    describe the requested deployment scope.
+    """
+    provider_slug = str(provider_slug or "").strip().lower()
+    country_code = str(country_code or "").strip().upper()
+    required_ip_type = str(required_ip_type or "").strip().lower()
+    if country_code and not re.fullmatch(r"[A-Z]{2}", country_code):
+        return []
+    if required_ip_type and not re.fullmatch(r"[a-z][a-z0-9_-]{1,31}", required_ip_type):
+        return []
     db = await _get_db()
     try:
-        rows = await (
-            await db.execute(
-                """
+        scope = [
+            "lower(coalesce(pe.status, 'unknown')) = 'alive'",
+            "coalesce(pe.duplicate_egress, 0) = 0",
+        ]
+        params: list[Any] = []
+        if country_code:
+            scope.append("upper(trim(coalesce(pe.country_code, ''))) = ?")
+            params.append(country_code)
+        if required_ip_type:
+            scope.append("lower(trim(coalesce(pe.ip_type, ''))) = ?")
+            params.append(required_ip_type)
+        if provider_slug:
+            scope.append(
+                "NOT EXISTS (SELECT 1 FROM proxy_provider_masks ppm "
+                "WHERE ppm.proxy_id = pe.id AND ppm.provider_slug = ?)"
+            )
+            params.append(provider_slug)
+        scoped = " AND ".join(scope)
+        cursor = await db.execute(
+            f"""
                 SELECT p.id AS provider_id, p.name AS provider_name,
                        COUNT(DISTINCT pe.exit_ip) AS total,
-                       COUNT(DISTINCT CASE WHEN lower(coalesce(pe.status, 'unknown')) = 'alive'
-                           AND coalesce(pe.duplicate_egress, 0) = 0
+                       COUNT(DISTINCT CASE WHEN {scoped}
                            THEN pe.exit_ip END) AS eligible,
-                       COUNT(DISTINCT CASE WHEN lower(coalesce(pe.status, 'unknown')) = 'alive'
-                           AND coalesce(pe.duplicate_egress, 0) = 0
+                       COUNT(DISTINCT CASE WHEN {scoped}
                            AND NOT EXISTS (
                                SELECT 1 FROM earnapp_account_egress_ownership sticky
                                WHERE sticky.egress_ip = pe.exit_ip
@@ -7169,9 +7198,10 @@ async def get_provider_proxy_capacity() -> list[dict[str, int | str]]:
                 FROM proxy_providers p
                 LEFT JOIN proxy_endpoints pe ON pe.provider_id = p.id
                 GROUP BY p.id, p.name ORDER BY p.name, p.id
-                """
-            )
-        ).fetchall()
+            """,
+            params * 2,
+        )
+        rows = await cursor.fetchall()
         return [
             {
                 "provider_id": int(row["provider_id"]),
@@ -8081,9 +8111,10 @@ async def upsert_proxy_endpoints_returning_ids(provider_id: int, proxies: Sequen
                 INSERT INTO proxy_endpoints (
                     provider_id, provider_proxy_id, endpoint, host, port, protocol,
                     username, password_enc, location, status, expiry_date, days_left,
-                    hours_left, exit_ip, udp_ok, latency_ms, last_synced_at
+                    hours_left, exit_ip, udp_ok, latency_ms, country_code, country_name,
+                    ip_type, last_synced_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(provider_id, provider_proxy_id) DO UPDATE SET
                     endpoint = excluded.endpoint,
                     host = excluded.host,
@@ -8099,6 +8130,9 @@ async def upsert_proxy_endpoints_returning_ids(provider_id: int, proxies: Sequen
                     exit_ip = CASE WHEN excluded.exit_ip IS NOT NULL AND excluded.exit_ip != '' THEN excluded.exit_ip ELSE proxy_endpoints.exit_ip END,
                     udp_ok = COALESCE(excluded.udp_ok, proxy_endpoints.udp_ok),
                     latency_ms = COALESCE(excluded.latency_ms, proxy_endpoints.latency_ms),
+                    country_code = CASE WHEN excluded.country_code != '' THEN excluded.country_code ELSE proxy_endpoints.country_code END,
+                    country_name = CASE WHEN excluded.country_name != '' THEN excluded.country_name ELSE proxy_endpoints.country_name END,
+                    ip_type = CASE WHEN excluded.ip_type != 'unknown' THEN excluded.ip_type ELSE proxy_endpoints.ip_type END,
                     last_synced_at = datetime('now')
                 """,
                 (
@@ -8118,6 +8152,10 @@ async def upsert_proxy_endpoints_returning_ids(provider_id: int, proxies: Sequen
                     proxy.get("exit_ip"),
                     proxy.get("udp_ok"),
                     proxy.get("latency_ms"),
+                    str(proxy.get("country_code") or "").upper(),
+                    str(proxy.get("country_name") or ""),
+                    str(proxy.get("ip_type") or "unknown").lower(),
+                    datetime.now(UTC).isoformat(),
                 ),
             )
             cursor = await db.execute(
