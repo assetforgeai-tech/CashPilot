@@ -21,3 +21,12 @@ authenticated.
 - Responsive, keyboard, validation, and live provider behavior remain
   `unverified`; screenshots alone do not prove those requirements.
 - No secret values were exported or written to evidence.
+
+## Proxy Pool live reconciliation
+
+The authenticated API snapshot contains `1,254` rows: `1,002` alive and
+`252` dead. All `1,002` alive rows have an egress IP, country metadata, and a
+non-unknown IP type. The `252` unresolved/unknown rows are dead rows whose
+generic check failed; they are not live metadata failures. The summary query
+was corrected to count metadata pending and unknown IP type only for alive
+rows. Regression coverage passed.

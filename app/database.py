@@ -8410,9 +8410,9 @@ async def list_proxy_pool_page(
                         SUM(display_earnapp = 'skipped') AS earnapp_skipped,
                         SUM(trim(coalesce(exit_ip, '')) != '') AS egress_known,
                         SUM(trim(coalesce(exit_ip, '')) = '') AS egress_unresolved,
-                        SUM(display_location = 'Metadata pending') AS location_pending,
-                        SUM(display_ip_type = 'Metadata pending') AS ip_type_pending,
-                        SUM(display_location = 'Metadata pending' OR display_ip_type = 'Metadata pending') AS metadata_pending,
+                        SUM(lower(coalesce(status, '')) = 'alive' AND display_location = 'Metadata pending') AS location_pending,
+                        SUM(lower(coalesce(status, '')) = 'alive' AND display_ip_type = 'Metadata pending') AS ip_type_pending,
+                        SUM(lower(coalesce(status, '')) = 'alive' AND (display_location = 'Metadata pending' OR display_ip_type = 'Metadata pending')) AS metadata_pending,
                         SUM(lower(coalesce(status, '')) = 'alive' AND trim(coalesce(exit_ip, '')) != '' AND coalesce(duplicate_egress, 0) = 0) AS generic_usable,
                         SUM(lower(coalesce(status, '')) = 'alive' AND trim(coalesce(exit_ip, '')) != '' AND coalesce(duplicate_egress, 0) = 0 AND assigned_worker_id IS NULL AND scoped_provider_slug IS NULL) AS canonical_available,
                         SUM(lower(coalesce(status, '')) = 'alive' AND trim(coalesce(exit_ip, '')) != '' AND coalesce(duplicate_egress, 0) = 0 AND display_earnapp = 'eligible' AND assigned_worker_id IS NULL AND scoped_provider_slug IS NULL AND earnapp_reservation_free = 1) AS earnapp_leaseable
@@ -8431,7 +8431,7 @@ async def list_proxy_pool_page(
                         SUM(ip_type = 'hosting') AS hosting,
                         SUM(ip_type = 'vpn') AS vpn,
                         SUM(ip_type = 'proxy') AS proxy,
-                        SUM(coalesce(ip_type, 'unknown') IN ('', 'unknown')) AS unknown
+                        SUM(lower(coalesce(status, '')) = 'alive' AND coalesce(ip_type, 'unknown') IN ('', 'unknown')) AS unknown
                     FROM ({select_sql})"""
                 )
             ).fetchone()
