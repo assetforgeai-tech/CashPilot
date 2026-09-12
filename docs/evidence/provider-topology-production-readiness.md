@@ -47,3 +47,16 @@ Date: 2026-09-12
   without the worker's issued key. No guessed or extracted secret was used.
 - Therefore live deployment/restart/rotation evidence remains pending until the
   worker is upgraded through its normal authenticated deployment path.
+
+## Authenticated slot evidence (2026-09-13)
+
+- East Asia worker `20.187.79.110`: authenticated slot endpoint returned 10
+  slots, all `route_ready=true`; sampled direct egress matched `ipv4-001`,
+  `ipv4-005`, and `ipv4-010`.
+- Japan East worker `20.210.93.220`: authenticated slot endpoint returned 10
+  slots, all `route_ready=true`; health endpoint returned HTTP 200.
+- Direct slot containers use dedicated Docker bridge networks and Docker's local
+  resolver. This proves direct-slot routing only; it does not prove proxy-only
+  or hybrid behavior, nor DoH/DoT/UDP leak absence.
+- Both workers still report running worker image `1.39`; release artifact `1.40`
+  is not yet deployed to either live worker.
