@@ -3973,6 +3973,10 @@ async def api_deploy(
             lane_response[lane]["running"] += sum(
                 1 for item in lane_instances if item.get("status") == "running"
             )
+            lane_response[lane]["free"] = max(
+                0, lane_response[lane]["desired"] - lane_response[lane]["running"] - lane_response[lane]["pending"]
+            )
+            lane_response[lane]["blocked"] = sum(1 for plan in lane_plans if not plan.deployable)
         response.update(
             desired=len(topology_plans),
             running=skipped_existing + sum(1 for item in deployed if item.get("status") == "running"),
