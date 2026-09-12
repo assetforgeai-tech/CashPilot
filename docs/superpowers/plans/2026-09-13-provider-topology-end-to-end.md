@@ -73,3 +73,5 @@ Progress: lane metadata (`lanes`, `capacity_basis`, `lane_isolation`) now flows 
 - Reconcile NKN direct-IP mismatch before rerunning any slot; never rewrite leases blindly.
 - Run focused tests, full suite, Ruff, compileall, and diff checks.
 - Enable auto-deploy only after redacted live evidence proves every lane contract.
+
+Progress: PR #314 merged; `v1.40.0` published; Compose pin PR #315 is open and requires normal approval. Proxy-only live evidence is recorded for `vps-test-us`; direct-only and hybrid evidence remain pending.
