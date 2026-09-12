@@ -60,3 +60,19 @@ Date: 2026-09-12
   or hybrid behavior, nor DoH/DoT/UDP leak absence.
 - Both workers still report running worker image `1.39`; release artifact `1.40`
   is not yet deployed to either live worker.
+
+## Worker upgrade correction (2026-09-13)
+
+- Japan East stale container `cashpilot-worker` was verified to use the
+  authoritative `cashpilot_cashpilot_worker_data` volume before replacement.
+- The stale unlabeled `1.39` container was stopped and removed; no provider
+  container or data volume was touched.
+- Compose recreated the worker as
+  `ghcr.io/assetforgeai-tech/cashpilot-worker:1.40`; runtime reports `1.40.0`.
+- `/api/health` returned HTTP 200, restart policy is `always`, and
+  `cashpilot-worker.service` is active.
+- The old duplicate volume `cashpilot-worker_cashpilot_worker_data` remains
+  retained for rollback/comparison. Worker identity continuity hashes were
+  recorded without exposing key contents.
+- This proves worker upgrade/restart persistence only; provider live lane and
+  leak evidence remain outstanding.
