@@ -30,3 +30,9 @@ non-unknown IP type. The `252` unresolved/unknown rows are dead rows whose
 generic check failed; they are not live metadata failures. The summary query
 was corrected to count metadata pending and unknown IP type only for alive
 rows. Regression coverage passed.
+
+## Fixed defect
+
+The live Settings page exposed `expiryValue is not defined` while rendering
+EarnApp account rows. The row renderer now derives expiry/source metadata like
+the alert renderer. Frontend regression suite: `121 passed`.

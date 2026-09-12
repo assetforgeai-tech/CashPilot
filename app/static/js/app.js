@@ -3525,6 +3525,10 @@ const CP = (() => {
     }
     rows.innerHTML = accounts.map(account => {
       const token = earnAppTokenLabel(account);
+      const expiryValue = account.token_expires_at || account.cookie_expires_at;
+      const source = account.token_expiry_source && account.token_expiry_source !== 'unknown'
+        ? ` (${account.token_expiry_source} evidence)`
+        : '';
       const collector = account.collector || {};
       const updateMs = Number(collector.earnings_update_in_ms);
       const updateLabel = Number.isFinite(updateMs) && updateMs >= 0
