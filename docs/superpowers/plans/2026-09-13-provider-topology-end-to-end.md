@@ -90,8 +90,10 @@ Progress: PR #314 merged; `v1.40.0` published; Compose pin PR #315 is open and r
 - Treat `proxy_capacity=None` as discovery pending, never as an IPv4-shaped proxy target.
 - Preserve explicit `proxy_capacity=0` as zero capacity and return blocked proxy plans.
 - Keep direct and hybrid planning unchanged.
-- [ ] Add regression tests for unknown capacity and explicit zero capacity.
-- [ ] Run `pytest tests/test_provider_topology.py -q`.
+- [x] Add regression tests for unknown capacity and explicit zero capacity.
+- [x] Run `pytest tests/test_provider_topology.py -q`.
+
+Progress: implemented and pushed in `4afe4ab`; explicit deploy-capacity test coverage followed in `1f34d93`. Focused topology/API verification: `37 passed`.
 
 ### Task 8: Slot-based direct-only contract
 
