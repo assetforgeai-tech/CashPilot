@@ -3720,7 +3720,10 @@ async def api_egress_status(request: Request) -> dict[str, Any]:
 async def api_egress_apply(request: Request, body: EgressApplySpec) -> dict[str, Any]:
     _verify_api_key(request)
     _EGRESS_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    mode = proxy_egress.choose_mode(body.mode, body.service_udp, body.proxy)
+    try:
+        mode = proxy_egress.choose_mode(body.mode, body.service_udp, body.proxy)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if mode == proxy_egress.DIRECT or not body.proxy:
         config = {
             "log": {"level": "info"},
