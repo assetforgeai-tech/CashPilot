@@ -21,6 +21,15 @@ def _patch_alive_proxy_probe(monkeypatch):
     monkeypatch.setattr("app.routers.proxies._probe_proxy_confirmed", fake_probe)
 
 
+@pytest.fixture(autouse=True)
+def _proxy_capacity_discovery(monkeypatch):
+    monkeypatch.setattr(
+        main.database,
+        "get_provider_proxy_capacity",
+        AsyncMock(return_value=[{"available": 100}]),
+    )
+
+
 @pytest.mark.asyncio
 async def test_proxy_only_zero_capacity_fails_closed_without_legacy_deploy(monkeypatch):
     async def config(*_args, **_kwargs):
@@ -30,6 +39,33 @@ async def test_proxy_only_zero_capacity_fails_closed_without_legacy_deploy(monke
     monkeypatch.setattr(main.database, "get_deployment_spec", AsyncMock(return_value=None))
     monkeypatch.setattr(main.database, "list_provider_instances", AsyncMock(return_value=[]))
     monkeypatch.setattr(main.database, "get_provider_proxy_capacity", AsyncMock(return_value=[]))
+    monkeypatch.setattr(main.database, "record_health_event", AsyncMock())
+    monkeypatch.setattr(main, "_worker_public_ip_slots", AsyncMock(return_value=[]))
+    deploy = AsyncMock()
+    monkeypatch.setattr(main, "_proxy_worker_deploy", deploy)
+
+    result = await main.api_deploy(
+        _request("/api/deploy/iproyal"),
+        "iproyal",
+        main.DeployRequest(env={}, mode="proxy"),
+        worker_id=7,
+        _auth={"r": "owner"},
+    )
+
+    assert result["status"] == "pending_capacity"
+    assert result["pending_proxy"] == 1
+    deploy.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_proxy_only_unavailable_capacity_fails_closed_without_legacy_deploy(monkeypatch):
+    async def unavailable(**_kwargs):
+        raise RuntimeError("pool unavailable")
+
+    monkeypatch.setattr(main.database, "get_config", AsyncMock(return_value={"iproyal_email": "a", "iproyal_password": "b"}))
+    monkeypatch.setattr(main.database, "get_deployment_spec", AsyncMock(return_value=None))
+    monkeypatch.setattr(main.database, "list_provider_instances", AsyncMock(return_value=[]))
+    monkeypatch.setattr(main.database, "get_provider_proxy_capacity", unavailable)
     monkeypatch.setattr(main.database, "record_health_event", AsyncMock())
     monkeypatch.setattr(main, "_worker_public_ip_slots", AsyncMock(return_value=[]))
     deploy = AsyncMock()
