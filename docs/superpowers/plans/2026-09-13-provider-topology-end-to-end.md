@@ -74,4 +74,4 @@ Progress: lane metadata (`lanes`, `capacity_basis`, `lane_isolation`) now flows 
 - Run focused tests, full suite, Ruff, compileall, and diff checks.
 - Enable auto-deploy only after redacted live evidence proves every lane contract.
 
-Progress: PR #314 merged; `v1.40.0` published; Compose pin PR #315 is open and requires normal approval. Proxy-only live evidence is recorded for `vps-test-us`; direct-only and hybrid evidence remain pending.
+Progress: PR #314 merged; `v1.40.0` published; Compose pin PR #315 is open and requires normal approval. Proxy-only live evidence is recorded for `vps-test-us` (worker `1.33.3`, therefore network-shape evidence only); direct-only and hybrid evidence remain pending.
