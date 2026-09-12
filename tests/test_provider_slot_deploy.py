@@ -74,6 +74,9 @@ async def test_direct_slot_uses_bootstrap_network_not_host(monkeypatch):
     assert specs["earnfm-direct-w7-ipv4-001"]["topology"] == "slot_both"
     assert specs["earnfm-direct-w7-ipv4-001"]["lane"] == "direct"
     assert specs["earnfm-direct-w7-ipv4-001"]["expected_egress_ip"] == "198.51.100.1"
+    assert result["lanes"] == {
+        "direct": {"desired": 2, "running": 2, "failed": 0, "pending": 0},
+    }
 
 
 @pytest.mark.asyncio
@@ -96,11 +99,14 @@ async def test_proxy_slot_records_lane_lease_and_expected_egress(monkeypatch):
         _request(), "earnfm", main.DeployRequest(env={}, mode="proxy"), worker_id=7, _auth={"r": "owner"}
     )
     assert result["running"] == 2
-    spec = specs["earnfm-proxy-w7-ipv4-001"]
+    spec = specs["earnfm-proxy-w7-proxy-001"]
     assert spec["topology"] == "slot_both"
     assert spec["lane"] == "proxy"
     assert spec["proxy_lease_id"] == "41"
     assert spec["expected_egress_ip"] == "203.0.113.41"
+    assert result["lanes"] == {
+        "proxy": {"desired": 2, "running": 2, "failed": 0, "pending": 0},
+    }
 
 
 @pytest.mark.asyncio

@@ -3950,6 +3950,29 @@ async def api_deploy(
     _spawn(_run_collection())
     response: dict[str, Any] = {"status": "deployed", "instances": deployed}
     if topology_plans:
+        lane_response: dict[str, dict[str, int]] = {}
+        for lane in ("direct", "proxy"):
+            lane_plans = [plan for plan in topology_plans if plan.mode == lane]
+            if not lane_plans:
+                continue
+            lane_instances = [item for item in deployed if item.get("mode") == lane]
+            lane_skipped = sum(
+                1
+                for plan in lane_plans
+                if str(existing_instances.get(plan.instance_id, {}).get("status") or "").lower()
+                in {"running", "deployed"}
+            )
+            lane_response[lane] = {
+                "desired": len(lane_plans),
+                "running": lane_skipped,
+                "failed": sum(1 for item in lane_instances if item.get("status") == "failed"),
+                "pending": sum(1 for plan in lane_plans if not plan.deployable) + sum(
+                    1 for item in lane_instances if item.get("status") == "pending_proxy"
+                ),
+            }
+            lane_response[lane]["running"] += sum(
+                1 for item in lane_instances if item.get("status") == "running"
+            )
         response.update(
             desired=len(topology_plans),
             running=skipped_existing + sum(1 for item in deployed if item.get("status") == "running"),
@@ -3959,6 +3982,7 @@ async def api_deploy(
             blocked=sum(1 for plan in topology_plans if not plan.deployable),
             pending_capacity=sum(1 for plan in topology_plans if not plan.deployable) + pending_proxy,
             blocked_slots=sorted({plan.slot_id for plan in topology_plans if not plan.deployable}),
+            lanes=lane_response,
         )
     if deployed:
         response["container_id"] = deployed[-1]["container_id"]
