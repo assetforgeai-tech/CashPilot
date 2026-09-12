@@ -68,6 +68,9 @@
 - [x] Add failing unit tests for direct blocked, hybrid partial, and proxy shortage summaries.
 - [x] Implement minimal summary fields and preserve existing response keys.
 - [x] Run focused tests.
+- [x] Expose an explicit topology contract: direct-only, hybrid, and proxy-only
+  providers report required lanes and both fallback paths are fail-closed.
+- [x] Expose per-lane free/blocked capacity without collapsing hybrid lanes.
 
 ### Task 4: Enforce lane-isolated lifecycle and egress verification
 
