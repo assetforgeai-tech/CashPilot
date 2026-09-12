@@ -1447,9 +1447,7 @@ async def _run_provider_lifecycle_scheduler() -> None:
                     if candidate:
                         from app.routers.proxies import _rotate_provider_instance_after_ack
 
-                        rotated = await _rotate_provider_instance_after_ack(
-                            worker_id, slug, instance_id, candidate
-                        )
+                        rotated = await _rotate_provider_instance_after_ack(worker_id, slug, instance_id, candidate)
                         if rotated:
                             await database.record_health_event(slug, "rotate", f"lane {instance_id} proxy unhealthy")
                     continue

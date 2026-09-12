@@ -365,7 +365,9 @@ async def test_direct_slot_is_exclusive_across_providers(tmp_path, monkeypatch):
     monkeypatch.setattr(database, "DB_PATH", str(db_path))
     await database.init_db()
     db = await database._get_db()
-    await db.execute("INSERT INTO workers (id, client_id, name, url, status) VALUES (1, 'c1', 'w1', 'http://w1', 'online')")
+    await db.execute(
+        "INSERT INTO workers (id, client_id, name, url, status) VALUES (1, 'c1', 'w1', 'http://w1', 'online')"
+    )
     await db.commit()
     await db.close()
     await database.save_provider_instance(
@@ -385,7 +387,9 @@ async def test_direct_slot_migration_quarantines_historical_duplicates(tmp_path,
     monkeypatch.setattr(database, "DB_PATH", str(db_path))
     await database.init_db()
     db = await database._get_db()
-    await db.execute("INSERT INTO workers (id, client_id, name, url, status) VALUES (1, 'c1', 'w1', 'http://w1', 'online')")
+    await db.execute(
+        "INSERT INTO workers (id, client_id, name, url, status) VALUES (1, 'c1', 'w1', 'http://w1', 'online')"
+    )
     await db.commit()
     await db.close()
     await database.save_provider_instance(
@@ -396,7 +400,12 @@ async def test_direct_slot_migration_quarantines_historical_duplicates(tmp_path,
     await db.commit()
     await db.close()
     await database.save_provider_instance(
-        "proxyrack", "proxyrack-direct-w1-ipv4-001", worker_id=1, mode="direct", capacity_slot="ipv4-001", status="planned"
+        "proxyrack",
+        "proxyrack-direct-w1-ipv4-001",
+        worker_id=1,
+        mode="direct",
+        capacity_slot="ipv4-001",
+        status="planned",
     )
     await database.init_db()
     rows = await database.list_provider_instances(worker_id=1)
