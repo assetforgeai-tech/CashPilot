@@ -147,6 +147,14 @@ def summarize_provider_plan(
     )
     return {
         "desired": len(desired_ids),
+        # ``desired`` is the topology target; ``capacity_target`` is the number
+        # currently satisfiable without unsafe fallback. Keeping both prevents
+        # proxy shortage from silently shrinking the operator's target.
+        "capacity_target": (
+            min(len(desired_ids), max(0, int(available_proxy_count)))
+            if available_proxy_count is not None and all(plan.mode == "proxy" for plan in plans)
+            else len(desired_ids)
+        ),
         "deployable": len(deployable_ids),
         "pending_capacity": sum(1 for plan in effective_plans if not plan.deployable),
         "lanes": lanes,
