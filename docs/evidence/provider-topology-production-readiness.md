@@ -36,3 +36,14 @@ Date: 2026-09-12
 - Per-container IPv4/IPv6/DNS/DoH/UDP/direct-fallback leak matrix.
 - Lease, release, sticky ownership, rotation, reboot, and failure-isolation evidence.
 - Release digest deployment verification.
+
+## Current live verification note (2026-09-13)
+
+- The East Asia worker responds healthy and exposes 10/10 route-ready IPv4 slots.
+- Its systemd unit still builds local `assetforgeai/cashpilot-worker:dev`; the
+  running container reports `CASHPILOT_VERSION=1.39.0`. This is a deployment
+  drift, not evidence for the released `1.40` artifact.
+- The authenticated `/api/network/slots` endpoint returned `401` when called
+  without the worker's issued key. No guessed or extracted secret was used.
+- Therefore live deployment/restart/rotation evidence remains pending until the
+  worker is upgraded through its normal authenticated deployment path.
