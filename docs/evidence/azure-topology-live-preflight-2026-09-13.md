@@ -38,3 +38,13 @@ failure isolation.
 - Worker logs show successful POST heartbeats to the CashPilot server at roughly
   60-second intervals on both workers.
 - This proves worker liveness only; it does not prove provider-node health.
+
+## Direct egress probe
+
+- Read-only `--rm` curl containers were attached to direct networks `cashpilot-direct-ipv4-001`, `-002`, and `-010`.
+- East Asia returned `13.70.42.190`, `13.70.57.2`, and `65.52.169.43`, matching the slot manifest.
+- Japan East returned `13.78.13.59`, `20.43.76.127`, and `20.210.93.220`, matching the slot manifest.
+- No provider or existing container was restarted, created, removed, or reconfigured by this probe.
+
+This proves direct lane egress mapping for sampled slots. It does not prove
+provider application health, hybrid isolation, or complete leak absence.
