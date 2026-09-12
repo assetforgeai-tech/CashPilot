@@ -1288,6 +1288,21 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
 async def _resolve_worker_id(worker_id: int | None) -> int:
     """Return a valid worker_id, auto-resolving when only one worker is online."""
     if worker_id is not None:
+        selected = await database.get_worker(int(worker_id))
+        if selected and selected.get("status") != "online":
+            # A worker reinstall/enrollment can mint a new durable client ID
+            # while retaining the same endpoint. Prefer that live successor
+            # over sending a canary to the stale database row.
+            endpoint = str(selected.get("url") or "").strip()
+            name = str(selected.get("name") or "").strip()
+            candidates = [
+                row
+                for row in await database.list_workers()
+                if row.get("status") == "online"
+                and ((endpoint and str(row.get("url") or "").strip() == endpoint) or (name and str(row.get("name") or "").strip() == name))
+            ]
+            if candidates:
+                return max(candidates, key=lambda row: int(row.get("id") or 0))["id"]
         return worker_id
     workers = await database.list_workers()
     online = [w for w in workers if w["status"] == "online"]

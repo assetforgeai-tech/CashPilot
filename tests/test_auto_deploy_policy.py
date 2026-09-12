@@ -6,6 +6,28 @@ from unittest.mock import AsyncMock, patch
 from app import main
 
 
+def test_resolve_worker_id_adopts_online_reenrollment_with_same_endpoint(monkeypatch):
+    async def run():
+        monkeypatch.setattr(
+            main.database,
+            "get_worker",
+            AsyncMock(return_value={"id": 112494, "status": "offline", "url": "http://20.187.79.110:8081", "name": "20.187.79.110"}),
+        )
+        monkeypatch.setattr(
+            main.database,
+            "list_workers",
+            AsyncMock(
+                return_value=[
+                    {"id": 112494, "status": "offline", "url": "http://20.187.79.110:8081", "name": "20.187.79.110"},
+                    {"id": 118903, "status": "online", "url": "http://20.187.79.110:8081", "name": "20.187.79.110"},
+                ]
+            ),
+        )
+        assert await main._resolve_worker_id(112494) == 118903
+
+    asyncio.run(run())
+
+
 def test_auto_deploy_is_disabled_by_default():
     assert main._auto_deploy_settings({})["enabled"] is False
     assert main._auto_deploy_settings({})["delay_seconds"] == 10
