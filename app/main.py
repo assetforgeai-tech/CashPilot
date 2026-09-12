@@ -3767,7 +3767,16 @@ async def api_deploy(
             or (proxy_capacity_known and proxy_capacity and proxy_capacity > 0)
         )
     )
-    if runtime_topology and runtime_topology.topology == "slot_proxy" and not proxy_capacity_known:
+    # A worker that predates the slot contract may not expose slot discovery.
+    # Preserve its legacy allocator; once discovery succeeds, unknown/zero
+    # proxy capacity is authoritative and deployment must fail closed.
+    topology_contract_available = slot_discovery_ok
+    if (
+        runtime_topology
+        and runtime_topology.topology == "slot_proxy"
+        and not proxy_capacity_known
+        and topology_contract_available
+    ):
         await database.record_health_event(slug, "proxy_pending", "proxy capacity unavailable; deployment deferred")
         return {
             "status": "pending_capacity",
@@ -3776,7 +3785,12 @@ async def api_deploy(
             "pending_proxy": 1,
             "deployed": [],
         }
-    if runtime_topology and runtime_topology.topology == "slot_proxy" and not proxy_capacity:
+    if (
+        runtime_topology
+        and runtime_topology.topology == "slot_proxy"
+        and not proxy_capacity
+        and topology_contract_available
+    ):
         await database.record_health_event(slug, "proxy_pending", "no qualified proxy capacity; deployment deferred")
         return {
             "status": "pending_capacity",
