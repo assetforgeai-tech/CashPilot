@@ -43,6 +43,12 @@
 - [x] Implement only the minimum planner/API changes if a gap is found.
 - [x] Re-run focused tests.
 
+Progress: proxy cardinality defaults to the authoritative bootstrap IPv4 count
+when slot discovery is available. Explicit lane targets remain supported;
+capacity shortage stays pending instead of shrinking desired topology. Direct
+slot deploy fails closed without a slot manifest. Per-instance topology state
+uses lane/slot-scoped volumes and device identity seeds.
+
 ### Task 3: Make lease selection deterministic and lane-scoped
 
 **Files:**
