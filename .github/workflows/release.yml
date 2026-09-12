@@ -368,9 +368,11 @@ jobs:
           git push --force-with-lease origin "HEAD:${PIN_BRANCH}"
           if gh pr view "$PIN_BRANCH" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
             echo "Compose pin PR already exists: $PIN_BRANCH"
-          else
-            gh pr create --repo "${GITHUB_REPOSITORY}" --head "$PIN_BRANCH" --base main \
+          elif gh pr create --repo "${GITHUB_REPOSITORY}" --head "$PIN_BRANCH" --base main \
               --title "chore(compose): pin examples to $SERIES" \
-              --body "Automated compose pin update for released ${TAG}. Release already exists before this PR."
+              --body "Automated compose pin update for released ${TAG}. Release already exists before this PR."; then
+            echo "Compose pin PR created."
+          else
+            echo "::warning::GitHub token cannot create pull requests; open this branch manually: https://github.com/${GITHUB_REPOSITORY}/compare/main...${PIN_BRANCH}?expand=1"
           fi
           echo "compose pin PR: ${PIN_BRANCH}"
