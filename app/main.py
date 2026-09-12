@@ -3456,13 +3456,24 @@ async def api_plan_provider(
                 required_ip_type="residential",
             )
             available_proxy_count = sum(int(row.get("available") or 0) for row in capacity_rows)
+    instances = await database.list_provider_instances(slug=slug, worker_id=body.worker_id)
+    existing_proxy_count = sum(
+        1
+        for row in instances
+        if str(row.get("mode") or "").strip().lower() == "proxy"
+        and str(row.get("status") or "").strip().lower() not in {"retired", "deleted"}
+    )
+    planned_proxy_capacity = (
+        available_proxy_count + existing_proxy_count
+        if available_proxy_count is not None
+        else None
+    )
     try:
         plans = provider_topology.plan_provider_nodes(
-            body.worker_id, slug, slots, mode=body.mode, proxy_capacity=available_proxy_count
+            body.worker_id, slug, slots, mode=body.mode, proxy_capacity=planned_proxy_capacity
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    instances = await database.list_provider_instances(slug=slug, worker_id=body.worker_id)
     summary = provider_topology.summarize_provider_plan(plans, instances, available_proxy_count=available_proxy_count)
     worker = None
     with contextlib.suppress(Exception):
@@ -3734,7 +3745,7 @@ async def api_deploy(
         runtime_topology
         and runtime_topology.topology.startswith("slot_")
         and (
-            bool(slot_records)
+            (slot_discovery_ok and bool(slot_records))
             or (proxy_capacity_known and proxy_capacity and proxy_capacity > 0)
         )
     )

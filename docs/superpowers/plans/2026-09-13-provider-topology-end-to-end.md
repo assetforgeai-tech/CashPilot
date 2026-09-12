@@ -27,7 +27,7 @@
 - Preserve hybrid desired count while reporting per-lane deployable/blocked/free counts.
 - Add tests for direct-only, proxy-only, hybrid, and proxy shortage.
 
-Progress: lane metadata (`lanes`, `capacity_basis`, `lane_isolation`) now flows through topology, catalog, deployment specs, and network reconciliation. Planner/API now consume direct IPv4 slots and proxy capacity independently: proxy-only workers can plan without public slots; hybrid lanes do not multiply capacities. Independent database capacity scoping remains provider-specific and live evidence is still required.
+Progress: lane metadata (`lanes`, `capacity_basis`, `lane_isolation`) now flows through topology, catalog, deployment specs, and network reconciliation. Planner/API now consume direct IPv4 slots and proxy capacity independently: proxy-only workers can plan without public slots; hybrid lanes do not multiply capacities. Plan desired count includes existing non-retired proxy instances plus currently available proxy capacity, preserving idempotent reruns. Independent database capacity scoping remains provider-specific and live evidence is still required.
 
 ### Task 2: Lease ownership and lifecycle state machine
 
