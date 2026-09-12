@@ -9,6 +9,81 @@ def test_provider_lifecycle_dispatcher_is_scheduled_separately():
     assert inspect.iscoroutinefunction(main._run_provider_lifecycle_scheduler)
 
 
+def test_generic_lifecycle_scheduler_restarts_only_confirmed_stopped_lane(monkeypatch):
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    from app import main
+
+    monkeypatch.setattr(
+        main.database,
+        "list_workers",
+        AsyncMock(
+            return_value=[
+                {
+                    "id": 7,
+                    "status": "online",
+                    "containers": '[{"name":"earnfm-direct-w7-ipv4-001","status":"exited"}]',
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        main.database,
+        "list_provider_instances",
+        AsyncMock(
+            return_value=[
+                {
+                    "slug": "earnfm",
+                    "instance_id": "earnfm-direct-w7-ipv4-001",
+                    "worker_id": 7,
+                    "mode": "direct",
+                }
+            ]
+        ),
+    )
+    command = AsyncMock()
+    monkeypatch.setattr(main, "_proxy_worker_command", command)
+    monkeypatch.setattr(main.database, "record_health_event", AsyncMock())
+
+    asyncio.run(main._run_provider_lifecycle_scheduler())
+
+    command.assert_awaited_once_with(7, "restart", "earnfm-direct-w7-ipv4-001")
+
+
+def test_generic_lifecycle_scheduler_does_not_guess_missing_container_state(monkeypatch):
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    from app import main
+
+    monkeypatch.setattr(
+        main.database,
+        "list_workers",
+        AsyncMock(return_value=[{"id": 7, "status": "online", "containers": "[]"}]),
+    )
+    monkeypatch.setattr(
+        main.database,
+        "list_provider_instances",
+        AsyncMock(
+            return_value=[
+                {
+                    "slug": "earnfm",
+                    "instance_id": "earnfm-proxy-w7-ipv4-001",
+                    "worker_id": 7,
+                    "mode": "proxy",
+                }
+            ]
+        ),
+    )
+    command = AsyncMock()
+    monkeypatch.setattr(main, "_proxy_worker_command", command)
+
+    asyncio.run(main._run_provider_lifecycle_scheduler())
+
+    command.assert_not_awaited()
+
+
 def test_offline_provider_restarts_without_rotating_proxy():
     assert decide("packetstream", online=False, banned=False, proxy_healthy=True) == "restart"
 
