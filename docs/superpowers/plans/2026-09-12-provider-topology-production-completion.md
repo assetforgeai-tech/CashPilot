@@ -102,6 +102,7 @@
 
 - [x] Add failing preflight tests for insufficient proxy capacity and expose `pending_capacity` in topology summary.
 - [x] Implement proxy-capacity aggregation in the read-only provider plan endpoint without destructive cleanup.
+- [x] Expose compute, disk, ports, IPv4-slot, and proxy-capacity preflight in the read-only provider plan endpoint.
 - [x] Run full test suite, Ruff, compileall, and diff check.
 - [ ] Record evidence for workers `112444` and `112494` via worker API/SSH only.
 - [ ] Run sequential canary: direct-only, hybrid, proxy-only; verify reboot, rerun, failure isolation, lease/release, and egress.
@@ -114,8 +115,8 @@
 - Verify: PR `#303`, PR `#304`, `main` compose pins, release digest.
 
 - [x] Remove dead workflow code.
-- [ ] Rebase and run fresh checks.
-- [ ] Merge only with required checks; no admin bypass.
+- [x] Rebase and run fresh checks.
+- [x] Merge only with required checks; no admin bypass.
 - [ ] Verify deployed server/worker digest and record redacted evidence.
 
 ### Task 7: Scope proxy capacity and topology policy
