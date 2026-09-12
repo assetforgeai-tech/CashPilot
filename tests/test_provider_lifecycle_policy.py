@@ -32,18 +32,22 @@ def test_invalid_lane_fails_closed_to_observe():
 
 def test_decide_instance_requires_explicit_lane_and_returns_observe_without_signals():
     assert decide_instance({"provider_slug": "earnfm", "mode": "direct"}) == "observe"
-    assert decide_instance(
-        {
-            "provider_slug": "earnfm",
-            "mode": "proxy",
-            "online": True,
-            "banned": False,
-            "proxy_healthy": False,
-        }
-    ) == "rotate"
+    assert (
+        decide_instance(
+            {
+                "provider_slug": "earnfm",
+                "mode": "proxy",
+                "online": True,
+                "banned": False,
+                "proxy_healthy": False,
+            }
+        )
+        == "rotate"
+    )
 
 
 def test_decide_instance_uses_provider_and_lane_identity():
-    assert decide_instance(
-        {"slug": "earnfm", "mode": "direct", "online": False, "banned": False, "proxy_healthy": True}
-    ) == "restart"
+    assert (
+        decide_instance({"slug": "earnfm", "mode": "direct", "online": False, "banned": False, "proxy_healthy": True})
+        == "restart"
+    )
