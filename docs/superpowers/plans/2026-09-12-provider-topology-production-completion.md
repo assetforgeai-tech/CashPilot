@@ -158,4 +158,5 @@
 - [x] Implement the shared fail-closed validator and integrate it into inventory audit.
 - [x] Expose topology contracts on dedicated and unavailable plan responses.
 - [x] Run focused topology/network tests.
+- [x] Require expected and observed egress plus a proxy lease for active managed lanes.
 - [ ] Capture live evidence for all provider topology classes.
