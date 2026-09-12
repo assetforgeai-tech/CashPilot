@@ -260,7 +260,6 @@ class TestEarnAppAccountPoolIsReachable:
         assert "loadEarnAppAccounts();" in app_js
 
     def test_account_rows_define_token_expiry_values_in_their_scope(self):
-        app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
         renderer = js_function("renderEarnAppAccounts")
 
         assert "const expiryValue = account.token_expires_at || account.cookie_expires_at;" in renderer
