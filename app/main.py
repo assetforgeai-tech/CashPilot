@@ -3452,11 +3452,26 @@ async def api_plan_provider(
             )
             available_proxy_count = sum(int(row.get("available") or 0) for row in capacity_rows)
     summary = provider_topology.summarize_provider_plan(plans, instances, available_proxy_count=available_proxy_count)
+    worker = None
+    with contextlib.suppress(Exception):
+        worker = await database.get_worker(body.worker_id)
+    system_info = (worker or {}).get("system_info") or {}
+    if isinstance(system_info, str):
+        system_info = _safe_json(system_info, {})
+    service = catalog.get_service(slug) or {}
+    docker = service.get("docker") if isinstance(service.get("docker"), dict) else {}
+    preflight = provider_topology.build_capacity_preflight(
+        slots=slots,
+        system_info=system_info if isinstance(system_info, dict) else {},
+        ports=docker.get("ports") if isinstance(docker.get("ports"), list) else [],
+        available_proxy_count=available_proxy_count,
+    )
     return {
         "provider": slug,
         "worker_id": body.worker_id,
         "topology": runtime.topology,
         "status": "ready",
+        "preflight": preflight,
         "plans": [plan.__dict__ | {"instance_id": plan.instance_id} for plan in plans],
         **summary,
     }
