@@ -120,7 +120,11 @@ and host-agent lifecycle.
 
 Progress: deploy status now renders per-lane running/desired/free/pending values
 from the API response (`83f6167`). Lease/ownership/expected-vs-observed egress
- remains a separate reconciliation view and still requires browser verification. Hybrid deploy forms now expose optional independent direct/proxy targets and include them in deploy requests; browser verification remains pending.
+remains a separate reconciliation view and still requires browser verification. Hybrid deploy forms now expose optional independent direct/proxy targets and include them in deploy requests; browser verification remains pending.
+
+Progress: generic provider runtime reconciliation now uses the same two-confirmed-
+inventory safety rule as the EarnApp path, excluding EarnApp so sticky ownership
+cannot be released by the generic cleanup path.
 
 ### Task 10: End-to-end live gates
 
