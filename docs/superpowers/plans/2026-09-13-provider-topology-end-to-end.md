@@ -27,7 +27,7 @@
 - Preserve hybrid desired count while reporting per-lane deployable/blocked/free counts.
 - Add tests for direct-only, proxy-only, hybrid, and proxy shortage.
 
-Progress: lane metadata (`lanes`, `capacity_basis`, `lane_isolation`) now flows through topology, catalog, deployment specs, and network reconciliation; independent database capacity scoping remains provider-specific and live evidence is still required.
+Progress: lane metadata (`lanes`, `capacity_basis`, `lane_isolation`) now flows through topology, catalog, deployment specs, and network reconciliation. Planner/API now consume direct IPv4 slots and proxy capacity independently: proxy-only workers can plan without public slots; hybrid lanes do not multiply capacities. Independent database capacity scoping remains provider-specific and live evidence is still required.
 
 ### Task 2: Lease ownership and lifecycle state machine
 
@@ -74,4 +74,4 @@ Progress: lane metadata (`lanes`, `capacity_basis`, `lane_isolation`) now flows 
 - Run focused tests, full suite, Ruff, compileall, and diff checks.
 - Enable auto-deploy only after redacted live evidence proves every lane contract.
 
-Progress: PR #314 merged; `v1.40.0` published; Compose pin PR #315 is open and requires normal approval. Proxy-only live evidence is recorded for `vps-test-us` (worker `1.33.3`, therefore network-shape evidence only); direct-only and hybrid evidence remain pending.
+Progress: PR #314 merged; `v1.40.0` published; Compose pin PR #315 is open and requires normal approval. Proxy-only live evidence is recorded for `vps-test-us` (worker `1.33.3`, therefore network-shape evidence only); direct-only and hybrid evidence remain pending. Full local suite: `2926 passed, 8 skipped, 2 failed`; both failures are the known Compose-pin mismatch (`1.39` versus repository-visible newest release `1.35`) and are not caused by this change. Network inventory now exposes fail-closed `network_evidence` findings for missing DNS/IPv6/UDP proof.

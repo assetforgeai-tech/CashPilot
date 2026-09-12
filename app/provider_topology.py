@@ -119,8 +119,9 @@ def plan_provider_nodes(
     public_ipv4_slots: int | list[Any] | tuple[Any, ...],
     *,
     mode: str | None = None,
+    proxy_capacity: int | None = None,
 ) -> list[ProviderNodePlan]:
-    """Plan one deterministic node per ready slot and supported mode."""
+    """Plan direct slots and proxy candidates as independent capacities."""
     if int(worker_id) <= 0:
         raise ValueError("invalid worker id")
     slug = str(provider_slug or "").strip().lower()
@@ -136,25 +137,43 @@ def plan_provider_nodes(
     modes = provider_modes.expand_requested(slug, mode)
     slots = _normalise_slots(public_ipv4_slots)
     plans: list[ProviderNodePlan] = []
-    for slot_id, public_ip, network, route_ready in slots:
-        for selected_mode in modes:
-            deployable = selected_mode != "direct" or route_ready
-            plans.append(
-                ProviderNodePlan(
-                    int(worker_id),
-                    slug,
-                    selected_mode,
-                    slot_id,
-                    selected_mode,
-                    runtime.topology if runtime else "",
-                    public_ip,
-                    network,
-                    route_ready,
-                    f"{slot_id if selected_mode == 'direct' else slot_id.replace('ipv4-', 'proxy-')}",
-                    deployable,
-                    "direct_route_not_ready" if not deployable else "",
-                )
+    # A supplied proxy capacity is authoritative. Without it, retain the
+    # legacy slot-shaped proxy plan for callers that have not discovered pool
+    # capacity yet; deployment can then mark those plans pending_proxy.
+    direct_slots = slots if "direct" in modes else []
+    proxy_slots = (
+        [(f"proxy-{index:03d}", "", "", True) for index in range(1, max(0, int(proxy_capacity)) + 1)]
+        if proxy_capacity is not None
+        else [
+            (slot_id, public_ip, network, route_ready)
+            for slot_id, public_ip, network, route_ready in slots
+        ] if "proxy" in modes else []
+    )
+    direct_plans: list[ProviderNodePlan] = []
+    proxy_plans: list[ProviderNodePlan] = []
+    for slot_id, public_ip, network, route_ready in direct_slots:
+        deployable = route_ready
+        direct_plans.append(
+            ProviderNodePlan(
+                int(worker_id), slug, "direct", slot_id, "direct", runtime.topology if runtime else "",
+                public_ip, network, route_ready, slot_id, deployable,
+                "direct_route_not_ready" if not deployable else "",
             )
+        )
+    for proxy_index, (slot_id, public_ip, network, route_ready) in enumerate(proxy_slots, 1):
+        proxy_plans.append(
+            ProviderNodePlan(
+                int(worker_id), slug, "proxy", slot_id, "proxy", runtime.topology if runtime else "",
+                public_ip, network, route_ready,
+                f"proxy-{proxy_index:03d}", True, "",
+            )
+        )
+    if proxy_capacity is None and len(modes) == 2:
+        for direct, proxy in zip(direct_plans, proxy_plans, strict=False):
+            plans.extend((direct, proxy))
+    else:
+        plans.extend(direct_plans)
+        plans.extend(proxy_plans)
     return plans
 
 

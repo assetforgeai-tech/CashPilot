@@ -53,6 +53,33 @@ def test_proxy_only_can_select_one_mode_and_rejects_invalid_input():
         plan_provider_nodes(7, "iproyal", 1, mode="direct")
 
 
+def test_proxy_only_plans_use_proxy_capacity_without_public_ipv4_slots():
+    plans = plan_provider_nodes(7, "iproyal", [], mode="proxy", proxy_capacity=3)
+    assert [(plan.mode, plan.capacity_slot) for plan in plans] == [
+        ("proxy", "proxy-001"),
+        ("proxy", "proxy-002"),
+        ("proxy", "proxy-003"),
+    ]
+
+
+def test_hybrid_plans_keep_direct_and_proxy_capacity_independent():
+    plans = plan_provider_nodes(
+        7,
+        "earnfm",
+        ["ipv4-001", "ipv4-002", "ipv4-003"],
+        proxy_capacity=5,
+    )
+    assert sum(plan.mode == "direct" for plan in plans) == 3
+    assert sum(plan.mode == "proxy" for plan in plans) == 5
+    assert [plan.capacity_slot for plan in plans if plan.mode == "proxy"] == [
+        "proxy-001",
+        "proxy-002",
+        "proxy-003",
+        "proxy-004",
+        "proxy-005",
+    ]
+
+
 def test_manual_provider_cannot_auto_plan():
     with pytest.raises(ValueError, match="manual-only"):
         plan_provider_nodes(7, "wipter", 1)

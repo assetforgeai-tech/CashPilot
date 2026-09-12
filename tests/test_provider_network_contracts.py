@@ -127,6 +127,39 @@ def test_proxy_lane_flags_verified_egress_mismatch_even_with_sidecar():
     assert "proxy egress mismatch" in report["findings"][0]
 
 
+def test_active_proxy_lane_reports_missing_leak_control_evidence():
+    report = audit_provider_network_inventory(
+        "earnfm",
+        instances=[
+            {
+                "instance_id": "earnfm-proxy-w1-proxy-001",
+                "mode": "proxy",
+                "status": "running",
+                "proxy_lease_id": "9",
+                "expected_egress_ip": "203.0.113.1",
+            }
+        ],
+        containers=[
+            {
+                "instance_slug": "earnfm-proxy-w1-proxy-001",
+                "network_mode": "container:sidecar-id",
+                "sidecar_id": "sidecar-id",
+                "observed_egress_ip": "203.0.113.1",
+            }
+        ],
+        inventory_confirmed=True,
+    )
+    assert report["network_evidence"] == {
+        "status": "attention",
+        "findings": [
+            "earnfm-proxy-w1-proxy-001: dns_isolation_unverified",
+            "earnfm-proxy-w1-proxy-001: ipv6_isolation_unverified",
+            "earnfm-proxy-w1-proxy-001: udp_isolation_unverified",
+        ],
+    }
+    assert report["status"] == "attention"
+
+
 def test_earnapp_main_container_network_contract_does_not_require_sidecar():
     report = audit_provider_network_inventory(
         "earnapp",

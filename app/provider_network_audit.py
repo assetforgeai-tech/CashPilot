@@ -8,6 +8,31 @@ from typing import Any
 from app import provider_runtime
 
 
+def validate_provider_network_evidence(
+    *,
+    mode: str,
+    dns_via_proxy: bool | None,
+    ipv6_blocked: bool | None,
+    udp_blocked: bool | None,
+) -> dict[str, Any]:
+    """Validate leak controls without treating missing evidence as safe."""
+    findings: list[str] = []
+    if dns_via_proxy is None:
+        findings.append("dns_isolation_unverified")
+    elif dns_via_proxy is False:
+        findings.append("dns_leak_detected")
+    if ipv6_blocked is None:
+        findings.append("ipv6_isolation_unverified")
+    elif ipv6_blocked is False:
+        findings.append("ipv6_not_blocked")
+    if str(mode or "").strip().lower() == "proxy":
+        if udp_blocked is None:
+            findings.append("udp_isolation_unverified")
+        elif udp_blocked is False:
+            findings.append("udp_not_blocked")
+    return {"status": "attention" if findings else "pass", "findings": findings}
+
+
 def validate_provider_egress(
     provider: str,
     *,
@@ -70,6 +95,7 @@ def audit_provider_network_inventory(
         if isinstance(item, Mapping)
     }
     findings: list[str] = []
+    network_findings: list[str] = []
     for instance in instances:
         if str(instance.get("mode") or "").strip().lower() != "direct":
             continue
@@ -154,6 +180,14 @@ def audit_provider_network_inventory(
                 proxy_lease_id=lease_id,
             )
             findings.extend(f"{instance_id}: {item}" for item in evidence["findings"])
+        if active and runtime.topology in {"slot_proxy", "slot_both"}:
+            network = validate_provider_network_evidence(
+                mode="proxy",
+                dns_via_proxy=instance.get("dns_via_proxy") if "dns_via_proxy" in instance else container.get("dns_via_proxy"),
+                ipv6_blocked=instance.get("ipv6_blocked") if "ipv6_blocked" in instance else container.get("ipv6_blocked"),
+                udp_blocked=instance.get("udp_blocked") if "udp_blocked" in instance else container.get("udp_blocked"),
+            )
+            network_findings.extend(f"{instance_id}: {item}" for item in network["findings"])
         mode = str(container.get("network_mode") or container.get("NetworkMode") or "").lower()
         # EarnApp installs redsocks, DNS forwarding, and fail-closed iptables
         # inside its main container. It intentionally has no sidecar.
@@ -183,8 +217,12 @@ def audit_provider_network_inventory(
         findings.append(f"{instance_id}: live runtime is not tracked in CashPilot{suffix}")
     return {
         "provider": slug,
-        "status": "attention" if missing or untracked or findings else "pass",
+        "status": "attention" if missing or untracked or findings or network_findings else "pass",
         "missing_sidecar": missing,
         "untracked": untracked,
-        "findings": findings,
+        "findings": findings + network_findings,
+        "network_evidence": {
+            "status": "attention" if network_findings else "pass",
+            "findings": network_findings,
+        },
     }

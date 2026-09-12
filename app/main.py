@@ -3436,28 +3436,33 @@ async def api_plan_provider(
                 raise
             slots = await _worker_public_ip_slots(body.worker_id)
     except Exception as exc:  # noqa: BLE001 - report unavailable slots explicitly
-        return {
-            "provider": slug,
-            "worker_id": body.worker_id,
-            "topology": runtime.topology,
-            "contract": provider_topology.topology_contract(slug),
-            "status": "slots_unavailable",
-            "error": type(exc).__name__,
-            "plans": [],
-        }
-    try:
-        plans = provider_topology.plan_provider_nodes(body.worker_id, slug, slots, mode=body.mode)
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    instances = await database.list_provider_instances(slug=slug, worker_id=body.worker_id)
+        if runtime.topology == "slot_proxy":
+            slots = []
+        else:
+            return {
+                "provider": slug,
+                "worker_id": body.worker_id,
+                "topology": runtime.topology,
+                "contract": provider_topology.topology_contract(slug),
+                "status": "slots_unavailable",
+                "error": type(exc).__name__,
+                "plans": [],
+            }
     available_proxy_count = None
-    if "proxy" in {plan.mode for plan in plans}:
+    if "proxy" in provider_modes.expand_requested(slug, body.mode):
         with contextlib.suppress(Exception):
             capacity_rows = await database.get_provider_proxy_capacity(
                 provider_slug=slug,
                 required_ip_type="residential",
             )
             available_proxy_count = sum(int(row.get("available") or 0) for row in capacity_rows)
+    try:
+        plans = provider_topology.plan_provider_nodes(
+            body.worker_id, slug, slots, mode=body.mode, proxy_capacity=available_proxy_count
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    instances = await database.list_provider_instances(slug=slug, worker_id=body.worker_id)
     summary = provider_topology.summarize_provider_plan(plans, instances, available_proxy_count=available_proxy_count)
     worker = None
     with contextlib.suppress(Exception):
@@ -3700,6 +3705,7 @@ async def api_deploy(
     # ready public IPv4 routes. Keep the legacy single-instance path only for
     # workers that have not enrolled the slot contract yet.
     topology_plans = []
+    slot_discovery_ok = False
     try:
         # Plan all bootstrap capacity, including blocked direct slots; mutation
         # below filters non-deployable plans while proxy lanes remain eligible.
@@ -3709,18 +3715,39 @@ async def api_deploy(
             if "include_unready" not in str(exc):
                 raise
             slot_records = await _worker_public_ip_slots(worker_id)
+        slot_discovery_ok = True
     except Exception as exc:  # noqa: BLE001 - legacy workers may not expose slots
         logger.debug("Public IPv4 slot discovery unavailable for worker %s: %s", worker_id, type(exc).__name__)
         slot_records = []
     runtime_topology = provider_runtime.get(slug)
-    if slot_records is not None and runtime_topology and runtime_topology.topology.startswith("slot_"):
-        topology_plans = provider_topology.plan_provider_nodes(worker_id, slug, slot_records, mode=body.mode)
+    proxy_capacity = None
+    proxy_capacity_known = False
+    if runtime_topology and runtime_topology.topology.startswith("slot_") and "proxy" in modes:
+        with contextlib.suppress(Exception):
+            capacity_rows = await database.get_provider_proxy_capacity(
+                provider_slug=slug,
+                required_ip_type="residential",
+            )
+            proxy_capacity = sum(int(row.get("available") or 0) for row in capacity_rows)
+            proxy_capacity_known = True
+    topology_managed = bool(
+        runtime_topology
+        and runtime_topology.topology.startswith("slot_")
+        and (
+            bool(slot_records)
+            or (proxy_capacity_known and proxy_capacity and proxy_capacity > 0)
+        )
+    )
+    if topology_managed:
+        topology_plans = provider_topology.plan_provider_nodes(
+            worker_id, slug, slot_records, mode=body.mode, proxy_capacity=proxy_capacity
+        )
     deployed: list[dict[str, str]] = []
     pending_proxy = 0
     skipped_existing = 0
     identity_worker: dict[str, Any] | None = None
     existing_instances: dict[str, dict[str, Any]] = {}
-    if topology_plans:
+    if topology_managed:
         existing_instances = {
             str(row.get("instance_id") or ""): row
             for row in await database.list_provider_instances(slug=slug, worker_id=worker_id)
@@ -3739,7 +3766,7 @@ async def api_deploy(
             if str(existing_instances.get(plan.instance_id, {}).get("status") or "").lower()
             not in {"running", "deployed"}
         ]
-        if topology_plans
+        if topology_managed
         else [(None, mode) for mode in modes]
     )
     for idx, (topology_plan, mode) in enumerate(deployment_items):
