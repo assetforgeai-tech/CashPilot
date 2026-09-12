@@ -100,8 +100,8 @@
 - Healthy means inventory confirmed, container present, assigned egress verified, and no leak finding.
 - Auto-deploy remains disabled until read-only dry-run and sequential canary evidence pass.
 
-- [ ] Add failing preflight tests for insufficient proxy and direct capacity.
-- [ ] Implement preflight aggregation without destructive cleanup.
+- [x] Add failing preflight tests for insufficient proxy capacity and expose `pending_capacity` in topology summary.
+- [x] Implement proxy-capacity aggregation in the read-only provider plan endpoint without destructive cleanup.
 - [ ] Run full test suite, Ruff, compileall, and diff check.
 - [ ] Record evidence for workers `112444` and `112494` via worker API/SSH only.
 - [ ] Run sequential canary: direct-only, hybrid, proxy-only; verify reboot, rerun, failure isolation, lease/release, and egress.
