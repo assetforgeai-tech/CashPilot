@@ -107,7 +107,9 @@ def evaluate_node(
     if bool(snapshot.get("auth_failed")):
         return LifecycleDecision("defer_auth", same, rotates, "account authentication requires retry")
     if bool(snapshot.get("banned")):
-        return LifecycleDecision("recreate", same + 1, rotates, "device banned")
+        # Node-level bans use the same in-place recovery as offline nodes;
+        # account suspension is handled separately by auth/account lifecycle.
+        return LifecycleDecision("restart", 0, rotates, "node banned")
     # Offline is an operational failure even when the last account snapshot
     # still reports positive usage. Restart in place; preserve identity/lease.
     if snapshot.get("online") is False:

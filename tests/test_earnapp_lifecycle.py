@@ -42,15 +42,15 @@ def test_positive_usage_resets_recovery_counters():
     assert decision.clear_earnings_zero_observed is True
 
 
-def test_banned_device_recreates_without_proxy_rotation():
+def test_banned_device_restarts_without_proxy_rotation():
     now = datetime.now(UTC)
     decision = evaluate_node(
         {"usage": 10.0, "online": False, "banned": True},
         _runtime(same_proxy_recreates=2, rotate_count=3),
         now,
     )
-    assert decision.action == "recreate"
-    assert decision.same_proxy_recreates == 3
+    assert decision.action == "restart"
+    assert decision.same_proxy_recreates == 0
     assert decision.rotate_count == 3
 
 
