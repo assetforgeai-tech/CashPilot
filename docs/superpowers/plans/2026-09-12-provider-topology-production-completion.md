@@ -31,11 +31,11 @@
 - Generic topology read/deploy planning calls `include_unready=True`; mutation filters `plan.deployable`.
 - Dedicated NKN/EarnApp callers retain ready-only behavior unless explicitly opting in.
 
-- [ ] Write a failing API-level test showing an unready direct slot remains in `desired` and `blocked`, while a hybrid proxy plan remains deployable.
-- [ ] Run the focused test and verify failure caused by the current ready-only filtering.
-- [ ] Implement the optional filter without changing worker slot validation.
-- [ ] Run focused topology/API tests.
-- [ ] Run `git diff --check`.
+- [x] Write a failing API-level test showing an unready direct slot remains in `desired` and `blocked`, while a hybrid proxy plan remains deployable.
+- [x] Run the focused test and verify failure caused by the current ready-only filtering.
+- [x] Implement the optional filter without changing worker slot validation.
+- [x] Run focused topology/API tests.
+- [x] Run `git diff --check`.
 
 ### Task 2: Complete catalog egress contract
 
@@ -48,10 +48,10 @@
 - Every provider declares `egress.mode`, `egress.udp`, `egress.fallback: none`, and a plain-English `reason`.
 - `auto` is documented as policy selection only; it never permits unsafe direct fallback.
 
-- [ ] Add failing test requiring the contract for every `provider_runtime.PROVIDERS` entry.
-- [ ] Run test to confirm missing metadata is reported.
-- [ ] Add minimal metadata matching each runtime mode and UDP requirement.
-- [ ] Run catalog and schema tests.
+- [x] Add failing test requiring the contract for every `provider_runtime.PROVIDERS` entry.
+- [x] Run test to confirm missing metadata is reported.
+- [x] Add minimal metadata matching each runtime mode and UDP requirement.
+- [x] Run catalog and schema tests.
 
 ### Task 3: Add shared lane-aware capacity and reconciliation summary
 
@@ -65,9 +65,9 @@
 - A proxy shortage is `pending_proxy`, never successful deployment.
 - Direct route mismatch is a verification failure, not a healthy running node.
 
-- [ ] Add failing unit tests for direct blocked, hybrid partial, and proxy shortage summaries.
-- [ ] Implement minimal summary fields and preserve existing response keys.
-- [ ] Run focused tests.
+- [x] Add failing unit tests for direct blocked, hybrid partial, and proxy shortage summaries.
+- [x] Implement minimal summary fields and preserve existing response keys.
+- [x] Run focused tests.
 
 ### Task 4: Enforce lane-isolated lifecycle and egress verification
 
@@ -83,9 +83,9 @@
 - Proxy failures rotate only the proxy lane and release lease only after verified replacement/ACK.
 - Missing container requires fresh worker inventory before any cleanup.
 
-- [ ] Add failing tests proving hybrid lane isolation and no proxy-to-direct fallback.
+- [x] Add failing test proving direct egress mismatch is attention-worthy.
 - [ ] Implement the smallest lane-scoped dispatch changes.
-- [ ] Run lifecycle/network tests.
+- [x] Run lifecycle/network tests.
 
 ### Task 5: Verify actual egress and capacity before enabling deployment
 
@@ -113,8 +113,7 @@
 - Modify: `.github/workflows/release.yml` to remove unreachable legacy code after deferred exit.
 - Verify: PR `#303`, PR `#304`, `main` compose pins, release digest.
 
-- [ ] Remove dead workflow code.
+- [x] Remove dead workflow code.
 - [ ] Rebase and run fresh checks.
 - [ ] Merge only with required checks; no admin bypass.
 - [ ] Verify deployed server/worker digest and record redacted evidence.
-
