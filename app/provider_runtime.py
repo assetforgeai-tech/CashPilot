@@ -58,7 +58,9 @@ class ProviderRuntime:
 
 
 PROVIDERS: dict[str, ProviderRuntime] = {
-    "earnfm": ProviderRuntime("earnfm", "earn.fm.py", "earn.fm.py", ("direct", "proxy"), "earnings", topology="slot_both"),
+    "earnfm": ProviderRuntime(
+        "earnfm", "earn.fm.py", "earn.fm.py", ("direct", "proxy"), "earnings", topology="slot_both"
+    ),
     "earnapp": ProviderRuntime(
         slug="earnapp",
         setup_file="earnapp.py",
@@ -74,25 +76,46 @@ PROVIDERS: dict[str, ProviderRuntime] = {
         rotation_scope="node",
         topology="slot_proxy",
     ),
-    "iproyal": ProviderRuntime("iproyal", "pawns.py", "pawns.py", ("proxy",), "earnings", rotation_scope="instance", topology="slot_proxy"),
-    "mysterium": ProviderRuntime("mysterium", "MYST.py", "MYST.py", ("direct",), "earnings", heartbeat_scope="wallet", topology="dedicated"),
+    "iproyal": ProviderRuntime(
+        "iproyal", "pawns.py", "pawns.py", ("proxy",), "earnings", rotation_scope="instance", topology="slot_proxy"
+    ),
+    "mysterium": ProviderRuntime(
+        "mysterium", "MYST.py", "MYST.py", ("direct",), "earnings", heartbeat_scope="wallet", topology="dedicated"
+    ),
     "nkn": ProviderRuntime("nkn", "nkn.py", "nkn.py", ("direct",), "dashboard_only", topology="dedicated"),
-    "packetstream": ProviderRuntime("packetstream", "packetstream.py", "packetstream.py", ("proxy",), "earnings", topology="slot_proxy"),
-    "proxies-sx": ProviderRuntime("proxies-sx", "proxies.sx.py", "proxies.sx.py", ("proxy",), "earnings", topology="slot_proxy"),
+    "packetstream": ProviderRuntime(
+        "packetstream", "packetstream.py", "packetstream.py", ("proxy",), "earnings", topology="slot_proxy"
+    ),
+    "proxies-sx": ProviderRuntime(
+        "proxies-sx", "proxies.sx.py", "proxies.sx.py", ("proxy",), "earnings", topology="slot_proxy"
+    ),
     "proxybase": ProviderRuntime(
         "proxybase", "proxybase.org.py", "proxybase.org.py", ("direct", "proxy"), "dashboard_only", topology="slot_both"
     ),
     "proxybase-xyz": ProviderRuntime(
         "proxybase-xyz", "proxybase.xyz.py", "proxybase.xyz.py", ("direct", "proxy"), "count_only", topology="manual"
     ),
-    "proxyrack": ProviderRuntime("proxyrack", "proxyrack.org.py", "proxyrack.org.py", ("direct", "proxy"), "earnings", topology="slot_both"),
-    "repocket": ProviderRuntime("repocket", "repocket.py", "repocket.py", ("direct", "proxy"), "earnings", topology="slot_both"),
-    "spide": ProviderRuntime("spide", "spide.py", "spide.py", ("direct", "proxy"), "dashboard_only", topology="slot_both"),
+    "proxyrack": ProviderRuntime(
+        "proxyrack", "proxyrack.org.py", "proxyrack.org.py", ("direct", "proxy"), "earnings", topology="slot_both"
+    ),
+    "repocket": ProviderRuntime(
+        "repocket", "repocket.py", "repocket.py", ("direct", "proxy"), "earnings", topology="slot_both"
+    ),
+    "spide": ProviderRuntime(
+        "spide", "spide.py", "spide.py", ("direct", "proxy"), "dashboard_only", topology="slot_both"
+    ),
     "traffmonetizer": ProviderRuntime(
-        "traffmonetizer", "traffmonetizer.py", "traffmonetizer.py", ("direct", "proxy"), "earnings", topology="slot_both"
+        "traffmonetizer",
+        "traffmonetizer.py",
+        "traffmonetizer.py",
+        ("direct", "proxy"),
+        "earnings",
+        topology="slot_both",
     ),
     "uprock": ProviderRuntime("uprock", "Uprock.py", "Uprock.py", ("proxy",), "count_only", topology="manual"),
-    "urnetwork": ProviderRuntime("urnetwork", "URNetwork.py", "URNetwork.py", ("direct", "proxy"), "dashboard_only", topology="slot_both"),
+    "urnetwork": ProviderRuntime(
+        "urnetwork", "URNetwork.py", "URNetwork.py", ("direct", "proxy"), "dashboard_only", topology="slot_both"
+    ),
     "wipter": ProviderRuntime("wipter", "Wipter.py", "Wipter.py", ("proxy",), "count_only", topology="manual"),
 }
 

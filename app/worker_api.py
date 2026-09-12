@@ -2108,6 +2108,8 @@ _ALLOWED_NETWORK_MODES = {None, "", "bridge", "none", "host"}
 
 def _allowed_slot_network(value: str | None) -> bool:
     return bool(re.fullmatch(r"cashpilot-direct-ipv4-\d{3,6}", str(value or "").strip()))
+
+
 _HOST_NETWORK_DIRECT_EXCEPTIONS = {"earnfm"}
 
 
@@ -2169,7 +2171,11 @@ def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
         expected_slot = str(spec.public_ip_slot or "").strip()
         slots = {str(item.get("slot_id") or ""): item for item in _load_public_ip_slots()}
         slot = slots.get(expected_slot)
-        if not slot or slot.get("route_ready") is not True or str(slot.get("docker_network") or "") != spec.network_mode:
+        if (
+            not slot
+            or slot.get("route_ready") is not True
+            or str(slot.get("docker_network") or "") != spec.network_mode
+        ):
             raise HTTPException(status_code=409, detail="Direct public-IP slot network is not ready or mismatched")
     if spec.network and not _allowed_slot_network(spec.network):
         raise HTTPException(status_code=403, detail="Custom network is not allowed")

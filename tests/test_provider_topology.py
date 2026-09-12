@@ -12,12 +12,19 @@ def test_dedicated_direct_provider_cannot_use_generic_planner():
 
 
 def test_plan_carries_bootstrap_network_contract():
-    plan = plan_provider_nodes(7, "earnfm", [{
-        "slot_id": "ipv4-001",
-        "public_ip": "198.51.100.1",
-        "docker_network": "cashpilot-direct-ipv4-001",
-        "route_ready": True,
-    }], mode="direct")[0]
+    plan = plan_provider_nodes(
+        7,
+        "earnfm",
+        [
+            {
+                "slot_id": "ipv4-001",
+                "public_ip": "198.51.100.1",
+                "docker_network": "cashpilot-direct-ipv4-001",
+                "route_ready": True,
+            }
+        ],
+        mode="direct",
+    )[0]
     assert plan.network == "cashpilot-direct-ipv4-001"
 
 
@@ -51,13 +58,17 @@ def test_unknown_provider_and_bad_slots_fail_closed():
     with pytest.raises(ValueError, match="invalid public IPv4 slot"):
         plan_provider_nodes(7, "earnapp", ["bad-slot"])
 
+
 def test_summary_is_read_only_and_identifies_missing_retry_and_stale_rows():
     plans = plan_provider_nodes(7, "earnfm", 2, mode="direct")
-    summary = summarize_provider_plan(plans, [
-        {"instance_id": "earnfm-direct-w7-ipv4-001", "status": "running"},
-        {"instance_id": "earnfm-direct-w7-ipv4-002", "status": "failed"},
-        {"instance_id": "earnfm-direct-w7-ipv4-999", "status": "running"},
-    ])
+    summary = summarize_provider_plan(
+        plans,
+        [
+            {"instance_id": "earnfm-direct-w7-ipv4-001", "status": "running"},
+            {"instance_id": "earnfm-direct-w7-ipv4-002", "status": "failed"},
+            {"instance_id": "earnfm-direct-w7-ipv4-999", "status": "running"},
+        ],
+    )
     assert summary["desired"] == 2
     assert summary["running"] == 1
     assert summary["retry"] == ["earnfm-direct-w7-ipv4-002"]
@@ -72,6 +83,4 @@ async def test_slot_proxy_uses_exclusive_provider_instance_lease(monkeypatch):
     monkeypatch.setattr(main.database, "lease_proxy_for_provider_instance", scoped)
     result = await main._proxy_for_provider_instance(7, "earnfm", "earnfm-proxy-w7-ipv4-001")
     assert result == lease
-    scoped.assert_awaited_once_with(
-        "earnfm", 7, "earnfm-proxy-w7-ipv4-001", required_ip_type="residential"
-    )
+    scoped.assert_awaited_once_with("earnfm", 7, "earnfm-proxy-w7-ipv4-001", required_ip_type="residential")

@@ -46,7 +46,10 @@ def _normalise_slots(slots: int | list[Any] | tuple[Any, ...]) -> list[tuple[str
         if not _SLOT_RE.fullmatch(slot):
             raise ValueError("invalid public IPv4 slot")
         result.setdefault(slot, (public_ip, network))
-    return [(slot, values[0], values[1]) for slot, values in sorted(result.items(), key=lambda pair: int(pair[0].split("-", 1)[1]))]
+    return [
+        (slot, values[0], values[1])
+        for slot, values in sorted(result.items(), key=lambda pair: int(pair[0].split("-", 1)[1]))
+    ]
 
 
 def plan_provider_nodes(
@@ -63,6 +66,7 @@ def plan_provider_nodes(
     if slug not in provider_modes.BOTH | provider_modes.PROXY_ONLY | provider_modes.DIRECT_ONLY:
         raise ValueError("unknown provider")
     from app import provider_runtime
+
     runtime = provider_runtime.get(slug)
     if runtime and runtime.topology == "dedicated":
         raise ValueError("provider requires dedicated planner")
@@ -80,9 +84,19 @@ def plan_provider_nodes(
 def summarize_provider_plan(plans: list[ProviderNodePlan], instances: list[Mapping[str, Any]]) -> dict[str, Any]:
     """Return a read-only convergence summary for a planned provider lane."""
     desired_ids = {plan.instance_id for plan in plans}
-    rows = {str(row.get("instance_id") or "").strip(): row for row in instances if str(row.get("instance_id") or "").strip()}
-    running = sorted(instance_id for instance_id in desired_ids if str(rows.get(instance_id, {}).get("status") or "").lower() in {"running", "deployed"})
-    retry = sorted(instance_id for instance_id in desired_ids if str(rows.get(instance_id, {}).get("status") or "").lower() in {"failed", "missing", "verification_pending"})
+    rows = {
+        str(row.get("instance_id") or "").strip(): row for row in instances if str(row.get("instance_id") or "").strip()
+    }
+    running = sorted(
+        instance_id
+        for instance_id in desired_ids
+        if str(rows.get(instance_id, {}).get("status") or "").lower() in {"running", "deployed"}
+    )
+    retry = sorted(
+        instance_id
+        for instance_id in desired_ids
+        if str(rows.get(instance_id, {}).get("status") or "").lower() in {"failed", "missing", "verification_pending"}
+    )
     return {
         "desired": len(desired_ids),
         "running": len(running),

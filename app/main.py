@@ -3343,7 +3343,9 @@ def _apply_standard_device_identity(
 
 
 @app.post("/api/admin/providers/{slug}/plan")
-async def api_plan_provider(request: Request, slug: str, body: ProviderPlanRequest, _auth: dict[str, Any] = Depends(_require_owner)) -> dict[str, Any]:
+async def api_plan_provider(
+    request: Request, slug: str, body: ProviderPlanRequest, _auth: dict[str, Any] = Depends(_require_owner)
+) -> dict[str, Any]:
     """Read-only slot topology plan; never leases proxies or mutates workers."""
     runtime = provider_runtime.get(slug)
     if not runtime:
@@ -3353,14 +3355,28 @@ async def api_plan_provider(request: Request, slug: str, body: ProviderPlanReque
     try:
         slots = await _worker_public_ip_slots(body.worker_id)
     except Exception as exc:  # noqa: BLE001 - report unavailable slots explicitly
-        return {"provider": slug, "worker_id": body.worker_id, "topology": runtime.topology, "status": "slots_unavailable", "error": type(exc).__name__, "plans": []}
+        return {
+            "provider": slug,
+            "worker_id": body.worker_id,
+            "topology": runtime.topology,
+            "status": "slots_unavailable",
+            "error": type(exc).__name__,
+            "plans": [],
+        }
     try:
         plans = provider_topology.plan_provider_nodes(body.worker_id, slug, slots, mode=body.mode)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     instances = await database.list_provider_instances(slug=slug, worker_id=body.worker_id)
     summary = provider_topology.summarize_provider_plan(plans, instances)
-    return {"provider": slug, "worker_id": body.worker_id, "topology": runtime.topology, "status": "ready", "plans": [plan.__dict__ | {"instance_id": plan.instance_id} for plan in plans], **summary}
+    return {
+        "provider": slug,
+        "worker_id": body.worker_id,
+        "topology": runtime.topology,
+        "status": "ready",
+        "plans": [plan.__dict__ | {"instance_id": plan.instance_id} for plan in plans],
+        **summary,
+    }
 
 
 @app.post("/api/deploy/{slug}")
@@ -3590,9 +3606,7 @@ async def api_deploy(
     pending_proxy = 0
     identity_worker: dict[str, Any] | None = None
     deployment_items = (
-        [(plan, plan.mode) for plan in topology_plans]
-        if topology_plans
-        else [(None, mode) for mode in modes]
+        [(plan, plan.mode) for plan in topology_plans] if topology_plans else [(None, mode) for mode in modes]
     )
     for idx, (topology_plan, mode) in enumerate(deployment_items):
         instance_slug = topology_plan.instance_id if topology_plan else (slug if mode == "legacy" else f"{slug}-{mode}")
@@ -3650,8 +3664,12 @@ async def api_deploy(
                 if not topology_plan:
                     raise
                 pending_proxy += 1
-                deployed.append({"instance_id": instance_slug, "container_id": "", "mode": mode, "status": "pending_proxy"})
-                await database.record_health_event(slug, "proxy_pending", f"no qualified proxy for {instance_slug}; continuing")
+                deployed.append(
+                    {"instance_id": instance_slug, "container_id": "", "mode": mode, "status": "pending_proxy"}
+                )
+                await database.record_health_event(
+                    slug, "proxy_pending", f"no qualified proxy for {instance_slug}; continuing"
+                )
                 continue
             instance_spec["egress_mode"] = "proxy"
         elif mode == "direct":
