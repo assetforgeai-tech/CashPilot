@@ -19,6 +19,12 @@ worker container and Docker socket path; no container was created or removed.
 - Both had `redsocks`, the EarnApp process, and the CashPilot DoH helper running.
 - IPv6 probe failed to connect; this is a negative observation, not a complete
   IPv6 leak proof.
+- Follow-up inspection confirmed both containers have explicit `CP_EARNAPP6_OUT`
+  chains that allow loopback only, then drop non-loopback IPv6 output. This is
+  enforcement evidence, not a complete application-level IPv6 proof.
+- Both containers expose loopback DNS at `127.0.0.1:1053`; redsocks is running.
+- Egress remained distinct: iOS `116.98.229.8`, macOS `14.243.208.175`.
+- No mutation, restart, lease change, or container change occurred.
 
 ## Interpretation
 
