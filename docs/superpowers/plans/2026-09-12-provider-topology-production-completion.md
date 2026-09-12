@@ -71,6 +71,7 @@
 - [x] Expose an explicit topology contract: direct-only, hybrid, and proxy-only
   providers report required lanes and both fallback paths are fail-closed.
 - [x] Expose per-lane free/blocked capacity without collapsing hybrid lanes.
+- [x] Include the topology contract in the read-only provider plan response.
 
 ### Task 4: Enforce lane-isolated lifecycle and egress verification
 
