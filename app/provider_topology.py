@@ -21,10 +21,23 @@ def topology_contract(provider_slug: str) -> dict[str, Any]:
         raise ValueError("unknown provider")
     topology = runtime.topology
     modes = set(runtime.modes)
+    lanes = [mode for mode in ("direct", "proxy") if mode in modes]
     return {
         "topology": topology,
-        "direct_required": topology == "slot_direct" or (topology == "dedicated" and "direct" in modes),
-        "proxy_required": topology == "slot_proxy" or (topology in {"manual", "dedicated"} and "proxy" in modes),
+        "lanes": lanes,
+        "capacity_basis": {
+            lane: (
+                "dedicated_runtime"
+                if runtime.topology in {"dedicated", "manual"}
+                else "public_ipv4_slot"
+                if lane == "direct"
+                else "eligible_proxy"
+            )
+            for lane in lanes
+        },
+        "lane_isolation": len(lanes) > 1,
+        "direct_required": "direct" in lanes,
+        "proxy_required": "proxy" in lanes,
         "direct_fallback": False,
         "proxy_fallback": False,
     }
@@ -59,6 +72,10 @@ class ProviderNodePlan:
     provider_slug: str
     mode: str
     slot_id: str
+    # ``lane`` is explicit in API payloads; keep it equal to mode for now so
+    # callers can evolve lane-specific policy without inferring from IDs.
+    lane: str = ""
+    topology: str = ""
     public_ip: str = ""
     network: str = ""
     route_ready: bool = True
@@ -128,6 +145,8 @@ def plan_provider_nodes(
                     slug,
                     selected_mode,
                     slot_id,
+                    selected_mode,
+                    runtime.topology if runtime else "",
                     public_ip,
                     network,
                     route_ready,

@@ -3,7 +3,12 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app import main
-from app.provider_topology import build_capacity_preflight, plan_provider_nodes, summarize_provider_plan
+from app.provider_topology import (
+    build_capacity_preflight,
+    plan_provider_nodes,
+    summarize_provider_plan,
+    topology_contract,
+)
 
 
 def test_dedicated_direct_provider_cannot_use_generic_planner():
@@ -160,22 +165,50 @@ def test_topology_contract_distinguishes_direct_proxy_and_hybrid_capacity():
 
     assert topology_contract("nkn") == {
         "topology": "dedicated",
+        "lanes": ["direct"],
+        "capacity_basis": {"direct": "dedicated_runtime"},
+        "lane_isolation": False,
         "direct_required": True,
         "proxy_required": False,
         "direct_fallback": False,
         "proxy_fallback": False,
     }
     assert topology_contract("earnfm")["topology"] == "slot_both"
-    assert topology_contract("earnfm")["direct_required"] is False
-    assert topology_contract("earnfm")["proxy_required"] is False
+    assert topology_contract("earnfm")["direct_required"] is True
+    assert topology_contract("earnfm")["proxy_required"] is True
+    assert topology_contract("earnfm")["lanes"] == ["direct", "proxy"]
+    assert topology_contract("earnfm")["capacity_basis"] == {"direct": "public_ipv4_slot", "proxy": "eligible_proxy"}
+    assert topology_contract("earnfm")["lane_isolation"] is True
     assert topology_contract("earnapp") == {
         "topology": "slot_proxy",
+        "lanes": ["proxy"],
+        "capacity_basis": {"proxy": "eligible_proxy"},
+        "lane_isolation": False,
         "direct_required": False,
         "proxy_required": True,
         "direct_fallback": False,
         "proxy_fallback": False,
     }
     assert topology_contract("wipter")["proxy_required"] is True
+
+
+def test_topology_contract_exposes_single_lane_semantics():
+    assert topology_contract("nkn")["lanes"] == ["direct"]
+    assert topology_contract("earnapp")["lanes"] == ["proxy"]
+
+
+def test_topology_contract_declares_capacity_basis_for_each_lane():
+    assert topology_contract("nkn")["capacity_basis"] == {"direct": "dedicated_runtime"}
+    assert topology_contract("earnapp")["capacity_basis"] == {"proxy": "eligible_proxy"}
+
+
+def test_catalog_runtime_exposes_the_same_lane_contract():
+    from app.provider_runtime import catalog_runtime
+
+    data = catalog_runtime("earnfm")
+    assert data["lanes"] == ["direct", "proxy"]
+    assert data["capacity_basis"] == {"direct": "public_ipv4_slot", "proxy": "eligible_proxy"}
+    assert data["lane_isolation"] is True
 
 
 def test_lane_summary_reports_free_capacity_without_collapsing_lanes():

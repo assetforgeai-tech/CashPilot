@@ -249,6 +249,7 @@ def catalog_runtime(slug: str) -> dict[str, object]:
     provider = get(slug)
     if not provider:
         return {}
+    lanes = [mode for mode in ("direct", "proxy") if mode in provider.modes]
     return {
         "modes": list(provider.modes),
         "default_mode": provider.default_mode,
@@ -264,10 +265,20 @@ def catalog_runtime(slug: str) -> dict[str, object]:
         "heartbeat_scope": provider.heartbeat_scope,
         "rotation_scope": provider.rotation_scope,
         "topology": provider.topology,
-        "direct_required": provider.topology == "slot_direct"
-        or (provider.topology == "dedicated" and "direct" in provider.modes),
-        "proxy_required": provider.topology == "slot_proxy"
-        or (provider.topology in {"manual", "dedicated"} and "proxy" in provider.modes),
+        "lanes": lanes,
+        "capacity_basis": {
+            lane: (
+                "dedicated_runtime"
+                if provider.topology in {"dedicated", "manual"}
+                else "public_ipv4_slot"
+                if lane == "direct"
+                else "eligible_proxy"
+            )
+            for lane in lanes
+        },
+        "lane_isolation": len(lanes) > 1,
+        "direct_required": "direct" in lanes,
+        "proxy_required": "proxy" in lanes,
         "direct_fallback": False,
         "proxy_fallback": False,
         "lifecycle_actions": {
