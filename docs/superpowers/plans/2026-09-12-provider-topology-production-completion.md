@@ -83,7 +83,7 @@
 - Proxy failures rotate only the proxy lane and release lease only after verified replacement/ACK.
 - Missing container requires fresh worker inventory before any cleanup.
 
-- [x] Add failing test proving direct egress mismatch is attention-worthy.
+- [x] Add failing tests proving direct and proxy egress mismatches are attention-worthy.
 - [ ] Implement the smallest lane-scoped dispatch changes.
 - [x] Run lifecycle/network tests.
 
