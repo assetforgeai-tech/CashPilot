@@ -133,6 +133,7 @@ def summarize_provider_plan(plans: list[ProviderNodePlan], instances: list[Mappi
     return {
         "desired": len(desired_ids),
         "deployable": len(deployable_ids),
+        "pending_capacity": sum(1 for plan in plans if not plan.deployable),
         "lanes": lanes,
         "running": len(running),
         "retry": retry,

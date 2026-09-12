@@ -110,6 +110,7 @@ def test_summary_reports_deployable_and_lane_capacity():
     )
     summary = summarize_provider_plan(plans, [])
     assert summary["deployable"] == 1
+    assert summary["pending_capacity"] == 1
     assert summary["lanes"] == {
         "direct": {"desired": 1, "deployable": 0, "running": 0},
         "proxy": {"desired": 1, "deployable": 1, "running": 0},
