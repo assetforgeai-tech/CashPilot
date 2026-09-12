@@ -26,7 +26,21 @@ def audit_provider_network_inventory(
     runtime = provider_runtime.get(slug)
     if runtime is None or not inventory_confirmed:
         return {"provider": slug, "status": "unverified", "missing_sidecar": [], "untracked": [], "findings": []}
-    if runtime.modes != ("proxy",):
+    proxy_instances = [
+        item
+        for item in instances
+        if str(item.get("mode") or "").strip().lower() == "proxy"
+        or (not item.get("mode") and runtime.modes == ("proxy",))
+    ]
+    if not proxy_instances:
+        if runtime.modes == ("proxy",) and containers:
+            proxy_instances = [
+                {"instance_id": str(item.get("instance_slug") or item.get("name") or ""), "status": "running"}
+                for item in containers
+            ]
+        elif runtime.modes != ("proxy",):
+            return {"provider": slug, "status": "pass", "missing_sidecar": [], "untracked": [], "findings": []}
+    if not proxy_instances:
         return {"provider": slug, "status": "not_applicable", "missing_sidecar": [], "untracked": [], "findings": []}
 
     by_id = {
@@ -46,7 +60,7 @@ def audit_provider_network_inventory(
         if str(item.get("instance_slug") or item.get("name") or "").strip() not in tracked
     )
     findings: list[str] = []
-    for instance in instances:
+    for instance in proxy_instances:
         instance_id = str(instance.get("instance_id") or instance.get("logical_node_id") or "").strip()
         if not instance_id or str(instance.get("status") or "").lower() in {"retired", "stopped"}:
             continue

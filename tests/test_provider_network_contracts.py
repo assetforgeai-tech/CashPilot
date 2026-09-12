@@ -41,6 +41,41 @@ def test_proxy_only_runtime_without_managed_sidecar_is_attention():
     assert "direct egress risk" in report["findings"][0]
 
 
+def test_hybrid_proxy_lane_without_managed_sidecar_is_attention():
+    report = audit_provider_network_inventory(
+        "earnfm",
+        instances=[{"instance_id": "earnfm-proxy-w1-ipv4-001", "mode": "proxy", "status": "running"}],
+        containers=[
+            {
+                "instance_slug": "earnfm-proxy-w1-ipv4-001",
+                "slug": "earnfm",
+                "status": "running",
+                "network_mode": "bridge",
+            }
+        ],
+        inventory_confirmed=True,
+    )
+    assert report["status"] == "attention"
+    assert report["missing_sidecar"] == ["earnfm-proxy-w1-ipv4-001"]
+
+
+def test_hybrid_direct_lane_does_not_require_proxy_sidecar():
+    report = audit_provider_network_inventory(
+        "earnfm",
+        instances=[{"instance_id": "earnfm-direct-w1-ipv4-001", "mode": "direct", "status": "running"}],
+        containers=[
+            {
+                "instance_slug": "earnfm-direct-w1-ipv4-001",
+                "slug": "earnfm",
+                "status": "running",
+                "network_mode": "cashpilot-direct-ipv4-001",
+            }
+        ],
+        inventory_confirmed=True,
+    )
+    assert report["status"] == "pass"
+
+
 def test_earnapp_main_container_network_contract_does_not_require_sidecar():
     report = audit_provider_network_inventory(
         "earnapp",

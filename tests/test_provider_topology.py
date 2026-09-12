@@ -26,6 +26,7 @@ def test_plan_carries_bootstrap_network_contract():
         mode="direct",
     )[0]
     assert plan.network == "cashpilot-direct-ipv4-001"
+    assert plan.capacity_slot == "ipv4-001"
 
 
 def test_both_plans_direct_then_proxy_for_each_slot():
@@ -74,6 +75,35 @@ def test_summary_is_read_only_and_identifies_missing_retry_and_stale_rows():
     assert summary["retry"] == ["earnfm-direct-w7-ipv4-002"]
     assert summary["missing"] == []
     assert summary["stale"] == ["earnfm-direct-w7-ipv4-999"]
+
+
+def test_not_ready_slot_is_reported_without_becoming_silent_capacity():
+    plans = plan_provider_nodes(
+        7,
+        "earnfm",
+        [
+            {"slot_id": "ipv4-001", "public_ip": "198.51.100.1", "route_ready": True},
+            {"slot_id": "ipv4-002", "public_ip": "198.51.100.2", "route_ready": False},
+        ],
+        mode="direct",
+    )
+    summary = summarize_provider_plan(plans, [])
+    assert summary["desired"] == 2
+    assert summary["blocked_slots"] == ["ipv4-002"]
+
+
+def test_not_ready_direct_route_does_not_block_proxy_capacity():
+    plans = plan_provider_nodes(
+        7,
+        "earnfm",
+        [{"slot_id": "ipv4-001", "public_ip": "198.51.100.1", "route_ready": False}],
+    )
+    assert [(plan.mode, plan.deployable) for plan in plans] == [("direct", False), ("proxy", True)]
+
+
+def test_proxy_plan_exposes_independent_capacity_slot():
+    plan = plan_provider_nodes(7, "iproyal", 1, mode="proxy")[0]
+    assert plan.capacity_slot == "proxy-001"
 
 
 @pytest.mark.asyncio

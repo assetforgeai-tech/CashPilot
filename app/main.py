@@ -291,7 +291,7 @@ async def _worker_public_ip_slots(worker_id: int) -> list[dict[str, Any]]:
     elif isinstance(payload, dict) and isinstance(payload.get("slots"), list):
         raw_slots = payload["slots"]
     else:
-        return []
+        raise RuntimeError("worker public-IPv4 slot contract is malformed")
     slots: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
     seen_ips: set[str] = set()
@@ -300,7 +300,7 @@ async def _worker_public_ip_slots(worker_id: int) -> list[dict[str, Any]]:
             continue
         slot_id = str(raw.get("slot_id") or "").strip()
         public_ip = str(raw.get("public_ip") or "").strip()
-        if not re.fullmatch(r"ipv4-\d{3,6}", slot_id) or not public_ip or raw.get("route_ready") is not True:
+        if not re.fullmatch(r"ipv4-\d{3,6}", slot_id) or not public_ip:
             continue
         if slot_id in seen_ids or public_ip in seen_ips:
             continue
@@ -3600,7 +3600,7 @@ async def api_deploy(
         logger.debug("Public IPv4 slot discovery unavailable for worker %s: %s", worker_id, type(exc).__name__)
         slot_records = []
     runtime_topology = provider_runtime.get(slug)
-    if slot_records and runtime_topology and runtime_topology.topology.startswith("slot_"):
+    if slot_records is not None and runtime_topology and runtime_topology.topology.startswith("slot_"):
         topology_plans = provider_topology.plan_provider_nodes(worker_id, slug, slot_records, mode=body.mode)
     deployed: list[dict[str, str]] = []
     pending_proxy = 0
@@ -3615,12 +3615,15 @@ async def api_deploy(
         skipped_existing = sum(
             1
             for plan in topology_plans
-            if str(existing_instances.get(plan.instance_id, {}).get("status") or "").lower() in {"running", "deployed"}
+            if plan.deployable
+            and str(existing_instances.get(plan.instance_id, {}).get("status") or "").lower()
+            in {"running", "deployed"}
         )
     deployment_items = (
         [
             (plan, plan.mode)
             for plan in topology_plans
+            if plan.deployable
             if str(existing_instances.get(plan.instance_id, {}).get("status") or "").lower()
             not in {"running", "deployed"}
         ]
@@ -3758,6 +3761,8 @@ async def api_deploy(
             failed=sum(1 for item in deployed if item.get("status") == "failed"),
             pending_proxy=pending_proxy,
             skipped=skipped_existing,
+            blocked=sum(1 for plan in topology_plans if not plan.deployable),
+            blocked_slots=sorted({plan.slot_id for plan in topology_plans if not plan.deployable}),
         )
     if deployed:
         response["container_id"] = deployed[-1]["container_id"]
