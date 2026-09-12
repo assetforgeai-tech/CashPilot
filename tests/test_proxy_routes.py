@@ -2643,8 +2643,12 @@ def test_proxy_pool_page_filters_and_sorts_before_pagination_with_global_counts(
             assert result["counts"]["generic_live"] == 3
             assert result["counts"]["generic_dead"] == 1
             assert result["counts"]["earnapp_eligible"] == 2
+            assert result["counts"]["location_pending"] == 0
+            assert result["counts"]["ip_type_pending"] == 0
+            assert result["counts"]["metadata_pending"] == 0
             assert result["type_counts"]["residential"] == 2
             assert result["type_counts"]["datacenter"] == 1
+            assert result["type_counts"]["unknown"] == 0
             assert result["filters"]["providers"] == ["alpha", "beta"]
             assert "US" in result["filters"]["locations"]
             assert "VN" in result["filters"]["locations"]

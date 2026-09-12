@@ -7,6 +7,7 @@ current balance from the Repocket API.
 from __future__ import annotations
 
 import logging
+import os
 
 import httpx
 
@@ -15,9 +16,9 @@ from app.collectors.base import BaseCollector, EarningsResult
 
 logger = logging.getLogger(__name__)
 
-FIREBASE_KEY = "AIzaSyBJf6hyw47O-5TrAwQszkwvDEh-Ri6q6SU"
-FIREBASE_AUTH = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FIREBASE_KEY}"
-FIREBASE_REFRESH = f"https://securetoken.googleapis.com/v1/token?key={FIREBASE_KEY}"
+FIREBASE_KEY = os.getenv("REPOCKET_FIREBASE_KEY", "").strip()
+FIREBASE_AUTH = "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword"
+FIREBASE_REFRESH = "https://securetoken.googleapis.com/v1/token"
 API_BASE = "https://api.repocket.com/api"
 
 
@@ -35,8 +36,11 @@ class RepocketCollector(BaseCollector):
 
     async def _authenticate(self, client: httpx.AsyncClient) -> str:
         """Obtain Firebase ID token via email/password."""
+        if not FIREBASE_KEY:
+            raise ValueError("REPOCKET_FIREBASE_KEY is not configured")
         resp = await client.post(
             FIREBASE_AUTH,
+            params={"key": FIREBASE_KEY},
             json={
                 "email": self.email,
                 "password": self.password,
@@ -57,6 +61,7 @@ class RepocketCollector(BaseCollector):
             return await self._authenticate(client)
         resp = await client.post(
             FIREBASE_REFRESH,
+            params={"key": FIREBASE_KEY},
             json={
                 "grant_type": "refresh_token",
                 "refresh_token": self._refresh_token,

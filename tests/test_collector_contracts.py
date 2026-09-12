@@ -53,6 +53,11 @@ ALL_SLUGS = sorted(COLLECTOR_MAP)
 
 
 class TestEveryCollectorHasAContract:
+    def test_repocket_firebase_key_is_environment_configured(self):
+        source = (Path(__file__).parents[1] / "app" / "collectors" / "repocket.py").read_text(encoding="utf-8")
+        assert "REPOCKET_FIREBASE_KEY" in source
+        assert "AIza" not in source
+
     def test_no_collector_ships_without_a_fixture(self):
         """A new collector with no contract is exactly the untested case."""
         missing = [s for s in ALL_SLUGS if not (FIXTURE_DIR / f"{s}.json").exists()]
