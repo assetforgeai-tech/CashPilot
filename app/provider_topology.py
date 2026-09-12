@@ -157,4 +157,17 @@ def summarize_provider_plan(
         "pending_proxy": sum(1 for plan in effective_plans if plan.mode == "proxy" and not plan.deployable),
         "blocked_slots": sorted({plan.slot_id for plan in plans if not plan.deployable}),
         "blocked": sum(1 for plan in plans if not plan.deployable),
+        "proxy_capacity": (
+            max(0, int(available_proxy_count))
+            if available_proxy_count is not None and any(plan.mode == "proxy" for plan in plans)
+            else None
+        ),
+        "proxy_capacity_shortfall": (
+            max(
+                0,
+                sum(1 for plan in plans if plan.mode == "proxy") - max(0, int(available_proxy_count)),
+            )
+            if available_proxy_count is not None and any(plan.mode == "proxy" for plan in plans)
+            else 0
+        ),
     }

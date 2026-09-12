@@ -129,6 +129,8 @@ def test_summary_marks_proxy_shortage_as_pending_capacity():
     assert summary["deployable"] == 1
     assert summary["pending_proxy"] == 2
     assert summary["pending_capacity"] == 2
+    assert summary["proxy_capacity"] == 1
+    assert summary["proxy_capacity_shortfall"] == 2
 
 
 @pytest.mark.asyncio
