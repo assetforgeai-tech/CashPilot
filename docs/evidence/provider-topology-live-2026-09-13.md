@@ -33,3 +33,14 @@ expected in-container fail-closed shape. It does not prove direct-only routing,
 complete DNS/IPv6/UDP leak absence, or hybrid lane isolation. Those remain
 release gates until captured with a confirmed worker inventory and expected
 lease egress values.
+
+## Additional preflight
+
+- SSH user `kalinh` cannot access `/var/run/docker.sock`; read-only commands required `sudo`.
+- VPS has one private `eth0` address (`10.0.0.4`) and Docker bridge networks only; no public IPv4 slot inventory was exposed by `ip -4 addr`.
+- Host `OUTPUT` policy is `ACCEPT`; this is not sufficient evidence for container lane isolation.
+- Docker server version: `29.1.3`.
+- Current worker image remains `1.33.3`, older than the released `v1.40.0`.
+
+These facts block direct-only and hybrid production claims on this VPS. They do
+not justify changing host firewall or Docker permissions during a read-only audit.
