@@ -287,7 +287,20 @@ def test_capacity_preflight_reports_compute_disk_ports_slots_and_proxy_capacity(
 def test_topology_contract_distinguishes_direct_proxy_and_hybrid_capacity():
     from app.provider_topology import topology_contract
 
-    assert topology_contract("nkn") == {
+    contract = topology_contract("nkn")
+    assert {
+        key: contract[key]
+        for key in (
+            "topology",
+            "lanes",
+            "capacity_basis",
+            "lane_isolation",
+            "direct_required",
+            "proxy_required",
+            "direct_fallback",
+            "proxy_fallback",
+        )
+    } == {
         "topology": "dedicated",
         "lanes": ["direct"],
         "capacity_basis": {"direct": "dedicated_runtime"},
@@ -303,7 +316,20 @@ def test_topology_contract_distinguishes_direct_proxy_and_hybrid_capacity():
     assert topology_contract("earnfm")["lanes"] == ["direct", "proxy"]
     assert topology_contract("earnfm")["capacity_basis"] == {"direct": "public_ipv4_slot", "proxy": "eligible_proxy"}
     assert topology_contract("earnfm")["lane_isolation"] is True
-    assert topology_contract("earnapp") == {
+    earnapp_contract = topology_contract("earnapp")
+    assert {
+        key: earnapp_contract[key]
+        for key in (
+            "topology",
+            "lanes",
+            "capacity_basis",
+            "lane_isolation",
+            "direct_required",
+            "proxy_required",
+            "direct_fallback",
+            "proxy_fallback",
+        )
+    } == {
         "topology": "slot_proxy",
         "lanes": ["proxy"],
         "capacity_basis": {"proxy": "eligible_proxy"},
@@ -326,6 +352,31 @@ def test_topology_contract_declares_capacity_basis_for_each_lane():
     assert topology_contract("earnapp")["capacity_basis"] == {"proxy": "eligible_proxy"}
 
 
+def test_topology_contract_exposes_operational_policy():
+    contract = topology_contract("earnapp")
+    assert contract["auth_scope"] == "account"
+    assert contract["account_sharing"] == "exclusive_account"
+    assert contract["heartbeat"]["confirmations"] == 2
+    assert contract["network_contract"]["proxy"]["fallback"] == "none"
+
+
+@pytest.mark.parametrize(
+    ("provider", "auth_scope", "sharing", "ownership"),
+    [
+        ("nkn", "wallet", "exclusive_wallet", "runtime_lease"),
+        ("mysterium", "wallet", "exclusive_wallet", "runtime_lease"),
+        ("earnapp", "account", "exclusive_account", "account_sticky"),
+    ],
+)
+def test_provider_classes_declare_auth_and_ownership_scope(provider, auth_scope, sharing, ownership):
+    from app.provider_runtime import catalog_runtime
+
+    data = catalog_runtime(provider)
+    assert data["auth_scope"] == auth_scope
+    assert data["account_sharing"] == sharing
+    assert data["egress_ownership_scope"] == ownership
+
+
 def test_catalog_runtime_exposes_the_same_lane_contract():
     from app.provider_runtime import catalog_runtime
 
@@ -333,6 +384,33 @@ def test_catalog_runtime_exposes_the_same_lane_contract():
     assert data["lanes"] == ["direct", "proxy"]
     assert data["capacity_basis"] == {"direct": "public_ipv4_slot", "proxy": "eligible_proxy"}
     assert data["lane_isolation"] is True
+
+
+def test_catalog_runtime_exposes_auth_heartbeat_and_network_contract():
+    from app.provider_runtime import catalog_runtime
+
+    data = catalog_runtime("earnfm")
+    assert data["auth_scope"] == "provider"
+    assert data["account_sharing"] == "provider_scoped"
+    assert data["heartbeat"]["interval_seconds"] == 300
+    assert data["heartbeat"]["timeout_seconds"] == 900
+    assert data["heartbeat"]["confirmations"] == 2
+    assert data["network_contract"] == {
+        "direct": {
+            "fallback": "none",
+            "dns": "provider_native",
+            "ipv6": "explicit",
+            "udp": "explicit",
+            "fail_closed": True,
+        },
+        "proxy": {
+            "fallback": "none",
+            "dns": "tunneled",
+            "ipv6": "disabled_or_tunneled",
+            "udp": "explicit",
+            "fail_closed": True,
+        },
+    }
 
 
 def test_lane_summary_reports_free_capacity_without_collapsing_lanes():

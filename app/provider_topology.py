@@ -40,6 +40,14 @@ def topology_contract(provider_slug: str) -> dict[str, Any]:
         "proxy_required": "proxy" in lanes,
         "direct_fallback": False,
         "proxy_fallback": False,
+        "auth_scope": runtime.auth_scope,
+        "account_sharing": runtime.account_sharing,
+        "heartbeat": {
+            "interval_seconds": runtime.heartbeat_interval_seconds,
+            "timeout_seconds": runtime.heartbeat_timeout_seconds,
+            "confirmations": runtime.heartbeat_confirmations,
+        },
+        "network_contract": {lane: runtime.network_contract_for(lane) for lane in lanes},
     }
 
 

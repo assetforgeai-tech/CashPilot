@@ -3584,7 +3584,9 @@ async def api_plan_provider(
         "worker_id": worker_id,
         "topology": runtime.topology,
         "contract": provider_topology.topology_contract(slug),
-        "status": "ready",
+        # Surface the lane convergence state instead of claiming readiness when
+        # a required direct route or proxy capacity is blocked.
+        "status": summary.get("topology_status", "blocked"),
         "preflight": preflight,
         "plans": [plan.__dict__ | {"instance_id": plan.instance_id} for plan in plans],
         **summary,

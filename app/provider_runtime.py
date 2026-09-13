@@ -39,6 +39,18 @@ class ProviderRuntime:
     rotation_scope: str = "worker"
     topology: TopologyPolicy = "slot_direct"
     egress_ownership_scope: str = "runtime_lease"
+    auth_scope: str = "provider"
+    account_sharing: str = "provider_scoped"
+    heartbeat_interval_seconds: int = 300
+    heartbeat_timeout_seconds: int = 900
+    heartbeat_confirmations: int = 2
+    network_contract: tuple[tuple[str, object], ...] = (
+        ("fallback", "none"),
+        ("dns", "tunneled"),
+        ("ipv6", "disabled_or_tunneled"),
+        ("udp", "explicit"),
+        ("fail_closed", True),
+    )
 
     @property
     def default_mode(self) -> str:
@@ -47,6 +59,21 @@ class ProviderRuntime:
     @property
     def count_only(self) -> bool:
         return self.collector_kind == "count_only"
+
+    def network_contract_for(self, mode: str) -> dict[str, object]:
+        """Return the fail-closed contract for one explicit egress lane."""
+        selected = str(mode or "").strip().lower()
+        if selected == "direct":
+            return {
+                "fallback": "none",
+                "dns": "provider_native",
+                "ipv6": "explicit",
+                "udp": "explicit",
+                "fail_closed": True,
+            }
+        if selected == "proxy":
+            return dict(self.network_contract)
+        raise ValueError("unsupported egress lane")
 
     @property
     def manual_only(self) -> bool:
@@ -77,14 +104,33 @@ PROVIDERS: dict[str, ProviderRuntime] = {
         rotation_scope="node",
         topology="slot_proxy",
         egress_ownership_scope="account_sticky",
+        auth_scope="account",
+        account_sharing="exclusive_account",
     ),
     "iproyal": ProviderRuntime(
         "iproyal", "pawns.py", "pawns.py", ("proxy",), "earnings", rotation_scope="instance", topology="slot_proxy"
     ),
     "mysterium": ProviderRuntime(
-        "mysterium", "MYST.py", "MYST.py", ("direct",), "earnings", heartbeat_scope="wallet", topology="dedicated"
+        "mysterium",
+        "MYST.py",
+        "MYST.py",
+        ("direct",),
+        "earnings",
+        heartbeat_scope="wallet",
+        topology="dedicated",
+        auth_scope="wallet",
+        account_sharing="exclusive_wallet",
     ),
-    "nkn": ProviderRuntime("nkn", "nkn.py", "nkn.py", ("direct",), "dashboard_only", topology="dedicated"),
+    "nkn": ProviderRuntime(
+        "nkn",
+        "nkn.py",
+        "nkn.py",
+        ("direct",),
+        "dashboard_only",
+        topology="dedicated",
+        auth_scope="wallet",
+        account_sharing="exclusive_wallet",
+    ),
     "packetstream": ProviderRuntime(
         "packetstream", "packetstream.py", "packetstream.py", ("proxy",), "earnings", topology="slot_proxy"
     ),
@@ -303,4 +349,14 @@ def catalog_runtime(slug: str) -> dict[str, object]:
         },
         "setup_source": provider.setup_file,
         "collector_source": provider.collector_file,
+        "auth_scope": provider.auth_scope,
+        "account_sharing": provider.account_sharing,
+        "heartbeat": {
+            "interval_seconds": provider.heartbeat_interval_seconds,
+            "timeout_seconds": provider.heartbeat_timeout_seconds,
+            "confirmations": provider.heartbeat_confirmations,
+        },
+        "network_contract": {
+            lane: provider.network_contract_for(lane) for lane in ("direct", "proxy") if lane in provider.modes
+        },
     }

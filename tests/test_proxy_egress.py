@@ -92,7 +92,9 @@ def test_singbox_config_uses_tun_and_socks_outbound():
     assert config["dns"]["strategy"] == "ipv4_only"
     assert {"port": 53, "action": "hijack-dns"} in config["route"]["rules"]
     assert config["dns"]["servers"][0]["detour"] == "proxy-out"
-    assert config["dns"]["servers"][0]["address"].startswith("https://")
+    assert config["dns"]["servers"][0]["server"] == "cloudflare-dns.com"
+    assert config["dns"]["servers"][0]["path"] == "/dns-query"
+    assert config["dns"]["servers"][0]["type"] == "https"
     assert {"domain": ["dc-t5.proxyvt.com"], "outbound": "direct"} in config["route"]["rules"]
 
 

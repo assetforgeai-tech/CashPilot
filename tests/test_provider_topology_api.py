@@ -15,7 +15,20 @@ async def test_dedicated_plan_response_exposes_the_shared_topology_contract():
     )
 
     assert result["status"] == "manual"
-    assert result["contract"] == {
+    contract = result["contract"]
+    assert {
+        key: contract[key]
+        for key in (
+            "topology",
+            "lanes",
+            "capacity_basis",
+            "lane_isolation",
+            "direct_required",
+            "proxy_required",
+            "direct_fallback",
+            "proxy_fallback",
+        )
+    } == {
         "topology": "dedicated",
         "lanes": ["direct"],
         "capacity_basis": {"direct": "dedicated_runtime"},
@@ -25,6 +38,24 @@ async def test_dedicated_plan_response_exposes_the_shared_topology_contract():
         "direct_fallback": False,
         "proxy_fallback": False,
     }
+
+
+@pytest.mark.asyncio
+async def test_slot_plan_status_reflects_blocked_proxy_capacity(monkeypatch):
+    monkeypatch.setattr(main, "_worker_public_ip_slots", AsyncMock(return_value=[{"slot_id": "ipv4-001"}]))
+    monkeypatch.setattr(main.database, "get_provider_proxy_capacity", AsyncMock(return_value=[]))
+    monkeypatch.setattr(main.database, "list_provider_instances", AsyncMock(return_value=[]))
+    monkeypatch.setattr(main.database, "get_worker", AsyncMock(return_value={"id": 7, "system_info": {}}))
+
+    result = await main.api_plan_provider(
+        None,
+        "earnapp",
+        main.ProviderPlanRequest(worker_id=7, mode="proxy"),
+        {},
+    )
+
+    assert result["status"] == "blocked"
+    assert result["topology_status"] == "blocked"
 
 
 @pytest.mark.asyncio
