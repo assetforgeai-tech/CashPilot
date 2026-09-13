@@ -47,8 +47,17 @@ def render_tun_proxy_config(
                     "server": "cloudflare-dns.com",
                     "path": "/dns-query",
                     "detour": "proxy-out",
-                }
+                },
+                {
+                    "tag": "bootstrap",
+                    "type": "https",
+                    "server": "1.1.1.1",
+                    "path": "/dns-query",
+                    "tls": {"server_name": "cloudflare-dns.com"},
+                    "detour": "direct",
+                },
             ],
+            "rules": [{"domain": [proxy["host"]], "server": "bootstrap"}],
             "strategy": "ipv4_only",
         },
         "inbounds": [
