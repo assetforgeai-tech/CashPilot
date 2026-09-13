@@ -1699,7 +1699,13 @@ def _provider_evidence(slug: str, container: Any) -> dict[str, Any]:
     if slug in {"packetstream", "earnfm", "iproyal", "traffmonetizer"}:
         try:
             result = container.exec_run(
-                ["sh", "-lc", "curl --fail --silent --show-error --max-time 10 https://api.ipify.org"]
+                [
+                    "sh",
+                    "-lc",
+                    "if command -v curl >/dev/null 2>&1; then curl --fail --silent --show-error --max-time 10 https://api.ipify.org; "
+                    "elif command -v wget >/dev/null 2>&1; then wget -qO- --timeout=10 https://api.ipify.org; "
+                    "else exit 127; fi",
+                ]
             )
             output = getattr(result, "output", b"") or b""
             text = output.decode("utf-8", errors="replace") if isinstance(output, bytes) else str(output)
