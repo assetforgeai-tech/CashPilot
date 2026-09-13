@@ -291,11 +291,20 @@ def probe_service_egress(slug: str) -> dict[str, Any]:
     container = _find_container(slug)
     if str(getattr(container, "status", "") or "").lower() != "running":
         return {"running": False, "observed_egress_ip": ""}
-    result = container.exec_run(
+    probe_container = container
+    network_mode = _container_network_mode(container)
+    if network_mode.startswith("container:"):
+        try:
+            probe_container = _get_client().containers.get(network_mode.removeprefix("container:").strip())
+        except (NotFound, APIError):
+            probe_container = container
+    result = probe_container.exec_run(
         [
             "/bin/sh",
             "-lc",
-            "curl --fail --silent --show-error --max-time 10 https://api.ipify.org",
+            "if command -v curl >/dev/null 2>&1; then curl --fail --silent --show-error --max-time 10 https://api.ipify.org; "
+            "elif command -v wget >/dev/null 2>&1; then wget -qO- --timeout=10 https://api.ipify.org; "
+            "else exit 127; fi",
         ]
     )
     exit_code = int(getattr(result, "exit_code", result[0] if isinstance(result, tuple) else 1))
