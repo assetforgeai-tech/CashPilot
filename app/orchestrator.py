@@ -1696,6 +1696,23 @@ def _provider_evidence(slug: str, container: Any) -> dict[str, Any]:
         except Exception as exc:
             logger.debug("EarnApp evidence unavailable for %s: %s", getattr(container, "short_id", "?"), exc)
             return {"running": True, "online": False}
+    if slug in {"packetstream", "earnfm", "iproyal", "traffmonetizer"}:
+        try:
+            result = container.exec_run(
+                ["sh", "-lc", "curl --fail --silent --show-error --max-time 10 https://api.ipify.org"]
+            )
+            output = getattr(result, "output", b"") or b""
+            text = output.decode("utf-8", errors="replace") if isinstance(output, bytes) else str(output)
+            observed = text.strip().splitlines()[0] if text.strip() else ""
+            try:
+                observed = str(ipaddress.ip_address(observed))
+            except ValueError:
+                observed = ""
+            ok = int(getattr(result, "exit_code", 1)) == 0 and bool(observed)
+            return {"running": True, "observed_egress_ip": observed if ok else "", "probe_ok": ok}
+        except Exception as exc:
+            logger.debug("Network evidence unavailable for %s: %s", slug, exc)
+            return {"running": True, "probe_ok": False}
     if slug != "uprock":
         return {}
     try:
@@ -1817,6 +1834,7 @@ def get_status() -> list[dict[str, Any]]:
             if network_mode.startswith("container:"):
                 sidecar_id = network_mode.removeprefix("container:").strip()
             cpu_pct, mem_mb, net_rx, net_tx = labeled_stats.get(c.id, (0.0, 0.0, None, None))
+            provider_evidence = _provider_evidence(slug, c)
             results.append(
                 {
                     "slug": slug,
@@ -1837,7 +1855,14 @@ def get_status() -> list[dict[str, Any]]:
                     "sidecar_id": sidecar_id,
                     "deployed_by": c.labels.get(LABEL_DEPLOYED_BY, "unknown"),
                     "category": c.labels.get(LABEL_CATEGORY, ""),
-                    "provider_evidence": _provider_evidence(slug, c),
+                    "provider_evidence": provider_evidence,
+                    "observed_egress_ip": str(provider_evidence.get("observed_egress_ip") or ""),
+                    "dns_via_proxy": provider_evidence.get("dns_via_proxy"),
+                    "ipv6_blocked": provider_evidence.get("ipv6_blocked"),
+                    "udp_blocked": provider_evidence.get("udp_blocked"),
+                    "doh_blocked": provider_evidence.get("doh_blocked"),
+                    "dot_blocked": provider_evidence.get("dot_blocked"),
+                    "direct_fallback_blocked": provider_evidence.get("direct_fallback_blocked"),
                 }
             )
         except Exception as exc:
