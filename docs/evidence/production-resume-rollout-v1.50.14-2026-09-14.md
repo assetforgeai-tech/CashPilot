@@ -16,8 +16,6 @@ Date: 2026-09-14
 
 Only CashPilot control-plane containers were recreated. Provider containers, node identities, proxy leases, and provider data volumes were not mutated.
 
-The Test-Sing legacy EarnApp inspection remains unchanged: bridge networking, `OUTPUT ACCEPT`, public Docker resolvers, and a running redsocks process without a fail-closed chain. This is recorded as a blocker; no node mutation was performed.
-
 ## Drift found and corrected
 
 The server and test-US had legacy Compose files whose image pins differed from the deployed release. The server was corrected to the authoritative `1.50.14` GHCR images. Test-US was corrected through its worker Compose file. Azure Compose resolution was checked explicitly because the repository contains a stale UI compose file; worker Compose now resolves to `1.50.14`.
