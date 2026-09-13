@@ -1,0 +1,2416 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Self-hosted passive income orchestrator. Deploy, manage, and monitor 14 providers from a single dashboard.">
+      
+      
+        <meta name="author" content="Sergio Fernandez">
+      
+      
+        <link rel="canonical" href="https://geiserx.github.io/CashPilot/superpowers/plans/2026-09-08-earnapp-production-policy-and-runtime/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../icon.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>EarnApp Production Policy and Runtime Implementation Plan - CashPilot</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../stylesheets/theme.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#earnapp-production-policy-and-runtime-implementation-plan" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="CashPilot" class="md-header__button md-logo" aria-label="CashPilot" data-md-component="logo">
+      
+  <img src="../../../logo.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            CashPilot
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              EarnApp Production Policy and Runtime Implementation Plan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/GeiserX/CashPilot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GeiserX/CashPilot
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../guides/" class="md-tabs__link">
+          
+  
+  
+  Service Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../configuration/" class="md-tabs__link">
+          
+  
+  
+  Configuration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../security-defaults/" class="md-tabs__link">
+          
+  
+  
+  Security
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../backup-restore/" class="md-tabs__link">
+          
+  
+  
+  Operations
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../architecture/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="CashPilot" class="md-nav__button md-logo" aria-label="CashPilot" data-md-component="logo">
+      
+  <img src="../../../logo.svg" alt="logo">
+
+    </a>
+    CashPilot
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/GeiserX/CashPilot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GeiserX/CashPilot
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Service Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Service Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bandwidth Sharing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Bandwidth Sharing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/earnfm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Earn.fm
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/earnapp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    EarnApp
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/iproyal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IPRoyal Pawns
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/mysterium/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MystNodes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/nkn/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NKN
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/packetstream/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PacketStream
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/proxies-sx/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Proxies.sx
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/proxybase/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ProxyBase
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/proxybase-xyz/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ProxyBase Markets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/proxyrack/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ProxyRack
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/repocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repocket
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/spide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/traffmonetizer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Traffmonetizer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/urnetwork/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    URnetwork
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DePIN
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    DePIN
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/uprock/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Uprock
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/wipter/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wipter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Configuration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../fleet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fleet Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Security
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../security-defaults/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security Defaults
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../isolation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Network Isolation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Operations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../backup-restore/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backup and Restore
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../backup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backing Up Node Identities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/prometheus-metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prometheus Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../upgrade-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrade to v1.0.0
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Direction and Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../research/idle-network-traffic/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    What "idle" looks like on the wire
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../research/per-ip-device-limits/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Per-IP device limits
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../research/self-hosting-operability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Self-hosting operability review
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../research/fleet-upgrades-and-onboarding/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fleet upgrades & onboarding (design)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../research/earnings-benchmarks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Earnings benchmarks (design)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#global-constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Global Constraints
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#current-node-recovery-meaning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Current Node recovery Meaning
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#usage-flatline-and-offline-policy-authoritative" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Usage-flatline and Offline Policy (authoritative)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Usage-flatline and Offline Policy (authoritative)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#required-acceptance-evidence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Required acceptance evidence
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#policy-status-2026-09-08" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Policy status (2026-09-08)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usage-flatline-policy-gate-added-2026-09-08" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Usage-flatline policy gate (added 2026-09-08)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#macos-non-vn-isolation-canary-added-2026-09-08" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MacOS non-VN isolation canary (added 2026-09-08)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-1-freeze-and-test-the-unified-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 1: Freeze and Test the Unified Policy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-2-durable-account-auth-state-and-failover" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 2: Durable Account Auth State and Failover
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-3-remote-device-deletion-and-fresh-replacement-transaction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 3: Remote Device Deletion and Fresh Replacement Transaction
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-4-earnings-collector-and-scheduler-de-duplication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 4: Earnings Collector and Scheduler De-duplication
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-5-chrome-token-expiry-and-opt-in-automatic-login" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 5: Chrome Token Expiry and Opt-in Automatic Login
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-6-reference-vps-runtime-clone-for-three-os" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 6: Reference VPS Runtime Clone for Three OS
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-7-remove-kernelruntime-fingerprints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 7: Remove Kernel/Runtime Fingerprints
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-8-private-ghcr-release" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 8: Private GHCR Release
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-9-canary-audit-release" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 9: Canary, Audit, Release
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#review-gate-before-resume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Review Gate Before Resume
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/GeiserX/CashPilot/edit/main/docs/superpowers/plans/2026-09-08-earnapp-production-policy-and-runtime.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="earnapp-production-policy-and-runtime-implementation-plan">EarnApp Production Policy and Runtime Implementation Plan<a class="headerlink" href="#earnapp-production-policy-and-runtime-implementation-plan" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p><strong>For agentic workers:</strong> REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</p>
+</blockquote>
+<p><strong>Goal:</strong> Hoàn thiện EarnApp production cho macOS/iOS/Ubuntu Docker với policy lifecycle không chồng chéo, account-token recovery/auto-login có kiểm soát, proxy rotation an toàn, runtime clone từ VPS nâng cấp, private GHCR và canary xác nhận usage.</p>
+<p><strong>Architecture:</strong> Collector là nguồn dữ liệu EarnApp mỗi 60 phút; lifecycle scheduler 5 phút chỉ quyết định recovery từ snapshot mới nhất. Offline chỉ restart tại chỗ; banned hoặc proxy rotation tạo node mới sau khi xóa device remote; auth failure xử lý account/token, không nhầm với node offline. Chrome extension giữ một profile cho một account, tự động login chỉ khi operator bật và account đang ở trạng thái cần refresh.</p>
+<p><strong>Tech Stack:</strong> Python/FastAPI, SQLite/aiosqlite, APScheduler, httpx, Docker, Chrome Manifest V3 extension, GHCR, pytest.</p>
+<h2 id="global-constraints">Global Constraints<a class="headerlink" href="#global-constraints" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Giữ nguyên scheduler restart 5 phút hiện tại cho node <code>offline</code> iOS/Ubuntu; không xóa behavior do operator đã chủ động cấu hình.</li>
+<li>Không dùng LXD cho EarnApp; cả macOS, iOS, Ubuntu chạy Docker lane hiện hành.</li>
+<li>Proxy fail-closed; không fallback trực tiếp; mỗi node một proxy/egress độc lập.</li>
+<li>Account suspended/locked: không quarantine; release proxy ngay sau khi local runtime bị dừng/xóa và lease CAS xác nhận. Remote device cleanup tiếp tục idempotent độc lập, không giữ proxy chỉ vì remote API chậm.</li>
+<li>Không chuyển UUID/device đang link trực tiếp giữa account; failover account phải tạo node mới.</li>
+<li>Với <code>ACCOUNT_LOCKED</code>, local runtime phải được xóa và lease CAS xác nhận trước khi release; remote delete chỉ best-effort sau đó. Với banned/proxy rotation, remote delete bắt buộc trước khi release/replacement.</li>
+<li>Không đụng provider khác hoặc protected baseline.</li>
+<li>Không lộ cookie, OAuth token, XSRF token, SSH key, GHCR token trong log, test output, image hoặc PR.</li>
+<li>Runtime/binary/image sau khi chốt phải pin digest/SHA-256; UUID, volume, credentials không clone từ reference VPS.</li>
+<li>Clone fidelity bắt buộc bao gồm binary, image filesystem, entrypoint, supervisor/watchdog, LAN identity/IP mapping, interface metadata, redsocks/iptables route, DNS behavior, proxy type/auth, registration, link retry, cooldown và follow; từng mục phải có hash/diff/evidence.</li>
+<li>Không sao chép cấu hình làm yếu TLS như <code>NODE_TLS_REJECT_UNAUTHORIZED=0</code> sang production nếu canary không chứng minh bắt buộc; nếu bắt buộc phải ghi nhận risk và giới hạn riêng cho EarnApp container.</li>
+<li>Token sync không chạy định kỳ vô điều kiện; chỉ chạy khi cookie thay đổi, operator bấm sync, hoặc server đánh dấu account cần refresh.</li>
+<li>MacOS canary dùng proxy non-VN để tách lỗi upstream VN khỏi lỗi runtime; không đổi
+  hoặc rotate các node MacOS VN đang chạy.</li>
+<li>Latest canary constraint (2026-09-09): create/recreate MacOS canary nodes only
+  with eligible <strong>residential non-VN</strong> proxies. Do not use VN proxies for the
+  MacOS acceptance gate while the upstream VN path remains suspect. Existing VN
+  MacOS nodes are protected baseline and must not be restarted, recreated,
+  relinked, rotated, or deleted by this canary.</li>
+<li>The MacOS canary API defaults <code>country_scope=any</code> to <code>non-vn</code> and rejects an
+  explicit <code>vn</code> scope with HTTP 409, preventing accidental VN acceptance runs.</li>
+</ul>
+<h2 id="current-node-recovery-meaning">Current <code>Node recovery</code> Meaning<a class="headerlink" href="#current-node-recovery-meaning" title="Permanent link">&para;</a></h2>
+<p><code>Node recovery</code> hiện là lớp bảo vệ local runtime/lease khi node EarnApp mất heartbeat hoặc worker không còn container:</p>
+<ul>
+<li><code>RECOVERY_HOLD</code> giữ logical node và proxy lease trong một khoảng thời gian để tránh reclaim nhầm khi worker vừa reboot hoặc heartbeat trễ.</li>
+<li>Replacement ticket giới hạn một lần thay thế, chống hai tiến trình cùng recreate một node.</li>
+<li><code>Recreate preserves identity and does not link</code> nghĩa là API recreate hiện giữ device identity/volume/logical binding cũ, chỉ dựng lại runtime; nó <strong>không</strong> gọi EarnApp <code>link_device</code>.</li>
+<li>Cơ chế này phù hợp cho recovery local/offline, nhưng không đủ cho policy mới của <code>banned</code> và proxy rotation. Hai trường hợp đó phải remote-delete device rồi tạo identity/UUID/volume mới và link lại.</li>
+</ul>
+<h2 id="usage-flatline-and-offline-policy-authoritative">Usage-flatline and Offline Policy (authoritative)<a class="headerlink" href="#usage-flatline-and-offline-policy-authoritative" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>earnings_update_in_ms</code> is the account-side Earnings Update cycle boundary.</li>
+<li><strong>Usage-flatline policy:</strong> when one Earnings Update cycle completes and the
+  node's usage has not increased, restart the node in place. This is the
+  required recovery action, not an advisory alert.</li>
+<li>At the first boundary observation, record the cycle and wait the configured grace period; do not mutate the node.</li>
+<li>If usage has not increased after the boundary/grace, perform exactly one <code>restart</code> for that cycle.</li>
+<li>The restart is in place: preserve device UUID/identity, volume, account binding, and proxy lease; do not delete or relink the remote device.</li>
+<li><code>offline</code> always maps to the same in-place <code>restart</code>, even when a stale collector snapshot still contains positive usage.</li>
+<li>Lifecycle polling remains every 5 minutes. <code>last_recovery_cycle_id</code> prevents duplicate restarts in one Earnings Update cycle; a new boundary permits one new restart.</li>
+<li>Flatline/offline never triggers proxy rotation or fresh identity by itself. <code>banned</code> and unhealthy proxy remain separate replacement paths.</li>
+</ul>
+<h3 id="required-acceptance-evidence">Required acceptance evidence<a class="headerlink" href="#required-acceptance-evidence" title="Permanent link">&para;</a></h3>
+<p>This policy is a production gate, not an advisory heuristic:</p>
+<table>
+<thead>
+<tr>
+<th>Signal</th>
+<th>Decision</th>
+<th>Preserved</th>
+<th>Reset condition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>online=false</code></td>
+<td>restart node in place</td>
+<td>UUID, volume, account, proxy lease</td>
+<td>next 5-minute observation after restart</td>
+</tr>
+<tr>
+<td>usage unchanged when Earnings Update reaches <code>0</code> and grace expires</td>
+<td>restart node in place</td>
+<td>UUID, volume, account, proxy lease</td>
+<td>next <code>earnings_update_in_ms</code> cycle</td>
+</tr>
+<tr>
+<td>usage increases before grace expires</td>
+<td>no action</td>
+<td>all state</td>
+<td>clear the pending flatline marker</td>
+</tr>
+<tr>
+<td>stale/unknown account snapshot</td>
+<td>observe only</td>
+<td>all state</td>
+<td>fresh collector snapshot</td>
+</tr>
+</tbody>
+</table>
+<p>The scheduler must persist the cycle marker and restart marker atomically. One node receives at most one flatline restart per Earnings Update cycle. A restart must never call remote device delete, link, proxy release, or proxy rotation. These assertions require regression coverage and dated canary evidence before EarnApp is marked production-ready.</p>
+<h3 id="policy-status-2026-09-08">Policy status (2026-09-08)<a class="headerlink" href="#policy-status-2026-09-08" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[x] Usage unchanged at the completed Earnings Update boundary restarts the
+  node in place after the configured five-minute observation grace.</li>
+<li>[x] Offline status restarts the node in place on the five-minute lifecycle
+  poll, preserving identity, account binding, volume, and proxy lease.</li>
+<li>[x] Per-cycle marker prevents duplicate restarts; positive usage clears the
+  pending flatline marker.</li>
+<li>[x] Focused regression suite passes: <code>50 passed</code> (<code>tests/test_earnapp_lifecycle.py</code>
+  and <code>tests/test_earnapp_policy_matrix.py</code>).</li>
+<li>[x] Scheduler regression proves a flatline restart is suppressed after the
+  recovery marker has been persisted for the same Earnings Update cycle.</li>
+</ul>
+<h3 id="usage-flatline-policy-gate-added-2026-09-08">Usage-flatline policy gate (added 2026-09-08)<a class="headerlink" href="#usage-flatline-policy-gate-added-2026-09-08" title="Permanent link">&para;</a></h3>
+<p>This is an execution policy, not merely a dashboard alert:</p>
+<ol>
+<li>The account collector supplies <code>earnings_update_in_ms</code>; a countdown reset
+   starts a new cycle marker.</li>
+<li>The first boundary observation records the marker and waits five minutes.</li>
+<li>If the node's effective usage is still not greater than its persisted
+   baseline after that grace period, the worker performs one in-place restart.</li>
+<li>The restart preserves UUID, volume, account binding, and proxy lease. It
+   does not delete, relink, release, or rotate anything.</li>
+<li><code>last_recovery_cycle_id</code> suppresses duplicate restarts until the next
+   Earnings Update cycle. Positive usage clears the pending boundary marker.</li>
+<li>A stale or missing snapshot causes observation only; it cannot trigger a
+   restart. <code>offline</code> remains a separate five-minute in-place restart path.</li>
+</ol>
+<p>Acceptance evidence: <code>tests/test_earnapp_lifecycle.py::test_scheduler_does_not_restart_flatline_twice_in_same_earnings_cycle</code> plus the
+focused suite above.</p>
+<h3 id="macos-non-vn-isolation-canary-added-2026-09-08">MacOS non-VN isolation canary (added 2026-09-08)<a class="headerlink" href="#macos-non-vn-isolation-canary-added-2026-09-08" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Deploy one fresh MacOS node with a new identity and one distinct eligible
+  non-VN residential proxy.</li>
+<li>Keep the existing MacOS VN nodes unchanged; no delete, relink, lease release,
+  or proxy rotation is allowed for them.</li>
+<li>Require the same Docker runtime contract, fail-closed egress, collector link,
+  country evidence, Earnings Update boundary, and positive usage gate.</li>
+<li>A successful non-VN MacOS result isolates the earlier VN-country hypothesis;
+  it does not by itself declare EarnApp production-ready until the normal
+  usage/reboot gates pass.</li>
+<li>The canary deploy request now accepts <code>country_scope=non-vn</code>; the lease query
+  excludes <code>VN</code> even when both country policies allow MacOS. The default remains
+  <code>any</code> for backward compatibility, while production evidence must record the
+  explicit scope used.</li>
+<li>Code release <code>v1.23.0</code> is published. Live canary remains pending until the
+  CashPilot server and <code>vps-test-us</code> worker are upgraded to that release; the
+  worker credential alone does not authorize server deployment.</li>
+</ul>
+<h2 id="task-1-freeze-and-test-the-unified-policy">Task 1: Freeze and Test the Unified Policy<a class="headerlink" href="#task-1-freeze-and-test-the-unified-policy" title="Permanent link">&para;</a></h2>
+<p><strong>Files:</strong>
+- Modify: <code>app/earnapp_lifecycle.py</code>
+- Modify: <code>app/main.py</code>
+- Test: <code>tests/test_earnapp_lifecycle.py</code>
+- Create: <code>tests/test_earnapp_policy_matrix.py</code></p>
+<p><strong>Policy matrix:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>offline       -&gt; restart, preserve identity/volume/proxy; retain 5-minute retry
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>banned        -&gt; remote delete; fresh node; same account/settings; relink
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>proxy_bad     -&gt; remote delete; release old lease; fresh node; new proxy; relink
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>AUTH_FAILED   -&gt; mark account AUTH_FAILED; alert; retry token refresh; no node restart
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>suspended     -&gt; mark account ACCOUNT_LOCKED; cleanup; release proxy immediately
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>healthy       -&gt; no mutation
+</code></pre></div>
+<ul>
+<li>[x] Write failing tests asserting each row and asserting banned never maps to restart.</li>
+<li>[x] Test earnings boundary: one recovery decision after <code>earnings_update_in_ms</code> resets; no duplicate action during the same cycle.</li>
+<li>[x] Run <code>pytest tests/test_earnapp_lifecycle.py tests/test_earnapp_policy_matrix.py -q</code> and confirm expected failures.</li>
+<li>[x] Implement the smallest pure decision change; keep 5-minute offline scheduling.</li>
+<li>[x] Run the focused tests; <code>38 passed</code> on 2026-09-08.</li>
+</ul>
+<h2 id="task-2-durable-account-auth-state-and-failover">Task 2: Durable Account Auth State and Failover<a class="headerlink" href="#task-2-durable-account-auth-state-and-failover" title="Permanent link">&para;</a></h2>
+<p><strong>Files:</strong>
+- Modify: <code>app/database.py</code>
+- Modify: <code>app/earnapp_accounts.py</code>
+- Modify: <code>app/collectors/earnapp.py</code>
+- Modify: <code>app/main.py</code>
+- Modify: <code>app/routers/earnapp_accounts.py</code>
+- Test: <code>tests/test_earnapp_account_pool.py</code>, <code>tests/test_earnapp_collector.py</code></p>
+<ul>
+<li>[x] Add durable auth evidence fields: <code>last_auth_success_at</code>, <code>last_auth_failure_at</code>, <code>auth_failure_kind</code>, <code>needs_token_refresh</code>.</li>
+<li>[x] Classify auth rejection, account suspended/locked, proxy blocked, and route failure separately.</li>
+<li>[x] On auth failure, mark account and expose dashboard-visible auth evidence; do not restart every node.</li>
+<li>[x] Implement account failover selection transaction: after local replacement preparation, a <code>PLANNED</code> node on a locked/deleted/disabled account moves atomically to the least-loaded <code>ACTIVE</code> account before proxy lease and fresh deploy.</li>
+<li>[x] If no active account exists, keep node pending and retry silently; do not release a healthy proxy solely because token is expired.</li>
+<li>[x] If account is suspended/locked, stop/remove local runtime, release its proxy immediately after lease CAS confirmation, and retry remote device cleanup independently without quarantining the proxy. Regression covers local acknowledgement before release and remote-delete failure.</li>
+<li>[x] Add a concurrent failover race test; the database transaction permits one winner and the second caller observes the already reassigned node.</li>
+</ul>
+<h2 id="task-3-remote-device-deletion-and-fresh-replacement-transaction">Task 3: Remote Device Deletion and Fresh Replacement Transaction<a class="headerlink" href="#task-3-remote-device-deletion-and-fresh-replacement-transaction" title="Permanent link">&para;</a></h2>
+<p><strong>Files:</strong>
+- Modify: <code>app/collectors/earnapp.py</code>
+- Modify: <code>app/main.py</code>
+- Modify: <code>app/database.py</code>
+- Modify: worker API/runtime files located by <code>rg -n "docker-nodes.*DELETE|link_device|device_statuses" app worker services</code>
+- Test: <code>tests/test_earnapp_recovery.py</code>, <code>tests/test_earnapp_canary_contract.py</code></p>
+<ul>
+<li>[x] Add authenticated remote-device delete with idempotent “already absent” success.</li>
+<li>[x] Add durable confirmation evidence to the replacement transaction before releasing a lease; an absent confirmation fails closed and the marker is consumed atomically with lease release.</li>
+<li>[x] Banned path now performs remote delete -&gt; remove runtime -&gt; release local binding -&gt; clear identity; next sequential deploy creates fresh identity. Proxy rotation uses the same remote-delete gate.</li>
+<li>[x] Keep existing recreate endpoint for local recovery only; document that it preserves identity and does not link.</li>
+<li>[x] Fail closed to <code>RECOVERY_HOLD</code> when remote deletion or worker acknowledgement is uncertain.</li>
+<li>[x] Test replacement-ticket supersession/idempotency; stale tickets are revoked before a new ticket is issued.</li>
+<li>[x] Test remote-delete failure end to end at the API/transaction boundary; regression coverage proves failure and uncertain worker removal enter <code>RECOVERY_HOLD</code>, with no lease release. Destructive fault injection against a live accepted device is not a production gate.</li>
+<li>[x] Verify reboot recovery end to end on <code>vps-test-us</code>; Docker containers, identities, proxy chains and egress persisted.</li>
+</ul>
+<h2 id="task-4-earnings-collector-and-scheduler-de-duplication">Task 4: Earnings Collector and Scheduler De-duplication<a class="headerlink" href="#task-4-earnings-collector-and-scheduler-de-duplication" title="Permanent link">&para;</a></h2>
+<p><strong>Files:</strong>
+- Modify: <code>app/main.py</code>
+- Modify: <code>app/collectors/earnapp.py</code>
+- Modify: <code>app/earnapp_lifecycle.py</code>
+- Test: <code>tests/test_earnapp_collector.py</code>, <code>tests/test_earnapp_lifecycle.py</code></p>
+<ul>
+<li>[x] Keep collector interval at 60 minutes.</li>
+<li>[x] Keep lifecycle interval at 5 minutes for observation and offline restart.</li>
+<li>[x] Persist <code>earnings_cycle_id</code>, <code>earnings_zero_observed_at</code>, <code>last_recovery_cycle_id</code>, and the previous <code>earnings_update_in_ms</code> counter.</li>
+<li>[x] Use account <code>earnings_update_in_ms</code> as the cycle boundary; retain the boundary marker through the positive countdown and recover once after grace.</li>
+<li>[x] Prevent collector refresh and lifecycle refresh from issuing duplicate API calls for the same account within one scheduler pass; lifecycle reuses a successful snapshot collected within 60 seconds while the account lock serializes concurrent callers.</li>
+<li>[x] Add tests for delayed dashboard data, usage increasing while status is stale, and banned after boundary. Existing lifecycle coverage exercises stale snapshot refresh, positive usage precedence, and banned policy precedence at the Earnings Update boundary.</li>
+</ul>
+<h2 id="task-5-chrome-token-expiry-and-opt-in-automatic-login">Task 5: Chrome Token Expiry and Opt-in Automatic Login<a class="headerlink" href="#task-5-chrome-token-expiry-and-opt-in-automatic-login" title="Permanent link">&para;</a></h2>
+<p><strong>Files:</strong>
+- Modify: <code>contrib/chrome-provider-importer/background.js</code>
+- Modify: <code>contrib/chrome-provider-importer/popup.js</code>
+- Modify: <code>contrib/chrome-provider-importer/popup.html</code>
+- Modify: <code>contrib/chrome-provider-importer/manifest.json</code>
+- Modify: <code>app/routers/earnapp_accounts.py</code>
+- Modify: <code>app/static/js/app.js</code>
+- Test: <code>tests/test_chrome_provider_importer.py</code>, <code>tests/test_earnapp_account_routes.py</code></p>
+<ul>
+<li>[x] Keep one explicit Chrome/GPM profile bound to one EarnApp account. Live
+  Settings evidence shows two distinct profile keys mapped to two accounts.</li>
+<li>[x] Record expiry metadata with source <code>jwt</code>, <code>cookie</code>, or <code>unknown</code>; never claim opaque token expiry is known.</li>
+<li>[x] Remove unconditional 15-minute sync alarm. Keep cookie-change debounce and explicit “Sync now”.</li>
+<li>[x] Add extension setting <code>autoLoginEnabled</code>, default false; enable only after operator checks it.</li>
+<li>[x] Add an event-driven refresh flow: server marks <code>needs_token_refresh</code>; extension, only when enabled, opens the already-bound EarnApp profile, performs <code>Settings -&gt; logout</code>, then login flow, waits for dashboard success, imports new cookies, and reports result.</li>
+<li>[x] Do not automate CAPTCHA/2FA; pause and show operator action required.</li>
+<li>[x] Add server-side profile-bound, single-use import challenge state to prevent replay or importing through a different Chrome profile; covered by <code>test_extension_import_challenge_is_profile_bound_and_single_use</code>.</li>
+<li>[x] Add visible states: token expired, auth failed, login required, sync succeeded, sync blocked by operator.</li>
+<li>[x] Add tests for no periodic sync, cookie-change sync, expiry source, profile/account mismatch, and manual-login fallback.</li>
+</ul>
+<h2 id="task-6-reference-vps-runtime-clone-for-three-os">Task 6: Reference VPS Runtime Clone for Three OS<a class="headerlink" href="#task-6-reference-vps-runtime-clone-for-three-os" title="Permanent link">&para;</a></h2>
+<p><strong>Files:</strong>
+- Modify: <code>app/earnapp_runtime.py</code>
+- Modify: <code>app/earnapp_identity.py</code>
+- Modify: <code>scripts/build_earnapp_canary_image.py</code>
+- Modify: <code>services/bandwidth/earnapp.yml</code>
+- Test: <code>tests/test_earnapp_canary_contract.py</code>, <code>tests/test_earnapp_identity.py</code>, <code>tests/test_earnapp_runtime_policy.py</code>
+- Evidence: preserve reference material under <code>earnapp_update_05092026</code> and <code>.tmp-reference-mac/</code></p>
+<ul>
+<li>[x] Read-only inventory reference VPS runtime, binary, entrypoint, sidecar, fake proxy, watchdog, environment, labels, and restart policy for macOS/iOS/Ubuntu.</li>
+<li>[x] Build a sanitized reference manifest containing binary/script hashes, container limits, mounts, bridge/LAN addressing, capabilities and restart policy for each OS: <code>docs/evidence/earnapp/reference-vps-2026-09-08.md</code>.</li>
+<li>[x] Diff reference bundle metadata against CashPilot without copying UUID, account, volume, proxy, or credentials; emit <code>reference-bundle-manifest-2026-09-08.json</code>.</li>
+<li>[x] Port only missing behavior after an exact per-OS contract diff: verified upgraded image digests and artifact hashes; no UUID, profile, proxy credential, or host fingerprint copied.</li>
+<li>[x] Gate every image build on a sanitized fidelity report for macOS/iOS/Ubuntu covering binary/image digest, entrypoint, supervisor/watchdog, <code>lan_ip</code>, interface selection, redsocks/iptables, DNS, proxy bypasses, link retry/cooldown, mounts, limits, capabilities and restart policy. Reference manifest captured; <code>scripts/verify_earnapp_runtime_fidelity.py</code> now runs during context staging and fails closed on drift.</li>
+<li>[x] Ensure all three platforms use Docker; remove accidental LXD selection without touching unrelated providers.</li>
+<li>[x] Add runtime fidelity regression tests for complete and tampered contexts; live proxy egress/watchdog/reboot evidence remains in the dated canary report.</li>
+</ul>
+<h2 id="task-7-remove-kernelruntime-fingerprints">Task 7: Remove Kernel/Runtime Fingerprints<a class="headerlink" href="#task-7-remove-kernelruntime-fingerprints" title="Permanent link">&para;</a></h2>
+<p><strong>Files:</strong>
+- Modify: platform boot/entrypoint scripts discovered under <code>app/earnapp_runtime.py</code> and runtime assets
+- Test: <code>tests/test_earnapp_runtime_policy.py</code></p>
+<ul>
+<li>[x] Inventory every uname field sent by each binary.</li>
+<li>[x] Supply complete profile-controlled <code>uname_r</code>, <code>os_version</code>, hostname, machine-id, serial, arch, model and interface metadata.</li>
+<li>[x] Prevent direct leakage of host kernel <code>Linux 6.17.0-1022-azure</code> where the
+  binary contract permits spoofing; the kernel-visible <code>uname(2)</code> boundary is
+  documented and not falsely claimed as spoofed.</li>
+<li>[x] Do not claim kernel spoofing where Docker cannot alter a kernel-visible syscall; instead fail verification or document the remaining field.</li>
+<li>[x] Verify network egress and metadata from inside each container; dated reboot evidence records proxy-matched IPv4, DNS path, fail-closed chains, and blocked IPv6.</li>
+</ul>
+<h2 id="task-8-private-ghcr-release">Task 8: Private GHCR Release<a class="headerlink" href="#task-8-private-ghcr-release" title="Permanent link">&para;</a></h2>
+<p><strong>Files:</strong>
+- Modify: <code>scripts/build_earnapp_canary_image.py</code>
+- Modify: <code>.github/workflows/</code> relevant EarnApp workflow
+- Modify: <code>docs/guides/earnapp.md</code>
+- Test: CI contract tests</p>
+<ul>
+<li>[x] Read GHCR credentials only from the supplied local secret file; never commit or print them.</li>
+<li>[x] Build separate pinned images for macOS, iOS and Ubuntu with the runtime asset hash gates.</li>
+<li>[x] Push private GHCR tags and record immutable digests in <code>docs/evidence/earnapp/2026-09-09-non-vn-macos-ios-ubuntu-reboot.md</code>.</li>
+<li>[x] Worker pull uses a package credential with read access only to the private
+  GHCR package lane; the credential is supplied transiently and is not stored
+  in the worker configuration.</li>
+<li>[x] <code>vps-test-us</code> pulled all three immutable GHCR digests on a clean Docker
+  client; digest matches were printed, temporary auth files were removed, and
+  image history contained no GHCR credential material.</li>
+</ul>
+<h2 id="task-9-canary-audit-release">Task 9: Canary, Audit, Release<a class="headerlink" href="#task-9-canary-audit-release" title="Permanent link">&para;</a></h2>
+<p><strong>Files:</strong>
+- Modify: <code>docs/guides/earnapp.md</code>
+- Create: <code>docs/evidence/earnapp/2026-09-08-production-canary.md</code></p>
+<ul>
+<li>[x] Clean only non-protected EarnApp test runtimes on the reference/test VPS; preserve operator-owned scheduler behavior.</li>
+<li>[x] Reboot worker and verify baseline before deploy; Docker, worker heartbeat, containers, identities and proxy routes recovered.</li>
+<li>[x] Create acceptance coverage for macOS, iOS and Ubuntu with distinct eligible proxies and fresh identities; production gate uses one positive-usage node per OS, additional canaries remain observation-only.</li>
+<li>[x] Verify remote device creation, country, Earnings Update boundary, positive usage, proxy egress, DNS fail-closed, heartbeat, restart, banned recovery transaction, token warning and reboot persistence. Evidence is recorded in <code>docs/evidence/earnapp/2026-09-09-non-vn-macos-ios-ubuntu-reboot.md</code>.</li>
+<li>[x] Run focused tests, full regression suite, image digest audit, secret scan and git diff audit; latest full suite is <code>2715 passed, 8 skipped</code>.</li>
+<li>[x] Commit, open PR, review, merge, and release completed through PR #234 and release <code>v1.27.0</code>; the server UI is healthy on <code>v1.27.0</code>.</li>
+<li>[x] Mark EarnApp production-ready: one positive-usage representative per OS passed the recorded clean-reboot, identity, proxy-egress, DNS/IPv6 fail-closed and heartbeat gates. Later provider blacklist/removal events do not invalidate the completed runtime acceptance.</li>
+</ul>
+<h2 id="review-gate-before-resume">Review Gate Before Resume<a class="headerlink" href="#review-gate-before-resume" title="Permanent link">&para;</a></h2>
+<ul>
+<li>[x] Confirm automatic login navigates only the already-bound EarnApp profile and stops for CAPTCHA/2FA.</li>
+<li>[x] Confirm account suspended/locked release occurs after local cleanup acknowledgement, not before.</li>
+<li>[x] Confirm remote device deletion is mandatory before every banned/proxy replacement; uncertain deletion remains <code>RECOVERY_HOLD</code>.</li>
+<li>[x] Confirm production acceptance means one fresh positive-usage node per OS on <code>vps-test-us</code> after clean/reboot; additional canaries remain observation-only.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2026 Sergio Fernandez
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/GeiserX/CashPilot" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/assetforgeai-tech/CashPilot/pkgs/container/cashpilot" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M349.9 236.3h-66.1v-59.4h66.1zm0-204.3h-66.1v60.7h66.1zm78.2 144.8H362v59.4h66.1zm-156.3-72.1h-66.1v60.1h66.1zm78.1 0h-66.1v60.1h66.1zm276.8 100c-14.4-9.7-47.6-13.2-73.1-8.4-3.3-24-16.7-44.9-41.1-63.7l-14-9.3-9.3 14c-18.4 27.8-23.4 73.6-3.7 103.8-8.7 4.7-25.8 11.1-48.4 10.7H2.4c-8.7 50.8 5.8 116.8 44 162.1 37.1 43.9 92.7 66.2 165.4 66.2 157.4 0 273.9-72.5 328.4-204.2 21.4.4 67.6.1 91.3-45.2 1.5-2.5 6.6-13.2 8.5-17.1zm-511.1-27.9h-66v59.4h66.1v-59.4zm78.1 0h-66.1v59.4h66.1zm78.1 0h-66.1v59.4h66.1zm-78.1-72.1h-66.1v60.1h66.1z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "content.code.copy", "content.action.edit", "search.highlight", "search.suggest", "toc.follow"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

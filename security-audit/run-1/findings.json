@@ -1,0 +1,31 @@
+[
+  {
+    "verdict": "confirmed",
+    "title": "EarnApp probe accepted forged provider verdicts",
+    "description": "The pre-fix EarnApp WSS qualification probe disabled TLS certificate and hostname verification. A malicious or compromised configured proxy could forge the provider WebSocket handshake and send cid_set, after which CashPilot persisted the result and treated the proxy as EarnApp-eligible for leasing.",
+    "root_cause": "build_tls_context in app/proxy_probe_profiles/earnapp.py does not authenticate the WSS peer, allowing a proxy-side MITM to forge qualification verdicts.",
+    "intended_behavior": "Only a response from the authenticated EarnApp WSS endpoint should qualify a proxy for EarnApp traffic.",
+    "trace": [
+      {"kind":"entrypoint","file":"app/routers/proxies.py","line":1033,"scope":"run_earnapp_proxy_recheck","description":"The recheck route invokes the EarnApp WSS probe for each selected proxy."},
+      {"kind":"propagation","file":"app/proxy_probe_profiles/earnapp.py","line":245,"scope":"_open_wss_tunnel","description":"The probe starts TLS to proxyjs.brdtnet.com using the probe TLS context."},
+      {"kind":"propagation","file":"app/proxy_probe_profiles/earnapp.py","line":334,"scope":"probe_earnapp_proxy","description":"The probe accepts an ipc_post/cid_set frame and sets verdict CID_SET."},
+      {"kind":"sink","file":"app/database.py","line":4609,"scope":"_earnapp_proxy_eligible_sql","description":"Latest matching CID_SET and eligible evidence is used to make a proxy leaseable for EarnApp."}
+    ],
+    "conditions": [
+      {"kind":"environmental_dependency","description":"The attacker must control or MITM a configured proxy route used by the qualification probe."},
+      {"kind":"third_party_dependency","description":"The probe must reach the EarnApp WSS qualification endpoint through that route."}
+    ],
+    "execution": {
+      "attacker_perspective":"A malicious or compromised proxy operator whose route is selected for EarnApp qualification.",
+      "payloads":["A forged TLS/WebSocket session containing tunnel_init followed by ipc_post/cid_set."],
+      "instructions":["Cause the qualification request to traverse the controlled proxy route.","Present a forged WSS session and CID_SET response.","Allow the normal recheck and eligibility persistence path to process the response."],
+      "expected_result":"Before the fix, the proxy was recorded as CID_SET/eligible and could enter EarnApp lease selection without an authenticated provider response."
+    },
+    "remediation": {
+      "strategy":"Require certificate-chain and hostname verification for the fixed provider WSS host; use a narrowly scoped explicit CA only if provider-approved interception is unavoidable.",
+      "code_changes":[{"file_name":"app/proxy_probe_profiles/earnapp.py","fixed_code":"build_tls_context now uses ssl.create_default_context() with check_hostname=True and verify_mode=ssl.CERT_REQUIRED."},{"file_name":"tests/test_earnapp_proxy_probe.py","fixed_code":"Regression test asserts hostname checking and CERT_REQUIRED."}]
+    },
+    "severity": {"likelihood":{"score":"medium","reason":"Requires control or MITM of a configured proxy route."},"impact":{"score":"medium","reason":"Can redirect EarnApp traffic through an unqualified attacker-controlled proxy, but does not directly compromise the CashPilot server."},"overall_severity":"medium"},
+    "confidence": {"score":"high","reason":"Independent validation traced the complete pre-fix flow from disabled TLS verification through CID_SET persistence and eligibility SQL; targeted regression tests pass after remediation."}
+  }
+]

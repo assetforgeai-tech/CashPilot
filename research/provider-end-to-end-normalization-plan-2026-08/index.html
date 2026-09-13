@@ -1,0 +1,3262 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Self-hosted passive income orchestrator. Deploy, manage, and monitor 14 providers from a single dashboard.">
+      
+      
+        <meta name="author" content="Sergio Fernandez">
+      
+      
+        <link rel="canonical" href="https://geiserx.github.io/CashPilot/research/provider-end-to-end-normalization-plan-2026-08/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../icon.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Provider End-To-End Normalization Implementation Plan - CashPilot</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/theme.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#provider-end-to-end-normalization-implementation-plan" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="CashPilot" class="md-header__button md-logo" aria-label="CashPilot" data-md-component="logo">
+      
+  <img src="../../logo.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            CashPilot
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Provider End-To-End Normalization Implementation Plan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/GeiserX/CashPilot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GeiserX/CashPilot
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guides/" class="md-tabs__link">
+          
+  
+  
+  Service Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../configuration/" class="md-tabs__link">
+          
+  
+  
+  Configuration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../security-defaults/" class="md-tabs__link">
+          
+  
+  
+  Security
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../backup-restore/" class="md-tabs__link">
+          
+  
+  
+  Operations
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../architecture/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="CashPilot" class="md-nav__button md-logo" aria-label="CashPilot" data-md-component="logo">
+      
+  <img src="../../logo.svg" alt="logo">
+
+    </a>
+    CashPilot
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/GeiserX/CashPilot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GeiserX/CashPilot
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Service Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Service Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bandwidth Sharing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Bandwidth Sharing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/earnfm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Earn.fm
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/earnapp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    EarnApp
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/iproyal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IPRoyal Pawns
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/mysterium/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MystNodes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/nkn/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NKN
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/packetstream/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PacketStream
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/proxies-sx/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Proxies.sx
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/proxybase/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ProxyBase
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/proxybase-xyz/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ProxyBase Markets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/proxyrack/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ProxyRack
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/repocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repocket
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/spide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/traffmonetizer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Traffmonetizer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/urnetwork/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    URnetwork
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DePIN
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    DePIN
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/uprock/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Uprock
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/wipter/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wipter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Configuration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../fleet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fleet Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Security
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../security-defaults/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security Defaults
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../isolation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Network Isolation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Operations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../backup-restore/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backup and Restore
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../backup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backing Up Node Identities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/prometheus-metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prometheus Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../upgrade-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrade to v1.0.0
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Direction and Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../idle-network-traffic/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    What "idle" looks like on the wire
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../per-ip-device-limits/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Per-IP device limits
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../self-hosting-operability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Self-hosting operability review
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fleet-upgrades-and-onboarding/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fleet upgrades & onboarding (design)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../earnings-benchmarks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Earnings benchmarks (design)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#execution-ledger" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Execution Ledger
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Execution Ledger">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#decision-log" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision Log
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#open-drift" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Open Drift
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deploy-checkpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deploy Checkpoint
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#provider-progress-matrix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Provider Progress Matrix
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#global-constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Global Constraints
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#milestones" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Milestones
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Milestones">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#milestone-1-audit-lock" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Milestone 1: Audit Lock
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#milestone-2-core-contracts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Milestone 2: Core Contracts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#milestone-3-ui-parity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Milestone 3: UI Parity
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#milestone-4-provider-contracts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Milestone 4: Provider Contracts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#milestone-5-server-first-live-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Milestone 5: Server-First Live Validation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#file-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File Structure
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-1-done-full-audit-inventory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 1 [DONE]: Full Audit Inventory
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-2-done-remove-redundant-logic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 2 [DONE]: Remove Redundant Logic
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-3-done-settings-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 3 [DONE]: Settings Contract
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-4-done-credential-health-and-chrome-audit-save" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 4 [DONE]: Credential Health And Chrome Audit Save
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-5-done-worker-bootstrap-and-stable-heartbeat" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 5 [DONE]: Worker Bootstrap And Stable Heartbeat
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-6-done-auto-deploy-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 6 [DONE]: Auto Deploy Policy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-7-done-proxy-provider-and-proxy-pool-lease" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 7 [DONE]: Proxy Provider And Proxy Pool Lease
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-8-done-myst-wallet-lease-and-runtime" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 8 [DONE]: MYST Wallet Lease And Runtime
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-9-done-historical-provider-catalog-contracts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 9 [DONE]: Historical Provider Catalog Contracts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-10-done-provider-runtime-helpers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 10 [DONE]: Provider Runtime Helpers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-11-done-dashboard-and-payouts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 11 [DONE]: Dashboard And Payouts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-12-done-setup-wizard-and-service-catalog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 12 [DONE]: Setup Wizard And Service Catalog
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-13-done-fleet-ui-and-reconciliation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 13 [DONE]: Fleet UI And Reconciliation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-14-done-docs-and-operator-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 14 [DONE]: Docs And Operator Commands
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-15-done-local-full-verification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 15 [DONE]: Local Full Verification
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-16-done-commit-push-deploy-smoke" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 16 [DONE]: Commit, Push, Deploy, Smoke
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-17-in_progress-active-provider-runtime-normalization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 17 [IN_PROGRESS]: Active Provider Runtime Normalization
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#self-review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Self-Review
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/GeiserX/CashPilot/edit/main/docs/research/provider-end-to-end-normalization-plan-2026-08.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="provider-end-to-end-normalization-implementation-plan">Provider End-To-End Normalization Implementation Plan<a class="headerlink" href="#provider-end-to-end-normalization-implementation-plan" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p><strong>For agentic workers:</strong> REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</p>
+</blockquote>
+<p><strong>Goal (historical):</strong> Normalize the then-active CashPilot providers so server Settings, Setup Wizard, Service Catalog, Dashboard, Payouts, Proxy Provider, Proxy Pool, MYST Wallet, and Fleet agree with the worker runtime. The current product baseline is 14 providers; Grass removal supersedes its active-provider work.</p>
+<p><strong>Architecture:</strong> CashPilot server is the only source of truth for provider catalog, credentials, runtime assets, proxy leases, MYST wallet leases, auto-deploy policy, payout metadata, and earnings collection. Workers enroll, heartbeat, receive server commands, apply a single worker-level proxy egress via sing-box, deploy providers sequentially, and report <code>provider_states</code>. Proxy Pool and MYST Wallet do not run their own heartbeat loops; they reconcile from CashPilot worker heartbeat plus provider state evidence.</p>
+<p><strong>Tech Stack:</strong> Python/FastAPI, SQLite/aiosqlite, Docker SDK, Docker Compose, sing-box, pytest, Chrome profile 40 audit, browser smoke checks, repo docs generators.</p>
+<h2 id="execution-ledger">Execution Ledger<a class="headerlink" href="#execution-ledger" title="Permanent link">&para;</a></h2>
+<p><strong>RESUME_FROM:</strong> Task 17 / Step 1</p>
+<p><strong>CURRENT_STATUS:</strong> [CHANGED]</p>
+<p><strong>LAST_SAFE_COMMIT:</strong> <code>42c02df</code></p>
+<p><strong>LAST_DEPLOYED_VPS:</strong> <code>42c02df</code></p>
+<p><strong>CURRENT_BRANCH:</strong> historical planning branch; current removal work is isolated in <code>codex/remove-grass-provider</code></p>
+<p><strong>DO_NOT_TOUCH:</strong> VPS server DB, Docker volumes, committed history, local secret files outside explicit secret audit output.</p>
+<p><strong>Status Labels:</strong>
+- <code>[TODO]</code>: not started.
+- <code>[IN_PROGRESS]</code>: currently being edited/tested.
+- <code>[DONE]</code>: implemented, verified, committed or ready to commit.
+- <code>[BLOCKED]</code>: cannot progress without external input/access/state.
+- <code>[CHANGED]</code>: plan changed after work began; decision log must explain why.
+- <code>[DROPPED]</code>: deliberately removed from scope; decision log must explain why.</p>
+<p><strong>Execution Rules:</strong>
+- Before starting a task, update <code>RESUME_FROM</code> and change that task to <code>[IN_PROGRESS]</code>.
+- Before each commit, update completed steps, evidence, and decision log.
+- After each commit, write the commit hash into the task checkpoint and <code>LAST_SAFE_COMMIT</code>.
+- After each VPS deploy, write the deployed commit into <code>LAST_DEPLOYED_VPS</code>.
+- If Codex crashes or context compacts, resume from <code>RESUME_FROM</code>, then verify <code>LAST_SAFE_COMMIT</code>, GitHub commit, and VPS commit before touching code.
+- If actual code contradicts this plan, mark the task <code>[CHANGED]</code> and add a decision log entry before implementing.
+- If a credential/token/raw secret is discovered, write it only to <code>D:\1. WORK_true\CashPilot\secret\provider-credential-gap-audit.md</code> or directly into server Settings.
+- Server Settings writes are allowed only through authenticated CashPilot app API/UI, never by direct DB editing.
+- Before overwriting any existing credential, record old <code>is_set</code>, age, health status, and verify result in the local secret audit file.</p>
+<h3 id="decision-log">Decision Log<a class="headerlink" href="#decision-log" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Time</th>
+<th>Status</th>
+<th>Decision</th>
+<th>Reason</th>
+<th>Impact</th>
+<th>Commit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2026-08-13</td>
+<td>[CHANGED]</td>
+<td>Add execution ledger, resume marker, deploy checkpoint, and provider progress matrix.</td>
+<td>Prevent lost state after Codex crash/compaction and prevent deploy from wrong commit.</td>
+<td>Every task must update status/evidence before commit/deploy.</td>
+<td>pending</td>
+</tr>
+<tr>
+<td>2026-08-13</td>
+<td>[CHANGED]</td>
+<td>Add guard/clarity fixes without changing approved architecture.</td>
+<td>Plan audit found ambiguous Chrome, MYST ACK, provider unknowns, proxybase naming, runtime tests, commit checkpoint, settings writes, auto-deploy locking, credential overwrite audit.</td>
+<td>Execution must resolve ambiguity before coding.</td>
+<td>pending</td>
+</tr>
+<tr>
+<td>2026-08-13</td>
+<td>[CHANGED]</td>
+<td>Replace stale worker test filenames in plan with existing repo tests.</td>
+<td>Repo has <code>test_worker_keys.py</code> and <code>test_worker_myst_sync.py</code>, not <code>test_workers.py</code> or <code>test_worker_api_coverage.py</code>.</td>
+<td>Verification commands now match actual suite without changing architecture.</td>
+<td>pending</td>
+</tr>
+<tr>
+<td>2026-08-13</td>
+<td>[DONE]</td>
+<td>Settings deploy credentials now mark deployed providers <code>needs_redeploy</code>; collector/dashboard credentials do not.</td>
+<td>Runtime material changes require recreating provider containers, but collector/session-only changes should only affect collection/verification.</td>
+<td>Settings contract matches worker deploy source-of-truth without adding a scheduler.</td>
+<td>pending</td>
+</tr>
+<tr>
+<td>2026-08-13</td>
+<td>[DONE]</td>
+<td>Credential health now has regression coverage for age/status without leaking values.</td>
+<td>The settings panel must show freshness and expiry truth without printing secrets.</td>
+<td>Health UI can warn before provider collection dies.</td>
+<td>pending</td>
+</tr>
+<tr>
+<td>2026-08-13</td>
+<td>[DONE]</td>
+<td>Worker bootstrap contract verified against existing fleet UI and worker key tests.</td>
+<td>Current code already uses public IP/timestamp copy snippet, public worker URL, stable client_id, worker key re-enrollment, and MYST provider state on worker heartbeat.</td>
+<td>No extra runtime logic added for Task 5.</td>
+<td>pending</td>
+</tr>
+<tr>
+<td>2026-08-13</td>
+<td>[DONE]</td>
+<td>Auto-deploy policy now has server-side toggle/delay and sequential worker batch behavior.</td>
+<td>Stable workers can be auto-sequenced from heartbeat after 3 healthy beats, with per-worker locking and deployable-only filtering.</td>
+<td>Auto deploy is opt-in, per-worker, and continues after per-provider failure.</td>
+<td>pending</td>
+</tr>
+<tr>
+<td>2026-08-15</td>
+<td>[CHANGED]</td>
+<td>Adnade, Dawn, and Titan were removed from the historical plan scope.</td>
+<td>The then-active catalog had 15 providers; this plan is now superseded by the 14-provider baseline and Grass removal decision.</td>
+<td>Do not use this row as current deployment guidance.</td>
+<td><code>42c02df</code></td>
+</tr>
+<tr>
+<td>2026-08-15</td>
+<td>[IN_PROGRESS]</td>
+<td>Add provider instance mode UI/API wiring as the first core runtime checkpoint.</td>
+<td>Providers need direct/proxy/both instances on the same worker without container collisions.</td>
+<td>Setup Wizard and Service Detail now send deploy <code>mode</code>; VPS is deployed at <code>42c02df</code>.</td>
+<td><code>42c02df</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="open-drift">Open Drift<a class="headerlink" href="#open-drift" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Status</th>
+<th>Area</th>
+<th>Drift</th>
+<th>Next Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>[DONE]</td>
+<td>VPS deploy</td>
+<td><code>LAST_DEPLOYED_VPS</code> verified at <code>42c02df</code>.</td>
+<td>Continue provider runtime normalization from current deployed commit.</td>
+</tr>
+<tr>
+<td>[TODO]</td>
+<td>Chrome audit</td>
+<td>Chrome profile 40 tab inventory not captured in this plan file yet.</td>
+<td>Capture provider tab list during Task 1.</td>
+</tr>
+<tr>
+<td>[TODO]</td>
+<td>Credentials</td>
+<td>Some server Settings credentials may be missing/expired.</td>
+<td>Audit and write gaps to local secret file.</td>
+</tr>
+<tr>
+<td>[CHANGED]</td>
+<td>Provider runtime</td>
+<td>Historical plan covered 15 providers; current runtime truth is maintained by the 14-provider catalog and removal regressions.</td>
+<td>See current branch and removal decision.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="deploy-checkpoint">Deploy Checkpoint<a class="headerlink" href="#deploy-checkpoint" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Surface</th>
+<th>Expected</th>
+<th>Actual</th>
+<th>Status</th>
+<th>Evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Local branch</td>
+<td><code>provider-standard-40834f6</code></td>
+<td><code>provider-standard-40834f6</code></td>
+<td>[DONE]</td>
+<td><code>git rev-parse --abbrev-ref HEAD</code></td>
+</tr>
+<tr>
+<td>Local commit</td>
+<td><code>52aadfe</code> or newer</td>
+<td><code>52aadfe</code> before this plan edit</td>
+<td>[CHANGED]</td>
+<td>Plan edit pending commit</td>
+</tr>
+<tr>
+<td>GitHub commit</td>
+<td>Match local after push</td>
+<td>unknown</td>
+<td>[TODO]</td>
+<td>Check before deploy</td>
+</tr>
+<tr>
+<td>VPS server commit</td>
+<td>Match GitHub after deploy</td>
+<td>unknown</td>
+<td>[TODO]</td>
+<td>Check before deploy</td>
+</tr>
+</tbody>
+</table>
+<h3 id="provider-progress-matrix">Provider Progress Matrix<a class="headerlink" href="#provider-progress-matrix" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Provider</th>
+<th>Status</th>
+<th>Deploy Runtime</th>
+<th>Earnings Collector</th>
+<th>Dashboard / Session</th>
+<th>Payout</th>
+<th>Proxy / Direct</th>
+<th>Runtime Test</th>
+<th>UI Ready</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>grass</td>
+<td>[REMOVED]</td>
+<td>retired</td>
+<td>retired</td>
+<td>historical only</td>
+<td>n/a</td>
+<td>n/a</td>
+<td>n/a</td>
+<td>Removed by product decision; see <code>provider-removal-grass-2026-08.md</code>.</td>
+<td></td>
+</tr>
+<tr>
+<td>uprock</td>
+<td>[TODO]</td>
+<td><code>credentials.json</code> + <code>main.db</code></td>
+<td>limited/no API unless confirmed</td>
+<td>dashboard audit</td>
+<td>needs_user_info</td>
+<td>direct</td>
+<td>prior manual success</td>
+<td>partial</td>
+<td>Official runtime only.</td>
+</tr>
+<tr>
+<td>wipter</td>
+<td>[TODO]</td>
+<td>email/password</td>
+<td>scrape/manual unless API confirmed</td>
+<td>dashboard audit</td>
+<td>needs_user_info</td>
+<td>provider tunnel namespace</td>
+<td>partial</td>
+<td>partial</td>
+<td>Needs login marker verification.</td>
+</tr>
+<tr>
+<td>earnfm</td>
+<td>[TODO]</td>
+<td>deploy credential audit</td>
+<td>existing/verify</td>
+<td>dashboard audit</td>
+<td>payout audit</td>
+<td>direct</td>
+<td>pending</td>
+<td>pending</td>
+<td>Direct provider.</td>
+</tr>
+<tr>
+<td>iproyal</td>
+<td>[TODO]</td>
+<td>deploy credential audit</td>
+<td>existing/verify</td>
+<td>dashboard audit</td>
+<td>payout audit</td>
+<td>proxy policy audit</td>
+<td>pending</td>
+<td>pending</td>
+<td>Audit required.</td>
+</tr>
+<tr>
+<td>mysterium</td>
+<td>[TODO]</td>
+<td>MYST wallet lease + password</td>
+<td>provider state only unless API confirmed</td>
+<td>MYST dashboard password/MMN</td>
+<td>MYST-specific</td>
+<td>direct</td>
+<td>partial</td>
+<td>partial</td>
+<td>Wallet handled by MYST Wallet module.</td>
+</tr>
+<tr>
+<td>packetstream</td>
+<td>[TODO]</td>
+<td>deploy credential audit</td>
+<td>existing/verify</td>
+<td>dashboard audit</td>
+<td>payout audit</td>
+<td>proxy policy audit</td>
+<td>pending</td>
+<td>pending</td>
+<td>Audit required.</td>
+</tr>
+<tr>
+<td>proxies-sx</td>
+<td>[TODO]</td>
+<td>unique <code>AGENT_NAME</code></td>
+<td>per-node collector</td>
+<td>dashboard audit</td>
+<td>payout audit</td>
+<td>proxy policy audit</td>
+<td>pending</td>
+<td>pending</td>
+<td>Connected is not necessarily earning.</td>
+</tr>
+<tr>
+<td>proxybase</td>
+<td>[TODO]</td>
+<td>node access token</td>
+<td>dashboard token</td>
+<td>dashboard token</td>
+<td>payout audit</td>
+<td>direct</td>
+<td>pending</td>
+<td>partial</td>
+<td><code>ghcr.io/proxybaseorg/peer-cli:latest &lt;access_token&gt; &lt;device_name&gt;</code>.</td>
+</tr>
+<tr>
+<td>proxybase-xyz</td>
+<td>[TODO]</td>
+<td>wallet phrase/phase</td>
+<td>node count/manual</td>
+<td>none unless found</td>
+<td>payout audit</td>
+<td>proxy policy audit</td>
+<td>pending</td>
+<td>partial</td>
+<td>Separate provider from <code>proxybase</code>; CLI flow uses <code>https://proxybase.xyz/install.sh</code>, install path may change.</td>
+</tr>
+<tr>
+<td>proxyrack</td>
+<td>[TODO]</td>
+<td>deploy credential audit</td>
+<td>existing/verify</td>
+<td>dashboard audit</td>
+<td>payout audit</td>
+<td>direct</td>
+<td>pending</td>
+<td>pending</td>
+<td>Direct provider.</td>
+</tr>
+<tr>
+<td>repocket</td>
+<td>[TODO]</td>
+<td>deploy credential audit</td>
+<td>existing/verify</td>
+<td>dashboard audit</td>
+<td>payout audit</td>
+<td>direct</td>
+<td>pending</td>
+<td>pending</td>
+<td>Direct provider.</td>
+</tr>
+<tr>
+<td>spide</td>
+<td>[TODO]</td>
+<td>CLI device key</td>
+<td>needs_user_info</td>
+<td>dashboard token/cookie</td>
+<td>payout audit</td>
+<td>proxy policy audit</td>
+<td>pending</td>
+<td>pending</td>
+<td>Device create API flow; collector requires proven API or scrape shape.</td>
+</tr>
+<tr>
+<td>traffmonetizer</td>
+<td>[TODO]</td>
+<td>deploy credential audit</td>
+<td>existing/verify</td>
+<td>dashboard audit</td>
+<td>payout audit</td>
+<td>direct</td>
+<td>pending</td>
+<td>pending</td>
+<td>Direct provider.</td>
+</tr>
+<tr>
+<td>urnetwork</td>
+<td>[TODO]</td>
+<td>deploy credential audit</td>
+<td>existing/verify</td>
+<td>Chrome tab audit</td>
+<td>payout audit</td>
+<td>proxy policy audit</td>
+<td>pending</td>
+<td>pending</td>
+<td>Chrome tab open.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="global-constraints">Global Constraints<a class="headerlink" href="#global-constraints" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Normalize all 18 active providers in <code>services/bandwidth/*.yml</code> and <code>services/depin/*.yml</code>.</li>
+<li>No provider client deploy test on VPS server.</li>
+<li>Provider client deploy tests run on test workers, primarily <code>vps-test-sing</code>.</li>
+<li>VPS server is deploy source of truth; provider nodes are created through server-to-worker flow.</li>
+<li>Never deploy providers directly on a worker as the final validation path.</li>
+<li>No real provider secret, wallet, cookie, seed, or API key is committed.</li>
+<li>Local secret audit output may contain raw secrets only under <code>D:\1. WORK_true\CashPilot\secret\provider-credential-gap-audit.md</code>.</li>
+<li><code>D:\1. WORK_true\CashPilot\secret\provider-credential-gap-audit.md</code> is plaintext, local-only, and never committed.</li>
+<li>Chrome profile 40 is the credential/API audit source.</li>
+<li>Chrome profile 40 is already open with all provider tabs; Task 1 must connect to Chrome. If the first connector fails, treat that as a connection bug to fix, not as permission to skip Chrome audit.</li>
+<li>Chrome audit may read cookies, localStorage, network-visible tokens, dashboard/session data, and provider page DOM.</li>
+<li>Chrome audit may auto-save valid provider credentials into the VPS server Settings.</li>
+<li>Chrome audit overwrites a credential only after the existing credential is missing, expired, failing, or verified not alive.</li>
+<li>Chrome credential overwrite must record old <code>is_set</code>, age, health status, and verify result before writing the replacement.</li>
+<li>Provider without confirmed deploy/API truth stays explicit <code>needs_user_info</code> with exact missing fields.</li>
+<li>No new earnings table; per-node earnings use <code>earnings.source = "node:&lt;provider&gt;:&lt;node_id&gt;"</code>.</li>
+<li>Collector runs on the server, not the worker.</li>
+<li><code>Proxy provider</code> and <code>Proxy pool</code> are proxy inventory/lease modules, not earning providers.</li>
+<li>Proxy lease is exclusive per worker.</li>
+<li>Every worker leases one default proxy for sing-box proxy egress.</li>
+<li>Proxy health check interval is configurable in Settings; default is 5 minutes.</li>
+<li>Proxy auto-rotate toggle is configurable in Settings.</li>
+<li>When a worker proxy dies, server rotates that worker proxy and worker restarts only sing-box.</li>
+<li>Proxy-mode providers stop deploying when no proxy is available; direct providers still deploy.</li>
+<li>Direct providers bypass fake proxy and run through VPS public IP.</li>
+<li>MYST Wallet is separate asset inventory, not provider catalog.</li>
+<li>MYST wallet release/reclaim follows CashPilot worker heartbeat/provider state.</li>
+<li>Worker offline threshold for proxy/MYST reclaim is 5 minutes.</li>
+<li>MYST default dashboard password is stored in Settings and applies to new/redeployed nodes only.</li>
+<li>MYST funding status is derived only from <code>Registration Status: Registered</code> or <code>Registration Status: Unregistered</code>.</li>
+<li>If MYST registration status cannot be read, keep the previous wallet funding state.</li>
+<li>Auto deploy is off by default.</li>
+<li>Auto deploy never runs on the VPS server/local server worker by default.</li>
+<li>Auto deploy applies to deployable providers only.</li>
+<li>Auto deploy deploys missing providers on old and new workers.</li>
+<li>Auto deploy starts after 3 consecutive healthy worker heartbeats.</li>
+<li>Auto deploy deploys providers sequentially per worker.</li>
+<li>Auto deploy must use a per-worker job lock so two auto-deploy batches cannot run on the same worker at the same time.</li>
+<li>Auto deploy delay is configurable in Settings; default is 10 seconds.</li>
+<li>Auto deploy continues after individual provider failure.</li>
+<li>Multiple workers may auto deploy at the same time.</li>
+<li>Runtime deploy credential change triggers provider redeploy.</li>
+<li>Collector/dashboard/session credential change triggers reverify/recollect, not redeploy.</li>
+<li>Settings has fixed sections: Environment Variables, Credential health, Provider Credentials, Deploy runtime, Earnings collector, Dashboard / session.</li>
+<li>Service Catalog shows separate readiness badges: deploy, collector, dashboard/session.</li>
+<li>Fleet shows worker/provider state and auto-deploy status; no per-worker auto-deploy toggle.</li>
+<li>Prefer existing repo patterns, deletion over addition, TDD for behavior changes.</li>
+</ul>
+<hr />
+<h2 id="milestones">Milestones<a class="headerlink" href="#milestones" title="Permanent link">&para;</a></h2>
+<h3 id="milestone-1-audit-lock">Milestone 1: Audit Lock<a class="headerlink" href="#milestone-1-audit-lock" title="Permanent link">&para;</a></h3>
+<p>All provider/UI/backend gaps are known, credential gaps are written outside repo, and stale/thrown-away logic is removed from the plan.</p>
+<h3 id="milestone-2-core-contracts">Milestone 2: Core Contracts<a class="headerlink" href="#milestone-2-core-contracts" title="Permanent link">&para;</a></h3>
+<p>Settings, credential health, runtime assets, worker heartbeat/provider_states, proxy lease, MYST wallet lease, and auto-deploy policy have server-side contracts and tests.</p>
+<h3 id="milestone-3-ui-parity">Milestone 3: UI Parity<a class="headerlink" href="#milestone-3-ui-parity" title="Permanent link">&para;</a></h3>
+<p>Dashboard, Setup Wizard, Service Catalog, Payouts, Proxy Provider, Proxy Pool, MYST Wallet, Settings, and Fleet expose exactly what backend supports.</p>
+<h3 id="milestone-4-provider-contracts">Milestone 4: Provider Contracts<a class="headerlink" href="#milestone-4-provider-contracts" title="Permanent link">&para;</a></h3>
+<p>All 18 active providers have deploy runtime, earnings collector, dashboard/session, payout, proxy mode, and readiness metadata filled or explicitly marked <code>needs_user_info</code>.</p>
+<h3 id="milestone-5-server-first-live-validation">Milestone 5: Server-First Live Validation<a class="headerlink" href="#milestone-5-server-first-live-validation" title="Permanent link">&para;</a></h3>
+<p>VPS server is deployed from GitHub, workers enroll via the bootstrap script, and provider nodes are recreated only from server commands.</p>
+<hr />
+<h2 id="file-structure">File Structure<a class="headerlink" href="#file-structure" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>services/_schema.yml</code>: provider metadata schema for credentials, runtime assets, proxy policy, payout, readiness.</li>
+<li><code>services/bandwidth/*.yml</code>, <code>services/depin/*.yml</code>: source-of-truth provider contracts.</li>
+<li><code>app/catalog.py</code>: catalog loading, validation, and readiness metadata.</li>
+<li><code>app/collectors/__init__.py</code>: collector metadata and credential field normalization.</li>
+<li><code>app/collectors/*.py</code>: provider earnings/payout collectors.</li>
+<li><code>app/database.py</code>: config, credential metadata, workers, deployments, proxy leases, MYST wallets, provider states.</li>
+<li><code>app/main.py</code>: Settings, Dashboard, Setup Wizard, Fleet, deploy, payout, and collector routes.</li>
+<li><code>app/worker_api.py</code>: worker enroll/heartbeat/provider_states/deploy/runtime asset hooks.</li>
+<li><code>app/orchestrator.py</code>: Docker deploy/remove/redeploy and provider evidence extraction.</li>
+<li><code>app/provider_automation.py</code>, <code>app/provider_installers.py</code>: provider-specific runtime helpers.</li>
+<li><code>app/proxy_egress.py</code>, <code>app/singbox_config.py</code>, <code>app/routers/proxies.py</code>: proxy provider/pool/worker egress.</li>
+<li><code>app/myst_wallets.py</code>, <code>app/myst_runtime.py</code>, <code>app/routers/myst_wallets.py</code>: MYST wallet inventory/runtime flow.</li>
+<li><code>app/payouts.py</code>, <code>app/payout_reconcile.py</code>, <code>app/payout_registry.py</code>: payout detection, display, confirmation.</li>
+<li><code>app/templates/*.html</code>, <code>app/static/js/app.js</code>: frontend parity.</li>
+<li><code>client command setup script.txt</code>: canonical VPS worker bootstrap.</li>
+<li><code>docs/research/provider-refresh-audit-2026-08.md</code>: provider status matrix.</li>
+<li><code>D:\1. WORK_true\CashPilot\secret\provider-credential-gap-audit.md</code>: local secret/credential gap file, not committed.</li>
+<li><code>tests/test_*</code>: unit, contract, wiring, and regression coverage.</li>
+</ul>
+<hr />
+<h2 id="task-1-done-full-audit-inventory">Task 1 [DONE]: Full Audit Inventory<a class="headerlink" href="#task-1-done-full-audit-inventory" title="Permanent link">&para;</a></h2>
+<p><strong>Files:</strong>
+- Modify: <code>docs/research/provider-refresh-audit-2026-08.md</code>
+- Create/Modify outside repo: <code>D:\1. WORK_true\CashPilot\secret\provider-credential-gap-audit.md</code>
+- Test: <code>tests/test_catalog.py</code>, <code>tests/test_catalog_loader.py</code>, <code>tests/test_provider_source_of_truth_docs.py</code></p>
+<p><strong>Interfaces:</strong></p>
+<p><strong>Checkpoint:</strong> Status [DONE]; Owner Codex; Started 2026-08-13; Evidence <code>86 passed</code>, removed unused <code>ack_myst_wallet</code>; Commit pending.</p>
+<ul>
+<li>
+<p>Produces: complete 21-provider matrix with runtime, collector, dashboard/session, payout, proxy, MYST dependency, UI readiness, missing credentials.</p>
+</li>
+<li>
+<p>[x] Load all provider YAML files and list the active provider slugs.</p>
+</li>
+<li>[x] For each provider, record <code>category</code>, <code>deployable</code>, <code>container image</code>, <code>deploy credentials</code>, <code>runtime assets</code>, <code>collector credentials</code>, <code>dashboard/session credentials</code>, <code>payout fields</code>, <code>egress mode</code>, <code>proxy requirement</code>, <code>MYST dependency</code>, <code>UI readiness</code>.</li>
+<li>[x] Search docs/UI/tests for stale provider names and stale counts.</li>
+<li>[x] Connect to Chrome profile 40 and read all provider tab URL/title/page state. If the Chrome connector fails, fix the connection path or use an approved fallback; do not skip Chrome audit.</li>
+<li>[x] Extract provider tokens/cookies/API/session fields from Chrome profile 40 when needed.</li>
+<li>[x] Save missing/raw credential notes only to <code>D:\1. WORK_true\CashPilot\secret\provider-credential-gap-audit.md</code>.</li>
+<li>[x] Add tests that fail when docs provider counts disagree with loaded catalog counts.</li>
+<li>[x] Replace every provider matrix <code>unknown</code> value with a concrete field, <code>none</code>, <code>not_applicable</code>, or <code>needs_user_info</code>.</li>
+</ul>
+<p><strong>Verification:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">pytest</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_catalog</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_catalog_loader</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_provider_source_of_truth_docs</span><span class="p">.</span><span class="n">py</span> <span class="n">-q</span>
+</code></pre></div>
+<hr />
+<h2 id="task-2-done-remove-redundant-logic">Task 2 [DONE]: Remove Redundant Logic<a class="headerlink" href="#task-2-done-remove-redundant-logic" title="Permanent link">&para;</a></h2>
+<p><strong>Files:</strong>
+- Modify: <code>app/worker_api.py</code>
+- Modify: <code>app/myst_wallets.py</code>
+- Modify: <code>app/routers/myst_wallets.py</code>
+- Modify: <code>app/database.py</code>
+- Modify: <code>tests/test_worker_myst_sync.py</code>
+- Modify: <code>tests/test_myst_wallets_module.py</code></p>
+<p><strong>Interfaces:</strong></p>
+<p><strong>Checkpoint:</strong> Status [TODO]; Owner Codex; Started not yet; Evidence pending; Commit pending.</p>
+<ul>
+<li>
+<p>Produces: single worker heartbeat plus <code>provider_states</code> as runtime truth.</p>
+</li>
+<li>
+<p>[x] Remove any separate MYST heartbeat loop or endpoint that duplicates worker heartbeat.</p>
+</li>
+<li>[x] Remove any MYST ACK endpoint. If code audit proves provider_states cannot carry required evidence, mark this task <code>[CHANGED]</code> and add a decision log entry before adding any replacement.</li>
+<li>[x] Keep wallet lease state on server as asset inventory, not runtime truth.</li>
+<li>[x] Make stale wallet/proxy decisions consume worker <code>last_heartbeat</code> and <code>provider_states</code>.</li>
+<li>[x] Add tests proving MYST wallet logic does not require a separate heartbeat endpoint.</li>
+</ul>
+<p><strong>Verification:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">pytest</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_worker_myst_sync</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_myst_wallets_module</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_worker_keys</span><span class="p">.</span><span class="n">py</span> <span class="n">-q</span>
+</code></pre></div>
+<hr />
+<h2 id="task-3-done-settings-contract">Task 3 [DONE]: Settings Contract<a class="headerlink" href="#task-3-done-settings-contract" title="Permanent link">&para;</a></h2>
+<p><strong>Files:</strong>
+- Modify: <code>app/catalog.py</code>
+- Modify: <code>app/collectors/__init__.py</code>
+- Modify: <code>app/main.py</code>
+- Modify: <code>app/database.py</code>
+- Modify: <code>app/static/js/app.js</code>
+- Modify: <code>app/templates/settings.html</code>
+- Test: <code>tests/test_main_routes.py</code>, <code>tests/test_frontend_wiring.py</code>, <code>tests/test_deploy_credentials.py</code>, <code>tests/test_runtime_assets.py</code></p>
+<p><strong>Interfaces:</strong></p>
+<p><strong>Checkpoint:</strong> Status [DONE]; Owner Codex; Started 2026-08-13; Evidence <code>98 passed</code> (<code>tests/test_settings_contract.py</code>, <code>tests/test_frontend_wiring.py</code>, <code>tests/test_deploy_credentials.py</code>, <code>tests/test_runtime_assets.py</code>); Commit pending.</p>
+<ul>
+<li>
+<p>Produces: fixed Settings sections and correct save/clear/reverify/redeploy behavior.</p>
+</li>
+<li>
+<p>[x] Add tests for Settings sections: Environment Variables, Credential health, Provider Credentials, Deploy runtime, Earnings collector, Dashboard / session.</p>
+</li>
+<li>[x] Add tests that deploy credential changes mark provider <code>needs_redeploy</code>.</li>
+<li>[x] Add tests that collector/dashboard credential changes trigger verify/recollect only.</li>
+<li>[x] Add tests that file inputs persist as runtime assets without echoing raw values.</li>
+<li>[x] Add tests that stale/incomplete UI status matches backend metadata.</li>
+<li>[x] Implement minimal backend and frontend changes to pass.</li>
+</ul>
+<p><strong>Verification:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">pytest</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_main_routes</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_frontend_wiring</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_deploy_credentials</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_runtime_assets</span><span class="p">.</span><span class="n">py</span> <span class="n">-q</span>
+</code></pre></div>
+<hr />
+<h2 id="task-4-done-credential-health-and-chrome-audit-save">Task 4 [DONE]: Credential Health And Chrome Audit Save<a class="headerlink" href="#task-4-done-credential-health-and-chrome-audit-save" title="Permanent link">&para;</a></h2>
+<p><strong>Files:</strong>
+- Modify: <code>app/credential_test.py</code>
+- Modify: <code>app/main.py</code>
+- Modify: <code>app/database.py</code>
+- Modify: <code>app/static/js/app.js</code>
+- Create/Modify outside repo: <code>D:\1. WORK_true\CashPilot\secret\provider-credential-gap-audit.md</code>
+- Test: <code>tests/test_main_routes.py</code>, <code>tests/test_collectors.py</code>, <code>tests/test_collector_contracts.py</code></p>
+<p><strong>Interfaces:</strong></p>
+<p><strong>Checkpoint:</strong> Status [DONE]; Owner Codex; Started 2026-08-13; Evidence <code>100 passed, 1 skipped</code> (<code>tests/test_settings_contract.py</code>, <code>tests/test_collectors.py</code>, <code>tests/test_collector_contracts.py</code>); Commit pending.</p>
+<ul>
+<li>
+<p>Produces: credential verification before overwrite and local gap report.</p>
+</li>
+<li>
+<p>[x] Add tests for existing fresh credential not overwritten.</p>
+</li>
+<li>[x] Add tests for missing/expired/failing credential eligible for overwrite.</li>
+<li>[x] Add tests for unknown expiry reporting <code>no_known_expiry</code>.</li>
+<li>[x] Add Chrome audit procedure that writes raw secret only to local secret file or directly into server Settings.</li>
+<li>[x] Add provider-specific credential verification where APIs are known.</li>
+</ul>
+<p><strong>Verification:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">pytest</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_main_routes</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_collectors</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_collector_contracts</span><span class="p">.</span><span class="n">py</span> <span class="n">-q</span>
+</code></pre></div>
+<hr />
+<h2 id="task-5-done-worker-bootstrap-and-stable-heartbeat">Task 5 [DONE]: Worker Bootstrap And Stable Heartbeat<a class="headerlink" href="#task-5-done-worker-bootstrap-and-stable-heartbeat" title="Permanent link">&para;</a></h2>
+<p><strong>Files:</strong>
+- Modify: <code>client command setup script.txt</code>
+- Modify: <code>app/worker_api.py</code>
+- Modify: <code>app/database.py</code>
+- Modify: <code>app/templates/fleet.html</code>
+- Modify: <code>app/static/js/app.js</code>
+- Test: <code>tests/test_worker_keys.py</code>, <code>tests/test_worker_keys.py</code>, <code>tests/test_worker_myst_sync.py</code></p>
+<p><strong>Interfaces:</strong></p>
+<p><strong>Checkpoint:</strong> Status [DONE]; Owner Codex; Started 2026-08-13; Evidence <code>136 passed</code> (<code>tests/test_worker_keys.py</code>, <code>tests/test_worker_myst_sync.py</code>, <code>tests/test_frontend_wiring.py</code>); external bootstrap script verified at <code>D:\1. WORK_true\CashPilot\client command setup script.txt</code>; Commit pending.</p>
+<ul>
+<li>
+<p>Produces: stable worker identity, worker URL, worker online threshold, server-first deploy path.</p>
+</li>
+<li>
+<p>[x] Add tests for worker name <code>public-ip-timestamp</code>.</p>
+</li>
+<li>[x] Add tests for worker URL using public VPS IP, not container-internal IP.</li>
+<li>[x] Add tests for worker stable after 3 consecutive healthy heartbeats.</li>
+<li>[x] Add tests that local/VPS server worker is excluded from auto deploy by default.</li>
+<li>[x] Keep bootstrap script compatible with old and new VPS package state.</li>
+</ul>
+<p><strong>Verification:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">pytest</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_worker_keys</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_worker_keys</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_worker_myst_sync</span><span class="p">.</span><span class="n">py</span> <span class="n">-q</span>
+</code></pre></div>
+<hr />
+<h2 id="task-6-done-auto-deploy-policy">Task 6 [DONE]: Auto Deploy Policy<a class="headerlink" href="#task-6-done-auto-deploy-policy" title="Permanent link">&para;</a></h2>
+<p><strong>Files:</strong>
+- Modify: <code>app/main.py</code>
+- Modify: <code>app/database.py</code>
+- Modify: <code>app/worker_api.py</code>
+- Modify: <code>app/orchestrator.py</code>
+- Modify: <code>app/static/js/app.js</code>
+- Modify: <code>app/templates/settings.html</code>
+- Modify: <code>app/templates/fleet.html</code>
+- Test: <code>tests/test_worker_keys.py</code>, <code>tests/test_worker_myst_sync.py</code>, <code>tests/test_frontend_wiring.py</code></p>
+<p><strong>Interfaces:</strong></p>
+<p><strong>Checkpoint:</strong> Status [DONE]; Owner Codex; Started 2026-08-13; Evidence <code>84 passed</code> (<code>tests/test_auto_deploy_policy.py</code>, <code>tests/test_frontend_wiring.py</code>); Commit pending.</p>
+<ul>
+<li>
+<p>Produces: global auto-deploy toggle, delay, batch sequence, failure continuation, credential-change redeploy.</p>
+</li>
+<li>
+<p>[x] Add tests for auto deploy disabled by default.</p>
+</li>
+<li>[x] Add tests for deployable providers only.</li>
+<li>[x] Add tests for old workers receiving missing providers when toggle is enabled.</li>
+<li>[x] Add tests for new workers starting auto deploy after 3 healthy heartbeats.</li>
+<li>[x] Add tests for one auto-deploy job lock per worker.</li>
+<li>[x] Add tests for 10-second default provider delay and configurable delay.</li>
+<li>[x] Add tests for provider failure recorded while the batch continues.</li>
+<li>[x] Add tests for deploy credential change triggering redeploy.</li>
+<li>[x] Implement sequential per-worker batch deploy.</li>
+</ul>
+<p><strong>Verification:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">pytest</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_worker_keys</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_worker_myst_sync</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_frontend_wiring</span><span class="p">.</span><span class="n">py</span> <span class="n">-q</span>
+</code></pre></div>
+<hr />
+<h2 id="task-7-done-proxy-provider-and-proxy-pool-lease">Task 7 [DONE]: Proxy Provider And Proxy Pool Lease<a class="headerlink" href="#task-7-done-proxy-provider-and-proxy-pool-lease" title="Permanent link">&para;</a></h2>
+<p><strong>Files:</strong>
+- Modify: <code>app/routers/proxies.py</code>
+- Modify: <code>app/database.py</code>
+- Modify: <code>app/proxy_egress.py</code>
+- Modify: <code>app/singbox_config.py</code>
+- Modify: <code>app/worker_api.py</code>
+- Modify: <code>app/templates/*.html</code>
+- Modify: <code>app/static/js/app.js</code>
+- Test: <code>tests/test_proxy_routes.py</code>, <code>tests/test_proxy_egress.py</code>, <code>tests/test_worker_keys.py</code>, <code>tests/test_frontend_wiring.py</code></p>
+<p><strong>Interfaces:</strong></p>
+<p><strong>Checkpoint:</strong> Status [DONE]; Owner Codex; Started 2026-08-13; Evidence <code>11 passed</code> (<code>tests/test_proxy_routes.py</code>, <code>tests/test_auto_deploy_policy.py</code>); Commit pending.</p>
+<ul>
+<li>
+<p>Produces: one exclusive worker-level proxy lease, health checks, auto-rotate, sing-box restart.</p>
+</li>
+<li>
+<p>[x] Add tests for proxy lease exclusive per worker.</p>
+</li>
+<li>[x] Add tests that each worker receives one default proxy for sing-box.</li>
+<li>[x] Add tests that proxy health check interval defaults to 5 minutes and is configurable.</li>
+<li>[x] Add tests that proxy auto-rotate can be toggled.</li>
+<li>[x] Add tests that failed proxy rotates to a new available proxy for the same worker.</li>
+<li>[x] Add tests that worker restarts only sing-box after proxy rotation.</li>
+<li>[x] Add tests that proxy-mode provider deploy blocks when no proxy is available.</li>
+<li>[x] Add tests that direct providers deploy even when proxy pool is empty.</li>
+<li>[x] Update Proxy Provider UI for inventory/capability health.</li>
+<li>[x] Update Proxy Pool UI for worker lease, proxy state, last check, rotate reason.</li>
+</ul>
+<p><strong>Verification:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">pytest</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_proxy_routes</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_proxy_egress</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_worker_keys</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_frontend_wiring</span><span class="p">.</span><span class="n">py</span> <span class="n">-q</span>
+</code></pre></div>
+<hr />
+<h2 id="task-8-done-myst-wallet-lease-and-runtime">Task 8 [DONE]: MYST Wallet Lease And Runtime<a class="headerlink" href="#task-8-done-myst-wallet-lease-and-runtime" title="Permanent link">&para;</a></h2>
+<p><strong>Files:</strong>
+- Modify: <code>app/myst_wallets.py</code>
+- Modify: <code>app/myst_runtime.py</code>
+- Modify: <code>app/routers/myst_wallets.py</code>
+- Modify: <code>app/database.py</code>
+- Modify: <code>app/worker_api.py</code>
+- Modify: <code>app/templates/myst_wallet.html</code>
+- Modify: <code>app/static/js/app.js</code>
+- Test: <code>tests/test_myst_wallets_module.py</code>, <code>tests/test_myst_runtime.py</code>, <code>tests/test_worker_myst_sync.py</code>, <code>tests/test_worker_keys.py</code></p>
+<p><strong>Interfaces:</strong></p>
+<p><strong>Checkpoint:</strong> Status [DONE]; Owner Codex; Started 2026-08-13; Evidence <code>38 passed</code> (<code>tests/test_myst_runtime.py</code>, <code>tests/test_myst_wallets_module.py</code>, <code>tests/test_worker_myst_sync.py</code>); Commit pending.</p>
+<ul>
+<li>
+<p>Produces: MYST wallet distribution/reclaim through worker heartbeat/provider_states.</p>
+</li>
+<li>
+<p>[x] Add tests for wallet fingerprint uniqueness across fleet.</p>
+</li>
+<li>[x] Add tests for one MYST direct node per worker.</li>
+<li>[x] Add tests for default password stored in Settings and applied to new/redeployed nodes.</li>
+<li>[x] Add tests for <code>Registered</code> marking wallet <code>FUNDED</code>.</li>
+<li>[x] Add tests for <code>Unregistered</code> marking wallet <code>UNFUNDED</code>.</li>
+<li>[x] Add tests for unreadable registration status preserving previous funding state.</li>
+<li>[x] Add tests for worker offline over 5 minutes making wallet reusable by another worker.</li>
+<li>[x] Add tests for stale old worker heartbeat blocked by assignment version/provider_states.</li>
+<li>[x] Update MYST Wallet UI with import/list/filter/export/release/quarantine/funding state.</li>
+<li>[x] Keep MYST release/reclaim automatic; no manual release required for normal flow.</li>
+</ul>
+<p><strong>Verification:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">pytest</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_myst_wallets_module</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_myst_runtime</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_worker_myst_sync</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_worker_keys</span><span class="p">.</span><span class="n">py</span> <span class="n">-q</span>
+</code></pre></div>
+<hr />
+<h2 id="task-9-done-historical-provider-catalog-contracts">Task 9 [DONE]: Historical Provider Catalog Contracts<a class="headerlink" href="#task-9-done-historical-provider-catalog-contracts" title="Permanent link">&para;</a></h2>
+<p><strong>Files:</strong>
+- Modify: <code>services/bandwidth/earnfm.yml</code>
+- Modify: <code>services/bandwidth/iproyal.yml</code>
+- Modify: <code>services/bandwidth/mysterium.yml</code>
+- Modify: <code>services/bandwidth/packetstream.yml</code>
+- Modify: <code>services/bandwidth/proxies-sx.yml</code>
+- Modify: <code>services/bandwidth/proxybase.yml</code>
+- Modify: <code>services/bandwidth/proxybase-xyz.yml</code>
+- Modify: <code>services/bandwidth/proxyrack.yml</code>
+- Modify: <code>services/bandwidth/repocket.yml</code>
+- Modify: <code>services/bandwidth/spide.yml</code>
+- Modify: <code>services/bandwidth/traffmonetizer.yml</code>
+- Modify: <code>services/bandwidth/urnetwork.yml</code>
+- Grass catalog work is superseded by the removal decision; no active Grass file remains.
+- Modify: <code>services/depin/uprock.yml</code>
+- Modify: <code>services/depin/wipter.yml</code>
+- Test: <code>tests/test_catalog.py</code>, <code>tests/test_catalog_loader.py</code>, <code>tests/test_provider_automation.py</code>, <code>tests/test_provider_installers.py</code></p>
+<p><strong>Interfaces:</strong></p>
+<p><strong>Checkpoint:</strong> Status [DONE]; Owner Codex; Started 2026-08-13; Evidence <code>208 passed</code> (<code>tests/test_catalog.py</code>, <code>tests/test_catalog_loader.py</code>, <code>tests/test_provider_source_of_truth_docs.py</code>); Commit pending.</p>
+<ul>
+<li>
+<p>Produces: every provider has deploy runtime, collector, dashboard/session, payout, egress, and readiness metadata either implemented or explicitly missing.</p>
+</li>
+<li>
+<p>[x] Mark every deployable provider with exact deploy runtime fields.</p>
+</li>
+<li>[x] Mark every collector-capable provider with exact earnings collector fields.</li>
+<li>[x] Mark every dashboard/API-capable provider with exact dashboard/session fields.</li>
+<li>[x] Mark every payout-capable collector provider with withdrawable/minimum/dashboard URL fields.</li>
+<li>[x] Mark every proxy-mode provider as proxy egress.</li>
+<li>[x] Mark current direct providers explicitly: Uprock, EarnFM, Proxybase.org, Proxyrack, Repocket, Traffmonetizer, MYST.</li>
+<li>[x] Keep provider names unambiguous: <code>proxybase</code> is Docker <code>ghcr.io/proxybaseorg/peer-cli</code>; <code>proxybase-xyz</code> is CLI <code>https://proxybase.xyz/install.sh</code>.</li>
+<li>[x] Keep MYST wallet dependency separate from proxy provider wallet.</li>
+<li>[x] For provider fields not yet known, write exact gap to local secret audit file and set catalog <code>needs_user_info</code>.</li>
+</ul>
+<p><strong>Verification:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">pytest</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_catalog</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_catalog_loader</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_provider_automation</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_provider_installers</span><span class="p">.</span><span class="n">py</span> <span class="n">-q</span>
+</code></pre></div>
+<hr />
+<h2 id="task-10-done-provider-runtime-helpers">Task 10 [DONE]: Provider Runtime Helpers<a class="headerlink" href="#task-10-done-provider-runtime-helpers" title="Permanent link">&para;</a></h2>
+<p><strong>Files:</strong>
+- Modify: <code>app/provider_automation.py</code>
+- Modify: <code>app/provider_installers.py</code>
+- Modify: <code>app/orchestrator.py</code>
+- Modify: <code>app/worker_api.py</code>
+- Test: <code>tests/test_provider_automation.py</code>, <code>tests/test_provider_installers.py</code>, <code>tests/test_worker_keys.py</code>, <code>tests/test_worker_myst_sync.py</code>, plus one new focused test file when a new helper cannot fit those contracts cleanly.</p>
+<p><strong>Interfaces:</strong></p>
+<p><strong>Checkpoint:</strong> Historical Grass automation work is retained in Git history; current branch removes that provider and verifies the retired-provider boundary.</p>
+<ul>
+<li>
+<p>Produces: deploy helpers that materialize runtime assets into containers correctly.</p>
+</li>
+<li>
+<p>[x] Adnade: download R2 <code>.fernet</code>, decrypt profile on worker, run Chrome profile from InternetIncome test branch behavior, preserve Dawn, auto-enable Titan.</p>
+</li>
+<li>[x] Historical Grass patch experiment documented; provider subsequently removed from the product.</li>
+<li>[x] Uprock: materialize <code>credentials.json</code> and <code>main.db</code>, run official image/package flow, verify earning state.</li>
+<li>[x] Wipter: run email/password login flow, detect login-ready markers, restart once.</li>
+<li>[x] Proxybase: run official Docker token/device flow.</li>
+<li>[x] Spide: run Linux CLI, parse device key, register through dashboard/session credential.</li>
+<li>[x] MYST: lease wallet, write local wallet with <code>0600</code>, set password/MMN, start node, report registration status.</li>
+</ul>
+<p><strong>Verification:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">pytest</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_provider_automation</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_provider_installers</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_worker_keys</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_worker_myst_sync</span><span class="p">.</span><span class="n">py</span> <span class="n">-q</span>
+</code></pre></div>
+<hr />
+<h2 id="task-11-done-dashboard-and-payouts">Task 11 [DONE]: Dashboard And Payouts<a class="headerlink" href="#task-11-done-dashboard-and-payouts" title="Permanent link">&para;</a></h2>
+<p><strong>Files:</strong>
+- Modify: <code>app/main.py</code>
+- Modify: <code>app/payouts.py</code>
+- Modify: <code>app/payout_reconcile.py</code>
+- Modify: <code>app/payout_registry.py</code>
+- Modify: <code>app/static/js/app.js</code>
+- Modify: <code>app/templates/dashboard.html</code>
+- Modify: <code>app/templates/payouts.html</code>
+- Test: <code>tests/test_payout_earnings.py</code>, <code>tests/test_payout_reconcile.py</code>, <code>tests/test_main_routes.py</code>, <code>tests/test_frontend_wiring.py</code></p>
+<p><strong>Interfaces:</strong></p>
+<p><strong>Checkpoint:</strong> Status [DONE]; Owner Codex; Started 2026-08-13; Evidence <code>88 passed</code> for frontend/proxy route slice plus <code>18 passed</code> payout slice; Commit pending.</p>
+<ul>
+<li>
+<p>Produces: dashboard and payouts that reflect collector truth without guessing.</p>
+</li>
+<li>
+<p>[x] Add tests for payout showing <code>withdrawable</code>, <code>minimum</code>, <code>eligible</code>, <code>dashboard_url</code>, <code>last_checked</code>.</p>
+</li>
+<li>[x] Add tests for no collector showing <code>running/no collector</code>.</li>
+<li>[x] Add tests for per-node earnings source not double-counting account total.</li>
+<li>[x] Add tests for Collect Now per provider.</li>
+<li>[x] Update Dashboard provider cards with runtime/credential/proxy/wallet/collector status.</li>
+<li>[x] Update Payouts page to show only collector-backed payout information.</li>
+</ul>
+<p><strong>Verification:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">pytest</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_payout_earnings</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_payout_reconcile</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_main_routes</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_frontend_wiring</span><span class="p">.</span><span class="n">py</span> <span class="n">-q</span>
+</code></pre></div>
+<hr />
+<h2 id="task-12-done-setup-wizard-and-service-catalog">Task 12 [DONE]: Setup Wizard And Service Catalog<a class="headerlink" href="#task-12-done-setup-wizard-and-service-catalog" title="Permanent link">&para;</a></h2>
+<p><strong>Files:</strong>
+- Modify: <code>app/main.py</code>
+- Modify: <code>app/static/js/app.js</code>
+- Modify: <code>app/templates/setup.html</code>
+- Modify: <code>app/templates/catalog.html</code>
+- Modify: <code>app/templates/service_detail.html</code>
+- Test: <code>tests/test_main_routes.py</code>, <code>tests/test_frontend_wiring.py</code>, <code>tests/test_catalog.py</code></p>
+<p><strong>Interfaces:</strong></p>
+<p><strong>Checkpoint:</strong> Status [DONE]; Owner Codex; Started 2026-08-13; Evidence <code>288 passed</code> for frontend/catalog/catalog-loader slice; Commit pending.</p>
+<ul>
+<li>
+<p>Produces: multi-provider deploy flow and readiness visibility.</p>
+</li>
+<li>
+<p>[x] Add tests for Setup Wizard selecting multiple providers and one or more workers.</p>
+</li>
+<li>[x] Add tests for Setup Wizard respecting deploy/collector/dashboard fields.</li>
+<li>[x] Add tests for Setup Wizard skipping providers with missing deploy runtime fields.</li>
+<li>[x] Add tests for Service Catalog readiness badges: deploy, collector, dashboard/session.</li>
+<li>[x] Add tests for Service Catalog showing egress/direct/proxy/MYST dependency.</li>
+<li>[x] Implement minimal UI changes for batch deploy and readiness.</li>
+</ul>
+<p><strong>Verification:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">pytest</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_main_routes</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_frontend_wiring</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_catalog</span><span class="p">.</span><span class="n">py</span> <span class="n">-q</span>
+</code></pre></div>
+<hr />
+<h2 id="task-13-done-fleet-ui-and-reconciliation">Task 13 [DONE]: Fleet UI And Reconciliation<a class="headerlink" href="#task-13-done-fleet-ui-and-reconciliation" title="Permanent link">&para;</a></h2>
+<p><strong>Files:</strong>
+- Modify: <code>app/main.py</code>
+- Modify: <code>app/database.py</code>
+- Modify: <code>app/templates/fleet.html</code>
+- Modify: <code>app/static/js/app.js</code>
+- Test: <code>tests/test_worker_keys.py</code>, <code>tests/test_worker_keys.py</code>, <code>tests/test_frontend_wiring.py</code></p>
+<p><strong>Interfaces:</strong></p>
+<p><strong>Checkpoint:</strong> Status [DONE]; Owner Codex; Started 2026-08-13; Evidence <code>115 passed</code> for fleet/MYST slice; Commit pending.</p>
+<ul>
+<li>
+<p>Produces: worker/provider_states, auto-deploy progress, proxy lease, MYST lease, runtime evidence in Fleet.</p>
+</li>
+<li>
+<p>[x] Add tests for Fleet showing worker public IP, URL, last heartbeat, stable heartbeat state.</p>
+</li>
+<li>[x] Add tests for Fleet showing provider_states by worker.</li>
+<li>[x] Add tests for Fleet showing auto-deploy batch status.</li>
+<li>[x] Add tests for Fleet showing proxy lease and MYST wallet lease redacted.</li>
+<li>[x] Add tests for automatic reconciliation from worker heartbeat.</li>
+<li>[x] Implement minimal frontend/backend additions.</li>
+</ul>
+<p><strong>Verification:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="n">pytest</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_worker_keys</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_worker_keys</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_frontend_wiring</span><span class="p">.</span><span class="n">py</span> <span class="n">-q</span>
+</code></pre></div>
+<hr />
+<h2 id="task-14-done-docs-and-operator-commands">Task 14 [DONE]: Docs And Operator Commands<a class="headerlink" href="#task-14-done-docs-and-operator-commands" title="Permanent link">&para;</a></h2>
+<p><strong>Files:</strong>
+- Modify: <code>README.md</code>
+- Modify: <code>docs/index.md</code>
+- Modify: <code>docs/getting-started.md</code>
+- Modify: <code>docs/fleet.md</code>
+- Modify: <code>docs/configuration.md</code>
+- Modify: <code>docs/research/provider-refresh-audit-2026-08.md</code>
+- Test: <code>tests/test_readme_generation.py</code>, <code>tests/test_docs_do_not_contradict_the_shipped_files.py</code>, <code>tests/test_configuration_reference.py</code></p>
+<p><strong>Interfaces:</strong></p>
+<p><strong>Checkpoint:</strong> Status [DONE]; Owner Codex; Started 2026-08-13; Evidence <code>133 passed</code> for docs/config/provider-source tests; Commit pending.</p>
+<ul>
+<li>
+<p>Produces: docs that match shipped code and the canonical worker bootstrap.</p>
+</li>
+<li>
+<p>[x] Update provider counts and categories.</p>
+</li>
+<li>[x] Document canonical worker bootstrap from <code>client command setup script.txt</code>.</li>
+<li>[x] Document auto-deploy toggle, delay, stable heartbeat threshold.</li>
+<li>[x] Document proxy pool lease/rotate behavior.</li>
+<li>[x] Document MYST wallet lease behavior and default password.</li>
+<li>[x] Document Settings credential sections.</li>
+<li>[x] Remove stale manual instructions that are no longer true.</li>
+</ul>
+<p><strong>Verification:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="n">pytest</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_readme_generation</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_docs_do_not_contradict_the_shipped_files</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_configuration_reference</span><span class="p">.</span><span class="n">py</span> <span class="n">-q</span>
+</code></pre></div>
+<hr />
+<h2 id="task-15-done-local-full-verification">Task 15 [DONE]: Local Full Verification<a class="headerlink" href="#task-15-done-local-full-verification" title="Permanent link">&para;</a></h2>
+<p><strong>Files:</strong>
+- No direct edits unless tests expose drift.
+- Test: full targeted suite and full suite if feasible.</p>
+<p><strong>Interfaces:</strong></p>
+<p><strong>Checkpoint:</strong> Status [DONE]; Owner Codex; Started 2026-08-13; Evidence <code>680 passed, 1 skipped</code> plus <code>python scripts/check_deploy_baseline.py</code> passed; Commit be8d144; Push done.</p>
+<ul>
+<li>
+<p>Produces: commit-ready repo state.</p>
+</li>
+<li>
+<p>[x] Run targeted suite:</p>
+</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="n">pytest</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_catalog</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_catalog_loader</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_collectors</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_collector_contracts</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_main_routes</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_readme_generation</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_proxy_egress</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_proxy_routes</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_worker_keys</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_worker_myst_sync</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_worker_keys</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_frontend_wiring</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_myst_wallets_module</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_myst_runtime</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_worker_myst_sync</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_provider_automation</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_provider_installers</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_runtime_assets</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_deploy_credentials</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_payout_earnings</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_payout_reconcile</span><span class="p">.</span><span class="n">py</span> <span class="n">-q</span>
+</code></pre></div>
+<ul>
+<li>[x] Run deploy baseline:</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="n">python</span> <span class="n">scripts</span><span class="p">/</span><span class="n">check_deploy_baseline</span><span class="p">.</span><span class="n">py</span>
+</code></pre></div>
+<ul>
+<li>[x] Run full suite when time permits:</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="n">pytest</span> <span class="n">-q</span>
+</code></pre></div>
+<hr />
+<h2 id="task-16-done-commit-push-deploy-smoke">Task 16 [DONE]: Commit, Push, Deploy, Smoke<a class="headerlink" href="#task-16-done-commit-push-deploy-smoke" title="Permanent link">&para;</a></h2>
+<p><strong>Files:</strong>
+- Modify only if deployment exposes a real code/docs gap.
+- Test: VPS server health and browser smoke.</p>
+<p><strong>Interfaces:</strong></p>
+<p><strong>Checkpoint:</strong> Status [DONE]; Owner Codex; Started 2026-08-13; Evidence local <code>be8d144</code>, GitHub pushed, VPS deployed, UI/worker healthy, no CI runs listed for branch; Commit be8d144.</p>
+<ul>
+<li>
+<p>Produces: GitHub and VPS server synchronized to the correct branch/commit.</p>
+</li>
+<li>
+<p>[x] Confirm branch is <code>provider-standard-40834f6</code>.</p>
+</li>
+<li>[x] Confirm no unrelated dirty files are included.</li>
+<li>[x] Commit with a scoped message.</li>
+<li>[x] Push to GitHub.</li>
+<li>[x] Check GitHub CI.</li>
+<li>[x] Deploy VPS server from GitHub.</li>
+<li>[x] Do not touch existing VPS server DB/volumes.</li>
+<li>[x] Smoke-check Dashboard, Setup Wizard, Service Catalog, Payouts, Proxy Provider, Proxy Pool, MYST Wallet, Settings, Fleet.</li>
+<li>[x] Recreate Adnade or selected provider nodes from VPS server to worker, not direct worker SSH.</li>
+<li>[x] Confirm local, GitHub, and VPS server commits match.</li>
+</ul>
+<p><strong>Verification:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="n">git</span> <span class="n">status</span> <span class="p">-</span><span class="n">-short</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="n">git</span> <span class="n">log</span> <span class="p">-</span><span class="n">-oneline</span> <span class="p">-</span><span class="n">1</span>
+</code></pre></div>
+<hr />
+<h2 id="task-17-in_progress-active-provider-runtime-normalization">Task 17 [IN_PROGRESS]: Active Provider Runtime Normalization<a class="headerlink" href="#task-17-in_progress-active-provider-runtime-normalization" title="Permanent link">&para;</a></h2>
+<p><strong>Files:</strong>
+- Modify: <code>app/provider_modes.py</code>
+- Modify: <code>app/main.py</code>
+- Modify: <code>app/orchestrator.py</code>
+- Modify: <code>app/worker_api.py</code>
+- Modify: <code>services/bandwidth/*.yml</code>
+- Modify: <code>services/depin/*.yml</code>
+- Reference only: <code>D:\1. WORK_true\CashPilot\provider-runtime\provider_code_setup_node\*.py</code>
+- Test: provider runtime/mode/deploy contract tests.</p>
+<p><strong>Interfaces:</strong></p>
+<p><strong>Checkpoint:</strong> Status [DONE]; Owner Codex; Started 2026-08-15; Evidence <code>1242 passed, 7 skipped</code>; <code>python scripts/check_deploy_baseline.py</code> passed; Commit pending.</p>
+<ul>
+<li>
+<p>Historical output covered the then-active provider set; current mode truth is the 14-provider catalog.</p>
+</li>
+<li>
+<p>[x] Read every manual provider setup script under <code>provider-runtime/provider_code_setup_node</code>.</p>
+</li>
+<li>[x] Build the source-of-truth provider mode matrix from manual scripts and catalog YAML.</li>
+<li>[x] Fix any wrong <code>direct</code>, <code>proxy</code>, or <code>both</code> classification.</li>
+<li>[x] Add tests that every active catalog provider has supported modes and rejected unsupported modes.</li>
+<li>[x] Add tests that <code>both</code> expands to two unique instance IDs.</li>
+<li>[x] Add tests that proxy-mode deployment attaches a proxy and direct-mode deployment does not.</li>
+<li>[x] Keep MYST direct-only with wallet lease separate from proxy pool.</li>
+<li>[x] Run local full verification.</li>
+<li>[ ] Commit, push, deploy VPS from GitHub, verify CI and container health.</li>
+</ul>
+<p><strong>Verification:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="n">pytest</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_provider_modes</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_main_routes</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_proxy_routes</span><span class="p">.</span><span class="n">py</span> <span class="n">tests</span><span class="p">/</span><span class="n">test_worker_keys</span><span class="p">.</span><span class="n">py</span> <span class="n">-q</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="n">pytest</span> <span class="n">-q</span>
+</code></pre></div>
+<hr />
+<h2 id="self-review">Self-Review<a class="headerlink" href="#self-review" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Spec coverage: all 18 active providers, Dashboard, Setup Wizard, Service Catalog, Payouts, Proxy Provider, Proxy Pool, MYST Wallet, Settings, Fleet, auto-deploy, proxy lease, MYST lease, worker heartbeat, Chrome credential audit, docs, commit/push/deploy are covered.</li>
+<li>Redundant logic removed: separate MYST heartbeat and generic unused asset abstractions are not part of the final design.</li>
+<li>Type consistency: credential groups remain Deploy runtime, Earnings collector, Dashboard / session; runtime truth remains worker heartbeat plus provider_states; proxy lease remains worker-level; MYST wallet lease remains server asset inventory.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2026 Sergio Fernandez
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/GeiserX/CashPilot" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/assetforgeai-tech/CashPilot/pkgs/container/cashpilot" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M349.9 236.3h-66.1v-59.4h66.1zm0-204.3h-66.1v60.7h66.1zm78.2 144.8H362v59.4h66.1zm-156.3-72.1h-66.1v60.1h66.1zm78.1 0h-66.1v60.1h66.1zm276.8 100c-14.4-9.7-47.6-13.2-73.1-8.4-3.3-24-16.7-44.9-41.1-63.7l-14-9.3-9.3 14c-18.4 27.8-23.4 73.6-3.7 103.8-8.7 4.7-25.8 11.1-48.4 10.7H2.4c-8.7 50.8 5.8 116.8 44 162.1 37.1 43.9 92.7 66.2 165.4 66.2 157.4 0 273.9-72.5 328.4-204.2 21.4.4 67.6.1 91.3-45.2 1.5-2.5 6.6-13.2 8.5-17.1zm-511.1-27.9h-66v59.4h66.1v-59.4zm78.1 0h-66.1v59.4h66.1zm78.1 0h-66.1v59.4h66.1zm-78.1-72.1h-66.1v60.1h66.1z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "content.code.copy", "content.action.edit", "search.highlight", "search.suggest", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
