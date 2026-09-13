@@ -62,6 +62,56 @@ def test_direct_capacity_slot_is_reusable_after_failed_deploy(tmp_path):
     asyncio.run(run())
 
 
+def test_provider_proxy_lease_migration_backfills_proxy_lane(tmp_path):
+    async def run():
+        db_path = tmp_path / "cashpilot.db"
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", db_path):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("legacy", "Legacy")
+            (proxy_id,) = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id,
+                [{"provider_proxy_id": "one", "host": "198.51.100.20", "port": 8080}],
+            )
+            worker_id = await database.upsert_worker("worker-a", "worker-a", "http://worker-a")
+            db = await database._get_db()
+            await db.execute(
+                "INSERT INTO provider_proxy_leases "
+                "(provider_slug, worker_id, instance_id, proxy_id, exit_ip) VALUES (?, ?, ?, ?, ?)",
+                ("earnfm", worker_id, "earnfm-proxy-w1-proxy-001", proxy_id, "198.51.100.21"),
+            )
+            await db.commit()
+            await db.close()
+            await database.close_shared()
+
+            connection = sqlite3.connect(db_path)
+            connection.executescript(
+                """
+                DROP INDEX IF EXISTS idx_provider_proxy_leases_active_instance;
+                DROP INDEX IF EXISTS idx_provider_proxy_leases_active_proxy;
+                DROP INDEX IF EXISTS idx_provider_proxy_leases_active_exit;
+                ALTER TABLE provider_proxy_leases RENAME TO provider_proxy_leases_current;
+                CREATE TABLE provider_proxy_leases AS
+                    SELECT id, provider_slug, worker_id, instance_id, proxy_id, exit_ip,
+                           leased_at, released_at, release_reason
+                    FROM provider_proxy_leases_current;
+                DROP TABLE provider_proxy_leases_current;
+                """
+            )
+            connection.commit()
+            connection.close()
+
+            await database.init_db()
+            db = await database._get_db()
+            try:
+                row = await (await db.execute("SELECT lane FROM provider_proxy_leases WHERE id = 1")).fetchone()
+                assert row["lane"] == "proxy"
+            finally:
+                await db.close()
+                await database.close_shared()
+
+    asyncio.run(run())
+
+
 def test_shared_connection_borrow_serializes_transactions_across_tasks(tmp_path):
     async def run():
         db_path = tmp_path / "cashpilot.db"
