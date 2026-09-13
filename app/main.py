@@ -4117,6 +4117,13 @@ async def api_deploy(
             pending_capacity=sum(1 for plan in topology_plans if not plan.deployable) + pending_proxy,
             blocked_slots=sorted({plan.slot_id for plan in topology_plans if not plan.deployable}),
             lanes=lane_response,
+            topology_status=(
+                "partial"
+                if len(lane_response) > 1 and any(stats["blocked"] for stats in lane_response.values())
+                else "blocked"
+                if any(stats["blocked"] for stats in lane_response.values())
+                else "ready"
+            ),
         )
     if deployed:
         response["container_id"] = deployed[-1]["container_id"]

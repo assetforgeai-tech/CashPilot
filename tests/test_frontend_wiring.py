@@ -1081,6 +1081,12 @@ class TestFleetWorkerCopyUsesAStablePublicIdentity:
 def test_deploy_ui_renders_lane_capacity_from_deploy_response():
     app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
     assert "laneTotals" in app_js
+
+
+def test_deploy_ui_surfaces_topology_readiness_state():
+    app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+    assert "result.topology_status" in app_js
+    assert "topologyStates" in app_js
     assert "stats.running" in app_js
     assert "stats.pending" in app_js
 
