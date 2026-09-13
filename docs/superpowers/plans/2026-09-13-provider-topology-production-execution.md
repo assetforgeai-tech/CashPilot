@@ -29,10 +29,10 @@
 
 **Interfaces:** `plan_provider_nodes(...)` keeps its existing signature. When no public IPv4 slots are supplied, proxy plans are pending instead of being inferred from `proxy_capacity`.
 
-- [ ] Add a failing test proving proxy-only with `public_ipv4_slots=[]` returns no deployable proxy plan and does not use `proxy_capacity` as desired cardinality.
-- [ ] Run `pytest tests/test_provider_topology.py -q` and observe the expected failure.
-- [ ] Change proxy target calculation to use `len(slots)` only; retain explicit `proxy_desired` as an operator target, with blocked plans when slot cardinality is unavailable.
-- [ ] Run the focused test and the topology suite; commit.
+- [x] Add a failing test proving proxy-only with `public_ipv4_slots=[]` returns no deployable proxy plan and does not use `proxy_capacity` as desired cardinality.
+- [x] Run `pytest tests/test_provider_topology.py -q` and observe the expected failure.
+- [x] Change proxy target calculation to use `len(slots)` only; retain explicit `proxy_desired` as an operator target, with blocked plans when slot cardinality is unavailable.
+- [x] Run the focused test and the topology suite; commit.
 
 ### Task 2: Normalize lane lease and ownership contract
 
@@ -75,9 +75,9 @@
 
 **Interfaces:** API/UI expose desired, deployable, running, free, blocked, capacity source, lane, expected/observed egress, and topology status.
 
-- [ ] Add failing API/UI assertions for missing-slot pending state and independent hybrid counts.
-- [ ] Implement response fields and warning copy without flattening lanes.
-- [ ] Run focused API/frontend tests; commit.
+- [x] Add failing API/UI assertions for missing-slot pending state and independent hybrid counts.
+- [x] Implement response fields and warning copy without flattening lanes.
+- [x] Run focused API/frontend tests; commit.
 
 ### Task 5: Complete fail-closed network verification
 
