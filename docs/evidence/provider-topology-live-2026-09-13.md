@@ -34,9 +34,44 @@ Read-only SSH inspection. No provider/container mutation. Azure CLI was not used
 - Current local release-pin tests cannot resolve fork ref `1.45`; this is
   release-ref environment drift, not a topology failure.
 
+## 2026-09-13 release and redeploy
+
+- Release `v1.46.0` completed Tests, CodeQL, Lint, Catalog Check,
+  Documentation, and Auto Release successfully.
+- Both Azure workers were upgraded from `cashpilot-worker:1.45` to
+  `cashpilot-worker:1.46`, retaining existing worker data, slot volume, Docker
+  socket, and provider containers. Both report `running|healthy`, restart
+  policy `always`, and heartbeat HTTP 200. Worker image digest:
+  `sha256:1acceed5ffb9da86ea93fe30f5a2d8a4fc1ff59509e1b7d6691e4c934e1ed84e`.
+- The 4gmt server UI and worker were upgraded to `1.46`; both report
+  `running|healthy`. UI digest:
+  `sha256:be16aa7eea0e2c13e456196ac44dab83587e4c88b02eba1663160477695d7245`.
+  SQLite integrity returned `ok` before deployment completion.
+- No provider container was removed or recreated during the worker/server
+  upgrade.
+
 ## Remaining live gates
 
 - Fresh direct-only, proxy-only, and hybrid canaries on current release.
 - Owner-authenticated plan/deploy response for each lane.
 - Live egress/lease/rotation/release and DNS/IPv6/UDP fail-closed evidence.
 - Browser verification of `ready`, `partial`, and `blocked` states.
+
+## 2026-09-13 post-redeploy contract check
+
+- Server-side catalog now reports EarnApp `slot_proxy` with
+  `bind_capacity_slot`, `offline=restart`, `usage_stalled=restart`, and
+  `banned=restart`.
+- `iproyal` reports `provider_private` allocation with
+  `mask_and_replace`; its offline/usage/banned actions remain `observe`.
+- `earnfm` reports independent `bind_public_ipv4_slot` and
+  `bind_capacity_slot` lanes; offline/usage/banned remain `observe`.
+- `mysterium` and `nkn` remain dedicated direct adapters, not generic slot
+  planners.
+- Read-only database check showed account `2` active and 13 active EarnApp
+  leases. A legacy logical-node row exists without a matching provider-instance
+  row; this is reconciliation drift and must be resolved through the existing
+  owner-authorized reconciliation path, not an automatic delete.
+- Fresh owner-authorized direct/proxy/hybrid deploy and egress evidence remains
+  pending. No canary was started from an unverified or missing proxy capacity
+  response.
