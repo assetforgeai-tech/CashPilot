@@ -43,3 +43,42 @@ async def test_network_reconciliation_exposes_lane_contract(monkeypatch):
     assert report["contract"]["topology"] == "slot_both"
     assert report["contract"]["lanes"] == ["direct", "proxy"]
     assert report["lane_counts"] == {"direct": 1, "proxy": 0}
+
+
+@pytest.mark.asyncio
+async def test_network_reconciliation_hydrates_encrypted_instance_spec(monkeypatch):
+    monkeypatch.setattr(main, "_require_owner", lambda _request: {"role": "owner"})
+    monkeypatch.setattr(
+        main.database,
+        "list_workers",
+        AsyncMock(
+            return_value=[
+                {
+                    "id": 8,
+                    "containers": '[{"name":"packetstream-proxy-w8-proxy-001","slug":"packetstream","status":"running"}]',
+                    "system_info": '{"containers_inventory_confirmed":true}',
+                }
+            ]
+        ),
+    )
+    rows = [
+        {
+            "instance_id": "packetstream-proxy-w8-proxy-001",
+            "slug": "packetstream",
+            "worker_id": 8,
+            "mode": "proxy",
+            "status": "running",
+            "spec_encrypted": "encrypted",
+        }
+    ]
+    monkeypatch.setattr(main.database, "list_provider_instances", AsyncMock(return_value=rows))
+    monkeypatch.setattr(
+        main.database,
+        "get_provider_instance_spec",
+        AsyncMock(return_value={"proxy": {"exit_ip": "203.0.113.8", "proxy_id": 8}}),
+    )
+
+    result = await main.api_provider_network_reconciliation(None)
+
+    assert result["reports"][0]["findings"]
+    main.database.get_provider_instance_spec.assert_awaited_once_with("packetstream-proxy-w8-proxy-001")
