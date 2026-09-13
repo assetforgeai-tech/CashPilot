@@ -458,6 +458,27 @@ def test_earnapp_main_container_network_contract_does_not_require_sidecar():
     assert report["missing_sidecar"] == []
 
 
+def test_earnapp_iptables_parser_proves_fail_closed_controls():
+    from app.orchestrator import _parse_earnapp_iptables
+
+    output = """-N CP_EARNAPP_OUT
+-A CP_EARNAPP_OUT -j DROP
+-N CP_EARNAPP_DNS
+-A CP_EARNAPP_DNS -p udp --dport 53 -j REDIRECT --to-ports 1053
+-A CP_EARNAPP_DNS -p tcp --dport 53 -j REDIRECT --to-ports 1053
+-N CP_EARNAPP6_OUT
+-A CP_EARNAPP6_OUT -j DROP
+"""
+    assert _parse_earnapp_iptables(output) == {
+        "dns_via_proxy": True,
+        "ipv6_blocked": True,
+        "udp_blocked": True,
+        "doh_blocked": True,
+        "dot_blocked": True,
+        "direct_fallback_blocked": True,
+    }
+
+
 def test_unconfirmed_inventory_does_not_claim_proxy_runtime_safe():
     report = audit_provider_network_inventory(
         "wipter", instances=[{"instance_id": "w-1", "status": "active"}], containers=[], inventory_confirmed=False

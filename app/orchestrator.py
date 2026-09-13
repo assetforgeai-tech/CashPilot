@@ -1702,6 +1702,10 @@ def _provider_evidence(slug: str, container: Any, *, probe_container: Any | None
             text = output.decode("utf-8", errors="replace") if isinstance(output, bytes) else str(output)
             evidence = json.loads(text)
             evidence = earnapp_runtime.redacted_evidence(evidence if isinstance(evidence, dict) else {})
+            controls = container.exec_run(["sh", "-lc", "iptables-save 2>/dev/null; ip6tables-save 2>/dev/null"])
+            code, raw = _exec_output(controls)
+            if code == 0:
+                evidence.update(_parse_earnapp_iptables(raw.decode("utf-8", errors="replace")))
             probe = probe_container or container
             try:
                 probe_result = probe.exec_run(
@@ -1836,6 +1840,28 @@ def _sidecar_network_controls(container: Any) -> dict[str, bool]:
         "direct_fallback_blocked": bool(
             inbound.get("strict_route") and route.get("final") == "proxy-out" and has_dns_hijack and proxy and bootstrap
         ),
+    }
+
+
+def _parse_earnapp_iptables(text: str) -> dict[str, bool]:
+    """Map live EarnApp firewall chains to network-control evidence."""
+    lines = str(text or "").splitlines()
+    out_rules = [line for line in lines if "CP_EARNAPP_OUT" in line]
+    dns_rules = [line for line in lines if "CP_EARNAPP_DNS" in line]
+    ipv6_rules = [line for line in lines if "CP_EARNAPP6_OUT" in line]
+    if not out_rules and not dns_rules and not ipv6_rules:
+        return {}
+
+    def drop(rules: list[str]) -> bool:
+        return any(line.rstrip().endswith("-j DROP") for line in rules)
+
+    return {
+        "dns_via_proxy": any("--dport 53" in line and "REDIRECT" in line for line in dns_rules),
+        "ipv6_blocked": drop(ipv6_rules),
+        "udp_blocked": drop(out_rules),
+        "doh_blocked": drop(out_rules),
+        "dot_blocked": drop(out_rules),
+        "direct_fallback_blocked": drop(out_rules),
     }
 
 
