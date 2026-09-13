@@ -3846,18 +3846,6 @@ async def api_deploy(
             "pending_proxy": 1 if "proxy" in modes else 0,
             "deployed": [],
         }
-    if runtime_topology and runtime_topology.topology.startswith("slot_") and not slot_records:
-        await database.record_health_event(
-            slug, "slots_pending", "public IPv4 slot manifest is empty; deployment deferred"
-        )
-        return {
-            "status": "pending_capacity",
-            "provider": slug,
-            "worker_id": worker_id,
-            "pending_direct": 1 if "direct" in modes else 0,
-            "pending_proxy": 1 if "proxy" in modes else 0,
-            "deployed": [],
-        }
     existing_rows = await database.list_provider_instances(slug=slug, worker_id=worker_id)
     existing_proxy_count = sum(
         1
