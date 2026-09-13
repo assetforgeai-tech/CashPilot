@@ -8316,6 +8316,10 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
             reported_instance_ids=reported_provider_ids,
             inventory_confirmed=bool(body.containers_inventory_confirmed),
         )
+    with contextlib.suppress(Exception):
+        await database.sync_provider_runtime_inventory(
+            int(worker_id), body.containers, inventory_confirmed=bool(body.containers_inventory_confirmed)
+        )
     myst = body.provider_states.get("mysterium") or {}
     if myst:
         evidence = dict(myst.get("evidence") or {})

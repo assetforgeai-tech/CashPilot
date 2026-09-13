@@ -7520,6 +7520,44 @@ async def list_provider_instances(*, slug: str | None = None, worker_id: int | N
         await db.close()
 
 
+async def sync_provider_runtime_inventory(
+    worker_id: int, containers: Sequence[Mapping[str, Any]], *, inventory_confirmed: bool
+) -> list[str]:
+    """Refresh live runtime IDs from an authenticated, complete worker inventory."""
+    if int(worker_id or 0) <= 0 or not inventory_confirmed:
+        return []
+    updated: list[str] = []
+    db = await _get_db()
+    try:
+        for item in containers:
+            if not isinstance(item, Mapping):
+                continue
+            instance_id = str(item.get("instance_slug") or item.get("name") or "").strip()
+            slug = str(item.get("slug") or "").strip().lower()
+            container_id = str(item.get("container_id") or "").strip()
+            if not instance_id or not slug or not container_id:
+                continue
+            result = await db.execute(
+                """UPDATE provider_instances
+                   SET container_id=?, sidecar_id=?, status=?, updated_at=datetime('now')
+                 WHERE instance_id=? AND worker_id=? AND slug=?""",
+                (
+                    container_id,
+                    str(item.get("sidecar_id") or "").strip(),
+                    str(item.get("status") or "running").strip() or "running",
+                    instance_id,
+                    int(worker_id),
+                    slug,
+                ),
+            )
+            if result.rowcount:
+                updated.append(instance_id)
+        await db.commit()
+        return updated
+    finally:
+        await db.close()
+
+
 async def remove_provider_instance(instance_id: str) -> bool:
     if earnapp_policy.is_protected_runtime_reference(instance_id):
         return False
