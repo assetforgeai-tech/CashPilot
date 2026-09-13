@@ -115,6 +115,8 @@ def test_proxy_hostname_uses_bootstrap_doh_without_empty_direct_detour():
         "tag": "bootstrap",
         "type": "udp",
         "server": "1.1.1.1",
+        "server_port": 53,
+        "detour": "direct",
     }
     assert {"domain": ["proxy.example.com"], "server": "bootstrap"} in config["dns"]["rules"]
 
@@ -129,6 +131,8 @@ def test_proxy_bootstrap_resolver_does_not_recurse_through_proxy_hostname():
     bootstrap = next(item for item in config["dns"]["servers"] if item["tag"] == "bootstrap")
     assert bootstrap["type"] == "udp"
     assert bootstrap["server"] == "1.1.1.1"
+    assert bootstrap["server_port"] == 53
+    assert bootstrap["detour"] == "direct"
 
 
 def test_singbox_config_declares_default_domain_resolver():

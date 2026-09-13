@@ -55,6 +55,8 @@ def render_tun_proxy_config(
                     # direct DNS path and is limited to UDP/53.
                     "type": "udp",
                     "server": "1.1.1.1",
+                    "server_port": 53,
+                    "detour": "direct",
                 },
             ],
             "rules": [{"domain": [proxy["host"]], "server": "bootstrap"}],
