@@ -64,13 +64,9 @@ def test_proxy_only_can_select_one_mode_and_rejects_invalid_input():
         plan_provider_nodes(7, "iproyal", 1, mode="direct")
 
 
-def test_proxy_only_plans_use_proxy_capacity_without_public_ipv4_slots():
+def test_proxy_only_requires_bootstrap_public_ipv4_cardinality():
     plans = plan_provider_nodes(7, "iproyal", [], mode="proxy", proxy_capacity=3)
-    assert [(plan.mode, plan.capacity_slot) for plan in plans] == [
-        ("proxy", "proxy-001"),
-        ("proxy", "proxy-002"),
-        ("proxy", "proxy-003"),
-    ]
+    assert plans == []
 
 
 def test_unknown_proxy_capacity_never_infers_proxy_nodes_from_public_ipv4_slots():
@@ -251,7 +247,7 @@ def test_summary_marks_proxy_shortage_as_pending_capacity():
 
 
 def test_summary_counts_existing_proxy_instances_without_calling_them_available():
-    plans = plan_provider_nodes(7, "iproyal", [], mode="proxy", proxy_capacity=2)
+    plans = plan_provider_nodes(7, "iproyal", [], mode="proxy", proxy_capacity=2, proxy_desired=2)
     summary = summarize_provider_plan(
         plans,
         [{"instance_id": "iproyal-proxy-w7-proxy-001", "status": "running"}],

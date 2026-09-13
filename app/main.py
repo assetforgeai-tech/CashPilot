@@ -3822,8 +3822,8 @@ async def api_deploy(
     except Exception as exc:  # noqa: BLE001 - legacy workers may not expose slots
         logger.debug("Public IPv4 slot discovery unavailable for worker %s: %s", worker_id, type(exc).__name__)
         slot_records = []
-    runtime_topology = provider_runtime.get(slug)
-    if runtime_topology and "direct" in modes and runtime_topology.topology == "slot_direct" and not slot_discovery_ok:
+        runtime_topology = provider_runtime.get(slug)
+        if runtime_topology and runtime_topology.topology.startswith("slot_") and not slot_discovery_ok:
         await database.record_health_event(
             slug, "slots_pending", "public IPv4 slot manifest unavailable; deployment deferred"
         )
@@ -3831,7 +3831,8 @@ async def api_deploy(
             "status": "pending_capacity",
             "provider": slug,
             "worker_id": worker_id,
-            "pending_direct": 1,
+            "pending_direct": 1 if "direct" in modes else 0,
+            "pending_proxy": 1 if "proxy" in modes else 0,
             "deployed": [],
         }
     existing_rows = await database.list_provider_instances(slug=slug, worker_id=worker_id)
@@ -3854,10 +3855,8 @@ async def api_deploy(
     topology_managed = bool(
         runtime_topology
         and runtime_topology.topology.startswith("slot_")
-        and (
-            (slot_discovery_ok and bool(slot_records))
-            or (proxy_capacity_known and proxy_capacity and proxy_capacity > 0)
-        )
+        and slot_discovery_ok
+        and bool(slot_records)
     )
     # A worker that predates the slot contract may not expose slot discovery.
     # Preserve its legacy allocator; once discovery succeeds, unknown/zero
@@ -3938,6 +3937,18 @@ async def api_deploy(
                 "ipv6": "explicit" if mode == "direct" else "disabled_or_tunneled",
                 "udp": "explicit",
                 "fail_closed": True,
+            }
+        if runtime_topology and runtime_topology.topology.startswith("slot_") and not slot_records:
+            await database.record_health_event(
+                slug, "slots_pending", "public IPv4 slot manifest is empty; deployment deferred"
+            )
+            return {
+                "status": "pending_capacity",
+                "provider": slug,
+                "worker_id": worker_id,
+                "pending_direct": 1 if "direct" in modes else 0,
+                "pending_proxy": 1 if "proxy" in modes else 0,
+                "deployed": [],
             }
         )
         if topology_plan:
