@@ -25,8 +25,10 @@ def topology_contract(provider_slug: str) -> dict[str, Any]:
     return {
         "topology": topology,
         "lanes": lanes,
-        "cardinality_source": "bootstrap_public_ipv4",
-        "proxy_capacity_is_gate": "proxy" in lanes,
+        "cardinality_source": (
+            "bootstrap_public_ipv4" if runtime.topology.startswith("slot_") else "dedicated_runtime"
+        ),
+        "proxy_capacity_is_gate": "proxy" in lanes and runtime.topology.startswith("slot_"),
         "capacity_basis": {
             lane: (
                 "dedicated_runtime"
