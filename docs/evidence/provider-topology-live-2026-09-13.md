@@ -100,3 +100,16 @@ Read-only SSH inspection. No provider/container mutation. Azure CLI was not used
 - A controlled restart returned the same container network address and exact
   slot egress. This verifies direct-lane route binding and restart persistence;
   it does not yet prove host reboot persistence.
+
+## Proxy-lane canary
+
+- A bounded PacketStream proxy canary was deployed on worker `118904` with
+  `proxy_desired=1`. The worker created the provider container plus its
+  `sing-box` egress sidecar, both with `restart=always`.
+- The provider reported `Unable to connect to validation server`; the sidecar
+  repeatedly reported DNS resolution failure for the leased upstream proxy
+  hostname. This is a real proxy-health failure, not permission to fall back to
+  the host's direct route.
+- The required follow-up is provider-scoped mask-and-replace/reconciliation,
+  followed by a second eligible proxy probe. The failed canary is not evidence
+  of production readiness.
