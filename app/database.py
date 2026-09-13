@@ -23,7 +23,7 @@ from typing import Any
 import aiosqlite
 from cryptography.fernet import Fernet, InvalidToken
 
-from app import earnapp_policy
+from app import earnapp_policy, provider_runtime
 
 _logger = logging.getLogger(__name__)
 
@@ -10229,6 +10229,9 @@ async def lease_proxy_for_provider_instance(
     if slug == "earnapp" and earnapp_policy.is_protected_runtime_reference(instance):
         return None
     if not slug or int(worker_id or 0) <= 0 or not instance:
+        return None
+    runtime = provider_runtime.get(slug)
+    if runtime is not None and "proxy" not in runtime.modes:
         return None
     requested_country = str(country_code or "").strip().upper()
     excluded_country = str(exclude_country_code or "").strip().upper()

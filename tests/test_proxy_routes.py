@@ -4511,6 +4511,23 @@ def test_provider_scoped_lease_route_rejects_direct_lane(client):
     assert "Direct lanes" in response.json()["detail"]
 
 
+def test_provider_scoped_lease_route_rejects_proxy_lane_for_direct_only_provider(client):
+    with (
+        patch("app.main.auth.get_current_user", return_value=_owner_user()),
+        patch(
+            "app.routers.proxies.database.lease_proxy_for_provider_instance",
+            new_callable=AsyncMock,
+        ) as lease_proxy,
+    ):
+        response = client.post(
+            "/api/proxy-pool/provider-lease",
+            json={"provider_slug": "nkn", "worker_id": 3, "instance_id": "nkn-direct", "lane": "proxy"},
+        )
+    assert response.status_code == 409
+    assert "does not support proxy" in response.json()["detail"]
+    lease_proxy.assert_not_awaited()
+
+
 def test_duplicate_export_supports_masked_default_and_explicit_raw_mode(client):
     rows = [
         {

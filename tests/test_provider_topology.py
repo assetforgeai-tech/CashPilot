@@ -407,6 +407,20 @@ def test_topology_contract_makes_hybrid_cardinality_and_slot_binding_explicit():
     }
 
 
+def test_topology_contract_exposes_lane_lease_and_failure_policy():
+    from app.provider_topology import topology_contract
+
+    direct = topology_contract("nkn")
+    proxy = topology_contract("earnapp")
+    hybrid = topology_contract("earnfm")
+
+    assert direct["lease_policy"] == {"direct": "none"}
+    assert proxy["lease_policy"] == {"proxy": "required"}
+    assert hybrid["lease_policy"] == {"direct": "none", "proxy": "required"}
+    assert hybrid["lane_failure_isolation"] is True
+    assert hybrid["lifecycle_scope"] == "lane"
+
+
 def test_topology_contract_exposes_concrete_network_and_health_signals():
     contract = topology_contract("earnfm")
     assert contract["network_policy"]["proxy"] == {

@@ -80,6 +80,9 @@ def topology_contract(provider_slug: str) -> dict[str, Any]:
             "deployability": {lane: ("route_ready" if lane == "direct" else "eligible_proxy") for lane in lanes},
             "proxy_shortage_changes_desired": False,
         },
+        "lease_policy": {lane: ("required" if lane == "proxy" else "none") for lane in lanes},
+        "lane_failure_isolation": len(lanes) > 1,
+        "lifecycle_scope": "lane" if len(lanes) > 1 else "instance",
     }
 
 
