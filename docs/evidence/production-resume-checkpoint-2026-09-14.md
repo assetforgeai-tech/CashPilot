@@ -29,6 +29,10 @@
   `OUTPUT ACCEPT`, and exposes public resolvers in `/etc/resolv.conf`. Its
   identity volume remains attached. This is a controlled remediation blocker,
   not a reason to mutate it blindly.
+- Release `v1.50.12` rollout completed sequentially for server UI + worker and
+  test-US, test-Sing, East Asia, and Japan East workers. All report `healthy`,
+  restart count `0`, and preserved restart policies. Provider containers were
+  not recreated.
 
 ## Findings still open
 

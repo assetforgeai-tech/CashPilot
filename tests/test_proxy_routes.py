@@ -3854,6 +3854,41 @@ def test_provider_release_cas_does_not_release_replaced_lease(tmp_path):
     asyncio.run(run())
 
 
+def test_provider_release_serializes_with_lease_and_rotation(monkeypatch):
+    entered = False
+
+    class TrackingLock:
+        async def __aenter__(self):
+            nonlocal entered
+            entered = True
+
+        async def __aexit__(self, *_args):
+            return None
+
+    class Cursor:
+        rowcount = 1
+
+    class Connection:
+        async def execute(self, sql, _params=()):
+            assert entered
+            return Cursor()
+
+        async def commit(self):
+            assert entered
+
+        async def rollback(self):
+            return None
+
+        async def close(self):
+            return None
+
+    monkeypatch.setattr(database, "_proxy_assignment_lock", lambda: TrackingLock())
+    monkeypatch.setattr(database, "_open_transaction_connection", AsyncMock(return_value=Connection()))
+
+    assert asyncio.run(database.release_proxy_for_provider_instance("future", 7, "future-1")) is True
+    assert entered is True
+
+
 def test_provider_instance_rotation_cas_updates_only_requested_lane(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):

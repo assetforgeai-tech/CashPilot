@@ -10573,28 +10573,33 @@ async def release_proxy_for_provider_instance(
         instance_id
     ):
         return False
-    db = await _get_db()
-    try:
-        cursor = await db.execute(
-            """
-            UPDATE provider_proxy_leases
-            SET released_at = datetime('now'), release_reason = ?
-            WHERE provider_slug = ? AND worker_id = ? AND instance_id = ? AND released_at IS NULL
-              AND (? IS NULL OR proxy_id = ?)
-            """,
-            (
-                str(reason or "released")[:300],
-                str(provider_slug or "").strip().lower(),
-                int(worker_id),
-                str(instance_id or "").strip(),
-                expected_proxy_id,
-                expected_proxy_id,
-            ),
-        )
-        await db.commit()
-        return bool(cursor.rowcount)
-    finally:
-        await db.close()
+    async with _proxy_assignment_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            cursor = await db.execute(
+                """
+                UPDATE provider_proxy_leases
+                SET released_at = datetime('now'), release_reason = ?
+                WHERE provider_slug = ? AND worker_id = ? AND instance_id = ? AND released_at IS NULL
+                  AND (? IS NULL OR proxy_id = ?)
+                """,
+                (
+                    str(reason or "released")[:300],
+                    str(provider_slug or "").strip().lower(),
+                    int(worker_id),
+                    str(instance_id or "").strip(),
+                    expected_proxy_id,
+                    expected_proxy_id,
+                ),
+            )
+            await db.commit()
+            return bool(cursor.rowcount)
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
 
 
 async def rotate_provider_proxy_lease(
