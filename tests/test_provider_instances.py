@@ -239,6 +239,56 @@ def test_generic_provider_missing_runtime_requires_two_confirmed_inventories(tmp
     asyncio.run(run())
 
 
+def test_generic_runtime_reappearance_cancels_cleanup_and_keeps_proxy_lease(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "generic.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            (proxy_id,) = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id, [{"provider_proxy_id": "one", "host": "1.1.1.1", "port": 1000}]
+            )
+            await database.save_proxy_probe_result(
+                proxy_id,
+                profile="generic",
+                probe_status="alive",
+                verdict="ALIVE",
+                eligibility="eligible",
+                reason="",
+                exit_ip="8.8.8.8",
+                latency_ms=10,
+                probe_version="test",
+            )
+            worker_id = await database.upsert_worker("worker-a", "worker-a", "http://worker")
+            instance_id = "earnfm-proxy-w1-proxy-001"
+            lease = await database.lease_proxy_for_provider_instance("earnfm", worker_id, instance_id)
+            assert lease
+            await database.save_provider_instance(
+                "earnfm",
+                instance_id,
+                worker_id=worker_id,
+                mode="proxy",
+                proxy_id=proxy_id,
+                status="running",
+            )
+
+            await database.reconcile_provider_instances(
+                worker_id,
+                reported_instance_ids=(),
+                inventory_confirmed=True,
+            )
+            result = await database.reconcile_provider_instances(
+                worker_id,
+                reported_instance_ids=(instance_id,),
+                inventory_confirmed=True,
+            )
+
+            assert result == {"marked_missing": [], "removed": []}
+            assert (await database.get_provider_instance(instance_id))["status"] == "verification_pending"
+            assert await database.get_active_provider_proxy_lease("earnfm", worker_id, instance_id)
+
+    asyncio.run(run())
+
+
 def test_generic_reconciliation_excludes_earnapp_and_unconfirmed_inventory(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "safe.db"):
