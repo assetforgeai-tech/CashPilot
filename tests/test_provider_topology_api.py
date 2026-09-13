@@ -89,7 +89,7 @@ async def test_proxy_only_plan_does_not_require_public_ipv4_slots(monkeypatch):
         main.ProviderPlanRequest(worker_id=7, mode="proxy"),
         {},
     )
-    assert result["status"] == "slots_unavailable"
+    assert result["status"] == "bootstrap_pending"
     assert result["desired"] == 0
     assert all(plan["mode"] == "proxy" for plan in result["plans"])
 
