@@ -3519,19 +3519,27 @@ async def api_plan_provider(
                 raise
             slots = await _worker_public_ip_slots(worker_id)
     except Exception as exc:  # noqa: BLE001 - report unavailable slots explicitly
-        if runtime.topology == "slot_proxy":
-            slots = []
-        else:
-            return {
-                "provider": slug,
-                "worker_id": worker_id,
-                "topology": runtime.topology,
-                "contract": provider_topology.topology_contract(slug),
-                "status": "slots_unavailable",
-                "error": type(exc).__name__,
-                "plans": [],
-            }
+        return {
+            "provider": slug,
+            "worker_id": worker_id,
+            "topology": runtime.topology,
+            "contract": provider_topology.topology_contract(slug),
+            "status": "slots_unavailable",
+            "error": type(exc).__name__,
+            "desired": 0,
+            "plans": [],
+        }
     available_proxy_count = None
+    if not slots:
+        return {
+            "provider": slug,
+            "worker_id": worker_id,
+            "topology": runtime.topology,
+            "contract": provider_topology.topology_contract(slug),
+            "status": "bootstrap_pending",
+            "desired": 0,
+            "plans": [],
+        }
     if "proxy" in provider_modes.expand_requested(slug, body.mode):
         with contextlib.suppress(Exception):
             capacity_rows = await database.get_provider_proxy_capacity(
