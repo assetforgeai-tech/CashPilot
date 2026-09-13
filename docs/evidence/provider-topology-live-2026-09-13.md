@@ -113,3 +113,7 @@ Read-only SSH inspection. No provider/container mutation. Azure CLI was not used
 - The required follow-up is provider-scoped mask-and-replace/reconciliation,
   followed by a second eligible proxy probe. The failed canary is not evidence
   of production readiness.
+- After the failure was captured, both canary containers were stopped and the
+  PacketStream lease was released through the provider-scoped API. The failed
+  endpoint remains masked only for PacketStream; no other provider allocation
+  was changed.
