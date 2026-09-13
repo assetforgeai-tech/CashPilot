@@ -44,3 +44,25 @@ lease egress values.
 
 These facts block direct-only and hybrid production claims on this VPS. They do
 not justify changing host firewall or Docker permissions during a read-only audit.
+
+## v1.42 redeploy verification
+
+- PR #317 merged as `e943d3b1`; release `v1.42.0` published successfully.
+- Server UI and co-located worker run `ghcr.io/assetforgeai-tech/cashpilot:1.42`
+  and `ghcr.io/assetforgeai-tech/cashpilot-worker:1.42`; both Docker health checks
+  are healthy after restart.
+- East Asia worker `20.187.79.110` runs
+  `ghcr.io/assetforgeai-tech/cashpilot-worker:1.42`; `/api/health` returned
+  `{"status":"ok","worker":"20.187.79.110"}`.
+- Japan East worker `20.210.93.220` runs
+  `ghcr.io/assetforgeai-tech/cashpilot-worker:1.42`; `/api/health` returned
+  `{"status":"ok","worker":"20.210.93.220"}`.
+- Existing Wipter containers were preserved. No provider canary mutation was
+  performed in this verification pass.
+
+## Remaining live gates
+
+- Fresh direct-only, proxy-only, and hybrid canaries on `1.42`.
+- Confirmed owner-authenticated plan/deploy response for each lane.
+- Egress/lease/rotation/release and DNS/IPv6/UDP fail-closed evidence.
+- Browser verification of `ready`, `partial`, and `blocked` lane states.
