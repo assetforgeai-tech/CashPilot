@@ -8716,6 +8716,10 @@ async def api_provider_network_reconciliation(request: Request) -> dict[str, Any
         system_info = _safe_json(worker.get("system_info") or "{}", {})
         confirmed = isinstance(system_info, Mapping) and system_info.get("containers_inventory_confirmed") is True
         rows = await database.list_provider_instances(worker_id=worker_id)
+        for row in rows:
+            if row.get("spec_encrypted") and not row.get("spec"):
+                with contextlib.suppress(Exception):
+                    row["spec"] = await database.get_provider_instance_spec(str(row.get("instance_id") or ""))
         live_ids = {
             str(item.get("instance_slug") or item.get("name") or "").strip()
             for item in containers
