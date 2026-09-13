@@ -43,6 +43,19 @@ Date: 2026-09-12
 - Topology contracts now expose `lease_policy`, `lane_failure_isolation`, and
   `lifecycle_scope` for UI/API consumers.
 
+## Released runtime verification (2026-09-13)
+
+- Release `v1.45.1` completed successfully through Auto Release.
+- Server UI and worker run `ghcr.io/assetforgeai-tech/cashpilot:1.45` and
+  `ghcr.io/assetforgeai-tech/cashpilot-worker:1.45`; both containers are healthy.
+- East Asia and Japan East workers run `cashpilot-worker:1.45`, `restart=always`,
+  and retain the authoritative worker-data volume.
+- Each Azure worker reports 10/10 route-ready public IPv4 slots and 10 unique
+  public IPv4 addresses.
+- Existing provider containers were preserved. No provider deploy/remove/rotate
+  was performed during the worker upgrade.
+- Provider live earning and leak-matrix evidence remains a separate pending gate.
+
 - Deterministic proxy reservation per worker/provider/lane/slot.
 - Live direct-only, hybrid, and proxy-only deployment evidence.
 - Per-container IPv4/IPv6/DNS/DoH/UDP/direct-fallback leak matrix.
