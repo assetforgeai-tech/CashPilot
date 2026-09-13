@@ -1849,7 +1849,9 @@ def get_status() -> list[dict[str, Any]]:
                     if callable(get_container):
                         probe_container = get_container(sidecar_id)
                     else:
-                        probe_container = next((item for item in labeled if getattr(item, "id", "") == sidecar_id), None)
+                        probe_container = next(
+                            (item for item in labeled if getattr(item, "id", "") == sidecar_id), None
+                        )
                 except (NotFound, APIError):
                     probe_container = None
             cpu_pct, mem_mb, net_rx, net_tx = labeled_stats.get(c.id, (0.0, 0.0, None, None))
