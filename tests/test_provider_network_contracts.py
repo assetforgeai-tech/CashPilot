@@ -91,6 +91,37 @@ def test_proxy_provider_evidence_uses_sidecar_when_main_has_no_probe_tool():
     }
 
 
+def test_probe_service_egress_uses_container_namespace_sidecar(monkeypatch):
+    class Main:
+        status = "running"
+        attrs = {"HostConfig": {"NetworkMode": "container:sidecar-id"}}
+
+        def exec_run(self, *_args, **_kwargs):
+            raise AssertionError("main provider image has no probe tool")
+
+    class Sidecar:
+        status = "running"
+
+        def exec_run(self, *_args, **_kwargs):
+            return type("Result", (), {"exit_code": 0, "output": b"203.0.113.11\n"})()
+
+    class Containers:
+        def get(self, container_id):
+            assert container_id == "sidecar-id"
+            return Sidecar()
+
+    class Client:
+        containers = Containers()
+
+    monkeypatch.setattr(orchestrator, "_get_client", lambda: Client())
+    monkeypatch.setattr(orchestrator, "_find_container", lambda _slug: Main())
+    assert orchestrator.probe_service_egress("packetstream") == {
+        "running": True,
+        "observed_egress_ip": "203.0.113.11",
+        "probe_ok": True,
+    }
+
+
 def test_network_audit_reports_unverified_when_provider_has_no_live_inventory():
     report = audit_provider_network_inventory("packetstream", instances=[], containers=[], inventory_confirmed=False)
     assert report["status"] == "unverified"
