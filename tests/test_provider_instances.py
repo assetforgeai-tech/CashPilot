@@ -85,6 +85,30 @@ def test_provider_instances_round_trip_and_encrypt_spec(tmp_path):
     asyncio.run(run())
 
 
+def test_direct_only_provider_cannot_acquire_proxy_lease(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "instances.db"):
+            await database.init_db()
+            worker_id = await database.upsert_worker("worker-a", "worker-a", "http://worker")
+            provider_id = await database.upsert_proxy_provider("test", "manual")
+            await database.upsert_proxy_endpoints_returning_ids(
+                provider_id,
+                [
+                    {
+                        "provider_proxy_id": "one",
+                        "host": "127.0.0.1",
+                        "port": 8080,
+                        "status": "alive",
+                        "exit_ip": "8.8.8.8",
+                    }
+                ],
+            )
+
+            assert await database.lease_proxy_for_provider_instance("nkn", worker_id, "nkn-direct") is None
+
+    asyncio.run(run())
+
+
 def test_provider_instances_filter_by_worker_and_slug(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "instances.db"):

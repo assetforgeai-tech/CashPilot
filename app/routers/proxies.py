@@ -21,7 +21,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
-from app import database, deps, egress, proxy_egress
+from app import database, deps, egress, provider_runtime, proxy_egress
 from app.proxy_intelligence import lookup_ip_intelligence
 from app.proxy_probe_profiles.earnapp import probe_earnapp_proxy
 from app.proxy_providers.vtproxy import sync_vtproxy_provider
@@ -1453,6 +1453,9 @@ async def api_proxy_pool_provider_lease(request: Request, body: ProviderProxyLea
         raise HTTPException(status_code=400, detail="Provider and instance are required")
     if body.lane.strip().lower() != "proxy":
         raise HTTPException(status_code=409, detail="Direct lanes do not lease proxies")
+    runtime = provider_runtime.get(slug)
+    if runtime is None or "proxy" not in runtime.modes:
+        raise HTTPException(status_code=409, detail=f"Provider {slug} does not support proxy mode")
     lease = await database.lease_proxy_for_provider_instance(slug, body.worker_id, body.instance_id)
     if not lease:
         raise HTTPException(status_code=404, detail="No eligible proxy available")
@@ -1464,6 +1467,11 @@ async def api_proxy_pool_provider_release(request: Request, body: ProviderProxyL
     deps._require_owner(request)
     if body.lane.strip().lower() != "proxy":
         raise HTTPException(status_code=409, detail="Direct lanes do not release proxy leases")
+    runtime = provider_runtime.get(body.provider_slug.strip().lower())
+    if runtime is None or "proxy" not in runtime.modes:
+        raise HTTPException(
+            status_code=409, detail=f"Provider {body.provider_slug.strip().lower()} does not support proxy mode"
+        )
     released = await database.release_proxy_for_provider_instance(
         body.provider_slug, body.worker_id, body.instance_id, reason="manual release"
     )
@@ -1475,6 +1483,11 @@ async def api_proxy_pool_provider_rotate(request: Request, body: ProviderProxyRo
     deps._require_owner(request)
     if body.lane.strip().lower() != "proxy":
         raise HTTPException(status_code=409, detail="Direct lanes do not rotate proxy leases")
+    runtime = provider_runtime.get(body.provider_slug.strip().lower())
+    if runtime is None or "proxy" not in runtime.modes:
+        raise HTTPException(
+            status_code=409, detail=f"Provider {body.provider_slug.strip().lower()} does not support proxy mode"
+        )
     candidate = await database.get_proxy_endpoint(body.new_proxy_id)
     if not candidate:
         raise HTTPException(status_code=404, detail="Replacement proxy not found")

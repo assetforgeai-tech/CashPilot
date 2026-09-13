@@ -19,7 +19,7 @@
 
 **Files:** `app/provider_topology.py`, `tests/test_provider_topology.py`
 
-- [ ] Add tests proving every provider lane defaults to detected public IPv4 cardinality, while eligible proxy count gates proxy deployment and explicit desired counts remain targets with pending capacity.
+- [x] Add tests proving every slot-based provider lane defaults to detected public IPv4 cardinality, while eligible proxy count gates proxy deployment and explicit desired counts remain targets with pending capacity.
 - [ ] Keep planner defaults and summaries so direct readiness uses IPv4 routes while proxy readiness uses eligible proxies without shrinking desired topology.
 - [ ] Preserve blocked/partial/ready status and no cross-lane fallback.
 - [ ] Run focused topology tests.
@@ -28,7 +28,7 @@
 
 **Files:** `app/provider_runtime.py`, tests covering catalog/runtime
 
-- [ ] Add explicit auth scope, account sharing, ownership policy, heartbeat interval/timeout, and network contract metadata.
+- [x] Add explicit auth scope, account sharing, ownership policy, heartbeat interval/timeout, and network contract metadata.
 - [ ] Expose these fields through `catalog_runtime` and topology contracts.
 - [ ] Add validation tests for all provider classes.
 
@@ -36,16 +36,16 @@
 
 **Files:** `app/database.py`, `app/routers/proxies.py`, tests for proxy leases
 
-- [ ] Preserve runtime lease CAS behavior.
+- [x] Preserve runtime lease CAS behavior.
 - [ ] Enforce provider ownership policy for sticky providers; release ownership only on account/provider retirement.
 - [ ] Ensure rotation releases only the old runtime lease and never violates sticky egress ownership.
-- [ ] Add tests for release, rotate, account deletion, duplicate egress, and cross-provider behavior.
+- [x] Add tests for release, rotate, account deletion, duplicate egress, and cross-provider behavior.
 
 ### Task 4: Lifecycle state machine
 
 **Files:** `app/provider_lifecycle.py`, scheduler/reconciliation callers, lifecycle tests
 
-- [ ] Normalize precedence: auth failure observe; direct route failure blocked; proxy failure rotate; offline restart; usage stall restart; provider-specific recreate only when declared.
+- [x] Normalize precedence: auth failure observe; direct route failure blocked; proxy failure rotate; offline restart; usage stall restart; provider-specific recreate only when declared.
 - [ ] Add explicit heartbeat interval, timeout, confirmation count, and action metadata.
 - [ ] Keep missing inventory two-confirmation cleanup and cancel cleanup on reappearance.
 - [ ] Add tests for direct-only, proxy-only, and hybrid lanes.
@@ -62,7 +62,7 @@
 
 **Files:** API routers/models, `app/static/js/app.js`, frontend tests
 
-- [ ] Reject unsupported lane requests and missing route/proxy capacity with actionable reasons.
+- [x] Reject unsupported lane requests and missing route/proxy capacity with actionable reasons.
 - [ ] Render direct/proxy lane totals, running/free/blocked counts, capacity source, and topology status without flattening hybrid state.
 - [ ] Add UI tests for ready/partial/blocked and all three provider classes.
 
