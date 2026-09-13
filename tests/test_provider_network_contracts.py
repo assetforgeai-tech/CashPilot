@@ -271,11 +271,9 @@ def test_earnapp_evidence_keeps_sidecar_controls_when_identity_probe_is_missing(
             return type("Result", (), {"exit_code": 1, "output": b""})()
 
     class Sidecar:
-        calls = 0
-
         def exec_run(self, *_args, **_kwargs):
-            self.calls += 1
-            output = b"203.0.113.14\n" if self.calls == 1 else json.dumps(config).encode()
+            command = str(_args[0]) if _args else ""
+            output = b"203.0.113.14\n" if "api.ipify.org" in command else json.dumps(config).encode()
             return type("Result", (), {"exit_code": 0, "output": output})()
 
     evidence = orchestrator._provider_evidence("earnapp", Main(), probe_container=Sidecar())

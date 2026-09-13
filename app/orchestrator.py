@@ -1705,11 +1705,16 @@ def _provider_evidence(slug: str, container: Any, *, probe_container: Any | None
                 evidence = {}
             evidence = earnapp_runtime.redacted_evidence(evidence if isinstance(evidence, dict) else {})
             evidence.setdefault("running", True)
-            controls = container.exec_run(["sh", "-lc", "iptables-save 2>/dev/null; ip6tables-save 2>/dev/null"])
-            code, raw = _exec_output(controls)
-            if code == 0:
-                evidence.update(_parse_earnapp_iptables(raw.decode("utf-8", errors="replace")))
             probe = probe_container or container
+            if probe_container is not None:
+                # Legacy EarnApp uses a sing-box sidecar; its minimal image
+                # may lack curl/wget, but its config still proves isolation.
+                evidence.update(_sidecar_network_controls(probe))
+            else:
+                controls = container.exec_run(["sh", "-lc", "iptables-save 2>/dev/null; ip6tables-save 2>/dev/null"])
+                code, raw = _exec_output(controls)
+                if code == 0:
+                    evidence.update(_parse_earnapp_iptables(raw.decode("utf-8", errors="replace")))
             try:
                 probe_result = probe.exec_run(
                     [
@@ -1729,9 +1734,7 @@ def _provider_evidence(slug: str, container: Any, *, probe_container: Any | None
                 observed = probe_text.strip().splitlines()[0] if probe_text.strip() else ""
                 observed = str(ipaddress.ip_address(observed))
                 evidence.update(observed_egress_ip=observed, probe_ok=int(getattr(probe_result, "exit_code", 1)) == 0)
-                if probe_container is not None:
-                    evidence.update(_sidecar_network_controls(probe))
-                else:
+                if probe_container is None:
                     controls = container.exec_run(
                         ["sh", "-lc", "iptables-save 2>/dev/null; ip6tables-save 2>/dev/null"]
                     )
