@@ -85,6 +85,50 @@ def test_provider_instances_round_trip_and_encrypt_spec(tmp_path):
     asyncio.run(run())
 
 
+def test_provider_runtime_inventory_refreshes_container_and_sidecar_ids(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "instances.db"):
+            await database.init_db()
+            worker_id = await database.upsert_worker("worker-a", "worker-a", "http://worker")
+            provider_id = await database.upsert_proxy_provider("packetstream", "manual")
+            proxy_ids = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id,
+                [{"provider_proxy_id": "p1", "host": "proxy", "port": 8080, "protocol": "http"}],
+            )
+            await database.save_provider_instance(
+                "packetstream",
+                "packetstream-proxy-w1-proxy-001",
+                worker_id=worker_id,
+                mode="proxy",
+                container_id="old-main",
+                sidecar_id="",
+                proxy_id=proxy_ids[0],
+                status="running",
+                spec={"safe": True},
+            )
+            updated = await database.sync_provider_runtime_inventory(
+                worker_id,
+                [
+                    {
+                        "slug": "packetstream",
+                        "instance_slug": "packetstream-proxy-w1-proxy-001",
+                        "container_id": "new-main",
+                        "sidecar_id": "new-sidecar",
+                        "status": "running",
+                    }
+                ],
+                inventory_confirmed=True,
+            )
+            row = await database.get_provider_instance("packetstream-proxy-w1-proxy-001")
+            assert updated == ["packetstream-proxy-w1-proxy-001"]
+            assert row["container_id"] == "new-main"
+            assert row["sidecar_id"] == "new-sidecar"
+            assert row["proxy_id"] == proxy_ids[0]
+            assert await database.get_provider_instance_spec(row["instance_id"]) == {"safe": True}
+
+    asyncio.run(run())
+
+
 def test_direct_only_provider_cannot_acquire_proxy_lease(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "instances.db"):
