@@ -74,6 +74,7 @@ def render_tun_proxy_config(
         "outbounds": [outbound, {"type": "direct", "tag": "direct"}],
         "route": {
             "auto_detect_interface": True,
+            "default_domain_resolver": "cf",
             "rules": route_rules,
             "final": "proxy-out",
         },
