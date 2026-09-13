@@ -3519,19 +3519,27 @@ async def api_plan_provider(
                 raise
             slots = await _worker_public_ip_slots(worker_id)
     except Exception as exc:  # noqa: BLE001 - report unavailable slots explicitly
-        if runtime.topology == "slot_proxy":
-            slots = []
-        else:
-            return {
-                "provider": slug,
-                "worker_id": worker_id,
-                "topology": runtime.topology,
-                "contract": provider_topology.topology_contract(slug),
-                "status": "slots_unavailable",
-                "error": type(exc).__name__,
-                "plans": [],
-            }
+        return {
+            "provider": slug,
+            "worker_id": worker_id,
+            "topology": runtime.topology,
+            "contract": provider_topology.topology_contract(slug),
+            "status": "slots_unavailable",
+            "error": type(exc).__name__,
+            "desired": 0,
+            "plans": [],
+        }
     available_proxy_count = None
+    if not slots:
+        return {
+            "provider": slug,
+            "worker_id": worker_id,
+            "topology": runtime.topology,
+            "contract": provider_topology.topology_contract(slug),
+            "status": "bootstrap_pending",
+            "desired": 0,
+            "plans": [],
+        }
     if "proxy" in provider_modes.expand_requested(slug, body.mode):
         with contextlib.suppress(Exception):
             capacity_rows = await database.get_provider_proxy_capacity(
@@ -3823,7 +3831,7 @@ async def api_deploy(
         logger.debug("Public IPv4 slot discovery unavailable for worker %s: %s", worker_id, type(exc).__name__)
         slot_records = []
     runtime_topology = provider_runtime.get(slug)
-    if runtime_topology and "direct" in modes and runtime_topology.topology == "slot_direct" and not slot_discovery_ok:
+    if runtime_topology and runtime_topology.topology == "slot_direct" and not slot_discovery_ok:
         await database.record_health_event(
             slug, "slots_pending", "public IPv4 slot manifest unavailable; deployment deferred"
         )
@@ -3832,6 +3840,21 @@ async def api_deploy(
             "provider": slug,
             "worker_id": worker_id,
             "pending_direct": 1,
+            "deployed": [],
+        }
+    # Legacy workers without the slot endpoint retain the old allocator until
+    # bootstrap enrollment. A successful empty manifest is different: it is
+    # authoritative zero capacity and is handled below as pending.
+    if runtime_topology and runtime_topology.topology.startswith("slot_") and slot_discovery_ok and not slot_records:
+        await database.record_health_event(
+            slug, "slots_pending", "public IPv4 slot manifest is empty; deployment deferred"
+        )
+        return {
+            "status": "pending_capacity",
+            "provider": slug,
+            "worker_id": worker_id,
+            "pending_direct": 1 if "direct" in modes else 0,
+            "pending_proxy": 1 if "proxy" in modes else 0,
             "deployed": [],
         }
     existing_rows = await database.list_provider_instances(slug=slug, worker_id=worker_id)
@@ -3852,12 +3875,7 @@ async def api_deploy(
             proxy_capacity = sum(int(row.get("available") or 0) for row in capacity_rows) + existing_proxy_count
             proxy_capacity_known = True
     topology_managed = bool(
-        runtime_topology
-        and runtime_topology.topology.startswith("slot_")
-        and (
-            (slot_discovery_ok and bool(slot_records))
-            or (proxy_capacity_known and proxy_capacity and proxy_capacity > 0)
-        )
+        runtime_topology and runtime_topology.topology.startswith("slot_") and slot_discovery_ok and bool(slot_records)
     )
     # A worker that predates the slot contract may not expose slot discovery.
     # Preserve its legacy allocator; once discovery succeeds, unknown/zero

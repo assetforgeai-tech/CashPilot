@@ -89,8 +89,8 @@ async def test_proxy_only_plan_does_not_require_public_ipv4_slots(monkeypatch):
         main.ProviderPlanRequest(worker_id=7, mode="proxy"),
         {},
     )
-    assert result["status"] == "ready"
-    assert result["desired"] == 2
+    assert result["status"] == "slots_unavailable"
+    assert result["desired"] == 0
     assert all(plan["mode"] == "proxy" for plan in result["plans"])
 
 
@@ -113,7 +113,8 @@ async def test_proxy_only_plan_keeps_existing_leases_in_target_capacity(monkeypa
         main.ProviderPlanRequest(worker_id=7, mode="proxy"),
         {},
     )
-    assert result["desired"] == 2
+    assert result["status"] == "bootstrap_pending"
+    assert result["desired"] == 0
 
 
 @pytest.mark.asyncio

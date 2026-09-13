@@ -64,13 +64,9 @@ def test_proxy_only_can_select_one_mode_and_rejects_invalid_input():
         plan_provider_nodes(7, "iproyal", 1, mode="direct")
 
 
-def test_proxy_only_plans_use_proxy_capacity_without_public_ipv4_slots():
+def test_proxy_only_requires_bootstrap_public_ipv4_cardinality():
     plans = plan_provider_nodes(7, "iproyal", [], mode="proxy", proxy_capacity=3)
-    assert [(plan.mode, plan.capacity_slot) for plan in plans] == [
-        ("proxy", "proxy-001"),
-        ("proxy", "proxy-002"),
-        ("proxy", "proxy-003"),
-    ]
+    assert plans == []
 
 
 def test_unknown_proxy_capacity_never_infers_proxy_nodes_from_public_ipv4_slots():
@@ -251,7 +247,7 @@ def test_summary_marks_proxy_shortage_as_pending_capacity():
 
 
 def test_summary_counts_existing_proxy_instances_without_calling_them_available():
-    plans = plan_provider_nodes(7, "iproyal", [], mode="proxy", proxy_capacity=2)
+    plans = plan_provider_nodes(7, "iproyal", [], mode="proxy", proxy_capacity=2, proxy_desired=2)
     summary = summarize_provider_plan(
         plans,
         [{"instance_id": "iproyal-proxy-w7-proxy-001", "status": "running"}],
@@ -260,7 +256,7 @@ def test_summary_counts_existing_proxy_instances_without_calling_them_available(
     )
     assert summary["capacity_target"] == 2
     assert summary["proxy_capacity"] == 1
-    assert summary["lane_capacity"]["proxy"]["running"] == 1
+    assert summary["lane_capacity"]["proxy"]["running"] == 0
 
 
 def test_capacity_preflight_reports_compute_disk_ports_slots_and_proxy_capacity():
@@ -310,6 +306,19 @@ def test_topology_contract_distinguishes_direct_proxy_and_hybrid_capacity():
         "direct_fallback": False,
         "proxy_fallback": False,
     }
+
+
+def test_topology_contract_exposes_cardinality_and_proxy_gate():
+    from app.provider_topology import topology_contract
+
+    assert topology_contract("iproyal")["cardinality_source"] == "bootstrap_public_ipv4"
+    assert topology_contract("iproyal")["proxy_capacity_is_gate"] is True
+
+
+def test_lane_contract_is_explicit_for_proxy_assignments():
+    from app.routers.proxies import ProviderProxyLeaseIn
+
+    assert "lane" in ProviderProxyLeaseIn.model_fields
     assert topology_contract("earnfm")["topology"] == "slot_both"
     assert topology_contract("earnfm")["direct_required"] is True
     assert topology_contract("earnfm")["proxy_required"] is True

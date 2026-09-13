@@ -1129,6 +1129,7 @@ CREATE TABLE IF NOT EXISTS provider_proxy_leases (
     provider_slug  TEXT    NOT NULL,
     worker_id      INTEGER NOT NULL,
     instance_id    TEXT    NOT NULL,
+    lane           TEXT    NOT NULL DEFAULT 'proxy' CHECK(lane = 'proxy'),
     proxy_id       INTEGER NOT NULL,
     exit_ip        TEXT    NOT NULL DEFAULT '',
     leased_at      TEXT    NOT NULL DEFAULT (datetime('now')),
@@ -3134,6 +3135,7 @@ async def init_db() -> None:
                 provider_slug  TEXT    NOT NULL,
                 worker_id      INTEGER NOT NULL,
                 instance_id    TEXT    NOT NULL,
+                lane           TEXT    NOT NULL DEFAULT 'proxy' CHECK(lane = 'proxy'),
                 proxy_id       INTEGER NOT NULL,
                 exit_ip        TEXT    NOT NULL DEFAULT '',
                 leased_at      TEXT    NOT NULL DEFAULT (datetime('now')),
@@ -3153,6 +3155,11 @@ async def init_db() -> None:
                 WHERE released_at IS NULL;
             """
         )
+        cursor = await db.execute("PRAGMA table_info(provider_proxy_leases)")
+        provider_lease_cols = {row["name"] for row in await cursor.fetchall()}
+        if "lane" not in provider_lease_cols:
+            applied.append("provider_proxy_leases.lane")
+            await db.execute("ALTER TABLE provider_proxy_leases ADD COLUMN lane TEXT NOT NULL DEFAULT 'proxy'")
         cursor = await db.execute("PRAGMA table_info(proxy_assignments)")
         proxy_assignment_cols = {row["name"] for row in await cursor.fetchall()}
         if "assignment_version" not in proxy_assignment_cols:
@@ -10250,7 +10257,7 @@ async def lease_proxy_for_provider_instance(
                     earnapp_account_id = int(account_row["account_id"] or 0)
             cursor = await db.execute(
                 """
-                SELECT leases.proxy_id, leases.exit_ip, pe.endpoint, pe.host, pe.port, pe.protocol,
+                SELECT leases.proxy_id, leases.exit_ip, leases.lane, pe.endpoint, pe.host, pe.port, pe.protocol,
                        pe.username, pe.password_enc, pe.location, pe.ip_type, pe.country_code, pe.country_name
                 FROM provider_proxy_leases leases
                 JOIN proxy_endpoints pe ON pe.id = leases.proxy_id
@@ -10281,7 +10288,7 @@ async def lease_proxy_for_provider_instance(
                 encrypted = data.pop("password_enc", "") or ""
                 if encrypted:
                     data["password"] = decrypt_value(encrypted)
-                data.update(provider_slug=slug, worker_id=int(worker_id), instance_id=instance)
+                data.update(provider_slug=slug, worker_id=int(worker_id), instance_id=instance, lane="proxy")
                 return data
             preferred_proxy_id = 0
             if slug == "earnapp":
@@ -10423,8 +10430,8 @@ async def lease_proxy_for_provider_instance(
             await db.execute(
                 """
                 INSERT INTO provider_proxy_leases
-                    (provider_slug, worker_id, instance_id, proxy_id, exit_ip)
-                VALUES (?, ?, ?, ?, ?)
+                    (provider_slug, worker_id, instance_id, lane, proxy_id, exit_ip)
+                VALUES (?, ?, ?, 'proxy', ?, ?)
                 """,
                 (slug, int(worker_id), instance, int(data["proxy_id"]), str(data.get("exit_ip") or "")),
             )
@@ -10437,7 +10444,7 @@ async def lease_proxy_for_provider_instance(
     encrypted = data.pop("password_enc", "") or ""
     if encrypted:
         data["password"] = decrypt_value(encrypted)
-    data.update(provider_slug=slug, worker_id=int(worker_id), instance_id=instance)
+    data.update(provider_slug=slug, worker_id=int(worker_id), instance_id=instance, lane="proxy")
     return data
 
 

@@ -2971,12 +2971,13 @@ const CP = (() => {
     }
 
     if (statusEl) {
+      const hasBlockedTopology = topologyStates.has('blocked') || topologyStates.has('partial');
       const laneText = Object.entries(laneTotals).map(([lane, stats]) =>
         `${lane}: ${stats.running}/${stats.desired} running, ${stats.free} free, ${stats.pending} pending`
       ).join(' | ');
       const topologyText = topologyStates.size ? ` · topology ${Array.from(topologyStates).join('/')}` : '';
-      statusEl.textContent = `${fail === 0 ? `Deployed to ${ok} node(s)` : `${ok} ok, ${fail} failed`}${topologyText}${laneText ? ` — ${laneText}` : ''}`;
-      statusEl.style.color = fail === 0 ? 'var(--success)' : 'var(--error)';
+      statusEl.textContent = `${hasBlockedTopology ? `Processed ${ok} worker(s); capacity pending` : fail === 0 ? `Deployed to ${ok} worker(s)` : `${ok} ok, ${fail} failed`}${topologyText}${laneText ? ` — ${laneText}` : ''}`;
+      statusEl.style.color = hasBlockedTopology ? 'var(--warning)' : fail === 0 ? 'var(--success)' : 'var(--error)';
     }
     if (ok > 0) {
       toast(`${slug} deployed to ${ok} node(s)`, 'success');

@@ -1,6 +1,18 @@
 from app.provider_lifecycle import decide, decide_instance, decide_lane
 
 
+def test_lifecycle_policy_is_defined_by_provider_lane_contract():
+    from app import provider_runtime
+
+    earnapp = provider_runtime.get("earnapp")
+    packetstream = provider_runtime.get("packetstream")
+    assert earnapp is not None and packetstream is not None
+    assert earnapp.lifecycle_action("proxy", "banned") == "restart"
+    assert packetstream.lifecycle_action("proxy", "banned") == "recreate"
+    assert earnapp.lifecycle_action("proxy", "proxy_unhealthy") == "rotate"
+    assert provider_runtime.get("earnfm").lifecycle_action("direct", "direct_route_unhealthy") == "blocked"
+
+
 def test_provider_lifecycle_dispatcher_is_scheduled_separately():
     import inspect
 

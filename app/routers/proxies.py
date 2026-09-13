@@ -112,6 +112,7 @@ class ProviderProxyLeaseIn(BaseModel):
     provider_slug: str
     worker_id: int
     instance_id: str
+    lane: str = "proxy"
 
 
 class ProviderProxyRotateIn(ProviderProxyLeaseIn):
@@ -1450,6 +1451,8 @@ async def api_proxy_pool_provider_lease(request: Request, body: ProviderProxyLea
     slug = body.provider_slug.strip().lower()
     if not slug or not body.instance_id.strip():
         raise HTTPException(status_code=400, detail="Provider and instance are required")
+    if body.lane.strip().lower() != "proxy":
+        raise HTTPException(status_code=409, detail="Direct lanes do not lease proxies")
     lease = await database.lease_proxy_for_provider_instance(slug, body.worker_id, body.instance_id)
     if not lease:
         raise HTTPException(status_code=404, detail="No eligible proxy available")
@@ -1459,6 +1462,8 @@ async def api_proxy_pool_provider_lease(request: Request, body: ProviderProxyLea
 @router.post("/api/proxy-pool/provider-release")
 async def api_proxy_pool_provider_release(request: Request, body: ProviderProxyLeaseIn) -> dict[str, Any]:
     deps._require_owner(request)
+    if body.lane.strip().lower() != "proxy":
+        raise HTTPException(status_code=409, detail="Direct lanes do not release proxy leases")
     released = await database.release_proxy_for_provider_instance(
         body.provider_slug, body.worker_id, body.instance_id, reason="manual release"
     )
@@ -1468,6 +1473,8 @@ async def api_proxy_pool_provider_release(request: Request, body: ProviderProxyL
 @router.post("/api/proxy-pool/provider-rotate")
 async def api_proxy_pool_provider_rotate(request: Request, body: ProviderProxyRotateIn) -> dict[str, Any]:
     deps._require_owner(request)
+    if body.lane.strip().lower() != "proxy":
+        raise HTTPException(status_code=409, detail="Direct lanes do not rotate proxy leases")
     candidate = await database.get_proxy_endpoint(body.new_proxy_id)
     if not candidate:
         raise HTTPException(status_code=404, detail="Replacement proxy not found")

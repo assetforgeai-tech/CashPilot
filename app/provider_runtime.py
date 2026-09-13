@@ -51,6 +51,7 @@ class ProviderRuntime:
         ("udp", "explicit"),
         ("fail_closed", True),
     )
+    banned_action: str = "recreate"
 
     @property
     def default_mode(self) -> str:
@@ -74,6 +75,24 @@ class ProviderRuntime:
         if selected == "proxy":
             return dict(self.network_contract)
         raise ValueError("unsupported egress lane")
+
+    def lifecycle_action(self, mode: str, signal: str) -> str:
+        """Return the declared action for one lane health signal."""
+        selected = str(mode or "").strip().lower()
+        event = str(signal or "").strip().lower()
+        if selected not in self.modes:
+            return "observe"
+        if event in {"provider_auth_unhealthy", "account_suspended"}:
+            return "observe"
+        if event == "direct_route_unhealthy":
+            return "blocked" if selected == "direct" else "observe"
+        if event == "proxy_unhealthy":
+            return "rotate" if selected == "proxy" else "observe"
+        if event in {"offline", "usage_stalled"}:
+            return "restart"
+        if event == "banned":
+            return self.banned_action
+        return "observe"
 
     @property
     def manual_only(self) -> bool:
@@ -106,6 +125,7 @@ PROVIDERS: dict[str, ProviderRuntime] = {
         egress_ownership_scope="account_sticky",
         auth_scope="account",
         account_sharing="exclusive_account",
+        banned_action="restart",
     ),
     "iproyal": ProviderRuntime(
         "iproyal", "pawns.py", "pawns.py", ("proxy",), "earnings", rotation_scope="instance", topology="slot_proxy"
