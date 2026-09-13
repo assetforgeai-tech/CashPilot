@@ -88,6 +88,7 @@ def test_singbox_config_uses_tun_and_socks_outbound():
     assert config["inbounds"][0]["type"] == "tun"
     assert len(config["inbounds"][0]["interface_name"]) <= 15
     assert config["outbounds"][0]["type"] == "socks"
+    assert config["outbounds"][0]["domain_resolver"] == "bootstrap"
     assert config["route"]["final"] == "proxy-out"
     assert config["dns"]["strategy"] == "ipv4_only"
     assert {"port": 53, "action": "hijack-dns"} in config["route"]["rules"]
@@ -115,8 +116,6 @@ def test_proxy_hostname_uses_bootstrap_doh_without_empty_direct_detour():
         "tag": "bootstrap",
         "type": "udp",
         "server": "1.1.1.1",
-        "server_port": 53,
-        "detour": "direct",
     }
     assert {"domain": ["proxy.example.com"], "server": "bootstrap"} in config["dns"]["rules"]
 
@@ -131,8 +130,7 @@ def test_proxy_bootstrap_resolver_does_not_recurse_through_proxy_hostname():
     bootstrap = next(item for item in config["dns"]["servers"] if item["tag"] == "bootstrap")
     assert bootstrap["type"] == "udp"
     assert bootstrap["server"] == "1.1.1.1"
-    assert bootstrap["server_port"] == 53
-    assert bootstrap["detour"] == "direct"
+    assert config["outbounds"][0]["domain_resolver"] == "bootstrap"
 
 
 def test_singbox_config_declares_default_domain_resolver():
