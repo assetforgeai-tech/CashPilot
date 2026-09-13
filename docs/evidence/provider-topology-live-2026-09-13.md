@@ -75,3 +75,16 @@ Read-only SSH inspection. No provider/container mutation. Azure CLI was not used
 - Fresh owner-authorized direct/proxy/hybrid deploy and egress evidence remains
   pending. No canary was started from an unverified or missing proxy capacity
   response.
+
+## Current capacity plan (read-only)
+
+- Worker `118903` and `118904` each expose 10/10 route-ready public IPv4 slots
+  and 768 scoped proxy-capacity units. Plans are `ready`: EarnFM hybrid
+  desired `20`, IPRoyal proxy-only desired `10`, Packetstream proxy-only
+  desired `10` per worker.
+- Only one existing provider container is present on East Asia: an EarnFM
+  direct lane. Japan East has no provider container. This confirms planning
+  capacity, not successful provider deployment or egress.
+- Host kernel is `6.17.0-1022-azure`; this is expected worker-host metadata and
+  is not proof that a provider binary is correctly masked. Container-level
+  uname and direct/IPv6/DNS/UDP probes remain required.
