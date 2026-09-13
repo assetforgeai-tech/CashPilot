@@ -388,6 +388,15 @@ def test_topology_contract_exposes_operational_policy():
     assert contract["network_contract"]["proxy"]["fallback"] == "none"
 
 
+def test_cardinality_policy_separates_target_from_deployability_gate():
+    contract = topology_contract("earnfm")
+    assert contract["cardinality_policy"] == {
+        "desired": "bootstrap_public_ipv4",
+        "deployability": {"direct": "route_ready", "proxy": "eligible_proxy"},
+        "proxy_shortage_changes_desired": False,
+    }
+
+
 def test_topology_contract_makes_hybrid_cardinality_and_slot_binding_explicit():
     contract = topology_contract("earnfm")
     assert contract["hybrid_cardinality"] == "one_node_per_public_ipv4_per_lane"
