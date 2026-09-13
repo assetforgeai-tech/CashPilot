@@ -3822,10 +3822,22 @@ async def api_deploy(
     except Exception as exc:  # noqa: BLE001 - legacy workers may not expose slots
         logger.debug("Public IPv4 slot discovery unavailable for worker %s: %s", worker_id, type(exc).__name__)
         slot_records = []
-        runtime_topology = provider_runtime.get(slug)
-        if runtime_topology and runtime_topology.topology.startswith("slot_") and not slot_discovery_ok:
+    runtime_topology = provider_runtime.get(slug)
+    if runtime_topology and runtime_topology.topology.startswith("slot_") and not slot_discovery_ok:
         await database.record_health_event(
             slug, "slots_pending", "public IPv4 slot manifest unavailable; deployment deferred"
+        )
+        return {
+            "status": "pending_capacity",
+            "provider": slug,
+            "worker_id": worker_id,
+            "pending_direct": 1 if "direct" in modes else 0,
+            "pending_proxy": 1 if "proxy" in modes else 0,
+            "deployed": [],
+        }
+    if runtime_topology and runtime_topology.topology.startswith("slot_") and not slot_records:
+        await database.record_health_event(
+            slug, "slots_pending", "public IPv4 slot manifest is empty; deployment deferred"
         )
         return {
             "status": "pending_capacity",
