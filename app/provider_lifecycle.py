@@ -26,20 +26,19 @@ def decide(
     runtime = provider_runtime.get(str(provider or "").strip().lower())
     if runtime is None:
         return "observe"
+    selected = "direct" if "direct" in runtime.modes and "proxy" not in runtime.modes else "proxy"
     if provider_auth_healthy is False or account_suspended:
-        return "observe"
+        return runtime.lifecycle_action(selected, "provider_auth_unhealthy")
     if direct_route_healthy is False and "direct" in runtime.modes:
-        return "blocked"
+        return runtime.lifecycle_action("direct", "direct_route_unhealthy")
     if banned:
-        if str(provider or "").strip().lower() == "earnapp":
-            return "restart"
-        return "recreate"
+        return runtime.lifecycle_action(selected, "banned")
     if online is False:
-        return "restart"
+        return runtime.lifecycle_action(selected, "offline")
     if proxy_healthy is False and "proxy" in runtime.modes:
-        return "rotate"
+        return runtime.lifecycle_action("proxy", "proxy_unhealthy")
     if usage_stalled:
-        return "restart"
+        return runtime.lifecycle_action(selected, "usage_stalled")
     return "observe"
 
 
