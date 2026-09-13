@@ -120,6 +120,10 @@ health data remains unknown and direct lanes are untouched.
 - [ ] Add browser-level checks for direct-only, proxy-only, and hybrid states.
 - [ ] Run frontend wiring and browser verification.
 
+Progress: deploy responses now expose `topology_status` (`ready`, `partial`,
+or `blocked`), and the deploy status line renders it alongside independent
+direct/proxy lane totals. Browser-level verification remains outstanding.
+
 ### Task 7: Live lane canaries and evidence
 
 **Files:**
