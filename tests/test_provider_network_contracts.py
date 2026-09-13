@@ -2,8 +2,60 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app import earnapp_runtime, provider_runtime
+from app import earnapp_runtime, orchestrator, provider_runtime
 from app.provider_network_audit import audit_provider_network_inventory
+
+
+def test_status_includes_live_sidecar_identity_for_managed_container(monkeypatch):
+    class Image:
+        tags = ["example/image:latest"]
+        short_id = "sha256:x"
+
+    class Container:
+        def __init__(self, name, labels, cid):
+            self.name = name
+            self.labels = labels
+            self.id = cid
+            self.short_id = cid[:12]
+            self.status = "running"
+            self.image = Image()
+            self.attrs = {"HostConfig": {"NetworkMode": "container:sidecar-id"}, "Created": ""}
+
+        def stats(self, stream=False):
+            return {"cpu_stats": {}, "precpu_stats": {}, "memory_stats": {}, "networks": {}}
+
+        def exec_run(self, *args, **kwargs):
+            return type("Result", (), {"exit_code": 0, "output": b""})()
+
+    main = Container(
+        "svc",
+        {"cashpilot.managed": "true", "cashpilot.provider": "packetstream", "cashpilot.service": "svc"},
+        "main-id",
+    )
+    sidecar = Container(
+        "svc-egress",
+        {
+            "cashpilot.managed": "true",
+            "cashpilot.provider": "packetstream",
+            "cashpilot.service": "svc-egress",
+            "cashpilot.role": "egress-sidecar",
+        },
+        "sidecar-id",
+    )
+
+    class Client:
+        class Containers:
+            def list(self, **kwargs):
+                return [main, sidecar]
+
+        containers = Containers()
+
+    monkeypatch.setattr(orchestrator, "_get_client", lambda: Client())
+    monkeypatch.setattr(orchestrator, "_collect_stats_bulk", lambda cs: {c.id: (0, 0, 0, 0) for c in cs})
+    monkeypatch.setattr(orchestrator, "_provider_evidence", lambda slug, c: {})
+    monkeypatch.setattr(orchestrator, "get_services", lambda: [])
+    rows = orchestrator.get_status()
+    assert rows[0]["sidecar_id"] == "sidecar-id"
 
 
 def test_network_audit_reports_unverified_when_provider_has_no_live_inventory():
