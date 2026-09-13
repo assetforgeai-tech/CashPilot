@@ -139,16 +139,16 @@ def audit_provider_network_inventory(
         if str(instance.get("status") or "").strip().lower() in {"active", "running", "deployed"}:
             network = validate_provider_network_evidence(
                 mode="direct",
-                dns_via_proxy=instance.get("dns_via_proxy")
-                if "dns_via_proxy" in instance
-                else (container or {}).get("dns_via_proxy"),
-                ipv6_blocked=instance.get("ipv6_blocked")
-                if "ipv6_blocked" in instance
-                else (container or {}).get("ipv6_blocked"),
+                dns_via_proxy=(container or {}).get("dns_via_proxy")
+                if "dns_via_proxy" in (container or {})
+                else instance.get("dns_via_proxy"),
+                ipv6_blocked=(container or {}).get("ipv6_blocked")
+                if "ipv6_blocked" in (container or {})
+                else instance.get("ipv6_blocked"),
                 udp_blocked=None,
-                direct_fallback_blocked=instance.get("direct_fallback_blocked")
-                if "direct_fallback_blocked" in instance
-                else (container or {}).get("direct_fallback_blocked"),
+                direct_fallback_blocked=(container or {}).get("direct_fallback_blocked")
+                if "direct_fallback_blocked" in (container or {})
+                else instance.get("direct_fallback_blocked"),
             )
             network_findings.extend(f"{instance_id}: {item}" for item in network["findings"])
     proxy_instances = [
@@ -227,18 +227,18 @@ def audit_provider_network_inventory(
         if active and runtime.topology in {"slot_proxy", "slot_both"}:
             network = validate_provider_network_evidence(
                 mode="proxy",
-                dns_via_proxy=instance.get("dns_via_proxy")
-                if "dns_via_proxy" in instance
-                else container.get("dns_via_proxy"),
-                ipv6_blocked=instance.get("ipv6_blocked")
-                if "ipv6_blocked" in instance
-                else container.get("ipv6_blocked"),
-                udp_blocked=instance.get("udp_blocked") if "udp_blocked" in instance else container.get("udp_blocked"),
-                doh_blocked=instance.get("doh_blocked") if "doh_blocked" in instance else container.get("doh_blocked"),
-                dot_blocked=instance.get("dot_blocked") if "dot_blocked" in instance else container.get("dot_blocked"),
-                direct_fallback_blocked=instance.get("direct_fallback_blocked")
-                if "direct_fallback_blocked" in instance
-                else container.get("direct_fallback_blocked"),
+                dns_via_proxy=container.get("dns_via_proxy")
+                if "dns_via_proxy" in container
+                else instance.get("dns_via_proxy"),
+                ipv6_blocked=container.get("ipv6_blocked")
+                if "ipv6_blocked" in container
+                else instance.get("ipv6_blocked"),
+                udp_blocked=container.get("udp_blocked") if "udp_blocked" in container else instance.get("udp_blocked"),
+                doh_blocked=container.get("doh_blocked") if "doh_blocked" in container else instance.get("doh_blocked"),
+                dot_blocked=container.get("dot_blocked") if "dot_blocked" in container else instance.get("dot_blocked"),
+                direct_fallback_blocked=container.get("direct_fallback_blocked")
+                if "direct_fallback_blocked" in container
+                else instance.get("direct_fallback_blocked"),
             )
             network_findings.extend(f"{instance_id}: {item}" for item in network["findings"])
         mode = str(container.get("network_mode") or container.get("NetworkMode") or "").lower()
