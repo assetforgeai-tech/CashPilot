@@ -1797,6 +1797,11 @@ def get_status() -> list[dict[str, Any]]:
 
     results: list[dict[str, Any]] = []
     labeled_stats = _collect_stats_bulk(list(labeled))
+    sidecars = {
+        str((c.labels or {}).get(LABEL_SERVICE) or "").removesuffix("-egress"): str(getattr(c, "id", "") or "")
+        for c in labeled
+        if (c.labels or {}).get("cashpilot.role") == "egress-sidecar"
+    }
     for c in labeled:
         try:
             if (c.labels or {}).get("cashpilot.role") == "egress-sidecar":
@@ -1805,6 +1810,9 @@ def get_status() -> list[dict[str, Any]]:
             slug = c.labels.get("cashpilot.provider") or c.labels.get(LABEL_SERVICE, "unknown")
             instance_slug = c.labels.get(LABEL_SERVICE, slug)
             instance_mode = c.labels.get("cashpilot.instance_mode", "")
+            sidecar_id = sidecars.get(str(instance_slug), "")
+            if not sidecar_id:
+                sidecar_id = sidecars.get(str(getattr(c, "name", "")).removesuffix("-egress"), "")
             cpu_pct, mem_mb, net_rx, net_tx = labeled_stats.get(c.id, (0.0, 0.0, None, None))
             results.append(
                 {
@@ -1823,6 +1831,7 @@ def get_status() -> list[dict[str, Any]]:
                     "net_tx_bytes": net_tx,
                     "created": c.attrs.get("Created", ""),
                     "container_id": c.short_id,
+                    "sidecar_id": sidecar_id,
                     "deployed_by": c.labels.get(LABEL_DEPLOYED_BY, "unknown"),
                     "category": c.labels.get(LABEL_CATEGORY, ""),
                     "provider_evidence": _provider_evidence(slug, c),
