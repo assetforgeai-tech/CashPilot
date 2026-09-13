@@ -542,6 +542,40 @@ def test_earnapp_iptables_parser_proves_fail_closed_controls():
     }
 
 
+def test_live_container_network_evidence_overrides_stale_instance_fields():
+    report = audit_provider_network_inventory(
+        "earnapp",
+        instances=[
+            {
+                "instance_id": "node-1",
+                "mode": "proxy",
+                "status": "active",
+                "dns_via_proxy": False,
+                "ipv6_blocked": False,
+                "udp_blocked": False,
+                "doh_blocked": False,
+                "dot_blocked": False,
+                "direct_fallback_blocked": False,
+            }
+        ],
+        containers=[
+            {
+                "instance_slug": "node-1",
+                "status": "running",
+                "network_mode": "container:sidecar",
+                "dns_via_proxy": True,
+                "ipv6_blocked": True,
+                "udp_blocked": True,
+                "doh_blocked": True,
+                "dot_blocked": True,
+                "direct_fallback_blocked": True,
+            }
+        ],
+        inventory_confirmed=True,
+    )
+    assert report["network_evidence"] == {"status": "pass", "findings": []}
+
+
 def test_unconfirmed_inventory_does_not_claim_proxy_runtime_safe():
     report = audit_provider_network_inventory(
         "wipter", instances=[{"instance_id": "w-1", "status": "active"}], containers=[], inventory_confirmed=False
