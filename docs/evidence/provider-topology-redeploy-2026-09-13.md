@@ -22,3 +22,11 @@ Health endpoint returned `status=ok` on both Azure workers after redeploy. Exist
 - Authenticated slot manifest and provider plan responses require owner authorization; no credential bypass was used.
 - Direct-only, proxy-only, and hybrid live canary evidence remains pending.
 - DNS/IPv6/UDP/DoH/DoT/direct-fallback probes remain pending per lane.
+
+## Contract hardening follow-up
+
+- Duplicate public IPv4 records are discarded before slot cardinality is calculated.
+- Hybrid providers expose `N direct + N proxy` as the desired formula; proxy shortage only blocks deployment.
+- Hybrid lifecycle dispatch requires an explicit lane; ambiguous provider-level signals observe only.
+- Catalog/topology responses expose slot binding, health signal sources, and concrete proxy UDP/DoH/DoT defaults.
+- PR #320 merged; PR #321 carries the follow-up contract changes and is awaiting CI.
