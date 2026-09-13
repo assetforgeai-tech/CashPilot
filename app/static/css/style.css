@@ -1540,6 +1540,12 @@ img { max-width: 100%; }
   background: var(--bg-tertiary);
 }
 .settings-quick-links a { text-decoration: none; }
+.settings-subnav { position: sticky; top: 8px; z-index: 2; box-shadow: 0 4px 14px color-mix(in srgb, #000 18%, transparent); }
+.settings-subnav a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.provider-pool-row { display: grid; grid-template-columns: minmax(110px, .7fr) minmax(190px, 1.3fr) minmax(190px, 1.3fr); gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border-color); align-items: center; }
+.provider-pool-row:last-child { border-bottom: 0; }
+.provider-pool-row span { color: var(--text-secondary); font-size: .78rem; }
+@media (max-width: 680px) { .provider-pool-row { grid-template-columns: 1fr; gap: 2px; } .settings-subnav { top: 0; } }
 .earnapp-token-alerts { display: grid; gap: 8px; margin: 12px 0 16px; }
 .earnapp-token-alert {
   display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap;
@@ -1709,6 +1715,7 @@ img { max-width: 100%; }
 
 /* ----- Responsive ----- */
 @media (max-width: 768px) {
+  .settings-section > div[style*="grid-template-columns:220px"] { grid-template-columns: 1fr !important; }
   .earnapp-account-grid { grid-template-columns: 1fr; }
   .earnapp-capacity-strip { grid-template-columns: 1fr 1fr; }
   .earnapp-runtime-settings { grid-template-columns: 1fr; }

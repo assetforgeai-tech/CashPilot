@@ -7202,7 +7202,7 @@ async def get_provider_proxy_capacity(
         scoped = " AND ".join(scope)
         cursor = await db.execute(
             f"""
-                SELECT p.id AS provider_id, p.name AS provider_name,
+                SELECT p.id AS provider_id, p.name AS provider_name, p.type AS provider_slug,
                        COUNT(DISTINCT pe.exit_ip) AS total,
                        COUNT(DISTINCT CASE WHEN {scoped}
                            THEN pe.exit_ip END) AS eligible,
@@ -7229,7 +7229,7 @@ async def get_provider_proxy_capacity(
                            THEN pe.exit_ip END) AS duplicate_egress
                 FROM proxy_providers p
                 LEFT JOIN proxy_endpoints pe ON pe.provider_id = p.id
-                GROUP BY p.id, p.name ORDER BY p.name, p.id
+                GROUP BY p.id, p.name, p.type ORDER BY p.name, p.id
             """,
             params * 2,
         )
@@ -7238,6 +7238,7 @@ async def get_provider_proxy_capacity(
             {
                 "provider_id": int(row["provider_id"]),
                 "provider_name": str(row["provider_name"]),
+                "provider_slug": str(row["provider_slug"] or "").strip().lower(),
                 "total": int(row["total"] or 0),
                 "eligible": int(row["eligible"] or 0),
                 "available": int(row["available"] or 0),

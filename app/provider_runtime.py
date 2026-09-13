@@ -55,6 +55,10 @@ class ProviderRuntime:
     node_health_policy: bool = False
     proxy_allocation_policy: str = "provider_scoped"
     proxy_rejection_action: str = "rotate"
+    # Group labels keep shared schedulers from applying provider-specific
+    # health actions across unrelated accounts or proxy pools.
+    policy_group: str = "provider"
+    proxy_failure_scope: str = "provider"
 
     @property
     def default_mode(self) -> str:
@@ -130,6 +134,8 @@ PROVIDERS: dict[str, ProviderRuntime] = {
         account_sharing="exclusive_account",
         banned_action="restart",
         node_health_policy=True,
+        policy_group="earnapp",
+        proxy_failure_scope="node",
     ),
     "iproyal": ProviderRuntime(
         "iproyal",
@@ -141,6 +147,8 @@ PROVIDERS: dict[str, ProviderRuntime] = {
         topology="slot_proxy",
         proxy_allocation_policy="provider_private",
         proxy_rejection_action="mask_and_replace",
+        policy_group="pawns",
+        proxy_failure_scope="provider",
     ),
     "mysterium": ProviderRuntime(
         "mysterium",

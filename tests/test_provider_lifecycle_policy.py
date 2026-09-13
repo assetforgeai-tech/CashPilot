@@ -47,6 +47,15 @@ def test_lifecycle_policy_is_defined_by_provider_lane_contract():
     assert provider_runtime.get("earnfm").lifecycle_action("direct", "direct_route_unhealthy") == "blocked"
 
 
+def test_provider_policy_groups_keep_pawns_and_earnapp_isolated():
+    from app import provider_runtime
+
+    assert provider_runtime.get("iproyal").policy_group == "pawns"
+    assert provider_runtime.get("iproyal").proxy_failure_scope == "provider"
+    assert provider_runtime.get("earnapp").policy_group == "earnapp"
+    assert provider_runtime.get("earnapp").proxy_failure_scope == "node"
+
+
 def test_provider_lifecycle_dispatcher_is_scheduled_separately():
     import inspect
 

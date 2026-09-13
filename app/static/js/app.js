@@ -3779,9 +3779,15 @@ const CP = (() => {
       const payload = await api('/api/admin/provider-account-pools');
       const items = Array.isArray(payload.items) ? payload.items : [];
       container.innerHTML = items.length
-        ? items.map(item => item.modeled === false
-          ? `${escapeHtml(item.provider)}: account pool not modeled`
-          : `${escapeHtml(item.provider)}: ${Number(item.active || 0)}/${Number(item.total || 0)} active · ${Number(item.assigned_nodes || 0)} nodes`).join('<br>')
+        ? items.map(item => {
+          const capacity = item.proxy_eligible == null
+            ? 'proxy capacity —'
+            : `proxy ${Number(item.proxy_available || 0)} available / ${Number(item.proxy_eligible || 0)} eligible`;
+          const accounts = item.modeled === false
+            ? 'account pool not modeled'
+            : `${Number(item.active || 0)}/${Number(item.total || 0)} accounts active · ${Number(item.assigned_nodes || 0)} nodes`;
+          return `<div class="provider-pool-row"><strong>${escapeHtml(item.provider)}</strong><span>${accounts}</span><span>${capacity}</span></div>`;
+        }).join('')
         : 'No provider accounts configured.';
     } catch (err) {
       container.textContent = `Account pools unavailable: ${err.message}`;

@@ -24,6 +24,8 @@ def test_account_pool_summary_uses_provider_adapters_without_exposing_secrets(tm
             earnapp = next(row for row in pools if row["provider"] == "earnapp")
             assert earnapp["total"] == 1
             assert earnapp["active"] == 1
+            assert "proxy_eligible" in earnapp
+            assert "proxy_available" in earnapp
             assert "credentials" not in earnapp
             nkn = next(row for row in pools if row["provider"] == "nkn")
             assert nkn["adapter"] == "none"
