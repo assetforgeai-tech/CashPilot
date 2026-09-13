@@ -3831,6 +3831,17 @@ async def api_deploy(
         logger.debug("Public IPv4 slot discovery unavailable for worker %s: %s", worker_id, type(exc).__name__)
         slot_records = []
     runtime_topology = provider_runtime.get(slug)
+    if runtime_topology and runtime_topology.topology == "slot_direct" and not slot_discovery_ok:
+        await database.record_health_event(
+            slug, "slots_pending", "public IPv4 slot manifest unavailable; deployment deferred"
+        )
+        return {
+            "status": "pending_capacity",
+            "provider": slug,
+            "worker_id": worker_id,
+            "pending_direct": 1,
+            "deployed": [],
+        }
     # Legacy workers without the slot endpoint retain the old allocator until
     # bootstrap enrollment. A successful empty manifest is different: it is
     # authoritative zero capacity and is handled below as pending.
