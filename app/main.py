@@ -3876,10 +3876,7 @@ async def api_deploy(
             proxy_capacity = sum(int(row.get("available") or 0) for row in capacity_rows) + existing_proxy_count
             proxy_capacity_known = True
     topology_managed = bool(
-        runtime_topology
-        and runtime_topology.topology.startswith("slot_")
-        and slot_discovery_ok
-        and bool(slot_records)
+        runtime_topology and runtime_topology.topology.startswith("slot_") and slot_discovery_ok and bool(slot_records)
     )
     # A worker that predates the slot contract may not expose slot discovery.
     # Preserve its legacy allocator; once discovery succeeds, unknown/zero

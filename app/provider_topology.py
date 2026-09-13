@@ -166,18 +166,11 @@ def plan_provider_nodes(
     # Bootstrap public-IP count is the sole implicit node cardinality for every
     # lane. Proxy discovery gates deployability, but must never invent nodes
     # when bootstrap has not reported public IPv4 slots.
-    proxy_target = (
-        proxy_desired
-        if proxy_desired is not None
-        else len(slots)
-    )
+    proxy_target = proxy_desired if proxy_desired is not None else len(slots)
     proxy_slots = []
     if "proxy" in modes and proxy_target:
         if not slots and proxy_desired is not None:
-            proxy_slots = [
-                (f"proxy-{index:03d}", "", "", False)
-                for index in range(1, proxy_target + 1)
-            ]
+            proxy_slots = [(f"proxy-{index:03d}", "", "", False) for index in range(1, proxy_target + 1)]
         else:
             proxy_slots = [
                 (f"proxy-{index:03d}", "", "", index <= max(0, int(proxy_capacity or 0)))
