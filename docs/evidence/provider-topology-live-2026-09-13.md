@@ -88,3 +88,15 @@ Read-only SSH inspection. No provider/container mutation. Azure CLI was not used
 - Host kernel is `6.17.0-1022-azure`; this is expected worker-host metadata and
   is not proof that a provider binary is correctly masked. Container-level
   uname and direct/IPv6/DNS/UDP probes remain required.
+
+## Direct-lane canary
+
+- Existing East Asia EarnFM direct instance
+  `cashpilot-earnfm-direct-w118903-ipv4-001` is attached to
+  `cashpilot-direct-ipv4-001` with container IPv4 `10.253.1.2`.
+- The slot manifest declares public IPv4 `13.70.42.190`; an independent HTTPS
+  egress request from inside the container returned exactly `13.70.42.190`,
+  while the host primary egress is `20.187.79.110`.
+- A controlled restart returned the same container network address and exact
+  slot egress. This verifies direct-lane route binding and restart persistence;
+  it does not yet prove host reboot persistence.
