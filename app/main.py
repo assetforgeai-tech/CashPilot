@@ -8707,7 +8707,11 @@ async def api_provider_network_reconciliation(request: Request) -> dict[str, Any
     """Report provider network drift without mutating workers or leases."""
     _require_owner(request)
     reports: list[dict[str, Any]] = []
-    for worker in await database.list_workers():
+    workers = await database.list_workers()
+    _mark_superseded_workers(workers)
+    for worker in workers:
+        if worker.get("superseded_by_worker_id"):
+            continue
         worker_id = int(worker.get("id") or 0)
         containers = _safe_json(worker.get("containers") or "[]", [])
         if not isinstance(containers, list):
