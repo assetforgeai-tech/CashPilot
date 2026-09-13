@@ -1658,7 +1658,7 @@ def _network_totals(stats: dict[str, Any]) -> tuple[int | None, int | None]:
     return rx, tx
 
 
-def _provider_evidence(slug: str, container: Any) -> dict[str, Any]:
+def _provider_evidence(slug: str, container: Any, *, probe_container: Any | None = None) -> dict[str, Any]:
     """Provider-specific runtime evidence for status snapshots."""
     if slug == "wipter":
         try:
@@ -1698,8 +1698,17 @@ def _provider_evidence(slug: str, container: Any) -> dict[str, Any]:
             return {"running": True, "online": False}
     if slug in {"packetstream", "earnfm", "iproyal", "traffmonetizer"}:
         try:
-            result = container.exec_run(
-                ["sh", "-lc", "curl --fail --silent --show-error --max-time 10 https://api.ipify.org"]
+            # Probe the shared egress namespace when the provider image is
+            # intentionally minimal and lacks curl/wget.
+            probe = probe_container or container
+            result = probe.exec_run(
+                [
+                    "sh",
+                    "-lc",
+                    "if command -v curl >/dev/null 2>&1; then curl --fail --silent --show-error --max-time 10 https://api.ipify.org; "
+                    "elif command -v wget >/dev/null 2>&1; then wget -qO- --timeout=10 https://api.ipify.org; "
+                    "else exit 127; fi",
+                ]
             )
             output = getattr(result, "output", b"") or b""
             text = output.decode("utf-8", errors="replace") if isinstance(output, bytes) else str(output)
@@ -1833,8 +1842,28 @@ def get_status() -> list[dict[str, Any]]:
             network_mode = _container_network_mode(c)
             if network_mode.startswith("container:"):
                 sidecar_id = network_mode.removeprefix("container:").strip()
+            probe_container = None
+            if sidecar_id and slug in {"packetstream", "earnfm", "iproyal", "traffmonetizer"}:
+                try:
+                    get_container = getattr(client.containers, "get", None)
+                    if callable(get_container):
+                        probe_container = get_container(sidecar_id)
+                    else:
+                        probe_container = next(
+                            (item for item in labeled if getattr(item, "id", "") == sidecar_id), None
+                        )
+                except (NotFound, APIError):
+                    probe_container = None
             cpu_pct, mem_mb, net_rx, net_tx = labeled_stats.get(c.id, (0.0, 0.0, None, None))
-            provider_evidence = _provider_evidence(slug, c)
+            if probe_container is not None:
+                try:
+                    provider_evidence = _provider_evidence(slug, c, probe_container=probe_container)
+                except TypeError as exc:
+                    if "probe_container" not in str(exc):
+                        raise
+                    provider_evidence = _provider_evidence(slug, c)
+            else:
+                provider_evidence = _provider_evidence(slug, c)
             results.append(
                 {
                     "slug": slug,
