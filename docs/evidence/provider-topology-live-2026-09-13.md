@@ -56,3 +56,22 @@ Read-only SSH inspection. No provider/container mutation. Azure CLI was not used
 - Owner-authenticated plan/deploy response for each lane.
 - Live egress/lease/rotation/release and DNS/IPv6/UDP fail-closed evidence.
 - Browser verification of `ready`, `partial`, and `blocked` states.
+
+## 2026-09-13 post-redeploy contract check
+
+- Server-side catalog now reports EarnApp `slot_proxy` with
+  `bind_capacity_slot`, `offline=restart`, `usage_stalled=restart`, and
+  `banned=restart`.
+- `iproyal` reports `provider_private` allocation with
+  `mask_and_replace`; its offline/usage/banned actions remain `observe`.
+- `earnfm` reports independent `bind_public_ipv4_slot` and
+  `bind_capacity_slot` lanes; offline/usage/banned remain `observe`.
+- `mysterium` and `nkn` remain dedicated direct adapters, not generic slot
+  planners.
+- Read-only database check showed account `2` active and 13 active EarnApp
+  leases. A legacy logical-node row exists without a matching provider-instance
+  row; this is reconciliation drift and must be resolved through the existing
+  owner-authorized reconciliation path, not an automatic delete.
+- Fresh owner-authorized direct/proxy/hybrid deploy and egress evidence remains
+  pending. No canary was started from an unverified or missing proxy capacity
+  response.
