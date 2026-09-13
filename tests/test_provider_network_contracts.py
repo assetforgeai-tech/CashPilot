@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from app import earnapp_runtime, orchestrator, provider_runtime
@@ -88,6 +89,51 @@ def test_proxy_provider_evidence_uses_sidecar_when_main_has_no_probe_tool():
         "running": True,
         "observed_egress_ip": "203.0.113.10",
         "probe_ok": True,
+    }
+
+
+def test_proxy_provider_evidence_proves_sidecar_leak_controls():
+    config = {
+        "dns": {
+            "servers": [
+                {"tag": "cf", "type": "https", "detour": "proxy-out"},
+                {"tag": "bootstrap", "type": "udp", "server": "1.1.1.1"},
+            ],
+            "rules": [{"domain": ["proxy.example"], "server": "bootstrap"}],
+            "strategy": "ipv4_only",
+        },
+        "inbounds": [{"type": "tun", "strict_route": True, "address": ["172.31.255.1/30"]}],
+        "outbounds": [
+            {"type": "http", "tag": "proxy-out", "server": "proxy.example"},
+            {"type": "direct", "tag": "direct"},
+        ],
+        "route": {
+            "rules": [
+                {"port": 53, "action": "hijack-dns"},
+                {"domain": ["proxy.example"], "outbound": "direct"},
+            ],
+            "final": "proxy-out",
+        },
+    }
+
+    class Sidecar:
+        calls = 0
+
+        def exec_run(self, *_args, **_kwargs):
+            self.calls += 1
+            output = b"203.0.113.10\n" if self.calls == 1 else json.dumps(config).encode()
+            return type("Result", (), {"exit_code": 0, "output": output})()
+
+    assert orchestrator._provider_evidence("packetstream", Sidecar()) == {
+        "running": True,
+        "observed_egress_ip": "203.0.113.10",
+        "probe_ok": True,
+        "dns_via_proxy": True,
+        "ipv6_blocked": True,
+        "udp_blocked": True,
+        "doh_blocked": True,
+        "dot_blocked": True,
+        "direct_fallback_blocked": True,
     }
 
 
