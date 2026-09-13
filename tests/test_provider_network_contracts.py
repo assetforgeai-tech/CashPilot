@@ -64,6 +64,69 @@ def test_status_includes_live_sidecar_identity_for_managed_container(monkeypatch
     assert rows[0]["observed_egress_ip"] == "203.0.113.8"
 
 
+def test_status_uses_legacy_sidecar_for_earnapp_evidence(monkeypatch):
+    class Image:
+        tags = ["example/image:latest"]
+        short_id = "sha256:x"
+
+    class Container:
+        def __init__(self, name, labels, cid, network_mode):
+            self.name = name
+            self.labels = labels
+            self.id = cid
+            self.short_id = cid[:12]
+            self.status = "running"
+            self.image = Image()
+            self.attrs = {"HostConfig": {"NetworkMode": network_mode}, "Created": ""}
+
+        def stats(self, stream=False):
+            return {"cpu_stats": {}, "precpu_stats": {}, "memory_stats": {}, "networks": {}}
+
+    main = Container(
+        "earnapp-1",
+        {"cashpilot.managed": "true", "cashpilot.provider": "earnapp", "cashpilot.service": "earnapp-1"},
+        "main-id",
+        "container:sidecar-id",
+    )
+    sidecar = Container(
+        "earnapp-1-egress",
+        {
+            "cashpilot.managed": "true",
+            "cashpilot.provider": "earnapp",
+            "cashpilot.service": "earnapp-1-egress",
+            "cashpilot.role": "egress-sidecar",
+        },
+        "sidecar-id",
+        "bridge",
+    )
+
+    class Client:
+        class Containers:
+            def list(self, **kwargs):
+                return [main, sidecar]
+
+            def get(self, cid):
+                assert cid == "sidecar-id"
+                return sidecar
+
+        containers = Containers()
+
+    seen = {}
+
+    def evidence(slug, container, *, probe_container=None):
+        seen["probe"] = probe_container
+        return {}
+
+    monkeypatch.setattr(orchestrator, "_get_client", lambda: Client())
+    monkeypatch.setattr(orchestrator, "_collect_stats_bulk", lambda cs: {c.id: (0, 0, 0, 0) for c in cs})
+    monkeypatch.setattr(orchestrator, "_provider_evidence", evidence)
+    monkeypatch.setattr(orchestrator, "get_services", lambda: [])
+
+    orchestrator.get_status()
+
+    assert seen["probe"] is sidecar
+
+
 def test_proxy_provider_evidence_probes_container_namespace():
     class Container:
         def exec_run(self, *_args, **_kwargs):

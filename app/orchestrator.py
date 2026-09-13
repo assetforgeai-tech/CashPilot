@@ -1971,7 +1971,7 @@ def get_status() -> list[dict[str, Any]]:
             if network_mode.startswith("container:"):
                 sidecar_id = network_mode.removeprefix("container:").strip()
             probe_container = None
-            if sidecar_id and slug in {"packetstream", "earnfm", "iproyal", "traffmonetizer"}:
+            if sidecar_id and slug in {"earnapp", "packetstream", "earnfm", "iproyal", "traffmonetizer"}:
                 try:
                     get_container = getattr(client.containers, "get", None)
                     if callable(get_container):
