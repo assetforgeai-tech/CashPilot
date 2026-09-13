@@ -318,4 +318,11 @@ def summarize_provider_plan(
             if available_proxy_count is not None and any(plan.mode == "proxy" for plan in plans)
             else 0
         ),
+        "topology_status": (
+            "partial"
+            if len(lane_capacity) > 1 and any(value["blocked"] for value in lane_capacity.values())
+            else "blocked"
+            if any(value["blocked"] for value in lane_capacity.values())
+            else "ready"
+        ),
     }

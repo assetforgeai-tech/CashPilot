@@ -345,6 +345,17 @@ def test_lane_summary_reports_free_capacity_without_collapsing_lanes():
     assert summary["proxy_capacity"] == 1
 
 
+def test_hybrid_summary_marks_partial_when_one_lane_is_blocked():
+    plans = plan_provider_nodes(7, "earnfm", ["ipv4-001"], proxy_capacity=0)
+    summary = summarize_provider_plan(plans, [])
+    assert summary["topology_status"] == "partial"
+
+
+def test_single_lane_summary_is_not_partial_when_capacity_is_ready():
+    plans = plan_provider_nodes(7, "iproyal", [], mode="proxy", proxy_capacity=1)
+    assert summarize_provider_plan(plans, [])["topology_status"] == "ready"
+
+
 def test_direct_slot_identity_is_explicit_and_stable():
     plan = plan_provider_nodes(
         7,
