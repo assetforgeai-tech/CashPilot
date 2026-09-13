@@ -106,5 +106,6 @@ def test_worker_proxy_sends_assignment_body_on_delete():
             await main._proxy_to_worker(7, "DELETE", "/api/nkn/slots/ipv4-001", json={"wallet_id": 7})
         assert client.request.await_args.args[:2] == ("DELETE", "http://127.0.0.1:8081/api/nkn/slots/ipv4-001")
         assert client.request.await_args.kwargs["json"] == {"wallet_id": 7}
+        assert factory.call_args.kwargs["trust_env"] is False
 
     asyncio.run(run())
