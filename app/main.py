@@ -1439,6 +1439,12 @@ async def _run_provider_lifecycle_scheduler() -> None:
             proxy_health = instance.get("proxy_healthy")
             if proxy_health is None and "proxy_healthy" in live:
                 proxy_health = live.get("proxy_healthy")
+            if proxy_health is None and instance.get("mode") == "proxy":
+                proxy_id = int(instance.get("proxy_id") or 0)
+                if proxy_id:
+                    endpoint = await database.get_proxy_endpoint(proxy_id)
+                    if endpoint and str(endpoint.get("status") or "").strip().lower() == "dead":
+                        proxy_health = False
             # A proxy rotation requires explicit failure evidence. Missing
             # health data is unknown, never permission to rotate.
             if live_status in {"running", "deployed"} and proxy_health is False and instance.get("mode") == "proxy":

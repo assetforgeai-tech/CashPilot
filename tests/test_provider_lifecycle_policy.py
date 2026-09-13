@@ -99,8 +99,8 @@ def test_generic_lifecycle_scheduler_rotates_only_verified_unhealthy_proxy_lane(
                     "id": 7,
                     "status": "online",
                     "containers": (
-                        '[{"name":"earnfm-direct-w7-ipv4-001","status":"running","proxy_healthy":false},'
-                        '{"name":"earnfm-proxy-w7-proxy-001","status":"running","proxy_healthy":false}]'
+                        '[{"name":"earnfm-direct-w7-ipv4-001","status":"running"},'
+                        '{"name":"earnfm-proxy-w7-proxy-001","status":"running"}]'
                     ),
                 }
             ]
@@ -122,6 +122,7 @@ def test_generic_lifecycle_scheduler_rotates_only_verified_unhealthy_proxy_lane(
                     "instance_id": "earnfm-proxy-w7-proxy-001",
                     "worker_id": 7,
                     "mode": "proxy",
+                    "proxy_id": 11,
                 },
             ]
         ),
@@ -129,6 +130,7 @@ def test_generic_lifecycle_scheduler_rotates_only_verified_unhealthy_proxy_lane(
     candidate = {"proxy_id": 22, "exit_ip": "203.0.113.22"}
     find_candidate = AsyncMock(return_value=candidate)
     rotate = AsyncMock(return_value=True)
+    monkeypatch.setattr(main.database, "get_proxy_endpoint", AsyncMock(return_value={"id": 11, "status": "dead"}))
     monkeypatch.setattr(main.database, "find_available_proxy_for_worker", find_candidate)
     monkeypatch.setattr("app.routers.proxies._rotate_provider_instance_after_ack", rotate)
     monkeypatch.setattr(main.database, "record_health_event", AsyncMock())
