@@ -1813,6 +1813,9 @@ def get_status() -> list[dict[str, Any]]:
             sidecar_id = sidecars.get(str(instance_slug), "")
             if not sidecar_id:
                 sidecar_id = sidecars.get(str(getattr(c, "name", "")).removesuffix("-egress"), "")
+            network_mode = _container_network_mode(c)
+            if network_mode.startswith("container:"):
+                sidecar_id = network_mode.removeprefix("container:").strip()
             cpu_pct, mem_mb, net_rx, net_tx = labeled_stats.get(c.id, (0.0, 0.0, None, None))
             results.append(
                 {
