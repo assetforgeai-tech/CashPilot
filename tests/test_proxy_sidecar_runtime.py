@@ -85,12 +85,24 @@ def test_migrate_legacy_earnapp_ubuntu_rolls_back_when_network_evidence_fails():
     client.images.get.return_value = image
     with (
         patch.object(orchestrator, "_get_client", return_value=client),
-        patch.object(orchestrator, "_find_earnapp_runtime_container", side_effect=lambda _c, _s, *, sidecar: None if sidecar else old),
-        patch.object(orchestrator, "probe_service_egress", return_value={"probe_ok": True, "observed_egress_ip": "198.51.100.8"}),
-        patch.object(orchestrator, "_probe_earnapp_ubuntu_network", return_value={"fail_closed": False, "dns_local": False}),
+        patch.object(
+            orchestrator,
+            "_find_earnapp_runtime_container",
+            side_effect=lambda _c, _s, *, sidecar: None if sidecar else old,
+        ),
+        patch.object(
+            orchestrator,
+            "probe_service_egress",
+            return_value={"probe_ok": True, "observed_egress_ip": "198.51.100.8"},
+        ),
+        patch.object(
+            orchestrator,
+            "_probe_earnapp_ubuntu_network",
+            return_value={"fail_closed": False, "dns_local": False},
+        ),
+        pytest.raises(RuntimeError, match="network evidence"),
     ):
-        with pytest.raises(RuntimeError, match="network evidence"):
-            orchestrator.migrate_legacy_earnapp_ubuntu("earnapp-ubuntu", expected_egress_ip="198.51.100.8")
+        orchestrator.migrate_legacy_earnapp_ubuntu("earnapp-ubuntu", expected_egress_ip="198.51.100.8")
     replacement.remove.assert_called_once_with(force=True)
     assert old.rename.call_count == 2
     old.start.assert_called_once()
