@@ -2809,45 +2809,10 @@ async def init_db() -> None:
             await db.execute("ALTER TABLE provider_instances ADD COLUMN capacity_slot TEXT NOT NULL DEFAULT ''")
             applied.append("provider_instances.capacity_slot")
         await db.execute("DROP INDEX IF EXISTS idx_provider_instances_active_direct_slot")
-        # Older releases scoped direct-slot uniqueness by provider. Keep the
-        # oldest active claimant and quarantine later duplicates before
-        # installing the worker-wide invariant; otherwise an upgrade could
-        # fail at boot on valid historical data.
-        duplicate_slots = await (
-            await db.execute(
-                """
-                SELECT worker_id, capacity_slot
-                FROM provider_instances
-                WHERE mode = 'direct' AND trim(capacity_slot) != ''
-                  AND status IN ('planned', 'starting', 'running', 'deployed', 'verification_pending')
-                GROUP BY worker_id, capacity_slot
-                HAVING COUNT(*) > 1
-                """
-            )
-        ).fetchall()
-        for duplicate in duplicate_slots:
-            rows = await (
-                await db.execute(
-                    """
-                    SELECT instance_id
-                    FROM provider_instances
-                    WHERE worker_id = ? AND mode = 'direct' AND capacity_slot = ?
-                      AND status IN ('planned', 'starting', 'running', 'deployed', 'verification_pending')
-                    ORDER BY CASE status WHEN 'running' THEN 0 WHEN 'deployed' THEN 1 ELSE 2 END,
-                             updated_at DESC, instance_id
-                    """,
-                    (duplicate["worker_id"], duplicate["capacity_slot"]),
-                )
-            ).fetchall()
-            for row in rows[1:]:
-                await db.execute(
-                    "UPDATE provider_instances SET status='capacity_conflict', updated_at=datetime('now') WHERE instance_id = ?",
-                    (row["instance_id"],),
-                )
         await db.execute(
             """
             CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_instances_active_direct_slot
-            ON provider_instances(worker_id, capacity_slot)
+            ON provider_instances(worker_id, slug, capacity_slot)
             WHERE mode = 'direct' AND trim(capacity_slot) != ''
               AND status IN ('planned', 'starting', 'running', 'deployed', 'verification_pending')
             """

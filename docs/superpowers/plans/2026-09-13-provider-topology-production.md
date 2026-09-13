@@ -58,7 +58,6 @@ proxy discovery is unknown; it never silently collapses to direct-only.
 - Modify: `app/database.py`, `app/routers/proxies.py`
 - Test: `tests/test_provider_topology.py`, `tests/test_proxy_routes.py`
 
-- [x] Add failing tests proving one active direct slot cannot be claimed by two providers on the same worker.
 - [ ] Add failing tests proving one active lease per provider/worker/instance/lane and no duplicate active egress IP across lanes.
 - [ ] Add deterministic ordering: eligible, healthy, unowned first; stable proxy ID tie-breaker.
 - [ ] Preserve sticky ownership while releasing only the runtime lease.
