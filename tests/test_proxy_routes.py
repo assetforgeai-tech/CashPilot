@@ -3810,6 +3810,7 @@ def test_provider_scoped_lease_is_idempotent_for_the_same_instance(tmp_path):
 
             assert first and second
             assert first["proxy_id"] == second["proxy_id"] == proxy_id
+            assert first["lane"] == second["lane"] == "proxy"
 
     asyncio.run(run())
 
