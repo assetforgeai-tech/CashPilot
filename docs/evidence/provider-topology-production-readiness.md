@@ -31,6 +31,18 @@ Date: 2026-09-12
 
 ## Outstanding live gates
 
+## Current code verification (2026-09-13)
+
+- PR `#322` merged as `521ca06d`; all checks passed.
+- PR `#323` contains lane lease-contract enforcement and is awaiting the
+  repository's required external approval. CodeQL and Ruff passed; the test
+  job passed after updating Compose pins to the newest released series `1.45`.
+- Fresh local verification: `3004 passed, 8 skipped`; focused topology,
+  instance, route, and lifecycle tests: `214 passed`.
+- Direct-only proxy acquisition now fails closed in both the DB and HTTP API.
+- Topology contracts now expose `lease_policy`, `lane_failure_isolation`, and
+  `lifecycle_scope` for UI/API consumers.
+
 - Deterministic proxy reservation per worker/provider/lane/slot.
 - Live direct-only, hybrid, and proxy-only deployment evidence.
 - Per-container IPv4/IPv6/DNS/DoH/UDP/direct-fallback leak matrix.
