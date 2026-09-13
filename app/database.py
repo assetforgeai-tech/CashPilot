@@ -10626,6 +10626,31 @@ async def rotate_provider_proxy_lease(
             if not new_exit:
                 await db.rollback()
                 return False
+            masked = await (
+                await db.execute(
+                    "SELECT 1 FROM proxy_provider_masks WHERE proxy_id = ? AND provider_slug = ? LIMIT 1",
+                    (int(new_proxy_id), slug),
+                )
+            ).fetchone()
+            if masked:
+                await db.rollback()
+                return False
+            if slug == "earnapp":
+                qualified = await (
+                    await db.execute(
+                        """
+                        SELECT 1 FROM proxy_probe_results
+                        WHERE proxy_id = ? AND profile = 'earnapp_wss'
+                          AND verdict = 'CID_SET' AND eligibility = 'eligible'
+                          AND trim(coalesce(exit_ip, '')) = ?
+                          AND id = (SELECT MAX(id) FROM proxy_probe_results WHERE proxy_id = ? AND profile = 'earnapp_wss')
+                        """,
+                        (int(new_proxy_id), new_exit, int(new_proxy_id)),
+                    )
+                ).fetchone()
+                if not qualified:
+                    await db.rollback()
+                    return False
             occupied = await (
                 await db.execute(
                     "SELECT 1 FROM provider_proxy_leases WHERE released_at IS NULL "
