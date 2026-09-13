@@ -1089,6 +1089,9 @@ def test_deploy_ui_surfaces_topology_readiness_state():
     assert "topologyStates" in app_js
     assert "stats.running" in app_js
     assert "stats.pending" in app_js
+    assert "hasBlockedTopology" in app_js
+    assert "var(--warning)" in app_js
+    assert "Processed ${ok} worker(s)" in app_js
 
 
 def test_network_reconciliation_ui_exposes_lane_and_egress_evidence():
