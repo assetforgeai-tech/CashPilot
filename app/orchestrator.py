@@ -1701,7 +1701,30 @@ def _provider_evidence(slug: str, container: Any, *, probe_container: Any | None
             output = getattr(result, "output", b"") or b""
             text = output.decode("utf-8", errors="replace") if isinstance(output, bytes) else str(output)
             evidence = json.loads(text)
-            return earnapp_runtime.redacted_evidence(evidence if isinstance(evidence, dict) else {})
+            evidence = earnapp_runtime.redacted_evidence(evidence if isinstance(evidence, dict) else {})
+            probe = probe_container or container
+            try:
+                probe_result = probe.exec_run(
+                    [
+                        "sh",
+                        "-lc",
+                        "if command -v curl >/dev/null 2>&1; then curl --fail --silent --show-error --max-time 10 https://api.ipify.org; "
+                        "elif command -v wget >/dev/null 2>&1; then wget -qO- --timeout=10 https://api.ipify.org; "
+                        "else exit 127; fi",
+                    ]
+                )
+                probe_output = getattr(probe_result, "output", b"") or b""
+                probe_text = (
+                    probe_output.decode("utf-8", errors="replace")
+                    if isinstance(probe_output, bytes)
+                    else str(probe_output)
+                )
+                observed = probe_text.strip().splitlines()[0] if probe_text.strip() else ""
+                observed = str(ipaddress.ip_address(observed))
+                evidence.update(observed_egress_ip=observed, probe_ok=int(getattr(probe_result, "exit_code", 1)) == 0)
+            except (ValueError, OSError, APIError):
+                evidence.update(observed_egress_ip="", probe_ok=False)
+            return evidence
         except Exception as exc:
             logger.debug("EarnApp evidence unavailable for %s: %s", getattr(container, "short_id", "?"), exc)
             return {"running": True, "online": False}
