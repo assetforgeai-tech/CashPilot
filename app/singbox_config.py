@@ -50,10 +50,11 @@ def render_tun_proxy_config(
                 },
                 {
                     "tag": "bootstrap",
-                    "type": "https",
+                    # Resolve the proxy endpoint before the tunneled DoH
+                    # resolver is reachable; this bootstrap is the only
+                    # direct DNS path and is limited to UDP/53.
+                    "type": "udp",
                     "server": "1.1.1.1",
-                    "path": "/dns-query",
-                    "tls": {"server_name": "cloudflare-dns.com"},
                 },
             ],
             "rules": [{"domain": [proxy["host"]], "server": "bootstrap"}],

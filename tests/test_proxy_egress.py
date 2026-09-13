@@ -113,12 +113,22 @@ def test_proxy_hostname_uses_bootstrap_doh_without_empty_direct_detour():
     bootstrap = next(item for item in config["dns"]["servers"] if item["tag"] == "bootstrap")
     assert bootstrap == {
         "tag": "bootstrap",
-        "type": "https",
+        "type": "udp",
         "server": "1.1.1.1",
-        "path": "/dns-query",
-        "tls": {"server_name": "cloudflare-dns.com"},
     }
     assert {"domain": ["proxy.example.com"], "server": "bootstrap"} in config["dns"]["rules"]
+
+
+def test_proxy_bootstrap_resolver_does_not_recurse_through_proxy_hostname():
+    from app.singbox_config import render_tun_proxy_config
+
+    config = render_tun_proxy_config(
+        {"host": "proxy.example.com", "port": 8080, "protocol": "http"},
+        worker_name="packetstream-proxy",
+    )
+    bootstrap = next(item for item in config["dns"]["servers"] if item["tag"] == "bootstrap")
+    assert bootstrap["type"] == "udp"
+    assert bootstrap["server"] == "1.1.1.1"
 
 
 def test_singbox_config_declares_default_domain_resolver():
