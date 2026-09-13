@@ -52,10 +52,15 @@ def test_status_includes_live_sidecar_identity_for_managed_container(monkeypatch
 
     monkeypatch.setattr(orchestrator, "_get_client", lambda: Client())
     monkeypatch.setattr(orchestrator, "_collect_stats_bulk", lambda cs: {c.id: (0, 0, 0, 0) for c in cs})
-    monkeypatch.setattr(orchestrator, "_provider_evidence", lambda slug, c: {})
+    monkeypatch.setattr(
+        orchestrator,
+        "_provider_evidence",
+        lambda slug, c: {"observed_egress_ip": "203.0.113.8", "probe_ok": True},
+    )
     monkeypatch.setattr(orchestrator, "get_services", lambda: [])
     rows = orchestrator.get_status()
     assert rows[0]["sidecar_id"] == "sidecar-id"
+    assert rows[0]["observed_egress_ip"] == "203.0.113.8"
 
 
 def test_network_audit_reports_unverified_when_provider_has_no_live_inventory():

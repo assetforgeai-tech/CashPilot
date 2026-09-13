@@ -1817,6 +1817,7 @@ def get_status() -> list[dict[str, Any]]:
             if network_mode.startswith("container:"):
                 sidecar_id = network_mode.removeprefix("container:").strip()
             cpu_pct, mem_mb, net_rx, net_tx = labeled_stats.get(c.id, (0.0, 0.0, None, None))
+            provider_evidence = _provider_evidence(slug, c)
             results.append(
                 {
                     "slug": slug,
@@ -1837,7 +1838,14 @@ def get_status() -> list[dict[str, Any]]:
                     "sidecar_id": sidecar_id,
                     "deployed_by": c.labels.get(LABEL_DEPLOYED_BY, "unknown"),
                     "category": c.labels.get(LABEL_CATEGORY, ""),
-                    "provider_evidence": _provider_evidence(slug, c),
+                    "provider_evidence": provider_evidence,
+                    "observed_egress_ip": str(provider_evidence.get("observed_egress_ip") or ""),
+                    "dns_via_proxy": provider_evidence.get("dns_via_proxy"),
+                    "ipv6_blocked": provider_evidence.get("ipv6_blocked"),
+                    "udp_blocked": provider_evidence.get("udp_blocked"),
+                    "doh_blocked": provider_evidence.get("doh_blocked"),
+                    "dot_blocked": provider_evidence.get("dot_blocked"),
+                    "direct_fallback_blocked": provider_evidence.get("direct_fallback_blocked"),
                 }
             )
         except Exception as exc:
