@@ -1702,6 +1702,10 @@ def _provider_evidence(slug: str, container: Any, *, probe_container: Any | None
             text = output.decode("utf-8", errors="replace") if isinstance(output, bytes) else str(output)
             evidence = json.loads(text)
             evidence = earnapp_runtime.redacted_evidence(evidence if isinstance(evidence, dict) else {})
+            controls = container.exec_run(["sh", "-lc", "iptables-save 2>/dev/null; ip6tables-save 2>/dev/null"])
+            code, raw = _exec_output(controls)
+            if code == 0:
+                evidence.update(_parse_earnapp_iptables(raw.decode("utf-8", errors="replace")))
             probe = probe_container or container
             try:
                 probe_result = probe.exec_run(
