@@ -33,3 +33,16 @@
 ## Remaining live gates
 
 Source tests do not prove live deployment. Production status remains pending until the current `v1.46.2` UI/worker rollout, Pawns isolation canary, EarnApp node-health canary, worker reconciliation, and DNS/IPv6/UDP/DoH/DoT evidence are captured.
+
+## 2026-09-13 proxy sidecar config drift
+
+- Japan East PacketStream canary exposed stale writable sidecar config: the
+  existing `.cashpilot-initialized` marker prevented current generated config
+  from being written. Sing-box restarted with a config missing
+  `route.default_domain_resolver` and exited before the provider joined its namespace.
+- Sidecar bootstrap now writes a temporary config, validates it with
+  `sing-box check`, atomically replaces `config.json`, then records the marker.
+  This removes stale-config reuse while preserving the config volume.
+- Regression coverage: provider/lifecycle/recovery subset passes (`107 passed`).
+- The failed canary remains released. No provider promotion is claimed until a
+  fresh eligible proxy canary proves egress, DNS, IPv6, UDP, and restart behavior.

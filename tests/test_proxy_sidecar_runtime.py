@@ -41,6 +41,26 @@ def test_proxy_instance_runs_provider_inside_singbox_sidecar_namespace():
     assert provider_call.kwargs["labels"]["cashpilot.instance_mode"] == "proxy"
 
 
+def test_sidecar_replaces_stale_config_on_every_create():
+    client = MagicMock()
+    client.containers.get.side_effect = [orchestrator.NotFound("provider"), orchestrator.NotFound("sidecar")]
+    client.containers.run.side_effect = [MagicMock(id="sidecar-id"), MagicMock(id="provider-id")]
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        orchestrator.deploy_raw(
+            slug="packetstream-proxy",
+            provider_slug="packetstream",
+            image="packetstream/psclient:latest",
+            labels={"cashpilot.provider": "packetstream", "cashpilot.instance_mode": "proxy"},
+            proxy={"host": "1.2.3.4", "port": 1080, "protocol": "socks5"},
+        )
+
+    entrypoint = client.containers.run.call_args_list[0].kwargs["entrypoint"][2]
+    assert "SINGBOX_CONFIG_B64" in entrypoint
+    assert "if [ ! -f /etc/sing-box/.cashpilot-initialized ]" not in entrypoint
+    assert 'mv -f "$tmp" /etc/sing-box/config.json' in entrypoint
+
+
 def test_wipter_migration_keeps_legacy_container_until_proxy_probe_passes(monkeypatch):
     old = MagicMock(name="cashpilot-wipter", id="old-id")
     old.name = "cashpilot-wipter"
