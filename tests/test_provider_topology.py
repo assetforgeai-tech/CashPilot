@@ -404,9 +404,9 @@ def test_topology_contract_exposes_concrete_network_and_health_signals():
         "fallback": "none",
         "dns": "tunneled",
         "ipv6": "disabled_or_tunneled",
-        "udp": "blocked",
-        "doh": "blocked",
-        "dot": "blocked",
+        "udp": "blocked_by_default",
+        "doh": "blocked_by_default",
+        "dot": "blocked_by_default",
         "fail_closed": True,
     }
     assert contract["health_signals"] == {

@@ -396,9 +396,9 @@ def catalog_runtime(slug: str) -> dict[str, object]:
         "network_policy": {
             lane: {
                 **provider.network_contract_for(lane),
-                "udp": "blocked" if lane == "proxy" else "provider_required",
-                "doh": "blocked" if lane == "proxy" else "provider_native",
-                "dot": "blocked" if lane == "proxy" else "provider_native",
+                "udp": "blocked_by_default" if lane == "proxy" else "provider_required",
+                "doh": "blocked_by_default" if lane == "proxy" else "provider_native",
+                "dot": "blocked_by_default" if lane == "proxy" else "provider_native",
             }
             for lane in lanes
         },
