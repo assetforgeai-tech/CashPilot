@@ -233,15 +233,9 @@ def audit_provider_network_inventory(
                 ipv6_blocked=container.get("ipv6_blocked")
                 if "ipv6_blocked" in container
                 else instance.get("ipv6_blocked"),
-                udp_blocked=container.get("udp_blocked")
-                if "udp_blocked" in container
-                else instance.get("udp_blocked"),
-                doh_blocked=container.get("doh_blocked")
-                if "doh_blocked" in container
-                else instance.get("doh_blocked"),
-                dot_blocked=container.get("dot_blocked")
-                if "dot_blocked" in container
-                else instance.get("dot_blocked"),
+                udp_blocked=container.get("udp_blocked") if "udp_blocked" in container else instance.get("udp_blocked"),
+                doh_blocked=container.get("doh_blocked") if "doh_blocked" in container else instance.get("doh_blocked"),
+                dot_blocked=container.get("dot_blocked") if "dot_blocked" in container else instance.get("dot_blocked"),
                 direct_fallback_blocked=container.get("direct_fallback_blocked")
                 if "direct_fallback_blocked" in container
                 else instance.get("direct_fallback_blocked"),
