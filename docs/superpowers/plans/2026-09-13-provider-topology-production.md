@@ -68,10 +68,6 @@ Progress: provider lease release accepts an optional expected proxy ID and uses
 compare-and-swap semantics, preventing stale cleanup/retry workers from
 releasing a replacement lease. Existing callers remain backward compatible.
 
-Direct capacity is now exclusive at worker/slot scope, not provider scope.
-Upgrade migration quarantines later historical duplicate claimants as
-`capacity_conflict` before installing the stricter unique index.
-
 All deploy/bind failure cleanup callers now pass the proxy they acquired, so
 late failures cannot release a newer rotation assignment.
 
