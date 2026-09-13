@@ -25,6 +25,8 @@ def topology_contract(provider_slug: str) -> dict[str, Any]:
     return {
         "topology": topology,
         "lanes": lanes,
+        "cardinality_source": "bootstrap_public_ipv4",
+        "proxy_capacity_is_gate": "proxy" in lanes,
         "capacity_basis": {
             lane: (
                 "dedicated_runtime"

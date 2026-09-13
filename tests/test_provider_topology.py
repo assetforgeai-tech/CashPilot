@@ -306,6 +306,13 @@ def test_topology_contract_distinguishes_direct_proxy_and_hybrid_capacity():
         "direct_fallback": False,
         "proxy_fallback": False,
     }
+
+
+def test_topology_contract_exposes_cardinality_and_proxy_gate():
+    from app.provider_topology import topology_contract
+
+    assert topology_contract("iproyal")["cardinality_source"] == "bootstrap_public_ipv4"
+    assert topology_contract("iproyal")["proxy_capacity_is_gate"] is True
     assert topology_contract("earnfm")["topology"] == "slot_both"
     assert topology_contract("earnfm")["direct_required"] is True
     assert topology_contract("earnfm")["proxy_required"] is True
