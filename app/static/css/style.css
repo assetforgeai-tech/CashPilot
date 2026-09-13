@@ -1533,6 +1533,13 @@ img { max-width: 100%; }
   margin: 0 0 4px; color: var(--accent); font-size: 0.7rem; font-weight: 700;
   letter-spacing: 0.1em; text-transform: uppercase;
 }
+.settings-quick-links {
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  margin: 0 0 20px; padding: 10px 12px;
+  border: 1px solid var(--border-color); border-radius: 8px;
+  background: var(--bg-tertiary);
+}
+.settings-quick-links a { text-decoration: none; }
 .earnapp-token-alerts { display: grid; gap: 8px; margin: 12px 0 16px; }
 .earnapp-token-alert {
   display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap;
