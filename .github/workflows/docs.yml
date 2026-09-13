@@ -11,10 +11,7 @@ on:
       - 'docs/**'
       - 'mkdocs.yml'
   pull_request:
-    paths:
-      - 'docs/**'
-      - 'mkdocs.yml'
-      - '.github/workflows/docs.yml'
+    # Required branch-protection check must exist for every pull request.
 
 permissions:
   contents: read
