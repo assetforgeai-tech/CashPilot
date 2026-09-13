@@ -98,6 +98,29 @@ def test_singbox_config_uses_tun_and_socks_outbound():
     assert {"domain": ["dc-t5.proxyvt.com"], "outbound": "direct"} in config["route"]["rules"]
 
 
+def test_proxy_hostname_uses_direct_bootstrap_doh_without_looping_through_itself():
+    from app.singbox_config import render_tun_proxy_config
+
+    config = render_tun_proxy_config(
+        {
+            "host": "proxy.example.com",
+            "port": 8080,
+            "protocol": "http",
+        },
+        worker_name="packetstream-proxy",
+    )
+
+    assert {
+        "tag": "bootstrap",
+        "type": "https",
+        "server": "1.1.1.1",
+        "path": "/dns-query",
+        "tls": {"server_name": "cloudflare-dns.com"},
+        "detour": "direct",
+    } in config["dns"]["servers"]
+    assert {"domain": ["proxy.example.com"], "server": "bootstrap"} in config["dns"]["rules"]
+
+
 def test_singbox_config_can_use_repocket_safe_tun_name():
     from app.singbox_config import render_tun_proxy_config
 
