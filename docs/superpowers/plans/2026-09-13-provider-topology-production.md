@@ -1,148 +1,74 @@
 # Provider Topology Production Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+**Goal:** Make direct-only, proxy-only, and hybrid providers production-ready with explicit capacity, isolated lanes, durable ownership, consistent lifecycle policy, safe networking, and operator-visible state.
 
-**Goal:** Make direct-only, proxy-only, and direct+proxy providers production-ready with isolated capacity, safe lifecycle, auditable leases, and live evidence.
+**Architecture:** Keep provider truth in `app/provider_runtime.py`; keep pure planning in `app/provider_topology.py`; keep state transitions in `app/provider_lifecycle.py`; keep lease ownership in database/API routes; expose the same contract through API and UI. Provider-specific runtimes remain adapters and never receive implicit cross-lane fallback.
 
-**Architecture:** Keep `app/provider_topology.py` as the pure planner and `app/provider_runtime.py` as the provider truth matrix. Add only the missing lifecycle/lease invariants around those contracts; dedicated NKN/Mysterium adapters remain separate. Verify each lane independently in code and on live workers.
-
-**Tech Stack:** Python, FastAPI, SQLite, Docker Compose, pytest, Ruff, SSH/curl for live evidence.
+**Tech Stack:** Python, FastAPI, SQLite, Docker, vanilla dashboard JavaScript, pytest, Ruff.
 
 ## Global Constraints
 
-- No direct/proxy cross-lane fallback.
-- Unknown or zero proxy capacity fails closed.
-- Direct nodes require a unique route-ready public IPv4 slot.
-- Proxy nodes require one eligible, non-conflicting proxy egress lease.
-- Runtime lease, sticky egress ownership, and account ownership are separate states.
-- Preserve unrelated user artifacts and never use Azure CLI mutation.
+- Direct-only uses ready public IPv4 slots and never falls back to proxy.
+- Proxy-only cardinality follows detected public IPv4 slots; eligible proxy capacity gates deployment and never falls back to direct.
+- Hybrid plans independent direct/proxy lanes and never crosses lanes.
+- EarnApp sticky egress ownership survives runtime lease release until account deletion.
+- Runtime failures fail closed; no direct network fallback from proxy lanes.
+- Existing user artifacts and unrelated provider containers remain untouched.
 
----
+### Task 1: Capacity planning
 
-### Task 1: Recover the Japan worker deployment
+**Files:** `app/provider_topology.py`, `tests/test_provider_topology.py`
 
-**Files:**
-- Modify remote `/CashPilot/docker-compose.worker.yml` and `cashpilot-worker.service` only.
-- Evidence: `docs/evidence/worker-1.40-live-2026-09-13.md`
+- [ ] Add tests proving every provider lane defaults to detected public IPv4 cardinality, while eligible proxy count gates proxy deployment and explicit desired counts remain targets with pending capacity.
+- [ ] Keep planner defaults and summaries so direct readiness uses IPv4 routes while proxy readiness uses eligible proxies without shrinking desired topology.
+- [ ] Preserve blocked/partial/ready status and no cross-lane fallback.
+- [ ] Run focused topology tests.
 
-- [x] Verify the existing `cashpilot-worker` container name, image, volume, worker ID, and systemd state.
-- [x] Verify image `ghcr.io/assetforgeai-tech/cashpilot-worker:1.40`, health 200, restart `always`, systemd active, and persistent data/slot volumes.
-- [x] Record redacted evidence and rollback details.
+### Task 2: Provider contract metadata
 
-Progress: both live-test workers are healthy and currently have empty provider
-inventories; no stale Japan deployment required mutation.
+**Files:** `app/provider_runtime.py`, tests covering catalog/runtime
 
-### Task 2: Add topology invariant tests before lifecycle changes
+- [ ] Add explicit auth scope, account sharing, ownership policy, heartbeat interval/timeout, and network contract metadata.
+- [ ] Expose these fields through `catalog_runtime` and topology contracts.
+- [ ] Add validation tests for all provider classes.
 
-**Files:**
-- Test: `tests/test_provider_topology.py`
-- Test: `tests/test_provider_topology_api.py`
+### Task 3: Lease and ownership policy
 
-- [x] Add failing tests for direct-only refusing proxy targets, proxy-only not consuming IPv4 slots, and hybrid targets remaining independent.
-- [x] Add tests for unavailable proxy capacity returning pending/blocked rather than shrinking desired topology.
-- [x] Run focused tests and confirm expected failures.
-- [x] Implement only the minimum planner/API changes if a gap is found.
-- [x] Re-run focused tests.
+**Files:** `app/database.py`, `app/routers/proxies.py`, tests for proxy leases
 
-Progress: proxy cardinality defaults to the authoritative bootstrap IPv4 count
-when slot discovery is available. Explicit lane targets remain supported;
-capacity shortage stays pending instead of shrinking desired topology. Direct
-slot deploy fails closed without a slot manifest. Per-instance topology state
-uses lane/slot-scoped volumes and device identity seeds.
+- [ ] Preserve runtime lease CAS behavior.
+- [ ] Enforce provider ownership policy for sticky providers; release ownership only on account/provider retirement.
+- [ ] Ensure rotation releases only the old runtime lease and never violates sticky egress ownership.
+- [ ] Add tests for release, rotate, account deletion, duplicate egress, and cross-provider behavior.
 
-Additional guard: hybrid planning retains its proxy target as blocked when
-proxy discovery is unknown; it never silently collapses to direct-only.
+### Task 4: Lifecycle state machine
 
-### Task 3: Make lease selection deterministic and lane-scoped
+**Files:** `app/provider_lifecycle.py`, scheduler/reconciliation callers, lifecycle tests
 
-**Files:**
-- Modify: `app/database.py`, `app/routers/proxies.py`
-- Test: `tests/test_provider_topology.py`, `tests/test_proxy_routes.py`
+- [ ] Normalize precedence: auth failure observe; direct route failure blocked; proxy failure rotate; offline restart; usage stall restart; provider-specific recreate only when declared.
+- [ ] Add explicit heartbeat interval, timeout, confirmation count, and action metadata.
+- [ ] Keep missing inventory two-confirmation cleanup and cancel cleanup on reappearance.
+- [ ] Add tests for direct-only, proxy-only, and hybrid lanes.
 
-- [x] Existing tests prove one active lease per provider/worker/instance and duplicate egress rejection.
-- [x] Deterministic ordering uses eligible, healthy, unowned first with stable proxy ID tie-breaker.
-- [x] Sticky ownership remains while runtime lease release is scoped.
-- [x] Make rotation/release CAS-safe and idempotent.
-- [x] Run focused lease tests.
+### Task 5: Network contract
 
-Progress: provider lease release accepts an optional expected proxy ID and uses
-compare-and-swap semantics, preventing stale cleanup/retry workers from
-releasing a replacement lease. Existing callers remain backward compatible.
+**Files:** `app/singbox_config.py`, runtime/network builders, proxy tests
 
-All deploy/bind failure cleanup callers now pass the proxy they acquired, so
-late failures cannot release a newer rotation assignment.
+- [ ] Make `egress_mode`, `fallback=none`, DNS tunnel, IPv6 policy, UDP policy, and fail-closed behavior explicit for every lane.
+- [ ] Reject invalid fallback or incompatible backend/provider combinations at API validation.
+- [ ] Add config and regression tests for DNS, IPv6, UDP, and direct-fallback prevention.
 
-Per-instance CAS replacement is now available for provider-scoped runtimes;
-worker-level rotation remains reserved for legacy shared assignments until
-the worker ACK contract exposes a provider-instance binding endpoint.
+### Task 6: API and dashboard
 
-The owner-only `POST /api/proxy-pool/provider-rotate` route now uses that
-per-instance ACK/CAS path. Full regression remains required before release.
+**Files:** API routers/models, `app/static/js/app.js`, frontend tests
 
-### Task 4: Normalize health and recovery policy
+- [ ] Reject unsupported lane requests and missing route/proxy capacity with actionable reasons.
+- [ ] Render direct/proxy lane totals, running/free/blocked counts, capacity source, and topology status without flattening hybrid state.
+- [ ] Add UI tests for ready/partial/blocked and all three provider classes.
 
-**Files:**
-- Modify: `app/main.py`, `app/provider_network_audit.py`
-- Test: `tests/test_earnapp_node_health.py`, `tests/test_provider_network_contracts.py`
+### Task 7: Verification and live evidence
 
-- [x] Add failing test proving generic scheduler rotates only a verified unhealthy proxy lane and never the direct peer lane.
-- [x] Add tests separating node offline, proxy dead, route unavailable, provider/account failure, and banned node.
-- [x] Apply restart-only recovery for transient node health failures.
-- [x] Apply proxy rotation only after verified proxy failure; never rotate due to account/dashboard lag alone.
-- [x] Keep provider/account failures from mutating unrelated nodes.
-- [x] Require complete leak evidence before healthy status.
-- [x] Run focused health tests.
-
-Progress: generic lifecycle scheduler now performs an instance-scoped proxy
-rotation only when explicit `proxy_healthy=false` evidence is present; missing
-health data remains unknown and direct lanes are untouched.
-
-### Task 5: Reconcile orphaned instances safely
-
-**Files:**
-- Modify: `app/database.py`, `app/main.py`
-- Test: `tests/test_earnapp_lifecycle.py`, `tests/test_provider_topology.py`
-
-- [x] Verify the existing two-confirmation miss rule for generic providers.
-- [x] Add tests for runtime reappearance cancelling `missing_once`.
-- [x] Add tests ensuring EarnApp sticky ownership is retained during runtime absence.
-- [x] Ensure cleanup cannot release a lease while a live authenticated heartbeat still lists the instance.
-- [x] Run lifecycle tests.
-
-### Task 6: Clarify topology/capacity UI
-
-**Files:**
-- Modify: `app/static/js/app.js`, `app/templates/*.html` as required.
-- Test: `tests/test_frontend_wiring.py`
-
-- [x] Display direct and proxy desired/deployable/running/free/blocked counts independently.
-- [x] Display explicit pending reason for unknown/zero proxy capacity.
-- [x] Show lane and egress contract without implying fallback.
-- [ ] Add browser-level checks for direct-only, proxy-only, and hybrid states.
-- [x] Run frontend wiring checks.
-
-Progress: deploy responses now expose `topology_status` (`ready`, `partial`,
-or `blocked`), and the deploy status line renders it alongside independent
-direct/proxy lane totals. Browser-level verification remains outstanding.
-
-### Task 7: Live lane canaries and evidence
-
-**Files:**
-- Evidence only: `docs/evidence/provider-topology-live-2026-09-13.md`
-
-- [ ] Run direct-only canary on upgraded workers.
-- [ ] Run proxy-only canary with a scoped eligible proxy.
-- [ ] Run hybrid canary with explicit direct/proxy targets.
-- [ ] Verify egress, lease uniqueness, restart/reboot persistence, rotation, release, and orphan reconciliation.
-- [ ] Run IPv4/IPv6/DNS/UDP/DoH/DoT/direct-fallback probes per lane.
-- [ ] Capture redacted commands, outputs, image digest, and rollback path.
-
-### Task 8: Final verification and release gate
-
-**Files:**
-- Evidence: `docs/evidence/provider-topology-production-readiness-2026-09-13.md`
-
-- [ ] Run full pytest suite, Ruff, compile checks, and frontend syntax checks.
-- [ ] Re-poll PR CI for commit `b2e07139`.
-- [ ] Compare every requirement against fresh evidence.
-- [ ] Report remaining gaps; do not claim production readiness until all live gates pass.
+- [ ] Run full tests, Ruff, format, diff checks, and security checks.
+- [ ] Redeploy after release gates pass; canary one proxy-only and one hybrid direct/proxy lane before scaling.
+- [ ] Verify lease uniqueness, rotation/release, restart/reboot persistence, DNS/IPv6/UDP fail-closed behavior, and two-confirmation cleanup.
+- [ ] Capture evidence in `docs/evidence/provider-topology-live-2026-09-13.md` and final readiness report.
