@@ -26,14 +26,14 @@ async def list_provider_account_pools() -> list[dict[str, Any]]:
     rows = [earnapp]
     for slug in sorted(provider_runtime.ACTIVE_SLUGS - {"earnapp"}):
         row = {
-                "provider": slug,
-                "total": None,
-                "active": None,
-                "attention": None,
-                "assigned_nodes": None,
-                "adapter": "none",
-                "modeled": False,
-            }
+            "provider": slug,
+            "total": None,
+            "active": None,
+            "attention": None,
+            "assigned_nodes": None,
+            "adapter": "none",
+            "modeled": False,
+        }
         row.update(_capacity_fields(proxy_capacity.get(slug)))
         rows.append(row)
     return rows
