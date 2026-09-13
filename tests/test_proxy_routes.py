@@ -4500,6 +4500,16 @@ def test_provider_scoped_release_route_releases_only_the_requested_instance(clie
     release_proxy.assert_awaited_once_with("EarnApp", 3, "earn-1", reason="manual release")
 
 
+def test_provider_scoped_lease_route_rejects_direct_lane(client):
+    with patch("app.main.auth.get_current_user", return_value=_owner_user()):
+        response = client.post(
+            "/api/proxy-pool/provider-lease",
+            json={"provider_slug": "earnfm", "worker_id": 3, "instance_id": "earnfm-direct", "lane": "direct"},
+        )
+    assert response.status_code == 409
+    assert "Direct lanes" in response.json()["detail"]
+
+
 def test_duplicate_export_supports_masked_default_and_explicit_raw_mode(client):
     rows = [
         {
