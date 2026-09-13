@@ -4967,7 +4967,7 @@ async def _proxy_to_worker(
     url, headers = await _get_verified_worker_url(worker)
 
     try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
             verb = method.upper()
             if verb == "GET":
                 resp = await client.get(f"{url}{path}", params=params, headers=headers)
@@ -4982,7 +4982,6 @@ async def _proxy_to_worker(
                 # for several providers are live credentials.
                 safe = _safe_worker_detail(resp)
                 logger.warning("worker proxy error (%s): %s", resp.status_code, safe or "unstructured error body")
-                logger.debug("worker proxy error body (%s): %s", resp.status_code, resp.text)
                 raise HTTPException(
                     status_code=resp.status_code,
                     detail=safe or "Worker request failed",
