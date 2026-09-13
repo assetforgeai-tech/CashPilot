@@ -116,3 +116,42 @@ async def test_network_reconciliation_skips_superseded_worker_registration(monke
     result = await main.api_provider_network_reconciliation(None)
 
     assert result["reports"] == []
+
+
+@pytest.mark.asyncio
+async def test_network_reconciliation_skips_offline_worker(monkeypatch):
+    monkeypatch.setattr(main, "_require_owner", lambda _request: {"role": "owner"})
+    monkeypatch.setattr(
+        main.database,
+        "list_workers",
+        AsyncMock(
+            return_value=[
+                {
+                    "id": 9,
+                    "url": "http://offline:8081",
+                    "status": "offline",
+                    "containers": '[{"name":"old","slug":"earnapp"}]',
+                    "system_info": '{"containers_inventory_confirmed":true}',
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        main.database,
+        "list_provider_instances",
+        AsyncMock(
+            return_value=[
+                {
+                    "instance_id": "old",
+                    "slug": "earnapp",
+                    "worker_id": 9,
+                    "mode": "proxy",
+                    "status": "running",
+                }
+            ]
+        ),
+    )
+
+    result = await main.api_provider_network_reconciliation(None)
+
+    assert result["reports"] == []
