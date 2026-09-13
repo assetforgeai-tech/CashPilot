@@ -1727,7 +1727,11 @@ def _provider_evidence(slug: str, container: Any, *, probe_container: Any | None
             except ValueError:
                 observed = ""
             ok = int(getattr(result, "exit_code", 1)) == 0 and bool(observed)
-            return {"running": True, "observed_egress_ip": observed if ok else "", "probe_ok": ok}
+            evidence: dict[str, Any] = {"running": True, "observed_egress_ip": observed if ok else "", "probe_ok": ok}
+            if ok:
+                controls = _sidecar_network_controls(probe)
+                evidence.update(controls)
+            return evidence
         except Exception as exc:
             logger.debug("Network evidence unavailable for %s: %s", slug, exc)
             return {"running": True, "probe_ok": False}
@@ -1766,6 +1770,46 @@ def _provider_evidence(slug: str, container: Any, *, probe_container: Any | None
     except Exception as exc:
         logger.debug("Uprock evidence parse failed for %s: %s", getattr(container, "short_id", "?"), exc)
         return {}
+
+
+def _sidecar_network_controls(container: Any) -> dict[str, bool]:
+    """Prove fail-closed sing-box invariants from the live config."""
+    result = container.exec_run(["/bin/sh", "-lc", "cat /etc/sing-box/config.json 2>/dev/null || true"])
+    exit_code, output = _exec_output(result)
+    if exit_code != 0:
+        return {}
+    try:
+        config = json.loads(output.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return {}
+    if not isinstance(config, dict):
+        return {}
+    dns = config.get("dns") if isinstance(config.get("dns"), dict) else {}
+    servers = dns.get("servers") if isinstance(dns.get("servers"), list) else []
+    cf = next((item for item in servers if isinstance(item, dict) and item.get("tag") == "cf"), {})
+    bootstrap = next((item for item in servers if isinstance(item, dict) and item.get("tag") == "bootstrap"), {})
+    inbound = next(
+        (item for item in (config.get("inbounds") or []) if isinstance(item, dict) and item.get("type") == "tun"), {}
+    )
+    route = config.get("route") if isinstance(config.get("route"), dict) else {}
+    rules = route.get("rules") if isinstance(route.get("rules"), list) else []
+    has_dns_hijack = any(
+        isinstance(item, dict) and item.get("action") == "hijack-dns" and item.get("port") == 53 for item in rules
+    )
+    proxy = any(isinstance(item, dict) and item.get("tag") == "proxy-out" for item in (config.get("outbounds") or []))
+    return {
+        "dns_via_proxy": cf.get("type") == "https" and cf.get("detour") == "proxy-out",
+        "ipv6_blocked": dns.get("strategy") == "ipv4_only",
+        "udp_blocked": not any(
+            isinstance(item, dict) and item.get("network") == "udp" and item.get("outbound") == "direct"
+            for item in rules
+        ),
+        "doh_blocked": cf.get("type") != "https" or cf.get("detour") != "direct",
+        "dot_blocked": not any(isinstance(item, dict) and item.get("type") == "tls" for item in servers),
+        "direct_fallback_blocked": bool(
+            inbound.get("strict_route") and route.get("final") == "proxy-out" and has_dns_hijack and proxy and bootstrap
+        ),
+    }
 
 
 #: Concurrent `stats` calls. Bounded because the aim is to stop the heartbeat
