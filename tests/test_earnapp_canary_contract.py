@@ -979,14 +979,22 @@ async def test_worker_ubuntu_migration_is_cas_scoped_and_preserves_assignment(tm
     device_id = "sdk-node-" + "c" * 32
     monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
     monkeypatch.setattr(worker_api, "_verify_api_key", lambda _request: None)
-    worker_api._save_earnapp_state(slug, {
-        "logical_node_id": slug, "generation": 2, "device_id": device_id,
-        "platform": "ubuntu", "runtime_backend": "docker", "expected_egress_ip": "198.51.100.9",
-    })
+    worker_api._save_earnapp_state(
+        slug,
+        {
+            "logical_node_id": slug,
+            "generation": 2,
+            "device_id": device_id,
+            "platform": "ubuntu",
+            "runtime_backend": "docker",
+            "expected_egress_ip": "198.51.100.9",
+        },
+    )
     migrate = MagicMock(return_value="replacement")
     monkeypatch.setattr(worker_api.orchestrator, "migrate_legacy_earnapp_ubuntu", migrate)
     result = await worker_api.api_migrate_earnapp_ubuntu(
-        _request(f"/api/earnapp/docker-nodes/{slug}/migrate-ubuntu"), slug,
+        _request(f"/api/earnapp/docker-nodes/{slug}/migrate-ubuntu"),
+        slug,
         worker_api.EarnAppUbuntuMigrationSpec(generation=2, device_id=device_id, expected_egress_ip="198.51.100.9"),
     )
     assert result == {"status": "migrated", "container_id": "replacement", "logical_node_id": slug}

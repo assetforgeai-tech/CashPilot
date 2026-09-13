@@ -705,7 +705,9 @@ def migrate_legacy_earnapp_ubuntu(slug: str, *, expected_egress_ip: str) -> str:
     if labels.get("cashpilot.provider") != "earnapp" or labels.get("cashpilot.earnapp.platform") != "linux":
         raise RuntimeError("runtime is not a legacy EarnApp Ubuntu container")
     mounts = _docker_volumes(attrs.get("Mounts"))
-    identity = [name for name, mount in mounts.items() if mount.get("bind") == "/etc/earnapp" and not name.startswith("/")]
+    identity = [
+        name for name, mount in mounts.items() if mount.get("bind") == "/etc/earnapp" and not name.startswith("/")
+    ]
     if len(identity) != 1:
         raise RuntimeError("legacy EarnApp Ubuntu identity volume is not a single named volume")
     env = _docker_environment(config.get("Env"))

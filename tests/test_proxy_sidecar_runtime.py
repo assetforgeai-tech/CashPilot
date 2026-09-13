@@ -45,9 +45,17 @@ def test_migrate_legacy_earnapp_ubuntu_uses_verified_image_and_rolls_forward():
 
     with (
         patch.object(orchestrator, "_get_client", return_value=client),
-        patch.object(orchestrator, "_find_earnapp_runtime_container", side_effect=lambda _c, _s, *, sidecar: None if sidecar else old),
-        patch.object(orchestrator, "probe_service_egress", return_value={"probe_ok": True, "observed_egress_ip": "198.51.100.8"}),
-        patch.object(orchestrator, "_probe_earnapp_ubuntu_network", return_value={"fail_closed": True, "dns_local": True}),
+        patch.object(
+            orchestrator,
+            "_find_earnapp_runtime_container",
+            side_effect=lambda _c, _s, *, sidecar: None if sidecar else old,
+        ),
+        patch.object(
+            orchestrator, "probe_service_egress", return_value={"probe_ok": True, "observed_egress_ip": "198.51.100.8"}
+        ),
+        patch.object(
+            orchestrator, "_probe_earnapp_ubuntu_network", return_value={"fail_closed": True, "dns_local": True}
+        ),
     ):
         result = orchestrator.migrate_legacy_earnapp_ubuntu("earnapp-ubuntu", expected_egress_ip="198.51.100.8")
 
