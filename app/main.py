@@ -8710,7 +8710,8 @@ async def api_provider_network_reconciliation(request: Request) -> dict[str, Any
     workers = await database.list_workers()
     _mark_superseded_workers(workers)
     for worker in workers:
-        if worker.get("superseded_by_worker_id"):
+        worker_status = str(worker.get("status") or "").strip().lower()
+        if worker.get("superseded_by_worker_id") or (worker_status and worker_status != "online"):
             continue
         worker_id = int(worker.get("id") or 0)
         containers = _safe_json(worker.get("containers") or "[]", [])
