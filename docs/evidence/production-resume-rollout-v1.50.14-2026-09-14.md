@@ -11,7 +11,7 @@ Date: 2026-09-14
 
 - CashPilot server UI and worker: `ghcr.io/assetforgeai-tech/cashpilot:*:1.50.14`, healthy, restart count `0`, existing `unless-stopped` policy.
 - Test-US worker: `ghcr.io/assetforgeai-tech/cashpilot-worker:1.50.14`, healthy, restart count `0`, existing `always` policy.
-- Test-Sing worker: `ghcr.io/assetforgeai-tech/cashpilot-worker:1.50.13`, healthy, restart count `0`, existing `always` policy.
+- Test-Sing worker: `ghcr.io/assetforgeai-tech/cashpilot-worker:1.50.14`, healthy, restart count `0`, existing `always` policy.
 - Azure East Asia and Japan East workers: `ghcr.io/assetforgeai-tech/cashpilot-worker:1.50.14`, healthy, restart count `0`, existing `always` policy.
 
 Only CashPilot control-plane containers were recreated. Provider containers, node identities, proxy leases, and provider data volumes were not mutated.
