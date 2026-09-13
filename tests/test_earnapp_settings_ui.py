@@ -108,10 +108,16 @@ def test_settings_quick_links_separate_provider_control_plane_sections():
         ("#provider-account-pools", "Accounts"),
         ("#earnapp-account-pool", "EarnApp input"),
         ("#earnapp-runtime-settings", "Runtime"),
-        ("#earnapp-reconciliation", "Collector health"),
+        ("#earnapp-reconciliation", "Collector"),
+        ("#earnapp-paypal-pool", "Payment"),
     ):
         assert f'href="{anchor}"' in template
         assert label in template
+    assert 'class="settings-quick-links settings-subnav"' in template
+    assert template.count("data-settings-tab=") == 5
+    assert 'href="#auto-deploy-settings"' in template
+    assert 'href="#nkn-settings"' in template
+    assert 'href="/proxy-pool"' in template
 
 
 def test_settings_shows_read_only_earnapp_reconciliation():

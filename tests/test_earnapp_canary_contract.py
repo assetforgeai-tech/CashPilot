@@ -565,6 +565,18 @@ def test_every_platform_image_installs_a_fail_closed_proxy_wrapper(platform):
     assert "--dport 53 -j REDIRECT --to-ports 1053" in wrapper
     assert '"$PROXY_IP"/32' in wrapper
     assert "-j DROP" in wrapper
+    assert "umask 077" in wrapper
+    assert "command -v ip6tables >/dev/null 2>&1 || exit 69" in wrapper
+    assert "if command -v ip6tables" not in wrapper
+
+
+def test_ios_proxy_credentials_file_is_owner_only():
+    wrapper = earnapp_runtime.generated_runtime_artifacts("ios")["cashpilot-proxy-entrypoint"].decode("utf-8")
+    assert 'chmod 0600 "$REDSOCKS_CONF"' in wrapper
+
+
+def test_ubuntu_proxy_credentials_file_is_owner_only():
+    assert 'chmod 0600 "$REDSOCKS_CONF"' in earnapp_runtime.ubuntu_entrypoint_script().decode("utf-8")
 
 
 @pytest.mark.parametrize("platform", ["macos", "ios", "ubuntu"])

@@ -262,6 +262,7 @@ if [[ -n "${PROXY_USER:-}" && -n "${PROXY_PASS:-}" ]]; then
   printf '    login = "%s";\\n    password = "%s";\\n' "$PROXY_USER" "$PROXY_PASS" >>"$REDSOCKS_CONF"
 fi
 printf '}\\n' >>"$REDSOCKS_CONF"
+chmod 0600 "$REDSOCKS_CONF"
 /usr/sbin/redsocks -c "$REDSOCKS_CONF" &
 sleep 1
         iptables -t nat -N CP_EARNAPP_IOS_REDSOCKS 2>/dev/null || iptables -t nat -F CP_EARNAPP_IOS_REDSOCKS
@@ -365,6 +366,7 @@ exec "$SANITIZED_ENTRYPOINT" "$@"'''
         runtime_handoff = runtime_handoff.replace("__MAC_BINARY_SHA256__", binary_sha256)
     return f"""#!/usr/bin/env bash
 set -euo pipefail
+umask 077
 STATE_DIR=/etc/earnapp
 REDSOCKS_PORT=12345
 PROXY_TYPE=$(printf '%s' "${{PROXY_TYPE:-SOCKS5}}" | tr '[:lower:]' '[:upper:]')
@@ -391,12 +393,11 @@ iptables -t nat -A CP_EARNAPP_DNS -p udp --dport 53 -j REDIRECT --to-ports 1053
 iptables -t nat -A CP_EARNAPP_DNS -p tcp --dport 53 -j REDIRECT --to-ports 1053
 iptables -t nat -C OUTPUT -p udp --dport 53 -j CP_EARNAPP_DNS 2>/dev/null || iptables -t nat -I OUTPUT 1 -p udp --dport 53 -j CP_EARNAPP_DNS
 iptables -t nat -C OUTPUT -p tcp --dport 53 -j CP_EARNAPP_DNS 2>/dev/null || iptables -t nat -I OUTPUT 1 -p tcp --dport 53 -j CP_EARNAPP_DNS
-if command -v ip6tables >/dev/null 2>&1; then
+command -v ip6tables >/dev/null 2>&1 || exit 69
   ip6tables -N CP_EARNAPP6_OUT 2>/dev/null || ip6tables -F CP_EARNAPP6_OUT
   ip6tables -A CP_EARNAPP6_OUT -o lo -j ACCEPT
   ip6tables -A CP_EARNAPP6_OUT -j DROP
   ip6tables -C OUTPUT -j CP_EARNAPP6_OUT 2>/dev/null || ip6tables -I OUTPUT 1 -j CP_EARNAPP6_OUT
-fi
 {ios_route}
 {runtime_handoff}
         """.encode()
@@ -568,6 +569,7 @@ EOF
         printf '    login = "%s";\n    password = "%s";\n' "$PROXY_USER" "$PROXY_PASS" >>"$REDSOCKS_CONF"
     fi
     printf '}\n' >>"$REDSOCKS_CONF"
+    chmod 0600 "$REDSOCKS_CONF"
     /usr/sbin/redsocks -c "$REDSOCKS_CONF" &
     sleep 1
     iptables -t nat -F REDSOCKS

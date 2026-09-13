@@ -7,16 +7,19 @@
 {% block content %}
 <h2 class="section-title" style="margin-bottom: 24px;">Settings</h2>
 
-<nav class="settings-quick-links" id="settings-quick-links" aria-label="Settings shortcuts">
-  <a class="btn btn-ghost btn-sm" href="#provider-account-pools">Accounts</a>
-  <a class="btn btn-ghost btn-sm" href="#earnapp-account-pool">EarnApp input</a>
-  <a class="btn btn-ghost btn-sm" href="#earnapp-runtime-settings">Runtime</a>
-  <a class="btn btn-ghost btn-sm" href="#earnapp-reconciliation">Collector health</a>
-  <a class="btn btn-ghost btn-sm" href="#earnapp-paypal-pool">EarnApp PayPal Pool</a>
+<nav class="settings-quick-links settings-subnav" id="settings-quick-links" aria-label="Settings sections">
+  <a class="btn btn-ghost btn-sm" href="#provider-account-pools" data-settings-tab="accounts">Accounts</a>
+  <a class="btn btn-ghost btn-sm" href="#earnapp-account-pool" data-settings-tab="input">EarnApp input</a>
+  <a class="btn btn-ghost btn-sm" href="#earnapp-runtime-settings" data-settings-tab="runtime">Runtime</a>
+  <a class="btn btn-ghost btn-sm" href="#earnapp-reconciliation" data-settings-tab="collector">Collector</a>
+  <a class="btn btn-ghost btn-sm" href="#earnapp-paypal-pool" data-settings-tab="payment">Payment</a>
+  <a class="btn btn-ghost btn-sm" href="#auto-deploy-settings">Auto deploy</a>
+  <a class="btn btn-ghost btn-sm" href="#nkn-settings">NKN</a>
+  <a class="btn btn-ghost btn-sm" href="/proxy-pool">Proxy pool</a>
 </nav>
 
 <!-- Environment Variables -->
-<div class="card settings-section">
+<div class="card settings-section" id="environment-settings">
   <h3 class="settings-section-title">Environment Variables</h3>
   <p class="settings-section-desc">
     These are read from the environment when CashPilot starts. Variables set via Docker <code>-e</code> flags are shown locked; the rest can be stored here, but <strong>a stored value does not take effect</strong> &mdash; set it in your compose file or Unraid template and restart. Several of them cannot change at runtime at all: the session key signs logins already in use, the data directory is where the open database lives, and the fleet key is what enrolled workers already hold.
@@ -29,7 +32,7 @@
 <div class="earnapp-runtime-settings" id="provider-account-pools">
   <div>
     <h4>Provider account pools</h4>
-    <p>Secret-free active/total account counts. Provider-specific assignment rules remain unchanged.</p>
+    <p>Secret-free account counts. EarnApp is fully modeled here; other providers report their pool only when an adapter exists. Pawns/IPRoyal keeps its proxy mask and replacement pool isolated from EarnApp.</p>
   </div>
   <div id="provider-account-pool-list" class="form-hint">Loading account pools...</div>
 </div>
@@ -50,7 +53,7 @@
   <div id="provider-network-reconciliation-list" class="form-hint">Loading network audit...</div>
 </div>
 
-<div class="card settings-section">
+<div class="card settings-section" id="auto-deploy-settings">
   <h3 class="settings-section-title">Auto deploy</h3>
   <p class="settings-section-desc">
     When enabled, stable workers receive deployable providers from the server in sequence.
@@ -102,7 +105,7 @@
     <div id="earnapp-paypal-pool-list" class="form-hint">Loading PayPal Pool...</div>
   </div>
 
-  <div class="earnapp-capacity-strip" id="earnapp-proxy-capacity">
+  <div class="earnapp-capacity-strip" id="earnapp-proxy-capacity" role="status" aria-live="polite" aria-label="EarnApp proxy capacity">
     <div><span>Used</span><strong>&mdash;</strong></div>
     <div><span>Ready</span><strong>&mdash;</strong></div>
     <div><span>Eligible</span><strong>&mdash;</strong></div>
@@ -235,7 +238,7 @@
 
 </div>
 
-<div class="card settings-section">
+<div class="card settings-section" id="nkn-settings">
   <h3 class="settings-section-title">NKN</h3>
   <p class="settings-section-desc">
     One beneficiary address is shared by the collector; node wallets are leased
