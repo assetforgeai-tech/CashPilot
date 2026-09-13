@@ -62,6 +62,25 @@ def test_direct_capacity_slot_is_reusable_after_failed_deploy(tmp_path):
     asyncio.run(run())
 
 
+def test_direct_slot_is_reusable_by_different_providers_on_one_worker(tmp_path):
+    async def run():
+        db_path = tmp_path / "cashpilot.db"
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", db_path):
+            await database.init_db()
+            await database.upsert_worker("worker-a", "worker-a", "http://worker-a")
+            await database.save_provider_instance(
+                "nkn", "nkn-a", worker_id=1, mode="direct", capacity_slot="ipv4-001", status="planned"
+            )
+            await database.save_provider_instance(
+                "mysterium", "mysterium-a", worker_id=1, mode="direct", capacity_slot="ipv4-001", status="planned"
+            )
+            assert await database.get_provider_instance("nkn-a")
+            assert await database.get_provider_instance("mysterium-a")
+            await database.close_shared()
+
+    asyncio.run(run())
+
+
 def test_provider_proxy_lease_migration_backfills_proxy_lane(tmp_path):
     async def run():
         db_path = tmp_path / "cashpilot.db"
