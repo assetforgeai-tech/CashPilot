@@ -1729,7 +1729,11 @@ def _provider_evidence(slug: str, container: Any, *, probe_container: Any | None
             ok = int(getattr(result, "exit_code", 1)) == 0 and bool(observed)
             evidence: dict[str, Any] = {"running": True, "observed_egress_ip": observed if ok else "", "probe_ok": ok}
             if ok:
-                controls = _sidecar_network_controls(probe)
+                controls = (
+                    _direct_network_controls(container)
+                    if str((getattr(container, "labels", {}) or {}).get("cashpilot.instance_mode") or "") == "direct"
+                    else _sidecar_network_controls(probe)
+                )
                 evidence.update(controls)
             return evidence
         except Exception as exc:
@@ -1809,6 +1813,19 @@ def _sidecar_network_controls(container: Any) -> dict[str, bool]:
         "direct_fallback_blocked": bool(
             inbound.get("strict_route") and route.get("final") == "proxy-out" and has_dns_hijack and proxy and bootstrap
         ),
+    }
+
+
+def _direct_network_controls(container: Any) -> dict[str, bool]:
+    """Prove direct-lane basics from Docker's live network attachment."""
+    attrs = getattr(container, "attrs", {}) or {}
+    networks = (attrs.get("NetworkSettings") or {}).get("Networks") or {}
+    attached = next((item for item in networks.values() if isinstance(item, dict)), {})
+    mode = _container_network_mode(container)
+    return {
+        "dns_via_proxy": False,
+        "ipv6_blocked": not bool(attached.get("GlobalIPv6Address") or attached.get("IPv6Gateway")),
+        "direct_fallback_blocked": bool(mode and not mode.startswith("container:")),
     }
 
 

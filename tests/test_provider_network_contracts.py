@@ -137,6 +137,37 @@ def test_proxy_provider_evidence_proves_sidecar_leak_controls():
     }
 
 
+def test_direct_provider_evidence_proves_dedicated_native_network_controls():
+    class Container:
+        labels = {"cashpilot.instance_mode": "direct"}
+        attrs = {
+            "HostConfig": {"NetworkMode": "cashpilot-direct-ipv4-001"},
+            "NetworkSettings": {
+                "Networks": {
+                    "cashpilot-direct-ipv4-001": {
+                        "GlobalIPv6Address": "",
+                        "IPv6Gateway": "",
+                    }
+                }
+            },
+        }
+        calls = 0
+
+        def exec_run(self, *_args, **_kwargs):
+            self.calls += 1
+            output = b"203.0.113.12\n" if self.calls == 1 else b"nameserver 127.0.0.11\n\n"
+            return type("Result", (), {"exit_code": 0, "output": output})()
+
+    assert orchestrator._provider_evidence("earnfm", Container()) == {
+        "running": True,
+        "observed_egress_ip": "203.0.113.12",
+        "probe_ok": True,
+        "dns_via_proxy": False,
+        "ipv6_blocked": True,
+        "direct_fallback_blocked": True,
+    }
+
+
 def test_probe_service_egress_uses_container_namespace_sidecar(monkeypatch):
     class Main:
         status = "running"
