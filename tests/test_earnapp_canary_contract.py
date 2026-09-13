@@ -741,6 +741,17 @@ def test_ubuntu_reference_runtime_uses_the_shared_fail_closed_proxy_entrypoint()
     assert "0,/^  set -e$/s" in wrapper
 
 
+def test_ubuntu_reference_runtime_blocks_direct_fallback_and_public_dns():
+    wrapper = earnapp_runtime.proxy_entrypoint_script("ubuntu").decode("utf-8")
+    assert "iptables -N CP_EARNAPP_OUT" in wrapper
+    assert "iptables -A CP_EARNAPP_OUT -j DROP" in wrapper
+    assert "iptables -I OUTPUT 1 -j CP_EARNAPP_OUT" in wrapper
+    assert "nameserver 127.0.0.1" in wrapper
+    assert "/etc/resolv.conf" in wrapper
+    assert "ip6tables -N CP_EARNAPP6_OUT" in wrapper
+    assert "ip6tables -A CP_EARNAPP6_OUT -j DROP" in wrapper
+
+
 def test_ubuntu_image_wraps_the_pinned_reference_runtime_with_fail_closed_proxying():
     manifest = earnapp_runtime.runtime_asset_manifest(platform="ubuntu")
     recipe = build_earnapp_canary_image.render_dockerfile(manifest, platform="ubuntu")
