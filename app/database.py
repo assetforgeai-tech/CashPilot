@@ -10640,7 +10640,7 @@ async def rotate_provider_proxy_lease(
                     await db.execute(
                         f"""
                         SELECT 1 FROM proxy_endpoints pe
-                        WHERE pe.id = ? AND {_earnapp_proxy_eligible_sql('pe')}
+                        WHERE pe.id = ? AND {_earnapp_proxy_eligible_sql("pe")}
                         """,
                         (int(new_proxy_id),),
                     )
