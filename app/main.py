@@ -1445,6 +1445,19 @@ async def _run_provider_lifecycle_scheduler() -> None:
                     endpoint = await database.get_proxy_endpoint(proxy_id)
                     if endpoint and str(endpoint.get("status") or "").strip().lower() == "dead":
                         proxy_health = False
+            provider_auth_healthy = instance.get("provider_auth_healthy")
+            if provider_auth_healthy is None and "provider_auth_healthy" in live:
+                provider_auth_healthy = live.get("provider_auth_healthy")
+            account_suspended = bool(instance.get("account_suspended")) or bool(live.get("account_suspended"))
+            direct_route_healthy = instance.get("direct_route_healthy")
+            if direct_route_healthy is None and "direct_route_healthy" in live:
+                direct_route_healthy = live.get("direct_route_healthy")
+            usage_stalled = bool(instance.get("usage_stalled")) or bool(live.get("usage_stalled"))
+            if provider_auth_healthy is False or account_suspended:
+                continue
+            if instance.get("mode") == "direct" and direct_route_healthy is False:
+                await database.record_health_event(slug, "check_down", f"lane {instance_id} direct route unavailable")
+                continue
             # A proxy rotation requires explicit failure evidence. Missing
             # health data is unknown, never permission to rotate.
             if live_status in {"running", "deployed"} and proxy_health is False and instance.get("mode") == "proxy":
@@ -1460,6 +1473,13 @@ async def _run_provider_lifecycle_scheduler() -> None:
                 except Exception as exc:  # noqa: BLE001 - one lane cannot block peers
                     logger.warning("Lifecycle rotation failed for %s: %s", instance_id, type(exc).__name__)
                     continue
+            if live_status in {"running", "deployed"} and usage_stalled:
+                try:
+                    await _proxy_worker_command(worker_id, "restart", instance_id)
+                    await database.record_health_event(slug, "restart", f"lane {instance_id} usage stalled")
+                except Exception as exc:  # noqa: BLE001 - one lane cannot block peers
+                    logger.warning("Lifecycle usage recovery failed for %s: %s", instance_id, type(exc).__name__)
+                continue
             if live_status in {"running", "deployed"}:
                 continue
             decision = provider_lifecycle.decide_instance(
@@ -1469,6 +1489,10 @@ async def _run_provider_lifecycle_scheduler() -> None:
                     "online": False,
                     "banned": False,
                     "proxy_healthy": None,
+                    "direct_route_healthy": direct_route_healthy,
+                    "provider_auth_healthy": provider_auth_healthy,
+                    "account_suspended": account_suspended,
+                    "usage_stalled": usage_stalled,
                 }
             )
             if decision != "restart":

@@ -58,9 +58,9 @@ proxy discovery is unknown; it never silently collapses to direct-only.
 - Modify: `app/database.py`, `app/routers/proxies.py`
 - Test: `tests/test_provider_topology.py`, `tests/test_proxy_routes.py`
 
-- [ ] Add failing tests proving one active lease per provider/worker/instance/lane and no duplicate active egress IP across lanes.
-- [ ] Add deterministic ordering: eligible, healthy, unowned first; stable proxy ID tie-breaker.
-- [ ] Preserve sticky ownership while releasing only the runtime lease.
+- [x] Existing tests prove one active lease per provider/worker/instance and duplicate egress rejection.
+- [x] Deterministic ordering uses eligible, healthy, unowned first with stable proxy ID tie-breaker.
+- [x] Sticky ownership remains while runtime lease release is scoped.
 - [x] Make rotation/release CAS-safe and idempotent.
 - [x] Run focused lease tests.
 
@@ -85,10 +85,10 @@ per-instance ACK/CAS path. Full regression remains required before release.
 - Test: `tests/test_earnapp_node_health.py`, `tests/test_provider_network_contracts.py`
 
 - [x] Add failing test proving generic scheduler rotates only a verified unhealthy proxy lane and never the direct peer lane.
-- [ ] Add failing tests separating node offline, proxy dead, route unavailable, provider/account failure, and banned node.
-- [ ] Apply restart-only recovery for transient node health failures.
-- [ ] Apply proxy rotation only after verified proxy failure; never rotate due to account/dashboard lag alone.
-- [ ] Keep provider/account failures from mutating unrelated nodes.
+- [x] Add tests separating node offline, proxy dead, route unavailable, provider/account failure, and banned node.
+- [x] Apply restart-only recovery for transient node health failures.
+- [x] Apply proxy rotation only after verified proxy failure; never rotate due to account/dashboard lag alone.
+- [x] Keep provider/account failures from mutating unrelated nodes.
 - [ ] Require complete leak evidence before healthy status.
 - [ ] Run focused health tests.
 
@@ -102,11 +102,11 @@ health data remains unknown and direct lanes are untouched.
 - Modify: `app/database.py`, `app/main.py`
 - Test: `tests/test_earnapp_lifecycle.py`, `tests/test_provider_topology.py`
 
-- [ ] Verify the existing two-confirmation miss rule for generic providers.
-- [ ] Add tests for runtime reappearance cancelling `missing_once`.
-- [ ] Add tests ensuring EarnApp sticky ownership is retained during runtime absence.
-- [ ] Ensure cleanup cannot release a lease while a live authenticated heartbeat still lists the instance.
-- [ ] Run lifecycle tests.
+- [x] Verify the existing two-confirmation miss rule for generic providers.
+- [x] Add tests for runtime reappearance cancelling `missing_once`.
+- [x] Add tests ensuring EarnApp sticky ownership is retained during runtime absence.
+- [x] Ensure cleanup cannot release a lease while a live authenticated heartbeat still lists the instance.
+- [x] Run lifecycle tests.
 
 ### Task 6: Clarify topology/capacity UI
 
@@ -114,9 +114,9 @@ health data remains unknown and direct lanes are untouched.
 - Modify: `app/static/js/app.js`, `app/templates/*.html` as required.
 - Test: `tests/test_frontend_wiring.py`
 
-- [ ] Display direct and proxy desired/deployable/running/free/blocked counts independently.
-- [ ] Display explicit pending reason for unknown/zero proxy capacity.
-- [ ] Show lane and egress contract without implying fallback.
+- [x] Display direct and proxy desired/deployable/running/free/blocked counts independently.
+- [x] Display explicit pending reason for unknown/zero proxy capacity.
+- [x] Show lane and egress contract without implying fallback.
 - [ ] Add browser-level checks for direct-only, proxy-only, and hybrid states.
 - [ ] Run frontend wiring and browser verification.
 

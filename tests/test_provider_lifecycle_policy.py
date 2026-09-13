@@ -141,6 +141,49 @@ def test_generic_lifecycle_scheduler_rotates_only_verified_unhealthy_proxy_lane(
     rotate.assert_awaited_once_with(7, "earnfm", "earnfm-proxy-w7-proxy-001", candidate)
 
 
+def test_generic_lifecycle_scheduler_restarts_running_lane_when_usage_stalls(monkeypatch):
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    from app import main
+
+    monkeypatch.setattr(
+        main.database,
+        "list_workers",
+        AsyncMock(
+            return_value=[
+                {
+                    "id": 7,
+                    "status": "online",
+                    "containers": '[{"name":"earnfm-proxy-w7-proxy-001","status":"running","usage_stalled":true}]',
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        main.database,
+        "list_provider_instances",
+        AsyncMock(
+            return_value=[
+                {
+                    "slug": "earnfm",
+                    "instance_id": "earnfm-proxy-w7-proxy-001",
+                    "worker_id": 7,
+                    "mode": "proxy",
+                    "proxy_healthy": True,
+                }
+            ]
+        ),
+    )
+    command = AsyncMock()
+    monkeypatch.setattr(main, "_proxy_worker_command", command)
+    monkeypatch.setattr(main.database, "record_health_event", AsyncMock())
+
+    asyncio.run(main._run_provider_lifecycle_scheduler())
+
+    command.assert_awaited_once_with(7, "restart", "earnfm-proxy-w7-proxy-001")
+
+
 def test_offline_provider_restarts_without_rotating_proxy():
     assert decide("packetstream", online=False, banned=False, proxy_healthy=True) == "restart"
 
@@ -187,6 +230,45 @@ def test_lane_banned_action_uses_provider_policy():
 
 def test_invalid_lane_fails_closed_to_observe():
     assert decide_lane("earnfm", mode="bogus", online=False, banned=False, proxy_healthy=True) == "observe"
+
+
+def test_direct_route_failure_blocks_without_proxy_fallback():
+    assert (
+        decide_lane(
+            "earnfm",
+            mode="direct",
+            online=True,
+            banned=False,
+            proxy_healthy=True,
+            direct_route_healthy=False,
+        )
+        == "blocked"
+    )
+
+
+def test_provider_auth_or_account_suspension_never_mutates_runtime():
+    assert (
+        decide_lane(
+            "earnfm",
+            mode="proxy",
+            online=False,
+            banned=False,
+            proxy_healthy=True,
+            provider_auth_healthy=False,
+        )
+        == "observe"
+    )
+    assert (
+        decide_lane(
+            "earnfm",
+            mode="proxy",
+            online=True,
+            banned=False,
+            proxy_healthy=True,
+            account_suspended=True,
+        )
+        == "observe"
+    )
 
 
 def test_decide_instance_requires_explicit_lane_and_returns_observe_without_signals():

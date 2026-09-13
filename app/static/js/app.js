@@ -2957,7 +2957,10 @@ const CP = (() => {
         if (result.topology_status) topologyStates.add(String(result.topology_status));
         Object.entries(result.lanes || {}).forEach(([lane, stats]) => {
           const current = laneTotals[lane] || { desired: 0, running: 0, failed: 0, pending: 0, free: 0, blocked: 0 };
-          Object.keys(current).forEach(key => { current[key] += Number(stats[key] || 0); });
+          Object.keys(current).forEach(key => {
+            const value = key === 'pending' ? (stats.pending ?? stats.blocked ?? 0) : (stats[key] || 0);
+            current[key] += Number(value);
+          });
           laneTotals[lane] = current;
         });
         ok++;
