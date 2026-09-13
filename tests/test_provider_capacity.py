@@ -95,3 +95,52 @@ def test_provider_capacity_filters_country_type_and_provider_mask(tmp_path):
             assert row["available"] == 1
 
     asyncio.run(run())
+
+
+def test_provider_capacity_does_not_apply_earnapp_sticky_ownership_to_other_provider(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "sticky.db"):
+            await database.init_db()
+            provider = await database.upsert_proxy_provider("Pool A", "residential")
+            proxy_id = (
+                await database.upsert_proxy_endpoints_returning_ids(
+                    provider,
+                    [
+                        {
+                            "provider_proxy_id": "shared-egress",
+                            "host": "1.1.1.1",
+                            "port": 1,
+                            "status": "alive",
+                            "exit_ip": "198.51.100.7",
+                        }
+                    ],
+                )
+            )[0]
+            await database.upsert_earnapp_account(
+                profile_key="profile",
+                account_name="earn@example.test",
+                email="earn@example.test",
+                auth_method="google",
+                credentials={},
+                credential_keys=[],
+                token_expires_at=None,
+                cookie_expires_at=None,
+            )
+            account = await database.list_earnapp_accounts()
+            account_id = int(account[0]["id"])
+            db = await database._open_transaction_connection()
+            try:
+                await db.execute(
+                    "INSERT INTO earnapp_account_egress_ownership (account_id, egress_ip, proxy_id) VALUES (?, ?, ?)",
+                    (account_id, "198.51.100.7", proxy_id),
+                )
+                await db.commit()
+            finally:
+                await db.close()
+
+            rows = await database.get_provider_proxy_capacity(provider_slug="iproyal")
+            row = next(item for item in rows if item["provider_id"] == provider)
+            assert row["available"] == 1
+            assert row["sticky_owned"] == 0
+
+    asyncio.run(run())
