@@ -963,9 +963,11 @@ def deploy_raw(
             entrypoint=[
                 "/bin/sh",
                 "-c",
-                "if [ ! -f /etc/sing-box/.cashpilot-initialized ]; then "
-                'printf "%s" "$SINGBOX_CONFIG_B64" | base64 -d > /etc/sing-box/config.json && '
-                "touch /etc/sing-box/.cashpilot-initialized; fi; "
+                'tmp=/etc/sing-box/config.json.cashpilot-new; '
+                'printf "%s" "$SINGBOX_CONFIG_B64" | base64 -d > "$tmp" && '
+                'sing-box check -c "$tmp" && '
+                'mv -f "$tmp" /etc/sing-box/config.json && '
+                'touch /etc/sing-box/.cashpilot-initialized; '
                 "exec sing-box run -c /etc/sing-box/config.json",
             ],
             volumes={_sidecar_config_volume(slug): {"bind": "/etc/sing-box", "mode": "rw"}},
