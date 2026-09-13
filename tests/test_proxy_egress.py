@@ -98,7 +98,7 @@ def test_singbox_config_uses_tun_and_socks_outbound():
     assert {"domain": ["dc-t5.proxyvt.com"], "outbound": "direct"} in config["route"]["rules"]
 
 
-def test_proxy_hostname_uses_direct_bootstrap_doh_without_looping_through_itself():
+def test_proxy_hostname_uses_bootstrap_doh_without_empty_direct_detour():
     from app.singbox_config import render_tun_proxy_config
 
     config = render_tun_proxy_config(
@@ -110,14 +110,14 @@ def test_proxy_hostname_uses_direct_bootstrap_doh_without_looping_through_itself
         worker_name="packetstream-proxy",
     )
 
-    assert {
+    bootstrap = next(item for item in config["dns"]["servers"] if item["tag"] == "bootstrap")
+    assert bootstrap == {
         "tag": "bootstrap",
         "type": "https",
         "server": "1.1.1.1",
         "path": "/dns-query",
         "tls": {"server_name": "cloudflare-dns.com"},
-        "detour": "direct",
-    } in config["dns"]["servers"]
+    }
     assert {"domain": ["proxy.example.com"], "server": "bootstrap"} in config["dns"]["rules"]
 
 
