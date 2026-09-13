@@ -20,7 +20,10 @@ def validate_provider_network_evidence(
 ) -> dict[str, Any]:
     """Validate leak controls without treating missing evidence as safe."""
     findings: list[str] = []
-    if dns_via_proxy is None:
+    selected = str(mode or "").strip().lower()
+    if selected == "direct" and dns_via_proxy is True:
+        findings.append("direct_dns_not_native")
+    elif dns_via_proxy is None:
         findings.append("dns_isolation_unverified")
     elif dns_via_proxy is False:
         findings.append("dns_leak_detected")
@@ -28,7 +31,11 @@ def validate_provider_network_evidence(
         findings.append("ipv6_isolation_unverified")
     elif ipv6_blocked is False:
         findings.append("ipv6_not_blocked")
-    if str(mode or "").strip().lower() == "proxy":
+    if selected == "direct" and direct_fallback_blocked is None:
+        findings.append("direct_fallback_unverified")
+    elif selected == "direct" and direct_fallback_blocked is False:
+        findings.append("direct_fallback_detected")
+    if selected == "proxy":
         if udp_blocked is None:
             findings.append("udp_isolation_unverified")
         elif udp_blocked is False:
