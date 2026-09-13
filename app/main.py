@@ -3929,6 +3929,17 @@ async def api_deploy(
         instance_slug = topology_plan.instance_id if topology_plan else (slug if mode == "legacy" else f"{slug}-{mode}")
         instance_spec = json.loads(json.dumps(spec))
         instance_spec["provider_slug"] = slug
+        instance_spec["network_contract"] = (
+            runtime_topology.network_contract_for(mode)
+            if runtime_topology
+            else {
+                "fallback": "none",
+                "dns": "provider_native" if mode == "direct" else "tunneled",
+                "ipv6": "explicit" if mode == "direct" else "disabled_or_tunneled",
+                "udp": "explicit",
+                "fail_closed": True,
+            }
+        )
         if topology_plan:
             instance_spec["topology"] = runtime_topology.topology
             instance_spec["lane"] = mode
