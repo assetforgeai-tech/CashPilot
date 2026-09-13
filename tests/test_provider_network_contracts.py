@@ -168,6 +168,23 @@ def test_direct_provider_evidence_proves_dedicated_native_network_controls():
     }
 
 
+def test_earnapp_provider_evidence_includes_observed_egress():
+    class Container:
+        calls = 0
+
+        def exec_run(self, *_args, **_kwargs):
+            self.calls += 1
+            output = b'{"device_id":"sdk-node-abc","running":true}\n' if self.calls == 1 else b"203.0.113.13\n"
+            return type("Result", (), {"exit_code": 0, "output": output})()
+
+    assert orchestrator._provider_evidence("earnapp", Container()) == {
+        "device_id": "sdk-node-abc",
+        "running": True,
+        "observed_egress_ip": "203.0.113.13",
+        "probe_ok": True,
+    }
+
+
 def test_probe_service_egress_uses_container_namespace_sidecar(monkeypatch):
     class Main:
         status = "running"
