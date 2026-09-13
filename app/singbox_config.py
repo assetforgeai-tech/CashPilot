@@ -43,7 +43,9 @@ def render_tun_proxy_config(
             "servers": [
                 {
                     "tag": "cf",
-                    "address": "https://cloudflare-dns.com/dns-query",
+                    "type": "https",
+                    "server": "cloudflare-dns.com",
+                    "path": "/dns-query",
                     "detour": "proxy-out",
                 }
             ],
