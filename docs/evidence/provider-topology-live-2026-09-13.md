@@ -59,6 +59,8 @@ not justify changing host firewall or Docker permissions during a read-only audi
   `{"status":"ok","worker":"20.210.93.220"}`.
 - Existing Wipter containers were preserved. No provider canary mutation was
   performed in this verification pass.
+- PR #318 merged as `0145a023`; its CI passed test, Ruff, CodeQL, and strict
+  build gates before merge.
 
 ## Remaining live gates
 
