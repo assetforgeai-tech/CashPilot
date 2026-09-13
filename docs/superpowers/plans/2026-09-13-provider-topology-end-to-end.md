@@ -18,6 +18,23 @@
 - Account/provider ownership is released only by the existing explicit deletion policy.
 - Existing scheduler behavior and user-created files remain untouched.
 
+## Provider lane matrix
+
+The deployment planner must classify every provider before selecting capacity:
+
+| Class | Capacity authority | Egress rule | Failure action |
+| --- | --- | --- | --- |
+| Direct-only | route-ready public IPv4 slots, or a dedicated adapter for wallet/manual providers | bind the assigned public IPv4; never fall back to proxy | block the lane when the direct route is unhealthy |
+| Proxy-only | scoped eligible proxy pool | require one leased proxy and fail closed; never fall back to direct | rotate only the affected proxy lane |
+| Hybrid direct + proxy | independent direct-slot and eligible-proxy counts | create separate lanes; never multiply or substitute capacities | isolate failures per lane |
+
+Provider-specific exceptions remain explicit: EarnApp is proxy-only with
+account-sticky egress ownership and node-level restart policy; Pawns/IPRoyal is
+proxy-only with provider-private allocation and provider-local `ip_used` mask
+and replacement. A Pawns rejection must not consume, mask, or rotate another
+provider's allocation. EarnApp offline/usage-stalled/banned actions must not be
+applied to generic providers.
+
 ### Task 1: Lane contract and independent capacity
 
 **Files:** `app/provider_runtime.py`, `app/provider_topology.py`, `app/main.py`; tests in `tests/test_provider_topology.py`, `tests/test_provider_topology_api.py`.
