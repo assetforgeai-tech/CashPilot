@@ -34,6 +34,22 @@ Read-only SSH inspection. No provider/container mutation. Azure CLI was not used
 - Current local release-pin tests cannot resolve fork ref `1.45`; this is
   release-ref environment drift, not a topology failure.
 
+## 2026-09-13 release and redeploy
+
+- Release `v1.46.0` completed Tests, CodeQL, Lint, Catalog Check,
+  Documentation, and Auto Release successfully.
+- Both Azure workers were upgraded from `cashpilot-worker:1.45` to
+  `cashpilot-worker:1.46`, retaining existing worker data, slot volume, Docker
+  socket, and provider containers. Both report `running|healthy`, restart
+  policy `always`, and heartbeat HTTP 200. Worker image digest:
+  `sha256:1acceed5ffb9da86ea93fe30f5a2d8a4fc1ff59509e1b7d6691e4c934e1ed84e`.
+- The 4gmt server UI and worker were upgraded to `1.46`; both report
+  `running|healthy`. UI digest:
+  `sha256:be16aa7eea0e2c13e456196ac44dab83587e4c88b02eba1663160477695d7245`.
+  SQLite integrity returned `ok` before deployment completion.
+- No provider container was removed or recreated during the worker/server
+  upgrade.
+
 ## Remaining live gates
 
 - Fresh direct-only, proxy-only, and hybrid canaries on current release.
