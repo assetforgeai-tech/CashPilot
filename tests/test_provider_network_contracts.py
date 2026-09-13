@@ -248,6 +248,43 @@ def test_earnapp_provider_evidence_includes_observed_egress():
     }
 
 
+def test_earnapp_evidence_keeps_sidecar_controls_when_identity_probe_is_missing():
+    config = {
+        "dns": {
+            "servers": [
+                {"tag": "cf", "type": "https", "detour": "proxy-out"},
+                {"tag": "bootstrap", "type": "udp", "server": "1.1.1.1"},
+            ],
+            "rules": [{"domain": ["proxy.example"], "server": "bootstrap"}],
+            "strategy": "ipv4_only",
+        },
+        "inbounds": [{"type": "tun", "strict_route": True}],
+        "outbounds": [{"tag": "proxy-out"}],
+        "route": {
+            "rules": [{"port": 53, "action": "hijack-dns"}],
+            "final": "proxy-out",
+        },
+    }
+
+    class Main:
+        def exec_run(self, *_args, **_kwargs):
+            return type("Result", (), {"exit_code": 1, "output": b""})()
+
+    class Sidecar:
+        calls = 0
+
+        def exec_run(self, *_args, **_kwargs):
+            self.calls += 1
+            output = b"203.0.113.14\n" if self.calls == 1 else json.dumps(config).encode()
+            return type("Result", (), {"exit_code": 0, "output": output})()
+
+    evidence = orchestrator._provider_evidence("earnapp", Main(), probe_container=Sidecar())
+    assert evidence["probe_ok"] is True
+    assert evidence["observed_egress_ip"] == "203.0.113.14"
+    assert evidence["dns_via_proxy"] is True
+    assert evidence["direct_fallback_blocked"] is True
+
+
 def test_probe_service_egress_uses_container_namespace_sidecar(monkeypatch):
     class Main:
         status = "running"

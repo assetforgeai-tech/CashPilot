@@ -1696,12 +1696,15 @@ def _provider_evidence(slug: str, container: Any, *, probe_container: Any | None
                     'printf \'{"device_id":"%s","running":true}\n\' "$u"',
                 ]
             )
-            if getattr(result, "exit_code", 1) != 0:
-                return {"running": True, "online": False}
+            identity_ok = getattr(result, "exit_code", 1) == 0
             output = getattr(result, "output", b"") or b""
             text = output.decode("utf-8", errors="replace") if isinstance(output, bytes) else str(output)
-            evidence = json.loads(text)
+            try:
+                evidence = json.loads(text) if identity_ok else {}
+            except json.JSONDecodeError:
+                evidence = {}
             evidence = earnapp_runtime.redacted_evidence(evidence if isinstance(evidence, dict) else {})
+            evidence.setdefault("running", True)
             controls = container.exec_run(["sh", "-lc", "iptables-save 2>/dev/null; ip6tables-save 2>/dev/null"])
             code, raw = _exec_output(controls)
             if code == 0:
