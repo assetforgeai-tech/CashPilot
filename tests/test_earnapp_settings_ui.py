@@ -102,6 +102,18 @@ def test_settings_exposes_a_paypal_quick_link_before_long_sections():
     assert template.index('id="settings-quick-links"') < template.index('id="earnapp-account-pool"')
 
 
+def test_settings_quick_links_separate_provider_control_plane_sections():
+    template = SETTINGS.read_text(encoding="utf-8")
+    for anchor, label in (
+        ("#provider-account-pools", "Accounts"),
+        ("#earnapp-account-pool", "EarnApp input"),
+        ("#earnapp-runtime-settings", "Runtime"),
+        ("#earnapp-reconciliation", "Collector health"),
+    ):
+        assert f'href="{anchor}"' in template
+        assert label in template
+
+
 def test_settings_shows_read_only_earnapp_reconciliation():
     template = SETTINGS.read_text(encoding="utf-8")
     javascript = APP_JS.read_text(encoding="utf-8")

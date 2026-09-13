@@ -117,6 +117,8 @@ live-closed by this gate change.
 ## Operational contract
 
 - EarnApp runs in `proxy` mode only; one node owns one residential egress.
+- Pawns/IPRoyal uses a separate provider-private allocator; `ip_used` masks
+  and replaces only that provider's proxy.
 - NKN, Mysterium, and other protected provider identities are outside this
   lane and are never recreated as part of an EarnApp retry.
 - Ubuntu lifecycle, recovery, removal and proxy rotation use the dedicated

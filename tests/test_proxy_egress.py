@@ -121,6 +121,16 @@ def test_proxy_hostname_uses_direct_bootstrap_doh_without_looping_through_itself
     assert {"domain": ["proxy.example.com"], "server": "bootstrap"} in config["dns"]["rules"]
 
 
+def test_singbox_config_declares_default_domain_resolver():
+    from app.singbox_config import render_tun_proxy_config
+
+    config = render_tun_proxy_config(
+        {"host": "proxy.example.com", "port": 1080, "protocol": "socks5"},
+        worker_name="packetstream-proxy",
+    )
+    assert config["route"]["default_domain_resolver"] == "cf"
+
+
 def test_singbox_config_can_use_repocket_safe_tun_name():
     from app.singbox_config import render_tun_proxy_config
 
