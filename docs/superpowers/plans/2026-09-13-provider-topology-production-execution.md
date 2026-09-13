@@ -47,7 +47,7 @@
 
 - [ ] Add tests for direct-only no-lease, proxy-only scoped lease, hybrid direct/proxy isolation, and EarnApp sticky ownership.
 - [ ] Run focused tests and confirm failures for missing invariants.
-- [ ] Enforce lane/provider keys in lease queries and prevent direct-lane proxy assignment.
+- [x] Enforce the HTTP lease/release/rotate API to accept proxy lanes only; database lane isolation remains.
 - [ ] Ensure release closes runtime lease without deleting EarnApp ownership; account deletion explicitly removes ownership.
 - [ ] Run proxy/database tests; commit.
 
