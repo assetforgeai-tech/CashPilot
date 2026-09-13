@@ -69,11 +69,43 @@ def test_hybrid_direct_lane_does_not_require_proxy_sidecar():
                 "slug": "earnfm",
                 "status": "running",
                 "network_mode": "cashpilot-direct-ipv4-001",
+                "dns_via_proxy": False,
+                "ipv6_blocked": True,
+                "direct_fallback_blocked": True,
             }
         ],
         inventory_confirmed=True,
     )
     assert report["status"] == "pass"
+
+
+def test_active_direct_lane_requires_dns_ipv6_and_route_fallback_evidence():
+    report = audit_provider_network_inventory(
+        "earnfm",
+        instances=[
+            {
+                "instance_id": "earnfm-direct-w1-ipv4-001",
+                "mode": "direct",
+                "status": "running",
+                "public_ip": "198.51.100.1",
+            }
+        ],
+        containers=[
+            {
+                "instance_slug": "earnfm-direct-w1-ipv4-001",
+                "status": "running",
+                "network_mode": "cashpilot-direct-ipv4-001",
+                "actual_egress_ip": "198.51.100.1",
+            }
+        ],
+        inventory_confirmed=True,
+    )
+    assert report["status"] == "attention"
+    assert report["network_evidence"]["findings"] == [
+        "earnfm-direct-w1-ipv4-001: dns_isolation_unverified",
+        "earnfm-direct-w1-ipv4-001: ipv6_isolation_unverified",
+        "earnfm-direct-w1-ipv4-001: direct_fallback_unverified",
+    ]
 
 
 def test_direct_lane_flags_verified_egress_mismatch():

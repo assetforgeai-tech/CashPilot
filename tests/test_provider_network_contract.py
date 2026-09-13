@@ -50,3 +50,16 @@ def test_network_evidence_fails_closed_on_missing_or_leaking_controls():
     assert "dns_isolation_unverified" in result["findings"]
     assert "ipv6_not_blocked" in result["findings"]
     assert "udp_isolation_unverified" in result["findings"]
+
+
+def test_direct_lane_rejects_proxy_dns_and_unverified_route_fallback():
+    result = validate_provider_network_evidence(
+        mode="direct",
+        dns_via_proxy=True,
+        ipv6_blocked=None,
+        udp_blocked=None,
+        direct_fallback_blocked=None,
+    )
+    assert result["status"] == "attention"
+    assert "direct_dns_not_native" in result["findings"]
+    assert "direct_fallback_unverified" in result["findings"]

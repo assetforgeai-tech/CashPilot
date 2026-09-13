@@ -20,7 +20,13 @@ def validate_provider_network_evidence(
 ) -> dict[str, Any]:
     """Validate leak controls without treating missing evidence as safe."""
     findings: list[str] = []
-    if dns_via_proxy is None:
+    selected = str(mode or "").strip().lower()
+    if selected == "direct":
+        if dns_via_proxy is None:
+            findings.append("dns_isolation_unverified")
+        elif dns_via_proxy is True:
+            findings.append("direct_dns_not_native")
+    elif dns_via_proxy is None:
         findings.append("dns_isolation_unverified")
     elif dns_via_proxy is False:
         findings.append("dns_leak_detected")
@@ -28,7 +34,11 @@ def validate_provider_network_evidence(
         findings.append("ipv6_isolation_unverified")
     elif ipv6_blocked is False:
         findings.append("ipv6_not_blocked")
-    if str(mode or "").strip().lower() == "proxy":
+    if selected == "direct" and direct_fallback_blocked is None:
+        findings.append("direct_fallback_unverified")
+    elif selected == "direct" and direct_fallback_blocked is False:
+        findings.append("direct_fallback_detected")
+    if selected == "proxy":
         if udp_blocked is None:
             findings.append("udp_isolation_unverified")
         elif udp_blocked is False:
@@ -126,6 +136,21 @@ def audit_provider_network_inventory(
                 observed_egress_ip=actual,
             )
             findings.extend(f"{instance_id}: {item}" for item in evidence["findings"])
+        if str(instance.get("status") or "").strip().lower() in {"active", "running", "deployed"}:
+            network = validate_provider_network_evidence(
+                mode="direct",
+                dns_via_proxy=instance.get("dns_via_proxy")
+                if "dns_via_proxy" in instance
+                else (container or {}).get("dns_via_proxy"),
+                ipv6_blocked=instance.get("ipv6_blocked")
+                if "ipv6_blocked" in instance
+                else (container or {}).get("ipv6_blocked"),
+                udp_blocked=None,
+                direct_fallback_blocked=instance.get("direct_fallback_blocked")
+                if "direct_fallback_blocked" in instance
+                else (container or {}).get("direct_fallback_blocked"),
+            )
+            network_findings.extend(f"{instance_id}: {item}" for item in network["findings"])
     proxy_instances = [
         item
         for item in instances
@@ -141,10 +166,14 @@ def audit_provider_network_inventory(
         elif runtime.modes != ("proxy",):
             return {
                 "provider": slug,
-                "status": "attention" if findings else "pass",
+                "status": "attention" if findings or network_findings else "pass",
                 "missing_sidecar": [],
                 "untracked": [],
-                "findings": findings,
+                "findings": findings + network_findings,
+                "network_evidence": {
+                    "status": "attention" if network_findings else "pass",
+                    "findings": network_findings,
+                },
             }
     if not proxy_instances:
         return {"provider": slug, "status": "not_applicable", "missing_sidecar": [], "untracked": [], "findings": []}

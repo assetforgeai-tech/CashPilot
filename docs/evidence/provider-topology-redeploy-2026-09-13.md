@@ -30,3 +30,13 @@ Health endpoint returned `status=ok` on both Azure workers after redeploy. Exist
 - Hybrid lifecycle dispatch requires an explicit lane; ambiguous provider-level signals observe only.
 - Catalog/topology responses expose slot binding, health signal sources, and concrete proxy UDP/DoH/DoT defaults.
 - PR #320 merged; PR #321 carries the follow-up contract changes and is awaiting CI.
+
+## Read-only runtime preflight
+
+- Server UI and worker containers report `healthy` on `1.44`.
+- East Asia worker reports one preserved direct provider container with `restart=always` and a dedicated `cashpilot-direct-ipv4-001` bridge.
+- Japan East worker reports a healthy worker and no provider mutation was performed.
+- The server's Wipter runtime uses a dedicated egress container namespace and `restart=always`.
+- Worker-local Docker DNS/route inspection was collected without exposing credentials.
+
+These observations prove service/runtime availability only; they do not replace owner-authorized provider plans or lane-specific egress probes.
