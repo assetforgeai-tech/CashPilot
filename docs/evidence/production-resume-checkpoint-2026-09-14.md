@@ -14,7 +14,21 @@
 - EarnApp contract suite: `208 passed, 2 skipped`.
 - Provider rotation focused suite: `4 passed`.
 - Ruff and `git diff --check`: passed.
-- No live node was deleted, recreated, rotated, or redeployed.
+- No live provider node was deleted, recreated, rotated, or redeployed.
+- Release `v1.50.11` was published after PR #358. The five worker compose files
+  initially pinned `cashpilot-worker:1.50.10`. The compose references were
+  updated in place, then each worker was pulled and recreated sequentially.
+  All five now run `v1.50.11`, are healthy, and retain their existing restart
+  policies. Provider containers and data volumes were not touched.
+- Post-rollout verification: server, test-US, test-Sing, East Asia, and Japan
+  East all report `cashpilot-worker:1.50.11`, `healthy`, restart count `0`, and
+  their pre-existing restart policy (`unless-stopped` on server, `always` on
+  workers).
+- Test-Sing legacy Ubuntu inspection is conclusive: the old bridge runtime is
+  `cashpilot/earnapp-ubuntu:asset-d4bb6a003d0f`, has no sidecar, has
+  `OUTPUT ACCEPT`, and exposes public resolvers in `/etc/resolv.conf`. Its
+  identity volume remains attached. This is a controlled remediation blocker,
+  not a reason to mutate it blindly.
 
 ## Findings still open
 
