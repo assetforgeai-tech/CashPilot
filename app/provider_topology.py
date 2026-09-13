@@ -53,16 +53,12 @@ def topology_contract(provider_slug: str) -> dict[str, Any]:
         },
         "network_contract": {lane: runtime.network_contract_for(lane) for lane in lanes},
         "hybrid_cardinality": (
-            "one_node_per_public_ipv4_per_lane"
-            if len(lanes) == 2 and runtime.topology.startswith("slot_")
-            else None
+            "one_node_per_public_ipv4_per_lane" if len(lanes) == 2 and runtime.topology.startswith("slot_") else None
         ),
         "total_desired_formula": (
             "public_ipv4_count * lane_count" if len(lanes) == 2 and runtime.topology.startswith("slot_") else None
         ),
-        "slot_binding": {
-            lane: ("bind_public_ipv4_slot" if lane == "direct" else "cardinality_only") for lane in lanes
-        },
+        "slot_binding": {lane: ("bind_public_ipv4_slot" if lane == "direct" else "cardinality_only") for lane in lanes},
         "health_signals": {
             "worker": "worker_heartbeat",
             "runtime": "node_inventory",
