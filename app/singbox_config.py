@@ -22,6 +22,9 @@ def render_tun_proxy_config(
     }
     if outbound_type == "socks":
         outbound["version"] = "5"
+    # Resolve the proxy endpoint with the bootstrap resolver; otherwise the
+    # proxy transport asks the tunneled resolver to resolve itself.
+    outbound["domain_resolver"] = "bootstrap"
     if proxy.get("username"):
         outbound["username"] = proxy["username"]
     if proxy.get("password"):
@@ -50,13 +53,10 @@ def render_tun_proxy_config(
                 },
                 {
                     "tag": "bootstrap",
-                    # Resolve the proxy endpoint before the tunneled DoH
-                    # resolver is reachable; this bootstrap is the only
-                    # direct DNS path and is limited to UDP/53.
+                    # Resolve only the proxy endpoint before the tunneled DoH
+                    # resolver is reachable; this is the only direct DNS path.
                     "type": "udp",
                     "server": "1.1.1.1",
-                    "server_port": 53,
-                    "detour": "direct",
                 },
             ],
             "rules": [{"domain": [proxy["host"]], "server": "bootstrap"}],
