@@ -1721,6 +1721,12 @@ class EarnAppDockerNodeCasSpec(BaseModel):
     device_id: str = Field(pattern=r"^sdk-(?:mac|ios|node)-[0-9a-f]{32}$")
 
 
+class EarnAppUbuntuMigrationSpec(BaseModel):
+    generation: int = Field(ge=1)
+    device_id: str = Field(pattern=r"^sdk-node-[0-9a-f]{32}$")
+    expected_egress_ip: str = Field(min_length=7, max_length=45)
+
+
 class EarnAppProxyApplySpec(BaseModel):
     generation: int = Field(ge=1)
     device_id: str = Field(min_length=8, max_length=128)
@@ -2984,6 +2990,37 @@ async def api_restart_earnapp_docker_node(
     state.update(runtime_status="running", container_id=container_id)
     _save_earnapp_state(slug, state)
     return {"status": "restarted", "container_id": container_id}
+
+
+@app.post("/api/earnapp/docker-nodes/{slug}/migrate-ubuntu")
+async def api_migrate_earnapp_ubuntu(
+    request: Request,
+    slug: str,
+    spec: EarnAppUbuntuMigrationSpec,
+) -> dict[str, Any]:
+    """CAS-scoped replacement of one legacy Ubuntu runtime; never links or mutates DB leases."""
+    _verify_api_key(request)
+    state = _earnapp_node_state(slug)
+    if str(state.get("platform") or "").strip().lower() not in {"ubuntu", "linux"}:
+        raise HTTPException(status_code=409, detail="EarnApp migration requires an Ubuntu node")
+    expected = (int(state.get("generation") or 0), str(state.get("device_id") or ""))
+    if expected != (spec.generation, spec.device_id):
+        raise HTTPException(status_code=409, detail="EarnApp node assignment conflict")
+    assigned_egress = str(state.get("expected_egress_ip") or "").strip()
+    if assigned_egress and assigned_egress != spec.expected_egress_ip:
+        raise HTTPException(status_code=409, detail="EarnApp node egress assignment conflict")
+    _reject_earnapp_runtime_mutation(slug, platform="linux", runtime_backend="docker")
+    try:
+        container_id = await asyncio.to_thread(
+            orchestrator.migrate_legacy_earnapp_ubuntu,
+            slug,
+            expected_egress_ip=spec.expected_egress_ip,
+        )
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    state.update(container_id=container_id, runtime_status="running")
+    _save_earnapp_state(slug, state)
+    return {"status": "migrated", "container_id": container_id, "logical_node_id": slug}
 
 
 @app.post("/api/earnapp/nodes/{logical_node_id}/proxy/apply")

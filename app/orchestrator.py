@@ -664,6 +664,114 @@ def _read_earnapp_expected_egress(main: Any) -> str:
     return output.decode("utf-8", errors="ignore").strip()
 
 
+def _probe_earnapp_ubuntu_network(container: Any) -> dict[str, bool]:
+    """Read-only proof that the Ubuntu runtime is fail-closed before commit."""
+    result = container.exec_run(
+        ["/bin/sh", "-lc", "iptables-save 2>/dev/null; ip6tables-save 2>/dev/null; cat /etc/resolv.conf 2>/dev/null"]
+    )
+    exit_code, output = _exec_output(result)
+    if exit_code != 0:
+        return {"fail_closed": False, "dns_local": False}
+    text = output.decode("utf-8", errors="replace")
+    lines = text.splitlines()
+    out = [line for line in lines if "CP_EARNAPP_OUT" in line]
+    out6 = [line for line in lines if "CP_EARNAPP6_OUT" in line]
+    dns = [line for line in lines if "CP_EARNAPP_DNS" in line]
+    dns_local = any(line.strip() == "nameserver 127.0.0.1" for line in lines)
+    fail_closed = (
+        any(line.rstrip().endswith("-j DROP") for line in out)
+        and any(line.rstrip().endswith("-j DROP") for line in out6)
+        and any("--dport 53" in line and "REDIRECT" in line for line in dns)
+    )
+    return {"fail_closed": fail_closed, "dns_local": dns_local}
+
+
+def migrate_legacy_earnapp_ubuntu(slug: str, *, expected_egress_ip: str) -> str:
+    """Replace one legacy Ubuntu EarnApp container without changing identity state."""
+    if not re.fullmatch(r"earnapp-[a-z0-9][a-z0-9-]{1,112}", str(slug or "")):
+        raise ValueError("invalid EarnApp Docker runtime id")
+    expected = str(expected_egress_ip or "").strip()
+    try:
+        ipaddress.ip_address(expected)
+    except ValueError as exc:
+        raise ValueError("EarnApp migration requires an expected egress IP") from exc
+    client = _get_client()
+    main = _find_earnapp_runtime_container(client, slug, sidecar=False)
+    if main is None or _find_earnapp_runtime_container(client, slug, sidecar=True) is not None:
+        raise RuntimeError("EarnApp Ubuntu migration requires one main-only runtime")
+    attrs = getattr(main, "attrs", {}) or {}
+    config, host = attrs.get("Config") or {}, attrs.get("HostConfig") or {}
+    labels = dict(config.get("Labels") or getattr(main, "labels", {}) or {})
+    if labels.get("cashpilot.provider") != "earnapp" or labels.get("cashpilot.earnapp.platform") != "linux":
+        raise RuntimeError("runtime is not a legacy EarnApp Ubuntu container")
+    mounts = _docker_volumes(attrs.get("Mounts"))
+    identity = [
+        name for name, mount in mounts.items() if mount.get("bind") == "/etc/earnapp" and not name.startswith("/")
+    ]
+    if len(identity) != 1:
+        raise RuntimeError("legacy EarnApp Ubuntu identity volume is not a single named volume")
+    env = _docker_environment(config.get("Env"))
+    recorded = str(env.get("EARNAPP_EXPECTED_EGRESS_IP") or "").strip()
+    if recorded and recorded != expected:
+        raise RuntimeError("legacy EarnApp Ubuntu egress does not match the assigned proxy")
+    env["EARNAPP_EXPECTED_EGRESS_IP"] = expected
+    env["NODE_TLS_REJECT_UNAUTHORIZED"] = "1"
+    image_obj = client.images.get(earnapp_runtime.UBUNTU_RUNTIME_IMAGE)
+    earnapp_runtime.validate_image_labels(
+        ((getattr(image_obj, "attrs", {}) or {}).get("Config") or {}).get("Labels") or {}, "ubuntu"
+    )
+    name = str(getattr(main, "name", "") or _container_name(slug)).lstrip("/")
+    backup = f"{name}-cashpilot-legacy-{secrets.token_hex(4)}"
+    main.stop(timeout=30)
+    main.rename(backup)
+    replacement = None
+    try:
+        kwargs = {
+            "image": earnapp_runtime.UBUNTU_RUNTIME_IMAGE,
+            "name": name,
+            "environment": env,
+            "volumes": mounts,
+            "network_mode": str(host.get("NetworkMode") or "bridge"),
+            "labels": labels,
+            "command": config.get("Cmd") or None,
+            "entrypoint": config.get("Entrypoint") or None,
+            "user": str(config.get("User") or "") or None,
+            "working_dir": str(config.get("WorkingDir") or "") or None,
+            "restart_policy": dict(host.get("RestartPolicy") or {"Name": "always"}),
+            "cap_drop": list(host.get("CapDrop") or []),
+            "cap_add": list(host.get("CapAdd") or []),
+            "security_opt": list(host.get("SecurityOpt") or []),
+            "pids_limit": host.get("PidsLimit"),
+            "mem_limit": host.get("Memory") or None,
+            "mem_reservation": host.get("MemoryReservation") or None,
+            "nano_cpus": host.get("NanoCpus") or None,
+            "oom_score_adj": host.get("OomScoreAdj"),
+        }
+        replacement = client.containers.create(**{k: v for k, v in kwargs.items() if v not in (None, [], {})})
+        replacement.start()
+        with contextlib.suppress(Exception):
+            replacement.reload()
+        if str(getattr(replacement, "status", "") or "").lower() != "running":
+            raise RuntimeError("replacement container did not start")
+        evidence = _probe_earnapp_ubuntu_network(replacement)
+        egress = probe_service_egress(slug)
+        if not evidence.get("fail_closed") or not evidence.get("dns_local"):
+            raise RuntimeError("replacement network evidence failed")
+        if egress.get("observed_egress_ip") != expected or egress.get("probe_ok") is not True:
+            raise RuntimeError("replacement egress evidence failed")
+    except Exception:
+        if replacement is not None:
+            with contextlib.suppress(Exception):
+                replacement.remove(force=True)
+        with contextlib.suppress(Exception):
+            main.rename(name)
+        with contextlib.suppress(Exception):
+            main.start()
+        raise
+    main.remove(force=True)
+    return str(getattr(replacement, "id", "") or "")
+
+
 def _exec_output(result: Any) -> tuple[int, bytes]:
     exit_code = int(getattr(result, "exit_code", result[0] if isinstance(result, tuple) else 1))
     output = getattr(result, "output", result[1] if isinstance(result, tuple) and len(result) > 1 else b"")
