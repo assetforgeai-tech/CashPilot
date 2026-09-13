@@ -10638,14 +10638,11 @@ async def rotate_provider_proxy_lease(
             if slug == "earnapp":
                 qualified = await (
                     await db.execute(
-                        """
-                        SELECT 1 FROM proxy_probe_results
-                        WHERE proxy_id = ? AND profile = 'earnapp_wss'
-                          AND verdict = 'CID_SET' AND eligibility = 'eligible'
-                          AND trim(coalesce(exit_ip, '')) = ?
-                          AND id = (SELECT MAX(id) FROM proxy_probe_results WHERE proxy_id = ? AND profile = 'earnapp_wss')
+                        f"""
+                        SELECT 1 FROM proxy_endpoints pe
+                        WHERE pe.id = ? AND {_earnapp_proxy_eligible_sql('pe')}
                         """,
-                        (int(new_proxy_id), new_exit, int(new_proxy_id)),
+                        (int(new_proxy_id),),
                     )
                 ).fetchone()
                 if not qualified:
