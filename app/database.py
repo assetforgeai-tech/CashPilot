@@ -10669,8 +10669,7 @@ async def rotate_provider_proxy_lease(
                     return False
                 account = await (
                     await db.execute(
-                        "SELECT account_id FROM earnapp_logical_nodes "
-                        "WHERE logical_node_id = ? AND state != 'RETIRED'",
+                        "SELECT account_id FROM earnapp_logical_nodes WHERE logical_node_id = ? AND state != 'RETIRED'",
                         (instance,),
                     )
                 ).fetchone()

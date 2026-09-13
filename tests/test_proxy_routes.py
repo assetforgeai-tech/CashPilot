@@ -4029,8 +4029,15 @@ def test_earnapp_rotation_rejects_egress_owned_by_another_account(tmp_path):
             )
             for proxy_id, exit_ip in zip(proxy_ids, ("8.8.8.8", "9.9.9.9"), strict=True):
                 await database.save_proxy_probe_result(
-                    proxy_id, profile="generic", probe_status="alive", verdict="ALIVE", eligibility="eligible",
-                    reason="", exit_ip=exit_ip, latency_ms=10, probe_version="test",
+                    proxy_id,
+                    profile="generic",
+                    probe_status="alive",
+                    verdict="ALIVE",
+                    eligibility="eligible",
+                    reason="",
+                    exit_ip=exit_ip,
+                    latency_ms=10,
+                    probe_version="test",
                 )
                 await database.update_proxy_endpoint_intelligence(
                     proxy_id,
@@ -4073,9 +4080,7 @@ def test_earnapp_rotation_rejects_egress_owned_by_another_account(tmp_path):
             lease = await database.get_active_provider_proxy_lease("earnapp", worker_id, "earnapp-rotate-a")
             assert lease and int(lease["proxy_id"]) == proxy_ids[0]
             owner = await (
-                await db.execute(
-                    "SELECT account_id FROM earnapp_account_egress_ownership WHERE egress_ip = '9.9.9.9'"
-                )
+                await db.execute("SELECT account_id FROM earnapp_account_egress_ownership WHERE egress_ip = '9.9.9.9'")
             ).fetchone()
             assert int(owner["account_id"]) == other_account_id
             assert account_id != other_account_id
@@ -4108,8 +4113,15 @@ def test_earnapp_rotation_records_new_egress_ownership(tmp_path):
             )
             for proxy_id, exit_ip in zip(proxy_ids, ("8.8.8.8", "9.9.9.9"), strict=True):
                 await database.save_proxy_probe_result(
-                    proxy_id, profile="generic", probe_status="alive", verdict="ALIVE", eligibility="eligible",
-                    reason="", exit_ip=exit_ip, latency_ms=10, probe_version="test",
+                    proxy_id,
+                    profile="generic",
+                    probe_status="alive",
+                    verdict="ALIVE",
+                    eligibility="eligible",
+                    reason="",
+                    exit_ip=exit_ip,
+                    latency_ms=10,
+                    probe_version="test",
                 )
                 await database.update_proxy_endpoint_intelligence(
                     proxy_id,
