@@ -7200,6 +7200,26 @@ async def get_provider_proxy_capacity(
             )
             params.append(provider_slug)
         scoped = " AND ".join(scope)
+        sticky_exclusion = (
+            """
+                           AND NOT EXISTS (
+                               SELECT 1 FROM earnapp_account_egress_ownership sticky
+                               WHERE sticky.egress_ip = pe.exit_ip
+                           )
+        """
+            if provider_slug == "earnapp"
+            else ""
+        )
+        sticky_owned = (
+            """
+                       COUNT(DISTINCT CASE WHEN EXISTS (
+                               SELECT 1 FROM earnapp_account_egress_ownership sticky
+                               WHERE sticky.egress_ip = pe.exit_ip
+                           ) THEN pe.exit_ip END)
+        """
+            if provider_slug == "earnapp"
+            else "0"
+        )
         cursor = await db.execute(
             f"""
                 SELECT p.id AS provider_id, p.name AS provider_name, p.type AS provider_slug,
@@ -7207,10 +7227,7 @@ async def get_provider_proxy_capacity(
                        COUNT(DISTINCT CASE WHEN {scoped}
                            THEN pe.exit_ip END) AS eligible,
                        COUNT(DISTINCT CASE WHEN {scoped}
-                           AND NOT EXISTS (
-                               SELECT 1 FROM earnapp_account_egress_ownership sticky
-                               WHERE sticky.egress_ip = pe.exit_ip
-                           )
+                           {sticky_exclusion}
                            AND NOT EXISTS (
                                SELECT 1 FROM provider_proxy_leases l
                                WHERE l.released_at IS NULL
@@ -7221,10 +7238,7 @@ async def get_provider_proxy_capacity(
                                WHERE l.released_at IS NULL
                                  AND (l.proxy_id = pe.id OR l.exit_ip = pe.exit_ip)
                            ) THEN pe.exit_ip END) AS leased
-                       ,COUNT(DISTINCT CASE WHEN EXISTS (
-                               SELECT 1 FROM earnapp_account_egress_ownership sticky
-                               WHERE sticky.egress_ip = pe.exit_ip
-                           ) THEN pe.exit_ip END) AS sticky_owned
+                       ,{sticky_owned} AS sticky_owned
                        ,COUNT(DISTINCT CASE WHEN coalesce(pe.duplicate_egress, 0) != 0
                            THEN pe.exit_ip END) AS duplicate_egress
                 FROM proxy_providers p
