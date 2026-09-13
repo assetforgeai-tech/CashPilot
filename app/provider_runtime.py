@@ -52,6 +52,9 @@ class ProviderRuntime:
         ("fail_closed", True),
     )
     banned_action: str = "recreate"
+    node_health_policy: bool = False
+    proxy_allocation_policy: str = "provider_scoped"
+    proxy_rejection_action: str = "rotate"
 
     @property
     def default_mode(self) -> str:
@@ -89,9 +92,9 @@ class ProviderRuntime:
         if event == "proxy_unhealthy":
             return "rotate" if selected == "proxy" else "observe"
         if event in {"offline", "usage_stalled"}:
-            return "restart"
+            return "restart" if self.node_health_policy else "observe"
         if event == "banned":
-            return self.banned_action
+            return self.banned_action if self.node_health_policy else "observe"
         return "observe"
 
     @property
@@ -126,9 +129,18 @@ PROVIDERS: dict[str, ProviderRuntime] = {
         auth_scope="account",
         account_sharing="exclusive_account",
         banned_action="restart",
+        node_health_policy=True,
     ),
     "iproyal": ProviderRuntime(
-        "iproyal", "pawns.py", "pawns.py", ("proxy",), "earnings", rotation_scope="instance", topology="slot_proxy"
+        "iproyal",
+        "pawns.py",
+        "pawns.py",
+        ("proxy",),
+        "earnings",
+        rotation_scope="instance",
+        topology="slot_proxy",
+        proxy_allocation_policy="provider_private",
+        proxy_rejection_action="mask_and_replace",
     ),
     "mysterium": ProviderRuntime(
         "mysterium",
@@ -351,19 +363,22 @@ def catalog_runtime(slug: str) -> dict[str, object]:
         "direct_fallback": False,
         "proxy_fallback": False,
         "lifecycle_actions": {
-            "offline": "restart",
-            "banned": "restart" if provider.slug == "earnapp" else "recreate",
+            "offline": provider.lifecycle_action(provider.modes[0], "offline"),
+            "usage_stalled": provider.lifecycle_action(provider.modes[0], "usage_stalled"),
+            "banned": provider.lifecycle_action(provider.modes[0], "banned"),
             "proxy_unhealthy": "rotate" if "proxy" in provider.modes else "observe",
         },
         "lane_lifecycle": {
             "direct": {
-                "offline": "restart",
-                "banned": "restart" if provider.slug == "earnapp" else "recreate",
+                "offline": provider.lifecycle_action("direct", "offline"),
+                "usage_stalled": provider.lifecycle_action("direct", "usage_stalled"),
+                "banned": provider.lifecycle_action("direct", "banned"),
                 "proxy_unhealthy": "observe",
             },
             "proxy": {
-                "offline": "restart",
-                "banned": "restart" if provider.slug == "earnapp" else "recreate",
+                "offline": provider.lifecycle_action("proxy", "offline"),
+                "usage_stalled": provider.lifecycle_action("proxy", "usage_stalled"),
+                "banned": provider.lifecycle_action("proxy", "banned"),
                 "proxy_unhealthy": "rotate",
             },
         },
@@ -371,6 +386,8 @@ def catalog_runtime(slug: str) -> dict[str, object]:
         "collector_source": provider.collector_file,
         "auth_scope": provider.auth_scope,
         "account_sharing": provider.account_sharing,
+        "proxy_allocation_policy": provider.proxy_allocation_policy,
+        "proxy_rejection_action": provider.proxy_rejection_action,
         "heartbeat": {
             "interval_seconds": provider.heartbeat_interval_seconds,
             "timeout_seconds": provider.heartbeat_timeout_seconds,
@@ -385,7 +402,9 @@ def catalog_runtime(slug: str) -> dict[str, object]:
         "total_desired_formula": (
             "public_ipv4_count * lane_count" if len(lanes) == 2 and provider.topology.startswith("slot_") else None
         ),
-        "slot_binding": {lane: ("bind_public_ipv4_slot" if lane == "direct" else "cardinality_only") for lane in lanes},
+        "slot_binding": {
+            lane: ("bind_public_ipv4_slot" if lane == "direct" else "bind_capacity_slot") for lane in lanes
+        },
         "health_signals": {
             "worker": "worker_heartbeat",
             "runtime": "node_inventory",

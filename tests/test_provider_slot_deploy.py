@@ -105,6 +105,7 @@ async def test_proxy_slot_records_lane_lease_and_expected_egress(monkeypatch):
     assert spec["lane"] == "proxy"
     assert spec["proxy_lease_id"] == "41"
     assert spec["expected_egress_ip"] == "203.0.113.41"
+    assert spec["public_ipv4_slot"] == "ipv4-001"
     assert result["lanes"] == {
         "proxy": {"desired": 2, "running": 2, "failed": 0, "pending": 0, "free": 0, "blocked": 0},
     }

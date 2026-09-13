@@ -1130,6 +1130,7 @@ CREATE TABLE IF NOT EXISTS provider_proxy_leases (
     worker_id      INTEGER NOT NULL,
     instance_id    TEXT    NOT NULL,
     lane           TEXT    NOT NULL DEFAULT 'proxy' CHECK(lane = 'proxy'),
+    capacity_slot  TEXT    NOT NULL DEFAULT '',
     proxy_id       INTEGER NOT NULL,
     exit_ip        TEXT    NOT NULL DEFAULT '',
     leased_at      TEXT    NOT NULL DEFAULT (datetime('now')),
@@ -3160,6 +3161,16 @@ async def init_db() -> None:
         if "lane" not in provider_lease_cols:
             applied.append("provider_proxy_leases.lane")
             await db.execute("ALTER TABLE provider_proxy_leases ADD COLUMN lane TEXT NOT NULL DEFAULT 'proxy'")
+        if "capacity_slot" not in provider_lease_cols:
+            applied.append("provider_proxy_leases.capacity_slot")
+            await db.execute("ALTER TABLE provider_proxy_leases ADD COLUMN capacity_slot TEXT NOT NULL DEFAULT ''")
+        await db.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_proxy_leases_active_capacity_slot
+            ON provider_proxy_leases(provider_slug, worker_id, capacity_slot)
+            WHERE released_at IS NULL AND trim(capacity_slot) != ''
+            """
+        )
         cursor = await db.execute("PRAGMA table_info(proxy_assignments)")
         proxy_assignment_cols = {row["name"] for row in await cursor.fetchall()}
         if "assignment_version" not in proxy_assignment_cols:
@@ -10222,6 +10233,7 @@ async def lease_proxy_for_provider_instance(
     country_code: str = "",
     exclude_country_code: str = "",
     required_ip_type: str = "",
+    capacity_slot: str = "",
 ) -> dict[str, Any] | None:
     """Lease one canonical egress to a provider instance without touching legacy assignments."""
     slug = str(provider_slug or "").strip().lower()
@@ -10260,7 +10272,7 @@ async def lease_proxy_for_provider_instance(
                     earnapp_account_id = int(account_row["account_id"] or 0)
             cursor = await db.execute(
                 """
-                SELECT leases.proxy_id, leases.exit_ip, leases.lane, pe.endpoint, pe.host, pe.port, pe.protocol,
+                SELECT leases.proxy_id, leases.exit_ip, leases.lane, leases.capacity_slot, pe.endpoint, pe.host, pe.port, pe.protocol,
                        pe.username, pe.password_enc, pe.location, pe.ip_type, pe.country_code, pe.country_name
                 FROM provider_proxy_leases leases
                 JOIN proxy_endpoints pe ON pe.id = leases.proxy_id
@@ -10287,6 +10299,23 @@ async def lease_proxy_for_provider_instance(
                         await db.rollback()
                         return None
                 await db.commit()
+                requested_slot = str(capacity_slot or "").strip()
+                if requested_slot and not str(current["capacity_slot"] or "").strip():
+                    try:
+                        await db.execute(
+                            """
+                            UPDATE provider_proxy_leases
+                            SET capacity_slot = ?
+                            WHERE provider_slug = ? AND worker_id = ? AND instance_id = ?
+                              AND released_at IS NULL AND trim(coalesce(capacity_slot, '')) = ''
+                            """,
+                            (requested_slot, slug, int(worker_id), instance),
+                        )
+                        await db.commit()
+                        current = dict(current)
+                        current["capacity_slot"] = requested_slot
+                    except Exception:
+                        await db.rollback()
                 data = dict(current)
                 encrypted = data.pop("password_enc", "") or ""
                 if encrypted:
@@ -10407,6 +10436,21 @@ async def lease_proxy_for_provider_instance(
             if not row:
                 await db.rollback()
                 return None
+            if str(capacity_slot or "").strip():
+                occupied_slot = await (
+                    await db.execute(
+                        """
+                        SELECT 1 FROM provider_proxy_leases
+                        WHERE provider_slug = ? AND worker_id = ? AND capacity_slot = ?
+                          AND released_at IS NULL
+                        LIMIT 1
+                        """,
+                        (slug, int(worker_id), str(capacity_slot).strip()),
+                    )
+                ).fetchone()
+                if occupied_slot:
+                    await db.rollback()
+                    return None
             data = dict(row)
             if slug == "earnapp" and earnapp_account_id > 0:
                 exit_ip = str(data.get("exit_ip") or "").strip()
@@ -10433,10 +10477,17 @@ async def lease_proxy_for_provider_instance(
             await db.execute(
                 """
                 INSERT INTO provider_proxy_leases
-                    (provider_slug, worker_id, instance_id, lane, proxy_id, exit_ip)
-                VALUES (?, ?, ?, 'proxy', ?, ?)
+                    (provider_slug, worker_id, instance_id, lane, capacity_slot, proxy_id, exit_ip)
+                VALUES (?, ?, ?, 'proxy', ?, ?, ?)
                 """,
-                (slug, int(worker_id), instance, int(data["proxy_id"]), str(data.get("exit_ip") or "")),
+                (
+                    slug,
+                    int(worker_id),
+                    instance,
+                    str(capacity_slot or "").strip(),
+                    int(data["proxy_id"]),
+                    str(data.get("exit_ip") or ""),
+                ),
             )
             await db.commit()
         except Exception:
@@ -10447,7 +10498,13 @@ async def lease_proxy_for_provider_instance(
     encrypted = data.pop("password_enc", "") or ""
     if encrypted:
         data["password"] = decrypt_value(encrypted)
-    data.update(provider_slug=slug, worker_id=int(worker_id), instance_id=instance, lane="proxy")
+    data.update(
+        provider_slug=slug,
+        worker_id=int(worker_id),
+        instance_id=instance,
+        lane="proxy",
+        capacity_slot=str(capacity_slot or "").strip(),
+    )
     return data
 
 

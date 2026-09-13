@@ -3177,6 +3177,7 @@ const CP = (() => {
       _detailWorkers = workers;
       if (title) title.textContent = svc.name;
       if (body) body.innerHTML = renderServiceDetail(svc, workers);
+      bindDetailTabs();
       // After the markup is in the DOM, not before: the container it fills is
       // created by the line above. Not awaited, so a slow earnings query never
       // holds up the rest of the modal.
@@ -3185,6 +3186,22 @@ const CP = (() => {
     } catch (err) {
       if (body) body.innerHTML = `<p class="empty-state-text">Could not load service: ${escapeHtml(err.message)}</p>`;
     }
+  }
+
+  function bindDetailTabs() {
+    const detail = document.getElementById('service-detail-body');
+    if (!detail) return;
+    const tabs = detail.querySelectorAll('[data-detail-tab]');
+    const panels = detail.querySelectorAll('[data-detail-panel]');
+    tabs.forEach(tab => tab.addEventListener('click', () => {
+      const selected = tab.dataset.detailTab;
+      tabs.forEach(item => {
+        const active = item === tab;
+        item.classList.toggle('active', active);
+        item.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+      panels.forEach(panel => { panel.hidden = panel.dataset.detailPanel !== selected; });
+    }));
   }
 
   function renderServiceDetail(svc, workers) {
@@ -3204,6 +3221,12 @@ const CP = (() => {
 
     // --- Info grid (no referral bonus) ---
     let html = `
+    <div class="detail-tabs" role="tablist" aria-label="Provider details">
+      <button id="detail-tab-input" type="button" class="tab-btn active" role="tab" data-detail-tab="input" aria-controls="detail-panel-input" aria-selected="true">Input</button>
+      <button id="detail-tab-runtime" type="button" class="tab-btn" role="tab" data-detail-tab="runtime" aria-controls="detail-panel-runtime" aria-selected="false">Runtime</button>
+      <button id="detail-tab-collector" type="button" class="tab-btn" role="tab" data-detail-tab="collector" aria-controls="detail-panel-collector" aria-selected="false">Collector</button>
+    </div>
+    <section id="detail-panel-input" data-detail-panel="input" role="tabpanel" aria-labelledby="detail-tab-input">
     <p style="color: var(--text-secondary); margin-bottom: 16px;">${escapeHtml(svc.description || svc.short_description || '')}</p>
     ${dedicatedDeploymentNotice(svc)}
     ${!deployment_allowed ? `<div class="manual-notice" role="status" style="margin-bottom:16px;"><strong>Runtime deployment disabled</strong><br>${escapeHtml(deployment_policy_message)}<br><span>Collector, historical data, and existing-node inspection remain available.</span></div>` : ''}
@@ -3307,6 +3330,11 @@ const CP = (() => {
       }
     }
 
+    html += `</section>
+      <section id="detail-panel-runtime" data-detail-panel="runtime" role="tabpanel" aria-labelledby="detail-tab-runtime" hidden>
+      <div class="detail-item"><div class="detail-label">Runtime policy</div>
+      <div class="detail-value">${escapeHtml(runtime.topology || 'provider runtime')} · ${escapeHtml(runtime.heartbeat_scope || 'worker')} heartbeat</div></div>`;
+
     // --- Container management (per worker) ---
     const onlineWorkers = (workers || []).filter(w => w.status === 'online');
     const instances = [];
@@ -3336,6 +3364,16 @@ const CP = (() => {
       }
       html += `</div>`;
     }
+
+    html += `</section>
+      <section id="detail-panel-collector" data-detail-panel="collector" role="tabpanel" aria-labelledby="detail-tab-collector" hidden>
+      <div class="detail-item"><div class="detail-label">Collector</div>
+      <div class="detail-value">${svc.has_collector ? 'Configured separately in Settings' : 'No collector for this provider'}</div>
+      ${svc.has_collector ? `<div style="display:flex; gap:8px; margin-top:12px;">
+        <button class="btn btn-ghost btn-sm" data-action="openCredentialModal" data-a1="${escapeHtml(svc.slug || '')}">Configure credentials</button>
+        <button class="btn btn-secondary btn-sm" data-action="collectServiceNow" data-a1="${escapeHtml(svc.slug || '')}">Collect now</button>
+      </div>` : ''}</div>
+      </section>`;
 
     return html;
   }

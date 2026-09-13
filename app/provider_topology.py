@@ -58,7 +58,9 @@ def topology_contract(provider_slug: str) -> dict[str, Any]:
         "total_desired_formula": (
             "public_ipv4_count * lane_count" if len(lanes) == 2 and runtime.topology.startswith("slot_") else None
         ),
-        "slot_binding": {lane: ("bind_public_ipv4_slot" if lane == "direct" else "cardinality_only") for lane in lanes},
+        "slot_binding": {
+            lane: ("bind_public_ipv4_slot" if lane == "direct" else "bind_capacity_slot") for lane in lanes
+        },
         "health_signals": {
             "worker": "worker_heartbeat",
             "runtime": "node_inventory",
@@ -120,6 +122,7 @@ class ProviderNodePlan:
     lane: str = ""
     topology: str = ""
     public_ip: str = ""
+    public_ipv4_slot: str = ""
     network: str = ""
     route_ready: bool = True
     capacity_slot: str = ""
@@ -232,6 +235,7 @@ def plan_provider_nodes(
                 "direct",
                 runtime.topology if runtime else "",
                 public_ip,
+                slot_id,
                 network,
                 route_ready,
                 slot_id,
@@ -240,6 +244,7 @@ def plan_provider_nodes(
             )
         )
     for proxy_index, (slot_id, public_ip, network, route_ready) in enumerate(proxy_slots, 1):
+        public_slot = slots[proxy_index - 1][0] if proxy_index <= len(slots) else ""
         proxy_plans.append(
             ProviderNodePlan(
                 int(worker_id),
@@ -249,6 +254,7 @@ def plan_provider_nodes(
                 "proxy",
                 runtime.topology if runtime else "",
                 public_ip,
+                public_slot,
                 network,
                 route_ready,
                 f"proxy-{proxy_index:03d}",

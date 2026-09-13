@@ -2,69 +2,41 @@
 
 ## Scope
 
-Worker checked from `vps-test-us.txt` on 2026-09-13. Commands used the existing
-worker container and Docker socket path; no container was created or removed.
+Read-only SSH inspection. No provider/container mutation. Azure CLI was not used.
 
-## Observed runtime
+## Historical network evidence
 
-- `cashpilot-worker`: healthy, `ghcr.io/assetforgeai-tech/cashpilot-worker:1.33.3`.
-- This worker is older than the released `v1.40.0`; the observation is therefore
-  useful for network shape only, not proof of the current production worker.
-- iOS EarnApp node: running, bridge network, proxy egress probe returned `116.98.229.8`.
-- macOS EarnApp node: running, bridge network, proxy egress probe returned `14.243.208.175`.
-- The two nodes had distinct observed egress addresses; no paired egress was observed.
-- Both containers reported `nameserver 127.0.0.1`.
-- Both containers had `CP_EARNAPP_OUT` with loopback/established-state allow rules,
-  one provider endpoint allow rule, then terminal `DROP`.
-- Both had `redsocks`, the EarnApp process, and the CashPilot DoH helper running.
-- IPv6 probe failed to connect; this is a negative observation, not a complete
-  IPv6 leak proof.
-- Follow-up inspection confirmed both containers have explicit `CP_EARNAPP6_OUT`
-  chains that allow loopback only, then drop non-loopback IPv6 output. This is
-  enforcement evidence, not a complete application-level IPv6 proof.
-- Both containers expose loopback DNS at `127.0.0.1:1053`; redsocks is running.
-- Egress remained distinct: iOS `116.98.229.8`, macOS `14.243.208.175`.
-- No mutation, restart, lease change, or container change occurred.
+- Existing iOS and macOS EarnApp proxy lanes had distinct IPv4 egresses:
+  `116.98.229.8` and `14.243.208.175`.
+- Both used loopback DNS, redsocks, DoH helper, explicit IPv6 drop chains, and
+  terminal output drops. IPv6 enforcement was observed, not treated as a full
+  application-level leak proof.
+- Earlier worker image was `1.33.3`, older than the then-current release; this
+  evidence did not prove production readiness.
 
-## Interpretation
+## 2026-09-13 Azure worker preflight
 
-This proves two active proxy lanes return different IPv4 egresses and have the
-expected in-container fail-closed shape. It does not prove direct-only routing,
-complete DNS/IPv6/UDP leak absence, or hybrid lane isolation. Those remain
-release gates until captured with a confirmed worker inventory and expected
-lease egress values.
+- East Asia runs healthy `cashpilot-worker:1.45`, one EarnFM direct lane, and
+  legacy NKN LXD instances.
+- Japan East runs healthy `cashpilot-worker:1.45`; no provider container was
+  visible in the inspected inventory.
+- Both hosts expose ten private NKN NAT source routes. These are not public
+  IPv4 slot evidence for provider planning.
+- Duplicate worker registrations exist per URL: East Asia `112494` offline /
+  `118903` online; Japan East `112444` offline / `118904` online.
+- Old registrations remain untouched. API/UI now annotate superseded rows and
+  count physical workers separately.
 
-## Additional preflight
+## Historical release evidence
 
-- SSH user `kalinh` cannot access `/var/run/docker.sock`; read-only commands required `sudo`.
-- VPS has one private `eth0` address (`10.0.0.4`) and Docker bridge networks only; no public IPv4 slot inventory was exposed by `ip -4 addr`.
-- Host `OUTPUT` policy is `ACCEPT`; this is not sufficient evidence for container lane isolation.
-- Docker server version: `29.1.3`.
-- Current worker image remains `1.33.3`, older than the released `v1.40.0`.
-
-These facts block direct-only and hybrid production claims on this VPS. They do
-not justify changing host firewall or Docker permissions during a read-only audit.
-
-## v1.42 redeploy verification
-
-- PR #317 merged as `e943d3b1`; release `v1.42.0` published successfully.
-- Server UI and co-located worker run `ghcr.io/assetforgeai-tech/cashpilot:1.42`
-  and `ghcr.io/assetforgeai-tech/cashpilot-worker:1.42`; both Docker health checks
-  are healthy after restart.
-- East Asia worker `20.187.79.110` runs
-  `ghcr.io/assetforgeai-tech/cashpilot-worker:1.42`; `/api/health` returned
-  `{"status":"ok","worker":"20.187.79.110"}`.
-- Japan East worker `20.210.93.220` runs
-  `ghcr.io/assetforgeai-tech/cashpilot-worker:1.42`; `/api/health` returned
-  `{"status":"ok","worker":"20.210.93.220"}`.
-- Existing Wipter containers were preserved. No provider canary mutation was
-  performed in this verification pass.
-- PR #318 merged as `0145a023`; its CI passed test, Ruff, CodeQL, and strict
-  build gates before merge.
+- PR #317 merged as `e943d3b1`; release `v1.42.0` published.
+- PR #318 merged as `0145a023`; CI passed the recorded gates.
+- Current local release-pin tests cannot resolve fork ref `1.45`; this is
+  release-ref environment drift, not a topology failure.
 
 ## Remaining live gates
 
-- Fresh direct-only, proxy-only, and hybrid canaries on `1.42`.
-- Confirmed owner-authenticated plan/deploy response for each lane.
-- Egress/lease/rotation/release and DNS/IPv6/UDP fail-closed evidence.
-- Browser verification of `ready`, `partial`, and `blocked` lane states.
+- Fresh direct-only, proxy-only, and hybrid canaries on current release.
+- Owner-authenticated plan/deploy response for each lane.
+- Live egress/lease/rotation/release and DNS/IPv6/UDP fail-closed evidence.
+- Browser verification of `ready`, `partial`, and `blocked` states.
