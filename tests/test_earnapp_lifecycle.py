@@ -478,6 +478,32 @@ async def test_scheduler_retires_locked_account_runtime_and_releases_its_proxy(m
 
 
 @pytest.mark.asyncio
+async def test_scheduler_skips_auth_failed_account_without_node_restart(monkeypatch):
+    node = {
+        "logical_node_id": "earnapp-auth-node",
+        "account_id": 470,
+        "assigned_worker_id": 3098,
+        "device_id": "sdk-node-auth",
+        "state": "ACTIVE",
+    }
+    monkeypatch.setattr(main.database, "list_earnapp_logical_nodes", AsyncMock(return_value=[node]))
+    monkeypatch.setattr(
+        main.database,
+        "list_earnapp_accounts",
+        AsyncMock(return_value=[{"id": 470, "state": "AUTH_FAILED"}]),
+    )
+    spec = AsyncMock(return_value={"earnapp_device_verification": {"online": False}})
+    monkeypatch.setattr(main.database, "get_provider_instance_spec", spec)
+    execute = AsyncMock(return_value=True)
+    monkeypatch.setattr(main, "_execute_earnapp_lifecycle_action", execute)
+
+    await main._run_earnapp_lifecycle_scheduler()
+
+    execute.assert_not_awaited()
+    spec.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_locked_account_cleanup_releases_after_local_ack_even_when_remote_delete_fails(monkeypatch):
     node = {
         "logical_node_id": "earnapp-locked-node",
