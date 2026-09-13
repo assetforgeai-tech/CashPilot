@@ -112,6 +112,25 @@ def test_hybrid_default_target_is_one_proxy_lane_per_direct_slot():
     ]
 
 
+def test_planner_drops_duplicate_public_ipv4_slots_before_counting_cardinality():
+    plans = plan_provider_nodes(
+        7,
+        "earnfm",
+        [
+            {"slot_id": "ipv4-001", "public_ip": "198.51.100.10", "route_ready": True},
+            {"slot_id": "ipv4-002", "public_ip": "198.51.100.10", "route_ready": True},
+            {"slot_id": "ipv4-003", "public_ip": "198.51.100.11", "route_ready": True},
+        ],
+        proxy_capacity=3,
+    )
+    assert [(plan.mode, plan.slot_id, plan.public_ip) for plan in plans] == [
+        ("direct", "ipv4-001", "198.51.100.10"),
+        ("direct", "ipv4-003", "198.51.100.11"),
+        ("proxy", "proxy-001", ""),
+        ("proxy", "proxy-002", ""),
+    ]
+
+
 def test_proxy_only_default_target_uses_bootstrap_slot_count():
     plans = plan_provider_nodes(7, "iproyal", ["ipv4-001", "ipv4-002"], mode="proxy", proxy_capacity=5)
     assert [plan.slot_id for plan in plans] == ["proxy-001", "proxy-002"]
@@ -367,6 +386,36 @@ def test_topology_contract_exposes_operational_policy():
     assert contract["account_sharing"] == "exclusive_account"
     assert contract["heartbeat"]["confirmations"] == 2
     assert contract["network_contract"]["proxy"]["fallback"] == "none"
+
+
+def test_topology_contract_makes_hybrid_cardinality_and_slot_binding_explicit():
+    contract = topology_contract("earnfm")
+    assert contract["hybrid_cardinality"] == "one_node_per_public_ipv4_per_lane"
+    assert contract["total_desired_formula"] == "public_ipv4_count * lane_count"
+    assert contract["slot_binding"] == {
+        "direct": "bind_public_ipv4_slot",
+        "proxy": "cardinality_only",
+    }
+
+
+def test_topology_contract_exposes_concrete_network_and_health_signals():
+    contract = topology_contract("earnfm")
+    assert contract["network_policy"]["proxy"] == {
+        "fallback": "none",
+        "dns": "tunneled",
+        "ipv6": "disabled_or_tunneled",
+        "udp": "blocked",
+        "doh": "blocked",
+        "dot": "blocked",
+        "fail_closed": True,
+    }
+    assert contract["health_signals"] == {
+        "worker": "worker_heartbeat",
+        "runtime": "node_inventory",
+        "provider": "provider_observation",
+        "proxy": "proxy_probe",
+        "auth": "account_or_provider_collector",
+    }
 
 
 @pytest.mark.parametrize(

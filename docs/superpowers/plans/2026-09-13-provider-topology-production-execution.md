@@ -79,6 +79,13 @@
 - [x] Implement response fields and warning copy without flattening lanes.
 - [x] Run focused API/frontend tests; commit.
 
+Additional topology invariants now enforced:
+
+- Duplicate public IPv4 addresses are discarded before cardinality is calculated.
+- Hybrid provider-level lifecycle signals return `observe`; lane-specific callers must use `decide_lane`.
+- Catalog and topology contracts expose hybrid cardinality, slot binding, health signal sources, and concrete DoH/DoT/UDP policy metadata.
+- Provider-level lifecycle dispatch refuses ambiguous hybrid signals; lane-specific dispatch is required.
+
 ### Task 5: Complete fail-closed network verification
 
 **Files:**
