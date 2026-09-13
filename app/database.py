@@ -10667,6 +10667,25 @@ async def rotate_provider_proxy_lease(
                 if not qualified:
                     await db.rollback()
                     return False
+                account = await (
+                    await db.execute(
+                        "SELECT account_id FROM earnapp_logical_nodes "
+                        "WHERE logical_node_id = ? AND state != 'RETIRED'",
+                        (instance,),
+                    )
+                ).fetchone()
+                if not account:
+                    await db.rollback()
+                    return False
+                owner = await (
+                    await db.execute(
+                        "SELECT account_id FROM earnapp_account_egress_ownership WHERE egress_ip = ?",
+                        (new_exit,),
+                    )
+                ).fetchone()
+                if owner and int(owner["account_id"] or 0) != int(account["account_id"] or 0):
+                    await db.rollback()
+                    return False
             occupied = await (
                 await db.execute(
                     "SELECT 1 FROM provider_proxy_leases WHERE released_at IS NULL "
@@ -10690,6 +10709,15 @@ async def rotate_provider_proxy_lease(
                 "WHERE worker_id=? AND instance_id=? AND mode='proxy' AND proxy_id=?",
                 (int(new_proxy_id), int(worker_id), instance, int(expected_proxy_id)),
             )
+            if slug == "earnapp" and str(new_exit).strip():
+                await db.execute(
+                    """
+                    INSERT INTO earnapp_account_egress_ownership (account_id, egress_ip, proxy_id)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(egress_ip) DO UPDATE SET proxy_id = excluded.proxy_id
+                    """,
+                    (int(account["account_id"]), new_exit, int(new_proxy_id)),
+                )
             await db.commit()
             return True
         except Exception:

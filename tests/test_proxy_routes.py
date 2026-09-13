@@ -3994,6 +3994,166 @@ def test_provider_instance_rotation_rejects_unqualified_earnapp_candidate(tmp_pa
     asyncio.run(run())
 
 
+def test_earnapp_rotation_rejects_egress_owned_by_another_account(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            account_id = await database.upsert_earnapp_account(
+                profile_key="profile-a",
+                account_name="a@example.com",
+                email="a@example.com",
+                auth_method="google",
+                credentials={"cookies": {"oauth-refresh-token": "refresh", "xsrf-token": "xsrf"}},
+                credential_keys=["oauth-refresh-token", "xsrf-token"],
+                token_expires_at=None,
+                cookie_expires_at=None,
+            )
+            other_account_id = await database.upsert_earnapp_account(
+                profile_key="profile-b",
+                account_name="b@example.com",
+                email="b@example.com",
+                auth_method="google",
+                credentials={"cookies": {"oauth-refresh-token": "refresh", "xsrf-token": "xsrf"}},
+                credential_keys=["oauth-refresh-token", "xsrf-token"],
+                token_expires_at=None,
+                cookie_expires_at=None,
+            )
+            await database.assign_earnapp_account("earnapp-rotate-a", platform="macos")
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            proxy_ids = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id,
+                [
+                    {"provider_proxy_id": "one", "host": "1.1.1.1", "port": 1000, "ip_type": "residential"},
+                    {"provider_proxy_id": "two", "host": "2.2.2.2", "port": 1000, "ip_type": "residential"},
+                ],
+            )
+            for proxy_id, exit_ip in zip(proxy_ids, ("8.8.8.8", "9.9.9.9"), strict=True):
+                await database.save_proxy_probe_result(
+                    proxy_id, profile="generic", probe_status="alive", verdict="ALIVE", eligibility="eligible",
+                    reason="", exit_ip=exit_ip, latency_ms=10, probe_version="test",
+                )
+                await database.update_proxy_endpoint_intelligence(
+                    proxy_id,
+                    {
+                        "ip_type": "residential",
+                        "ip_type_source": "test",
+                        "ip_type_confidence": "high",
+                        "country_code": "VN",
+                        "country_name": "Vietnam",
+                        "geo_source": "test",
+                        "geo_confidence": "high",
+                    },
+                )
+                await database.save_proxy_probe_result(
+                    proxy_id,
+                    profile="earnapp_wss",
+                    probe_status="alive",
+                    verdict="CID_SET",
+                    eligibility="eligible",
+                    reason="cid",
+                    exit_ip=exit_ip,
+                    latency_ms=10,
+                    probe_version="test",
+                )
+            worker_id = await database.upsert_worker("worker-a", "a", "http://a")
+            current = await database.lease_proxy_for_provider_instance(
+                "earnapp", worker_id, "earnapp-rotate-a", country_code="VN"
+            )
+            assert current and int(current["proxy_id"]) == proxy_ids[0]
+            db = await database._get_db()
+            await db.execute(
+                "INSERT INTO earnapp_account_egress_ownership (account_id, egress_ip, proxy_id) VALUES (?, ?, ?)",
+                (other_account_id, "9.9.9.9", proxy_ids[1]),
+            )
+            await db.commit()
+
+            assert not await database.rotate_provider_proxy_lease(
+                "earnapp", worker_id, "earnapp-rotate-a", expected_proxy_id=proxy_ids[0], new_proxy_id=proxy_ids[1]
+            )
+            lease = await database.get_active_provider_proxy_lease("earnapp", worker_id, "earnapp-rotate-a")
+            assert lease and int(lease["proxy_id"]) == proxy_ids[0]
+            owner = await (
+                await db.execute(
+                    "SELECT account_id FROM earnapp_account_egress_ownership WHERE egress_ip = '9.9.9.9'"
+                )
+            ).fetchone()
+            assert int(owner["account_id"]) == other_account_id
+            assert account_id != other_account_id
+
+    asyncio.run(run())
+
+
+def test_earnapp_rotation_records_new_egress_ownership(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            account_id = await database.upsert_earnapp_account(
+                profile_key="profile-a",
+                account_name="a@example.com",
+                email="a@example.com",
+                auth_method="google",
+                credentials={"cookies": {"oauth-refresh-token": "refresh", "xsrf-token": "xsrf"}},
+                credential_keys=["oauth-refresh-token", "xsrf-token"],
+                token_expires_at=None,
+                cookie_expires_at=None,
+            )
+            await database.assign_earnapp_account("earnapp-rotate-a", platform="macos")
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            proxy_ids = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id,
+                [
+                    {"provider_proxy_id": "one", "host": "1.1.1.1", "port": 1000, "ip_type": "residential"},
+                    {"provider_proxy_id": "two", "host": "2.2.2.2", "port": 1000, "ip_type": "residential"},
+                ],
+            )
+            for proxy_id, exit_ip in zip(proxy_ids, ("8.8.8.8", "9.9.9.9"), strict=True):
+                await database.save_proxy_probe_result(
+                    proxy_id, profile="generic", probe_status="alive", verdict="ALIVE", eligibility="eligible",
+                    reason="", exit_ip=exit_ip, latency_ms=10, probe_version="test",
+                )
+                await database.update_proxy_endpoint_intelligence(
+                    proxy_id,
+                    {
+                        "ip_type": "residential",
+                        "ip_type_source": "test",
+                        "ip_type_confidence": "high",
+                        "country_code": "VN",
+                        "country_name": "Vietnam",
+                        "geo_source": "test",
+                        "geo_confidence": "high",
+                    },
+                )
+                await database.save_proxy_probe_result(
+                    proxy_id,
+                    profile="earnapp_wss",
+                    probe_status="alive",
+                    verdict="CID_SET",
+                    eligibility="eligible",
+                    reason="cid",
+                    exit_ip=exit_ip,
+                    latency_ms=10,
+                    probe_version="test",
+                )
+            worker_id = await database.upsert_worker("worker-a", "a", "http://a")
+            current = await database.lease_proxy_for_provider_instance(
+                "earnapp", worker_id, "earnapp-rotate-a", country_code="VN"
+            )
+            assert current and int(current["proxy_id"]) == proxy_ids[0]
+
+            assert await database.rotate_provider_proxy_lease(
+                "earnapp", worker_id, "earnapp-rotate-a", expected_proxy_id=proxy_ids[0], new_proxy_id=proxy_ids[1]
+            )
+            db = await database._get_db()
+            owner = await (
+                await db.execute(
+                    "SELECT account_id, proxy_id FROM earnapp_account_egress_ownership WHERE egress_ip = '9.9.9.9'"
+                )
+            ).fetchone()
+            assert dict(owner) == {"account_id": account_id, "proxy_id": proxy_ids[1]}
+
+    asyncio.run(run())
+
+
 def test_provider_slot_leases_are_deterministic_across_reruns(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
