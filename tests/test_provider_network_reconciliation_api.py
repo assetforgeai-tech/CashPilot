@@ -116,6 +116,8 @@ async def test_network_reconciliation_skips_superseded_worker_registration(monke
     result = await main.api_provider_network_reconciliation(None)
 
     assert result["reports"] == []
+
+
 @pytest.mark.asyncio
 async def test_network_reconciliation_skips_offline_worker(monkeypatch):
     monkeypatch.setattr(main, "_require_owner", lambda _request: {"role": "owner"})
