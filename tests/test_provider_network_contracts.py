@@ -75,6 +75,22 @@ def test_proxy_provider_evidence_probes_container_namespace():
     }
 
 
+def test_proxy_provider_evidence_uses_sidecar_when_main_has_no_probe_tool():
+    class Main:
+        def exec_run(self, *_args, **_kwargs):
+            raise AssertionError("the provider image is not required to ship curl or wget")
+
+    class Sidecar:
+        def exec_run(self, *_args, **_kwargs):
+            return type("Result", (), {"exit_code": 0, "output": b"203.0.113.10\n"})()
+
+    assert orchestrator._provider_evidence("packetstream", Main(), probe_container=Sidecar()) == {
+        "running": True,
+        "observed_egress_ip": "203.0.113.10",
+        "probe_ok": True,
+    }
+
+
 def test_network_audit_reports_unverified_when_provider_has_no_live_inventory():
     report = audit_provider_network_inventory("packetstream", instances=[], containers=[], inventory_confirmed=False)
     assert report["status"] == "unverified"
