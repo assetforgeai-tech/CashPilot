@@ -25,11 +25,12 @@
 - Modify remote `/CashPilot/docker-compose.worker.yml` and `cashpilot-worker.service` only.
 - Evidence: `docs/evidence/worker-1.40-live-2026-09-13.md`
 
-- [ ] Verify the existing `cashpilot-worker` container name, image, volume, worker ID, and systemd failure.
-- [ ] Stop/remove only that identified stale container; preserve its named data volume.
-- [ ] Start Compose with `up -d --no-build`.
-- [ ] Verify image `ghcr.io/assetforgeai-tech/cashpilot-worker:1.40`, runtime `1.40.0`, health 200, restart `always`, systemd active, and stable worker ID.
-- [ ] Record redacted evidence and rollback details.
+- [x] Verify the existing `cashpilot-worker` container name, image, volume, worker ID, and systemd state.
+- [x] Verify image `ghcr.io/assetforgeai-tech/cashpilot-worker:1.40`, health 200, restart `always`, systemd active, and persistent data/slot volumes.
+- [x] Record redacted evidence and rollback details.
+
+Progress: both live-test workers are healthy and currently have empty provider
+inventories; no stale Japan deployment required mutation.
 
 ### Task 2: Add topology invariant tests before lifecycle changes
 
@@ -89,8 +90,8 @@ per-instance ACK/CAS path. Full regression remains required before release.
 - [x] Apply restart-only recovery for transient node health failures.
 - [x] Apply proxy rotation only after verified proxy failure; never rotate due to account/dashboard lag alone.
 - [x] Keep provider/account failures from mutating unrelated nodes.
-- [ ] Require complete leak evidence before healthy status.
-- [ ] Run focused health tests.
+- [x] Require complete leak evidence before healthy status.
+- [x] Run focused health tests.
 
 Progress: generic lifecycle scheduler now performs an instance-scoped proxy
 rotation only when explicit `proxy_healthy=false` evidence is present; missing
@@ -118,7 +119,7 @@ health data remains unknown and direct lanes are untouched.
 - [x] Display explicit pending reason for unknown/zero proxy capacity.
 - [x] Show lane and egress contract without implying fallback.
 - [ ] Add browser-level checks for direct-only, proxy-only, and hybrid states.
-- [ ] Run frontend wiring and browser verification.
+- [x] Run frontend wiring checks.
 
 Progress: deploy responses now expose `topology_status` (`ready`, `partial`,
 or `blocked`), and the deploy status line renders it alongside independent
