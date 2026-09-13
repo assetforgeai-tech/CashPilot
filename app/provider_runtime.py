@@ -379,4 +379,27 @@ def catalog_runtime(slug: str) -> dict[str, object]:
         "network_contract": {
             lane: provider.network_contract_for(lane) for lane in ("direct", "proxy") if lane in provider.modes
         },
+        "hybrid_cardinality": (
+            "one_node_per_public_ipv4_per_lane" if len(lanes) == 2 and provider.topology.startswith("slot_") else None
+        ),
+        "total_desired_formula": (
+            "public_ipv4_count * lane_count" if len(lanes) == 2 and provider.topology.startswith("slot_") else None
+        ),
+        "slot_binding": {lane: ("bind_public_ipv4_slot" if lane == "direct" else "cardinality_only") for lane in lanes},
+        "health_signals": {
+            "worker": "worker_heartbeat",
+            "runtime": "node_inventory",
+            "provider": "provider_observation",
+            "proxy": "proxy_probe",
+            "auth": "account_or_provider_collector",
+        },
+        "network_policy": {
+            lane: {
+                **provider.network_contract_for(lane),
+                "udp": "blocked_by_default" if lane == "proxy" else "provider_required",
+                "doh": "blocked_by_default" if lane == "proxy" else "provider_native",
+                "dot": "blocked_by_default" if lane == "proxy" else "provider_native",
+            }
+            for lane in lanes
+        },
     }

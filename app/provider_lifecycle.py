@@ -26,6 +26,10 @@ def decide(
     runtime = provider_runtime.get(str(provider or "").strip().lower())
     if runtime is None:
         return "observe"
+    # Hybrid providers have two independent state machines. A provider-level
+    # signal cannot safely choose a lane, so callers must use decide_lane().
+    if set(runtime.modes) == {"direct", "proxy"}:
+        return "observe"
     selected = "direct" if "direct" in runtime.modes and "proxy" not in runtime.modes else "proxy"
     if provider_auth_healthy is False or account_suspended:
         return runtime.lifecycle_action(selected, "provider_auth_unhealthy")

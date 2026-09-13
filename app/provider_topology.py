@@ -52,6 +52,29 @@ def topology_contract(provider_slug: str) -> dict[str, Any]:
             "confirmations": runtime.heartbeat_confirmations,
         },
         "network_contract": {lane: runtime.network_contract_for(lane) for lane in lanes},
+        "hybrid_cardinality": (
+            "one_node_per_public_ipv4_per_lane" if len(lanes) == 2 and runtime.topology.startswith("slot_") else None
+        ),
+        "total_desired_formula": (
+            "public_ipv4_count * lane_count" if len(lanes) == 2 and runtime.topology.startswith("slot_") else None
+        ),
+        "slot_binding": {lane: ("bind_public_ipv4_slot" if lane == "direct" else "cardinality_only") for lane in lanes},
+        "health_signals": {
+            "worker": "worker_heartbeat",
+            "runtime": "node_inventory",
+            "provider": "provider_observation",
+            "proxy": "proxy_probe",
+            "auth": "account_or_provider_collector",
+        },
+        "network_policy": {
+            lane: {
+                **runtime.network_contract_for(lane),
+                "udp": "blocked_by_default" if lane == "proxy" else "provider_required",
+                "doh": "blocked_by_default" if lane == "proxy" else "provider_native",
+                "dot": "blocked_by_default" if lane == "proxy" else "provider_native",
+            }
+            for lane in lanes
+        },
     }
 
 
@@ -108,6 +131,7 @@ def _normalise_slots(slots: int | list[Any] | tuple[Any, ...]) -> list[tuple[str
     else:
         raw = list(slots or [])
     result: dict[str, tuple[str, str, bool]] = {}
+    seen_public_ips: set[str] = set()
     for item in raw:
         if isinstance(item, Mapping):
             slot = str(item.get("slot_id") or "").strip().lower()
@@ -118,7 +142,16 @@ def _normalise_slots(slots: int | list[Any] | tuple[Any, ...]) -> list[tuple[str
             slot, public_ip, network, route_ready = str(item or "").strip().lower(), "", "", True
         if not _SLOT_RE.fullmatch(slot):
             raise ValueError("invalid public IPv4 slot")
+        # One egress address cannot represent two independent direct slots.
+        # Keep the first authoritative bootstrap record and discard duplicates.
+        if public_ip and public_ip in seen_public_ips:
+            existing_slot = next((key for key, value in result.items() if value[0] == public_ip), None)
+            if existing_slot and route_ready and not result[existing_slot][2]:
+                result[existing_slot] = (public_ip, network, route_ready)
+            continue
         result.setdefault(slot, (public_ip, network, route_ready))
+        if public_ip:
+            seen_public_ips.add(public_ip)
     return [
         (slot, values[0], values[1], values[2])
         for slot, values in sorted(result.items(), key=lambda pair: int(pair[0].split("-", 1)[1]))

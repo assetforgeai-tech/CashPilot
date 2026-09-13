@@ -236,6 +236,10 @@ def test_hybrid_proxy_lane_rotates_when_proxy_health_is_bad():
     assert decide_lane("earnfm", mode="proxy", online=True, banned=False, proxy_healthy=False) == "rotate"
 
 
+def test_hybrid_lifecycle_requires_an_explicit_lane():
+    assert decide("earnfm", online=False, banned=False, proxy_healthy=False) == "observe"
+
+
 def test_lane_banned_action_uses_provider_policy():
     assert decide_lane("earnapp", mode="proxy", online=True, banned=True, proxy_healthy=True) == "restart"
 
