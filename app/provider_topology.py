@@ -75,6 +75,11 @@ def topology_contract(provider_slug: str) -> dict[str, Any]:
             }
             for lane in lanes
         },
+        "cardinality_policy": {
+            "desired": "bootstrap_public_ipv4" if topology.startswith("slot_") else "dedicated_runtime",
+            "deployability": {lane: ("route_ready" if lane == "direct" else "eligible_proxy") for lane in lanes},
+            "proxy_shortage_changes_desired": False,
+        },
     }
 
 
