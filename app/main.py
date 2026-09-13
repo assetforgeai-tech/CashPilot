@@ -735,8 +735,13 @@ async def _run_earnapp_lifecycle_scheduler() -> None:
         if str(node.get("state") or "").upper() not in {"ACTIVE", "RECOVERY_HOLD"}:
             continue
         try:
-            if account_states.get(int(node.get("account_id") or 0)) == "ACCOUNT_LOCKED":
+            account_state = account_states.get(int(node.get("account_id") or 0))
+            if account_state == "ACCOUNT_LOCKED":
                 await _retire_locked_earnapp_runtime(node)
+                continue
+            if account_state in {"EXPIRED", "AUTH_FAILED"}:
+                # Token recovery owns auth failures; lifecycle actions must not
+                # restart a healthy node from stale or missing device evidence.
                 continue
             spec = await database.get_provider_instance_spec(str(node.get("logical_node_id") or ""))
             evidence = (spec or {}).get("earnapp_device_verification") if isinstance(spec, Mapping) else None
