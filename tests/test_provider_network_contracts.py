@@ -63,6 +63,18 @@ def test_status_includes_live_sidecar_identity_for_managed_container(monkeypatch
     assert rows[0]["observed_egress_ip"] == "203.0.113.8"
 
 
+def test_proxy_provider_evidence_probes_container_namespace():
+    class Container:
+        def exec_run(self, *_args, **_kwargs):
+            return type("Result", (), {"exit_code": 0, "output": b"203.0.113.9\n"})()
+
+    assert orchestrator._provider_evidence("packetstream", Container()) == {
+        "running": True,
+        "observed_egress_ip": "203.0.113.9",
+        "probe_ok": True,
+    }
+
+
 def test_network_audit_reports_unverified_when_provider_has_no_live_inventory():
     report = audit_provider_network_inventory("packetstream", instances=[], containers=[], inventory_confirmed=False)
     assert report["status"] == "unverified"

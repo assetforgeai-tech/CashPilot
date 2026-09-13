@@ -1696,6 +1696,23 @@ def _provider_evidence(slug: str, container: Any) -> dict[str, Any]:
         except Exception as exc:
             logger.debug("EarnApp evidence unavailable for %s: %s", getattr(container, "short_id", "?"), exc)
             return {"running": True, "online": False}
+    if slug in {"packetstream", "earnfm", "iproyal", "traffmonetizer"}:
+        try:
+            result = container.exec_run(
+                ["sh", "-lc", "curl --fail --silent --show-error --max-time 10 https://api.ipify.org"]
+            )
+            output = getattr(result, "output", b"") or b""
+            text = output.decode("utf-8", errors="replace") if isinstance(output, bytes) else str(output)
+            observed = text.strip().splitlines()[0] if text.strip() else ""
+            try:
+                observed = str(ipaddress.ip_address(observed))
+            except ValueError:
+                observed = ""
+            ok = int(getattr(result, "exit_code", 1)) == 0 and bool(observed)
+            return {"running": True, "observed_egress_ip": observed if ok else "", "probe_ok": ok}
+        except Exception as exc:
+            logger.debug("Network evidence unavailable for %s: %s", slug, exc)
+            return {"running": True, "probe_ok": False}
     if slug != "uprock":
         return {}
     try:
