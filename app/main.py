@@ -8080,7 +8080,7 @@ class EarningsReading(BaseModel):
     #: silently misbehaves), the account total becomes NaN, and serialising that
     #: back out emits a bare `NaN` that JSON.parse rejects. So a single bad
     #: reading from one client breaks the dashboard for everyone.
-    balance: float = Field(allow_inf_nan=False)
+    balance: float = Field(ge=0, le=1_000_000_000, allow_inf_nan=False)
     date: str
     currency: str = "USD"
     fx_rate_usd: float | None = Field(default=None, allow_inf_nan=False)
