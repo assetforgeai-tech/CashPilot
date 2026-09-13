@@ -114,6 +114,8 @@ async def test_proxy_mode_attaches_proxy_and_direct_mode_does_not(monkeypatch):
     assert specs["earnfm-direct"]["egress_mode"] == "direct"
     assert specs["earnfm-proxy"]["proxy"]["proxy_id"] == 9
     assert specs["earnfm-proxy"]["egress_mode"] == "proxy"
+    assert specs["earnfm-direct"]["network_contract"]["fallback"] == "none"
+    assert specs["earnfm-proxy"]["network_contract"]["fallback"] == "none"
     assert specs["earnfm-proxy"]["labels"]["cashpilot.provider"] == "earnfm"
 
 
