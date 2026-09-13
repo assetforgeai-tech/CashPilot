@@ -82,3 +82,37 @@ async def test_network_reconciliation_hydrates_encrypted_instance_spec(monkeypat
 
     assert result["reports"][0]["findings"]
     main.database.get_provider_instance_spec.assert_awaited_once_with("packetstream-proxy-w8-proxy-001")
+
+
+@pytest.mark.asyncio
+async def test_network_reconciliation_skips_superseded_worker_registration(monkeypatch):
+    monkeypatch.setattr(main, "_require_owner", lambda _request: {"role": "owner"})
+    monkeypatch.setattr(
+        main.database,
+        "list_workers",
+        AsyncMock(
+            return_value=[
+                {
+                    "id": 7,
+                    "url": "http://worker:8081",
+                    "status": "offline",
+                    "last_heartbeat": "2026-01-01 00:00:00",
+                    "containers": '[{"name":"stale","slug":"wipter"}]',
+                    "system_info": '{"containers_inventory_confirmed":true}',
+                },
+                {
+                    "id": 8,
+                    "url": "http://worker:8081",
+                    "status": "online",
+                    "last_heartbeat": "2026-01-02 00:00:00",
+                    "containers": "[]",
+                    "system_info": '{"containers_inventory_confirmed":true}',
+                },
+            ]
+        ),
+    )
+    monkeypatch.setattr(main.database, "list_provider_instances", AsyncMock(return_value=[]))
+
+    result = await main.api_provider_network_reconciliation(None)
+
+    assert result["reports"] == []
