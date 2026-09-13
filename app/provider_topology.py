@@ -119,8 +119,11 @@ def plan_provider_nodes(
     public_ipv4_slots: int | list[Any] | tuple[Any, ...],
     *,
     mode: str | None = None,
+    proxy_capacity: int | None = None,
+    direct_desired: int | None = None,
+    proxy_desired: int | None = None,
 ) -> list[ProviderNodePlan]:
-    """Plan one deterministic node per ready slot and supported mode."""
+    """Plan independent lanes, optionally against explicit lane targets."""
     if int(worker_id) <= 0:
         raise ValueError("invalid worker id")
     slug = str(provider_slug or "").strip().lower()
@@ -134,27 +137,80 @@ def plan_provider_nodes(
     if runtime and runtime.topology == "manual":
         raise ValueError("provider is manual-only")
     modes = provider_modes.expand_requested(slug, mode)
+    for target in (direct_desired, proxy_desired):
+        if target is not None and int(target) < 0:
+            raise ValueError("lane desired count cannot be negative")
+    if direct_desired is not None and "direct" not in modes:
+        raise ValueError("unsupported lane target: direct")
+    if proxy_desired is not None and "proxy" not in modes:
+        raise ValueError("unsupported lane target: proxy")
     slots = _normalise_slots(public_ipv4_slots)
     plans: list[ProviderNodePlan] = []
-    for slot_id, public_ip, network, route_ready in slots:
-        for selected_mode in modes:
-            deployable = selected_mode != "direct" or route_ready
-            plans.append(
-                ProviderNodePlan(
-                    int(worker_id),
-                    slug,
-                    selected_mode,
-                    slot_id,
-                    selected_mode,
-                    runtime.topology if runtime else "",
-                    public_ip,
-                    network,
-                    route_ready,
-                    f"{slot_id if selected_mode == 'direct' else slot_id.replace('ipv4-', 'proxy-')}",
-                    deployable,
-                    "direct_route_not_ready" if not deployable else "",
-                )
+    # Proxy capacity is an independent discovery result. Unknown capacity must
+    # stay pending; inferring it from public IPv4 slots creates unsafe proxy
+    # nodes before the pool has been checked.
+    direct_target = direct_desired if direct_desired is not None else len(slots)
+    direct_slots = slots[:direct_target] if "direct" in modes else []
+    if "direct" in modes and direct_target > len(slots):
+        direct_slots.extend((f"ipv4-{index:03d}", "", "", False) for index in range(len(slots) + 1, direct_target + 1))
+    # Bootstrap public-IP count is the default node cardinality for every
+    # proxy lane. Capacity remains a gate; it must not silently expand the
+    # requested topology. Workers without slot discovery retain the legacy
+    # proxy-capacity fallback until bootstrap enrollment is available.
+    proxy_target = (
+        proxy_desired
+        if proxy_desired is not None
+        else len(slots)
+        if slots
+        else (max(0, int(proxy_capacity)) if proxy_capacity is not None else 0)
+    )
+    proxy_slots = (
+        [
+            (f"proxy-{index:03d}", "", "", index <= max(0, int(proxy_capacity or 0)))
+            for index in range(1, proxy_target + 1)
+        ]
+        if "proxy" in modes
+        else []
+    )
+    direct_plans: list[ProviderNodePlan] = []
+    proxy_plans: list[ProviderNodePlan] = []
+    for slot_id, public_ip, network, route_ready in direct_slots:
+        deployable = route_ready
+        direct_plans.append(
+            ProviderNodePlan(
+                int(worker_id),
+                slug,
+                "direct",
+                slot_id,
+                "direct",
+                runtime.topology if runtime else "",
+                public_ip,
+                network,
+                route_ready,
+                slot_id,
+                deployable,
+                "direct_route_not_ready" if not deployable else "",
             )
+        )
+    for proxy_index, (slot_id, public_ip, network, route_ready) in enumerate(proxy_slots, 1):
+        proxy_plans.append(
+            ProviderNodePlan(
+                int(worker_id),
+                slug,
+                "proxy",
+                slot_id,
+                "proxy",
+                runtime.topology if runtime else "",
+                public_ip,
+                network,
+                route_ready,
+                f"proxy-{proxy_index:03d}",
+                route_ready,
+                "" if route_ready else "proxy_capacity_unavailable",
+            )
+        )
+    plans.extend(direct_plans)
+    plans.extend(proxy_plans)
     return plans
 
 
@@ -163,6 +219,7 @@ def summarize_provider_plan(
     instances: list[Mapping[str, Any]],
     *,
     available_proxy_count: int | None = None,
+    existing_proxy_count: int = 0,
 ) -> dict[str, Any]:
     """Return a read-only convergence summary for a planned provider lane."""
     desired_ids = {plan.instance_id for plan in plans}
@@ -236,7 +293,7 @@ def summarize_provider_plan(
         # currently satisfiable without unsafe fallback. Keeping both prevents
         # proxy shortage from silently shrinking the operator's target.
         "capacity_target": (
-            min(len(desired_ids), max(0, int(available_proxy_count)))
+            min(len(desired_ids), max(0, int(available_proxy_count)) + max(0, int(existing_proxy_count)))
             if available_proxy_count is not None and all(plan.mode == "proxy" for plan in plans)
             else len(desired_ids)
         ),
@@ -260,5 +317,12 @@ def summarize_provider_plan(
             )
             if available_proxy_count is not None and any(plan.mode == "proxy" for plan in plans)
             else 0
+        ),
+        "topology_status": (
+            "partial"
+            if len(lane_capacity) > 1 and any(value["blocked"] for value in lane_capacity.values())
+            else "blocked"
+            if any(value["blocked"] for value in lane_capacity.values())
+            else "ready"
         ),
     }

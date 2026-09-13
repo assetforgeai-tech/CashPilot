@@ -966,6 +966,7 @@ CREATE TABLE IF NOT EXISTS provider_instances (
     slug           TEXT NOT NULL,
     worker_id      INTEGER,
     mode           TEXT NOT NULL DEFAULT 'direct' CHECK(mode IN ('direct', 'proxy')),
+    capacity_slot  TEXT NOT NULL DEFAULT '',
     container_id   TEXT NOT NULL DEFAULT '',
     sidecar_id     TEXT NOT NULL DEFAULT '',
     proxy_id       INTEGER,
@@ -2803,6 +2804,19 @@ async def init_db() -> None:
     try:
         await _dedupe_earnings_before_indexing(db)
         await db.executescript(_SCHEMA)
+        provider_instance_columns = await _table_columns(db, "provider_instances")
+        if "capacity_slot" not in provider_instance_columns:
+            await db.execute("ALTER TABLE provider_instances ADD COLUMN capacity_slot TEXT NOT NULL DEFAULT ''")
+            applied.append("provider_instances.capacity_slot")
+        await db.execute("DROP INDEX IF EXISTS idx_provider_instances_active_direct_slot")
+        await db.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_instances_active_direct_slot
+            ON provider_instances(worker_id, slug, capacity_slot)
+            WHERE mode = 'direct' AND trim(capacity_slot) != ''
+              AND status IN ('planned', 'starting', 'running', 'deployed', 'verification_pending')
+            """
+        )
         # Add snapshot payment metadata before the completed-migration validator
         # compares the canonical child schema.
         if await _table_exists(db, "earnapp_account_snapshots"):
@@ -7376,6 +7390,7 @@ async def save_provider_instance(
     *,
     worker_id: int | None = None,
     mode: str = "direct",
+    capacity_slot: str = "",
     container_id: str = "",
     sidecar_id: str = "",
     proxy_id: int | None = None,
@@ -7400,12 +7415,15 @@ async def save_provider_instance(
         await db.execute(
             """
             INSERT INTO provider_instances
-                (instance_id, slug, worker_id, mode, container_id, sidecar_id, proxy_id, status, spec_encrypted, deployed_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? != '' THEN datetime('now') ELSE NULL END, datetime('now'))
+                (instance_id, slug, worker_id, mode, capacity_slot, container_id, sidecar_id, proxy_id, status, spec_encrypted, deployed_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? != '' THEN datetime('now') ELSE NULL END, datetime('now'))
             ON CONFLICT(instance_id) DO UPDATE SET
                 slug = excluded.slug,
                 worker_id = excluded.worker_id,
                 mode = excluded.mode,
+                capacity_slot = CASE WHEN trim(excluded.capacity_slot) != ''
+                                     THEN excluded.capacity_slot
+                                     ELSE provider_instances.capacity_slot END,
                 container_id = excluded.container_id,
                 sidecar_id = excluded.sidecar_id,
                 proxy_id = excluded.proxy_id,
@@ -7419,6 +7437,7 @@ async def save_provider_instance(
                 slug,
                 worker_id,
                 mode,
+                str(capacity_slot or "").strip(),
                 container_id,
                 sidecar_id,
                 proxy_id,
@@ -7563,6 +7582,60 @@ async def reconcile_earnapp_provider_instances(
                                updated_at=datetime('now')
                            WHERE logical_node_id=? AND assigned_worker_id=?""",
                         (int(worker_id), instance_id, int(worker_id)),
+                    )
+                    await db.execute("DELETE FROM provider_instances WHERE instance_id=?", (instance_id,))
+                    removed.append(instance_id)
+                else:
+                    await db.execute(
+                        "UPDATE provider_instances SET status='missing_once', updated_at=datetime('now') WHERE instance_id=?",
+                        (instance_id,),
+                    )
+                    marked.append(instance_id)
+            await db.commit()
+            return {"marked_missing": marked, "removed": removed}
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
+
+
+async def reconcile_provider_instances(
+    worker_id: int,
+    *,
+    reported_instance_ids: Sequence[str],
+    inventory_confirmed: bool,
+) -> dict[str, list[str]]:
+    """Retire non-EarnApp runtimes only after two confirmed inventory misses."""
+    if int(worker_id or 0) <= 0 or not inventory_confirmed:
+        return {"marked_missing": [], "removed": []}
+    reported = {str(value or "").strip() for value in reported_instance_ids if str(value or "").strip()}
+    async with _earnapp_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            rows = await (
+                await db.execute(
+                    "SELECT instance_id, status FROM provider_instances WHERE worker_id=? AND slug != 'earnapp'",
+                    (int(worker_id),),
+                )
+            ).fetchall()
+            marked: list[str] = []
+            removed: list[str] = []
+            for row in rows:
+                instance_id = str(row["instance_id"] or "")
+                if not instance_id or instance_id in reported:
+                    if str(row["status"] or "") == "missing_once":
+                        await db.execute(
+                            "UPDATE provider_instances SET status='verification_pending', updated_at=datetime('now') WHERE instance_id=?",
+                            (instance_id,),
+                        )
+                    continue
+                if str(row["status"] or "") == "missing_once":
+                    await db.execute(
+                        "UPDATE provider_proxy_leases SET released_at=datetime('now'), release_reason='RUNTIME_CONFIRMED_ABSENT' "
+                        "WHERE worker_id=? AND instance_id=? AND released_at IS NULL",
+                        (int(worker_id), instance_id),
                     )
                     await db.execute("DELETE FROM provider_instances WHERE instance_id=?", (instance_id,))
                     removed.append(instance_id)
@@ -10369,7 +10442,12 @@ async def lease_proxy_for_provider_instance(
 
 
 async def release_proxy_for_provider_instance(
-    provider_slug: str, worker_id: int, instance_id: str, *, reason: str = "released"
+    provider_slug: str,
+    worker_id: int,
+    instance_id: str,
+    *,
+    reason: str = "released",
+    expected_proxy_id: int | None = None,
 ) -> bool:
     if str(provider_slug or "").strip().lower() == "earnapp" and earnapp_policy.is_protected_runtime_reference(
         instance_id
@@ -10382,18 +10460,96 @@ async def release_proxy_for_provider_instance(
             UPDATE provider_proxy_leases
             SET released_at = datetime('now'), release_reason = ?
             WHERE provider_slug = ? AND worker_id = ? AND instance_id = ? AND released_at IS NULL
+              AND (? IS NULL OR proxy_id = ?)
             """,
             (
                 str(reason or "released")[:300],
                 str(provider_slug or "").strip().lower(),
                 int(worker_id),
                 str(instance_id or "").strip(),
+                expected_proxy_id,
+                expected_proxy_id,
             ),
         )
         await db.commit()
         return bool(cursor.rowcount)
     finally:
         await db.close()
+
+
+async def rotate_provider_proxy_lease(
+    provider_slug: str,
+    worker_id: int,
+    instance_id: str,
+    *,
+    expected_proxy_id: int,
+    new_proxy_id: int,
+) -> bool:
+    """CAS-replace one instance lease and its recorded runtime proxy."""
+    slug = str(provider_slug or "").strip().lower()
+    instance = str(instance_id or "").strip()
+    if not slug or not instance or int(expected_proxy_id or 0) <= 0 or int(new_proxy_id or 0) <= 0:
+        return False
+    if int(expected_proxy_id) == int(new_proxy_id):
+        return False
+    async with _proxy_assignment_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            current = await (
+                await db.execute(
+                    "SELECT exit_ip FROM provider_proxy_leases WHERE provider_slug=? AND worker_id=? "
+                    "AND instance_id=? AND proxy_id=? AND released_at IS NULL",
+                    (slug, int(worker_id), instance, int(expected_proxy_id)),
+                )
+            ).fetchone()
+            candidate = await (
+                await db.execute(
+                    "SELECT exit_ip, status, duplicate_egress FROM proxy_endpoints WHERE id=?", (int(new_proxy_id),)
+                )
+            ).fetchone()
+            if (
+                not current
+                or not candidate
+                or str(candidate["status"] or "").lower() != "alive"
+                or candidate["duplicate_egress"]
+            ):
+                await db.rollback()
+                return False
+            new_exit = str(candidate["exit_ip"] or "").strip()
+            if not new_exit:
+                await db.rollback()
+                return False
+            occupied = await (
+                await db.execute(
+                    "SELECT 1 FROM provider_proxy_leases WHERE released_at IS NULL "
+                    "AND (proxy_id=? OR (exit_ip != '' AND exit_ip=?)) LIMIT 1",
+                    (int(new_proxy_id), new_exit),
+                )
+            ).fetchone()
+            if occupied:
+                await db.rollback()
+                return False
+            changed = await db.execute(
+                "UPDATE provider_proxy_leases SET proxy_id=?, exit_ip=?, release_reason='' "
+                "WHERE provider_slug=? AND worker_id=? AND instance_id=? AND proxy_id=? AND released_at IS NULL",
+                (int(new_proxy_id), new_exit, slug, int(worker_id), instance, int(expected_proxy_id)),
+            )
+            if int(changed.rowcount or 0) != 1:
+                await db.rollback()
+                return False
+            await db.execute(
+                "UPDATE provider_instances SET proxy_id=?, updated_at=datetime('now') "
+                "WHERE worker_id=? AND instance_id=? AND mode='proxy' AND proxy_id=?",
+                (int(new_proxy_id), int(worker_id), instance, int(expected_proxy_id)),
+            )
+            await db.commit()
+            return True
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
 
 
 async def delete_all_proxy_pool() -> int:

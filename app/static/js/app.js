@@ -990,7 +990,15 @@ const CP = (() => {
       const allowed = mode === 'both' ? canBoth : modes.includes(mode);
       return `<option value="${mode}"${mode === selected ? ' selected' : ''}${allowed ? '' : ' disabled'}>${mode}</option>`;
     }).join('');
-    return `
+    const laneTargets = canBoth ? `
+      <div class="form-group" data-lane-targets-for="${svc.slug}">
+        <label class="form-label" for="${prefix}-direct-desired-${svc.slug}">Direct nodes</label>
+        <input class="form-input" type="number" min="0" step="1" id="${prefix}-direct-desired-${svc.slug}" data-direct-desired-for="${svc.slug}" placeholder="All available slots">
+        <label class="form-label" for="${prefix}-proxy-desired-${svc.slug}">Proxy nodes</label>
+        <input class="form-input" type="number" min="0" step="1" id="${prefix}-proxy-desired-${svc.slug}" data-proxy-desired-for="${svc.slug}" placeholder="All eligible proxies">
+        <div class="form-hint">Hybrid targets are independent. Empty means use all available capacity.</div>
+      </div>` : '';
+    return `${laneTargets}
       <div class="form-group">
         <label class="form-label">Mode</label>
         <select class="form-input" data-deploy-mode-for="${svc.slug}" id="${prefix}-${svc.slug}">
@@ -2911,6 +2919,12 @@ const CP = (() => {
 
     const modeSelect = document.querySelector(`[data-deploy-mode-for="${slug}"]`);
     const mode = modeSelect ? modeSelect.value : null;
+    const laneTarget = (selector) => {
+      const value = document.querySelector(selector)?.value;
+      return value === undefined || value === '' ? undefined : Math.max(0, Number.parseInt(value, 10));
+    };
+    const directDesired = laneTarget(`[data-direct-desired-for="${slug}"]`);
+    const proxyDesired = laneTarget(`[data-proxy-desired-for="${slug}"]`);
 
     // Preflight, at the deploy step — which is where the backend's own comments
     // say it belongs, "not buried in an FAQ". It has been computed since 1.10.x
@@ -2932,9 +2946,23 @@ const CP = (() => {
     }
 
     let ok = 0, fail = 0;
+    const laneTotals = {};
+    const topologyStates = new Set();
     for (const wid of workerIds) {
       try {
-        await api(`/api/deploy/${slug}?worker_id=${wid}`, { method: 'POST', body: { env, mode } });
+        const body = { env, mode };
+        if (directDesired !== undefined && Number.isInteger(directDesired)) body.direct_desired = directDesired;
+        if (proxyDesired !== undefined && Number.isInteger(proxyDesired)) body.proxy_desired = proxyDesired;
+        const result = await api(`/api/deploy/${slug}?worker_id=${wid}`, { method: 'POST', body });
+        if (result.topology_status) topologyStates.add(String(result.topology_status));
+        Object.entries(result.lanes || {}).forEach(([lane, stats]) => {
+          const current = laneTotals[lane] || { desired: 0, running: 0, failed: 0, pending: 0, free: 0, blocked: 0 };
+          Object.keys(current).forEach(key => {
+            const value = key === 'pending' ? (stats.pending ?? stats.blocked ?? 0) : (stats[key] || 0);
+            current[key] += Number(value);
+          });
+          laneTotals[lane] = current;
+        });
         ok++;
       } catch (err) {
         fail++;
@@ -2943,7 +2971,11 @@ const CP = (() => {
     }
 
     if (statusEl) {
-      statusEl.textContent = fail === 0 ? `Deployed to ${ok} node(s)` : `${ok} ok, ${fail} failed`;
+      const laneText = Object.entries(laneTotals).map(([lane, stats]) =>
+        `${lane}: ${stats.running}/${stats.desired} running, ${stats.free} free, ${stats.pending} pending`
+      ).join(' | ');
+      const topologyText = topologyStates.size ? ` · topology ${Array.from(topologyStates).join('/')}` : '';
+      statusEl.textContent = `${fail === 0 ? `Deployed to ${ok} node(s)` : `${ok} ok, ${fail} failed`}${topologyText}${laneText ? ` — ${laneText}` : ''}`;
       statusEl.style.color = fail === 0 ? 'var(--success)' : 'var(--error)';
     }
     if (ok > 0) {
@@ -3030,12 +3062,14 @@ const CP = (() => {
       ? runtime.modes.join('+')
       : (svc.egress && svc.egress.mode) || 'unknown';
     const egress = `mode: ${modes}`;
+    const topology = runtime.topology ? `topology: ${runtime.topology.replaceAll('_', ' ')}` : '';
     return `
       <div class="platform-badges" style="margin-top:8px;">
         <span class="platform-badge"${!deployment_allowed && deployment_policy_message ? ` title="${escapeHtml(deployment_policy_message)}"` : ''}>${escapeHtml(deploy)}</span>
         <span class="platform-badge">${escapeHtml(collector)}</span>
         <span class="platform-badge">${escapeHtml(dashboard)}</span>
         <span class="platform-badge">${escapeHtml(egress)}</span>
+        ${topology ? `<span class="platform-badge">${escapeHtml(topology)}</span>` : ''}
       </div>`;
   }
 
@@ -3741,7 +3775,13 @@ const CP = (() => {
       container.innerHTML = reports.length ? reports.map(report => {
         const missing = Array.isArray(report.missing_sidecar) ? report.missing_sidecar.length : 0;
         const untracked = Array.isArray(report.untracked) ? report.untracked.length : 0;
-        return `Worker ${escapeHtml(report.worker_id)} · ${escapeHtml(report.provider)}: ${escapeHtml(report.status || 'unverified')} · sidecar drift ${missing} · untracked ${untracked}`;
+        const lanes = report.lane_counts || {};
+        const laneText = Object.entries(lanes).map(([lane, count]) => `${lane} ${Number(count || 0)}`).join(', ');
+        const evidence = Array.isArray(report.network_evidence?.findings) && report.network_evidence.findings.length
+          ? ` · network ${report.network_evidence.findings.length} finding(s)` : '';
+        const egress = Array.isArray(report.findings) && report.findings.length
+          ? ` · egress attention` : '';
+        return `Worker ${escapeHtml(report.worker_id)} · ${escapeHtml(report.provider)}: ${escapeHtml(report.status || 'unverified')} · ${escapeHtml(laneText || 'no lanes')} · sidecar drift ${missing} · untracked ${untracked}${egress}${evidence}`;
       }).join('<br>') : 'No active provider instances recorded.';
     } catch (err) {
       container.textContent = `Network reconciliation unavailable: ${err.message}`;

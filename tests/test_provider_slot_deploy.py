@@ -1,7 +1,10 @@
+from dataclasses import replace
+from unittest.mock import AsyncMock
+
 import pytest
 from starlette.requests import Request
 
-from app import main
+from app import main, provider_runtime
 
 
 def _request() -> Request:
@@ -46,6 +49,11 @@ def _common(monkeypatch, deploy):
     monkeypatch.setattr(main, "_worker_public_ip_slots", slots)
     monkeypatch.setattr(main, "_proxy_worker_deploy", deploy)
     monkeypatch.setattr(main, "_spawn", close_spawn)
+    monkeypatch.setattr(
+        main.database,
+        "get_provider_proxy_capacity",
+        AsyncMock(return_value=[{"available": 2}]),
+    )
 
 
 @pytest.mark.asyncio
@@ -67,6 +75,9 @@ async def test_direct_slot_uses_bootstrap_network_not_host(monkeypatch):
     assert specs["earnfm-direct-w7-ipv4-001"]["topology"] == "slot_both"
     assert specs["earnfm-direct-w7-ipv4-001"]["lane"] == "direct"
     assert specs["earnfm-direct-w7-ipv4-001"]["expected_egress_ip"] == "198.51.100.1"
+    assert result["lanes"] == {
+        "direct": {"desired": 2, "running": 2, "failed": 0, "pending": 0, "free": 0, "blocked": 0},
+    }
 
 
 @pytest.mark.asyncio
@@ -89,11 +100,14 @@ async def test_proxy_slot_records_lane_lease_and_expected_egress(monkeypatch):
         _request(), "earnfm", main.DeployRequest(env={}, mode="proxy"), worker_id=7, _auth={"r": "owner"}
     )
     assert result["running"] == 2
-    spec = specs["earnfm-proxy-w7-ipv4-001"]
+    spec = specs["earnfm-proxy-w7-proxy-001"]
     assert spec["topology"] == "slot_both"
     assert spec["lane"] == "proxy"
     assert spec["proxy_lease_id"] == "41"
     assert spec["expected_egress_ip"] == "203.0.113.41"
+    assert result["lanes"] == {
+        "proxy": {"desired": 2, "running": 2, "failed": 0, "pending": 0, "free": 0, "blocked": 0},
+    }
 
 
 @pytest.mark.asyncio
@@ -123,6 +137,11 @@ async def test_provider_plan_endpoint_is_read_only(monkeypatch):
         return [{"slot_id": "ipv4-001", "public_ip": "198.51.100.1", "route_ready": True}]
 
     monkeypatch.setattr(main, "_worker_public_ip_slots", slots)
+    monkeypatch.setattr(
+        main.database,
+        "get_provider_proxy_capacity",
+        lambda **_: __import__("asyncio").sleep(0, result=[{"available": 1}]),
+    )
     monkeypatch.setattr(main.database, "list_provider_instances", lambda **_: __import__("asyncio").sleep(0, result=[]))
     result = await main.api_plan_provider(
         _request(), "iproyal", main.ProviderPlanRequest(worker_id=7), _auth={"r": "owner"}
@@ -186,3 +205,28 @@ async def test_slot_deploy_skips_existing_running_instance(monkeypatch):
     assert calls == ["earnfm-direct-w7-ipv4-002"]
     assert result["skipped"] == 1
     assert result["running"] == 2
+
+
+@pytest.mark.asyncio
+async def test_slot_direct_deploy_fails_closed_without_bootstrap_manifest(monkeypatch):
+    deployed = AsyncMock(return_value={"container_id": "unsafe"})
+
+    async def none(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setitem(
+        provider_runtime.PROVIDERS,
+        "earnfm",
+        replace(provider_runtime.PROVIDERS["earnfm"], modes=("direct",), topology="slot_direct"),
+    )
+    monkeypatch.setattr(main.database, "get_deployment_spec", none)
+    monkeypatch.setattr(main.database, "get_config", AsyncMock(return_value={"earnfm_token": "token"}))
+    monkeypatch.setattr(main.database, "list_provider_instances", AsyncMock(return_value=[]))
+    monkeypatch.setattr(main.database, "record_health_event", none)
+    monkeypatch.setattr(main, "_worker_public_ip_slots", AsyncMock(side_effect=RuntimeError("offline")))
+    monkeypatch.setattr(main, "_proxy_worker_deploy", deployed)
+    result = await main.api_deploy(
+        _request(), "earnfm", main.DeployRequest(env={}, mode="direct"), worker_id=7, _auth={"r": "owner"}
+    )
+    assert result["status"] == "pending_capacity"
+    deployed.assert_not_awaited()

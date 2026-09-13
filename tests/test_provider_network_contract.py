@@ -1,4 +1,4 @@
-from app.provider_network_audit import validate_provider_egress
+from app.provider_network_audit import validate_provider_egress, validate_provider_network_evidence
 
 
 def test_direct_lane_requires_matching_observed_egress():
@@ -34,3 +34,19 @@ def test_hybrid_lane_does_not_allow_implicit_fallback():
         fallback_mode="direct",
     )
     assert result == {"status": "attention", "findings": ["unsafe egress fallback: direct"]}
+
+
+def test_network_evidence_requires_dns_isolation_and_ipv6_udp_blocking():
+    result = validate_provider_network_evidence(mode="proxy", dns_via_proxy=True, ipv6_blocked=True, udp_blocked=True)
+    assert result == {
+        "status": "attention",
+        "findings": ["doh_isolation_unverified", "dot_isolation_unverified", "direct_fallback_unverified"],
+    }
+
+
+def test_network_evidence_fails_closed_on_missing_or_leaking_controls():
+    result = validate_provider_network_evidence(mode="proxy", dns_via_proxy=None, ipv6_blocked=False, udp_blocked=None)
+    assert result["status"] == "attention"
+    assert "dns_isolation_unverified" in result["findings"]
+    assert "ipv6_not_blocked" in result["findings"]
+    assert "udp_isolation_unverified" in result["findings"]

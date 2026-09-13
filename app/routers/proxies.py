@@ -19,7 +19,7 @@ from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app import database, deps, egress, proxy_egress
 from app.proxy_intelligence import lookup_ip_intelligence
@@ -112,6 +112,10 @@ class ProviderProxyLeaseIn(BaseModel):
     provider_slug: str
     worker_id: int
     instance_id: str
+
+
+class ProviderProxyRotateIn(ProviderProxyLeaseIn):
+    new_proxy_id: int = Field(gt=0)
 
 
 def _utc_timestamp() -> str:
@@ -697,6 +701,53 @@ async def _rotate_worker_proxy_after_ack(
     """Apply a candidate on the worker and commit it only after a matching ACK."""
     async with _proxy_rotation_lock(worker_id):
         return await _rotate_worker_proxy_after_ack_locked(worker_id, candidate, fallback=fallback)
+
+
+async def _rotate_provider_instance_after_ack(
+    worker_id: int, provider_slug: str, instance_id: str, candidate: dict[str, Any]
+) -> bool:
+    """Rotate one topology instance only, then commit its scoped lease CAS."""
+    current = await database.get_active_provider_proxy_lease(
+        worker_id=worker_id, instance_id=instance_id, provider_slug=provider_slug
+    )
+    if not current:
+        return False
+    candidate_id = int(candidate.get("proxy_id") or candidate.get("id") or 0)
+    if candidate_id <= 0 or candidate_id == int(current.get("proxy_id") or 0):
+        return False
+    binding_version = f"rotation_{secrets.token_hex(16)}"
+    payload = {
+        "binding_version": binding_version,
+        "proxy": {**candidate, "proxy_id": candidate_id},
+        "instances": [instance_id],
+    }
+    from app.main import _proxy_to_worker
+
+    try:
+        ack = await _proxy_to_worker(worker_id, "POST", "/api/egress/bindings/apply", json=payload, timeout=60)
+        if not (
+            isinstance(ack, dict)
+            and ack.get("ok")
+            and str(ack.get("binding_version") or "") == binding_version
+            and int(ack.get("proxy_id") or 0) == candidate_id
+            and list(ack.get("applied_instances") or []) == [instance_id]
+            and str(ack.get("observed_exit_ip") or "") == str(candidate.get("exit_ip") or "")
+        ):
+            raise RuntimeError("provider instance proxy ACK mismatch")
+        if not await database.rotate_provider_proxy_lease(
+            provider_slug,
+            worker_id,
+            instance_id,
+            expected_proxy_id=int(current["proxy_id"]),
+            new_proxy_id=candidate_id,
+        ):
+            raise RuntimeError("provider instance proxy CAS lost")
+        await _finalize_worker_proxy_binding(worker_id, binding_version, [instance_id], commit=True)
+        return True
+    except Exception:
+        with contextlib.suppress(Exception):
+            await _finalize_worker_proxy_binding(worker_id, binding_version, [instance_id], commit=False)
+        return False
 
 
 async def _rotate_worker_proxy_after_ack_locked(
@@ -1412,6 +1463,18 @@ async def api_proxy_pool_provider_release(request: Request, body: ProviderProxyL
         body.provider_slug, body.worker_id, body.instance_id, reason="manual release"
     )
     return {"status": "ok", "released": released}
+
+
+@router.post("/api/proxy-pool/provider-rotate")
+async def api_proxy_pool_provider_rotate(request: Request, body: ProviderProxyRotateIn) -> dict[str, Any]:
+    deps._require_owner(request)
+    candidate = await database.get_proxy_endpoint(body.new_proxy_id)
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Replacement proxy not found")
+    ok = await _rotate_provider_instance_after_ack(body.worker_id, body.provider_slug, body.instance_id, candidate)
+    if not ok:
+        raise HTTPException(status_code=409, detail="Provider instance proxy rotation was not committed")
+    return {"status": "ok", "rotated": True, "provider_slug": body.provider_slug, "instance_id": body.instance_id}
 
 
 @router.post("/api/proxy-pool/earnapp-recheck")

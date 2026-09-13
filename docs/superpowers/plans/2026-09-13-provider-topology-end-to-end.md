@@ -27,7 +27,7 @@
 - Preserve hybrid desired count while reporting per-lane deployable/blocked/free counts.
 - Add tests for direct-only, proxy-only, hybrid, and proxy shortage.
 
-Progress: lane metadata (`lanes`, `capacity_basis`, `lane_isolation`) now flows through topology and catalog contracts; independent database capacity scoping remains to be completed.
+Progress: lane metadata (`lanes`, `capacity_basis`, `lane_isolation`) now flows through topology, catalog, deployment specs, and network reconciliation. Planner/API now consume direct IPv4 slots and proxy capacity independently: proxy-only workers can plan without public slots; hybrid lanes do not multiply capacities. Plan desired count includes existing non-retired proxy instances plus currently available proxy capacity, preserving idempotent reruns; summaries expose available proxy capacity separately. Runtime matrix declares `egress_ownership_scope`: EarnApp is `account_sticky`; other providers remain `runtime_lease`. Hybrid callers can now submit explicit `direct_desired` and `proxy_desired` targets; omitted targets retain all-available behavior, while over-capacity targets are returned as blocked/pending rather than silently reduced. Live evidence is still required.
 
 ### Task 2: Lease ownership and lifecycle state machine
 
@@ -46,6 +46,14 @@ Progress: lane metadata (`lanes`, `capacity_basis`, `lane_isolation`) now flows 
 - Keep account suspended/locked distinct from node offline/banned.
 - Ensure usage checks start at the earnings-update boundary and do not recreate identity implicitly.
 - Add idempotence and failure-isolation tests.
+
+Progress: shared lifecycle dispatcher now accepts `usage_stalled`; it restarts
+the same lane, while an unhealthy proxy still takes precedence and rotates.
+Existing EarnApp account authentication remains a separate `defer_auth` path.
+
+Progress: proxy-only deployment now fails closed when the provider capacity query
+proves zero eligible proxies; it returns `pending_capacity` and never falls back
+to a direct or legacy deployment.
 
 ### Task 4: Fail-closed network verification
 
@@ -73,3 +81,56 @@ Progress: lane metadata (`lanes`, `capacity_basis`, `lane_isolation`) now flows 
 - Reconcile NKN direct-IP mismatch before rerunning any slot; never rewrite leases blindly.
 - Run focused tests, full suite, Ruff, compileall, and diff checks.
 - Enable auto-deploy only after redacted live evidence proves every lane contract.
+Progress: PR #314 merged; `v1.40.0` published; Compose examples now pin `1.40` and the full local suite is `2947 passed, 8 skipped`. PR #316 checks are all green and merge state is `CLEAN`, but normal required approval remains outstanding. Proxy-only live evidence is recorded for `vps-test-us` (worker `1.33.3`, therefore network-shape evidence only); direct-only and hybrid evidence remain pending. Network inventory now exposes fail-closed `network_evidence` findings for missing DNS/IPv6/UDP proof. Read-only follow-up on iOS/macOS confirmed distinct egress, loopback DNS, redsocks, and explicit IPv4/IPv6 terminal-drop chains; UDP behavior and direct/hybrid live proof remain unverified.
+
+### Task 7: Fail closed on unknown proxy capacity
+
+**Files:** `app/provider_topology.py`; tests in `tests/test_provider_topology.py`.
+
+- Treat `proxy_capacity=None` as discovery pending, never as an IPv4-shaped proxy target.
+- Preserve explicit `proxy_capacity=0` as zero capacity and return blocked proxy plans.
+- Keep direct and hybrid planning unchanged.
+- [x] Add regression tests for unknown capacity and explicit zero capacity.
+- [x] Run `pytest tests/test_provider_topology.py -q`.
+
+Progress: implemented and pushed in `4afe4ab`; explicit deploy-capacity test coverage followed in `1f34d93`. Focused topology/API verification: `37 passed`.
+
+### Task 8: Slot-based direct-only contract
+
+**Files:** `app/provider_runtime.py`, `app/provider_topology.py`, `app/main.py`; tests in `tests/test_provider_topology_api.py`.
+
+- Mark direct-only providers that are provisioned per public IPv4 as `slot_direct`.
+- Keep genuinely dedicated/manual providers on their dedicated adapters.
+- Expose `public_ipv4_slot`, expected egress, and route state in API payloads.
+- [x] Add API tests proving direct-only count equals route-ready slots and never proxy capacity.
+
+Progress: Azure live preflight confirms both workers expose 10/10 route-ready
+IPv4 slot manifests with dedicated Docker network metadata. NKN/Mysterium remain
+dedicated adapters by design; generic slot planner is not used for their wallet
+and host-agent lifecycle.
+
+### Task 9: Lane-scoped counters and reconciliation UI
+
+**Files:** existing provider catalog/API/UI components; tests in `tests/test_deploy_modes_api.py` and UI tests.
+
+- Render direct/proxy counters separately: desired, running, free, blocked, pending.
+- Show proxy `eligible`, `leased`, `owned`, `available`, and duplicate egress counts.
+- Show lane, capacity source, expected/observed egress, lease and ownership state per node.
+- [ ] Exercise every control and empty/error state through the existing browser test flow.
+
+Progress: deploy status now renders per-lane running/desired/free/pending values
+from the API response (`83f6167`). Lease/ownership/expected-vs-observed egress
+remains a separate reconciliation view and still requires browser verification. Hybrid deploy forms now expose optional independent direct/proxy targets and include them in deploy requests; browser verification remains pending.
+
+Progress: generic provider runtime reconciliation now uses the same two-confirmed-
+inventory safety rule as the EarnApp path, excluding EarnApp so sticky ownership
+cannot be released by the generic cleanup path.
+
+### Task 10: End-to-end live gates
+
+**Files:** `docs/evidence/provider-topology-production-readiness.md`, runbook evidence.
+
+- Capture direct-only, proxy-only, and hybrid evidence using the current released worker.
+- Verify sequential deployment, restart/reboot persistence, proxy rotation, lease/release, orphan reconciliation, and provider failure isolation.
+- Run DNS, IPv6, UDP, DoH/DoT, and direct-fallback probes for every lane.
+- [ ] Do not mark production-ready until every gate has redacted evidence.

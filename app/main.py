@@ -1288,6 +1288,29 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
 async def _resolve_worker_id(worker_id: int | None) -> int:
     """Return a valid worker_id, auto-resolving when only one worker is online."""
     if worker_id is not None:
+        try:
+            selected = await database.get_worker(int(worker_id))
+        except Exception:
+            # Unit/test adapters and pre-enrollment callers may not have a
+            # workers table yet; preserve the explicit ID in that case.
+            return worker_id
+        if selected and selected.get("status") and selected.get("status") != "online":
+            # A worker reinstall/enrollment can mint a new durable client ID
+            # while retaining the same endpoint. Prefer that live successor
+            # over sending a canary to the stale database row.
+            endpoint = str(selected.get("url") or "").strip()
+            name = str(selected.get("name") or "").strip()
+            candidates = [
+                row
+                for row in await database.list_workers()
+                if row.get("status") == "online"
+                and (
+                    (endpoint and str(row.get("url") or "").strip() == endpoint)
+                    or (name and str(row.get("name") or "").strip() == name)
+                )
+            ]
+            if candidates:
+                return max(candidates, key=lambda row: int(row.get("id") or 0))["id"]
         return worker_id
     workers = await database.list_workers()
     online = [w for w in workers if w["status"] == "online"]
@@ -1379,11 +1402,7 @@ async def _run_health_check() -> None:
 
 
 async def _run_provider_lifecycle_scheduler() -> None:
-    """Restart confirmed-offline generic lanes without touching peer lanes.
-
-    Rotation/recreate remain provider-specific and require their own ACK/CAS
-    path; this scheduler deliberately performs only the universally safe action.
-    """
+    """Recover generic lanes independently, using only verified signals."""
     try:
         workers = await database.list_workers()
         by_worker = {int(w.get("id") or 0): w for w in workers if w.get("status") == "online"}
@@ -1414,7 +1433,54 @@ async def _run_provider_lifecycle_scheduler() -> None:
                 ),
                 None,
             )
-            if not live or str(live.get("status") or "").lower() in {"running", "deployed"}:
+            if not live:
+                continue
+            live_status = str(live.get("status") or "").lower()
+            proxy_health = instance.get("proxy_healthy")
+            if proxy_health is None and "proxy_healthy" in live:
+                proxy_health = live.get("proxy_healthy")
+            if proxy_health is None and instance.get("mode") == "proxy":
+                proxy_id = int(instance.get("proxy_id") or 0)
+                if proxy_id:
+                    endpoint = await database.get_proxy_endpoint(proxy_id)
+                    if endpoint and str(endpoint.get("status") or "").strip().lower() == "dead":
+                        proxy_health = False
+            provider_auth_healthy = instance.get("provider_auth_healthy")
+            if provider_auth_healthy is None and "provider_auth_healthy" in live:
+                provider_auth_healthy = live.get("provider_auth_healthy")
+            account_suspended = bool(instance.get("account_suspended")) or bool(live.get("account_suspended"))
+            direct_route_healthy = instance.get("direct_route_healthy")
+            if direct_route_healthy is None and "direct_route_healthy" in live:
+                direct_route_healthy = live.get("direct_route_healthy")
+            usage_stalled = bool(instance.get("usage_stalled")) or bool(live.get("usage_stalled"))
+            if provider_auth_healthy is False or account_suspended:
+                continue
+            if instance.get("mode") == "direct" and direct_route_healthy is False:
+                await database.record_health_event(slug, "check_down", f"lane {instance_id} direct route unavailable")
+                continue
+            # A proxy rotation requires explicit failure evidence. Missing
+            # health data is unknown, never permission to rotate.
+            if live_status in {"running", "deployed"} and proxy_health is False and instance.get("mode") == "proxy":
+                try:
+                    candidate = await database.find_available_proxy_for_worker(worker_id, provider_slug=slug)
+                    if candidate:
+                        from app.routers.proxies import _rotate_provider_instance_after_ack
+
+                        rotated = await _rotate_provider_instance_after_ack(worker_id, slug, instance_id, candidate)
+                        if rotated:
+                            await database.record_health_event(slug, "rotate", f"lane {instance_id} proxy unhealthy")
+                    continue
+                except Exception as exc:  # noqa: BLE001 - one lane cannot block peers
+                    logger.warning("Lifecycle rotation failed for %s: %s", instance_id, type(exc).__name__)
+                    continue
+            if live_status in {"running", "deployed"} and usage_stalled:
+                try:
+                    await _proxy_worker_command(worker_id, "restart", instance_id)
+                    await database.record_health_event(slug, "restart", f"lane {instance_id} usage stalled")
+                except Exception as exc:  # noqa: BLE001 - one lane cannot block peers
+                    logger.warning("Lifecycle usage recovery failed for %s: %s", instance_id, type(exc).__name__)
+                continue
+            if live_status in {"running", "deployed"}:
                 continue
             decision = provider_lifecycle.decide_instance(
                 {
@@ -1423,6 +1489,10 @@ async def _run_provider_lifecycle_scheduler() -> None:
                     "online": False,
                     "banned": False,
                     "proxy_healthy": None,
+                    "direct_route_healthy": direct_route_healthy,
+                    "provider_auth_healthy": provider_auth_healthy,
+                    "account_suspended": account_suspended,
+                    "usage_stalled": usage_stalled,
                 }
             )
             if decision != "restart":
@@ -2592,7 +2662,7 @@ def _service_deploy_surface(svc: dict[str, Any] | None) -> str:
     return str(deploy.get("deploy_surface") or "docker")
 
 
-def _mode_scoped_named_volumes(volumes: dict[str, Any], mode: str) -> dict[str, Any]:
+def _mode_scoped_named_volumes(volumes: dict[str, Any], mode: str, instance_id: str = "") -> dict[str, Any]:
     if mode == "legacy":
         return volumes
     scoped: dict[str, Any] = {}
@@ -2600,7 +2670,10 @@ def _mode_scoped_named_volumes(volumes: dict[str, Any], mode: str) -> dict[str, 
         if str(source).startswith(("/", ".", "~")):
             scoped[source] = mount
         else:
-            scoped[f"{source}-{mode}"] = mount
+            suffix = f"-{mode}"
+            if instance_id:
+                suffix += f"-{re.sub(r'[^A-Za-z0-9_.-]+', '-', instance_id).strip('-')}"
+            scoped[f"{source}{suffix}"] = mount
     return scoped
 
 
@@ -3008,11 +3081,15 @@ class DeployRequest(BaseModel):
     env: dict[str, str] = {}
     hostname: str | None = None
     mode: str | None = None
+    direct_desired: int | None = Field(default=None, ge=0)
+    proxy_desired: int | None = Field(default=None, ge=0)
 
 
 class ProviderPlanRequest(BaseModel):
     worker_id: int = Field(gt=0)
     mode: str | None = None
+    direct_desired: int | None = Field(default=None, ge=0)
+    proxy_desired: int | None = Field(default=None, ge=0)
 
 
 class EarnAppCanaryDeployRequest(BaseModel):
@@ -3385,9 +3462,13 @@ _DEVICE_IDENTITY_ENV_KEYS: dict[str, tuple[str, ...]] = {
 }
 
 
-def _standard_device_identity(worker: dict[str, Any] | None, mode: str, fallback_hostname: str) -> str:
+def _standard_device_identity(
+    worker: dict[str, Any] | None, mode: str, fallback_hostname: str, identity_seed: str = ""
+) -> str:
     suffix = "p" if mode == "proxy" else "d"
     source = egress.egress_of(worker) or str((worker or {}).get("name") or "").strip() or fallback_hostname
+    if identity_seed:
+        source = f"{source}-{re.sub(r'[^A-Za-z0-9_.-]+', '-', identity_seed).strip('-')}"
     return f"{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}.{source}.{suffix}"
 
 
@@ -3403,8 +3484,9 @@ def _apply_standard_device_identity(
     worker: dict[str, Any] | None,
     mode: str,
     fallback_hostname: str,
+    identity_seed: str = "",
 ) -> None:
-    identity = _standard_device_identity(worker, mode, fallback_hostname)
+    identity = _standard_device_identity(worker, mode, fallback_hostname, identity_seed)
     if slug == "proxies-sx":
         identity = _proxies_sx_agent_name(identity)
     for key in _DEVICE_IDENTITY_ENV_KEYS.get(slug, ()):
@@ -3427,41 +3509,65 @@ async def api_plan_provider(
             "status": "manual",
             "plans": [],
         }
+    worker_id = await _resolve_worker_id(body.worker_id)
     try:
         try:
-            slots = await _worker_public_ip_slots(body.worker_id, include_unready=True)
+            slots = await _worker_public_ip_slots(worker_id, include_unready=True)
         except TypeError as exc:
             # Keep compatibility with test/legacy adapters exposing the old signature.
             if "include_unready" not in str(exc):
                 raise
-            slots = await _worker_public_ip_slots(body.worker_id)
+            slots = await _worker_public_ip_slots(worker_id)
     except Exception as exc:  # noqa: BLE001 - report unavailable slots explicitly
-        return {
-            "provider": slug,
-            "worker_id": body.worker_id,
-            "topology": runtime.topology,
-            "contract": provider_topology.topology_contract(slug),
-            "status": "slots_unavailable",
-            "error": type(exc).__name__,
-            "plans": [],
-        }
-    try:
-        plans = provider_topology.plan_provider_nodes(body.worker_id, slug, slots, mode=body.mode)
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    instances = await database.list_provider_instances(slug=slug, worker_id=body.worker_id)
+        if runtime.topology == "slot_proxy":
+            slots = []
+        else:
+            return {
+                "provider": slug,
+                "worker_id": worker_id,
+                "topology": runtime.topology,
+                "contract": provider_topology.topology_contract(slug),
+                "status": "slots_unavailable",
+                "error": type(exc).__name__,
+                "plans": [],
+            }
     available_proxy_count = None
-    if "proxy" in {plan.mode for plan in plans}:
+    if "proxy" in provider_modes.expand_requested(slug, body.mode):
         with contextlib.suppress(Exception):
             capacity_rows = await database.get_provider_proxy_capacity(
                 provider_slug=slug,
                 required_ip_type="residential",
             )
             available_proxy_count = sum(int(row.get("available") or 0) for row in capacity_rows)
-    summary = provider_topology.summarize_provider_plan(plans, instances, available_proxy_count=available_proxy_count)
+    instances = await database.list_provider_instances(slug=slug, worker_id=worker_id)
+    existing_proxy_count = sum(
+        1
+        for row in instances
+        if str(row.get("mode") or "").strip().lower() == "proxy"
+        and str(row.get("status") or "").strip().lower() not in {"retired", "deleted"}
+    )
+    planned_proxy_capacity = available_proxy_count + existing_proxy_count if available_proxy_count is not None else None
+    try:
+        plans = provider_topology.plan_provider_nodes(
+            worker_id,
+            slug,
+            slots,
+            mode=body.mode,
+            proxy_capacity=planned_proxy_capacity,
+            direct_desired=body.direct_desired,
+            proxy_desired=body.proxy_desired,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    summary = provider_topology.summarize_provider_plan(
+        plans,
+        instances,
+        available_proxy_count=available_proxy_count,
+        existing_proxy_count=existing_proxy_count,
+    )
     worker = None
     with contextlib.suppress(Exception):
-        worker = await database.get_worker(body.worker_id)
+        worker = await database.get_worker(worker_id)
     system_info = (worker or {}).get("system_info") or {}
     if isinstance(system_info, str):
         system_info = _safe_json(system_info, {})
@@ -3475,7 +3581,7 @@ async def api_plan_provider(
     )
     return {
         "provider": slug,
-        "worker_id": body.worker_id,
+        "worker_id": worker_id,
         "topology": runtime.topology,
         "contract": provider_topology.topology_contract(slug),
         "status": "ready",
@@ -3700,6 +3806,7 @@ async def api_deploy(
     # ready public IPv4 routes. Keep the legacy single-instance path only for
     # workers that have not enrolled the slot contract yet.
     topology_plans = []
+    slot_discovery_ok = False
     try:
         # Plan all bootstrap capacity, including blocked direct slots; mutation
         # below filters non-deployable plans while proxy lanes remain eligible.
@@ -3709,22 +3816,96 @@ async def api_deploy(
             if "include_unready" not in str(exc):
                 raise
             slot_records = await _worker_public_ip_slots(worker_id)
+        slot_discovery_ok = True
     except Exception as exc:  # noqa: BLE001 - legacy workers may not expose slots
         logger.debug("Public IPv4 slot discovery unavailable for worker %s: %s", worker_id, type(exc).__name__)
         slot_records = []
     runtime_topology = provider_runtime.get(slug)
-    if slot_records is not None and runtime_topology and runtime_topology.topology.startswith("slot_"):
-        topology_plans = provider_topology.plan_provider_nodes(worker_id, slug, slot_records, mode=body.mode)
+    if runtime_topology and "direct" in modes and runtime_topology.topology == "slot_direct" and not slot_discovery_ok:
+        await database.record_health_event(
+            slug, "slots_pending", "public IPv4 slot manifest unavailable; deployment deferred"
+        )
+        return {
+            "status": "pending_capacity",
+            "provider": slug,
+            "worker_id": worker_id,
+            "pending_direct": 1,
+            "deployed": [],
+        }
+    existing_rows = await database.list_provider_instances(slug=slug, worker_id=worker_id)
+    existing_proxy_count = sum(
+        1
+        for row in existing_rows
+        if str(row.get("mode") or "").strip().lower() == "proxy"
+        and str(row.get("status") or "").strip().lower() not in {"retired", "deleted"}
+    )
+    proxy_capacity = None
+    proxy_capacity_known = False
+    if runtime_topology and runtime_topology.topology.startswith("slot_") and "proxy" in modes:
+        with contextlib.suppress(Exception):
+            capacity_rows = await database.get_provider_proxy_capacity(
+                provider_slug=slug,
+                required_ip_type="residential",
+            )
+            proxy_capacity = sum(int(row.get("available") or 0) for row in capacity_rows) + existing_proxy_count
+            proxy_capacity_known = True
+    topology_managed = bool(
+        runtime_topology
+        and runtime_topology.topology.startswith("slot_")
+        and (
+            (slot_discovery_ok and bool(slot_records))
+            or (proxy_capacity_known and proxy_capacity and proxy_capacity > 0)
+        )
+    )
+    # A worker that predates the slot contract may not expose slot discovery.
+    # Preserve its legacy allocator; once discovery succeeds, unknown/zero
+    # proxy capacity is authoritative and deployment must fail closed.
+    topology_contract_available = slot_discovery_ok
+    if (
+        runtime_topology
+        and runtime_topology.topology == "slot_proxy"
+        and not proxy_capacity_known
+        and topology_contract_available
+    ):
+        await database.record_health_event(slug, "proxy_pending", "proxy capacity unavailable; deployment deferred")
+        return {
+            "status": "pending_capacity",
+            "provider": slug,
+            "worker_id": worker_id,
+            "pending_proxy": 1,
+            "deployed": [],
+        }
+    if (
+        runtime_topology
+        and runtime_topology.topology == "slot_proxy"
+        and not proxy_capacity
+        and topology_contract_available
+    ):
+        await database.record_health_event(slug, "proxy_pending", "no qualified proxy capacity; deployment deferred")
+        return {
+            "status": "pending_capacity",
+            "provider": slug,
+            "worker_id": worker_id,
+            "pending_proxy": 1,
+            "deployed": [],
+        }
+    if topology_managed:
+        topology_plans = provider_topology.plan_provider_nodes(
+            worker_id,
+            slug,
+            slot_records,
+            mode=body.mode,
+            proxy_capacity=proxy_capacity,
+            direct_desired=body.direct_desired,
+            proxy_desired=body.proxy_desired,
+        )
     deployed: list[dict[str, str]] = []
     pending_proxy = 0
     skipped_existing = 0
     identity_worker: dict[str, Any] | None = None
     existing_instances: dict[str, dict[str, Any]] = {}
-    if topology_plans:
-        existing_instances = {
-            str(row.get("instance_id") or ""): row
-            for row in await database.list_provider_instances(slug=slug, worker_id=worker_id)
-        }
+    if topology_managed:
+        existing_instances = {str(row.get("instance_id") or ""): row for row in existing_rows}
         skipped_existing = sum(
             1
             for plan in topology_plans
@@ -3739,7 +3920,7 @@ async def api_deploy(
             if str(existing_instances.get(plan.instance_id, {}).get("status") or "").lower()
             not in {"running", "deployed"}
         ]
-        if topology_plans
+        if topology_managed
         else [(None, mode) for mode in modes]
     )
     for idx, (topology_plan, mode) in enumerate(deployment_items):
@@ -3750,6 +3931,10 @@ async def api_deploy(
             instance_spec["topology"] = runtime_topology.topology
             instance_spec["lane"] = mode
             instance_spec["slot_id"] = topology_plan.slot_id
+            instance_spec["lane_targets"] = {
+                "direct": body.direct_desired,
+                "proxy": body.proxy_desired,
+            }
             if mode == "direct":
                 instance_spec["expected_egress_ip"] = topology_plan.public_ip
         instance_spec.setdefault("labels", {})
@@ -3763,6 +3948,31 @@ async def api_deploy(
             if mode == "direct" and topology_plan.network:
                 instance_spec["network"] = topology_plan.network
                 instance_spec["network_mode"] = None
+        # Reserve a direct capacity slot before any remote mutation. The
+        # database uniqueness constraint makes concurrent deploy requests for
+        # the same provider/worker/slot converge instead of creating two
+        # containers that claim one public IPv4 route.
+        if topology_plan and mode == "direct":
+            try:
+                await database.save_provider_instance(
+                    slug,
+                    instance_slug,
+                    worker_id=worker_id,
+                    mode="direct",
+                    capacity_slot=topology_plan.capacity_slot,
+                    status="planned",
+                    spec=instance_spec,
+                )
+            except Exception as exc:  # noqa: BLE001 - one occupied slot cannot stop peer lanes
+                if exc.__class__.__name__ != "IntegrityError":
+                    raise
+                deployed.append(
+                    {"instance_id": instance_slug, "container_id": "", "mode": mode, "status": "slot_conflict"}
+                )
+                await database.record_health_event(
+                    slug, "capacity_conflict", f"direct slot {topology_plan.capacity_slot} already reserved"
+                )
+                continue
         if slug == "earnfm" and mode == "direct":
             instance_spec.setdefault("env", {})["GODEBUG"] = "http2client=0"
             if not topology_plan:
@@ -3786,7 +3996,14 @@ async def api_deploy(
             if slug in _DEVICE_IDENTITY_ENV_KEYS and identity_worker is None:
                 with contextlib.suppress(Exception):
                     identity_worker = await database.get_worker(worker_id)
-            _apply_standard_device_identity(slug, instance_env, worker=identity_worker, mode=mode, fallback_hostname=hn)
+            _apply_standard_device_identity(
+                slug,
+                instance_env,
+                worker=identity_worker,
+                mode=mode,
+                fallback_hostname=hn,
+                identity_seed=instance_slug if topology_plan else "",
+            )
             if raw_command and slug in _DEVICE_IDENTITY_ENV_KEYS:
                 instance_spec["command"] = re.sub(
                     r"\$\{(\w+)\}",
@@ -3794,7 +4011,9 @@ async def api_deploy(
                     raw_command,
                 )
         if instance_spec.get("volumes"):
-            instance_spec["volumes"] = _mode_scoped_named_volumes(instance_spec["volumes"], mode)
+            instance_spec["volumes"] = _mode_scoped_named_volumes(
+                instance_spec["volumes"], mode, instance_slug if topology_plan else ""
+            )
         if mode == "proxy" and slug != "iproyal":
             try:
                 instance_spec["proxy"] = await _proxy_for_provider_instance(
@@ -3844,13 +4063,18 @@ async def api_deploy(
             if topology_plan and instance_spec.get("proxy"):
                 with contextlib.suppress(Exception):
                     await database.release_proxy_for_provider_instance(
-                        slug, worker_id, instance_slug, reason="DEPLOY_FAILED"
+                        slug,
+                        worker_id,
+                        instance_slug,
+                        reason="DEPLOY_FAILED",
+                        expected_proxy_id=int((instance_spec.get("proxy") or {}).get("proxy_id") or 0) or None,
                     )
             await database.save_provider_instance(
                 slug,
                 instance_slug,
                 worker_id=worker_id,
                 mode="direct" if mode == "legacy" else mode,
+                capacity_slot=topology_plan.capacity_slot if topology_plan else "",
                 status="failed",
                 spec=instance_spec,
             )
@@ -3865,6 +4089,7 @@ async def api_deploy(
             instance_slug,
             worker_id=worker_id,
             mode="direct" if mode == "legacy" else mode,
+            capacity_slot=topology_plan.capacity_slot if topology_plan else "",
             container_id=container_id,
             proxy_id=int((instance_spec.get("proxy") or {}).get("proxy_id") or 0) or None,
             status="running",
@@ -3882,6 +4107,30 @@ async def api_deploy(
     _spawn(_run_collection())
     response: dict[str, Any] = {"status": "deployed", "instances": deployed}
     if topology_plans:
+        lane_response: dict[str, dict[str, int]] = {}
+        for lane in ("direct", "proxy"):
+            lane_plans = [plan for plan in topology_plans if plan.mode == lane]
+            if not lane_plans:
+                continue
+            lane_instances = [item for item in deployed if item.get("mode") == lane]
+            lane_skipped = sum(
+                1
+                for plan in lane_plans
+                if str(existing_instances.get(plan.instance_id, {}).get("status") or "").lower()
+                in {"running", "deployed"}
+            )
+            lane_response[lane] = {
+                "desired": len(lane_plans),
+                "running": lane_skipped,
+                "failed": sum(1 for item in lane_instances if item.get("status") == "failed"),
+                "pending": sum(1 for plan in lane_plans if not plan.deployable)
+                + sum(1 for item in lane_instances if item.get("status") == "pending_proxy"),
+            }
+            lane_response[lane]["running"] += sum(1 for item in lane_instances if item.get("status") == "running")
+            lane_response[lane]["free"] = max(
+                0, lane_response[lane]["desired"] - lane_response[lane]["running"] - lane_response[lane]["pending"]
+            )
+            lane_response[lane]["blocked"] = sum(1 for plan in lane_plans if not plan.deployable)
         response.update(
             desired=len(topology_plans),
             running=skipped_existing + sum(1 for item in deployed if item.get("status") == "running"),
@@ -3891,6 +4140,14 @@ async def api_deploy(
             blocked=sum(1 for plan in topology_plans if not plan.deployable),
             pending_capacity=sum(1 for plan in topology_plans if not plan.deployable) + pending_proxy,
             blocked_slots=sorted({plan.slot_id for plan in topology_plans if not plan.deployable}),
+            lanes=lane_response,
+            topology_status=(
+                "partial"
+                if len(lane_response) > 1 and any(stats["blocked"] for stats in lane_response.values())
+                else "blocked"
+                if any(stats["blocked"] for stats in lane_response.values())
+                else "ready"
+            ),
         )
     if deployed:
         response["container_id"] = deployed[-1]["container_id"]
@@ -8018,6 +8275,17 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         await database.reconcile_earnapp_provider_instances(
             int(worker_id),
             reported_instance_ids=reported_earnapp_ids,
+            inventory_confirmed=bool(body.containers_inventory_confirmed),
+        )
+    reported_provider_ids = {
+        str(item.get("instance_slug") or item.get("name") or "").strip()
+        for item in body.containers
+        if isinstance(item, dict) and str(item.get("instance_slug") or item.get("name") or "").strip()
+    }
+    with contextlib.suppress(Exception):
+        await database.reconcile_provider_instances(
+            int(worker_id),
+            reported_instance_ids=reported_provider_ids,
             inventory_confirmed=bool(body.containers_inventory_confirmed),
         )
     myst = body.provider_states.get("mysterium") or {}

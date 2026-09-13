@@ -79,7 +79,11 @@ async def provision_node(
         )
     except Exception:
         await database.release_proxy_for_provider_instance(
-            "earnapp", int(worker_id), node_id, reason="EARNAPP_NODE_BIND_FAILED"
+            "earnapp",
+            int(worker_id),
+            node_id,
+            reason="EARNAPP_NODE_BIND_FAILED",
+            expected_proxy_id=int(proxy.get("proxy_id") or 0) or None,
         )
         raise
     return _public_node(node)

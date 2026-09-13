@@ -36,3 +36,43 @@ Date: 2026-09-12
 - Per-container IPv4/IPv6/DNS/DoH/UDP/direct-fallback leak matrix.
 - Lease, release, sticky ownership, rotation, reboot, and failure-isolation evidence.
 - Release digest deployment verification.
+
+## Current live verification note (2026-09-13)
+
+- The East Asia worker responds healthy and exposes 10/10 route-ready IPv4 slots.
+- Its systemd unit still builds local `assetforgeai/cashpilot-worker:dev`; the
+  running container reports `CASHPILOT_VERSION=1.39.0`. This is a deployment
+  drift, not evidence for the released `1.40` artifact.
+- The authenticated `/api/network/slots` endpoint returned `401` when called
+  without the worker's issued key. No guessed or extracted secret was used.
+- Therefore live deployment/restart/rotation evidence remains pending until the
+  worker is upgraded through its normal authenticated deployment path.
+
+## Authenticated slot evidence (2026-09-13)
+
+- East Asia worker `20.187.79.110`: authenticated slot endpoint returned 10
+  slots, all `route_ready=true`; sampled direct egress matched `ipv4-001`,
+  `ipv4-005`, and `ipv4-010`.
+- Japan East worker `20.210.93.220`: authenticated slot endpoint returned 10
+  slots, all `route_ready=true`; health endpoint returned HTTP 200.
+- Direct slot containers use dedicated Docker bridge networks and Docker's local
+  resolver. This proves direct-slot routing only; it does not prove proxy-only
+  or hybrid behavior, nor DoH/DoT/UDP leak absence.
+- Both workers still report running worker image `1.39`; release artifact `1.40`
+  is not yet deployed to either live worker.
+
+## Worker upgrade correction (2026-09-13)
+
+- Japan East stale container `cashpilot-worker` was verified to use the
+  authoritative `cashpilot_cashpilot_worker_data` volume before replacement.
+- The stale unlabeled `1.39` container was stopped and removed; no provider
+  container or data volume was touched.
+- Compose recreated the worker as
+  `ghcr.io/assetforgeai-tech/cashpilot-worker:1.40`; runtime reports `1.40.0`.
+- `/api/health` returned HTTP 200, restart policy is `always`, and
+  `cashpilot-worker.service` is active.
+- The old duplicate volume `cashpilot-worker_cashpilot_worker_data` remains
+  retained for rollback/comparison. Worker identity continuity hashes were
+  recorded without exposing key contents.
+- This proves worker upgrade/restart persistence only; provider live lane and
+  leak evidence remain outstanding.
