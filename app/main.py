@@ -3950,18 +3950,6 @@ async def api_deploy(
                 "udp": "explicit",
                 "fail_closed": True,
             }
-        if runtime_topology and runtime_topology.topology.startswith("slot_") and not slot_records:
-            await database.record_health_event(
-                slug, "slots_pending", "public IPv4 slot manifest is empty; deployment deferred"
-            )
-            return {
-                "status": "pending_capacity",
-                "provider": slug,
-                "worker_id": worker_id,
-                "pending_direct": 1 if "direct" in modes else 0,
-                "pending_proxy": 1 if "proxy" in modes else 0,
-                "deployed": [],
-            }
         )
         if topology_plan:
             instance_spec["topology"] = runtime_topology.topology

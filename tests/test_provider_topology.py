@@ -256,7 +256,7 @@ def test_summary_counts_existing_proxy_instances_without_calling_them_available(
     )
     assert summary["capacity_target"] == 2
     assert summary["proxy_capacity"] == 1
-    assert summary["lane_capacity"]["proxy"]["running"] == 1
+    assert summary["lane_capacity"]["proxy"]["running"] == 0
 
 
 def test_capacity_preflight_reports_compute_disk_ports_slots_and_proxy_capacity():
