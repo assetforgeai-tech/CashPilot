@@ -300,6 +300,16 @@ img { max-width: 100%; }
 }
 
 /* Theme toggle icon visibility */
+.detail-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--border-color);
+}
+.detail-tabs .tab-btn {
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+
 #theme-toggle .icon-moon { display: none; }
 :root[data-theme="light"] #theme-toggle .icon-sun { display: none; }
 :root[data-theme="light"] #theme-toggle .icon-moon { display: block; }

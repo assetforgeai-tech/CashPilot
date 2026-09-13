@@ -1,6 +1,40 @@
 from app.provider_lifecycle import decide, decide_instance, decide_lane
 
 
+def test_duplicate_worker_endpoint_marks_only_stale_registration_superseded():
+    from app.main import _mark_superseded_workers
+
+    workers = [
+        {
+            "id": 1,
+            "client_id": "old",
+            "url": "http://203.0.113.10:8081",
+            "status": "offline",
+            "last_heartbeat": "2026-09-12 10:00:00",
+        },
+        {
+            "id": 2,
+            "client_id": "new",
+            "url": "http://203.0.113.10:8081/",
+            "status": "online",
+            "last_heartbeat": "2026-09-13 10:00:00",
+        },
+        {
+            "id": 3,
+            "client_id": "peer",
+            "url": "http://203.0.113.11:8081",
+            "status": "offline",
+            "last_heartbeat": "2026-09-13 09:00:00",
+        },
+    ]
+
+    _mark_superseded_workers(workers)
+
+    assert workers[0]["superseded_by_worker_id"] == 2
+    assert workers[1]["superseded_by_worker_id"] is None
+    assert workers[2]["superseded_by_worker_id"] is None
+
+
 def test_lifecycle_policy_is_defined_by_provider_lane_contract():
     from app import provider_runtime
 
@@ -8,7 +42,7 @@ def test_lifecycle_policy_is_defined_by_provider_lane_contract():
     packetstream = provider_runtime.get("packetstream")
     assert earnapp is not None and packetstream is not None
     assert earnapp.lifecycle_action("proxy", "banned") == "restart"
-    assert packetstream.lifecycle_action("proxy", "banned") == "recreate"
+    assert packetstream.lifecycle_action("proxy", "banned") == "observe"
     assert earnapp.lifecycle_action("proxy", "proxy_unhealthy") == "rotate"
     assert provider_runtime.get("earnfm").lifecycle_action("direct", "direct_route_unhealthy") == "blocked"
 
@@ -21,7 +55,7 @@ def test_provider_lifecycle_dispatcher_is_scheduled_separately():
     assert inspect.iscoroutinefunction(main._run_provider_lifecycle_scheduler)
 
 
-def test_generic_lifecycle_scheduler_restarts_only_confirmed_stopped_lane(monkeypatch):
+def test_generic_lifecycle_scheduler_does_not_restart_offline_provider_nodes(monkeypatch):
     import asyncio
     from unittest.mock import AsyncMock
 
@@ -60,7 +94,7 @@ def test_generic_lifecycle_scheduler_restarts_only_confirmed_stopped_lane(monkey
 
     asyncio.run(main._run_provider_lifecycle_scheduler())
 
-    command.assert_awaited_once_with(7, "restart", "earnfm-direct-w7-ipv4-001")
+    command.assert_not_awaited()
 
 
 def test_generic_lifecycle_scheduler_does_not_guess_missing_container_state(monkeypatch):
@@ -153,7 +187,7 @@ def test_generic_lifecycle_scheduler_rotates_only_verified_unhealthy_proxy_lane(
     rotate.assert_awaited_once_with(7, "earnfm", "earnfm-proxy-w7-proxy-001", candidate)
 
 
-def test_generic_lifecycle_scheduler_restarts_running_lane_when_usage_stalls(monkeypatch):
+def test_generic_lifecycle_scheduler_does_not_apply_earnapp_usage_policy_to_other_providers(monkeypatch):
     import asyncio
     from unittest.mock import AsyncMock
 
@@ -193,19 +227,17 @@ def test_generic_lifecycle_scheduler_restarts_running_lane_when_usage_stalls(mon
 
     asyncio.run(main._run_provider_lifecycle_scheduler())
 
-    command.assert_awaited_once_with(7, "restart", "earnfm-proxy-w7-proxy-001")
+    command.assert_not_awaited()
 
 
-def test_offline_provider_restarts_without_rotating_proxy():
-    assert decide("packetstream", online=False, banned=False, proxy_healthy=True) == "restart"
+def test_offline_policy_is_earnapp_only():
+    assert decide("packetstream", online=False, banned=False, proxy_healthy=True) == "observe"
+    assert decide("earnapp", online=False, banned=False, proxy_healthy=True) == "restart"
 
 
-def test_usage_stalled_restarts_same_lane_without_recreating_identity():
-    assert decide("packetstream", online=True, banned=False, proxy_healthy=True, usage_stalled=True) == "restart"
-    assert (
-        decide_lane("earnfm", mode="direct", online=True, banned=False, proxy_healthy=True, usage_stalled=True)
-        == "restart"
-    )
+def test_usage_stalled_policy_is_earnapp_only():
+    assert decide("packetstream", online=True, banned=False, proxy_healthy=True, usage_stalled=True) == "observe"
+    assert decide("earnapp", online=True, banned=False, proxy_healthy=True, usage_stalled=True) == "restart"
 
 
 def test_unhealthy_proxy_rotation_precedes_usage_restart():
@@ -215,8 +247,8 @@ def test_unhealthy_proxy_rotation_precedes_usage_restart():
     )
 
 
-def test_banned_provider_recreates_and_rotates_when_provider_requires_instance_rotation():
-    assert decide("iproyal", online=True, banned=True, proxy_healthy=True) == "recreate"
+def test_banned_policy_is_earnapp_only():
+    assert decide("iproyal", online=True, banned=True, proxy_healthy=True) == "observe"
 
 
 def test_unhealthy_proxy_rotates_only_for_proxy_runtime():
@@ -306,5 +338,5 @@ def test_decide_instance_requires_explicit_lane_and_returns_observe_without_sign
 def test_decide_instance_uses_provider_and_lane_identity():
     assert (
         decide_instance({"slug": "earnfm", "mode": "direct", "online": False, "banned": False, "proxy_healthy": True})
-        == "restart"
+        == "observe"
     )

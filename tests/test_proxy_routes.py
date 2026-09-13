@@ -3933,6 +3933,115 @@ def test_provider_slot_leases_are_deterministic_across_reruns(tmp_path):
     asyncio.run(run())
 
 
+def test_provider_slot_lease_persists_capacity_slot(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            (proxy_id,) = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id,
+                [{"provider_proxy_id": "one", "host": "1.1.1.1", "port": 1000, "ip_type": "residential"}],
+            )
+            await database.save_proxy_probe_result(
+                proxy_id,
+                profile="generic",
+                probe_status="alive",
+                verdict="ALIVE",
+                eligibility="eligible",
+                reason="",
+                exit_ip="8.8.8.8",
+                latency_ms=10,
+                probe_version="test",
+            )
+            worker_id = await database.upsert_worker("worker-a", "a", "http://a")
+            instance = "earnfm-proxy-w7-proxy-001"
+
+            first = await database.lease_proxy_for_provider_instance(
+                "earnfm", worker_id, instance, capacity_slot="proxy-001"
+            )
+            rerun = await database.lease_proxy_for_provider_instance(
+                "earnfm", worker_id, instance, capacity_slot="proxy-001"
+            )
+
+            assert first and first["capacity_slot"] == "proxy-001"
+            assert rerun and rerun["capacity_slot"] == "proxy-001"
+            active = await database.get_active_provider_proxy_lease("earnfm", worker_id, instance)
+            assert active and active["capacity_slot"] == "proxy-001"
+
+    asyncio.run(run())
+
+
+def test_provider_slot_lease_rejects_second_instance_claiming_same_capacity_slot(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            proxy_ids = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id,
+                [
+                    {"provider_proxy_id": "one", "host": "1.1.1.1", "port": 1000, "ip_type": "residential"},
+                    {"provider_proxy_id": "two", "host": "2.2.2.2", "port": 1000, "ip_type": "residential"},
+                ],
+            )
+            for proxy_id, exit_ip in zip(proxy_ids, ("8.8.8.8", "9.9.9.9"), strict=True):
+                await database.save_proxy_probe_result(
+                    proxy_id,
+                    profile="generic",
+                    probe_status="alive",
+                    verdict="ALIVE",
+                    eligibility="eligible",
+                    reason="",
+                    exit_ip=exit_ip,
+                    latency_ms=10,
+                    probe_version="test",
+                )
+            worker_id = await database.upsert_worker("worker-a", "a", "http://a")
+            first = await database.lease_proxy_for_provider_instance(
+                "future", worker_id, "future-1", capacity_slot="ipv4-001"
+            )
+            second = await database.lease_proxy_for_provider_instance(
+                "future", worker_id, "future-2", capacity_slot="ipv4-001"
+            )
+            assert first
+            assert second is None
+
+    asyncio.run(run())
+
+
+def test_provider_slot_lease_backfills_capacity_slot_for_existing_active_lease(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            (proxy_id,) = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id, [{"provider_proxy_id": "one", "host": "1.1.1.1", "port": 1000}]
+            )
+            await database.save_proxy_probe_result(
+                proxy_id,
+                profile="generic",
+                probe_status="alive",
+                verdict="ALIVE",
+                eligibility="eligible",
+                reason="",
+                exit_ip="8.8.8.8",
+                latency_ms=10,
+                probe_version="test",
+            )
+            worker_id = await database.upsert_worker("worker-a", "a", "http://a")
+            instance = "future-proxy-w1-proxy-001"
+            assert await database.lease_proxy_for_provider_instance("future", worker_id, instance)
+
+            rebound = await database.lease_proxy_for_provider_instance(
+                "future", worker_id, instance, capacity_slot="proxy-001"
+            )
+
+            assert rebound and rebound["capacity_slot"] == "proxy-001"
+            active = await database.get_active_provider_proxy_lease("future", worker_id, instance)
+            assert active and active["capacity_slot"] == "proxy-001"
+
+    asyncio.run(run())
+
+
 def test_provider_scoped_lease_can_require_residential_proxy(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):

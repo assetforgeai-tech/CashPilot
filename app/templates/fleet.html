@@ -341,10 +341,12 @@ CASHPILOT_WORKER_URL=http://public-vps-ip:8081</code>
     const el = document.getElementById('fleet-counts');
     if (!el) return;
     const now = Date.now();
+    const activePhysical = all.filter(w => !w.superseded_by_worker_id);
     const counts = {
       total: all.length,
-      online: all.filter(w => w.status === 'online').length,
-      offline: all.filter(w => w.status !== 'online').length,
+      online: activePhysical.filter(w => w.status === 'online').length,
+      offline: activePhysical.filter(w => w.status !== 'online').length,
+      'stale registrations': all.filter(w => w.superseded_by_worker_id).length,
       stale: all.filter(w => {
         const ts = Date.parse(String(w.last_heartbeat || '').replace(' ', 'T') + 'Z');
         return Number.isFinite(ts) && now - ts > 5 * 60 * 1000;
@@ -383,7 +385,7 @@ CASHPILOT_WORKER_URL=http://public-vps-ip:8081</code>
         const isAndroid = (sysInfo.device_type === 'android');
         const items = isAndroid ? (w.apps || []) : (w.containers || []);
         html += `
-        <div class="card" style="margin-bottom: 12px; border-left: 3px solid ${borderColor};">
+        <div class="card" style="margin-bottom: 12px; border-left: 3px solid ${borderColor};${w.superseded_by_worker_id ? ' opacity:0.7;' : ''}">
           <div style="padding: 16px;">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
               <div style="display: flex; align-items: center; gap: 8px;">
@@ -400,6 +402,7 @@ CASHPILOT_WORKER_URL=http://public-vps-ip:8081</code>
                   ? `<span style="font-size:0.7rem; padding:2px 6px; border-radius:4px; background:var(--bg-hover); color:var(--text-muted);" title="Worker provider state from heartbeat">provider states</span>`
                   : ''}
                 <code style="font-size:0.68rem; color:var(--text-muted); background:var(--bg-hover); padding:1px 5px; border-radius:3px;" title="This worker's client_id — the id CashPilot keys it on. Two rows with the same name always have different ids; this is how to tell which is which.">${esc(w.client_id || ('#' + w.id))}</code>
+                ${w.superseded_by_worker_id ? `<span class="badge badge-warning" title="A newer online registration uses the same worker URL.">stale registration</span>` : ''}
               </div>
               ${_isOwner ? `<button class="btn btn-danger btn-sm btn-remove-worker" data-worker-id="${w.id}" data-worker-name="${esc(w.name)}" data-worker-client="${esc(w.client_id || '')}" title="Remove worker">Remove</button>` : ''}
             </div>

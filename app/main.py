@@ -1298,14 +1298,14 @@ async def _resolve_worker_id(worker_id: int | None) -> int:
             # A worker reinstall/enrollment can mint a new durable client ID
             # while retaining the same endpoint. Prefer that live successor
             # over sending a canary to the stale database row.
-            endpoint = str(selected.get("url") or "").strip()
+            endpoint = str(selected.get("url") or "").strip().rstrip("/").lower()
             name = str(selected.get("name") or "").strip()
             candidates = [
                 row
                 for row in await database.list_workers()
                 if row.get("status") == "online"
                 and (
-                    (endpoint and str(row.get("url") or "").strip() == endpoint)
+                    (endpoint and str(row.get("url") or "").strip().rstrip("/").lower() == endpoint)
                     or (name and str(row.get("name") or "").strip() == name)
                 )
             ]
@@ -1452,7 +1452,10 @@ async def _run_provider_lifecycle_scheduler() -> None:
             direct_route_healthy = instance.get("direct_route_healthy")
             if direct_route_healthy is None and "direct_route_healthy" in live:
                 direct_route_healthy = live.get("direct_route_healthy")
-            usage_stalled = bool(instance.get("usage_stalled")) or bool(live.get("usage_stalled"))
+            # Offline/usage/banned device policy belongs to EarnApp's dedicated
+            # account-aware scheduler. Generic providers act only on verified
+            # route health; guessing provider semantics can destroy identity.
+            usage_stalled = False
             if provider_auth_healthy is False or account_suspended:
                 continue
             if instance.get("mode") == "direct" and direct_route_healthy is False:
@@ -1473,13 +1476,6 @@ async def _run_provider_lifecycle_scheduler() -> None:
                 except Exception as exc:  # noqa: BLE001 - one lane cannot block peers
                     logger.warning("Lifecycle rotation failed for %s: %s", instance_id, type(exc).__name__)
                     continue
-            if live_status in {"running", "deployed"} and usage_stalled:
-                try:
-                    await _proxy_worker_command(worker_id, "restart", instance_id)
-                    await database.record_health_event(slug, "restart", f"lane {instance_id} usage stalled")
-                except Exception as exc:  # noqa: BLE001 - one lane cannot block peers
-                    logger.warning("Lifecycle usage recovery failed for %s: %s", instance_id, type(exc).__name__)
-                continue
             if live_status in {"running", "deployed"}:
                 continue
             decision = provider_lifecycle.decide_instance(
@@ -1495,13 +1491,8 @@ async def _run_provider_lifecycle_scheduler() -> None:
                     "usage_stalled": usage_stalled,
                 }
             )
-            if decision != "restart":
-                continue
-            try:
-                await _proxy_worker_command(worker_id, "restart", instance_id)
-                await database.record_health_event(slug, "restart", f"lane {instance_id} offline")
-            except Exception as exc:  # noqa: BLE001 - one lane cannot block peers
-                logger.warning("Lifecycle restart failed for %s: %s", instance_id, type(exc).__name__)
+            if decision != "observe":
+                await database.record_health_event(slug, "observe", f"lane {instance_id} requires operator policy")
     except Exception as exc:  # noqa: BLE001 - scheduler must remain best-effort
         logger.warning("Provider lifecycle scheduler skipped: %s", type(exc).__name__)
 
@@ -2166,7 +2157,8 @@ async def _check_stale_workers() -> None:
     now = datetime.now(UTC)
     cutoff = now - timedelta(seconds=STALE_WORKER_SECONDS)
     purge_cutoff = now - timedelta(hours=1)
-    for w in workers:
+    _mark_superseded_workers(workers)
+    for w in [row for row in workers if not row.get("superseded_by_worker_id")]:
         try:
             last_hb = w.get("last_heartbeat")
             if not last_hb:
@@ -3345,13 +3337,14 @@ async def _proxy_for_worker_instance(worker_id: int, *, provider_slug: str | Non
 
 
 async def _proxy_for_provider_instance(
-    worker_id: int, provider_slug: str, instance_id: str | None = None
+    worker_id: int, provider_slug: str, instance_id: str | None = None, capacity_slot: str | None = None
 ) -> dict[str, Any]:
     """Keep legacy test/integration adapters compatible with scoped leasing."""
     if instance_id:
-        lease = await database.lease_proxy_for_provider_instance(
-            provider_slug, worker_id, instance_id, required_ip_type="residential"
-        )
+        kwargs: dict[str, Any] = {"required_ip_type": "residential"}
+        if capacity_slot:
+            kwargs["capacity_slot"] = capacity_slot
+        lease = await database.lease_proxy_for_provider_instance(provider_slug, worker_id, instance_id, **kwargs)
         if lease:
             return lease
         raise HTTPException(status_code=409, detail="No qualified proxy available for provider instance")
@@ -4048,7 +4041,10 @@ async def api_deploy(
         if mode == "proxy" and slug != "iproyal":
             try:
                 instance_spec["proxy"] = await _proxy_for_provider_instance(
-                    worker_id, slug, instance_slug if topology_plan else None
+                    worker_id,
+                    slug,
+                    instance_slug if topology_plan else None,
+                    topology_plan.capacity_slot if topology_plan else None,
                 )
             except Exception:
                 if not topology_plan:
@@ -4065,6 +4061,7 @@ async def api_deploy(
             if topology_plan:
                 instance_spec["proxy_lease_id"] = str((instance_spec["proxy"] or {}).get("proxy_id") or "")
                 instance_spec["expected_egress_ip"] = str((instance_spec["proxy"] or {}).get("exit_ip") or "")
+                instance_spec["public_ipv4_slot"] = topology_plan.public_ipv4_slot
         elif mode == "direct":
             instance_spec["egress_mode"] = "direct"
 
@@ -8607,11 +8604,28 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
     return resp
 
 
+def _mark_superseded_workers(workers: list[dict[str, Any]]) -> None:
+    """Annotate stale duplicate registrations without mutating the database."""
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for worker in workers:
+        url = str(worker.get("url") or "").strip().rstrip("/").lower()
+        if url:
+            groups.setdefault(url, []).append(worker)
+    for group in groups.values():
+        live = [row for row in group if str(row.get("status") or "").lower() == "online"]
+        winner = max(live or group, key=lambda row: str(row.get("last_heartbeat") or ""))
+        for row in group:
+            row["superseded_by_worker_id"] = (
+                int(winner.get("id") or 0) if row is not winner and winner.get("id") else None
+            )
+
+
 @app.get("/api/workers")
 async def api_list_workers(request: Request) -> list[dict[str, Any]]:
     """List all registered workers."""
     _require_auth_api(request)
     workers = await database.list_workers()
+    _mark_superseded_workers(workers)
     config = await database.get_config() or {}
     ui_version = version.current()
     for w in workers:
@@ -9070,6 +9084,8 @@ async def api_fleet_summary(request: Request) -> dict[str, Any]:
     _require_reader(request)
 
     workers = await database.list_workers()
+    _mark_superseded_workers(workers)
+    active_workers = [w for w in workers if not w.get("superseded_by_worker_id")]
     total_services = 0
     total_running = 0
     online_workers = 0
@@ -9081,7 +9097,7 @@ async def api_fleet_summary(request: Request) -> dict[str, Any]:
     unreachable_containers = 0
     unreachable_workers = 0
 
-    for w in workers:
+    for w in active_workers:
         _parse_worker_json(w)
         _filter_worker_provider_entries(w)
         if w["status"] != "online":
@@ -9100,7 +9116,9 @@ async def api_fleet_summary(request: Request) -> dict[str, Any]:
         nkn_summary = {"total_nodes": 0, "online": 0, "offline": 0}
 
     return {
-        "total_workers": len(workers),
+        "total_workers": len(active_workers),
+        "total_worker_registrations": len(workers),
+        "stale_worker_registrations": len(workers) - len(active_workers),
         "online_workers": online_workers,
         "total_containers": total_services,
         "running_containers": total_running,

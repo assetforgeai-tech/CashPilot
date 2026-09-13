@@ -403,8 +403,21 @@ def test_topology_contract_makes_hybrid_cardinality_and_slot_binding_explicit():
     assert contract["total_desired_formula"] == "public_ipv4_count * lane_count"
     assert contract["slot_binding"] == {
         "direct": "bind_public_ipv4_slot",
-        "proxy": "cardinality_only",
+        "proxy": "bind_capacity_slot",
     }
+
+
+def test_proxy_plan_retains_public_ipv4_slot_identity_separately_from_lease_slot():
+    plans = plan_provider_nodes(
+        7,
+        "earnfm",
+        [{"slot_id": "ipv4-001", "public_ip": "198.51.100.1", "route_ready": True}],
+        mode="proxy",
+        proxy_capacity=1,
+    )
+    assert plans[0].slot_id == "proxy-001"
+    assert plans[0].public_ipv4_slot == "ipv4-001"
+    assert plans[0].capacity_slot == "proxy-001"
 
 
 def test_topology_contract_exposes_lane_lease_and_failure_policy():
@@ -456,6 +469,23 @@ def test_provider_classes_declare_auth_and_ownership_scope(provider, auth_scope,
     assert data["auth_scope"] == auth_scope
     assert data["account_sharing"] == sharing
     assert data["egress_ownership_scope"] == ownership
+
+
+def test_pawns_declares_private_allocator_and_ip_used_replacement():
+    from app.provider_runtime import catalog_runtime
+
+    data = catalog_runtime("iproyal")
+    assert data["proxy_allocation_policy"] == "provider_private"
+    assert data["proxy_rejection_action"] == "mask_and_replace"
+
+
+def test_generic_provider_does_not_claim_earnapp_node_health_policy():
+    from app.provider_runtime import catalog_runtime
+
+    data = catalog_runtime("packetstream")
+    assert data["lifecycle_actions"]["offline"] == "observe"
+    assert data["lifecycle_actions"]["usage_stalled"] == "observe"
+    assert data["lifecycle_actions"]["banned"] == "observe"
 
 
 def test_catalog_runtime_exposes_the_same_lane_contract():
@@ -531,9 +561,11 @@ async def test_slot_proxy_uses_exclusive_provider_instance_lease(monkeypatch):
     lease = {"proxy_id": 9, "exit_ip": "203.0.113.9"}
     scoped = AsyncMock(return_value=lease)
     monkeypatch.setattr(main.database, "lease_proxy_for_provider_instance", scoped)
-    result = await main._proxy_for_provider_instance(7, "earnfm", "earnfm-proxy-w7-ipv4-001")
+    result = await main._proxy_for_provider_instance(7, "earnfm", "earnfm-proxy-w7-ipv4-001", "proxy-001")
     assert result == lease
-    scoped.assert_awaited_once_with("earnfm", 7, "earnfm-proxy-w7-ipv4-001", required_ip_type="residential")
+    scoped.assert_awaited_once_with(
+        "earnfm", 7, "earnfm-proxy-w7-ipv4-001", required_ip_type="residential", capacity_slot="proxy-001"
+    )
 
 
 @pytest.mark.asyncio

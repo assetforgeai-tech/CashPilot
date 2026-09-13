@@ -137,6 +137,44 @@ class TestProviderCollectNowIsReachable:
         assert "badge-not_deployed" in (ROOT / "app" / "static" / "css" / "style.css").read_text(encoding="utf-8")
 
 
+class TestProviderDetailSections:
+    def test_provider_detail_has_accessible_input_runtime_collector_tabs(self):
+        source = js_function("renderServiceDetail")
+        for label in ("Input", "Runtime", "Collector"):
+            assert label in source
+        assert "aria-selected" in source
+        assert "data-detail-tab" in source
+
+    def test_provider_detail_sections_keep_existing_content_in_panels(self):
+        source = js_function("renderServiceDetail")
+        for panel in ("detail-panel-input", "detail-panel-runtime", "detail-panel-collector"):
+            assert panel in source
+
+    def test_provider_detail_tab_binding_updates_visual_and_accessibility_state(self):
+        source = js_function("bindDetailTabs")
+        assert "service-detail-body" in source
+        assert "classList.toggle('active'" in source
+        assert "aria-selected" in source
+        assert "panel.hidden" in source
+
+    def test_collector_panel_exposes_configuration_and_collection_actions(self):
+        panel = js_function("renderServiceDetail").split('id="detail-panel-collector"', 1)[1]
+        assert 'data-action="openCredentialModal"' in panel
+        assert 'data-action="collectServiceNow"' in panel
+
+
+class TestFleetSupersededRegistrations:
+    def test_counts_physical_hosts_separately_from_stale_registrations(self):
+        page = (ROOT / "app" / "templates" / "fleet.html").read_text(encoding="utf-8")
+        assert "superseded_by_worker_id" in page
+        assert "stale registrations" in page
+
+    def test_summary_exposes_registration_and_physical_worker_counts(self):
+        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        assert '"total_worker_registrations"' in source
+        assert '"stale_worker_registrations"' in source
+
+
 class TestDeployModeSelect:
     def test_dual_mode_services_can_select_both_by_default(self):
         source = js_function("deployModeSelect")

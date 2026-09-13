@@ -65,7 +65,7 @@ def test_catalog_lifecycle_matches_lane_dispatch_policy():
     earnapp = provider_runtime.catalog_runtime("earnapp")
     assert earnapp["lane_lifecycle"]["proxy"]["banned"] == "restart"
     packetstream = provider_runtime.catalog_runtime("packetstream")
-    assert packetstream["lane_lifecycle"]["proxy"]["banned"] == "recreate"
+    assert packetstream["lane_lifecycle"]["proxy"]["banned"] == "observe"
 
 
 def test_catalog_declares_egress_ownership_scope():
