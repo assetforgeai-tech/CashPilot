@@ -313,6 +313,12 @@ def test_topology_contract_exposes_cardinality_and_proxy_gate():
 
     assert topology_contract("iproyal")["cardinality_source"] == "bootstrap_public_ipv4"
     assert topology_contract("iproyal")["proxy_capacity_is_gate"] is True
+
+
+def test_lane_contract_is_explicit_for_proxy_assignments():
+    from app.routers.proxies import ProviderProxyLeaseIn
+
+    assert "lane" in ProviderProxyLeaseIn.model_fields
     assert topology_contract("earnfm")["topology"] == "slot_both"
     assert topology_contract("earnfm")["direct_required"] is True
     assert topology_contract("earnfm")["proxy_required"] is True
