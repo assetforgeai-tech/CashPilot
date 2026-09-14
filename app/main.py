@@ -232,7 +232,24 @@ def _auto_deploy_settings(config: dict[str, str]) -> dict[str, Any]:
     return {"enabled": enabled, "delay_seconds": max(0, delay), "include_server": include_server}
 
 
-def _auto_deploy_slugs(services: list[dict[str, Any]]) -> list[str]:
+def _auto_deploy_credentials_ready(slug: str, svc: dict[str, Any], config: Mapping[str, Any]) -> bool:
+    """Keep auto-deploy pending when required operator secrets are absent."""
+    from app.collectors import service_credential_fields
+
+    try:
+        fields = service_credential_fields(slug, "deploy", svc, fallback=False)
+    except Exception:
+        return False
+    return all(
+        not field.get("required", True) or bool(str(config.get(field["key"], "") or "").strip())
+        for field in fields
+    )
+
+
+def _auto_deploy_slugs(
+    services: list[dict[str, Any]], config: Mapping[str, Any] | None = None
+) -> list[str]:
+    config = config or {}
     return [
         svc.get("slug", "")
         for svc in services
@@ -242,6 +259,7 @@ def _auto_deploy_slugs(services: list[dict[str, Any]]) -> list[str]:
         and (svc.get("deploy") or {}).get("automation") != "earnapp_mac_canary"
         and svc.get("status") not in _UNDEPLOYABLE_STATUSES
         and (svc.get("docker") or {}).get("image")
+        and _auto_deploy_credentials_ready(str(svc.get("slug") or ""), svc, config)
     ]
 
 
@@ -701,7 +719,7 @@ async def _maybe_auto_deploy_after_heartbeat(worker_id: int) -> None:
         if str(d.get("status") or "").lower() in {"running", "deployed", "active"}
     }
     services = [svc for svc in catalog.get_services() if svc.get("slug") not in deployed]
-    slugs = _auto_deploy_slugs(services)
+    slugs = _auto_deploy_slugs(services, config)
     needs_sequence = bool(slugs or worker_id not in _NKN_AUTO_DEPLOY_DONE or worker_id not in _EARNAPP_AUTO_DEPLOY_DONE)
     if needs_sequence:
         _spawn(

@@ -50,6 +50,29 @@ def test_auto_deploy_targets_deployable_catalog_services_only():
     assert main._auto_deploy_slugs(services) == ["ok"]
 
 
+def test_auto_deploy_skips_services_with_missing_required_credentials():
+    services = [
+        {
+            "slug": "needs-token",
+            "status": "active",
+            "docker": {"image": "example/client"},
+            "deploy": {},
+        },
+        {
+            "slug": "ready",
+            "status": "active",
+            "docker": {"image": "example/client"},
+            "deploy": {},
+        },
+    ]
+    with patch.object(
+        main,
+        "_auto_deploy_credentials_ready",
+        side_effect=lambda slug, _svc, _config: slug == "ready",
+    ):
+        assert main._auto_deploy_slugs(services, {}) == ["ready"]
+
+
 def test_auto_deploy_skips_server_worker_by_default():
     assert (
         main._worker_allowed_for_auto_deploy(
