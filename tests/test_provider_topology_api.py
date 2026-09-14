@@ -41,6 +41,20 @@ async def test_dedicated_plan_response_exposes_the_shared_topology_contract():
 
 
 @pytest.mark.asyncio
+async def test_plan_reports_missing_deploy_credentials_when_config_is_available(monkeypatch):
+    monkeypatch.setattr(main.database, "get_config", AsyncMock(return_value={}))
+    result = await main.api_plan_provider(
+        None,
+        "earnfm",
+        main.ProviderPlanRequest(worker_id=7),
+        {},
+    )
+    assert result["status"] == "credentials_pending"
+    assert result["desired"] == 0
+    assert result["plans"] == []
+
+
+@pytest.mark.asyncio
 async def test_slot_plan_status_reflects_blocked_proxy_capacity(monkeypatch):
     monkeypatch.setattr(main, "_worker_public_ip_slots", AsyncMock(return_value=[{"slot_id": "ipv4-001"}]))
     monkeypatch.setattr(main.database, "get_provider_proxy_capacity", AsyncMock(return_value=[]))

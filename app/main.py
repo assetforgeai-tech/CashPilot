@@ -3545,6 +3545,20 @@ async def api_plan_provider(
             "plans": [],
         }
     worker_id = await _resolve_worker_id(body.worker_id)
+    config = None
+    with contextlib.suppress(Exception):
+        config = await database.get_config() or {}
+    service = catalog.get_service(slug) or {}
+    if config is not None and not _auto_deploy_credentials_ready(slug, service, config):
+        return {
+            "provider": slug,
+            "worker_id": worker_id,
+            "topology": runtime.topology,
+            "contract": provider_topology.topology_contract(slug),
+            "status": "credentials_pending",
+            "desired": 0,
+            "plans": [],
+        }
     try:
         try:
             slots = await _worker_public_ip_slots(worker_id, include_unready=True)
