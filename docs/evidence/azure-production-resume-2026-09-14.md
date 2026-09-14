@@ -85,3 +85,14 @@
 
 Production-ready remains unclaimed until a fresh Azure node is mapped to the
 provider dashboard and shows an authenticated usage/earnings delta.
+
+## Allocator diagnosis (2026-09-14)
+
+- Current explicit Settings policy enables `macos` and `ios` for `VN`, enables
+  all three platforms for `NON_VN`, and explicitly disables Ubuntu for `VN`.
+- Fresh proxy-pool evidence reports `289` EarnApp-eligible residential rows;
+  all are `VN`, with zero eligible `NON_VN` rows at this check.
+- Ubuntu refusal is therefore policy-consistent, not a lease leak or allocator
+  crash. No policy override or proxy mutation was performed.
+- Ubuntu requires either enabling `earnapp_platform_vn_ubuntu` in Settings or
+  obtaining a non-VN residential proxy with latest `CID_SET/eligible` evidence.
