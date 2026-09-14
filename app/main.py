@@ -3844,7 +3844,7 @@ async def api_deploy(
     # catalog - see _merge_recorded_spec. `recorded` was loaded above, before the
     # required-field check.
     divergence: list[str] = []
-    if recorded:
+    if recorded and not (provider_runtime.get(slug) and provider_runtime.get(slug).topology.startswith("slot_")):
         # Which env vars feed which mount, so a relocation applies only to the
         # mount it actually names.
         keys_by_target: dict[str, set[str]] = {}
