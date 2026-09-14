@@ -33,11 +33,11 @@ docker:
   volumes:
     - "proxies-sx-data:/app"
   command: >
-    sh -lc 'cd /app &&
+    sh -lc 'apk add --no-cache curl >/dev/null 2>&1 && cd /app &&
     if [ ! -s reference-sdk.js ]; then
       rm -f reference-sdk.js.tmp;
       for attempt in 1 2 3 4 5; do
-        if wget -q -O reference-sdk.js.tmp https://agents.proxies.sx/peer/reference-sdk.js && [ -s reference-sdk.js.tmp ]; then
+        if curl -4 -fsSL --retry 2 --retry-delay 2 --connect-timeout 15 --max-time 60 -o reference-sdk.js.tmp https://agents.proxies.sx/peer/reference-sdk.js && [ -s reference-sdk.js.tmp ]; then
           mv reference-sdk.js.tmp reference-sdk.js;
           break;
         fi;
