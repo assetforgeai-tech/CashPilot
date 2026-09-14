@@ -74,6 +74,48 @@ def test_login_spide_uses_form_encoded_credentials(monkeypatch):
     assert calls["kwargs"]["headers"]["X-Requested-With"] == "XMLHttpRequest"
 
 
+def test_register_spide_device_retries_transient_http_failure(monkeypatch):
+    class Response:
+        status_code = 503
+        is_error = True
+        text = "temporarily unavailable"
+
+        def json(self):
+            return {"message": "temporarily unavailable"}
+
+    calls = {"count": 0}
+
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def post(self, *_args, **_kwargs):
+            calls["count"] += 1
+            if calls["count"] < 3:
+                return Response()
+
+            class Success:
+                status_code = 200
+                is_error = False
+
+                def json(self):
+                    return {"ok": True}
+
+            return Success()
+
+    monkeypatch.setattr(provider_automation.httpx, "AsyncClient", lambda **_kwargs: Client())
+
+    async def no_sleep(_seconds):
+        return None
+
+    monkeypatch.setattr(provider_automation.asyncio, "sleep", no_sleep)
+    assert asyncio.run(provider_automation.register_spide_device("tok", "key", title="node")) == {"ok": True}
+    assert calls["count"] == 3
+
+
 def test_uprock_status_snapshot_extracts_runtime_evidence():
     payload = '{"status":"ok","authenticated":true,"earning":true,"earn_rate":0.25,"version":"v0.0.38"}'
     logs = "connected url=wss://ws.olostep.com?device_id=uprock_00636ab7dd82d6a5&platform=desktop-linux"
