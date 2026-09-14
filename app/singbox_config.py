@@ -62,6 +62,7 @@ def render_tun_proxy_config(
             ],
             "rules": [{"domain": [proxy["host"]], "server": "bootstrap"}],
             "strategy": "ipv4_only",
+            "reverse_mapping": True,
         },
         "inbounds": [
             {

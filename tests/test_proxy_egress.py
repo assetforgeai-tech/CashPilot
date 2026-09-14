@@ -118,6 +118,7 @@ def test_proxy_hostname_uses_bootstrap_doh_without_empty_direct_detour():
         "server": "1.1.1.1",
     }
     assert {"domain": ["proxy.example.com"], "server": "bootstrap"} in config["dns"]["rules"]
+    assert config["dns"]["reverse_mapping"] is True
 
 
 def test_proxy_bootstrap_resolver_does_not_recurse_through_proxy_hostname():
