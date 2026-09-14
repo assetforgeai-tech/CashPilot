@@ -561,6 +561,14 @@ async def _deploy_nkn_slots(
             except Exception as exc:  # noqa: BLE001 - continue with the next slot
                 safe_error = type(exc).__name__
                 logger.warning("NKN slot %s deploy failed on worker %s: %s", slot_id, worker_id, safe_error)
+                if lease:
+                    with contextlib.suppress(Exception):
+                        await database.release_nkn_wallet(
+                            int(lease["id"]),
+                            lease_client_id,
+                            release_reason="DEPLOY_FAILED",
+                            wallet_assignment_version=int(lease["wallet_assignment_version"]),
+                        )
                 with contextlib.suppress(Exception):
                     await database.save_provider_instance(
                         "nkn",

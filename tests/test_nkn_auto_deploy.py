@@ -62,12 +62,14 @@ def test_nkn_deploy_runs_slots_sequentially_and_continues_after_failure():
             patch.object(database, "get_provider_instance", AsyncMock(return_value=None)),
             patch.object(main, "_proxy_worker_nkn_deploy", AsyncMock(side_effect=deploy)),
             patch.object(database, "save_provider_instance", AsyncMock()) as save,
+            patch.object(database, "release_nkn_wallet", AsyncMock(return_value=True)) as release,
         ):
             result = await main._deploy_nkn_slots(7, beneficiary_address="NKNBeneficiaryAddress")
         assert calls == ["ipv4-001", "ipv4-002"]
         assert result["deployed"] == ["ipv4-002"]
         assert result["failed"] == ["ipv4-001"]
         assert save.await_count == 2
+        release.assert_awaited_once()
 
     asyncio.run(run())
 
