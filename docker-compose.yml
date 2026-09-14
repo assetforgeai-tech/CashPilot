@@ -63,7 +63,7 @@ services:
       - /tmp:size=64M
 
   cashpilot-worker:
-    image: ghcr.io/assetforgeai-tech/cashpilot-worker:1.51
+    image: ghcr.io/assetforgeai-tech/cashpilot-worker:1.50
     pull_policy: always
     container_name: cashpilot-worker
     expose:
