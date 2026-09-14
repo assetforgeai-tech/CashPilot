@@ -74,6 +74,49 @@ def test_login_spide_uses_form_encoded_credentials(monkeypatch):
     assert calls["kwargs"]["headers"]["X-Requested-With"] == "XMLHttpRequest"
 
 
+def test_login_spide_retries_transient_http_failure(monkeypatch):
+    calls = {"count": 0}
+
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def post(self, *_args, **_kwargs):
+            calls["count"] += 1
+            if calls["count"] < 3:
+                return type(
+                    "Response",
+                    (),
+                    {
+                        "status_code": 500,
+                        "is_error": True,
+                        "text": "retry",
+                        "raise_for_status": lambda self: None,
+                    },
+                )()
+            return type(
+                "Response",
+                (),
+                {
+                    "status_code": 200,
+                    "is_error": False,
+                    "raise_for_status": lambda self: None,
+                    "json": lambda self: {"token": "fresh-token"},
+                },
+            )()
+
+    async def no_wait(_seconds):
+        return None
+
+    monkeypatch.setattr(provider_automation.httpx, "AsyncClient", lambda **_kwargs: Client())
+    monkeypatch.setattr(provider_automation.asyncio, "sleep", no_wait)
+    assert asyncio.run(provider_automation.login_spide("user@example.com", "pw")) == "fresh-token"
+    assert calls["count"] == 3
+
+
 def test_register_spide_device_retries_transient_http_failure(monkeypatch):
     class Response:
         status_code = 503
