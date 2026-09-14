@@ -15,7 +15,7 @@ def _request(path: str = "/api/deploy/earnfm") -> Request:
 
 
 def _patch_alive_proxy_probe(monkeypatch):
-    async def fake_probe(_host: str, _port: int, timeout: float = 5.0):
+    async def fake_probe(_host: str, _port: int, timeout: float = 5.0, **_kwargs):
         return {"status": "alive", "protocol": "socks5"}
 
     monkeypatch.setattr("app.routers.proxies._probe_proxy_confirmed", fake_probe)
@@ -603,11 +603,25 @@ async def test_iproyal_proxy_reprobes_and_updates_protocol_before_deploy(monkeyp
 
     async def fake_proxy(_worker_id: int, **kwargs):
         assert kwargs == {"provider_slug": "iproyal"}
-        return {"proxy_id": 7, "host": "1.1.1.7", "port": 1080, "protocol": "http"}
+        return {
+            "proxy_id": 7,
+            "host": "1.1.1.7",
+            "port": 1080,
+            "protocol": "http",
+            "username": "proxy-user",
+            "password": "proxy-secret",
+        }
 
-    async def fake_probe(host: str, port: int, timeout: float = 5.0):
+    async def fake_probe(host: str, port: int, timeout: float = 5.0, **kwargs):
         assert host == "1.1.1.7"
         assert port == 1080
+        assert kwargs == {
+            "username": "proxy-user",
+            "password": "proxy-secret",
+            "retries": 1,
+            "retry_delay": 0,
+            "protocol_mode": "auto",
+        }
         return {"status": "alive", "protocol": "socks5"}
 
     async def fake_update(results, *, protocols=None):
@@ -668,7 +682,7 @@ async def test_iproyal_proxy_probe_failure_masks_and_rotates(monkeypatch):
         proxy_id = proxy_ids.pop(0)
         return {"proxy_id": proxy_id, "host": f"1.1.1.{proxy_id}", "port": 1080, "protocol": "socks5"}
 
-    async def fake_probe(host: str, _port: int, timeout: float = 5.0):
+    async def fake_probe(host: str, _port: int, timeout: float = 5.0, **_kwargs):
         if host.endswith(".11"):
             return {"status": "dead", "protocol": ""}
         return {"status": "alive", "protocol": "socks5"}
