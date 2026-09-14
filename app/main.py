@@ -4463,14 +4463,6 @@ async def _run_post_deploy_automation(
     # those exact IDs so registration still runs after a runtime upgrade.
     if not deployed:
         deployed = await database.list_provider_instances(slug=slug, worker_id=worker_id)
-    for item in deployed or [{"mode": "legacy", "instance_id": slug}]:
-        mode = str(item.get("mode") or "legacy")
-        instance_slug = str(item.get("instance_id") or (slug if mode == "legacy" else f"{slug}-{mode}"))
-        identity_mode = "direct" if mode == "legacy" else mode
-        await _register_spide_device_from_worker_logs(worker_id, instance_slug, identity_mode, hostname)
-
-
-async def _register_spide_device_from_worker_logs(worker_id: int, instance_slug: str, mode: str, hostname: str) -> None:
     email = str(await database.get_config("spide_email") or "").strip()
     password = str(await database.get_config("spide_password") or "")
     token = ""
@@ -4484,6 +4476,16 @@ async def _register_spide_device_from_worker_logs(worker_id: int, instance_slug:
     if not token:
         await database.record_health_event("spide", "setup_needed", "dashboard token missing for device registration")
         return
+    for item in deployed or [{"mode": "legacy", "instance_id": slug}]:
+        mode = str(item.get("mode") or "legacy")
+        instance_slug = str(item.get("instance_id") or (slug if mode == "legacy" else f"{slug}-{mode}"))
+        identity_mode = "direct" if mode == "legacy" else mode
+        await _register_spide_device_from_worker_logs(worker_id, instance_slug, identity_mode, hostname, token=token)
+
+
+async def _register_spide_device_from_worker_logs(
+    worker_id: int, instance_slug: str, mode: str, hostname: str, *, token: str
+) -> None:
     device_key = None
     for _ in range(12):
         try:
