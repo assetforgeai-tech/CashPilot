@@ -18,6 +18,8 @@ def _common(monkeypatch, deploy):
     async def config(*_args, **_kwargs):
         return {
             "earnfm_token": "token",
+            "spide_email": "spide@example.com",
+            "spide_password": "pw",
             "iproyal_collector_email": "a@b.com",
             "iproyal_collector_password": "pw",
         }
@@ -78,6 +80,32 @@ async def test_direct_slot_uses_bootstrap_network_not_host(monkeypatch):
     assert result["lanes"] == {
         "direct": {"desired": 2, "running": 2, "failed": 0, "pending": 0, "free": 0, "blocked": 0},
     }
+
+
+@pytest.mark.asyncio
+async def test_slot_deploy_does_not_reuse_legacy_provider_command(monkeypatch):
+    specs = {}
+
+    async def deploy(_worker_id, instance_id, spec):
+        specs[instance_id] = spec
+        return {"container_id": instance_id}
+
+    _common(monkeypatch, deploy)
+    monkeypatch.setattr(
+        main.database,
+        "get_deployment_spec",
+        AsyncMock(
+            return_value={
+                "command": "curl -fsSL https://config-alpha-01.sgp1.digitaloceanspaces.com/spide_linux_cli.zip",
+                "network_mode": "host",
+            }
+        ),
+    )
+    await main.api_deploy(
+        _request(), "spide", main.DeployRequest(env={}, mode="direct"), worker_id=7, _auth={"r": "owner"}
+    )
+    assert all("config-alpha-01.sgp1.digitaloceanspaces.com" not in spec["command"] for spec in specs.values())
+    assert all("pub-bf426a5300a643d2884389c8985f5181.r2.dev" in spec["command"] for spec in specs.values())
 
 
 @pytest.mark.asyncio
