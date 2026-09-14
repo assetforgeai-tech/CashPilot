@@ -108,7 +108,6 @@ def test_generic_lifecycle_scheduler_does_not_restart_offline_provider_nodes(mon
 
     command.assert_not_awaited()
 
-
 def test_generic_lifecycle_scheduler_does_not_guess_missing_container_state(monkeypatch):
     import asyncio
     from unittest.mock import AsyncMock
@@ -241,9 +240,10 @@ def test_generic_lifecycle_scheduler_does_not_apply_earnapp_usage_policy_to_othe
 
     command.assert_not_awaited()
 
+
 def test_proxy_pool_scheduler_runs_earnapp_wss_qualification(monkeypatch):
-    import app.routers.proxies as proxy_routes
     import app.main as main
+    import app.routers.proxies as proxy_routes
 
     calls = []
 
