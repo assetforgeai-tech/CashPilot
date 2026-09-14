@@ -148,10 +148,29 @@ async def register_spide_device(
         resp = await client.post(
             f"{base_url.rstrip('/')}/api/v1/device/create",
             headers=spide_auth_headers(credential),
-            json={"title": title, "device_key": device_key},
+            data={"title": title, "device_key": device_key},
         )
     resp.raise_for_status()
     try:
         return resp.json()
     except ValueError:
         return {"status": "ok"}
+
+
+async def login_spide(email: str, password: str, *, base_url: str = "https://spide.network") -> str:
+    """Log in using the raw CLI setup flow and return its bearer token."""
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(
+            f"{base_url.rstrip('/')}/api/v1/user/login",
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                "X-Requested-With": "XMLHttpRequest",
+            },
+            data={"email": email, "password": password},
+        )
+    resp.raise_for_status()
+    payload = resp.json()
+    token = str(payload.get("token") or "").strip() if isinstance(payload, dict) else ""
+    if not token:
+        raise RuntimeError("Spide login returned no token")
+    return token

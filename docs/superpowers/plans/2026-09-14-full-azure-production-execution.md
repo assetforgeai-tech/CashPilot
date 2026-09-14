@@ -51,6 +51,12 @@
 - [ ] Treat partial/blocked plans as explicit evidence, not deployment success.
 - [ ] Verify no restart loop and no stale endpoint after deployment.
 
+Live defect fixes added during cycle 1:
+
+- [x] Detect recent Docker restart loops as degraded instead of running.
+- [x] Make Proxies.sx SDK acquisition retrying, atomic, and fail-closed.
+- [x] Restore Spide raw account login plus form-encoded Device-key registration.
+
 ### Task 4: Exercise dedicated provider adapters
 
 **Files:**

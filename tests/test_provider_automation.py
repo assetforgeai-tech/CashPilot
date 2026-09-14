@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from app import provider_automation
 
 
@@ -15,6 +17,61 @@ def test_spide_auth_headers_accept_cookie_or_bearer():
 
     bearer = provider_automation.spide_auth_headers("tok456")
     assert bearer["Authorization"] == "Bearer tok456"
+
+
+def test_register_spide_device_uses_form_encoded_raw_setup_contract(monkeypatch):
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"ok": True}
+
+    calls = {}
+
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def post(self, url, **kwargs):
+            calls.update(url=url, kwargs=kwargs)
+            return Response()
+
+    monkeypatch.setattr(provider_automation.httpx, "AsyncClient", lambda **_kwargs: Client())
+    asyncio.run(provider_automation.register_spide_device("tok", "key", title="node"))
+    assert calls["kwargs"]["data"] == {"title": "node", "device_key": "key"}
+    assert "json" not in calls["kwargs"]
+
+
+def test_login_spide_uses_form_encoded_credentials(monkeypatch):
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"token": "fresh-token"}
+
+    calls = {}
+
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def post(self, url, **kwargs):
+            calls.update(url=url, kwargs=kwargs)
+            return Response()
+
+    monkeypatch.setattr(provider_automation.httpx, "AsyncClient", lambda **_kwargs: Client())
+    token = asyncio.run(provider_automation.login_spide("user@example.com", "pw"))
+    assert token == "fresh-token"
+    assert calls["kwargs"]["data"] == {"email": "user@example.com", "password": "pw"}
+    assert calls["kwargs"]["headers"]["X-Requested-With"] == "XMLHttpRequest"
 
 
 def test_uprock_status_snapshot_extracts_runtime_evidence():

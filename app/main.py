@@ -4464,7 +4464,16 @@ async def _run_post_deploy_automation(slug: str, worker_id: int, hostname: str, 
 
 
 async def _register_spide_device_from_worker_logs(worker_id: int, instance_slug: str, mode: str, hostname: str) -> None:
-    token = await database.get_config("spide_dashboard_token")
+    email = str(await database.get_config("spide_email") or "").strip()
+    password = str(await database.get_config("spide_password") or "")
+    token = ""
+    if email and password:
+        try:
+            token = await provider_automation.login_spide(email, password)
+        except Exception as exc:
+            logger.warning("Spide account login failed: %s", exc)
+    if not token:
+        token = str(await database.get_config("spide_dashboard_token") or "").strip()
     if not token:
         await database.record_health_event("spide", "setup_needed", "dashboard token missing for device registration")
         return

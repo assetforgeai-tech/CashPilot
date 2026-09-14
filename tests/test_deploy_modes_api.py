@@ -798,7 +798,7 @@ async def test_spide_device_registration_uses_standard_device_identity(monkeypat
     captured: list[dict[str, str]] = []
 
     async def config(key=None, *_args, **_kwargs):
-        return "dash-token" if key == "spide_dashboard_token" else {"spide_dashboard_token": "dash-token"}
+        return {"spide_email": "spide@example.com", "spide_password": "secret"}.get(key, "")
 
     async def fake_worker(_worker_id: int):
         return {"id": _worker_id, "name": "worker-1", "system_info": {"egress_ip": "8.8.8.8"}}
@@ -810,6 +810,11 @@ async def test_spide_device_registration_uses_standard_device_identity(monkeypat
         captured.append({"token": token, "device_key": device_key, "title": title, "base_url": base_url})
         return {"status": "ok"}
 
+    async def fake_login(email: str, password: str, *, base_url: str = "https://spide.network"):
+        assert email == "spide@example.com"
+        assert password == "secret"
+        return "dash-token"
+
     async def noop(*_args, **_kwargs):
         return None
 
@@ -818,6 +823,7 @@ async def test_spide_device_registration_uses_standard_device_identity(monkeypat
     monkeypatch.setattr(main.database, "record_health_event", noop)
     monkeypatch.setattr(main, "_proxy_worker_logs", fake_logs)
     monkeypatch.setattr(main.provider_automation, "register_spide_device", fake_register)
+    monkeypatch.setattr(main.provider_automation, "login_spide", fake_login)
 
     await main._run_post_deploy_automation("spide", 7, "worker-1", ["direct", "proxy"])
 

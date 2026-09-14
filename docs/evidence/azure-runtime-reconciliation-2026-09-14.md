@@ -16,6 +16,8 @@ Scope: workers `118903` (East Asia) and `118904` (Japan East) only.
 
 The catalog command was hardened in the worktree to download into a temporary file, retry five times with a 10-second delay, atomically rename on success, and fail closed when the SDK is absent. It is not yet active on the Azure workers because the worker image has not been rebuilt/released.
 
+Spide dashboard absence was traced to a second contract drift. The proven raw setup logs in with account email/password and registers the emitted Device key using form encoding. CashPilot previously required a separately pasted dashboard token and sent JSON. The worktree now follows the raw login/register contract, retaining the pasted token only as a compatibility fallback.
+
 The worker status path now exposes `restart_count` and reports a recent crash loop as `runtime_health=restart_loop` and `status=degraded`; aggregate running counts exclude that state. Regression coverage passes.
 
 ## Remaining gaps
