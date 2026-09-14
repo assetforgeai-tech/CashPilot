@@ -4494,7 +4494,7 @@ async def _register_spide_device_from_worker_logs(
     device_key = None
     for _ in range(12):
         try:
-            payload = await _proxy_worker_logs(worker_id, instance_slug, lines=200)
+            payload = await _proxy_worker_logs(worker_id, instance_slug, lines=1000)
             device_key = provider_automation.extract_spide_device_key(payload.get("logs", ""))
             if device_key:
                 break
