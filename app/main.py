@@ -4459,6 +4459,10 @@ async def _run_post_deploy_automation(
     deploy = (svc or {}).get("deploy") or {}
     if deploy.get("automation") != "device_key_register" or slug != "spide":
         return
+    # A reconcile/deploy request can skip already-running instances. Discover
+    # those exact IDs so registration still runs after a runtime upgrade.
+    if not deployed:
+        deployed = await database.list_provider_instances(slug=slug, worker_id=worker_id)
     for item in deployed or [{"mode": "legacy", "instance_id": slug}]:
         mode = str(item.get("mode") or "legacy")
         instance_slug = str(item.get("instance_id") or (slug if mode == "legacy" else f"{slug}-{mode}"))
