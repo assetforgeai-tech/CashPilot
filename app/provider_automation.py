@@ -157,6 +157,8 @@ async def register_spide_device(
             payload = resp.json()
             if isinstance(payload, dict):
                 detail = str(payload.get("detail") or payload.get("message") or payload.get("error") or "")
+        if not detail:
+            detail = str(getattr(resp, "text", "") or "")
         detail = re.sub(r"[\r\n\t]+", " ", detail)[:240]
         raise RuntimeError(
             f"Spide device registration rejected ({resp.status_code})" + (f": {detail}" if detail else "")
