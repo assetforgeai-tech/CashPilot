@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 import threading
@@ -150,7 +151,16 @@ async def register_spide_device(
             headers=spide_auth_headers(credential),
             data={"title": title, "device_key": device_key},
         )
-    resp.raise_for_status()
+    if getattr(resp, "is_error", False) or int(getattr(resp, "status_code", 200)) >= 400:
+        detail = ""
+        with contextlib.suppress(ValueError, TypeError):
+            payload = resp.json()
+            if isinstance(payload, dict):
+                detail = str(payload.get("detail") or payload.get("message") or payload.get("error") or "")
+        detail = re.sub(r"[\r\n\t]+", " ", detail)[:240]
+        raise RuntimeError(
+            f"Spide device registration rejected ({resp.status_code})" + (f": {detail}" if detail else "")
+        )
     try:
         return resp.json()
     except ValueError:
