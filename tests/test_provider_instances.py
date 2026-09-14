@@ -144,13 +144,15 @@ def test_provider_runtime_inventory_marks_restart_loop_degraded(tmp_path):
             )
             await database.sync_provider_runtime_inventory(
                 worker_id,
-                [{
-                    "slug": "proxies-sx",
-                    "instance_slug": "proxies-sx-proxy-w1-proxy-001",
-                    "container_id": "new-main",
-                    "status": "running",
-                    "runtime_health": "restart_loop",
-                }],
+                [
+                    {
+                        "slug": "proxies-sx",
+                        "instance_slug": "proxies-sx-proxy-w1-proxy-001",
+                        "container_id": "new-main",
+                        "status": "running",
+                        "runtime_health": "restart_loop",
+                    }
+                ],
                 inventory_confirmed=True,
             )
             row = await database.get_provider_instance("proxies-sx-proxy-w1-proxy-001")
