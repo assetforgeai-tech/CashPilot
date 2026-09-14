@@ -176,15 +176,19 @@ async def register_spide_device(
 
 async def login_spide(email: str, password: str, *, base_url: str = "https://spide.network") -> str:
     """Log in using the raw CLI setup flow and return its bearer token."""
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(
-            f"{base_url.rstrip('/')}/api/v1/user/login",
-            headers={
-                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                "X-Requested-With": "XMLHttpRequest",
-            },
-            data={"email": email, "password": password},
-        )
+    for attempt in range(3):
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                f"{base_url.rstrip('/')}/api/v1/user/login",
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                    "X-Requested-With": "XMLHttpRequest",
+                },
+                data={"email": email, "password": password},
+            )
+        if int(getattr(resp, "status_code", 200)) < 500 or attempt == 2:
+            break
+        await asyncio.sleep(5)
     resp.raise_for_status()
     payload = resp.json()
     token = str(payload.get("token") or "").strip() if isinstance(payload, dict) else ""
