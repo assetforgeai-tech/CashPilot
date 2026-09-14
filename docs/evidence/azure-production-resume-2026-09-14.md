@@ -48,6 +48,15 @@
   left behind.
 - The first canary exposed the earlier candidate-label mismatch; it was fixed
   by rebuilding from the current manifest and validating labels before deploy.
+- Rebuilt local contract-fix images were created independently on both Azure
+  workers from the current contexts; their asset labels now match the server
+  contract. GHCR push was intentionally not attempted with the read-only PAT.
+- The macOS and iOS runtime logs show successful proxy connection, device-online
+  state, and tunnel initialization. The account-side workload verifier still
+  returns `verification_pending`, so this is not earnings proof.
+- Current proxy capacity reports `eligible=289`, `leaseable=279`, `used=9`,
+  `occupied=9`; Ubuntu deployment was refused because no policy-eligible
+  residential proxy was available at its allocation point.
 
 - Scope: the two new Azure workers only. Historical test workers are excluded.
 - Release `v1.50.20` passed CI and was published after PR #370.
