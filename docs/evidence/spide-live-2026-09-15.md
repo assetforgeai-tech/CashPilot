@@ -16,6 +16,6 @@ Both workers reported 20 Spide service containers (10 direct, 10 proxy), excludi
 
 CashPilot follows the raw working flow: login form, official CLI `Device Key`, then form-urlencoded device registration. Repeated registration returns `Device is already registered`; CashPilot treats that response as idempotent success.
 
-## Remaining proof
+## Statistics proof
 
-Online status and registration are proven. Spide earnings/statistics still require a separate dashboard statistics capture before marking earnings as production-proven.
+The authenticated daily statistics endpoint returned HTTP 200 for all 40 Azure devices. All 40 had positive request and traffic counters: 22,354 requests and 643,653,084 traffic bytes in the current daily window. This proves active Spide traffic; it does not claim a monetary earnings collector because the provider exposes no supported public earnings API in the catalog.
