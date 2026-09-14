@@ -825,10 +825,21 @@ async def test_spide_device_registration_uses_standard_device_identity(monkeypat
     monkeypatch.setattr(main.provider_automation, "register_spide_device", fake_register)
     monkeypatch.setattr(main.provider_automation, "login_spide", fake_login)
 
-    await main._run_post_deploy_automation("spide", 7, "worker-1", ["direct", "proxy"])
+    await main._run_post_deploy_automation(
+        "spide",
+        7,
+        "worker-1",
+        [
+            {"instance_id": "spide-direct-w7-ipv4-001", "mode": "direct"},
+            {"instance_id": "spide-proxy-w7-proxy-001", "mode": "proxy"},
+        ],
+    )
 
     assert [item["token"] for item in captured] == ["dash-token", "dash-token"]
-    assert [item["device_key"] for item in captured] == ["SPIDE-DIRECT1234", "SPIDE-PROXY1234"]
+    assert [item["device_key"] for item in captured] == [
+        "SPIDE-DIRECT-W7-IPV4-0011234",
+        "SPIDE-PROXY-W7-PROXY-0011234",
+    ]
     assert re.fullmatch(r"\d{14}\.8\.8\.8\.8\.d", captured[0]["title"])
     assert re.fullmatch(r"\d{14}\.8\.8\.8\.8\.p", captured[1]["title"])
 
