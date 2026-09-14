@@ -682,7 +682,13 @@ async def _maybe_auto_deploy_after_heartbeat(worker_id: int) -> None:
     _WORKER_HEARTBEAT_STREAKS[worker_id] = streak
     if streak < 3:
         return
-    deployed = {d["slug"] for d in await database.get_deployments()}
+    # Deployment rows are fleet-global; auto-deploy convergence is worker-local.
+    # A provider running on another worker must still be provisioned here.
+    deployed = {
+        str(d.get("slug") or "")
+        for d in await database.list_provider_instances(worker_id=worker_id)
+        if str(d.get("status") or "").lower() not in {"retired", "deleted"}
+    }
     services = [svc for svc in catalog.get_services() if svc.get("slug") not in deployed]
     slugs = _auto_deploy_slugs(services)
     needs_sequence = bool(slugs or worker_id not in _NKN_AUTO_DEPLOY_DONE or worker_id not in _EARNAPP_AUTO_DEPLOY_DONE)
