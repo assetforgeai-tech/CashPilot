@@ -143,6 +143,14 @@ def test_singbox_config_declares_default_domain_resolver():
     assert config["route"]["default_domain_resolver"] == "cf"
 
 
+def test_singbox_tun_sniffs_tls_hostnames_for_http_proxy():
+    from app.singbox_config import render_tun_proxy_config
+
+    config = render_tun_proxy_config({"host": "proxy.example", "port": 8080, "protocol": "http"}, worker_name="x")
+
+    assert config["route"]["sniff"] is True
+
+
 def test_singbox_config_can_use_repocket_safe_tun_name():
     from app.singbox_config import render_tun_proxy_config
 

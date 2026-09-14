@@ -77,6 +77,7 @@ def render_tun_proxy_config(
         "route": {
             "auto_detect_interface": True,
             "default_domain_resolver": "cf",
+            "sniff": True,
             "rules": route_rules,
             "final": "proxy-out",
         },
