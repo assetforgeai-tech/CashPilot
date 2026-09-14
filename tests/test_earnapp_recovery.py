@@ -299,7 +299,10 @@ def test_new_worker_needs_one_time_ticket_and_generation_blocks_old_worker(tmp_p
             provisioned = await _provision_ubuntu_node("earnapp-node-a", old_worker, device_id="device-a")
             await database.begin_earnapp_recovery_hold("earnapp-node-a", hold_seconds=3600)
             db = await database._get_db()
-            await db.execute("UPDATE earnapp_logical_nodes SET recovery_hold_until=datetime('now', '-1 second') WHERE logical_node_id=?", ("earnapp-node-a",))
+            await db.execute(
+                "UPDATE earnapp_logical_nodes SET recovery_hold_until=datetime('now', '-1 second') WHERE logical_node_id=?",
+                ("earnapp-node-a",),
+            )
             await db.commit()
             await db.close()
 
@@ -382,7 +385,10 @@ def test_new_replacement_ticket_revokes_older_ticket_for_same_claim(tmp_path):
             provisioned = await _provision_ubuntu_node("earnapp-node-a", old_worker, device_id="device-a")
             await database.begin_earnapp_recovery_hold("earnapp-node-a", hold_seconds=3600)
             db = await database._get_db()
-            await db.execute("UPDATE earnapp_logical_nodes SET recovery_hold_until=datetime('now', '-1 second') WHERE logical_node_id=?", ("earnapp-node-a",))
+            await db.execute(
+                "UPDATE earnapp_logical_nodes SET recovery_hold_until=datetime('now', '-1 second') WHERE logical_node_id=?",
+                ("earnapp-node-a",),
+            )
             await db.commit()
             await db.close()
 
@@ -415,7 +421,10 @@ def test_original_worker_heartbeat_cancels_hold_and_revokes_an_outstanding_repla
             provisioned = await _provision_ubuntu_node("earnapp-node-a", old_worker, device_id="device-a")
             await database.begin_earnapp_recovery_hold("earnapp-node-a", hold_seconds=3600)
             db = await database._get_db()
-            await db.execute("UPDATE earnapp_logical_nodes SET recovery_hold_until=datetime('now', '-1 second') WHERE logical_node_id=?", ("earnapp-node-a",))
+            await db.execute(
+                "UPDATE earnapp_logical_nodes SET recovery_hold_until=datetime('now', '-1 second') WHERE logical_node_id=?",
+                ("earnapp-node-a",),
+            )
             await db.commit()
             await db.close()
             ticket = await earnapp_recovery.issue_replacement_ticket("earnapp-node-a", new_worker)

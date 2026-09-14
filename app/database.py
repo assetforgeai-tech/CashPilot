@@ -6311,7 +6311,11 @@ async def create_earnapp_replacement_ticket(
             if str(node["state"] or "") not in {"RECOVERY_HOLD", "RECOVERABLE"}:
                 await db.rollback()
                 return "node_not_recoverable"
-            if node["state"] == "RECOVERY_HOLD" and node["recovery_hold_until"] and str(node["recovery_hold_until"]) > datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"):
+            if (
+                node["state"] == "RECOVERY_HOLD"
+                and node["recovery_hold_until"]
+                and str(node["recovery_hold_until"]) > datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+            ):
                 await db.rollback()
                 return "recovery_hold_active"
 
@@ -6373,7 +6377,11 @@ async def claim_earnapp_node(
             if str(node["state"] or "") not in {"RECOVERY_HOLD", "RECOVERABLE"}:
                 await db.rollback()
                 return None
-            if node["state"] == "RECOVERY_HOLD" and node["recovery_hold_until"] and str(node["recovery_hold_until"]) > datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"):
+            if (
+                node["state"] == "RECOVERY_HOLD"
+                and node["recovery_hold_until"]
+                and str(node["recovery_hold_until"]) > datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+            ):
                 await db.rollback()
                 return None
             platform = str(node["platform"] or "unknown").strip().lower()

@@ -108,6 +108,7 @@ def test_generic_lifecycle_scheduler_does_not_restart_offline_provider_nodes(mon
 
     command.assert_not_awaited()
 
+
 def test_generic_lifecycle_scheduler_does_not_guess_missing_container_state(monkeypatch):
     import asyncio
     from unittest.mock import AsyncMock
@@ -256,11 +257,17 @@ def test_proxy_pool_scheduler_runs_earnapp_wss_qualification(monkeypatch):
         return {"checked": 1, "eligible": 1}
 
     monkeypatch.setattr(main, "_proxy_pool_last_recheck", None)
-    monkeypatch.setattr(main.database, "get_config", AsyncMock(return_value={
-        "proxy_pool_recheck_enabled": "true",
-        "proxy_pool_recheck_interval_minutes": "15",
-        "proxy_pool_recheck_concurrency": "2",
-    }))
+    monkeypatch.setattr(
+        main.database,
+        "get_config",
+        AsyncMock(
+            return_value={
+                "proxy_pool_recheck_enabled": "true",
+                "proxy_pool_recheck_interval_minutes": "15",
+                "proxy_pool_recheck_concurrency": "2",
+            }
+        ),
+    )
     monkeypatch.setattr(proxy_routes, "run_proxy_pool_recheck", generic)
     monkeypatch.setattr(proxy_routes, "run_earnapp_proxy_recheck", earnapp)
 
@@ -268,6 +275,7 @@ def test_proxy_pool_scheduler_runs_earnapp_wss_qualification(monkeypatch):
 
     assert [name for name, _ in calls] == ["generic", "earnapp_wss"]
     assert calls[1][1] == {"concurrency": 2}
+
 
 def test_offline_policy_is_earnapp_only():
     assert decide("packetstream", online=False, banned=False, proxy_healthy=True) == "observe"

@@ -4871,7 +4871,12 @@ def test_provider_scoped_release_route_releases_only_the_requested_instance(clie
         patch(
             "app.routers.proxies.database.get_provider_instance",
             new_callable=AsyncMock,
-            return_value={"instance_id": "packetstream-1", "slug": "packetstream-node-1", "worker_id": 3, "mode": "proxy"},
+            return_value={
+                "instance_id": "packetstream-1",
+                "slug": "packetstream-node-1",
+                "worker_id": 3,
+                "mode": "proxy",
+            },
         ),
         patch("app.main._proxy_to_worker", new_callable=AsyncMock, return_value={"status": "stopped"}) as stop_runtime,
         patch(
@@ -4897,10 +4902,17 @@ def test_provider_scoped_release_requires_runtime_stop_ack(client):
         patch(
             "app.routers.proxies.database.get_provider_instance",
             new_callable=AsyncMock,
-            return_value={"instance_id": "packetstream-1", "slug": "packetstream-node-1", "worker_id": 3, "mode": "proxy"},
+            return_value={
+                "instance_id": "packetstream-1",
+                "slug": "packetstream-node-1",
+                "worker_id": 3,
+                "mode": "proxy",
+            },
         ),
         patch("app.main._proxy_to_worker", new_callable=AsyncMock, return_value={"status": "running"}),
-        patch("app.routers.proxies.database.release_proxy_for_provider_instance", new_callable=AsyncMock) as release_proxy,
+        patch(
+            "app.routers.proxies.database.release_proxy_for_provider_instance", new_callable=AsyncMock
+        ) as release_proxy,
     ):
         response = client.post(
             "/api/proxy-pool/provider-release",
