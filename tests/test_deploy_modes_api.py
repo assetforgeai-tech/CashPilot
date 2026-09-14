@@ -845,6 +845,24 @@ async def test_spide_device_registration_uses_standard_device_identity(monkeypat
 
 
 @pytest.mark.asyncio
+async def test_spide_registration_discovers_skipped_topology_instances(monkeypatch):
+    seen: list[str] = []
+
+    async def instances(*_args, **_kwargs):
+        return [{"instance_id": "spide-direct-w7-ipv4-001", "mode": "direct"}]
+
+    async def register(_worker_id: int, instance_slug: str, _mode: str, _hostname: str):
+        seen.append(instance_slug)
+
+    monkeypatch.setattr(main.database, "list_provider_instances", instances)
+    monkeypatch.setattr(main, "_register_spide_device_from_worker_logs", register)
+
+    await main._run_post_deploy_automation("spide", 7, "worker-1", [])
+
+    assert seen == ["spide-direct-w7-ipv4-001"]
+
+
+@pytest.mark.asyncio
 async def test_host_systemd_deploy_is_blocked(monkeypatch):
     async def noop(*_args, **_kwargs):
         return None
