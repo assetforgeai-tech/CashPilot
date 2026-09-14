@@ -3121,6 +3121,7 @@ class DeployRequest(BaseModel):
     mode: str | None = None
     direct_desired: int | None = Field(default=None, ge=0)
     proxy_desired: int | None = Field(default=None, ge=0)
+    refresh_instances: list[str] = Field(default_factory=list, max_length=256)
 
 
 class ProviderPlanRequest(BaseModel):
@@ -3980,6 +3981,15 @@ async def api_deploy(
             direct_desired=body.direct_desired,
             proxy_desired=body.proxy_desired,
         )
+    refresh_instances = {str(instance_id).strip() for instance_id in body.refresh_instances if str(instance_id).strip()}
+    if refresh_instances:
+        planned_instance_ids = {plan.instance_id for plan in topology_plans if plan.deployable}
+        invalid_refresh = sorted(refresh_instances - planned_instance_ids)
+        if invalid_refresh:
+            raise HTTPException(
+                status_code=400,
+                detail=f"refresh_instances contains unmanaged instance id(s): {', '.join(invalid_refresh)}",
+            )
     deployed: list[dict[str, str]] = []
     pending_proxy = 0
     skipped_existing = 0
@@ -3991,6 +4001,7 @@ async def api_deploy(
             1
             for plan in topology_plans
             if plan.deployable
+            and plan.instance_id not in refresh_instances
             and str(existing_instances.get(plan.instance_id, {}).get("status") or "").lower() in {"running", "deployed"}
         )
     deployment_items = (
@@ -3998,8 +4009,11 @@ async def api_deploy(
             (plan, plan.mode)
             for plan in topology_plans
             if plan.deployable
-            if str(existing_instances.get(plan.instance_id, {}).get("status") or "").lower()
-            not in {"running", "deployed"}
+            if (
+                str(existing_instances.get(plan.instance_id, {}).get("status") or "").lower()
+                not in {"running", "deployed"}
+                or plan.instance_id in refresh_instances
+            )
         ]
         if topology_managed
         else [(None, mode) for mode in modes]
