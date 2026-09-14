@@ -1132,6 +1132,7 @@ def deploy_raw(
         security_opt=[] if provider == "mysterium" else ["no-new-privileges:true"],
         privileged=False,
         pids_limit=_PIDS_LIMIT,
+        init=True,
         command=command if command else None,
         user=user or None,
         sysctls=sysctls or None,
