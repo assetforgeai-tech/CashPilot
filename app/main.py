@@ -1252,7 +1252,7 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
         workers = await database.list_workers()
     result: list[dict[str, Any]] = []
     for w in workers:
-        if w.get("status") != "online":
+        if w.get("status") != "online" or w.get("superseded_by_worker_id"):
             continue
         sys_info = _safe_json(w.get("system_info", "{}"), {})
         worker_has_docker = sys_info.get("docker_available", False)

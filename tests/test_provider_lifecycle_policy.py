@@ -38,6 +38,33 @@ def test_duplicate_worker_endpoint_marks_only_stale_registration_superseded():
     assert workers[2]["superseded_by_worker_id"] is None
 
 
+def test_container_snapshot_ignores_superseded_worker():
+    from app import main
+
+    workers = [
+        {
+            "id": 1,
+            "status": "online",
+            "superseded_by_worker_id": 2,
+            "name": "old",
+            "containers": '[{"provider":"spide","status":"running"}]',
+            "system_info": '{"docker_available":true}',
+        },
+        {
+            "id": 2,
+            "status": "online",
+            "superseded_by_worker_id": None,
+            "name": "new",
+            "containers": "[]",
+            "system_info": '{"docker_available":true}',
+        },
+    ]
+
+    rows = asyncio.run(main._get_all_worker_containers(workers))
+
+    assert rows == []
+
+
 def test_lifecycle_policy_is_defined_by_provider_lane_contract():
     from app import provider_runtime
 

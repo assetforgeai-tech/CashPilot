@@ -63,7 +63,7 @@ def classify_exception(exc: BaseException) -> str | None:
         code = exc.response.status_code
         if code in (401, 403):
             return KIND_AUTH
-        if code >= 500:
+        if code == 429 or code >= 500:
             return KIND_TRANSIENT
     return None
 
