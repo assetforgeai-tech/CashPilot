@@ -16,6 +16,23 @@
   be pulled with the currently available GHCR credential (`denied`). No
   EarnApp container was created on either Azure worker.
 
+## GHCR credential recheck
+
+- A newly supplied GHCR credential authenticated successfully on both scoped
+  Azure workers.
+- All three private `20260912-production-candidate` images pulled successfully
+  on both workers.
+- Local asset tags were applied without starting containers:
+  `cashpilot/earnapp-mac-canary:asset-02dc8060a352`,
+  `cashpilot/earnapp-ios:asset-28b1be5d6668`, and
+  `cashpilot/earnapp-ubuntu:asset-72e54b17fb3a`.
+- Verified image IDs match on both workers: macOS
+  `sha256:45c62c73242a281f5e293a6249bae4706b3c2ff8f9ec23a01b3a01a7a879170d`,
+  iOS `sha256:f7ca70ce9ef7bd72321bafa8be3f00047ceb056e67221ac93c10394592049930`,
+  Ubuntu `sha256:70265ba720c27bb9398f97432fd9e151f841aedf679c1f82831080ac9d0109e3`.
+- No EarnApp node was created in this step; provider canary remains pending
+  owner-authorized deployment and dashboard/earnings verification.
+
 - Scope: the two new Azure workers only. Historical test workers are excluded.
 - Release `v1.50.20` passed CI and was published after PR #370.
 - Both Azure workers run `v1.50.20` and report healthy. The UI container is
