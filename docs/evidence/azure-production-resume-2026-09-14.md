@@ -33,6 +33,22 @@
 - No EarnApp node was created in this step; provider canary remains pending
   owner-authorized deployment and dashboard/earnings verification.
 
+## Azure EarnApp canary attempt
+
+- macOS canary `azure-macos-canary-20260914` deployed on worker `118903`;
+  iOS canary `azure-ios-canary-20260914` deployed on worker `118904`.
+- Both nodes are `ACTIVE`, have one persisted device identity and one healthy
+  proxy lease; worker containers are running with the verified asset tags.
+- Runtime logs show proxy-mediated external-IP checks, EarnApp device-online,
+  proxy-connected, and successful `tunnel_init` responses for the macOS lane.
+- The authenticated workload verifier remains `verification_pending` for both
+  lanes; no country/usage/earnings claim is made yet.
+- Ubuntu canary was not created because the server correctly returned
+  `no eligible residential EarnApp proxy available`; no lease or container was
+  left behind.
+- The first canary exposed the earlier candidate-label mismatch; it was fixed
+  by rebuilding from the current manifest and validating labels before deploy.
+
 - Scope: the two new Azure workers only. Historical test workers are excluded.
 - Release `v1.50.20` passed CI and was published after PR #370.
 - Both Azure workers run `v1.50.20` and report healthy. The UI container is
