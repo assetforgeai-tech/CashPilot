@@ -175,3 +175,37 @@ def test_auto_deploy_sequence_runs_nkn_catalog_and_earnapp_ubuntu_lanes():
         assert 7 in main._EARNAPP_AUTO_DEPLOY_DONE
 
     asyncio.run(run())
+
+
+def test_heartbeat_auto_deploy_does_not_skip_provider_deployed_on_another_worker():
+    async def run():
+        main._WORKER_HEARTBEAT_STREAKS.clear()
+        main._NKN_AUTO_DEPLOY_DONE.add(7)
+        main._EARNAPP_AUTO_DEPLOY_DONE.add(7)
+        services = [
+            {
+                "slug": "earnfm",
+                "status": "active",
+                "docker": {"image": "earnfm/earnfm-client"},
+                "deploy": {},
+            }
+        ]
+        with (
+            patch.object(
+                main.database, "get_config", AsyncMock(return_value={"cashpilot_auto_deploy_enabled": "true"})
+            ),
+            patch.object(main.database, "get_worker", AsyncMock(return_value={"id": 7, "name": "azure-worker"})),
+            patch.object(main.database, "list_provider_instances", AsyncMock(return_value=[])),
+            patch.object(main.catalog, "get_services", return_value=services),
+            patch.object(main, "_spawn") as spawn,
+        ):
+            await main._maybe_auto_deploy_after_heartbeat(7)
+            await main._maybe_auto_deploy_after_heartbeat(7)
+            await main._maybe_auto_deploy_after_heartbeat(7)
+
+        spawn.assert_called_once()
+        coroutine = spawn.call_args.args[0]
+        coroutine.close()
+        assert coroutine.cr_frame is None
+
+    asyncio.run(run())
