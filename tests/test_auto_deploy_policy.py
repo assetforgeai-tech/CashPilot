@@ -191,7 +191,9 @@ def test_heartbeat_auto_deploy_does_not_skip_provider_deployed_on_another_worker
             }
         ]
         with (
-            patch.object(main.database, "get_config", AsyncMock(return_value={"cashpilot_auto_deploy_enabled": "true"})),
+            patch.object(
+                main.database, "get_config", AsyncMock(return_value={"cashpilot_auto_deploy_enabled": "true"})
+            ),
             patch.object(main.database, "get_worker", AsyncMock(return_value={"id": 7, "name": "azure-worker"})),
             patch.object(main.database, "list_provider_instances", AsyncMock(return_value=[])),
             patch.object(main.catalog, "get_services", return_value=services),
