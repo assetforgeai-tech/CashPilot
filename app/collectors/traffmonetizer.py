@@ -97,6 +97,13 @@ class TraffmonetizerCollector(BaseCollector):
                 currency="USD",
             )
         except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 429:
+                return EarningsResult(
+                    platform=self.platform,
+                    balance=0.0,
+                    error="Traffmonetizer rate limited - retry later",
+                    error_kind=base.KIND_TRANSIENT,
+                )
             if exc.response.status_code in (401, 403, 422):
                 return EarningsResult(
                     platform=self.platform,
