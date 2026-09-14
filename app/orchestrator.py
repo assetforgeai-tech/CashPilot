@@ -2132,7 +2132,11 @@ def get_status() -> list[dict[str, Any]]:
                     "name": c.name,
                     "status": "degraded" if restart_loop else c.status,
                     "restart_count": restart_count,
-                    "runtime_health": "restart_loop" if restart_loop else "running" if c.status == "running" else "stopped",
+                    "runtime_health": "restart_loop"
+                    if restart_loop
+                    else "running"
+                    if c.status == "running"
+                    else "stopped",
                     "network_mode": _container_network_mode(c),
                     "cap_add": _container_cap_add(c),
                     "image": c.image.tags[0] if c.image.tags else str(c.image.short_id),
