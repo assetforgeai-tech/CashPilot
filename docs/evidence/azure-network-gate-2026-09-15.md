@@ -21,6 +21,10 @@ CashPilot authority after rollout reports 40 Spide instances (20 direct, 20 prox
 
 The two refreshed East Asia Proxies-SX containers are running with restart count 1, but both still time out while downloading `https://agents.proxies.sx/peer/reference-sdk.js`. This remains an unresolved provider bootstrap/egress issue; the containers are not counted as earning evidence.
 
+## Route comparison
+
+Inside both affected Proxies-SX containers, `https://api.ipify.org` and Cloudflare trace returned HTTP 200 through the sidecar route. DNS resolved `agents.proxies.sx` via the sidecar, and sidecar logs showed the HTTPS connection leaving through `proxy-out`, but the SDK request timed out with HTTP `000`. This narrows the failure to the provider endpoint/proxy-path interaction, not DNS resolution or a direct-fallback path.
+
 ## Gate decision
 
 `NOT_READY`: runtime health is positive, but network isolation and restart stability are incomplete. Do not generalize EarnApp or Spide evidence to other providers.
