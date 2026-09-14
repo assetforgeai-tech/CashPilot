@@ -3414,7 +3414,15 @@ async def _resolve_pawns_proxy_protocol(proxy: dict[str, Any]) -> dict[str, Any]
         return None
     from app.routers.proxies import _probe_proxy_confirmed
 
-    result = await _probe_proxy_confirmed(host, port)
+    result = await _probe_proxy_confirmed(
+        host,
+        port,
+        username=str(proxy.get("username") or "").strip(),
+        password=str(proxy.get("password") or "").strip(),
+        retries=1,
+        retry_delay=0,
+        protocol_mode="auto",
+    )
     if result.get("status") != "alive":
         return None
     detected = str(result.get("protocol") or "").strip().lower()
