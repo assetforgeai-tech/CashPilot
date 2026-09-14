@@ -1,5 +1,21 @@
 # Azure production-resume checkpoint
 
+## Recheck after release v1.50.20
+
+- Auto Release run `34807714648` completed successfully; release `v1.50.20`
+  is published.
+- Both scoped Azure workers were upgraded to
+  `ghcr.io/assetforgeai-tech/cashpilot-worker:1.50.20`.
+- East Asia and Japan East report `running|healthy` with Docker
+  `restart=always`.
+- The upgrade preserved `/data`, public-slot storage, worker identity/key, and
+  existing provider container IDs.
+- Repository verification after the rollout: `3082 passed, 10 skipped` and
+  Ruff clean.
+- EarnApp remains unverified: the three required private runtime images cannot
+  be pulled with the currently available GHCR credential (`denied`). No
+  EarnApp container was created on either Azure worker.
+
 - Scope: the two new Azure workers only. Historical test workers are excluded.
 - Release `v1.50.19` passed CI and was published after PR #369.
 - CashPilot UI and both Azure workers run `v1.50.19` and report healthy.
