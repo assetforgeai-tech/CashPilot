@@ -851,10 +851,16 @@ async def test_spide_registration_discovers_skipped_topology_instances(monkeypat
     async def instances(*_args, **_kwargs):
         return [{"instance_id": "spide-direct-w7-ipv4-001", "mode": "direct"}]
 
-    async def register(_worker_id: int, instance_slug: str, _mode: str, _hostname: str):
+    async def register(_worker_id: int, instance_slug: str, _mode: str, _hostname: str, *, token: str):
+        assert token == "dash-token"
         seen.append(instance_slug)
 
     monkeypatch.setattr(main.database, "list_provider_instances", instances)
+
+    async def config(key=None):
+        return "dash-token" if key == "spide_dashboard_token" else ""
+
+    monkeypatch.setattr(main.database, "get_config", config)
     monkeypatch.setattr(main, "_register_spide_device_from_worker_logs", register)
 
     await main._run_post_deploy_automation("spide", 7, "worker-1", [])
