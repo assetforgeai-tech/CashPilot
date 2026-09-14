@@ -699,7 +699,7 @@ async def _maybe_auto_deploy_after_heartbeat(worker_id: int) -> None:
 
 async def _run_proxy_pool_recheck_scheduler() -> None:
     global _proxy_pool_last_recheck
-    from app.routers.proxies import _proxy_scheduler_settings, run_proxy_pool_recheck
+    from app.routers.proxies import _proxy_scheduler_settings, run_earnapp_proxy_recheck, run_proxy_pool_recheck
 
     config = await database.get_config() or {}
     settings = _proxy_scheduler_settings(config if isinstance(config, dict) else {})
@@ -710,6 +710,9 @@ async def _run_proxy_pool_recheck_scheduler() -> None:
         return
     _proxy_pool_last_recheck = now
     result = await run_proxy_pool_recheck(concurrency=settings["concurrency"])
+    # Generic liveness does not prove EarnApp WSS eligibility; refresh its
+    # provider-specific qualification in the same scheduler pass.
+    earnapp_result = await run_earnapp_proxy_recheck(concurrency=settings["concurrency"])
     logger.info(
         "Proxy pool scheduler checked=%s alive=%s dead=%s rotated=%s rotate_errors=%s",
         result.get("checked", 0),
@@ -717,6 +720,11 @@ async def _run_proxy_pool_recheck_scheduler() -> None:
         result.get("dead", 0),
         result.get("rotated", 0),
         result.get("rotate_errors", 0),
+    )
+    logger.info(
+        "EarnApp WSS qualification checked=%s eligible=%s",
+        earnapp_result.get("checked", 0),
+        earnapp_result.get("eligible", 0),
     )
 
 

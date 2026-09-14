@@ -1467,13 +1467,34 @@ async def api_proxy_pool_provider_release(request: Request, body: ProviderProxyL
     deps._require_owner(request)
     if body.lane.strip().lower() != "proxy":
         raise HTTPException(status_code=409, detail="Direct lanes do not release proxy leases")
-    runtime = provider_runtime.get(body.provider_slug.strip().lower())
+    slug = body.provider_slug.strip().lower()
+    if slug == "earnapp":
+        raise HTTPException(status_code=409, detail="EarnApp release must use its lifecycle/account route")
+    runtime = provider_runtime.get(slug)
     if runtime is None or "proxy" not in runtime.modes:
         raise HTTPException(
             status_code=409, detail=f"Provider {body.provider_slug.strip().lower()} does not support proxy mode"
         )
+    instance = await database.get_provider_instance(body.instance_id)
+    if not instance or int(instance.get("worker_id") or 0) != body.worker_id or str(instance.get("slug") or "") == "":
+        raise HTTPException(status_code=404, detail="Provider runtime instance not found")
+    if str(instance.get("mode") or "").strip().lower() != "proxy":
+        raise HTTPException(status_code=409, detail="Provider instance is not a proxy runtime")
+    try:
+        from app.main import _proxy_to_worker
+
+        ack = await _proxy_to_worker(
+            body.worker_id,
+            "POST",
+            f"/api/containers/{instance['slug']}/stop",
+            timeout=30,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail="Provider runtime stop was not acknowledged") from exc
+    if not isinstance(ack, dict) or str(ack.get("status") or "").strip().lower() != "stopped":
+        raise HTTPException(status_code=409, detail="Provider runtime stop was not acknowledged")
     released = await database.release_proxy_for_provider_instance(
-        body.provider_slug, body.worker_id, body.instance_id, reason="manual release"
+        slug, body.worker_id, body.instance_id, reason="manual release"
     )
     return {"status": "ok", "released": released}
 

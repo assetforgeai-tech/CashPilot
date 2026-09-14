@@ -51,7 +51,9 @@ def test_migrate_legacy_earnapp_ubuntu_uses_verified_image_and_rolls_forward():
             side_effect=lambda _c, _s, *, sidecar: None if sidecar else old,
         ),
         patch.object(
-            orchestrator, "probe_service_egress", return_value={"probe_ok": True, "observed_egress_ip": "198.51.100.8"}
+            orchestrator,
+            "wait_for_service_egress",
+            return_value={"probe_ok": True, "observed_egress_ip": "198.51.100.8"},
         ),
         patch.object(
             orchestrator, "_probe_earnapp_ubuntu_network", return_value={"fail_closed": True, "dns_local": True}
@@ -100,7 +102,7 @@ def test_migrate_legacy_earnapp_ubuntu_rolls_back_when_network_evidence_fails():
         ),
         patch.object(
             orchestrator,
-            "probe_service_egress",
+            "wait_for_service_egress",
             return_value={"probe_ok": True, "observed_egress_ip": "198.51.100.8"},
         ),
         patch.object(

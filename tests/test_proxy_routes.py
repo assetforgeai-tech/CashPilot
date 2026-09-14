@@ -4869,6 +4869,17 @@ def test_provider_scoped_release_route_releases_only_the_requested_instance(clie
     with (
         patch("app.main.auth.get_current_user", return_value=_owner_user()),
         patch(
+            "app.routers.proxies.database.get_provider_instance",
+            new_callable=AsyncMock,
+            return_value={
+                "instance_id": "packetstream-1",
+                "slug": "packetstream-node-1",
+                "worker_id": 3,
+                "mode": "proxy",
+            },
+        ),
+        patch("app.main._proxy_to_worker", new_callable=AsyncMock, return_value={"status": "stopped"}) as stop_runtime,
+        patch(
             "app.routers.proxies.database.release_proxy_for_provider_instance",
             new_callable=AsyncMock,
             return_value=True,
@@ -4876,12 +4887,48 @@ def test_provider_scoped_release_route_releases_only_the_requested_instance(clie
     ):
         response = client.post(
             "/api/proxy-pool/provider-release",
-            json={"provider_slug": "EarnApp", "worker_id": 3, "instance_id": "earn-1"},
+            json={"provider_slug": "packetstream", "worker_id": 3, "instance_id": "packetstream-1"},
         )
 
     assert response.status_code == 200
     assert response.json()["released"] is True
-    release_proxy.assert_awaited_once_with("EarnApp", 3, "earn-1", reason="manual release")
+    stop_runtime.assert_awaited_once_with(3, "POST", "/api/containers/packetstream-node-1/stop", timeout=30)
+    release_proxy.assert_awaited_once_with("packetstream", 3, "packetstream-1", reason="manual release")
+
+
+def test_provider_scoped_release_requires_runtime_stop_ack(client):
+    with (
+        patch("app.main.auth.get_current_user", return_value=_owner_user()),
+        patch(
+            "app.routers.proxies.database.get_provider_instance",
+            new_callable=AsyncMock,
+            return_value={
+                "instance_id": "packetstream-1",
+                "slug": "packetstream-node-1",
+                "worker_id": 3,
+                "mode": "proxy",
+            },
+        ),
+        patch("app.main._proxy_to_worker", new_callable=AsyncMock, return_value={"status": "running"}),
+        patch(
+            "app.routers.proxies.database.release_proxy_for_provider_instance", new_callable=AsyncMock
+        ) as release_proxy,
+    ):
+        response = client.post(
+            "/api/proxy-pool/provider-release",
+            json={"provider_slug": "packetstream", "worker_id": 3, "instance_id": "packetstream-1"},
+        )
+    assert response.status_code == 409
+    release_proxy.assert_not_awaited()
+
+
+def test_provider_scoped_release_does_not_bypass_earnapp_lifecycle(client):
+    with patch("app.main.auth.get_current_user", return_value=_owner_user()):
+        response = client.post(
+            "/api/proxy-pool/provider-release",
+            json={"provider_slug": "earnapp", "worker_id": 3, "instance_id": "earn-1"},
+        )
+    assert response.status_code == 409
 
 
 def test_provider_scoped_lease_route_rejects_direct_lane(client):
