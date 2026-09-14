@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import contextlib
+import json
 import re
 import threading
 import time
@@ -151,7 +151,7 @@ async def register_spide_device(
             headers=spide_auth_headers(credential),
             data={"title": title, "device_key": device_key},
         )
-    if resp.is_error:
+    if getattr(resp, "is_error", False) or int(getattr(resp, "status_code", 200)) >= 400:
         detail = ""
         with contextlib.suppress(ValueError, TypeError):
             payload = resp.json()
