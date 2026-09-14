@@ -224,6 +224,9 @@ def test_proxies_sx_bandwidth_service_contract():
     assert data["requirements"]["residential_ip"] is True
     assert data["requirements"]["vps_ip"] is False
     command = data["docker"]["command"]
+    assert "apk add --no-cache curl" in command
+    assert "curl -4 -fsSL" in command
+    assert "wget" not in command
     assert "reference-sdk.js.tmp" in command
     assert "sleep 10" in command
     assert "mv reference-sdk.js.tmp reference-sdk.js" in command
