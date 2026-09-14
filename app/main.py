@@ -99,6 +99,7 @@ _collector_alerts: list[dict[str, str]] = []
 _collection_has_run: bool = False
 _collection_lock = asyncio.Lock()
 _collection_semaphore = asyncio.Semaphore(8)
+_spide_registration_lock = asyncio.Lock()
 
 # Fire-and-forget background tasks (e.g. triggered collection runs). Keeping a
 # reference prevents the task from being garbage-collected mid-run and lets us
@@ -4459,28 +4460,32 @@ async def _run_post_deploy_automation(
     deploy = (svc or {}).get("deploy") or {}
     if deploy.get("automation") != "device_key_register" or slug != "spide":
         return
-    # A reconcile/deploy request can skip already-running instances. Discover
-    # those exact IDs so registration still runs after a runtime upgrade.
-    if not deployed:
-        deployed = await database.list_provider_instances(slug=slug, worker_id=worker_id)
-    email = str(await database.get_config("spide_email") or "").strip()
-    password = str(await database.get_config("spide_password") or "")
-    token = ""
-    if email and password:
-        try:
-            token = await provider_automation.login_spide(email, password)
-        except Exception as exc:
-            logger.warning("Spide account login failed: %s", exc)
-    if not token:
-        token = str(await database.get_config("spide_dashboard_token") or "").strip()
-    if not token:
-        await database.record_health_event("spide", "setup_needed", "dashboard token missing for device registration")
-        return
-    for item in deployed or [{"mode": "legacy", "instance_id": slug}]:
-        mode = str(item.get("mode") or "legacy")
-        instance_slug = str(item.get("instance_id") or (slug if mode == "legacy" else f"{slug}-{mode}"))
-        identity_mode = "direct" if mode == "legacy" else mode
-        await _register_spide_device_from_worker_logs(worker_id, instance_slug, identity_mode, hostname, token=token)
+    async with _spide_registration_lock:
+        # A reconcile/deploy request can skip already-running instances.
+        if not deployed:
+            deployed = await database.list_provider_instances(slug=slug, worker_id=worker_id)
+        email = str(await database.get_config("spide_email") or "").strip()
+        password = str(await database.get_config("spide_password") or "")
+        token = ""
+        if email and password:
+            try:
+                token = await provider_automation.login_spide(email, password)
+            except Exception as exc:
+                logger.warning("Spide account login failed: %s", exc)
+        if not token:
+            token = str(await database.get_config("spide_dashboard_token") or "").strip()
+        if not token:
+            await database.record_health_event(
+                "spide", "setup_needed", "dashboard token missing for device registration"
+            )
+            return
+        for item in deployed or [{"mode": "legacy", "instance_id": slug}]:
+            mode = str(item.get("mode") or "legacy")
+            instance_slug = str(item.get("instance_id") or (slug if mode == "legacy" else f"{slug}-{mode}"))
+            identity_mode = "direct" if mode == "legacy" else mode
+            await _register_spide_device_from_worker_logs(
+                worker_id, instance_slug, identity_mode, hostname, token=token
+            )
 
 
 async def _register_spide_device_from_worker_logs(
