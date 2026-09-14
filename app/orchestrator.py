@@ -754,7 +754,7 @@ def migrate_legacy_earnapp_ubuntu(slug: str, *, expected_egress_ip: str) -> str:
         if str(getattr(replacement, "status", "") or "").lower() != "running":
             raise RuntimeError("replacement container did not start")
         evidence = _probe_earnapp_ubuntu_network(replacement)
-        egress = probe_service_egress(slug)
+        egress = wait_for_service_egress(slug, expected, timeout_seconds=45, poll_interval_seconds=2)
         if not evidence.get("fail_closed") or not evidence.get("dns_local"):
             raise RuntimeError("replacement network evidence failed")
         if egress.get("observed_egress_ip") != expected or egress.get("probe_ok") is not True:
