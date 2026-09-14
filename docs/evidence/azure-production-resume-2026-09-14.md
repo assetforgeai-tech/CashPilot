@@ -17,8 +17,9 @@
   EarnApp container was created on either Azure worker.
 
 - Scope: the two new Azure workers only. Historical test workers are excluded.
-- Release `v1.50.19` passed CI and was published after PR #369.
-- CashPilot UI and both Azure workers run `v1.50.19` and report healthy.
+- Release `v1.50.20` passed CI and was published after PR #370.
+- Both Azure workers run `v1.50.20` and report healthy. The UI container is
+  intentionally outside this worker-only rollout.
 - Worker data, public-slot volumes, worker identities, and existing provider
   containers were preserved during the worker rollout.
 - Fresh EarnApp deployment is not verified. The worker fail-closed response
