@@ -30,6 +30,7 @@ def render_tun_proxy_config(
     if proxy.get("password"):
         outbound["password"] = proxy["password"]
     route_rules = [
+        {"action": "sniff"},
         {"port": 53, "action": "hijack-dns"},
         {"domain": [proxy["host"]], "outbound": "direct"},
     ]
@@ -77,7 +78,6 @@ def render_tun_proxy_config(
         "route": {
             "auto_detect_interface": True,
             "default_domain_resolver": "cf",
-            "sniff": True,
             "rules": route_rules,
             "final": "proxy-out",
         },
