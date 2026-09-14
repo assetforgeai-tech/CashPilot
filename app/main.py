@@ -241,14 +241,11 @@ def _auto_deploy_credentials_ready(slug: str, svc: dict[str, Any], config: Mappi
     except Exception:
         return False
     return all(
-        not field.get("required", True) or bool(str(config.get(field["key"], "") or "").strip())
-        for field in fields
+        not field.get("required", True) or bool(str(config.get(field["key"], "") or "").strip()) for field in fields
     )
 
 
-def _auto_deploy_slugs(
-    services: list[dict[str, Any]], config: Mapping[str, Any] | None = None
-) -> list[str]:
+def _auto_deploy_slugs(services: list[dict[str, Any]], config: Mapping[str, Any] | None = None) -> list[str]:
     config = config or {}
     return [
         svc.get("slug", "")
