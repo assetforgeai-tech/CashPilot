@@ -7572,7 +7572,9 @@ async def sync_provider_runtime_inventory(
                 (
                     container_id,
                     str(item.get("sidecar_id") or "").strip(),
-                    str(item.get("status") or "running").strip() or "running",
+                    "degraded"
+                    if str(item.get("runtime_health") or "").strip().lower() == "restart_loop"
+                    else str(item.get("status") or "running").strip() or "running",
                     instance_id,
                     int(worker_id),
                     slug,

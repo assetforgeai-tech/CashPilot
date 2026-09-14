@@ -129,6 +129,36 @@ def test_provider_runtime_inventory_refreshes_container_and_sidecar_ids(tmp_path
     asyncio.run(run())
 
 
+def test_provider_runtime_inventory_marks_restart_loop_degraded(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "instances.db"):
+            await database.init_db()
+            worker_id = await database.upsert_worker("worker-a", "worker-a", "http://worker")
+            await database.save_provider_instance(
+                "proxies-sx",
+                "proxies-sx-proxy-w1-proxy-001",
+                worker_id=worker_id,
+                mode="proxy",
+                container_id="old-main",
+                status="running",
+            )
+            await database.sync_provider_runtime_inventory(
+                worker_id,
+                [{
+                    "slug": "proxies-sx",
+                    "instance_slug": "proxies-sx-proxy-w1-proxy-001",
+                    "container_id": "new-main",
+                    "status": "running",
+                    "runtime_health": "restart_loop",
+                }],
+                inventory_confirmed=True,
+            )
+            row = await database.get_provider_instance("proxies-sx-proxy-w1-proxy-001")
+            assert row["status"] == "degraded"
+
+    asyncio.run(run())
+
+
 def test_direct_only_provider_cannot_acquire_proxy_lease(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "instances.db"):
