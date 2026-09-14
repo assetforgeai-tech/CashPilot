@@ -57,6 +57,16 @@
 - Current proxy capacity reports `eligible=289`, `leaseable=279`, `used=9`,
   `occupied=9`; Ubuntu deployment was refused because no policy-eligible
   residential proxy was available at its allocation point.
+- The UI was then upgraded to `v1.50.20`; it is `healthy`, SQLite integrity is
+  `ok`, and the worker/mount preservation checks passed.
+- Latest account snapshots show both active accounts authenticated and reporting
+  online nodes, but the new macOS/iOS canaries have not produced an observed
+  earnings/usage delta yet. Their one-hour Earnings Update windows are still
+  pending; this remains an open production gate.
+- Runtime inspection confirms both canary containers are running with restart
+  count `0`, expected identity labels, DNS bound to `127.0.0.1`, and the
+  `CP_EARNAPP_OUT` fail-closed output chain. This is routing evidence only, not
+  proof of provider earnings.
 
 - Scope: the two new Azure workers only. Historical test workers are excluded.
 - Release `v1.50.20` passed CI and was published after PR #370.
