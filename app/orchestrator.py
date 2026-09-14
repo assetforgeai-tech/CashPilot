@@ -1138,7 +1138,10 @@ def deploy_raw(
         sysctls=sysctls or None,
         shm_size=shm_size or None,
         labels=all_labels,
-        hostname=(hostname or f"cashpilot-{slug}") if (not network_mode or provider == "earnfm") else None,
+        # Docker rejects `hostname` together with container network mode. The
+        # sidecar already supplies the network namespace; keep hostname only
+        # for bridge/host deployments.
+        hostname=(hostname or f"cashpilot-{slug}") if network_mode in {None, "host"} else None,
         detach=True,
         restart_policy={"Name": "always"},
         # None means Docker's default runtime, which is what every service uses
