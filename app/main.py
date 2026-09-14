@@ -1174,7 +1174,10 @@ def _filter_worker_provider_entries(worker: dict[str, Any]) -> None:
     entries = worker["apps"] if is_android else worker["containers"]
     worker["container_count"] = len(entries)
     worker["running_count"] = sum(
-        1 for entry in entries if (entry.get("running") is True if is_android else entry.get("status") == "running")
+        1
+        for entry in entries
+        if (entry.get("running") is True if is_android else entry.get("status") == "running")
+        and entry.get("runtime_health") != "restart_loop"
     )
 
 

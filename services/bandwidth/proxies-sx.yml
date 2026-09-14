@@ -34,7 +34,18 @@ docker:
     - "proxies-sx-data:/app"
   command: >
     sh -lc 'cd /app &&
-    if [ ! -f reference-sdk.js ]; then wget -q -O reference-sdk.js https://agents.proxies.sx/peer/reference-sdk.js; fi &&
+    if [ ! -s reference-sdk.js ]; then
+      rm -f reference-sdk.js.tmp;
+      for attempt in 1 2 3 4 5; do
+        if wget -q -O reference-sdk.js.tmp https://agents.proxies.sx/peer/reference-sdk.js && [ -s reference-sdk.js.tmp ]; then
+          mv reference-sdk.js.tmp reference-sdk.js;
+          break;
+        fi;
+        rm -f reference-sdk.js.tmp;
+        sleep 10;
+      done;
+    fi &&
+    test -s reference-sdk.js &&
     if [ ! -f package.json ]; then npm init -y >/dev/null 2>&1; fi &&
     if [ ! -d node_modules/ws ]; then npm install ws >/dev/null 2>&1; fi &&
     exec node reference-sdk.js'

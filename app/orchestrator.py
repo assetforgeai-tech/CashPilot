@@ -56,6 +56,17 @@ _status_cache: list[dict[str, Any]] = []
 _status_cache_time: float = 0.0
 
 
+def _recent_iso_timestamp(value: str, window_seconds: int) -> bool:
+    """Return whether a Docker UTC timestamp is within the supplied window."""
+    from datetime import UTC, datetime, timedelta
+
+    try:
+        stamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return datetime.now(UTC) - stamp <= timedelta(seconds=window_seconds)
+    except (TypeError, ValueError, OverflowError):
+        return False
+
+
 def docker_available() -> bool:
     """Check whether the Docker socket is accessible.
 
@@ -2101,6 +2112,9 @@ def get_status() -> list[dict[str, Any]]:
                 except (NotFound, APIError):
                     probe_container = None
             cpu_pct, mem_mb, net_rx, net_tx = labeled_stats.get(c.id, (0.0, 0.0, None, None))
+            state = (getattr(c, "attrs", {}) or {}).get("State") or {}
+            restart_count = int(state.get("RestartCount") or 0)
+            restart_loop = restart_count >= 3 and _recent_iso_timestamp(str(state.get("StartedAt") or ""), 300)
             if probe_container is not None:
                 try:
                     provider_evidence = _provider_evidence(slug, c, probe_container=probe_container)
@@ -2116,7 +2130,9 @@ def get_status() -> list[dict[str, Any]]:
                     "instance_slug": instance_slug,
                     "instance_mode": instance_mode,
                     "name": c.name,
-                    "status": c.status,
+                    "status": "degraded" if restart_loop else c.status,
+                    "restart_count": restart_count,
+                    "runtime_health": "restart_loop" if restart_loop else "running" if c.status == "running" else "stopped",
                     "network_mode": _container_network_mode(c),
                     "cap_add": _container_cap_add(c),
                     "image": c.image.tags[0] if c.image.tags else str(c.image.short_id),

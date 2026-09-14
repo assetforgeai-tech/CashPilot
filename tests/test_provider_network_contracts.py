@@ -64,6 +64,44 @@ def test_status_includes_live_sidecar_identity_for_managed_container(monkeypatch
     assert rows[0]["observed_egress_ip"] == "203.0.113.8"
 
 
+def test_status_does_not_count_recent_crash_loop_as_healthy(monkeypatch):
+    class Image:
+        tags = ["example/image:latest"]
+        short_id = "sha256:x"
+
+    class Container:
+        name = "svc"
+        labels = {"cashpilot.managed": "true", "cashpilot.provider": "packetstream", "cashpilot.service": "svc"}
+        id = "main-id"
+        short_id = "main-id"
+        status = "running"
+        image = Image()
+        attrs = {"HostConfig": {"NetworkMode": "bridge"}, "Created": "", "State": {"RestartCount": 12, "StartedAt": "2099-01-01T00:00:00Z"}}
+
+        def stats(self, stream=False):
+            return {"cpu_stats": {}, "precpu_stats": {}, "memory_stats": {}, "networks": {}}
+
+        def exec_run(self, *args, **kwargs):
+            return type("Result", (), {"exit_code": 0, "output": b""})()
+
+    class Client:
+        class Containers:
+            def list(self, **kwargs):
+                return [Container()]
+
+        containers = Containers()
+
+    monkeypatch.setattr(orchestrator, "_get_client", lambda: Client())
+    monkeypatch.setattr(orchestrator, "_collect_stats_bulk", lambda cs: {c.id: (0, 0, 0, 0) for c in cs})
+    monkeypatch.setattr(orchestrator, "_provider_evidence", lambda slug, c: {})
+    monkeypatch.setattr(orchestrator, "get_services", lambda: [])
+    monkeypatch.setattr(orchestrator, "_recent_iso_timestamp", lambda value, window: True)
+    rows = orchestrator.get_status()
+    assert rows[0]["status"] == "degraded"
+    assert rows[0]["runtime_health"] == "restart_loop"
+    assert rows[0]["restart_count"] == 12
+
+
 def test_status_uses_legacy_sidecar_for_earnapp_evidence(monkeypatch):
     class Image:
         tags = ["example/image:latest"]
