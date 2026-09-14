@@ -148,7 +148,8 @@ def test_singbox_tun_sniffs_tls_hostnames_for_http_proxy():
 
     config = render_tun_proxy_config({"host": "proxy.example", "port": 8080, "protocol": "http"}, worker_name="x")
 
-    assert config["route"]["sniff"] is True
+    assert config["route"].get("sniff") is None
+    assert {"action": "sniff"} in config["route"]["rules"]
 
 
 def test_singbox_config_can_use_repocket_safe_tun_name():
