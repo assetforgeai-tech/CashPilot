@@ -4512,6 +4512,11 @@ async def _register_spide_device_from_worker_logs(
             title=_standard_device_identity(worker, mode, hostname),
         )
     except Exception as exc:
+        if "already registered" in str(exc).lower():
+            await database.record_health_event(
+                "spide", "setup_complete", f"Device key ending {device_key[-4:]} already registered"
+            )
+            return
         logger.warning("Spide device registration failed: %s", exc)
         await database.record_health_event("spide", "setup_failed", "dashboard device registration failed")
         return
