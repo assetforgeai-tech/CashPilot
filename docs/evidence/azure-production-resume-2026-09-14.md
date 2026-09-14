@@ -96,3 +96,17 @@ provider dashboard and shows an authenticated usage/earnings delta.
   crash. No policy override or proxy mutation was performed.
 - Ubuntu requires either enabling `earnapp_platform_vn_ubuntu` in Settings or
   obtaining a non-VN residential proxy with latest `CID_SET/eligible` evidence.
+
+## Production-scope reconciliation (2026-09-14, current)
+
+- Read-only inventory confirms the two scoped Azure workers: worker `118903`
+  runs Earn.fm direct plus the EarnApp macOS canary; worker `118904` runs
+  PacketStream proxy plus the EarnApp iOS canary and two online NKN slots.
+- NKN reconciliation found four active Azure leases with matching runtime
+  evidence for every lease; no orphan lease was released.
+- Auto-deploy had a retry defect: any non-retired provider row, including
+  `failed`, suppressed future retries. The filter now suppresses only
+  `running`, `deployed`, or `active` rows. Focused suite: `129` passed; full
+  suite: `3084` passed, `10` skipped.
+- EarnApp remains untouched pending operator account-side `country` and usage
+  evidence. Ubuntu was not forced without eligible capacity.

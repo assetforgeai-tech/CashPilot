@@ -692,10 +692,13 @@ async def _maybe_auto_deploy_after_heartbeat(worker_id: int) -> None:
         return
     # Deployment rows are fleet-global; auto-deploy convergence is worker-local.
     # A provider running on another worker must still be provisioned here.
+    # Failed/pending rows are history, not convergence.  Only a live instance
+    # should suppress a retry on this worker; otherwise one transient deploy
+    # error permanently blocks that provider after the first heartbeat pass.
     deployed = {
         str(d.get("slug") or "")
         for d in await database.list_provider_instances(worker_id=worker_id)
-        if str(d.get("status") or "").lower() not in {"retired", "deleted"}
+        if str(d.get("status") or "").lower() in {"running", "deployed", "active"}
     }
     services = [svc for svc in catalog.get_services() if svc.get("slug") not in deployed]
     slugs = _auto_deploy_slugs(services)
