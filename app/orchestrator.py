@@ -2113,7 +2113,8 @@ def get_status() -> list[dict[str, Any]]:
                     probe_container = None
             cpu_pct, mem_mb, net_rx, net_tx = labeled_stats.get(c.id, (0.0, 0.0, None, None))
             state = (getattr(c, "attrs", {}) or {}).get("State") or {}
-            restart_count = int(state.get("RestartCount") or 0)
+            # Docker exposes RestartCount at inspect top level, not under State.
+            restart_count = int((getattr(c, "attrs", {}) or {}).get("RestartCount") or state.get("RestartCount") or 0)
             restart_loop = restart_count >= 3 and _recent_iso_timestamp(str(state.get("StartedAt") or ""), 300)
             if probe_container is not None:
                 try:

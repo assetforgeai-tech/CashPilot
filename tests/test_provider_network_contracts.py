@@ -77,9 +77,10 @@ def test_status_does_not_count_recent_crash_loop_as_healthy(monkeypatch):
         status = "running"
         image = Image()
         attrs = {
+            "RestartCount": 12,
             "HostConfig": {"NetworkMode": "bridge"},
             "Created": "",
-            "State": {"RestartCount": 12, "StartedAt": "2099-01-01T00:00:00Z"},
+            "State": {"StartedAt": "2099-01-01T00:00:00Z"},
         }
 
         def stats(self, stream=False):
