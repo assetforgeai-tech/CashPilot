@@ -298,6 +298,10 @@ def test_new_worker_needs_one_time_ticket_and_generation_blocks_old_worker(tmp_p
             old_worker, new_worker, _ = await _setup(tmp_path)
             provisioned = await _provision_ubuntu_node("earnapp-node-a", old_worker, device_id="device-a")
             await database.begin_earnapp_recovery_hold("earnapp-node-a", hold_seconds=3600)
+            db = await database._get_db()
+            await db.execute("UPDATE earnapp_logical_nodes SET recovery_hold_until=datetime('now', '-1 second') WHERE logical_node_id=?", ("earnapp-node-a",))
+            await db.commit()
+            await db.close()
 
             with pytest.raises(earnapp_recovery.RecoveryClaimDenied, match="replacement ticket"):
                 await earnapp_recovery.claim_node(
@@ -347,6 +351,29 @@ def test_new_worker_needs_one_time_ticket_and_generation_blocks_old_worker(tmp_p
     asyncio.run(run())
 
 
+def test_new_worker_cannot_take_over_during_recovery_hold(tmp_path):
+    async def run():
+        db_dir, db_path = _db_patch(tmp_path)
+        with db_dir, db_path:
+            old_worker, new_worker, _ = await _setup(tmp_path)
+            provisioned = await _provision_ubuntu_node("earnapp-node-a", old_worker, device_id="device-a")
+            await database.begin_earnapp_recovery_hold("earnapp-node-a", hold_seconds=3600)
+
+            with pytest.raises(earnapp_recovery.RecoveryClaimDenied, match="hold is still active"):
+                await earnapp_recovery.issue_replacement_ticket("earnapp-node-a", new_worker)
+            assert (
+                await database.claim_earnapp_node(
+                    "earnapp-node-a",
+                    new_worker,
+                    expected_generation=provisioned["generation"],
+                    ticket_hash="unused",
+                )
+                is None
+            )
+
+    asyncio.run(run())
+
+
 def test_new_replacement_ticket_revokes_older_ticket_for_same_claim(tmp_path):
     async def run():
         db_dir, db_path = _db_patch(tmp_path)
@@ -354,6 +381,10 @@ def test_new_replacement_ticket_revokes_older_ticket_for_same_claim(tmp_path):
             old_worker, new_worker, _ = await _setup(tmp_path)
             provisioned = await _provision_ubuntu_node("earnapp-node-a", old_worker, device_id="device-a")
             await database.begin_earnapp_recovery_hold("earnapp-node-a", hold_seconds=3600)
+            db = await database._get_db()
+            await db.execute("UPDATE earnapp_logical_nodes SET recovery_hold_until=datetime('now', '-1 second') WHERE logical_node_id=?", ("earnapp-node-a",))
+            await db.commit()
+            await db.close()
 
             stale_ticket = await earnapp_recovery.issue_replacement_ticket("earnapp-node-a", new_worker)
             current_ticket = await earnapp_recovery.issue_replacement_ticket("earnapp-node-a", new_worker)
@@ -383,6 +414,10 @@ def test_original_worker_heartbeat_cancels_hold_and_revokes_an_outstanding_repla
             old_worker, new_worker, _ = await _setup(tmp_path)
             provisioned = await _provision_ubuntu_node("earnapp-node-a", old_worker, device_id="device-a")
             await database.begin_earnapp_recovery_hold("earnapp-node-a", hold_seconds=3600)
+            db = await database._get_db()
+            await db.execute("UPDATE earnapp_logical_nodes SET recovery_hold_until=datetime('now', '-1 second') WHERE logical_node_id=?", ("earnapp-node-a",))
+            await db.commit()
+            await db.close()
             ticket = await earnapp_recovery.issue_replacement_ticket("earnapp-node-a", new_worker)
 
             assert await earnapp_recovery.heartbeat_node(

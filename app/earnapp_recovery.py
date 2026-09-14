@@ -124,8 +124,9 @@ async def issue_replacement_ticket(logical_node_id: str, target_worker_id: int) 
         messages = {
             "target_worker_not_found": "EarnApp replacement target worker does not exist",
             "node_not_found": "EarnApp logical node not found",
-            "generation_mismatch": "EarnApp recovery generation changed before ticket creation",
-            "node_not_recoverable": "EarnApp node is no longer recoverable",
+                "generation_mismatch": "EarnApp recovery generation changed before ticket creation",
+                "node_not_recoverable": "EarnApp node is no longer recoverable",
+                "recovery_hold_active": "EarnApp recovery hold is still active",
         }
         raise RecoveryClaimDenied(messages.get(result, "EarnApp replacement ticket could not be created"))
     return token

@@ -6298,7 +6298,7 @@ async def create_earnapp_replacement_ticket(
 
             node = await (
                 await db.execute(
-                    "SELECT generation, state FROM earnapp_logical_nodes WHERE logical_node_id = ?",
+                    "SELECT generation, state, recovery_hold_until FROM earnapp_logical_nodes WHERE logical_node_id = ?",
                     (node_id,),
                 )
             ).fetchone()
@@ -6311,6 +6311,9 @@ async def create_earnapp_replacement_ticket(
             if str(node["state"] or "") not in {"RECOVERY_HOLD", "RECOVERABLE"}:
                 await db.rollback()
                 return "node_not_recoverable"
+            if node["state"] == "RECOVERY_HOLD" and node["recovery_hold_until"] and str(node["recovery_hold_until"]) > datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"):
+                await db.rollback()
+                return "recovery_hold_active"
 
             # A replacement request is single-use per node/generation. Reissuing
             # a ticket invalidates older copies before the new token is stored.
@@ -6368,6 +6371,9 @@ async def claim_earnapp_node(
                 await db.rollback()
                 return None
             if str(node["state"] or "") not in {"RECOVERY_HOLD", "RECOVERABLE"}:
+                await db.rollback()
+                return None
+            if node["state"] == "RECOVERY_HOLD" and node["recovery_hold_until"] and str(node["recovery_hold_until"]) > datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"):
                 await db.rollback()
                 return None
             platform = str(node["platform"] or "unknown").strip().lower()
