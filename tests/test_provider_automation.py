@@ -96,14 +96,18 @@ def test_register_spide_device_retries_transient_http_failure(monkeypatch):
             calls["count"] += 1
             if calls["count"] < 3:
                 return Response()
+
             class Success:
                 status_code = 200
                 is_error = False
+
                 def json(self):
                     return {"ok": True}
+
             return Success()
 
     monkeypatch.setattr(provider_automation.httpx, "AsyncClient", lambda **_kwargs: Client())
+
     async def no_sleep(_seconds):
         return None
 
