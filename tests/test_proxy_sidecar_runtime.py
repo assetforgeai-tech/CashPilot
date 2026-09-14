@@ -147,6 +147,7 @@ def test_proxy_instance_runs_provider_inside_singbox_sidecar_namespace():
     assert sidecar_call.kwargs["labels"]["cashpilot.provider"] == "earnfm"
     assert sidecar_call.kwargs["labels"]["cashpilot.instance_mode"] == "proxy"
     assert provider_call.kwargs["network_mode"] == "container:cashpilot-earnfm-proxy-egress"
+    assert provider_call.kwargs["hostname"] is None
     assert provider_call.kwargs["name"] == "cashpilot-earnfm-proxy"
     assert provider_call.kwargs["labels"]["cashpilot.provider"] == "earnfm"
     assert provider_call.kwargs["labels"]["cashpilot.instance_mode"] == "proxy"
