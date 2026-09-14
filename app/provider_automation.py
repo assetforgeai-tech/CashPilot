@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import json
 import re
@@ -145,12 +146,16 @@ async def register_spide_device(
     base_url: str = "https://spide.network",
 ) -> dict[str, Any]:
     """Register a Spide CLI Device key through the dashboard API."""
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(
-            f"{base_url.rstrip('/')}/api/v1/device/create",
-            headers=spide_auth_headers(credential),
-            data={"title": title, "device_key": device_key},
-        )
+    for attempt in range(3):
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                f"{base_url.rstrip('/')}/api/v1/device/create",
+                headers=spide_auth_headers(credential),
+                data={"title": title, "device_key": device_key},
+            )
+        if int(getattr(resp, "status_code", 200)) < 500 or attempt == 2:
+            break
+        await asyncio.sleep(5)
     if getattr(resp, "is_error", False) or int(getattr(resp, "status_code", 200)) >= 400:
         detail = ""
         with contextlib.suppress(ValueError, TypeError):
