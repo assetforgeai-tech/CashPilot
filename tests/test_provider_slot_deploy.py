@@ -237,6 +237,65 @@ async def test_slot_deploy_skips_existing_running_instance(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_slot_deploy_refreshes_only_requested_running_instance(monkeypatch):
+    calls = []
+
+    async def deploy(_worker_id, instance_id, _spec):
+        calls.append(instance_id)
+        return {"container_id": f"new-{instance_id}"}
+
+    _common(monkeypatch, deploy)
+    monkeypatch.setattr(
+        main.database,
+        "list_provider_instances",
+        lambda **_: __import__("asyncio").sleep(
+            0,
+            result=[
+                {
+                    "instance_id": "earnfm-direct-w7-ipv4-001",
+                    "worker_id": 7,
+                    "mode": "direct",
+                    "status": "running",
+                    "container_id": "cid-1",
+                },
+                {
+                    "instance_id": "earnfm-direct-w7-ipv4-002",
+                    "worker_id": 7,
+                    "mode": "direct",
+                    "status": "running",
+                    "container_id": "cid-2",
+                },
+            ],
+        ),
+    )
+    result = await main.api_deploy(
+        _request(),
+        "earnfm",
+        main.DeployRequest(env={}, mode="direct", refresh_instances=["earnfm-direct-w7-ipv4-001"]),
+        worker_id=7,
+        _auth={"r": "owner"},
+    )
+    assert calls == ["earnfm-direct-w7-ipv4-001"]
+    assert result["skipped"] == 1
+    assert result["running"] == 2
+
+
+@pytest.mark.asyncio
+async def test_slot_deploy_rejects_refresh_instance_outside_plan(monkeypatch):
+    _common(monkeypatch, AsyncMock(return_value={"container_id": "unused"}))
+    with pytest.raises(main.HTTPException) as exc:
+        await main.api_deploy(
+            _request(),
+            "earnfm",
+            main.DeployRequest(env={}, mode="direct", refresh_instances=["iproyal-direct-w7-ipv4-001"]),
+            worker_id=7,
+            _auth={"r": "owner"},
+        )
+    assert exc.value.status_code == 400
+    assert "refresh_instances" in str(exc.value.detail)
+
+
+@pytest.mark.asyncio
 async def test_slot_direct_deploy_fails_closed_without_bootstrap_manifest(monkeypatch):
     deployed = AsyncMock(return_value={"container_id": "unsafe"})
 
