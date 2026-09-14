@@ -4198,7 +4198,7 @@ async def api_deploy(
         if slug == "traffmonetizer" and idx == 0 and len(modes) > 1:
             await asyncio.sleep(600)
 
-    _spawn(_run_post_deploy_automation(slug, worker_id, hn, [d["mode"] for d in deployed]))
+    _spawn(_run_post_deploy_automation(slug, worker_id, hn, deployed))
     _spawn(_run_collection())
     response: dict[str, Any] = {"status": "deployed", "instances": deployed}
     if topology_plans:
@@ -4452,13 +4452,16 @@ async def api_adopt_earnapp_runtime_proxy(
     return result
 
 
-async def _run_post_deploy_automation(slug: str, worker_id: int, hostname: str, modes: list[str] | None = None) -> None:
+async def _run_post_deploy_automation(
+    slug: str, worker_id: int, hostname: str, deployed: list[Mapping[str, Any]] | None = None
+) -> None:
     svc = catalog.get_service(slug)
     deploy = (svc or {}).get("deploy") or {}
     if deploy.get("automation") != "device_key_register" or slug != "spide":
         return
-    for mode in modes or ["legacy"]:
-        instance_slug = slug if mode == "legacy" else f"{slug}-{mode}"
+    for item in deployed or [{"mode": "legacy", "instance_id": slug}]:
+        mode = str(item.get("mode") or "legacy")
+        instance_slug = str(item.get("instance_id") or (slug if mode == "legacy" else f"{slug}-{mode}"))
         identity_mode = "direct" if mode == "legacy" else mode
         await _register_spide_device_from_worker_logs(worker_id, instance_slug, identity_mode, hostname)
 
