@@ -145,6 +145,28 @@ class TestKeyPersistFailure:
             assert f.read_text() == "new-key"
 
 
+class TestHeartbeatStatusCost:
+    def test_heartbeat_uses_light_status_query(self):
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.json = MagicMock(return_value={"status": "ok"})
+        client = MagicMock()
+        client.__aenter__ = AsyncMock(return_value=client)
+        client.__aexit__ = AsyncMock(return_value=False)
+        client.post = AsyncMock(return_value=resp)
+        with (
+            patch.object(w, "UI_URL", "http://ui:8080"),
+            patch.object(w, "API_KEY", "shared"),
+            patch("app.worker_api.orchestrator.get_status") as heavy,
+            patch("app.worker_api.orchestrator.get_status_light", return_value=[]) as light,
+            patch("app.worker_api.orchestrator.docker_available", return_value=True),
+            patch("app.worker_api.httpx.AsyncClient", return_value=client),
+        ):
+            asyncio.run(w._send_heartbeat())
+            heavy.assert_not_called()
+            light.assert_called_once()
+
+
 class TestHeartbeatErrorClassification:
     """worker_api.py:163 nit: distinguish auth rejection (401/403) from network errors."""
 
