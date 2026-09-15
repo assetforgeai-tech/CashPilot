@@ -436,19 +436,22 @@ def test_hydrate_nkn_lxd_state_does_not_overwrite_existing_suspend_guard(tmp_pat
         },
     )
 
-    assert worker_api._hydrate_nkn_lxd_states(
-        [assignment],
-        {
-            "instances": [
-                {
-                    **assignment,
-                    "instance_id": "cashpilot-nkn-ipv4-001",
-                    "runtime_backend": "lxd",
-                    "runtime_status": "stopped",
-                }
-            ]
-        },
-    ) == []
+    assert (
+        worker_api._hydrate_nkn_lxd_states(
+            [assignment],
+            {
+                "instances": [
+                    {
+                        **assignment,
+                        "instance_id": "cashpilot-nkn-ipv4-001",
+                        "runtime_backend": "lxd",
+                        "runtime_status": "stopped",
+                    }
+                ]
+            },
+        )
+        == []
+    )
     saved = json.loads(Path(tmp_path, "nkn-wallets", "ipv4-001.json").read_text(encoding="utf-8"))
     assert saved["lease_guard_suspended"] is True
     assert saved["last_server_ack_at"] == 100.0
