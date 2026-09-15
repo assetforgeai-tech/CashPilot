@@ -104,6 +104,29 @@ def test_worker_ack_resumes_a_locally_suspended_nkn_assignment(tmp_path, monkeyp
     assert saved["runtime_status"] == "running"
 
 
+def test_worker_ack_logs_safe_runtime_error_detail(tmp_path, monkeypatch, caplog):
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    assignment = {
+        "slot_id": "ipv4-001",
+        "wallet_id": 7,
+        "wallet_assignment_version": 3,
+        "lease_client_id": "worker-a:nkn:ipv4-001",
+        "lease_guard_suspended": True,
+    }
+    worker_api._save_nkn_wallet_state("ipv4-001", assignment)
+
+    async def run():
+        with patch.object(
+            worker_api.orchestrator,
+            "_get_client",
+            side_effect=RuntimeError("NKN container cashpilot-nkn-ipv4-001 is missing"),
+        ):
+            await worker_api._reconcile_nkn_assignment_acks([assignment], acknowledged_at=1_000.0)
+
+    asyncio.run(run())
+    assert "NKN container cashpilot-nkn-ipv4-001 is missing" in caplog.text
+
+
 def test_worker_lease_guard_suspends_nkn_after_fifteen_minutes_without_deleting_state(tmp_path, monkeypatch):
     monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
     assignment = {

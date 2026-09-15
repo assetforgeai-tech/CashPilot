@@ -456,7 +456,10 @@ async def _reconcile_nkn_assignment_acks(
             state["runtime_status"] = "running"
             _save_nkn_wallet_state(slot_id, state)
         except Exception as exc:  # noqa: BLE001 - retry on the next successful heartbeat
-            logger.warning("Could not apply NKN lease ACK for slot %s: %s", slot_id, type(exc).__name__)
+            # The exception is local runtime state (container/helper), not a credential;
+            # bounded detail makes ACK failures diagnosable without dumping state.
+            detail = str(exc).replace("\n", " ").strip()[:240] or type(exc).__name__
+            logger.warning("Could not apply NKN lease ACK for slot %s: %s", slot_id, detail)
 
 
 async def _enforce_nkn_lease_guard(*, now: float | None = None) -> None:

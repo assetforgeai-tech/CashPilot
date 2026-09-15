@@ -332,6 +332,13 @@ class TestProviderAutomationContracts:
         assert svc["deploy"]["automation"] == "device_key_register"
         assert svc["deploy"]["deploy_surface"] == "docker"
         assert "dashboard_token" in self._credential_keys(svc, "dashboard")
+        assert svc["runtime"]["collector_source"] == ""
+        command = svc["docker"]["command"]
+        assert "pub-bf426a5300a643d2884389c8985f5181.r2.dev/spide_linux_cli.zip" in command
+        assert "04F31522CBDB03B3D11E5293A3A18C6E910AED11B6D8B431B560BC7CB4ED08E5" in command
+        assert "/data/spide/spide_cli/spide" in command
+        assert "api/v1/user/login" not in command
+        assert "provider_collector" not in command
 
     def test_mysterium_runtime_uses_direct_wallet_deploy_credentials(self):
         svc = self._svc("mysterium")

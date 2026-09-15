@@ -1,6 +1,7 @@
 """Validate collector registration and interface compliance."""
 
 import inspect
+from pathlib import Path
 
 from app.collectors import COLLECTOR_MAP
 from app.collectors.base import BaseCollector, EarningsResult
@@ -48,3 +49,9 @@ def test_mystnodes_dashboard_url_uses_node_identity():
         myst_dashboard_url("57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1")
         == "https://my.mystnodes.com/node?identity=0x57143ba62ee95ac60abdb0aab1b3fdfe9f4bf5b1"
     )
+
+
+def test_repocket_firebase_key_is_not_hardcoded():
+    source = Path(__file__).parents[1].joinpath("app", "collectors", "repocket.py").read_text()
+    assert "AIza" not in source
+    assert "REPOCKET_FIREBASE_KEY" in source

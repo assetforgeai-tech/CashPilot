@@ -45,7 +45,8 @@ PROVIDERS: dict[str, ProviderRuntime] = {
     ),
     "proxyrack": ProviderRuntime("proxyrack", "proxyrack.org.py", "proxyrack.org.py", ("direct", "proxy"), "earnings"),
     "repocket": ProviderRuntime("repocket", "repocket.py", "repocket.py", ("direct", "proxy"), "earnings"),
-    "spide": ProviderRuntime("spide", "spide.py", "spide.py", ("direct", "proxy"), "dashboard_only"),
+    # Spide has no supported earnings collector; device registration is deploy-time only.
+    "spide": ProviderRuntime("spide", "spide.py", "", ("direct", "proxy"), "dashboard_only"),
     "traffmonetizer": ProviderRuntime(
         "traffmonetizer", "traffmonetizer.py", "traffmonetizer.py", ("direct", "proxy"), "earnings"
     ),

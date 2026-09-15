@@ -15,7 +15,8 @@ from app.collectors.base import BaseCollector, EarningsResult
 
 logger = logging.getLogger(__name__)
 
-API_BASE = "https://app.traffmonetizer.com/monetizer_api/api"
+# The dashboard bundle publishes data.traffmonetizer.com as its API origin.
+API_BASE = "https://data.traffmonetizer.com/api"
 
 
 class TraffmonetizerCollector(BaseCollector):
@@ -94,6 +95,28 @@ class TraffmonetizerCollector(BaseCollector):
                 platform=self.platform,
                 balance=round(float(raw), 4),
                 currency="USD",
+            )
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 429:
+                return EarningsResult(
+                    platform=self.platform,
+                    balance=0.0,
+                    error="Traffmonetizer rate limited - retry later",
+                    error_kind=base.KIND_TRANSIENT,
+                )
+            if exc.response.status_code in (401, 403, 422):
+                return EarningsResult(
+                    platform=self.platform,
+                    balance=0.0,
+                    error="Traffmonetizer credentials rejected - update the collector credentials",
+                    error_kind=base.KIND_AUTH,
+                )
+            base.log_failure(logger, "Traffmonetizer", exc)
+            return EarningsResult(
+                platform=self.platform,
+                balance=0.0,
+                error="Traffmonetizer API request failed",
+                error_kind=base.classify_exception(exc),
             )
         except Exception as exc:
             base.log_failure(logger, "Traffmonetizer", exc)

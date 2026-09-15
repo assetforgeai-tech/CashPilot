@@ -22,7 +22,7 @@ name: cashpilot
 
 services:
   cashpilot-ui:
-    image: ghcr.io/assetforgeai-tech/cashpilot:1.6
+    image: ghcr.io/assetforgeai-tech/cashpilot:1.53
     pull_policy: always
     container_name: cashpilot-ui
     # Published on loopback by default: the dashboard can command the Docker-socket
@@ -44,6 +44,7 @@ services:
       - CASHPILOT_ALLOW_EPHEMERAL_KEY=${CASHPILOT_ALLOW_EPHEMERAL_KEY:-false}
       - CASHPILOT_API_KEY=${CASHPILOT_API_KEY:-}
       - CASHPILOT_ADMIN_API_KEY=${CASHPILOT_ADMIN_API_KEY:-}
+      - REPOCKET_FIREBASE_KEY=${REPOCKET_FIREBASE_KEY:-}
     init: true
     # The image declares its own HEALTHCHECK, so `docker ps` will show
     # "(unhealthy)" when the app stops answering. NOTHING ACTS ON THAT BY
@@ -63,7 +64,7 @@ services:
       - /tmp:size=64M
 
   cashpilot-worker:
-    image: ghcr.io/assetforgeai-tech/cashpilot-worker:1.6
+    image: ghcr.io/assetforgeai-tech/cashpilot-worker:1.53
     pull_policy: always
     container_name: cashpilot-worker
     expose:

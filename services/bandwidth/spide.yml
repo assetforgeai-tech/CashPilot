@@ -30,13 +30,21 @@ docker:
     mkdir -p /data/spide;
     if [ ! -s /data/spide/machine-id ]; then tr -d - < /proc/sys/kernel/random/uuid > /data/spide/machine-id; fi;
     cp /data/spide/machine-id /etc/machine-id;
-    if [ ! -x /data/spide/spide_linux_cli ]; then
+    expected_sha=04F31522CBDB03B3D11E5293A3A18C6E910AED11B6D8B431B560BC7CB4ED08E5;
+    installed_sha="";
+    if [ -x /data/spide/spide_cli/spide ]; then installed_sha="$(sha256sum /data/spide/spide_cli/spide | awk '''{print toupper($1)}''')"; fi;
+    if [ "$installed_sha" != "$expected_sha" ]; then
+      rm -rf /tmp/spide_cli /tmp/spide_linux_cli.zip;
       curl -fsSL -o /tmp/spide_linux_cli.zip https://pub-bf426a5300a643d2884389c8985f5181.r2.dev/spide_linux_cli.zip;
       unzip -t /tmp/spide_linux_cli.zip >/dev/null;
-      unzip -o /tmp/spide_linux_cli.zip -d /data/spide >/dev/null;
+      rm -rf /tmp/spide_cli;
+      unzip -q /tmp/spide_linux_cli.zip -d /tmp/spide_cli;
+      test -x /tmp/spide_cli/spide_cli/spide;
+      test "$(sha256sum /tmp/spide_cli/spide_cli/spide | awk '''{print toupper($1)}''')" = "$expected_sha";
+      rm -rf /data/spide/spide_cli;
+      mv /tmp/spide_cli/spide_cli /data/spide/spide_cli;
     fi;
-    exe="$(find /data/spide -maxdepth 2 -type f -perm -111 | head -n 1)";
-    exec "$exe"'
+    exec /data/spide/spide_cli/spide'
   network_mode: ""
 
 deploy:
