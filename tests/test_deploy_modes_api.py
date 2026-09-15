@@ -845,6 +845,30 @@ async def test_spide_device_registration_uses_standard_device_identity(monkeypat
 
 
 @pytest.mark.asyncio
+async def test_spide_registration_prefers_saved_dashboard_token(monkeypatch):
+    captured: list[str] = []
+
+    async def config(key=None, *_args, **_kwargs):
+        return {"spide_dashboard_token": "saved-token", "spide_email": "user", "spide_password": "pw"}.get(key, "")
+
+    async def register(_worker_id: int, _instance_slug: str, _mode: str, _hostname: str, *, token: str):
+        captured.append(token)
+
+    async def login(*_args, **_kwargs):
+        raise AssertionError("saved dashboard token should avoid login")
+
+    monkeypatch.setattr(main.database, "get_config", config)
+    monkeypatch.setattr(main, "_register_spide_device_from_worker_logs", register)
+    monkeypatch.setattr(main.provider_automation, "login_spide", login)
+
+    await main._run_post_deploy_automation(
+        "spide", 7, "worker-1", [{"instance_id": "spide-direct-w7-ipv4-001", "mode": "direct"}]
+    )
+
+    assert captured == ["saved-token"]
+
+
+@pytest.mark.asyncio
 async def test_spide_registration_does_not_repeat_for_skipped_topology_instances(monkeypatch):
     calls: list[str] = []
 
