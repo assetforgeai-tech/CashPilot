@@ -27,20 +27,21 @@ class RepocketCollector(BaseCollector):
 
     platform = "repocket"
 
-    def __init__(self, email: str, password: str) -> None:
+    def __init__(self, email: str, password: str, firebase_key: str = "") -> None:
         super().__init__()
         self.email = email
         self.password = password
+        self.firebase_key = firebase_key.strip() or FIREBASE_KEY
         self._id_token: str | None = None
         self._refresh_token: str | None = None
 
     async def _authenticate(self, client: httpx.AsyncClient) -> str:
         """Obtain Firebase ID token via email/password."""
-        if not FIREBASE_KEY:
+        if not self.firebase_key:
             raise ValueError("REPOCKET_FIREBASE_KEY is not configured")
         resp = await client.post(
             FIREBASE_AUTH,
-            params={"key": FIREBASE_KEY},
+            params={"key": self.firebase_key},
             json={
                 "email": self.email,
                 "password": self.password,
@@ -61,7 +62,7 @@ class RepocketCollector(BaseCollector):
             return await self._authenticate(client)
         resp = await client.post(
             FIREBASE_REFRESH,
-            params={"key": FIREBASE_KEY},
+            params={"key": self.firebase_key},
             json={
                 "grant_type": "refresh_token",
                 "refresh_token": self._refresh_token,

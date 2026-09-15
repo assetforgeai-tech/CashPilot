@@ -63,6 +63,15 @@ class TestEveryCollectorHasAContract:
         assert "REPOCKET_FIREBASE_KEY" in source
         assert "AIza" not in source
 
+    def test_repocket_catalog_exposes_optional_firebase_key_override(self):
+        from app import catalog
+
+        svc = catalog.get_service("repocket")
+        fields = svc["collector"]["credentials"]
+        key = next(field for field in fields if field["key"] == "firebase_key")
+        assert key["required"] is False
+        assert key["secret"] is True
+
     def test_no_collector_ships_without_a_fixture(self):
         """A new collector with no contract is exactly the untested case."""
         missing = [s for s in ALL_SLUGS if not (FIXTURE_DIR / f"{s}.json").exists()]
