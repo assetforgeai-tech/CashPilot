@@ -808,7 +808,12 @@ async def _enforce_nkn_lease_guard(*, now: float | None = None) -> None:
             # A pre-guard state has no proof of a successful server round-trip.
             # Stop it fail-closed; the next valid ACK resumes it immediately.
             last_ack = 0
-        if state.get("lease_guard_suspended") is not True and current - last_ack < NKN_LEASE_GUARD_SECONDS:
+        # A suspended assignment stays stopped until a matching server ACK.
+        # Repeating the suspend request only creates noise and can mask the
+        # original lease/reconciliation problem.
+        if state.get("lease_guard_suspended") is True:
+            continue
+        if current - last_ack < NKN_LEASE_GUARD_SECONDS:
             continue
         slot_id, wallet_id, assignment_version, lease_client_id = identity
         try:

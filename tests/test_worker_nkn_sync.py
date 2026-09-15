@@ -207,7 +207,7 @@ def test_worker_lease_guard_suspends_pre_guard_state_until_server_ack(tmp_path, 
     assert saved["lease_guard_suspended"] is True
 
 
-def test_worker_lease_guard_keeps_a_suspended_assignment_stopped_after_docker_restart(tmp_path, monkeypatch):
+def test_worker_lease_guard_does_not_repeat_suspend_for_already_suspended_assignment(tmp_path, monkeypatch):
     monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
     assignment = {
         "slot_id": "ipv4-001",
@@ -226,7 +226,7 @@ def test_worker_lease_guard_keeps_a_suspended_assignment_stopped_after_docker_re
             patch.object(worker_api.nkn_runtime, "suspend_slot", return_value={"status": "stopped"}) as suspend,
         ):
             await worker_api._enforce_nkn_lease_guard(now=1_001.0)
-        suspend.assert_called_once()
+        suspend.assert_not_called()
 
     asyncio.run(run())
 
