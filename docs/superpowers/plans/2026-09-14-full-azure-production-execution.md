@@ -49,10 +49,10 @@
 - [x] Use the current catalog spec for every generic slot.
 - [x] Run deployment sequentially per worker/provider and save HTTP/result evidence.
 - [ ] Treat partial/blocked plans as explicit evidence, not deployment success.
-- [ ] Verify no restart loop and no stale endpoint after deployment.
+- [x] Verify no restart loop and no stale endpoint after deployment.
 - [x] Keep Spide collector dashboard-only; never execute collector code in the node.
 - [x] Pin Spide bootstrap to the R2 ZIP and verified executable SHA.
-- [ ] Reconcile and refresh any worker container still using the legacy DigitalOcean bootstrap.
+- [x] Reconcile and refresh any worker container still using the legacy DigitalOcean bootstrap.
 
 Live defect fixes added during cycle 1:
 
@@ -131,4 +131,4 @@ Live defect fixes added during cycle 1:
 - [x] Collector remains manual/dashboard-only with an empty `collector_source`.
 - [x] Never log dashboard credentials or device keys.
 - [x] Verify the deployed executable SHA against the pinned R2 artifact.
-- [ ] Roll out the catalog/runtime to the stale worker container and capture process/path/hash evidence.
+- [x] Roll out the catalog/runtime to the stale worker container and capture process/path/hash evidence.
