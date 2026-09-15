@@ -1318,7 +1318,7 @@ async def _send_heartbeat() -> None:
     containers = []
     containers_inventory_confirmed = False
     try:
-        containers = await asyncio.to_thread(orchestrator.get_status)
+        containers = await asyncio.to_thread(orchestrator.get_status_light)
         containers_inventory_confirmed = isinstance(containers, list)
     except Exception as exc:
         logger.warning("Failed to get container status for heartbeat: %s", exc)
