@@ -26,11 +26,11 @@ docker:
     - "spide-data:/data/spide"
   command: >-
     sh -ec 'set -eu;
-    apk add --no-cache ca-certificates curl unzip >/dev/null;
     mkdir -p /data/spide;
     if [ ! -s /data/spide/machine-id ]; then tr -d - < /proc/sys/kernel/random/uuid > /data/spide/machine-id; fi;
     cp /data/spide/machine-id /etc/machine-id;
     if [ ! -x /data/spide/spide_cli/spide ]; then
+      apk add --no-cache ca-certificates curl unzip >/dev/null;
       rm -rf /tmp/spide_cli /tmp/spide_linux_cli.zip;
       curl -fsSL -o /tmp/spide_linux_cli.zip https://pub-bf426a5300a643d2884389c8985f5181.r2.dev/spide_linux_cli.zip;
       unzip -t /tmp/spide_linux_cli.zip >/dev/null;

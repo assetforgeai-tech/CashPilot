@@ -845,15 +845,16 @@ async def test_spide_device_registration_uses_standard_device_identity(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_spide_registration_discovers_skipped_topology_instances(monkeypatch):
-    seen: list[str] = []
+async def test_spide_registration_does_not_repeat_for_skipped_topology_instances(monkeypatch):
+    calls: list[str] = []
 
     async def instances(*_args, **_kwargs):
+        calls.append("instances")
         return [{"instance_id": "spide-direct-w7-ipv4-001", "mode": "direct"}]
 
     async def register(_worker_id: int, instance_slug: str, _mode: str, _hostname: str, *, token: str):
         assert token == "dash-token"
-        seen.append(instance_slug)
+        calls.append(instance_slug)
 
     monkeypatch.setattr(main.database, "list_provider_instances", instances)
 
@@ -865,7 +866,7 @@ async def test_spide_registration_discovers_skipped_topology_instances(monkeypat
 
     await main._run_post_deploy_automation("spide", 7, "worker-1", [])
 
-    assert seen == ["spide-direct-w7-ipv4-001"]
+    assert calls == []
 
 
 @pytest.mark.asyncio
