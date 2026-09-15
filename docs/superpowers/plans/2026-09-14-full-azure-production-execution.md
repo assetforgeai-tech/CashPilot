@@ -50,6 +50,9 @@
 - [x] Run deployment sequentially per worker/provider and save HTTP/result evidence.
 - [ ] Treat partial/blocked plans as explicit evidence, not deployment success.
 - [ ] Verify no restart loop and no stale endpoint after deployment.
+- [x] Keep Spide collector dashboard-only; never execute collector code in the node.
+- [x] Pin Spide bootstrap to the R2 ZIP and verified executable SHA.
+- [ ] Reconcile and refresh any worker container still using the legacy DigitalOcean bootstrap.
 
 Live defect fixes added during cycle 1:
 
@@ -115,3 +118,17 @@ Live defect fixes added during cycle 1:
 - [ ] Map every explicit requirement to fresh evidence or mark it incomplete.
 - [ ] Report provider-specific gaps and residual risks.
 - [ ] Do not mark production-ready until all required evidence is authoritative.
+
+### Task 10: Provider separation and runtime drift gate
+
+**Files:**
+- Modify: `services/bandwidth/spide.yml`
+- Modify: `provider-runtime/provider_code_setup_node/spide.py`
+- Modify: `provider-runtime/provider_collector/spide.py`
+- Test: `tests/test_catalog_loader.py`, `tests/test_provider_automation.py`
+
+- [x] Runtime owns only CLI startup and device-key registration.
+- [x] Collector remains manual/dashboard-only with an empty `collector_source`.
+- [x] Never log dashboard credentials or device keys.
+- [x] Verify the deployed executable SHA against the pinned R2 artifact.
+- [ ] Roll out the catalog/runtime to the stale worker container and capture process/path/hash evidence.

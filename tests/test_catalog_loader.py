@@ -342,6 +342,8 @@ class TestProviderAutomationContracts:
             "expected_sha=04F31522CBDB03B3D11E5293A3A18C6E910AED11B6D8B431B560BC7CB4ED08E5" in svc["docker"]["command"]
         )
         assert "installed_sha" in svc["docker"]["command"]
+        assert "awk" not in svc["docker"]["command"]
+        assert "head -c 64 | tr a-f A-F" in svc["docker"]["command"]
         assert svc["collector"]["type"] == "manual"
         assert svc["runtime"]["setup_source"] == "spide.py"
         assert svc["runtime"]["collector_source"] == ""
