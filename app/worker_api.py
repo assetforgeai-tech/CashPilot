@@ -711,6 +711,42 @@ def _same_nkn_identity(state: dict[str, Any], item: dict[str, Any]) -> bool:
     )
 
 
+def _hydrate_nkn_lxd_states(assignments: list[dict[str, Any]], inventory: dict[str, Any]) -> list[str]:
+    """Hydrate missing journal rows only from exact CAS-matched helper metadata."""
+    by_slot = {
+        str(item.get("slot_id") or ""): item for item in inventory.get("instances", []) if isinstance(item, dict)
+    }
+    hydrated = []
+    for assignment in assignments:
+        slot_id = str(assignment.get("slot_id") or "")
+        item = by_slot.get(slot_id)
+        if not item or not _same_nkn_identity(assignment, item):
+            continue
+        state = {
+            "slot_id": slot_id,
+            "instance_id": str(item.get("instance_id") or ""),
+            "runtime_backend": "lxd",
+            "wallet_id": int(assignment["wallet_id"]),
+            "wallet_assignment_version": int(assignment["wallet_assignment_version"]),
+            "lease_client_id": str(assignment["lease_client_id"]),
+            "runtime_status": str(item.get("runtime_status") or "unknown"),
+        }
+        _save_nkn_wallet_state(slot_id, state)
+        hydrated.append(slot_id)
+    return hydrated
+
+
+async def _recover_nkn_lxd_states(assignments: list[dict[str, Any]]) -> list[str]:
+    """Recover exact helper-owned assignments; unavailable helpers are harmless."""
+    if not assignments:
+        return []
+    try:
+        inventory = await asyncio.to_thread(nkn_lxd_runtime.inventory, assignments)
+    except (RuntimeError, OSError, ValueError):
+        return []
+    return _hydrate_nkn_lxd_states(assignments, inventory)
+
+
 async def _reconcile_nkn_assignment_acks(
     acknowledgements: list[dict[str, Any]], *, acknowledged_at: float | None = None
 ) -> None:
@@ -1359,6 +1395,9 @@ async def _send_heartbeat() -> None:
             acknowledgements = response_payload.get("nkn_assignment_acks")
             if isinstance(acknowledgements, list) and acknowledgements:
                 await _reconcile_nkn_assignment_acks(acknowledgements)
+            inventory_assignments = response_payload.get("nkn_assignment_inventory")
+            if isinstance(inventory_assignments, list) and inventory_assignments:
+                await _recover_nkn_lxd_states(inventory_assignments)
             earnapp_assignments = response_payload.get("earnapp_assignment_acks")
             if isinstance(earnapp_assignments, list):
                 for assignment in earnapp_assignments:

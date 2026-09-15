@@ -41,6 +41,20 @@ def test_nkn_heartbeat_syncs_each_instance_with_cas_and_rejects_secrets():
             patch.object(main, "_authenticate_worker_heartbeat", AsyncMock(return_value="ok")),
             patch.object(database, "upsert_worker", AsyncMock(return_value=11)),
             patch.object(database, "sync_nkn_wallet_runtime", AsyncMock(return_value=True)) as sync,
+            patch.object(
+                database,
+                "list_nkn_wallets",
+                AsyncMock(
+                    return_value=[
+                        {
+                            "id": 7,
+                            "state": "LEASED",
+                            "leased_to_client_id": "worker-a:nkn:ipv4-001",
+                            "wallet_assignment_version": 3,
+                        }
+                    ]
+                ),
+            ),
             patch.object(database, "confirm_worker_key", AsyncMock()),
             patch.object(main, "_earnings_for_worker", AsyncMock(return_value=None)),
             patch.object(main, "_spawn", side_effect=discard),
@@ -58,6 +72,7 @@ def test_nkn_heartbeat_syncs_each_instance_with_cas_and_rejects_secrets():
                 "lease_client_id": "worker-a:nkn:ipv4-001",
             }
         ]
+        assert response["nkn_assignment_inventory"] == response["nkn_assignment_acks"]
         args, kwargs = sync.await_args
         assert args == (7, "worker-a:nkn:ipv4-001")
         assert kwargs["wallet_assignment_version"] == 3
@@ -376,6 +391,62 @@ def test_worker_nkn_lxd_state_uses_host_helper_without_opening_docker(tmp_path, 
     assert state["online"] == 1
     assert state["instances"][0]["runtime_status"] == "running"
     assert state["instances"][0]["node_identity"] == "NKNnode-id"
+
+
+def test_hydrate_nkn_lxd_state_requires_exact_cas(tmp_path, monkeypatch):
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    assignment = {
+        "slot_id": "ipv4-001",
+        "wallet_id": 7,
+        "wallet_assignment_version": 3,
+        "lease_client_id": "worker-a:nkn:ipv4-001",
+    }
+    inventory = {
+        "instances": [
+            {
+                **assignment,
+                "instance_id": "cashpilot-nkn-ipv4-001",
+                "runtime_backend": "lxd",
+                "runtime_status": "running",
+                "wallet_pswd": "secret",
+            }
+        ]
+    }
+    assert worker_api._hydrate_nkn_lxd_states([assignment], inventory) == ["ipv4-001"]
+    saved = json.loads(Path(tmp_path, "nkn-wallets", "ipv4-001.json").read_text(encoding="utf-8"))
+    assert saved["wallet_id"] == 7
+    assert "secret" not in json.dumps(saved)
+
+
+def test_recover_nkn_lxd_state_reads_only_exact_server_assignments(tmp_path, monkeypatch):
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    assignment = {
+        "slot_id": "ipv4-001",
+        "wallet_id": 7,
+        "wallet_assignment_version": 3,
+        "lease_client_id": "worker-a:nkn:ipv4-001",
+    }
+
+    async def run():
+        with patch.object(
+            worker_api.nkn_lxd_runtime,
+            "inventory",
+            return_value={
+                "instances": [
+                    {
+                        **assignment,
+                        "instance_id": "cashpilot-nkn-ipv4-001",
+                        "runtime_status": "running",
+                    }
+                ]
+            },
+        ) as inventory:
+            assert await worker_api._recover_nkn_lxd_states([assignment]) == ["ipv4-001"]
+        inventory.assert_called_once_with([assignment])
+
+    asyncio.run(run())
+    saved = json.loads(Path(tmp_path, "nkn-wallets", "ipv4-001.json").read_text(encoding="utf-8"))
+    assert saved["runtime_backend"] == "lxd"
 
 
 def test_worker_lease_guard_suspends_lxd_without_opening_docker(tmp_path, monkeypatch):

@@ -135,3 +135,18 @@ def test_lxd_evidence_is_redacted_and_preserves_online_fields():
     assert evidence["online"] is True
     assert evidence["sync_state"] == "PERSIST_FINISHED"
     assert "secret" not in str(evidence)
+
+
+def test_lxd_inventory_is_cas_scoped():
+    assignments = [
+        {
+            "slot_id": "ipv4-001",
+            "wallet_id": 7,
+            "wallet_assignment_version": 3,
+            "lease_client_id": "worker-a:nkn:ipv4-001",
+        }
+    ]
+    with patch.object(nkn_lxd_runtime, "_request", return_value={"instances": []}) as request:
+        assert nkn_lxd_runtime.inventory(assignments) == {"instances": []}
+    assert request.call_args.args[:2] == ("POST", "/v1/inventory")
+    assert request.call_args.kwargs["payload"] == {"assignments": assignments}

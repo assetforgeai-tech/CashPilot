@@ -645,6 +645,29 @@ def test_assignment_cas_rejects_a_stale_wallet_before_lifecycle_mutation():
     assert exc.value.status == 409
 
 
+def test_inventory_only_returns_exact_cas_match(monkeypatch):
+    agent = _module()
+    controller = agent.Controller()
+    payload = _payload()
+    labels = agent._metadata(payload)
+    monkeypatch.setattr(agent, "_json_command", lambda args: [{"name": "cashpilot-nkn-ipv4-001", "status": "Running"}])
+    monkeypatch.setattr(controller, "_config", lambda name: {"config": labels})
+    result = controller.inventory(
+        {
+            "assignments": [
+                {
+                    "slot_id": "ipv4-001",
+                    "wallet_id": 7,
+                    "wallet_assignment_version": 3,
+                    "lease_client_id": "worker-a:nkn:ipv4-001",
+                }
+            ]
+        }
+    )
+    assert result["instances"][0]["slot_id"] == "ipv4-001"
+    assert "wallet_pswd" not in json.dumps(result)
+
+
 def test_helper_accepts_an_existing_canary_only_when_node_identity_matches(monkeypatch):
     agent = _module()
     controller = agent.Controller()

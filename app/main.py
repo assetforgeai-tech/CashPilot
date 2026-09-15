@@ -8706,6 +8706,23 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         resp["nkn_assignment_rejections"] = nkn_assignment_rejections
     if nkn_assignment_acks:
         resp["nkn_assignment_acks"] = nkn_assignment_acks
+    # Deliver only authoritative, non-secret CAS identities so a worker can
+    # recover a missing LXD journal from its restricted host helper.
+    nkn_inventory: list[dict[str, Any]] = []
+    for row in await database.list_nkn_wallets():
+        lease_client_id = str(row.get("leased_to_client_id") or "")
+        if row.get("state") != "LEASED" or not lease_client_id.startswith(f"{cid}:nkn:"):
+            continue
+        nkn_inventory.append(
+            {
+                "slot_id": lease_client_id.removeprefix(f"{cid}:nkn:"),
+                "wallet_id": int(row.get("id") or 0),
+                "wallet_assignment_version": int(row.get("wallet_assignment_version") or 0),
+                "lease_client_id": lease_client_id,
+            }
+        )
+    if nkn_inventory:
+        resp["nkn_assignment_inventory"] = nkn_inventory
     if earnapp_assignment_rejections:
         resp["earnapp_assignment_rejections"] = earnapp_assignment_rejections
     if earnapp_assignment_acks:

@@ -1094,6 +1094,52 @@ class Controller:
             evidence["node_id"] = node_id
         return evidence
 
+    def inventory(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Report only instances matching exact server-authoritative CAS."""
+        assignments = payload.get("assignments")
+        if not isinstance(assignments, list) or len(assignments) > 512:
+            raise AgentError("assignments must be a list")
+        expected = {}
+        for item in assignments:
+            if not isinstance(item, dict):
+                continue
+            slot_id = str(item.get("slot_id") or "")
+            instance_name(slot_id)
+            expected[slot_id] = _cas(item)
+        rows = _json_command(["lxc", "list", "--format=json"])
+        result = []
+        for item in rows if isinstance(rows, list) else []:
+            name = str(item.get("name") or "")
+            if not name.startswith(INSTANCE_PREFIX):
+                continue
+            try:
+                config = self._config(name)
+                values = config.get("config") if isinstance(config.get("config"), dict) else {}
+                slot_id = str(values.get("user.cashpilot.nkn.slot_id") or "")
+                if slot_id not in expected or instance_name(slot_id) != name:
+                    continue
+                actual = (
+                    int(str(values.get("user.cashpilot.nkn.wallet_id") or "0")),
+                    int(str(values.get("user.cashpilot.nkn.wallet_assignment_version") or "0")),
+                    str(values.get("user.cashpilot.nkn.lease_client_id") or ""),
+                )
+                if actual != expected[slot_id]:
+                    continue
+                result.append(
+                    {
+                        "slot_id": slot_id,
+                        "instance_id": name,
+                        "runtime_backend": "lxd",
+                        "runtime_status": str(item.get("status") or "unknown").lower(),
+                        "wallet_id": actual[0],
+                        "wallet_assignment_version": actual[1],
+                        "lease_client_id": actual[2],
+                    }
+                )
+            except (AgentError, ValueError, TypeError):
+                continue
+        return {"instances": result}
+
     def reconcile_all(self) -> None:
         value = _json_command(["lxc", "list", "--format=json"])
         for item in value if isinstance(value, list) else []:
@@ -1121,6 +1167,8 @@ class Controller:
 
 
 def dispatch(method: str, path: str, payload: dict[str, Any], controller: Any) -> dict[str, Any]:
+    if method == "POST" and path == "/v1/inventory":
+        return controller.inventory(payload)
     match = re.fullmatch(r"/v1/slots/(ipv4-\d{3,6})(?:/(suspend|resume|evidence))?", path)
     if match is None:
         raise AgentError("unknown NKN helper endpoint", 404)
