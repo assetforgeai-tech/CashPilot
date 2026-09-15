@@ -67,6 +67,17 @@ def test_helper_names_only_slot_scoped_nkn_instances():
         agent.instance_name("../../mysterium")
 
 
+def test_helper_ignores_client_disconnect_while_writing_json_response(monkeypatch):
+    agent = _module()
+    handler = object.__new__(agent._Handler)
+    monkeypatch.setattr(handler, "send_response", lambda _status: None)
+    monkeypatch.setattr(handler, "send_header", lambda *_args: None)
+    monkeypatch.setattr(handler, "end_headers", lambda: (_ for _ in ()).throw(BrokenPipeError()))
+    handler.wfile = SimpleNamespace(write=lambda _body: None)
+
+    handler._json(200, {"status": "ok"})
+
+
 def test_helper_reads_lxd_config_through_the_supported_query_api(monkeypatch):
     agent = _module()
     controller = agent.Controller()

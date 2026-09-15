@@ -132,3 +132,10 @@ Live defect fixes added during cycle 1:
 - [x] Never log dashboard credentials or device keys.
 - [x] Verify the deployed executable SHA against the pinned R2 artifact.
 - [x] Roll out the catalog/runtime to the stale worker container and capture process/path/hash evidence.
+
+### Task 11: NKN helper transport resilience
+
+- [x] Reproduce the Azure helper `BrokenPipeError` caused by a client timeout during a long LXD CAS operation.
+- [x] Make JSON response writes tolerate client disconnects without generating a misleading second HTTP 500.
+- [x] Add regression coverage; focused NKN suite passes (`78 passed`, `ruff` clean).
+- [ ] Publish and roll out the helper change, then capture fresh ACK/lease evidence.
