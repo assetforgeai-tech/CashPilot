@@ -41,7 +41,7 @@ _COLLECTOR_ARGS: dict[str, list[str]] = {
     "mysterium": ["email", "password"],
     "nkn": ["beneficiary_address"],
     "traffmonetizer": ["email", "password"],
-    "repocket": ["email", "password"],
+    "repocket": ["email", "password", "?firebase_key"],
     "proxyrack": ["api_key"],
     "earnfm": ["email", "password"],
     "packetstream": ["auth_token"],
