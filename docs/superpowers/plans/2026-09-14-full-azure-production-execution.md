@@ -92,7 +92,7 @@ Live defect fixes added during cycle 1:
 - Create: `docs/evidence/azure-reboot-lifecycle-2026-09-14.md`
 - Test: existing lifecycle and lease tests
 
-- [ ] Reboot each Azure worker once, preserving volumes and identities.
+- [x] Reboot each Azure worker once, preserving volumes and identities.
 - [ ] Verify heartbeat recovery, container restart policy, lease continuity, proxy rotation CAS, and release semantics.
 - [ ] Verify EarnApp-only usage/offline/banned policy does not affect other providers.
 
