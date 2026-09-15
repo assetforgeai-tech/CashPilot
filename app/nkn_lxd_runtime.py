@@ -152,3 +152,17 @@ def node_evidence(state: Mapping[str, Any]) -> dict[str, Any]:
     result = _request("POST", f"/v1/slots/{slot_id}/evidence", payload=payload)
     allowed = {"running", "online", "sync_state", "node_id", "rpc_reachable", "runtime_backend"}
     return {key: result[key] for key in allowed if key in result}
+
+
+def inventory(assignments: list[Mapping[str, Any]]) -> dict[str, Any]:
+    """List helper-owned LXD metadata scoped to exact server CAS assignments."""
+    safe = [
+        _cas(
+            str(item.get("slot_id") or ""),
+            int(item.get("wallet_id") or 0),
+            int(item.get("wallet_assignment_version") or 0),
+            str(item.get("lease_client_id") or ""),
+        )
+        for item in assignments
+    ]
+    return _request("POST", "/v1/inventory", payload={"assignments": safe}, timeout=30)
