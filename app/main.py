@@ -4505,36 +4505,42 @@ async def _run_post_deploy_automation(
 async def _register_spide_device_from_worker_logs(
     worker_id: int, instance_slug: str, mode: str, hostname: str, *, token: str
 ) -> None:
-    device_key = None
-    for _ in range(12):
+    # The CLI can become ready after the container is running, and the dashboard
+    # API can transiently reject a newly emitted key. Keep the same key and retry
+    # the complete registration window instead of leaving a healthy CLI orphaned.
+    for registration_attempt in range(5):
+        device_key = None
+        for _ in range(12):
+            try:
+                payload = await _proxy_worker_logs(worker_id, instance_slug, lines=1000)
+                device_key = provider_automation.extract_spide_device_key(payload.get("logs", ""))
+                if device_key:
+                    break
+            except Exception as exc:
+                logger.warning("Spide device-key log probe failed: %s", exc)
+            await asyncio.sleep(5)
+        if not device_key:
+            if registration_attempt < 4:
+                await asyncio.sleep(5)
+            continue
         try:
-            payload = await _proxy_worker_logs(worker_id, instance_slug, lines=1000)
-            device_key = provider_automation.extract_spide_device_key(payload.get("logs", ""))
-            if device_key:
-                break
-        except Exception as exc:
-            logger.warning("Spide device-key log probe failed: %s", exc)
-        await asyncio.sleep(5)
-    if not device_key:
-        await database.record_health_event("spide", "setup_waiting", "Device key not visible in worker logs yet")
-        return
-    try:
-        worker = await database.get_worker(worker_id)
-        await provider_automation.register_spide_device(
-            str(token),
-            device_key,
-            title=_standard_device_identity(worker, mode, hostname),
-        )
-    except Exception as exc:
-        if "already registered" in str(exc).lower():
-            await database.record_health_event(
-                "spide", "setup_complete", f"Device key ending {device_key[-4:]} already registered"
+            worker = await database.get_worker(worker_id)
+            await provider_automation.register_spide_device(
+                str(token),
+                device_key,
+                title=_standard_device_identity(worker, mode, hostname),
             )
-            return
-        logger.warning("Spide device registration failed: %s", exc)
-        await database.record_health_event("spide", "setup_failed", "dashboard device registration failed")
+        except Exception as exc:
+            if "already registered" in str(exc).lower():
+                await database.record_health_event(
+                    "spide", "setup_complete", f"Device key ending {device_key[-4:]} already registered"
+                )
+                return
+            logger.warning("Spide device registration attempt %d/5 failed: %s", registration_attempt + 1, exc)
+            continue
+        await database.record_health_event("spide", "setup_complete", f"registered Device key ending {device_key[-4:]}")
         return
-    await database.record_health_event("spide", "setup_complete", f"registered Device key ending {device_key[-4:]}")
+    await database.record_health_event("spide", "setup_failed", "dashboard device registration failed after retries")
 
 
 def _merge_recorded_spec(
