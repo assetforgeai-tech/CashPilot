@@ -9,9 +9,9 @@ from app import database, main, worker_api
 
 
 def test_nkn_ack_summary_reports_missing_lists_without_secrets():
-    assert worker_api.nkn_ack_summary({}) == "acks=0 rejections=0 ack_key=missing rejection_key=missing"
+    assert worker_api.nkn_ack_summary({}) == "acks=0 rejections=0 ack_key=missing rejection_key=missing ack_slots=- reject_slots=-"
     assert worker_api.nkn_ack_summary({"nkn_assignment_acks": [{"slot_id": "ipv4-001"}]}) == (
-        "acks=1 rejections=0 ack_key=present rejection_key=missing"
+        "acks=1 rejections=0 ack_key=present rejection_key=missing ack_slots=ipv4-001 reject_slots=-"
     )
 
 

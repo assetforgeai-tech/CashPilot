@@ -810,11 +810,18 @@ def nkn_ack_summary(payload: dict[str, Any]) -> str:
     """Summarize ACK keys/counts without logging response contents."""
     acks = payload.get("nkn_assignment_acks")
     rejections = payload.get("nkn_assignment_rejections")
+    def slots(value: Any) -> str:
+        if not isinstance(value, list):
+            return "-"
+        names = sorted({str(item.get("slot_id") or "?") for item in value if isinstance(item, dict)})
+        return ",".join(names[:32]) or "-"
+
     return (
         f"acks={len(acks) if isinstance(acks, list) else 0} "
         f"rejections={len(rejections) if isinstance(rejections, list) else 0} "
         f"ack_key={'present' if 'nkn_assignment_acks' in payload else 'missing'} "
-        f"rejection_key={'present' if 'nkn_assignment_rejections' in payload else 'missing'}"
+        f"rejection_key={'present' if 'nkn_assignment_rejections' in payload else 'missing'} "
+        f"ack_slots={slots(acks)} reject_slots={slots(rejections)}"
     )
 
 
