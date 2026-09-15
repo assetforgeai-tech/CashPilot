@@ -806,6 +806,18 @@ async def _reconcile_nkn_assignment_acks(
             logger.warning("Could not apply NKN lease ACK for slot %s: %s", slot_id, detail)
 
 
+def nkn_ack_summary(payload: dict[str, Any]) -> str:
+    """Summarize ACK keys/counts without logging response contents."""
+    acks = payload.get("nkn_assignment_acks")
+    rejections = payload.get("nkn_assignment_rejections")
+    return (
+        f"acks={len(acks) if isinstance(acks, list) else 0} "
+        f"rejections={len(rejections) if isinstance(rejections, list) else 0} "
+        f"ack_key={'present' if 'nkn_assignment_acks' in payload else 'missing'} "
+        f"rejection_key={'present' if 'nkn_assignment_rejections' in payload else 'missing'}"
+    )
+
+
 async def _enforce_nkn_lease_guard(*, now: float | None = None) -> None:
     """Fail closed after the local 14-minute ACK deadline, preserving identity."""
     current = time.time() if now is None else float(now)
@@ -1401,6 +1413,7 @@ async def _send_heartbeat() -> None:
                 else:
                     logger.error("Received per-worker key but could not persist it — staying on shared key")
             _ui_connected = True
+            logger.info("NKN heartbeat response: %s", nkn_ack_summary(response_payload))
             _last_heartbeat = datetime.now(UTC).strftime("%H:%M:%S UTC")
             _last_error = ""
             _consecutive_auth_failures = 0
