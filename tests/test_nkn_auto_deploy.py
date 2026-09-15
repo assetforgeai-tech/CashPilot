@@ -350,3 +350,33 @@ def test_nkn_auto_deploy_retries_after_a_failed_slot_on_the_next_stable_heartbea
         assert 7 in main._NKN_AUTO_DEPLOY_DONE
 
     asyncio.run(run())
+
+
+def test_nkn_deploy_failure_log_includes_safe_http_detail(caplog):
+    import logging
+
+    from fastapi import HTTPException
+
+    async def run():
+        with (
+            caplog.at_level(logging.WARNING, logger="app.main"),
+            patch.object(main, "_worker_public_ip_slots", AsyncMock(return_value=[_slot("ipv4-001", "8.8.8.8")])),
+            patch.object(main.database, "get_worker", AsyncMock(return_value={"id": 7, "client_id": "w"})),
+            patch.object(
+                main.database,
+                "lease_nkn_wallet",
+                AsyncMock(return_value=_lease(1, "w:nkn:ipv4-001", "8.8.8.8")),
+            ),
+            patch.object(main.database, "get_provider_instance", AsyncMock(return_value=None)),
+            patch.object(main.database, "release_nkn_wallet", AsyncMock()),
+            patch.object(main.database, "save_provider_instance", AsyncMock()),
+            patch.object(
+                main,
+                "_proxy_worker_nkn_deploy",
+                AsyncMock(side_effect=HTTPException(400, "bad route")),
+            ),
+        ):
+            await main._deploy_nkn_slots(7, beneficiary_address="NKNBeneficiaryAddress")
+        assert "bad route" in caplog.text
+
+    asyncio.run(run())
