@@ -1,0 +1,2467 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Self-hosted passive income orchestrator. Deploy, manage, and monitor 14 providers from a single dashboard.">
+      
+      
+        <meta name="author" content="Sergio Fernandez">
+      
+      
+        <link rel="canonical" href="https://geiserx.github.io/CashPilot/research/repo-github-understanding/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../icon.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>CashPilot: Repo và GitHub Understanding - CashPilot</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/theme.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#cashpilot-repo-va-github-understanding" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="CashPilot" class="md-header__button md-logo" aria-label="CashPilot" data-md-component="logo">
+      
+  <img src="../../logo.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            CashPilot
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              CashPilot: Repo và GitHub Understanding
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/GeiserX/CashPilot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GeiserX/CashPilot
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guides/" class="md-tabs__link">
+          
+  
+  
+  Service Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../configuration/" class="md-tabs__link">
+          
+  
+  
+  Configuration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../security-defaults/" class="md-tabs__link">
+          
+  
+  
+  Security
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../backup-restore/" class="md-tabs__link">
+          
+  
+  
+  Operations
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../architecture/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="CashPilot" class="md-nav__button md-logo" aria-label="CashPilot" data-md-component="logo">
+      
+  <img src="../../logo.svg" alt="logo">
+
+    </a>
+    CashPilot
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/GeiserX/CashPilot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GeiserX/CashPilot
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Service Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Service Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bandwidth Sharing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Bandwidth Sharing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/earnfm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Earn.fm
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/earnapp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    EarnApp
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/iproyal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IPRoyal Pawns
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/mysterium/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MystNodes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/nkn/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NKN
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/packetstream/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PacketStream
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/proxies-sx/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Proxies.sx
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/proxybase/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ProxyBase
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/proxybase-xyz/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ProxyBase Markets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/proxyrack/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ProxyRack
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/repocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repocket
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/spide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/traffmonetizer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Traffmonetizer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/urnetwork/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    URnetwork
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DePIN
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    DePIN
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/uprock/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Uprock
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/wipter/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wipter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Configuration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../fleet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fleet Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Security
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../security-defaults/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security Defaults
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../isolation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Network Isolation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Operations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../backup-restore/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backup and Restore
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../backup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backing Up Node Identities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/prometheus-metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prometheus Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../upgrade-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrade to v1.0.0
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Direction and Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../idle-network-traffic/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    What "idle" looks like on the wire
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../per-ip-device-limits/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Per-IP device limits
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../self-hosting-operability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Self-hosting operability review
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fleet-upgrades-and-onboarding/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fleet upgrades & onboarding (design)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../earnings-benchmarks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Earnings benchmarks (design)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#earnapp-current-source-policy-2026-08-29" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EarnApp current source policy (2026-08-29)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#earnapp-platform-canary-investigation-historical-2026-08-28" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EarnApp platform canary investigation (historical, 2026-08-28)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#earnapp-v1134-recoveryrotation-closeout-historical-runtime-baseline-2026-08-28" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EarnApp v1.13.4 recovery/rotation closeout (historical runtime baseline, 2026-08-28)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#earnapp-v1132-scoped-live-verification-2026-08-28" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EarnApp v1.13.2 scoped live verification (2026-08-28)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#earnapp-migration-safety-patch-2026-08-26" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EarnApp migration safety patch (2026-08-26)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#earnapp-accountrecovery-baseline-merged-2026-08-25-historical-checkpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EarnApp account/recovery baseline (merged 2026-08-25; historical checkpoint)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pham-vi-va-nguyen-tac" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phạm vi và nguyên tắc
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#snapshot-git-va-github" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Snapshot Git và GitHub
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#kien-truc-va-luong-trien-khai" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kiến trúc và luồng triển khai
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ma-tran-bao-ve-provider" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ma trận bảo vệ provider
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#retired-grass-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retired Grass history
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mysterium-current-contract-direct-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mysterium (current contract: direct-only)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#nkn-current-contract-direct-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NKN (current contract: direct-only)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gate-cho-thay-oi-tuong-lai" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gate cho thay đổi tương lai
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#lich-su-contract-sau-pr-13-khong-phai-trang-thai-live-hien-tai" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lịch sử contract sau PR #13 (không phải trạng thái live hiện tại)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#read-only-audit-artifacts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read-only audit artifacts
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/GeiserX/CashPilot/edit/main/docs/research/repo-github-understanding.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="cashpilot-repo-va-github-understanding">CashPilot: Repo và GitHub Understanding<a class="headerlink" href="#cashpilot-repo-va-github-understanding" title="Permanent link">&para;</a></h1>
+<p>Ngày chụp trạng thái nền: 2026-08-23; cập nhật live EarnApp v1.13.4: 2026-08-28</p>
+<p>Commit nền hiện tại là <code>8d2b860</code> (merge PR #52, <code>origin/main</code>, tag
+<code>v1.13.4</code>). Worktree closeout chỉ thay đổi tài liệu sau khi product source,
+release và live gates đã được xác minh.</p>
+<h2 id="earnapp-current-source-policy-2026-08-29">EarnApp current source policy (2026-08-29)<a class="headerlink" href="#earnapp-current-source-policy-2026-08-29" title="Permanent link">&para;</a></h2>
+<p>EarnApp is now <code>platform_restricted</code>: the official Linux x64 package may run
+only through CashPilot's dedicated Ubuntu Docker helper. The official help article
+states Linux x64/64-bit support, identifies Ubuntu 20.04 as tested, publishes
+the Bright Data installer command, and states the service starts after reboot.
+The host helper pins that same installer and its current SHA-256 was verified.</p>
+<p>MacOS/iOS emulation, generic catalog Docker deploy and raw caller-controlled
+EarnApp deploy remain blocked. Account Pool, encrypted collector credentials,
+token metadata, historical snapshots and read-only inspection of Apple nodes
+remain available. Ubuntu nodes keep the server-authoritative account, proxy,
+identity, generation, lifecycle and recovery contracts.</p>
+<h2 id="earnapp-platform-canary-investigation-historical-2026-08-28">EarnApp platform canary investigation (historical, 2026-08-28)<a class="headerlink" href="#earnapp-platform-canary-investigation-historical-2026-08-28" title="Permanent link">&para;</a></h2>
+<p>The v1.13.4 recovery/rotation closeout remains the immutable baseline for the
+two existing Docker nodes. At this historical checkpoint, platform closeout
+was reopened for fresh disposable canaries. An authenticated usage read showed node 1 has positive
+current-day qualified usage (<code>32,740,937 ms</code>), while node 2 has only <code>18,142 ms</code>
+and is near plateau. Both are online and not banned. The earlier statement that
+both nodes had zero current-day usage was caused by selecting the wrong usage
+series value and is withdrawn.</p>
+<p>This evidence does not prove Docker is the root cause. Node 1 has repeated WSS
+timeouts and proxy <code>502</code> responses; node 2 has a clean route but little
+workload, so control-plane allocation/eligibility remains an open hypothesis.
+The proposed lanes were a new iOS Docker node on a VN residential proxy and a
+new official Ubuntu Docker node on a non-VN residential proxy. The current source
+policy enables only the Ubuntu lane; the iOS proposal remains blocked. Existing
+containers, sidecars, volumes, identities, account bindings and leases remain
+immutable.</p>
+<h2 id="earnapp-v1134-recoveryrotation-closeout-historical-runtime-baseline-2026-08-28">EarnApp v1.13.4 recovery/rotation closeout (historical runtime baseline, 2026-08-28)<a class="headerlink" href="#earnapp-v1134-recoveryrotation-closeout-historical-runtime-baseline-2026-08-28" title="Permanent link">&para;</a></h2>
+<ul>
+<li>PR #52 sửa đúng root cause Docker network namespace: main EarnApp dùng
+  <code>container:&lt;sidecar-id&gt;</code> phải được restart sau sidecar apply/rollback để gắn
+  namespace mới. CI và Auto Release run <code>33137032952</code> pass; worker digest là
+  <code>sha256:9e8e3e20f671fd775aa4443ba9d0b63b11fcb90bb63a96cb549213f9ed7e695f</code>.</li>
+<li>Chỉ worker <code>43406</code> trên <code>test-sing</code> được recreate <code>--no-deps</code>; worker identity
+  và key hash không đổi. NKN, MYST và mọi provider protected khác không bị
+  restart/redeploy. Server UI chủ đích giữ v1.13.2 vì fix chỉ chạy trong worker.</li>
+<li>Node protected <code>earnapp-canary-test-sing-1</code> giữ nguyên container, sidecar,
+  volume, device, lease <code>12706</code>, egress <code>171.251.97.103</code>, machine ID và lifecycle.</li>
+<li>Canary riêng <code>earnapp-recovery-test-sing-2</code> giữ nguyên container, volume,
+  account, generation, device và machine ID qua hai rotation CAS:
+  <code>12708/116.98.176.124 -&gt; 12724/14.236.137.88 -&gt; 12708/116.98.176.124</code>.
+  Lần hai chứng minh prior-proxy affinity; main giữ <code>eth0</code>, route, DNS và egress.</li>
+<li>Authenticated account evidence thấy cả hai device online/not-banned; snapshot
+  online <code>2</code>, offline <code>0</code>, balance <code>$2.284</code>. DB <code>integrity=ok</code>, FK <code>0</code>, active
+  reservation <code>0</code>, active EarnApp lease <code>2</code>.</li>
+<li>Tại checkpoint này EarnApp được nâng thành <code>PROTECTED_DONE</code>. Quyết định
+  compliance ngày 2026-08-29 supersede quyền deploy: baseline/node cũ vẫn được
+  bảo vệ, còn hosted runtime chuyển thành <code>COMPLIANCE_BLOCKED</code> /
+  <code>RUNTIME_DISABLED</code>.</li>
+</ul>
+<h2 id="earnapp-v1132-scoped-live-verification-2026-08-28">EarnApp v1.13.2 scoped live verification (2026-08-28)<a class="headerlink" href="#earnapp-v1132-scoped-live-verification-2026-08-28" title="Permanent link">&para;</a></h2>
+<ul>
+<li>PRs #46-#48 đã merge phần standardization, Docker egress decoding và legacy
+  state hydration. PR #48 merge tại
+  <code>ba2d29dda746327e0db445239244e12c684d9e03</code>; các check sau merge gồm Catalog,
+  CodeQL, Lint, Tests và Auto Release đều thành công. Release <code>v1.13.2</code> được
+  publish từ cùng merge commit.</li>
+<li>Registry trả UI digest
+  <code>sha256:83a5b98c698d4ac59513d72108d516581e58be2895dcf9351ee68d77fc8ce913</code>
+  và worker digest
+  <code>sha256:03419892ec982acb240d13b6238bbb9a6ea15f36ff1db281d39e8fb20a73e1a7</code>.
+  Backup trước deploy nằm tại
+  <code>/opt/cashpilot/backups/earnapp-v132-authority-backfill-20260827T192358Z</code>.</li>
+<li>Legacy metadata thiếu authority được CAS-fill sau khi đối chiếu database,
+  lease, proxy evidence, encrypted spec và container labels:
+  <code>platform=macos</code>, <code>expected_egress_ip=171.251.97.103</code>. Không đổi account,
+  worker, generation, device identity hoặc proxy lease.</li>
+<li>Chỉ <code>cashpilot-ui</code> trên server và <code>cashpilot-worker</code> trên <code>test-sing</code> được
+  force-recreate riêng, không kéo dependency. Cả hai healthy ở version <code>1.13.2</code>;
+  SQLite là schema <code>21</code>, <code>integrity=ok</code>, foreign-key violation <code>0</code>.</li>
+<li>Worker row <code>43406</code> giữ client ID
+  <code>e2a103a007d7e7c93172de6505e2e14839519dca4176989561dcf6f827a0871c</code>;
+  signing-key file được xác minh không đổi nhưng secret value không được ghi vào
+  tài liệu. Heartbeat authenticated mới được nhận lúc
+  <code>2026-08-27 19:30:18 UTC</code> và <code>2026-08-27 19:31:21 UTC</code>.</li>
+<li>Logical node <code>earnapp-canary-test-sing-1</code> vẫn thuộc Account Pool id <code>2</code>
+  (<code>assetforgeai</code>), platform/backend <code>macos</code>/<code>docker</code>, lease <code>#12706</code>, egress
+  <code>171.251.97.103</code>. Container, sidecar, volume, account binding, generation và
+  device identity đều được giữ nguyên; Fleet báo online <code>1</code>, offline <code>0</code>.</li>
+<li>Chrome profile 40 là nguồn authoritative: account <code>AssetForge AI</code>, balance
+  <code>$2.284</code>, device <code>sdk-mac-4ae944b1</code>, country <code>VN</code>, usage đang hoạt động.</li>
+<li>NKN LXD, Mysterium và các provider <code>PROTECTED_DONE</code> khác không bị thay đổi.
+  Tại checkpoint v1.13.2, EarnApp vẫn chưa là <code>PROTECTED_DONE</code>; trạng thái mở đó
+  đã được supersede bởi closeout v1.13.4 ở trên.</li>
+</ul>
+<h2 id="earnapp-migration-safety-patch-2026-08-26">EarnApp migration safety patch (2026-08-26)<a class="headerlink" href="#earnapp-migration-safety-patch-2026-08-26" title="Permanent link">&para;</a></h2>
+<p>PR #42 đã merge patch migration safety tại <code>a6c6e4c</code>; Auto Release
+<code>32902222108</code> publish <code>v1.11.2</code> trỏ đúng SHA. UI-only deployment dùng digest
+<code>sha256:31d17ca6ba17a55ae6f15686bc945a1ed12dfad29ce87f1ed71fa2ef8605086d</code>.
+Migration/archive/marker và boot idempotency đều được xác minh live; worker và
+mọi non-UI container giữ nguyên. Provider <code>PROTECTED_DONE</code>, proxy/wallet lease,
+identity và volume không bị redeploy hoặc chỉnh sửa.</p>
+<h2 id="earnapp-accountrecovery-baseline-merged-2026-08-25-historical-checkpoint">EarnApp account/recovery baseline (merged 2026-08-25; historical checkpoint)<a class="headerlink" href="#earnapp-accountrecovery-baseline-merged-2026-08-25-historical-checkpoint" title="Permanent link">&para;</a></h2>
+<p>PR #40 (<code>102fa9e1</code>) bổ sung control plane cô lập cho EarnApp trên nền
+<code>origin/main</code> <code>ff25e7b</code>; implementation commit là <code>9968a85</code>. PR đã merge. Việc
+merge tại thời điểm đó chỉ đưa control plane vào source, chưa đồng nghĩa
+official runtime, DNS, Chrome profile live hay VPS canary đã hoàn tất; provider
+<code>PROTECTED_DONE</code> không bị đụng tới. Đây là mô tả lịch sử, không phải trạng thái
+hiện tại.</p>
+<p>Domain model mới gồm <code>earnapp_accounts</code>, <code>earnapp_logical_nodes</code>,
+<code>earnapp_replacement_tickets</code>, <code>earnapp_account_control_routes</code> và
+<code>earnapp_account_snapshots</code>; schema được nâng lên <code>19</code>. Credentials được mã hóa
+Fernet và API/dashboard chỉ trả metadata đã mask. Account được phân bổ theo số
+logical node chưa retired thấp nhất; delete chỉ cho phép khi
+<code>ACCOUNT_LOCKED</code>, yêu cầu xác nhận kép và không xóa remote device/account.</p>
+<p>Recovery contract đã chốt là <code>900s</code> stale threshold rồi <code>3600s</code>
+<code>RECOVERY_HOLD</code>. Trong một giờ hold, proxy cũ vẫn độc quyền. Hết hold, scoped
+lease được release nhưng account, logical node, device ID và
+<code>preferred_proxy_id</code> còn nguyên. Same-worker có thể recovery theo generation;
+worker khác bắt buộc dùng one-time replacement ticket và generation/CAS để
+chặn split-brain. Heartbeat cũ bị từ chối sau khi generation tăng.</p>
+<p>Audit cuối trước PR siết thêm race boundary: ticket chỉ được tạo trong cùng
+transaction khi node vẫn <code>RECOVERY_HOLD</code>/<code>RECOVERABLE</code>, generation chưa đổi và
+target worker tồn tại. Heartbeat hợp lệ của worker gốc đưa node về <code>ACTIVE</code>, xóa
+recovery timestamps và revoke mọi ticket chưa dùng của generation đó trong một
+transaction; vì vậy ticket đã phát hành không thể claim sau khi worker gốc quay
+lại. Claim cũng fail closed nếu node không còn ở recovery state.</p>
+<p>EarnApp proxy eligibility là canonical generic-live residential egress với
+latest matching-egress WSS result <code>CID_SET</code>/<code>eligible</code>. Collector luôn đi qua
+route thuộc đúng account; account chưa có node dùng một control proxy riêng và
+route này được transfer atomically sang node đầu tiên. Delete selected/status/
+all của Proxy Pool dọn transient control-route trong cùng transaction nhưng giữ
+nguyên account và encrypted credentials, tránh foreign-key failure hoặc xóa
+nhầm provider state.</p>
+<p>Manifest V3 importer dùng allowlist chính xác <code>auth</code>, <code>auth-method</code>,
+<code>oauth-refresh-token</code>, <code>oauth-token</code>, <code>xsrf-token</code>, <code>brd_sess_id</code>, <code>cg_uuid</code>.
+Một Chrome profile chỉ bind một EarnApp account; lần đầu phải import thủ công,
+sau đó cookie change/startup/alarm 15 phút mới sync account đã bind. Sync chỉ
+được gửi qua authenticated HTTPS hostname thuộc <code>4gmt.com</code>; luồng import cấu
+hình của các provider khác cũng dùng cùng CashPilot origin này và không còn
+quyền HTTP/IP cũ. Các collector vẫn gọi API chính chủ của provider. Importer
+không đọc cookie Google/Apple và không log/hiển thị token.</p>
+<p>Capacity và account-control allocator loại legacy assignment, active scoped
+lease và active control route theo cả endpoint ID lẫn egress IP. Vì vậy một
+duplicate egress chưa được đánh dấu cũng không thể bị cấp lại cho EarnApp.
+Capacity dashboard đếm <code>DISTINCT exit_ip</code>, nên eligible/leaseable phản ánh số
+canonical egress thật thay vì số endpoint row. Importer bắt lỗi URL CashPilot
+trong UI và dùng alarm debounce riêng cho cookie change, không ghi đè alarm
+đồng bộ định kỳ 15 phút.</p>
+<p>Verification của baseline tại checkpoint đó đạt focused suite <code>283 passed</code>,
+full non-live suite <code>1812 passed, 8 skipped</code>; migration-safety verification mới
+nhất được ghi ở <code>docs/research/earnapp-legacy-migration-safety-2026-08.md</code>.</p>
+<p>Tại checkpoint lịch sử này, release, registry verification và scoped UI/worker
+deployment đã hoàn tất ở <code>v1.13.2</code>; restart/recovery persistence và isolated
+proxy rotation vẫn còn mở trên canary mới. Closeout v1.13.4 sau đó supersede
+trạng thái này, và policy 2026-08-29 tiếp tục supersede mọi quyền hosted deploy.</p>
+<h2 id="pham-vi-va-nguyen-tac">Phạm vi và nguyên tắc<a class="headerlink" href="#pham-vi-va-nguyen-tac" title="Permanent link">&para;</a></h2>
+<p>Tài liệu này tổng hợp kết quả đọc source, tests, docs, Git history và GitHub
+metadata bằng <code>gh</code>. Phần audit kiến trúc ban đầu là read-only; phần live closeout
+ở trên chỉ ghi nhận các thay đổi scoped đã được phê duyệt cho UI, worker và
+EarnApp canary. Không được suy rộng bằng chứng đó thành quyền bulk redeploy.</p>
+<p>14 provider cũ đã chốt là baseline bất biến; NKN direct-only cũng đã chuyển sang
+<code>PROTECTED_DONE</code> sau canary trên <code>test-sing</code>. Grass đã bị loại khỏi product theo
+quyết định ghi tại <code>provider-removal-grass-2026-08.md</code>; Mysterium vẫn
+direct-only. Phát hiện lịch sử chỉ có giá trị tham khảo; không được dùng làm lý
+do refactor hoặc redeploy khi chưa có phê duyệt rõ ràng.</p>
+<h2 id="snapshot-git-va-github">Snapshot Git và GitHub<a class="headerlink" href="#snapshot-git-va-github" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Hạng mục</th>
+<th>Trạng thái đã kiểm chứng</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Canonical base branch</td>
+<td><code>main</code>, theo dõi <code>origin/main</code></td>
+</tr>
+<tr>
+<td>Audited base HEAD</td>
+<td><code>ba2d29d</code>, merge PR #48, khớp <code>origin/main</code> và tag <code>v1.13.2</code></td>
+</tr>
+<tr>
+<td>Fork</td>
+<td><code>assetforgeai-tech/CashPilot</code></td>
+</tr>
+<tr>
+<td>Upstream</td>
+<td><code>GeiserX/CashPilot</code></td>
+</tr>
+<tr>
+<td>Divergence</td>
+<td>Fork ahead 431, behind 31; histories diverged</td>
+</tr>
+<tr>
+<td>Fork release mới nhất</td>
+<td><code>v1.13.2</code> (Auto Release run <code>33104948032</code>)</td>
+</tr>
+<tr>
+<td>Upstream release quan sát</td>
+<td><code>v1.36.4</code></td>
+</tr>
+<tr>
+<td>Fork CI/release hiện tại</td>
+<td>Commit <code>ba2d29d</code> pass CodeQL, Catalog Check, Lint, Tests và Auto Release; PR #48 đã merge</td>
+</tr>
+<tr>
+<td>Merge/release state</td>
+<td>PRs #27-#48 đã merge; <code>v1.13.2</code> đã scoped-deploy UI và worker</td>
+</tr>
+<tr>
+<td>Tag namespace</td>
+<td>Fork tags được giữ ở <code>refs/fork-tags/*</code>; không lấy local <code>refs/tags/*</code> làm bằng chứng vì upstream dùng trùng version names</td>
+</tr>
+<tr>
+<td>Audit worktree</td>
+<td>Branch <code>docs/earnapp-v1132-live-closeout</code>; chỉ cập nhật tài liệu closeout</td>
+</tr>
+</tbody>
+</table>
+<p>Upstream mới hơn không đồng nghĩa fork phải merge. Fork-only history chứa nhiều contract quan trọng về provider/runtime hardening, Grass identity/auth, MYST wallet lease/runtime, proxy lease rotation và CI/release. Mọi merge hoặc cherry-pick phải được đánh giá riêng và nằm ngoài giai đoạn này.</p>
+<h2 id="kien-truc-va-luong-trien-khai">Kiến trúc và luồng triển khai<a class="headerlink" href="#kien-truc-va-luong-trien-khai" title="Permanent link">&para;</a></h2>
+<p>CashPilot gồm FastAPI UI/server, worker API, persistence layer, service catalog YAML, Docker orchestration, collectors và CI/release workflows.</p>
+<p>Luồng deploy bắt đầu từ API/UI, resolve service catalog và deploy mode, chuẩn hóa instance slug/credential, cấp resource lease nếu provider yêu cầu, rồi gửi request tới worker. Worker dựng Docker configuration, volume, labels và runtime state; provider automation thực hiện các bước đặc thù sau container start. Heartbeat và provider evidence đưa trạng thái runtime về server để đồng bộ database và UI.</p>
+<p>Proxy lifecycle hiện dùng server-authoritative, worker-ACK rotation. Server probe pool và chọn candidate nhưng không đổi lease trước; worker probe candidate từ chính VPS, stage config vào named volume <code>/etc/sing-box</code>, validate toàn bộ sidecar, restart riêng các sidecar liên quan rồi trả ACK đã redacted gồm binding token, proxy ID, observed exit IP, instance list và config hash. Server serialize các proxy-assignment transaction và chỉ CAS-commit <code>proxy_assignments</code> cùng <code>provider_instances</code> sau ACK hợp lệ. Assignment generation cũ, candidate vừa bị worker khác giữ hoặc mixed proxy rows trên cùng worker làm flow fail closed và worker rollback config cũ. Nếu response apply bị mất, server thử rollback theo binding token vì worker có thể đã restart thành công. Nếu CAS đã thành công nhưng confirm cleanup thất bại, DB/runtime vẫn cùng candidate; chỉ cleanup backup còn pending, không rollback DB mù quáng.</p>
+<p>Giới hạn phase này là assignment proxy vẫn ở worker-level để giữ compatibility. NKN dùng topology riêng <code>(worker, public_ip_slot, wallet, instance)</code> và không tham gia Proxy Pool. Legacy sidecar chưa có persistent config volume fail closed; không bulk redeploy provider đã <code>PROTECTED_DONE</code>. MYST và NKN là direct-only.</p>
+<p>Release workflow dùng diff từ tag trước để quyết định có tạo release hay không. Khi
+có release, workflow chạy gate tests, build và publish độc lập UI/worker lên GHCR,
+xác minh image/tag rồi mới tạo Git tag và GitHub release. Release hiện hành được
+ghi nhận ở v1.13.2; live deployment vẫn là thao tác riêng có approval.</p>
+<h2 id="ma-tran-bao-ve-provider">Ma trận bảo vệ provider<a class="headerlink" href="#ma-tran-bao-ve-provider" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Provider</th>
+<th>Phân loại</th>
+<th>Quy tắc</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>earnfm</code></td>
+<td><code>PROTECTED_DONE</code></td>
+<td>Không sửa hoặc redeploy</td>
+</tr>
+<tr>
+<td><code>iproyal</code></td>
+<td><code>PROTECTED_DONE</code></td>
+<td>Không sửa hoặc redeploy</td>
+</tr>
+<tr>
+<td><code>packetstream</code></td>
+<td><code>PROTECTED_DONE</code></td>
+<td>Không sửa hoặc redeploy</td>
+</tr>
+<tr>
+<td><code>proxies-sx</code></td>
+<td><code>PROTECTED_DONE</code></td>
+<td>Không sửa hoặc redeploy</td>
+</tr>
+<tr>
+<td><code>proxybase-xyz</code></td>
+<td><code>PROTECTED_DONE</code></td>
+<td>Không sửa hoặc redeploy</td>
+</tr>
+<tr>
+<td><code>proxybase</code></td>
+<td><code>PROTECTED_DONE</code></td>
+<td>Không sửa hoặc redeploy</td>
+</tr>
+<tr>
+<td><code>proxyrack</code></td>
+<td><code>PROTECTED_DONE</code></td>
+<td>Không sửa hoặc redeploy</td>
+</tr>
+<tr>
+<td><code>repocket</code></td>
+<td><code>PROTECTED_DONE</code></td>
+<td>Không sửa hoặc redeploy</td>
+</tr>
+<tr>
+<td><code>spide</code></td>
+<td><code>PROTECTED_DONE</code></td>
+<td>Không sửa hoặc redeploy</td>
+</tr>
+<tr>
+<td><code>traffmonetizer</code></td>
+<td><code>PROTECTED_DONE</code></td>
+<td>Không sửa hoặc redeploy</td>
+</tr>
+<tr>
+<td><code>urnetwork</code></td>
+<td><code>PROTECTED_DONE</code></td>
+<td>Không sửa hoặc redeploy</td>
+</tr>
+<tr>
+<td><code>uprock</code></td>
+<td><code>PROTECTED_DONE</code></td>
+<td>Không sửa hoặc redeploy</td>
+</tr>
+<tr>
+<td><code>wipter</code></td>
+<td><code>PROTECTED_DONE</code></td>
+<td>Không sửa hoặc redeploy</td>
+</tr>
+<tr>
+<td><code>grass</code></td>
+<td><code>RETIRED</code></td>
+<td>Không còn catalog/runtime; giữ legacy rows/secrets để tương thích</td>
+</tr>
+<tr>
+<td><code>mysterium</code></td>
+<td><code>PROTECTED_DONE</code></td>
+<td>Direct-only; không đưa vào Proxy Pool</td>
+</tr>
+<tr>
+<td><code>nkn</code></td>
+<td><code>PROTECTED_DONE</code></td>
+<td>Direct-only; giữ nguyên contract và canary thành công</td>
+</tr>
+<tr>
+<td><code>earnapp</code></td>
+<td><code>FOCUS_EARNAPP_MULTIPLATFORM</code> / <code>platform_restricted</code></td>
+<td>VN residential qua MacOS/iOS lane chuyên dụng; non-VN residential qua Ubuntu LXD; generic Docker bị block</td>
+</tr>
+</tbody>
+</table>
+<h2 id="retired-grass-history">Retired Grass history<a class="headerlink" href="#retired-grass-history" title="Permanent link">&para;</a></h2>
+<p>Các experiment, dashboard observations và quota diagnostics cũ chỉ còn giá trị audit trong Git history và dated research. Chúng không phải deployment guidance hiện hành. Product-removal boundary, legacy-data policy và verification được định nghĩa tại <code>provider-removal-grass-2026-08.md</code>.</p>
+<h2 id="mysterium-current-contract-direct-only">Mysterium (current contract: direct-only)<a class="headerlink" href="#mysterium-current-contract-direct-only" title="Permanent link">&para;</a></h2>
+<p>MYST có inventory riêng trong <code>myst_wallets</code>, lưu raw wallet mã hóa cùng funding, quarantine, lease và runtime state. Current provider contract là <strong>direct-only</strong>, không dùng Proxy Pool. Server cấp exclusive funded-wallet lease theo worker/client/public IP và assignment version. Worker materialize keystore/state, restart container, unlock identity, áp MMN key và start WireGuard; heartbeat chỉ gửi metadata an toàn, không gửi raw wallet.</p>
+<p>Registration được đọc từ <code>myst cli identities get</code> và đồng bộ có điều kiện. <code>Registered</code> chưa đủ chứng minh earning: runtime phải có <code>/dev/net/tun</code>, capability <code>NET_ADMIN</code>, WireGuard active và traffic/session evidence. Dashboard/collector phải resolve đúng node identity.</p>
+<p>Điều kiện chốt MYST direct là funded wallet lease đúng và bền qua restart hợp lệ, registration và assignment sync đúng, TUN/WireGuard có traffic evidence, dashboard nhận đúng identity, secret không bị lộ, và các transition release/reclaim/quarantine/funding được xác nhận bằng canary riêng. Không cần proxy lease; public IP direct là conflict boundary riêng.</p>
+<h2 id="nkn-current-contract-direct-only">NKN (current contract: direct-only)<a class="headerlink" href="#nkn-current-contract-direct-only" title="Permanent link">&para;</a></h2>
+<p>NKN dùng <code>nknorg/nkn:latest</code> và không tham gia Proxy Pool. Bootstrap phát hiện
+public IPv4 slot, dựng bridge/SNAT và giới hạn file; server lease một wallet
+riêng theo <code>(worker, slot)</code> rồi worker tạo volume/container tuần tự. Heartbeat
+chỉ gửi node identity, trạng thái runtime và <code>getnodestate</code> đã redacted. Node
+chỉ online khi container đang chạy và RPC trả <code>PERSIST_FINISHED</code>.</p>
+<p>Canary <code>test-sing</code> đã xác minh beneficiary Settings, wallet lease/version,
+bridge/ports/resource/restart policy, worker heartbeat HTTP 200 và collector
+balance. Node đạt <code>PERSIST_FINISHED</code> mà không đổi container/node identity;
+worker heartbeat đồng bộ <code>online=true</code>, Fleet báo <code>total_nodes=1</code>, <code>online=1</code>,
+<code>offline=0</code>, và wallet <code>1</code> vẫn giữ assignment version <code>3</code>. NKN vì vậy là
+<code>PROTECTED_DONE</code>.</p>
+<h2 id="gate-cho-thay-oi-tuong-lai">Gate cho thay đổi tương lai<a class="headerlink" href="#gate-cho-thay-oi-tuong-lai" title="Permanent link">&para;</a></h2>
+<p>Mọi provider active đều là <code>PROTECTED_DONE</code> và là baseline bảo vệ. Nếu buộc phải
+sửa shared module, cần impact map, danh sách provider có thể bị ảnh hưởng,
+regression tests cho shared contracts, canary riêng, rollback bảo toàn
+identity/volume/credential/lease và phê duyệt rõ ràng của người dùng.</p>
+<h2 id="lich-su-contract-sau-pr-13-khong-phai-trang-thai-live-hien-tai">Lịch sử contract sau PR #13 (không phải trạng thái live hiện tại)<a class="headerlink" href="#lich-su-contract-sau-pr-13-khong-phai-trang-thai-live-hien-tai" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Proxy rotation hiện có contract server-authoritative/worker-ACK: worker probe
+  candidate từ chính VPS, stage persistent sing-box config, restart sidecar liên
+  quan và trả ACK đã redacted; server chỉ CAS-commit assignment sau ACK hợp lệ.</li>
+<li>Custom probe targets do request cung cấp bị từ chối trước network access; đây là
+  guard chống SSRF, có regression test và CodeQL đã xác nhận.</li>
+<li>Generic proxy assignment vẫn worker-level để bảo toàn compatibility. NKN là
+  ngoại lệ direct-only có topology <code>(worker, public_ip_slot, wallet, instance)</code>;
+  không được dùng ngoại lệ này để refactor provider protected.</li>
+<li>NKN canary đã hoàn tất và trở thành baseline bảo vệ. Giữ nguyên node/volume/
+  lease thành công; mọi thay đổi NKN hoặc shared module sau này cần impact map,
+  canary riêng và approval mới.</li>
+</ul>
+<h2 id="read-only-audit-artifacts">Read-only audit artifacts<a class="headerlink" href="#read-only-audit-artifacts" title="Permanent link">&para;</a></h2>
+<p>Read-only audit ngày 2026-08-21/22 đã xác nhận knowledge graph 1.563 nodes,
+domain graph 63 nodes và coverage 301/301 files tại commit <code>082b947</code>. Các graph
+và báo cáo chi tiết nằm trong local ignored directory <code>.understand-anything/</code>;
+chúng không phải runtime state và không thay thế live verification.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2026 Sergio Fernandez
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/GeiserX/CashPilot" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/assetforgeai-tech/CashPilot/pkgs/container/cashpilot" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M349.9 236.3h-66.1v-59.4h66.1zm0-204.3h-66.1v60.7h66.1zm78.2 144.8H362v59.4h66.1zm-156.3-72.1h-66.1v60.1h66.1zm78.1 0h-66.1v60.1h66.1zm276.8 100c-14.4-9.7-47.6-13.2-73.1-8.4-3.3-24-16.7-44.9-41.1-63.7l-14-9.3-9.3 14c-18.4 27.8-23.4 73.6-3.7 103.8-8.7 4.7-25.8 11.1-48.4 10.7H2.4c-8.7 50.8 5.8 116.8 44 162.1 37.1 43.9 92.7 66.2 165.4 66.2 157.4 0 273.9-72.5 328.4-204.2 21.4.4 67.6.1 91.3-45.2 1.5-2.5 6.6-13.2 8.5-17.1zm-511.1-27.9h-66v59.4h66.1v-59.4zm78.1 0h-66.1v59.4h66.1zm78.1 0h-66.1v59.4h66.1zm-78.1-72.1h-66.1v60.1h66.1z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "content.code.copy", "content.action.edit", "search.highlight", "search.suggest", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

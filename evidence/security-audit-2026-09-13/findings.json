@@ -1,0 +1,19 @@
+[
+  {
+    "verdict": "confirmed",
+    "title": "TLS verification disabled in EarnApp qualification probe (remediated)",
+    "description": "The historical probe accepted a forged WSS qualification response because certificate and hostname verification were disabled. The current worktree requires normal certificate-chain and hostname validation before qualification evidence can be accepted.",
+    "root_cause": "build_tls_context in app/proxy_probe_profiles/earnapp.py did not require certificate and hostname verification, allowing forged qualification evidence",
+    "intended_behavior": "Only the authenticated EarnApp provider endpoint should be able to produce CID_SET qualification evidence.",
+    "trace": [
+      {"kind": "entrypoint", "file": "app/proxy_probe_profiles/earnapp.py", "line": 25, "scope": "build_tls_context", "description": "Creates the SSL context used by the qualification probe."},
+      {"kind": "propagation", "file": "app/proxy_probe_profiles/earnapp.py", "line": 32, "scope": "build_tls_context", "description": "Requires hostname verification and a trusted certificate chain."},
+      {"kind": "sink", "file": "app/proxy_probe_profiles/earnapp.py", "line": 33, "scope": "build_tls_context", "description": "The verified context prevents forged WSS qualification frames from entering the eligibility path."}
+    ],
+    "conditions": [{"kind": "network_routing", "description": "The attacker must intercept or terminate the probe's WSS connection."}],
+    "execution": {"attacker_perspective": "A network attacker able to intercept the probe connection.", "payloads": ["Forged WSS CID_SET response from an untrusted certificate."], "instructions": ["Intercept the qualification connection.", "Return a forged CID_SET frame.", "Observe whether the probe accepts it."], "expected_result": "The current verified TLS context rejects the untrusted endpoint before qualification evidence is accepted."},
+    "remediation": {"strategy": "Require certificate-chain and hostname verification for the provider WSS endpoint.", "code_changes": [{"file_name": "app/proxy_probe_profiles/earnapp.py", "fixed_code": "ssl.create_default_context(); check_hostname=True; verify_mode=ssl.CERT_REQUIRED"}]},
+    "severity": {"likelihood": {"score": "medium", "reason": "Requires network interception but qualification runs against remote infrastructure."}, "impact": {"score": "medium", "reason": "Could mark an attacker-controlled proxy as eligible for EarnApp traffic."}, "overall_severity": "medium"},
+    "confidence": {"score": "high", "reason": "The historical configuration and persistence path were directly traced; current regression tests cover the remediation."}
+  }
+]

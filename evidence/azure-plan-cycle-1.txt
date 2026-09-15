@@ -1,0 +1,32 @@
+worker 118903
+earnfm {"blocked": 0, "desired": 20, "failed": null, "pending_capacity": 0, "pending_proxy": 0, "running": 20, "status": "ready", "topology": "slot_both"}
+iproyal {"blocked": 0, "desired": 10, "failed": null, "pending_capacity": 0, "pending_proxy": 0, "running": 10, "status": "ready", "topology": "slot_proxy"}
+mysterium {"blocked": null, "desired": null, "failed": null, "pending_capacity": null, "pending_proxy": null, "running": null, "status": "manual", "topology": "dedicated"}
+nkn {"blocked": null, "desired": null, "failed": null, "pending_capacity": null, "pending_proxy": null, "running": null, "status": "manual", "topology": "dedicated"}
+packetstream {"blocked": 0, "desired": 10, "failed": null, "pending_capacity": 0, "pending_proxy": 0, "running": 10, "status": "ready", "topology": "slot_proxy"}
+proxies-sx {"blocked": 0, "desired": 10, "failed": null, "pending_capacity": 0, "pending_proxy": 0, "running": 10, "status": "ready", "topology": "slot_proxy"}
+proxybase-xyz {"blocked": null, "desired": null, "failed": null, "pending_capacity": null, "pending_proxy": null, "running": null, "status": "manual", "topology": "manual"}
+proxybase {"blocked": 0, "desired": 20, "failed": null, "pending_capacity": 0, "pending_proxy": 0, "running": 20, "status": "ready", "topology": "slot_both"}
+proxyrack {"blocked": 0, "desired": 20, "failed": null, "pending_capacity": 0, "pending_proxy": 0, "running": 20, "status": "ready", "topology": "slot_both"}
+repocket {"blocked": 0, "desired": 20, "failed": null, "pending_capacity": 0, "pending_proxy": 0, "running": 20, "status": "ready", "topology": "slot_both"}
+spide {"blocked": 0, "desired": 20, "failed": null, "pending_capacity": 0, "pending_proxy": 0, "running": 20, "status": "ready", "topology": "slot_both"}
+traffmonetizer {"blocked": 0, "desired": 20, "failed": null, "pending_capacity": 0, "pending_proxy": 0, "running": 20, "status": "ready", "topology": "slot_both"}
+urnetwork {"blocked": 0, "desired": 20, "failed": null, "pending_capacity": 0, "pending_proxy": 0, "running": 20, "status": "ready", "topology": "slot_both"}
+uprock {"blocked": null, "desired": null, "failed": null, "pending_capacity": null, "pending_proxy": null, "running": null, "status": "manual", "topology": "manual"}
+wipter {"blocked": null, "desired": null, "failed": null, "pending_capacity": null, "pending_proxy": null, "running": null, "status": "manual", "topology": "manual"}
+worker 118904
+earnfm {"blocked": 0, "desired": 20, "failed": null, "pending_capacity": 0, "pending_proxy": 0, "running": 20, "status": "ready", "topology": "slot_both"}
+iproyal {"blocked": 0, "desired": 10, "failed": null, "pending_capacity": 0, "pending_proxy": 0, "running": 10, "status": "ready", "topology": "slot_proxy"}
+mysterium {"blocked": null, "desired": null, "failed": null, "pending_capacity": null, "pending_proxy": null, "running": null, "status": "manual", "topology": "dedicated"}
+nkn {"blocked": null, "desired": null, "failed": null, "pending_capacity": null, "pending_proxy": null, "running": null, "status": "manual", "topology": "dedicated"}
+packetstream {"blocked": 0, "desired": 10, "failed": null, "pending_capacity": 0, "pending_proxy": 0, "running": 10, "status": "ready", "topology": "slot_proxy"}
+proxies-sx {"blocked": 0, "desired": 10, "failed": null, "pending_capacity": 0, "pending_proxy": 0, "running": 10, "status": "ready", "topology": "slot_proxy"}
+proxybase-xyz {"blocked": null, "desired": null, "failed": null, "pending_capacity": null, "pending_proxy": null, "running": null, "status": "manual", "topology": "manual"}
+proxybase {"blocked": 0, "desired": 20, "failed": null, "pending_capacity": 0, "pending_proxy": 0, "running": 20, "status": "ready", "topology": "slot_both"}
+proxyrack {"blocked": 0, "desired": 20, "failed": null, "pending_capacity": 0, "pending_proxy": 0, "running": 20, "status": "ready", "topology": "slot_both"}
+repocket {"blocked": 0, "desired": 20, "failed": null, "pending_capacity": 0, "pending_proxy": 0, "running": 20, "status": "ready", "topology": "slot_both"}
+spide {"blocked": 0, "desired": 20, "failed": null, "pending_capacity": 0, "pending_proxy": 0, "running": 20, "status": "ready", "topology": "slot_both"}
+traffmonetizer {"blocked": 0, "desired": 20, "failed": null, "pending_capacity": 0, "pending_proxy": 0, "running": 20, "status": "ready", "topology": "slot_both"}
+urnetwork {"blocked": 0, "desired": 20, "failed": null, "pending_capacity": 0, "pending_proxy": 0, "running": 20, "status": "ready", "topology": "slot_both"}
+uprock {"blocked": null, "desired": null, "failed": null, "pending_capacity": null, "pending_proxy": null, "running": null, "status": "manual", "topology": "manual"}
+wipter {"blocked": null, "desired": null, "failed": null, "pending_capacity": null, "pending_proxy": null, "running": null, "status": "manual", "topology": "manual"}
