@@ -17,8 +17,16 @@ def test_deploy_raw_does_not_pull_locally_built_installer_image():
     client.containers.run.return_value = MagicMock(short_id="abc")
     with (
         patch.object(orchestrator, "_get_client", return_value=client),
-        patch.object(orchestrator.provider_installers, "resolve_installer_manifest", return_value={"version": "v1", "url": "https://example.test/a"}),
-        patch.object(orchestrator.provider_installers, "ensure_installer_image", return_value="cashpilot/uprock-mining:v1-ubuntu24.04"),
+        patch.object(
+            orchestrator.provider_installers,
+            "resolve_installer_manifest",
+            return_value={"version": "v1", "url": "https://example.test/a"},
+        ),
+        patch.object(
+            orchestrator.provider_installers,
+            "ensure_installer_image",
+            return_value="cashpilot/uprock-mining:v1-ubuntu24.04",
+        ),
     ):
         orchestrator.deploy_raw(
             slug="uprock-node",
