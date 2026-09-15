@@ -981,9 +981,11 @@ def deploy_raw(
     provider = provider_slug or slug
     client = _get_client()
     name = _container_name(slug)
+    installer_image = False
     if installer_manifest_url:
         resolved = provider_installers.resolve_installer_manifest(provider, installer_manifest_url, installer_platform)
         image = provider_installers.ensure_installer_image(client, provider, resolved)
+        installer_image = True
     env = dict(env or {})
     if provider == "wipter" and deploy_credentials:
         env["WIPTER_EMAIL"] = str(deploy_credentials.get("email") or "")
@@ -1040,7 +1042,7 @@ def deploy_raw(
     if labels:
         all_labels.update(labels)
 
-    if provider != "earnapp":
+    if provider != "earnapp" and not installer_image:
         logger.info("Pulling image %s", image)
         try:
             client.images.pull(image)
