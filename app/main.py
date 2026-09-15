@@ -576,6 +576,9 @@ async def _deploy_nkn_slots(
                 outcome["deployed"].append(slot_id)
             except Exception as exc:  # noqa: BLE001 - continue with the next slot
                 safe_error = type(exc).__name__
+                if isinstance(exc, HTTPException) and exc.detail:
+                    safe_detail = re.sub(r"[\r\n\t]+", " ", str(exc.detail))[:240]
+                    safe_error = f"{safe_error}: {safe_detail}"
                 logger.warning("NKN slot %s deploy failed on worker %s: %s", slot_id, worker_id, safe_error)
                 if lease:
                     with contextlib.suppress(Exception):
