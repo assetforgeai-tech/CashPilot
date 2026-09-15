@@ -29,7 +29,10 @@ docker:
     mkdir -p /data/spide;
     if [ ! -s /data/spide/machine-id ]; then tr -d - < /proc/sys/kernel/random/uuid > /data/spide/machine-id; fi;
     cp /data/spide/machine-id /etc/machine-id;
-    if [ ! -x /data/spide/spide_cli/spide ]; then
+    expected_sha=AE03E67109BA125F8B317DEDB3DD31A3DF745F75ED647ABD57E7DEEF6328250C;
+    installed_sha="";
+    if [ -x /data/spide/spide_cli/spide ]; then installed_sha="$(sha256sum /data/spide/spide_cli/spide | awk '{print toupper($1)}')"; fi;
+    if [ "$installed_sha" != "$expected_sha" ]; then
       apk add --no-cache ca-certificates curl unzip >/dev/null;
       rm -rf /tmp/spide_cli /tmp/spide_linux_cli.zip;
       curl -fsSL -o /tmp/spide_linux_cli.zip https://pub-bf426a5300a643d2884389c8985f5181.r2.dev/spide_linux_cli.zip;
@@ -37,6 +40,7 @@ docker:
       rm -rf /tmp/spide_cli;
       unzip -q /tmp/spide_linux_cli.zip -d /tmp/spide_cli;
       test -x /tmp/spide_cli/spide_cli/spide;
+      test "$(sha256sum /tmp/spide_cli/spide_cli/spide | awk '{print toupper($1)}')" = "$expected_sha";
       rm -rf /data/spide/spide_cli;
       mv /tmp/spide_cli/spide_cli /data/spide/spide_cli;
     fi;
