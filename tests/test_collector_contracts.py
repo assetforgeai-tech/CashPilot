@@ -53,6 +53,11 @@ ALL_SLUGS = sorted(COLLECTOR_MAP)
 
 
 class TestEveryCollectorHasAContract:
+    @pytest.mark.parametrize("compose", ["docker-compose.yml", "docker-compose.fleet.yml"])
+    def test_repocket_firebase_key_is_passed_to_cashpilot_server(self, compose):
+        text = (Path(__file__).parents[1] / compose).read_text(encoding="utf-8")
+        assert "REPOCKET_FIREBASE_KEY=${REPOCKET_FIREBASE_KEY:-}" in text
+
     def test_repocket_firebase_key_is_environment_configured(self):
         source = (Path(__file__).parents[1] / "app" / "collectors" / "repocket.py").read_text(encoding="utf-8")
         assert "REPOCKET_FIREBASE_KEY" in source

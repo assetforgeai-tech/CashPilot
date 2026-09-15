@@ -31,6 +31,7 @@ services:
       - CASHPILOT_ENCRYPTION_KEY=${CASHPILOT_ENCRYPTION_KEY:-}
       - CASHPILOT_ALLOW_EPHEMERAL_KEY=${CASHPILOT_ALLOW_EPHEMERAL_KEY:-false}
       - CASHPILOT_API_KEY=${CASHPILOT_API_KEY}
+      - REPOCKET_FIREBASE_KEY=${REPOCKET_FIREBASE_KEY:-}
     init: true
     # The image declares its own HEALTHCHECK, so `docker ps` will show
     # "(unhealthy)" when the app stops answering. NOTHING ACTS ON THAT BY
