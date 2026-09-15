@@ -104,6 +104,13 @@ collector:
       required: true
       source: "Repocket account"
       description: "Account password used by the earnings collector."
+    - key: firebase_key
+      label: "Firebase web API key (optional override)"
+      kind: token
+      secret: true
+      required: false
+      source: "Repocket web app configuration"
+      description: "Optional override for the public Firebase project key; environment configuration remains supported."
   notes: "Earnings collector authenticates separately via Firebase (account email/password) to read the balance — distinct from the container's RP_API_KEY. Per-device earnings visible."
   credential_hint: "Use your Repocket account email and password (same as <a href='https://app.repocket.com' target='_blank'>app.repocket.com</a>)."
 
