@@ -49,10 +49,12 @@
 - [x] Use the current catalog spec for every generic slot.
 - [x] Run deployment sequentially per worker/provider and save HTTP/result evidence.
 - [ ] Treat partial/blocked plans as explicit evidence, not deployment success.
+- [x] Record the current Proxies.sx provider/upstream timeout as blocked evidence in `docs/evidence/proxies-sx-bootstrap-failure-2026-09-15.md`; keep it out of earning-success counts.
 - [x] Verify no restart loop and no stale endpoint after deployment.
 - [x] Keep Spide collector dashboard-only; never execute collector code in the node.
 - [x] Pin Spide bootstrap to the R2 ZIP and verified executable SHA.
 - [x] Reconcile and refresh any worker container still using the legacy DigitalOcean bootstrap.
+- [x] Record the runtime/collector boundary and pinned artifact evidence in `docs/evidence/spide-runtime-collector-separation-2026-09-15.md`.
 
 Live defect fixes added during cycle 1:
 
@@ -69,6 +71,7 @@ Live defect fixes added during cycle 1:
 - [ ] Inspect readiness for `mysterium`, `nkn`, `proxybase-xyz`, `uprock`, and `wipter`.
 - [ ] Run only supported dedicated/manual flows with existing credentials and preserve identity storage.
 - [ ] Record unsupported/manual states rather than inventing generic deployment.
+- [x] Record the current provider-instance inventory and explicit evidence limits in `docs/evidence/azure-provider-current-status-2026-09-15.md`.
 
 ### Task 5: Reconcile runtime, database, and lease state
 
@@ -140,4 +143,6 @@ Live defect fixes added during cycle 1:
 - [x] Add regression coverage; focused NKN suite passes (`78 passed`, `ruff` clean).
 - [ ] Publish and roll out the helper change, then capture fresh ACK/lease evidence.
 - [x] Publish release `v1.53.9`; roll out helper to both Azure hosts; direct CAS resume probe returned HTTP 200 for `ipv4-002`.
-- [ ] Trace remaining per-slot helper errors (`RuntimeError`, `ConnectionRefusedError`, `FileNotFoundError`) before any NKN cleanup.
+- [x] Trace remaining per-slot helper errors: current worker logs show stale ACK attempts for five assignments; server has no matching active leases. Exact-CAS stops were applied and recorded in `docs/evidence/nkn-helper-ack-followup-2026-09-15.md`.
+- [ ] Restore only after the server issues current leases and matching ACKs; investigate why those assignments are not being re-leased.
+- [x] Avoid repeating suspend requests for assignments already marked `lease_guard_suspended`; a matching server ACK remains the only resume path.
