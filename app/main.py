@@ -4474,10 +4474,9 @@ async def _run_post_deploy_automation(
     deploy = (svc or {}).get("deploy") or {}
     if deploy.get("automation") != "device_key_register" or slug != "spide":
         return
+    if not deployed:
+        return
     async with _spide_registration_lock:
-        # A reconcile/deploy request can skip already-running instances.
-        if not deployed:
-            deployed = await database.list_provider_instances(slug=slug, worker_id=worker_id)
         email = str(await database.get_config("spide_email") or "").strip()
         password = str(await database.get_config("spide_password") or "")
         token = ""
