@@ -334,6 +334,7 @@ class TestProviderAutomationContracts:
         assert "dashboard_token" in self._credential_keys(svc, "dashboard")
         assert "pub-bf426a5300a643d2884389c8985f5181.r2.dev/spide_linux_cli.zip" in svc["docker"]["command"]
         assert "[ ! -x /data/spide/spide_cli/spide ]" in svc["docker"]["command"]
+        assert svc["docker"]["command"].index("[ ! -x /data/spide/spide_cli/spide ]") < svc["docker"]["command"].index("apk add")
         assert "exec /data/spide/spide_cli/spide" in svc["docker"]["command"]
 
     def test_mysterium_runtime_uses_direct_wallet_deploy_credentials(self):
