@@ -150,7 +150,11 @@ async def register_spide_device(
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(
                 f"{base_url.rstrip('/')}/api/v1/device/create",
-                headers=spide_auth_headers(credential),
+                headers={
+                    **spide_auth_headers(credential),
+                    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                    "X-Requested-With": "XMLHttpRequest",
+                },
                 data={"title": title, "device_key": device_key},
             )
         if int(getattr(resp, "status_code", 200)) < 500 or attempt == 2:

@@ -44,6 +44,8 @@ def test_register_spide_device_uses_form_encoded_raw_setup_contract(monkeypatch)
     asyncio.run(provider_automation.register_spide_device("tok", "key", title="node"))
     assert calls["kwargs"]["data"] == {"title": "node", "device_key": "key"}
     assert "json" not in calls["kwargs"]
+    assert calls["kwargs"]["headers"]["Content-Type"] == "application/x-www-form-urlencoded; charset=UTF-8"
+    assert calls["kwargs"]["headers"]["X-Requested-With"] == "XMLHttpRequest"
 
 
 def test_login_spide_uses_form_encoded_credentials(monkeypatch):
