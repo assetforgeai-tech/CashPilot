@@ -12,9 +12,10 @@ a Docker restart loop.
 
 - Restored the server to `1.53.5` while isolating the bad rollout.
 - Changed checksum extraction to a quote-safe `head -c 64 | tr a-f A-F` pipeline.
-- Merged PR #414 and published release `v1.53.6`.
+- Merged PR #414 and published release `v1.53.6`; merged PR #415 and published `v1.53.7`.
 - Rolled out the server/UI and worker images with data and worker identity hashes preserved.
 - Refreshed Spide slots on workers `118903` and `118904` without deleting volumes or device keys.
+- Upgraded both Azure workers and the server to `1.53.7`, preserving provider container IDs.
 
 ## Verification
 
@@ -23,6 +24,7 @@ a Docker restart loop.
 - Current catalog uses only the R2 URL and `/data/spide/spide_cli/spide`.
 - Spide collector remains dashboard-only; `collector_source` is empty.
 - No collector process runs inside the node container.
+- Both workers report healthy heartbeats after the upgrade; duplicate historical worker rows are marked offline/superseded by current IDs.
 
 ## Remaining production gates
 
