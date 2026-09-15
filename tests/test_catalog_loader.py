@@ -339,7 +339,7 @@ class TestProviderAutomationContracts:
         ].index("apk add")
         assert "exec /data/spide/spide_cli/spide" in svc["docker"]["command"]
         assert (
-            "expected_sha=AE03E67109BA125F8B317DEDB3DD31A3DF745F75ED647ABD57E7DEEF6328250C" in svc["docker"]["command"]
+            "expected_sha=04F31522CBDB03B3D11E5293A3A18C6E910AED11B6D8B431B560BC7CB4ED08E5" in svc["docker"]["command"]
         )
         assert "installed_sha" in svc["docker"]["command"]
         assert svc["collector"]["type"] == "manual"
