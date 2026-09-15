@@ -1820,6 +1820,10 @@ class ProxyTargetProbeSpec(BaseModel):
     targets: list[str] = Field(default_factory=list)
 
 
+class ProviderEgressProbeSpec(BaseModel):
+    instances: list[str] = Field(min_length=1, max_length=256)
+
+
 class WipterProxyMigrationSpec(BaseModel):
     proxy: dict[str, Any]
 
@@ -3470,6 +3474,31 @@ async def api_probe_proxy_targets(request: Request, spec: ProxyTargetProbeSpec) 
     targets = _DEFAULT_PROXY_PROBE_TARGETS
     result = await _probe_proxy_targets(spec.proxy, targets)
     return {"ok": result["ok"], "results": result["results"]}
+
+
+@app.post("/api/providers/egress-probe")
+async def api_probe_provider_egress(request: Request, spec: ProviderEgressProbeSpec) -> dict[str, Any]:
+    """Actively inspect managed runtime namespaces without changing them."""
+    _verify_api_key(request)
+    instance_ids = list(dict.fromkeys(str(value or "").strip() for value in spec.instances))
+    if any(not re.fullmatch(r"[a-z0-9][a-z0-9._-]{2,160}", value) for value in instance_ids):
+        raise HTTPException(status_code=400, detail="invalid provider instance id")
+    semaphore = asyncio.Semaphore(8)
+
+    async def probe(instance_id: str) -> dict[str, Any]:
+        async with semaphore:
+            try:
+                evidence = await asyncio.to_thread(orchestrator.probe_service_egress, instance_id)
+            except (RuntimeError, ValueError, OSError):
+                evidence = {"running": False, "probe_ok": False, "observed_egress_ip": ""}
+        return {
+            "instance_id": instance_id,
+            "running": evidence.get("running") is True,
+            "probe_ok": evidence.get("probe_ok") is True,
+            "observed_egress_ip": str(evidence.get("observed_egress_ip") or ""),
+        }
+
+    return {"results": await asyncio.gather(*(probe(instance_id) for instance_id in instance_ids))}
 
 
 @app.post("/api/providers/wipter/migrate-proxy")

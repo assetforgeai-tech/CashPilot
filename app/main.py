@@ -8883,6 +8883,41 @@ async def api_provider_network_reconciliation(request: Request) -> dict[str, Any
     return {"reports": reports, "read_only": True}
 
 
+@app.get("/api/admin/provider-network/active-probe")
+async def api_provider_network_active_probe(request: Request, worker_ids: str = "") -> dict[str, Any]:
+    """Run bounded, read-only egress probes in selected worker namespaces."""
+    _require_owner(request)
+    selected = {int(value) for value in worker_ids.split(",") if value.strip().isdigit() and int(value) > 0}
+    reports: list[dict[str, Any]] = []
+    for worker in await database.list_workers():
+        worker_id = int(worker.get("id") or 0)
+        if selected and worker_id not in selected:
+            continue
+        if str(worker.get("status") or "").lower() != "online":
+            continue
+        containers = _safe_json(worker.get("containers") or "[]", [])
+        instances = sorted(
+            {
+                str(item.get("instance_slug") or item.get("name") or "").strip()
+                for item in containers
+                if isinstance(item, dict)
+                and str(item.get("slug") or "").strip().lower() in provider_runtime.ACTIVE_SLUGS
+                and str(item.get("instance_slug") or item.get("name") or "").strip()
+            }
+        )
+        if not instances:
+            continue
+        result = await _proxy_to_worker(
+            worker_id,
+            "POST",
+            "/api/providers/egress-probe",
+            json={"instances": instances},
+            timeout=max(30, min(300, len(instances) * 3)),
+        )
+        reports.append({"worker_id": worker_id, "results": list(result.get("results") or [])})
+    return {"reports": reports, "read_only": True}
+
+
 class WipterMigrationRequest(BaseModel):
     worker_id: int = Field(gt=0)
 
