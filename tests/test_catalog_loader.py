@@ -333,12 +333,14 @@ class TestProviderAutomationContracts:
         assert svc["deploy"]["deploy_surface"] == "docker"
         assert "dashboard_token" in self._credential_keys(svc, "dashboard")
         assert "pub-bf426a5300a643d2884389c8985f5181.r2.dev/spide_linux_cli.zip" in svc["docker"]["command"]
-        assert "if [ \"$installed_sha\" != \"$expected_sha\" ]; then" in svc["docker"]["command"]
-        assert svc["docker"]["command"].index('if [ "$installed_sha" != "$expected_sha" ]; then') < svc["docker"]["command"].index(
-            "apk add"
-        )
+        assert 'if [ "$installed_sha" != "$expected_sha" ]; then' in svc["docker"]["command"]
+        assert svc["docker"]["command"].index('if [ "$installed_sha" != "$expected_sha" ]; then') < svc["docker"][
+            "command"
+        ].index("apk add")
         assert "exec /data/spide/spide_cli/spide" in svc["docker"]["command"]
-        assert "expected_sha=AE03E67109BA125F8B317DEDB3DD31A3DF745F75ED647ABD57E7DEEF6328250C" in svc["docker"]["command"]
+        assert (
+            "expected_sha=AE03E67109BA125F8B317DEDB3DD31A3DF745F75ED647ABD57E7DEEF6328250C" in svc["docker"]["command"]
+        )
         assert "installed_sha" in svc["docker"]["command"]
         assert svc["collector"]["type"] == "manual"
 
