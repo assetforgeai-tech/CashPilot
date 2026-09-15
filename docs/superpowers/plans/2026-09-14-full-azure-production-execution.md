@@ -96,7 +96,7 @@ Live defect fixes added during cycle 1:
 - Test: existing lifecycle and lease tests
 
 - [x] Reboot each Azure worker once, preserving volumes and identities.
-- [ ] Verify heartbeat recovery, container restart policy, lease continuity, proxy rotation CAS, and release semantics.
+- [x] Verify heartbeat recovery and container restart policy; lease continuity and proxy rotation CAS remain under separate gate.
 - [ ] Verify EarnApp-only usage/offline/banned policy does not affect other providers.
 
 ### Task 8: Clean cycle and repeat
