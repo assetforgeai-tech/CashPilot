@@ -189,9 +189,7 @@ PROVIDERS: dict[str, ProviderRuntime] = {
     "repocket": ProviderRuntime(
         "repocket", "repocket.py", "repocket.py", ("direct", "proxy"), "earnings", topology="slot_both"
     ),
-    "spide": ProviderRuntime(
-        "spide", "spide.py", "spide.py", ("direct", "proxy"), "dashboard_only", topology="slot_both"
-    ),
+    "spide": ProviderRuntime("spide", "spide.py", "", ("direct", "proxy"), "dashboard_only", topology="slot_both"),
     "traffmonetizer": ProviderRuntime(
         "traffmonetizer",
         "traffmonetizer.py",
