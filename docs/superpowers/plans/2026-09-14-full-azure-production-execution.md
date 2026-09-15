@@ -139,3 +139,5 @@ Live defect fixes added during cycle 1:
 - [x] Make JSON response writes tolerate client disconnects without generating a misleading second HTTP 500.
 - [x] Add regression coverage; focused NKN suite passes (`78 passed`, `ruff` clean).
 - [ ] Publish and roll out the helper change, then capture fresh ACK/lease evidence.
+- [x] Publish release `v1.53.9`; roll out helper to both Azure hosts; direct CAS resume probe returned HTTP 200 for `ipv4-002`.
+- [ ] Trace remaining per-slot helper errors (`RuntimeError`, `ConnectionRefusedError`, `FileNotFoundError`) before any NKN cleanup.
