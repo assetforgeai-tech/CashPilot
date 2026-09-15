@@ -343,6 +343,8 @@ class TestProviderAutomationContracts:
         )
         assert "installed_sha" in svc["docker"]["command"]
         assert svc["collector"]["type"] == "manual"
+        assert svc["runtime"]["setup_source"] == "spide.py"
+        assert svc["runtime"]["collector_source"] == ""
 
     def test_mysterium_runtime_uses_direct_wallet_deploy_credentials(self):
         svc = self._svc("mysterium")
