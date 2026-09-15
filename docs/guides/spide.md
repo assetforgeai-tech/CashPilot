@@ -1,7 +1,7 @@
 # Spide
 
 > **Category:** Bandwidth Sharing | **Status:** Active
-> **Website:** [https://spide.io](https://spide.io)
+> **Website:** [https://spide.network](https://spide.network)
 
 ## Description
 
@@ -37,7 +37,7 @@ Sign up at [Spide](https://spide.network/register.html?f3bc51).
 
 ### 2. Get your credentials
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+After signing up, CashPilot uses the account email/password only for server-side device-key registration. The dashboard token/cookie is a separate credential used only for the registration API.
 
 ### 3. Deploy with CashPilot
 
@@ -47,8 +47,6 @@ In the CashPilot web UI, find **Spide** in the service catalog and click **Deplo
 
 - **Image:** `alpine:3.20`
 
-### Environment Variables
+### Runtime boundary
 
-| Variable | Label | Required | Secret | Description |
-|----------|-------|:--------:|:------:|-------------|
-| `SPIDE_MACHINE_ID` | Machine ID | No | No | Machine ID for existing device already registered (auto-generated if empty) |
+The container runs only the Spide Linux CLI. It does not run collector or dashboard code. CashPilot parses the CLI `Device key` from worker logs, then registers that key server-side through `POST /api/v1/device/create`.
