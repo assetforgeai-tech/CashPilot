@@ -4536,9 +4536,7 @@ async def _register_spide_device_from_worker_logs(
                     "spide", "setup_complete", f"Device key ending {device_key[-4:]} already registered"
                 )
                 return
-            logger.warning(
-                "Spide device registration attempt %d/5 failed: %s", registration_attempt + 1, exc
-            )
+            logger.warning("Spide device registration attempt %d/5 failed: %s", registration_attempt + 1, exc)
             continue
         await database.record_health_event("spide", "setup_complete", f"registered Device key ending {device_key[-4:]}")
         return
