@@ -36,3 +36,18 @@ No evidence shows that a collector embedded in the node caused the reported
 HTTP 500. Copying the whole legacy script into a node would violate the
 runtime boundary and is rejected. A concrete 500 response body/request trace
 is still required before diagnosing a provider-side error.
+
+## Follow-up verification
+
+- The R2 archive was downloaded again on 2026-09-16; its ZIP and executable
+  hashes matched the pinned values above.
+- The current provider build observed from the CLI is
+  `2026-08-13_07:48:40-LINUX`, client version `15`; this is the direct node
+  evidence used to classify the reported dashboard/version discrepancy as
+  provider-side display/cache or stale-node state until a dashboard response
+  exposes a comparable client field.
+- A local attempt to run the live registration probe was stopped because the
+  selected Windows checkout had no production database schema (`config` table
+  missing). No credential, request, or provider state was changed. The HTTP
+  `500` gate remains open rather than being inferred from this failed local
+  probe.
