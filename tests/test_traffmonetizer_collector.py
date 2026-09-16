@@ -43,3 +43,26 @@ def test_collector_treats_login_rate_limit_as_transient():
 
     assert result.error_kind == "transient"
     assert "rate limited" in (result.error or "").lower()
+
+
+def test_collector_honors_rate_limit_cooldown(monkeypatch):
+    calls = 0
+
+    class Client:
+        async def post(self, *_args, **_kwargs):
+            nonlocal calls
+            calls += 1
+            return httpx.Response(
+                429,
+                headers={"Retry-After": "60"},
+                request=httpx.Request("POST", "https://data.traffmonetizer.com/api/auth/login"),
+            )
+
+    collector = traffmonetizer.TraffmonetizerCollector("owner@example.com", "password")
+    collector._get_client = lambda **_kwargs: Client()
+    first = asyncio.run(collector.collect())
+    second = asyncio.run(collector.collect())
+
+    assert first.error_kind == "transient"
+    assert second.error_kind == "transient"
+    assert calls == 1
