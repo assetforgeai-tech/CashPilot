@@ -32,7 +32,8 @@
 - [x] Run full Python tests and catalog validation.
 - [x] Verify registry image/tag parity.
 - [x] Verify Azure heartbeats, inventory, provider dashboard traffic, and no unintended recreation.
-- [ ] Run network/security and reboot lifecycle checks.
+- [ ] Run network/security checks.
+- [x] Run reboot lifecycle checks.
 
 ### Task 4: Release verified changes
 
@@ -42,6 +43,6 @@
 
 ### Task 5: Closeout
 
-- [ ] Produce requirement-by-requirement production report.
-- [ ] List residual gaps and evidence.
+- [x] Produce requirement-by-requirement production gate status.
+- [x] List residual gaps and evidence.
 - [ ] Mark goal complete only after every gate is proven.
