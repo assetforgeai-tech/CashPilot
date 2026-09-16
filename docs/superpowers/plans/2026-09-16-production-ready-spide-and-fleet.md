@@ -30,7 +30,7 @@
 ### Task 3: Production gate sweep
 
 - [x] Run full Python tests and catalog validation.
-- [ ] Verify registry image/tag parity.
+- [x] Verify registry image/tag parity.
 - [x] Verify Azure heartbeats, inventory, provider dashboard traffic, and no unintended recreation.
 - [ ] Run network/security and reboot lifecycle checks.
 
