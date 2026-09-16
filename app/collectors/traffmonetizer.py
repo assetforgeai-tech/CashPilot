@@ -7,6 +7,9 @@ in with email/password, then calls the balance API.
 from __future__ import annotations
 
 import logging
+import time
+from datetime import UTC
+from email.utils import parsedate_to_datetime
 
 import httpx
 
@@ -29,8 +32,28 @@ class TraffmonetizerCollector(BaseCollector):
         self.email = email.strip()
         self.password = password.strip()
         self._token: str = ""
+        self._cooldown_until = 0.0
+
+    def _check_cooldown(self) -> None:
+        if time.monotonic() < self._cooldown_until:
+            raise RuntimeError("Traffmonetizer rate limited - retry later")
+
+    def _set_cooldown(self, response: httpx.Response) -> None:
+        value = response.headers.get("Retry-After", "")
+        try:
+            seconds = float(value)
+        except ValueError:
+            try:
+                seconds = max(
+                    0.0,
+                    (parsedate_to_datetime(value).astimezone(UTC).timestamp() - time.time()),
+                )
+            except (TypeError, ValueError, OverflowError):
+                seconds = 60.0
+        self._cooldown_until = time.monotonic() + min(max(seconds, 1.0), 3600.0)
 
     async def _authenticate(self, client: httpx.AsyncClient) -> str:
+        self._check_cooldown()
         resp = await client.post(
             f"{API_BASE}/auth/login",
             json={
@@ -60,6 +83,7 @@ class TraffmonetizerCollector(BaseCollector):
             )
 
         try:
+            self._check_cooldown()
             client = self._get_client(timeout=30)
             if not self._token:
                 self._token = await self._authenticate(client)
@@ -98,6 +122,7 @@ class TraffmonetizerCollector(BaseCollector):
             )
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 429:
+                self._set_cooldown(exc.response)
                 return EarningsResult(
                     platform=self.platform,
                     balance=0.0,
@@ -117,6 +142,13 @@ class TraffmonetizerCollector(BaseCollector):
                 balance=0.0,
                 error="Traffmonetizer API request failed",
                 error_kind=base.classify_exception(exc),
+            )
+        except RuntimeError as exc:
+            return EarningsResult(
+                platform=self.platform,
+                balance=0.0,
+                error=str(exc),
+                error_kind=base.KIND_TRANSIENT,
             )
         except Exception as exc:
             base.log_failure(logger, "Traffmonetizer", exc)
