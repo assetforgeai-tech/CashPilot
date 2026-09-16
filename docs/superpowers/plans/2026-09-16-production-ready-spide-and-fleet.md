@@ -31,7 +31,7 @@
 
 - [x] Run full Python tests and catalog validation.
 - [ ] Verify registry image/tag parity.
-- [ ] Verify Azure heartbeats, inventory, provider dashboard traffic, and no unintended recreation.
+- [x] Verify Azure heartbeats, inventory, provider dashboard traffic, and no unintended recreation.
 - [ ] Run network/security and reboot lifecycle checks.
 
 ### Task 4: Release verified changes
