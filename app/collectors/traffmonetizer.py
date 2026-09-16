@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 # The dashboard bundle publishes data.traffmonetizer.com as its API origin.
 API_BASE = "https://data.traffmonetizer.com/api"
+_COOLDOWN_UNTIL = 0.0
 
 
 class TraffmonetizerCollector(BaseCollector):
@@ -32,13 +33,13 @@ class TraffmonetizerCollector(BaseCollector):
         self.email = email.strip()
         self.password = password.strip()
         self._token: str = ""
-        self._cooldown_until = 0.0
 
     def _check_cooldown(self) -> None:
-        if time.monotonic() < self._cooldown_until:
+        if time.monotonic() < _COOLDOWN_UNTIL:
             raise RuntimeError("Traffmonetizer rate limited - retry later")
 
     def _set_cooldown(self, response: httpx.Response) -> None:
+        global _COOLDOWN_UNTIL
         value = response.headers.get("Retry-After", "")
         try:
             seconds = float(value)
@@ -50,7 +51,7 @@ class TraffmonetizerCollector(BaseCollector):
                 )
             except (TypeError, ValueError, OverflowError):
                 seconds = 60.0
-        self._cooldown_until = time.monotonic() + min(max(seconds, 1.0), 3600.0)
+        _COOLDOWN_UNTIL = time.monotonic() + min(max(seconds, 1.0), 3600.0)
 
     async def _authenticate(self, client: httpx.AsyncClient) -> str:
         self._check_cooldown()
