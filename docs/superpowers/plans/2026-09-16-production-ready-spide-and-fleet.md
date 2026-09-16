@@ -36,8 +36,8 @@
 
 ### Task 4: Release verified changes
 
-- [ ] Commit isolated documentation/evidence changes.
-- [ ] Create PR, pass checks, merge, deploy matching image.
+- [x] Commit isolated documentation/evidence changes.
+- [x] Create PR, pass checks, merge, deploy matching image.
 - [ ] Recheck Spide runtime after rollout.
 
 ### Task 5: Closeout
