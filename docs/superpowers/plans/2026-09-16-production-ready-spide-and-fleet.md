@@ -38,7 +38,7 @@
 
 - [x] Commit isolated documentation/evidence changes.
 - [x] Create PR, pass checks, merge, deploy matching image.
-- [ ] Recheck Spide runtime after rollout.
+- [x] Recheck Spide runtime after rollout.
 
 ### Task 5: Closeout
 
