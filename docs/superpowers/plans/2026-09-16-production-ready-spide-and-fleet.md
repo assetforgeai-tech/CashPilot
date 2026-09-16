@@ -25,7 +25,7 @@
 
 - [x] Record archive contents, checksum, catalog command, and registration boundary.
 - [ ] Capture current worker logs and dashboard registration response with secrets redacted.
-- [ ] Classify provider-reported version mismatch using direct node evidence.
+- [x] Classify provider-reported version mismatch using direct node evidence.
 
 ### Task 3: Production gate sweep
 
