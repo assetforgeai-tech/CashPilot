@@ -457,6 +457,26 @@ def test_earnapp_cleanup_keeps_candidate_that_still_has_stage_name():
     candidate.remove.assert_not_called()
 
 
+def test_promoted_canonical_runtime_with_stage_marker_is_restartable():
+    """Promotion keeps a stage marker; canonical lookup must still find it."""
+    client = MagicMock()
+    promoted = MagicMock()
+    promoted.name = "cashpilot-earnapp-disposable-node"
+    promoted.labels = {
+        orchestrator.LABEL_MANAGED: "true",
+        orchestrator.LABEL_SERVICE: "earnapp-disposable-node",
+        "cashpilot.provider": "earnapp",
+        "cashpilot.earnapp.logical_node_id": "earnapp-disposable-node",
+        "cashpilot.earnapp.stage_slug": "earnapp-disposable-node-stage-abcdef123456",
+    }
+    client.containers.get.return_value = promoted
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        assert (
+            orchestrator._find_earnapp_runtime_container(client, "earnapp-disposable-node", sidecar=False) is promoted
+        )
+
+
 def test_apply_proxy_binding_preflights_every_sidecar_before_writing_any_config():
     client = MagicMock()
     current = MagicMock()

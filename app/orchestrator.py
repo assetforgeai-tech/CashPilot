@@ -219,10 +219,13 @@ def _find_earnapp_runtime_container(client: Any, slug: str, *, sidecar: bool):
             raise RuntimeError(f"EarnApp runtime label conflict for {slug}")
         if str(labels.get("cashpilot.provider") or "") != "earnapp":
             raise RuntimeError(f"EarnApp runtime provider conflict for {slug}")
-        # Staged candidates deliberately point their service label at the
-        # canonical logical node. They must not satisfy canonical lookup while
-        # the old runtime is being promoted.
-        if str(labels.get("cashpilot.earnapp.stage_slug") or "").strip():
+        # A candidate keeps the canonical service label but its stage name
+        # identifies it as transitional. After promotion Docker renames the
+        # container to the canonical name while retaining that marker; accept
+        # only that renamed form so restart/presence still find the runtime.
+        stage_marker = str(labels.get("cashpilot.earnapp.stage_slug") or "").strip()
+        container_name = str(getattr(container, "name", "") or "").lstrip("/")
+        if stage_marker and container_name not in {_container_name(slug), _sidecar_name(slug)}:
             continue
         is_sidecar = labels.get("cashpilot.role") == "egress-sidecar"
         if is_sidecar == sidecar:
