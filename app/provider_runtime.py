@@ -10,6 +10,7 @@ Mode = Literal["direct", "proxy"]
 CollectorKind = Literal["earnings", "dashboard_only", "count_only"]
 DeploymentPolicy = Literal["enabled", "platform_restricted", "vps_runtime_prohibited"]
 TopologyPolicy = Literal["slot_direct", "slot_proxy", "slot_both", "dedicated", "manual"]
+ProxyTransport = Literal["in_container", "singbox_compat", "direct_only"]
 
 # Keep the compliance decision in the provider truth matrix so the catalog,
 # API and UI all expose the same policy without inferring it from a Docker
@@ -51,10 +52,16 @@ class ProviderRuntime:
         ("udp", "explicit"),
         ("fail_closed", True),
     )
+    # Compatibility stays explicit until that provider passes the in-container
+    # image/readiness canary. Direct-only providers never get a proxy route.
+    proxy_transport: ProxyTransport = "singbox_compat"
     banned_action: str = "recreate"
     node_health_policy: bool = False
     proxy_allocation_policy: str = "provider_scoped"
     proxy_rejection_action: str = "rotate"
+    # Proxy lanes block UDP by default. Providers that explicitly require
+    # direct UDP declare the exception here so orchestration stays policy-driven.
+    proxy_udp_direct: bool = False
     # Group labels keep shared schedulers from applying provider-specific
     # health actions across unrelated accounts or proxy pools.
     policy_group: str = "provider"
@@ -132,7 +139,8 @@ PROVIDERS: dict[str, ProviderRuntime] = {
         egress_ownership_scope="account_sticky",
         auth_scope="account",
         account_sharing="exclusive_account",
-        banned_action="restart",
+        proxy_transport="in_container",
+        banned_action="recreate",
         node_health_policy=True,
         policy_group="earnapp",
         proxy_failure_scope="node",
@@ -160,6 +168,8 @@ PROVIDERS: dict[str, ProviderRuntime] = {
         topology="dedicated",
         auth_scope="wallet",
         account_sharing="exclusive_wallet",
+        proxy_udp_direct=True,
+        proxy_transport="direct_only",
     ),
     "nkn": ProviderRuntime(
         "nkn",
@@ -170,6 +180,7 @@ PROVIDERS: dict[str, ProviderRuntime] = {
         topology="dedicated",
         auth_scope="wallet",
         account_sharing="exclusive_wallet",
+        proxy_transport="direct_only",
     ),
     "packetstream": ProviderRuntime(
         "packetstream", "packetstream.py", "packetstream.py", ("proxy",), "earnings", topology="slot_proxy"
@@ -210,6 +221,22 @@ ACTIVE_SLUGS = frozenset(PROVIDERS)
 
 def get(slug: str) -> ProviderRuntime | None:
     return PROVIDERS.get(slug)
+
+
+def proxy_udp_direct(slug: str) -> bool:
+    """Return the explicit proxy-lane UDP exception for one provider."""
+    provider = get(str(slug or "").strip().lower())
+    return bool(provider and provider.proxy_udp_direct)
+
+
+def proxy_transport(slug: str) -> ProxyTransport:
+    """Return the selected route backend without inferring it in orchestration."""
+    provider = get(str(slug or "").strip().lower())
+    if provider is None:
+        return "direct_only"
+    if "proxy" not in provider.modes:
+        return "direct_only"
+    return provider.proxy_transport
 
 
 def _runtime_platform(spec: object) -> tuple[str, str]:
@@ -394,6 +421,8 @@ def catalog_runtime(slug: str) -> dict[str, object]:
         "account_sharing": provider.account_sharing,
         "proxy_allocation_policy": provider.proxy_allocation_policy,
         "proxy_rejection_action": provider.proxy_rejection_action,
+        "proxy_transport": provider.proxy_transport,
+        "proxy_udp_direct": provider.proxy_udp_direct,
         "heartbeat": {
             "interval_seconds": provider.heartbeat_interval_seconds,
             "timeout_seconds": provider.heartbeat_timeout_seconds,
@@ -421,7 +450,13 @@ def catalog_runtime(slug: str) -> dict[str, object]:
         "network_policy": {
             lane: {
                 **provider.network_contract_for(lane),
-                "udp": "blocked_by_default" if lane == "proxy" else "provider_required",
+                "udp": (
+                    "direct_exception"
+                    if lane == "proxy" and provider.proxy_udp_direct
+                    else "blocked_by_default"
+                    if lane == "proxy"
+                    else "provider_required"
+                ),
                 "doh": "blocked_by_default" if lane == "proxy" else "provider_native",
                 "dot": "blocked_by_default" if lane == "proxy" else "provider_native",
             }
