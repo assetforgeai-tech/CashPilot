@@ -26,7 +26,14 @@ from urllib.request import Request, urlopen
 import docker
 from docker.errors import APIError, DockerException, NotFound
 
-from app import earnapp_runtime, myst_runtime, provider_automation, provider_installers, provider_runtime, singbox_config
+from app import (
+    earnapp_runtime,
+    myst_runtime,
+    provider_automation,
+    provider_installers,
+    provider_runtime,
+    singbox_config,
+)
 
 try:
     from app.catalog import critical_volume_targets, get_service, get_services
@@ -1131,7 +1138,9 @@ def deploy_raw(
                 "cashpilot.proxy_transport": provider_runtime.proxy_transport(
                     str((labels or {}).get("cashpilot.provider") or provider).strip().lower()
                 ),
-                "cashpilot.earnapp.logical_node_id": str((labels or {}).get("cashpilot.earnapp.logical_node_id") or slug),
+                "cashpilot.earnapp.logical_node_id": str(
+                    (labels or {}).get("cashpilot.earnapp.logical_node_id") or slug
+                ),
                 "cashpilot.earnapp.canonical_slug": str((labels or {}).get("cashpilot.earnapp.canonical_slug") or ""),
             },
             detach=True,
@@ -1661,11 +1670,14 @@ def remove_earnapp_service(slug: str) -> dict[str, bool]:
         container_name = str(getattr(container, "name", "") or "").lstrip("/")
         # Keep a candidate while it still has its stage name. Only a promoted
         # container renamed to the canonical name is an orphan to clean up.
-        if stage_marker and container_name in {_container_name(slug), _sidecar_name(slug)} and str(
-            labels.get("cashpilot.earnapp.logical_node_id")
-            or labels.get("cashpilot.earnapp.canonical_slug")
-            or ""
-        ).strip() == str(slug):
+        if (
+            stage_marker
+            and container_name in {_container_name(slug), _sidecar_name(slug)}
+            and str(
+                labels.get("cashpilot.earnapp.logical_node_id") or labels.get("cashpilot.earnapp.canonical_slug") or ""
+            ).strip()
+            == str(slug)
+        ):
             try:
                 container.remove(force=True)
             except NotFound:
@@ -1708,7 +1720,10 @@ def promote_staged_earnapp_runtime(stage_slug: str, canonical_slug: str, *, new_
         labels = getattr(main, "labels", {}) or {}
         if labels.get(LABEL_MANAGED) != "true" or labels.get("cashpilot.provider") != "earnapp":
             raise RuntimeError("staged EarnApp runtime labels are invalid")
-        if labels.get(LABEL_SERVICE) != canonical_slug or labels.get("cashpilot.earnapp.canonical_slug") != canonical_slug:
+        if (
+            labels.get(LABEL_SERVICE) != canonical_slug
+            or labels.get("cashpilot.earnapp.canonical_slug") != canonical_slug
+        ):
             raise RuntimeError("staged EarnApp runtime is not bound to canonical slug")
         if str(getattr(main, "status", "") or "").lower() != "running":
             raise RuntimeError("staged EarnApp runtime is not running")
@@ -1732,9 +1747,12 @@ def promote_staged_earnapp_runtime(stage_slug: str, canonical_slug: str, *, new_
                 environment=_docker_environment(config.get("Env")),
                 volumes=_docker_volumes(attrs.get("Mounts")),
                 network_mode=str(host.get("NetworkMode") or "bridge"),
-                labels={**dict(config.get("Labels") or {}), LABEL_SERVICE: canonical_slug,
-                        "cashpilot.earnapp.logical_node_id": canonical_slug,
-                        "cashpilot.earnapp.generation": str(int(new_generation))},
+                labels={
+                    **dict(config.get("Labels") or {}),
+                    LABEL_SERVICE: canonical_slug,
+                    "cashpilot.earnapp.logical_node_id": canonical_slug,
+                    "cashpilot.earnapp.generation": str(int(new_generation)),
+                },
                 command=config.get("Cmd") or None,
                 entrypoint=config.get("Entrypoint") or None,
                 working_dir=str(config.get("WorkingDir") or "") or None,
@@ -1759,12 +1777,19 @@ def promote_staged_earnapp_runtime(stage_slug: str, canonical_slug: str, *, new_
             raise
         with contextlib.suppress(Exception):
             main.remove(force=True)
-        return {"main_container_id": str(getattr(promoted, "id", "")), "sidecar_container_id": "", "generation": int(new_generation)}
+        return {
+            "main_container_id": str(getattr(promoted, "id", "")),
+            "sidecar_container_id": "",
+            "generation": int(new_generation),
+        }
     for component, role in ((main, "main"), (sidecar, "egress-sidecar")):
         labels = getattr(component, "labels", {}) or {}
         if labels.get(LABEL_MANAGED) != "true" or labels.get("cashpilot.provider") != "earnapp":
             raise RuntimeError("staged EarnApp runtime labels are invalid")
-        if labels.get(LABEL_SERVICE) != canonical_slug or labels.get("cashpilot.earnapp.canonical_slug") != canonical_slug:
+        if (
+            labels.get(LABEL_SERVICE) != canonical_slug
+            or labels.get("cashpilot.earnapp.canonical_slug") != canonical_slug
+        ):
             raise RuntimeError("staged EarnApp runtime is not bound to canonical slug")
         if role == "egress-sidecar" and labels.get("cashpilot.role") != role:
             raise RuntimeError("staged EarnApp sidecar role is invalid")
@@ -1787,11 +1812,15 @@ def promote_staged_earnapp_runtime(stage_slug: str, canonical_slug: str, *, new_
         sidecar.rename(side_backup)
         try:
             promoted_sidecar = client.containers.create(
-                image=str(side_config.get("Image") or ""), name=_sidecar_name(canonical_slug),
+                image=str(side_config.get("Image") or ""),
+                name=_sidecar_name(canonical_slug),
                 environment=_docker_environment(side_config.get("Env")),
                 volumes=_docker_volumes(side_attrs.get("Mounts")),
-                labels={**dict(side_config.get("Labels") or {}), LABEL_SERVICE: canonical_slug,
-                        "cashpilot.earnapp.logical_node_id": canonical_slug},
+                labels={
+                    **dict(side_config.get("Labels") or {}),
+                    LABEL_SERVICE: canonical_slug,
+                    "cashpilot.earnapp.logical_node_id": canonical_slug,
+                },
                 command=side_config.get("Cmd") or None,
                 entrypoint=side_config.get("Entrypoint") or None,
                 working_dir=str(side_config.get("WorkingDir") or "") or None,
@@ -1826,9 +1855,12 @@ def promote_staged_earnapp_runtime(stage_slug: str, canonical_slug: str, *, new_
                 environment=_docker_environment(config.get("Env")),
                 volumes=_docker_volumes(attrs.get("Mounts")),
                 network_mode=f"container:{getattr(promoted_sidecar, 'id', '') or _sidecar_name(canonical_slug)}",
-                labels={**dict(config.get("Labels") or {}), LABEL_SERVICE: canonical_slug,
-                        "cashpilot.earnapp.logical_node_id": canonical_slug,
-                        "cashpilot.earnapp.generation": str(int(new_generation))},
+                labels={
+                    **dict(config.get("Labels") or {}),
+                    LABEL_SERVICE: canonical_slug,
+                    "cashpilot.earnapp.logical_node_id": canonical_slug,
+                    "cashpilot.earnapp.generation": str(int(new_generation)),
+                },
                 command=config.get("Cmd") or None,
                 entrypoint=config.get("Entrypoint") or None,
                 user=str(config.get("User") or "") or None,
@@ -1870,8 +1902,6 @@ def promote_staged_earnapp_runtime(stage_slug: str, canonical_slug: str, *, new_
         "sidecar_container_id": str(getattr(sidecar, "id", "") or ""),
         "generation": int(new_generation),
     }
-
-
 
 
 def remove_staged_earnapp_service(stage_slug: str) -> dict[str, bool]:
@@ -2107,7 +2137,11 @@ def _provider_evidence(slug: str, container: Any, *, probe_container: Any | None
                 if code == 0:
                     text = raw.decode("utf-8", errors="replace")
                     labels = getattr(container, "labels", {}) or {}
-                    parser = _parse_proxy_runtime_iptables if labels.get("cashpilot.proxy_transport") == "in_container" else _parse_earnapp_iptables
+                    parser = (
+                        _parse_proxy_runtime_iptables
+                        if labels.get("cashpilot.proxy_transport") == "in_container"
+                        else _parse_earnapp_iptables
+                    )
                     evidence.update(parser(text))
             try:
                 probe_result = probe.exec_run(
@@ -2136,7 +2170,11 @@ def _provider_evidence(slug: str, container: Any, *, probe_container: Any | None
                     if code == 0:
                         text = raw.decode("utf-8", errors="replace")
                         labels = getattr(container, "labels", {}) or {}
-                        parser = _parse_proxy_runtime_iptables if labels.get("cashpilot.proxy_transport") == "in_container" else _parse_earnapp_iptables
+                        parser = (
+                            _parse_proxy_runtime_iptables
+                            if labels.get("cashpilot.proxy_transport") == "in_container"
+                            else _parse_earnapp_iptables
+                        )
                         evidence.update(parser(text))
             except (ValueError, OSError, APIError):
                 evidence.update(observed_egress_ip="", probe_ok=False)

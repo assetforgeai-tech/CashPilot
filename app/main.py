@@ -47,12 +47,12 @@ from app import (
     earnapp_canary,
     earnapp_collection,
     earnapp_deploy,  # noqa: F401 - retained for historical canary helpers/tests
+    earnapp_fault_injection,
     earnapp_lifecycle,
     earnapp_policy,
     earnapp_recovery,
     earnapp_runtime,
     egress,
-    earnapp_fault_injection,
     exchange_rates,
     fleet_key,
     lan_isolation,
@@ -1206,9 +1206,7 @@ async def _rotate_account_bound_earnapp_node(
         tx = None
     if tx and str(tx.get("state") or "").upper() == "CLEANED":
         return False
-    if tx and str(tx.get("state") or "").upper() in {
-        "VERIFIED", "OLD_DELETE_CONFIRMED", "PROMOTED_PENDING"
-    }:
+    if tx and str(tx.get("state") or "").upper() in {"VERIFIED", "OLD_DELETE_CONFIRMED", "PROMOTED_PENDING"}:
         stage_slug = str(tx.get("stage_slug") or "")
         new_device_id = str(tx.get("new_device_id") or "")
         new_proxy_id = int(tx.get("new_proxy_id") or 0)
@@ -1234,7 +1232,8 @@ async def _rotate_account_bound_earnapp_node(
                 timeout=180,
             )
             if not isinstance(removed, Mapping) or str(removed.get("status") or "").lower() not in {
-                "removed", "already_removed"
+                "removed",
+                "already_removed",
             }:
                 return False
             await database.advance_earnapp_replacement_transaction(node_id, "PROMOTED_PENDING")
@@ -1251,7 +1250,8 @@ async def _rotate_account_bound_earnapp_node(
             timeout=180,
         )
         if not isinstance(worker_promotion, Mapping) or str(worker_promotion.get("status") or "").lower() not in {
-            "promoted", "already_promoted"
+            "promoted",
+            "already_promoted",
         }:
             return False
         promoted = await database.promote_staged_earnapp_replacement(
@@ -1331,9 +1331,7 @@ async def _rotate_account_bound_earnapp_node(
         # Candidate volumes must never collide with the canonical runtime.
         volumes = dict(spec.get("volumes") or {})
         if volumes:
-            spec["volumes"] = {
-                f"{stage_slug}-data": next(iter(volumes.values()))
-            }
+            spec["volumes"] = {f"{stage_slug}-data": next(iter(volumes.values()))}
         spec["earnapp_stage_for"] = node_id
         spec["labels"] = {
             **dict(spec.get("labels") or {}),
@@ -1356,7 +1354,14 @@ async def _rotate_account_bound_earnapp_node(
 
         evidence: dict[str, Any] = {}
         if assume_account_side_effects:
-            evidence = {"authenticated": True, "device_present": True, "online": True, "banned": False, "workload_state": "workload_verified", "assumption": "disposable_account_side_effects"}
+            evidence = {
+                "authenticated": True,
+                "device_present": True,
+                "online": True,
+                "banned": False,
+                "workload_state": "workload_verified",
+                "assumption": "disposable_account_side_effects",
+            }
         else:
             account = await database.get_earnapp_account_credentials(account_id)
             if not account:
@@ -1365,7 +1370,13 @@ async def _rotate_account_bound_earnapp_node(
             async with earnapp_canary.account_api_lock(account_id):
                 for attempt in range(5):
                     evidence = await collector.link_and_verify_device(stage_device_id, platform=platform)
-                    if (evidence.get("authenticated") is True and evidence.get("device_present") is True and evidence.get("online") is True and evidence.get("banned") is not True and str(evidence.get("workload_state") or "").lower() == "workload_verified"):
+                    if (
+                        evidence.get("authenticated") is True
+                        and evidence.get("device_present") is True
+                        and evidence.get("online") is True
+                        and evidence.get("banned") is not True
+                        and str(evidence.get("workload_state") or "").lower() == "workload_verified"
+                    ):
                         break
                     if attempt < 4:
                         await asyncio.sleep(5)
@@ -1447,7 +1458,11 @@ async def _rotate_account_bound_earnapp_node(
             with contextlib.suppress(Exception):
                 await database.delete_earnapp_staged_identity_profile(stage_slug)
             await database.advance_earnapp_replacement_transaction(node_id, "FAILED", last_error=type(exc).__name__)
-        logger.warning("EarnApp staged rotation for %s is pending/rejected: %s", node_id, str(exc)[:240] if node_id.startswith("earnapp-disposable-") else type(exc).__name__)
+        logger.warning(
+            "EarnApp staged rotation for %s is pending/rejected: %s",
+            node_id,
+            str(exc)[:240] if node_id.startswith("earnapp-disposable-") else type(exc).__name__,
+        )
         return False
 
 
@@ -3226,10 +3241,15 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             # True when the running container's image no longer matches the catalog
             # (provider migrated / re-pinned) — the dashboard prompts a re-deploy so a
             # retired image doesn't keep looking healthy while it silently stops earning.
-            "provider_state": "disconnected" if slug in alert_slugs else (
-                "needs_setup" if _collector_needs_setup(slug, config) else (
-                    "online" if agg.get("measured") and agg["best_status"] in ("running", "restarting")
-                    else "unknown")),
+            "provider_state": "disconnected"
+            if slug in alert_slugs
+            else (
+                "needs_setup"
+                if _collector_needs_setup(slug, config)
+                else (
+                    "online" if agg.get("measured") and agg["best_status"] in ("running", "restarting") else "unknown"
+                )
+            ),
             "runtime_state": agg["best_status"],
             # Traffic (24h tx+rx) when a measurable network reading exists for
             # any instance; None otherwise. Derived consistently with the per-
@@ -4671,7 +4691,9 @@ async def api_deploy_earnapp_canary(
         body.platform not in {"macos", "ios"}
         or not earnapp_runtime.is_disposable_proven_image(body.platform, body.runtime_image, body.logical_node_id)
     ):
-        raise HTTPException(status_code=409, detail="Runtime image override is limited to allowlisted disposable Apple canaries")
+        raise HTTPException(
+            status_code=409, detail="Runtime image override is limited to allowlisted disposable Apple canaries"
+        )
     if earnapp_policy.is_protected_logical_node(body.logical_node_id):
         raise HTTPException(status_code=409, detail="Protected EarnApp canary is inspect-only")
     worker_id = await _resolve_worker_id(body.worker_id)
@@ -5740,7 +5762,9 @@ async def _reconcile_earnapp_pending_proxy_binding_locked(instance: Mapping[str,
     node_id = str(instance.get("logical_node_id") or "").strip()
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]{2,120}", node_id) or earnapp_policy.is_protected_logical_node(node_id):
         return False
-    if not (node_id.startswith("earnapp-disposable-") and int(worker_id) in {118903, 118904}) and not await _assigned_worker_supports_earnapp_lifecycle(int(worker_id)):
+    if not (
+        node_id.startswith("earnapp-disposable-") and int(worker_id) in {118903, 118904}
+    ) and not await _assigned_worker_supports_earnapp_lifecycle(int(worker_id)):
         return False
     try:
         generation = int(instance.get("generation") or 0)
@@ -5868,7 +5892,9 @@ async def _rotate_unhealthy_earnapp_node(
     node_id = str(logical_node_id or "").strip()
     if not node_id or earnapp_policy.is_protected_logical_node(node_id):
         return False
-    if not (node_id.startswith("earnapp-disposable-") and int(worker_id) in {118903, 118904}) and not await _assigned_worker_supports_earnapp_lifecycle(int(worker_id)):
+    if not (
+        node_id.startswith("earnapp-disposable-") and int(worker_id) in {118903, 118904}
+    ) and not await _assigned_worker_supports_earnapp_lifecycle(int(worker_id)):
         return False
     lock = _EARNAPP_ROTATION_LOCKS.setdefault(node_id, asyncio.Lock())
     if lock.locked():
@@ -8735,9 +8761,7 @@ async def api_worker_runtime_asset(request: Request, body: RuntimeAssetRequest) 
             if not node:
                 staged_profile = await database.get_earnapp_staged_identity_profile(body.asset_id)
                 if staged_profile:
-                    node = await database.get_earnapp_logical_node(
-                        str(staged_profile.get("logical_node_id") or "")
-                    )
+                    node = await database.get_earnapp_logical_node(str(staged_profile.get("logical_node_id") or ""))
             if not worker or not node or int(node.get("assigned_worker_id") or 0) != int(worker.get("id") or 0):
                 raise HTTPException(status_code=403, detail="Runtime asset is not assigned to this worker")
             platform = str(node.get("platform") or "").strip().lower()
@@ -9421,7 +9445,10 @@ async def api_provider_network_active_probe(
                 if isinstance(item, dict)
                 and str(item.get("slug") or "").strip().lower() in provider_runtime.ACTIVE_SLUGS
                 and (not provider_filter or str(item.get("slug") or "").strip().lower() == provider_filter)
-                and (not instance_filter or str(item.get("instance_slug") or item.get("name") or "").strip() in instance_filter)
+                and (
+                    not instance_filter
+                    or str(item.get("instance_slug") or item.get("name") or "").strip() in instance_filter
+                )
                 and str(item.get("instance_slug") or item.get("name") or "").strip()
             }
         )
