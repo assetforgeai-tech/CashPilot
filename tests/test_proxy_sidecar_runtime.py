@@ -146,6 +146,7 @@ def test_proxy_instance_runs_provider_inside_singbox_sidecar_namespace():
     assert ".cashpilot-initialized" in sidecar_call.kwargs["entrypoint"][2]
     assert sidecar_call.kwargs["labels"]["cashpilot.provider"] == "earnfm"
     assert sidecar_call.kwargs["labels"]["cashpilot.instance_mode"] == "proxy"
+    assert sidecar_call.kwargs["labels"]["cashpilot.proxy_transport"] == "singbox_compat"
     assert provider_call.kwargs["network_mode"] == "container:cashpilot-earnfm-proxy-egress"
     assert provider_call.kwargs["hostname"] is None
     assert provider_call.kwargs["name"] == "cashpilot-earnfm-proxy"
@@ -257,6 +258,7 @@ def test_earnapp_operator_artifact_is_never_pulled_from_a_public_registry():
             labels={"cashpilot.provider": "earnapp", "cashpilot.earnapp.platform": "darwin"},
             host_runtime="earnapp_mac_canary",
             image_delivery="operator_preload",
+            network_mode="bridge",
             proxy={"host": "1.2.3.4", "port": 1080, "protocol": "socks5"},
         )
 
@@ -406,6 +408,51 @@ def test_earnapp_cleanup_removes_orphan_sidecar_after_main_is_gone():
     assert result["main_present"] is False
     assert result["sidecar_present"] is False
     sidecar.remove.assert_called_once_with(force=True)
+
+
+def test_earnapp_cleanup_removes_promoted_container_with_stage_marker():
+    """Canonical cleanup must not ignore a promoted disposable stage."""
+    client = MagicMock()
+    promoted = MagicMock()
+    promoted.name = "cashpilot-earnapp-disposable-node"
+    promoted.labels = {
+        orchestrator.LABEL_MANAGED: "true",
+        orchestrator.LABEL_SERVICE: "earnapp-disposable-node",
+        "cashpilot.provider": "earnapp",
+        "cashpilot.earnapp.logical_node_id": "earnapp-disposable-node",
+        "cashpilot.earnapp.stage_slug": "earnapp-disposable-node-stage-abcdef123456",
+    }
+    client.containers.list.return_value = [promoted]
+    promoted.remove.side_effect = lambda force=True: setattr(client.containers.list, "return_value", [])
+    client.containers.get.side_effect = orchestrator.NotFound("canonical lookup excludes staged marker")
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        result = orchestrator.remove_earnapp_service("earnapp-disposable-node")
+
+    assert result == {"main_present": False, "sidecar_present": False}
+    promoted.remove.assert_called_once_with(force=True)
+
+
+def test_earnapp_cleanup_keeps_candidate_that_still_has_stage_name():
+    """Removing the old canonical runtime must not delete a staged candidate."""
+    client = MagicMock()
+    candidate = MagicMock()
+    candidate.name = "cashpilot-earnapp-disposable-node-stage-abcdef123456"
+    candidate.labels = {
+        orchestrator.LABEL_MANAGED: "true",
+        orchestrator.LABEL_SERVICE: "earnapp-disposable-node-stage-abcdef123456",
+        "cashpilot.provider": "earnapp",
+        "cashpilot.earnapp.logical_node_id": "earnapp-disposable-node",
+        "cashpilot.earnapp.stage_slug": "earnapp-disposable-node-stage-abcdef123456",
+    }
+    client.containers.list.side_effect = [[], [], [candidate], [], []]
+    client.containers.get.side_effect = lambda _name: (_ for _ in ()).throw(orchestrator.NotFound("old runtime is gone"))
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        result = orchestrator.remove_earnapp_service("earnapp-disposable-node")
+
+    assert result == {"main_present": False, "sidecar_present": False}
+    candidate.remove.assert_not_called()
 
 
 def test_apply_proxy_binding_preflights_every_sidecar_before_writing_any_config():
