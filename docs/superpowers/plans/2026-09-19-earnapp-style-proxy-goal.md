@@ -831,3 +831,42 @@ thì dừng tại blocker và báo rõ.
 - Rotation-19 completed the disposable staged path with deterministic 3-sample failure, generation/device/proxy replacement, egress match, and normal API cleanup.
 - `assume_account_side_effects=true` was explicit disposable-only orchestration evidence. Authenticated Earnings workload evidence is still open; do not mark goal complete.
 - API 409 responses now include safe workload reason (`awaiting_metric_delta`, etc.) so operators can distinguish waitable earnings-cycle lag from auth/route failure.
+
+## Controlled rotation evidence — 2026-09-20 (rotation-22)
+
+- Policy gate respected: VN residential inventory selected `macos`; no Ubuntu
+  allocation was attempted.
+- Worker `118904` was upgraded through Compose to worker image `1.53.27`,
+  healthy, with existing worker/provider volumes preserved. This image includes
+  the staged Docker `/stage`, `/promote`, and cleanup routes.
+- Disposable node `earnapp-disposable-w118904-rotation-22` deployed through the
+  normal admin API and reconciled cleanly before fault injection. Initial tuple:
+  generation `1`, device `sdk-mac-2c54edff2fa535827509f797afb15a8e`, proxy
+  `12931` (`116.98.225.250`). Authenticated workload remained
+  `awaiting_metric_delta`; this is not treated as usage proof.
+- Deterministic fault endpoint recorded `3/3` unhealthy samples with
+  `direct_fallback_blocked=true`. Retry after worker upgrade traversed the real
+  staged state machine: stage HTTP 200, old canonical delete HTTP 200, promote
+  HTTP 200. Final tuple: generation `2`, device
+  `sdk-mac-68c532792a58e70b3475d3d3e2abb926`, proxy `12900` (`14.176.185.115`),
+  observed egress matched expected egress.
+- Runtime checks after promotion: DNS resolver `127.0.0.1`; IPv6 request
+  failed; OUTPUT chain allowed loopback/established/pinned proxy only and
+  dropped other traffic; HTTPS egress was `14.176.185.115`.
+- Promotion exposed and fixed a lifecycle bug: canonical containers retain a
+  stage marker, so canonical lookup must accept the renamed canonical container
+  while continuing to reject a candidate retaining its `*-stage-*` name.
+  Regression test added; targeted proxy-sidecar tests passed.
+- Worker restart persistence was exercised after the fix; systemd now pins the
+  `1.53.27` override, the worker returned healthy, and all 10 pre-existing
+  EarnApp runtimes remained running. The canonical disposable container
+  retained the same generation/device/proxy state. Redsocks kill
+  was recovered by the parent watchdog (PID returned and egress remained
+  `14.176.185.115`).
+- Disposable cleanup used the normal Worker API/CAS and returned DB state to
+  `PLANNED`; container, state file, and active runtime lease were absent.
+  Reconciliation subsequently became clean on worker `118904`. No production
+  EarnApp node was mutated.
+- Local focused route/canary/lifecycle tests: `352 passed` before the final
+  lookup fix; targeted regression after the fix: `2 passed`; full suite:
+  `3403 passed, 7 skipped`.
