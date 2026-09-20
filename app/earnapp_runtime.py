@@ -286,7 +286,7 @@ done
         # The pinned official Linux image owns first-boot installation and UUID
         # generation. The outer wrapper only installs the fail-closed firewall;
         # requiring a control-plane UUID here would deadlock fresh deployment.
-        runtime_handoff = r'''cat >/tmp/cashpilot-doh-gate.sh <<'EOF'
+        runtime_handoff = r"""cat >/tmp/cashpilot-doh-gate.sh <<'EOF'
 cashpilot_wait_for_doh() {
   for _ in $(seq 1 30); do
     (exec 3<>"/dev/tcp/127.0.0.1/$REDSOCKS_PORT") 2>/dev/null && break
@@ -318,12 +318,12 @@ grep -q 'cashpilot_wait_for_doh' "$SANITIZED_ENTRYPOINT"
 # child status. That exits PID 1 before the caller can classify and back off.
 sed -i '0,/^  set -e$/s//  : # caller restores errexit/' "$SANITIZED_ENTRYPOINT"
 chmod 0755 "$SANITIZED_ENTRYPOINT"
-"$SANITIZED_ENTRYPOINT" "$@" & PROVIDER_PID=$!'''
+"$SANITIZED_ENTRYPOINT" "$@" & PROVIDER_PID=$!"""
     else:
         binary_sha256 = str(mac_binary_sha256 or MAC_RUNTIME_ARTIFACT_HASHES["earnapp-mac"]).strip().lower()
         if not re.fullmatch(r"[0-9a-f]{64}", binary_sha256):
             raise ValueError("EarnApp Mac binary hash must be SHA-256")
-        runtime_handoff = r'''# The reference entrypoint starts redsocks and also exports application-level
+        runtime_handoff = r"""# The reference entrypoint starts redsocks and also exports application-level
 # proxy variables. EarnApp's Axios client then sends absolute-form requests
 # that some leased HTTP proxies reject with 400. Keep redsocks/iptables, but
 # execute a sanitized copy without those variables so sockets use transparent
@@ -417,9 +417,10 @@ cashpilot_wait_for_doh' \
    /usr/local/bin/entrypoint-original.sh >"$SANITIZED_ENTRYPOINT"
 grep -q 'cashpilot_wait_for_doh' "$SANITIZED_ENTRYPOINT"
 chmod 0755 "$SANITIZED_ENTRYPOINT"
-"$SANITIZED_ENTRYPOINT" "$@" & PROVIDER_PID=$!'''
+"$SANITIZED_ENTRYPOINT" "$@" & PROVIDER_PID=$!"""
         runtime_handoff = runtime_handoff.replace("__MAC_BINARY_SHA256__", binary_sha256)
-    doh_bootstrap = r'''for _ in $(seq 1 30); do
+    doh_bootstrap = (
+        r"""for _ in $(seq 1 30); do
   (exec 3<>"/dev/tcp/127.0.0.1/$REDSOCKS_PORT") 2>/dev/null && break
   sleep 1
 done
@@ -434,7 +435,10 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 getent hosts example.com >/dev/null 2>&1 || exit 70
-''' if selected == "ios" else ""
+"""
+        if selected == "ios"
+        else ""
+    )
     return f"""#!/usr/bin/env bash
 set -euo pipefail
 umask 077
@@ -844,10 +848,9 @@ def runtime_image(platform: str = "macos") -> str:
 
 def is_disposable_proven_image(platform: str, image: str, logical_node_id: str) -> bool:
     selected = _image_platform(platform)
-    return (
-        str(logical_node_id or "").startswith("earnapp-disposable-")
-        and str(image or "") in DISPOSABLE_PROVEN_IMAGES.get(selected, frozenset())
-    )
+    return str(logical_node_id or "").startswith("earnapp-disposable-") and str(
+        image or ""
+    ) in DISPOSABLE_PROVEN_IMAGES.get(selected, frozenset())
 
 
 def required_image_labels(platform: str = "macos") -> dict[str, str]:
@@ -862,9 +865,7 @@ def required_image_labels(platform: str = "macos") -> dict[str, str]:
     }
 
 
-def validate_image_labels(
-    labels: Any, platform: str = "macos", *, image: str = "", logical_node_id: str = ""
-) -> None:
+def validate_image_labels(labels: Any, platform: str = "macos", *, image: str = "", logical_node_id: str = "") -> None:
     actual = labels if isinstance(labels, dict) else {}
     missing = [
         key for key, expected in required_image_labels(platform).items() if str(actual.get(key) or "") != expected

@@ -812,9 +812,7 @@ async def verify_canary(
     account_id = int(node["account_id"])
     lock = account_api_lock(account_id)
     async with lock:
-        return await _verify_canary_locked(
-            node_id, node, account, attempts=attempts, interval_seconds=interval_seconds
-        )
+        return await _verify_canary_locked(node_id, node, account, attempts=attempts, interval_seconds=interval_seconds)
 
 
 async def _verify_canary_locked(
@@ -842,7 +840,9 @@ async def _verify_canary_locked(
         try:
             queue_exists = await database._table_exists(db, "earnapp_account_operations")
             try:
-                account_exists = await (await db.execute("SELECT 1 FROM earnapp_accounts WHERE id = ?", (int(node["account_id"]),))).fetchone()
+                account_exists = await (
+                    await db.execute("SELECT 1 FROM earnapp_accounts WHERE id = ?", (int(node["account_id"]),))
+                ).fetchone()
             except Exception as exc:
                 if "NO SUCH TABLE" not in str(exc).upper():
                     raise
@@ -850,11 +850,21 @@ async def _verify_canary_locked(
         finally:
             await db.close()
         if queue_exists and account_exists:
-            return {"status": "pending", "error_kind": "account_queue", "error": "EarnApp account operation is queued", "device_id": str(node.get("device_id") or ""), "online": False, "banned": False}
-    result = await _verify_canary_locked_unqueued(node_id, node, account, attempts=attempts, interval_seconds=interval_seconds)
+            return {
+                "status": "pending",
+                "error_kind": "account_queue",
+                "error": "EarnApp account operation is queued",
+                "device_id": str(node.get("device_id") or ""),
+                "online": False,
+                "banned": False,
+            }
+    result = await _verify_canary_locked_unqueued(
+        node_id, node, account, attempts=attempts, interval_seconds=interval_seconds
+    )
     if claimed is not None:
         await database.complete_earnapp_account_operation(
-            int(claimed["id"]), cooldown_seconds=300 if result.get("error_kind") == "rate_limited" else 5,
+            int(claimed["id"]),
+            cooldown_seconds=300 if result.get("error_kind") == "rate_limited" else 5,
             error_kind=str(result.get("error_kind") or ""),
         )
     return result

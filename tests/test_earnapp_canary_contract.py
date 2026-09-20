@@ -835,7 +835,7 @@ def test_earnapp_wrapper_watchdog_stops_child_when_redsocks_dies(platform):
     assert "PROVIDER_PID=$!" in wrapper
     assert "pidof redsocks" in wrapper
     assert 'kill -TERM "$PROVIDER_PID"' in wrapper
-    assert "wait \"$PROVIDER_PID\"" in wrapper
+    assert 'wait "$PROVIDER_PID"' in wrapper
 
 
 @pytest.mark.parametrize("platform", ["macos", "ios", "ubuntu"])
@@ -3281,6 +3281,7 @@ async def test_verify_canary_serializes_link_loops_for_one_account(monkeypatch):
 @pytest.mark.asyncio
 async def test_canary_deploy_route_defaults_to_authorized_ubuntu_lane(monkeypatch):
     from tests.route_enumeration import all_paths
+
     routes = all_paths()
     assert "/api/admin/earnapp/canary/deploy" in routes
     assert "/api/admin/earnapp/canary/{logical_node_id}/verify" in routes
@@ -4093,12 +4094,12 @@ async def test_canary_deploy_route_rejects_online_without_workload(monkeypatch):
         earnapp_canary,
         "verify_canary",
         AsyncMock(
-                return_value={
-                    "status": "online_pending_usage",
-                    "workload_state": "online_pending_usage",
-                    "workload_reason": "awaiting_metric_delta",
-                    "online": True,
-                }
+            return_value={
+                "status": "online_pending_usage",
+                "workload_state": "online_pending_usage",
+                "workload_reason": "awaiting_metric_delta",
+                "online": True,
+            }
         ),
     )
     monkeypatch.setattr(database, "record_health_event", AsyncMock())
@@ -4655,19 +4656,30 @@ async def test_runtime_asset_request_allows_owned_staged_earnapp_identity(monkey
     stage_slug = "earnapp-node-1-stage-abcdef123456"
     monkeypatch.setattr(main, "_require_confirmed_worker", AsyncMock())
     monkeypatch.setattr(database, "get_worker_by_client_id", AsyncMock(return_value={"id": 3}))
-    monkeypatch.setattr(database, "get_earnapp_logical_node", AsyncMock(side_effect=[None, {
-        "logical_node_id": "earnapp-node-1",
-        "assigned_worker_id": 3,
-        "platform": "macos",
-    }]))
-    staged = AsyncMock(return_value={
-        "stage_slug": stage_slug,
-        "logical_node_id": "earnapp-node-1",
-        "platform": "macos",
-        "asset_kind": "mac_identity_profile",
-        "device_id": "sdk-mac-" + "a" * 32,
-        "value": "staged-encrypted-profile",
-    })
+    monkeypatch.setattr(
+        database,
+        "get_earnapp_logical_node",
+        AsyncMock(
+            side_effect=[
+                None,
+                {
+                    "logical_node_id": "earnapp-node-1",
+                    "assigned_worker_id": 3,
+                    "platform": "macos",
+                },
+            ]
+        ),
+    )
+    staged = AsyncMock(
+        return_value={
+            "stage_slug": stage_slug,
+            "logical_node_id": "earnapp-node-1",
+            "platform": "macos",
+            "asset_kind": "mac_identity_profile",
+            "device_id": "sdk-mac-" + "a" * 32,
+            "value": "staged-encrypted-profile",
+        }
+    )
     monkeypatch.setattr(database, "get_earnapp_staged_identity_profile", staged)
 
     result = await main.api_worker_runtime_asset(
