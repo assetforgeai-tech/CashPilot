@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 from app import database, deps, egress, provider_runtime, proxy_egress
 from app.proxy_intelligence import lookup_ip_intelligence
 from app.proxy_probe_profiles.earnapp import probe_earnapp_proxy
+from app.proxy_probe_profiles.earnfm import probe_earnfm_proxy
 from app.proxy_providers.vtproxy import sync_vtproxy_provider
 
 router = APIRouter()
@@ -987,10 +988,19 @@ async def run_proxy_pool_recheck(
     rows = await database.list_proxy_pool()
     targets = [row for row in rows if not wanted or int(row["id"]) in wanted]
     semaphore = asyncio.Semaphore(min(64, max(1, int(concurrency or 8))))
+    probe_cache: dict[tuple[str, ...], dict[str, Any]] = {}
+    cache_lock = asyncio.Lock()
 
     async def check(row: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str]]:
         async with semaphore:
             proxy = await database.get_proxy_endpoint(int(row.get("id") or 0)) or row
+            from app.proxy_health import probe_key
+
+            key = probe_key(proxy)
+            async with cache_lock:
+                cached = probe_cache.get(key)
+            if cached is not None:
+                return row, dict(cached)
             probe_kwargs: dict[str, Any] = {
                 "username": str(proxy.get("username") or "").strip(),
                 "password": str(proxy.get("password") or "").strip(),
@@ -1004,6 +1014,8 @@ async def run_proxy_pool_recheck(
                 int(proxy.get("port") or 0),
                 **probe_kwargs,
             )
+            async with cache_lock:
+                probe_cache.setdefault(key, dict(result))
             return row, result
 
     checks = await asyncio.gather(*(check(row) for row in targets))
@@ -1126,6 +1138,51 @@ async def run_earnapp_proxy_recheck(*, proxy_ids: list[int] | None = None, concu
         "skipped_dead": len(selected) - len(targets),
         "duplicates_marked": duplicate_count,
         "intelligence": intelligence,
+    }
+
+
+async def run_earnfm_proxy_recheck(*, proxy_ids: list[int] | None = None, concurrency: int = 8) -> dict[str, Any]:
+    """Qualify proxies for Earn.fm's actual TLS socket, not generic HTTPS."""
+    wanted = {int(x) for x in (proxy_ids or []) if int(x) > 0}
+    rows = await database.list_proxy_pool()
+    selected = [row for row in rows if not wanted or int(row["id"]) in wanted]
+    targets = [row for row in selected if str(row.get("status") or "").strip().lower() != "dead"]
+    semaphore = asyncio.Semaphore(min(32, max(1, int(concurrency or 8))))
+
+    async def check(row: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+        async with semaphore:
+            proxy = await database.get_proxy_endpoint(int(row.get("id") or 0)) or row
+            result = await probe_earnfm_proxy(
+                str(proxy.get("host") or ""),
+                int(proxy.get("port") or 0),
+                protocol=str(proxy.get("protocol") or "socks5"),
+                username=str(proxy.get("username") or ""),
+                password=str(proxy.get("password") or ""),
+            )
+            return int(row["id"]), result
+
+    checked_rows = await asyncio.gather(*(check(row) for row in targets))
+    for proxy_id, result in checked_rows:
+        eligible = str(result.get("eligibility") or "").lower() == "eligible"
+        await database.save_proxy_probe_result(
+            proxy_id,
+            profile="earnfm_socket_8443",
+            probe_status="alive" if eligible else "unknown",
+            verdict="TLS_CONNECT" if eligible else "UNREACHABLE",
+            eligibility="eligible" if eligible else "quality_rejected",
+            reason=str(result.get("reason") or ""),
+            exit_ip="",
+            latency_ms=result.get("latency_ms"),
+            probe_version=str(result.get("probe_version") or ""),
+            evidence={"profile": "earnfm_socket_8443", "successful_target": result.get("successful_target")},
+        )
+    return {
+        "status": "ok",
+        "profile": "earnfm_socket_8443",
+        "checked": len(checked_rows),
+        "eligible": sum(1 for _, result in checked_rows if result.get("eligibility") == "eligible"),
+        "quality_rejected": sum(1 for _, result in checked_rows if result.get("eligibility") == "quality_rejected"),
+        "skipped_dead": len(selected) - len(targets),
     }
 
 
@@ -1420,8 +1477,13 @@ async def api_proxy_pool_recheck(request: Request, body: ProxyRecheckIn) -> dict
     deps._require_owner(request)
     config = await database.get_config() or {}
     settings = _proxy_scheduler_settings(config if isinstance(config, dict) else {})
-    if str(body.profile or "generic").strip().lower() == "earnapp_wss":
+    profile = str(body.profile or "generic").strip().lower()
+    if profile == "earnapp_wss":
         return await run_earnapp_proxy_recheck(
+            proxy_ids=body.proxy_ids, concurrency=body.concurrency or settings["concurrency"]
+        )
+    if profile == "earnfm_socket_8443":
+        return await run_earnfm_proxy_recheck(
             proxy_ids=body.proxy_ids, concurrency=body.concurrency or settings["concurrency"]
         )
     return await run_proxy_pool_recheck(
