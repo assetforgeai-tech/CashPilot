@@ -2326,9 +2326,7 @@ async def _ensure_earnapp_account_operation_schema(db: Any, applied: list[str] |
     )
     if not table_exists and applied is not None:
         applied.append("earnapp_account_operations")
-    if await _table_columns(db, "earnapp_account_operations") != _EARNAPP_CHILD_COLUMNS[
-        "earnapp_account_operations"
-    ]:
+    if await _table_columns(db, "earnapp_account_operations") != _EARNAPP_CHILD_COLUMNS["earnapp_account_operations"]:
         return
     await db.execute(
         "CREATE INDEX IF NOT EXISTS idx_earnapp_account_operations_claim "
@@ -3421,9 +3419,7 @@ async def enqueue_earnapp_account_operation(
         )
         await db.commit()
         row = await (
-            await db.execute(
-                "SELECT * FROM earnapp_account_operations WHERE operation_key = ?", (operation_key,)
-            )
+            await db.execute("SELECT * FROM earnapp_account_operations WHERE operation_key = ?", (operation_key,))
         ).fetchone()
         return dict(row)
     finally:
@@ -3488,7 +3484,9 @@ async def claim_earnapp_account_operation(
             await db.rollback()
             return None
         await db.commit()
-        claimed = await (await db.execute("SELECT * FROM earnapp_account_operations WHERE id = ?", (row["id"],))).fetchone()
+        claimed = await (
+            await db.execute("SELECT * FROM earnapp_account_operations WHERE id = ?", (row["id"],))
+        ).fetchone()
         return dict(claimed) if claimed else None
     except Exception:
         await db.rollback()
@@ -4672,7 +4670,9 @@ async def save_earnapp_staged_identity_profile(
         await db.close()
 
 
-async def create_earnapp_staged_identity_profile(stage_slug: str, logical_node_id: str, platform: str) -> dict[str, str]:
+async def create_earnapp_staged_identity_profile(
+    stage_slug: str, logical_node_id: str, platform: str
+) -> dict[str, str]:
     """Generate a fresh candidate identity without replacing the canonical profile."""
     from app import earnapp_identity
 
@@ -4689,18 +4689,26 @@ async def create_earnapp_staged_identity_profile(stage_slug: str, logical_node_i
     await save_earnapp_staged_identity_profile(
         stage_slug, logical_node_id, platform=platform, asset_kind=asset_kind, device_id=device_id, value=value
     )
-    return {"stage_slug": stage_slug, "logical_node_id": logical_node_id, "platform": platform,
-            "asset_kind": asset_kind, "device_id": device_id}
+    return {
+        "stage_slug": stage_slug,
+        "logical_node_id": logical_node_id,
+        "platform": platform,
+        "asset_kind": asset_kind,
+        "device_id": device_id,
+    }
 
 
 async def get_earnapp_staged_identity_profile(stage_slug: str) -> dict[str, str] | None:
     db = await _get_db()
     try:
         try:
-            row = await (await db.execute(
-                "SELECT stage_slug, logical_node_id, platform, asset_kind, device_id, value "
-                "FROM earnapp_staged_identity_profiles WHERE stage_slug = ?", (stage_slug,)
-            )).fetchone()
+            row = await (
+                await db.execute(
+                    "SELECT stage_slug, logical_node_id, platform, asset_kind, device_id, value "
+                    "FROM earnapp_staged_identity_profiles WHERE stage_slug = ?",
+                    (stage_slug,),
+                )
+            ).fetchone()
         except Exception as exc:
             if "NO SUCH TABLE" not in str(exc).upper():
                 raise
@@ -4710,9 +4718,12 @@ async def get_earnapp_staged_identity_profile(stage_slug: str) -> dict[str, str]
     if not row:
         return None
     return {
-        "stage_slug": str(row["stage_slug"]), "logical_node_id": str(row["logical_node_id"]),
-        "platform": str(row["platform"]), "asset_kind": str(row["asset_kind"]),
-        "device_id": str(row["device_id"]), "value": decrypt_value(str(row["value"])),
+        "stage_slug": str(row["stage_slug"]),
+        "logical_node_id": str(row["logical_node_id"]),
+        "platform": str(row["platform"]),
+        "asset_kind": str(row["asset_kind"]),
+        "device_id": str(row["device_id"]),
+        "value": decrypt_value(str(row["value"])),
     }
 
 
@@ -4766,9 +4777,7 @@ async def create_earnapp_replacement_transaction(
         )
         await db.commit()
         row = await (
-            await db.execute(
-                "SELECT * FROM earnapp_replacement_transactions WHERE logical_node_id = ?", (node_id,)
-            )
+            await db.execute("SELECT * FROM earnapp_replacement_transactions WHERE logical_node_id = ?", (node_id,))
         ).fetchone()
     finally:
         await db.close()
@@ -4796,9 +4805,7 @@ async def get_earnapp_replacement_transaction(logical_node_id: str) -> dict[str,
     try:
         try:
             row = await (
-                await db.execute(
-                    "SELECT * FROM earnapp_replacement_transactions WHERE logical_node_id = ?", (node_id,)
-                )
+                await db.execute("SELECT * FROM earnapp_replacement_transactions WHERE logical_node_id = ?", (node_id,))
             ).fetchone()
         except Exception as exc:
             if "NO SUCH TABLE" not in str(exc).upper():
@@ -4822,8 +4829,15 @@ async def advance_earnapp_replacement_transaction(
     node_id = str(logical_node_id or "").strip()
     next_state = str(state or "").strip().upper()
     allowed = {
-        "PREPARED", "STAGED", "LINKED", "VERIFIED", "OLD_DELETE_CONFIRMED",
-        "PROMOTED_PENDING", "PROMOTED", "CLEANED", "FAILED",
+        "PREPARED",
+        "STAGED",
+        "LINKED",
+        "VERIFIED",
+        "OLD_DELETE_CONFIRMED",
+        "PROMOTED_PENDING",
+        "PROMOTED",
+        "CLEANED",
+        "FAILED",
     }
     if not node_id or next_state not in allowed:
         return None
@@ -4850,9 +4864,7 @@ async def advance_earnapp_replacement_transaction(
         if not cursor.rowcount:
             return None
         row = await (
-            await db.execute(
-                "SELECT * FROM earnapp_replacement_transactions WHERE logical_node_id = ?", (node_id,)
-            )
+            await db.execute("SELECT * FROM earnapp_replacement_transactions WHERE logical_node_id = ?", (node_id,))
         ).fetchone()
     finally:
         await db.close()
@@ -4865,15 +4877,11 @@ async def delete_earnapp_replacement_transaction(logical_node_id: str) -> bool:
         return False
     db = await _get_db()
     try:
-        cursor = await db.execute(
-            "DELETE FROM earnapp_replacement_transactions WHERE logical_node_id = ?", (node_id,)
-        )
+        cursor = await db.execute("DELETE FROM earnapp_replacement_transactions WHERE logical_node_id = ?", (node_id,))
         await db.commit()
         return bool(cursor.rowcount)
     finally:
         await db.close()
-
-
 
 
 async def save_earnapp_mac_profile(logical_node_id: str, *, device_id: str, value: str) -> None:
@@ -5547,8 +5555,7 @@ async def find_available_earnapp_proxy_for_node(
         if platform not in {"macos", "ios", "ubuntu"}:
             return None
         country_clause = (
-            "length(trim(coalesce(pe.country_code, ''))) = 2 "
-            "AND upper(trim(pe.country_code)) GLOB '[A-Z][A-Z]'"
+            "length(trim(coalesce(pe.country_code, ''))) = 2 AND upper(trim(pe.country_code)) GLOB '[A-Z][A-Z]'"
         )
         preferred_proxy_id = int(node["preferred_proxy_id"] or 0)
         row = await (
@@ -5682,8 +5689,7 @@ async def reserve_earnapp_proxy_candidate(
                 await db.rollback()
                 return None
             country_clause = (
-                "AND length(trim(coalesce(pe.country_code, ''))) = 2 "
-                "AND upper(trim(pe.country_code)) GLOB '[A-Z][A-Z]'"
+                "AND length(trim(coalesce(pe.country_code, ''))) = 2 AND upper(trim(pe.country_code)) GLOB '[A-Z][A-Z]'"
             )
             candidate = await (
                 await db.execute(
@@ -6776,7 +6782,14 @@ async def promote_staged_earnapp_replacement(
                     "SELECT proxy_id FROM earnapp_proxy_reservations WHERE logical_node_id = ? AND worker_id = ? "
                     "AND generation = ? AND expected_proxy_id = ? AND proxy_id = ? AND binding_version = ? "
                     "AND state = 'ACTIVE' AND expires_at > datetime('now') LIMIT 1",
-                    (node_id, int(worker_id), int(generation), int(old_proxy_id), int(new_proxy_id), str(binding_version)),
+                    (
+                        node_id,
+                        int(worker_id),
+                        int(generation),
+                        int(old_proxy_id),
+                        int(new_proxy_id),
+                        str(binding_version),
+                    ),
                 )
             ).fetchone()
             if not confirmation or not reservation:
@@ -6847,7 +6860,14 @@ async def promote_staged_earnapp_replacement(
                 "UPDATE earnapp_logical_nodes SET device_id=?, current_proxy_id=?, preferred_proxy_id=?, generation=generation+1, "
                 "proxy_health='unknown', observed_egress_ip='', expected_egress_ip=?, proxy_checked_at=NULL, "
                 "proxy_health_reason='', updated_at=datetime('now') WHERE logical_node_id=? AND generation=?",
-                (str(new_device_id), int(new_proxy_id), int(old_proxy_id), str(proxy["exit_ip"] or ""), node_id, int(generation)),
+                (
+                    str(new_device_id),
+                    int(new_proxy_id),
+                    int(old_proxy_id),
+                    str(proxy["exit_ip"] or ""),
+                    node_id,
+                    int(generation),
+                ),
             )
             if int(updated.rowcount or 0) != 1:
                 await db.rollback()
@@ -6865,7 +6885,9 @@ async def promote_staged_earnapp_replacement(
                 "DELETE FROM earnapp_remote_delete_confirmations WHERE logical_node_id=?",
                 (node_id,),
             )
-            result = await (await db.execute("SELECT * FROM earnapp_logical_nodes WHERE logical_node_id=?", (node_id,))).fetchone()
+            result = await (
+                await db.execute("SELECT * FROM earnapp_logical_nodes WHERE logical_node_id=?", (node_id,))
+            ).fetchone()
             await db.commit()
             return dict(result) if result else None
         except Exception:
@@ -7360,7 +7382,13 @@ async def rebind_earnapp_node_from_runtime(
     """
     node_id = str(logical_node_id or "").strip()
     expected_device = str(device_id or "").strip()
-    if not node_id or int(worker_id or 0) <= 0 or int(generation or 0) <= 0 or not expected_device or int(proxy_id or 0) <= 0:
+    if (
+        not node_id
+        or int(worker_id or 0) <= 0
+        or int(generation or 0) <= 0
+        or not expected_device
+        or int(proxy_id or 0) <= 0
+    ):
         return False
     async with _earnapp_lock():
         db = await _open_transaction_connection()
@@ -7374,8 +7402,7 @@ async def rebind_earnapp_node_from_runtime(
             ).fetchone()
             instance = await (
                 await db.execute(
-                    "SELECT status, worker_id FROM provider_instances "
-                    "WHERE slug='earnapp' AND instance_id = ?",
+                    "SELECT status, worker_id FROM provider_instances WHERE slug='earnapp' AND instance_id = ?",
                     (node_id,),
                 )
             ).fetchone()
@@ -11290,8 +11317,8 @@ async def lease_proxy_for_provider_instance(
                    )
                   {sticky_clause}
                   AND (? NOT IN ('earnapp', 'earnfm') OR
-                       (? = 'earnapp' AND ({_earnapp_proxy_eligible_sql('pe')})) OR
-                       (? = 'earnfm' AND ({_earnfm_proxy_eligible_sql('pe')})))
+                       (? = 'earnapp' AND ({_earnapp_proxy_eligible_sql("pe")})) OR
+                       (? = 'earnfm' AND ({_earnfm_proxy_eligible_sql("pe")})))
                    AND (
                        ? != 'earnapp'
                        OR (
