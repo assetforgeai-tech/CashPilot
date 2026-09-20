@@ -870,3 +870,25 @@ thì dừng tại blocker và báo rõ.
 - Local focused route/canary/lifecycle tests: `352 passed` before the final
   lookup fix; targeted regression after the fix: `2 passed`; full suite:
   `3403 passed, 7 skipped`.
+
+## Authenticated disposable admission check — 2026-09-20 (rotation-23)
+
+- A fresh VN macOS disposable was deployed through the serialized account queue:
+  `earnapp-disposable-w118904-rotation-23`, account `2`, device
+  `sdk-mac-adc6165e946923d086930acb5983f31e`, proxy `12829`.
+- The authenticated collector completed successfully (`attempted=2,
+  succeeded=2`) and the provider dashboard reported `online=true`. After the
+  Earnings countdown crossed zero and a second collection, the device still
+  had empty country/IP/usage fields; verifier returned
+  `awaiting_metric_delta`. A normal Worker API restart preserved generation and
+  device identity but did not change the admission state.
+- This is an external EarnApp admission/metric lag, not a transport failure:
+  the same authenticated collector and runtime path already have independent
+  `workload_verified` evidence on production-proven node
+  `earnapp-proxy-w118904-ipv4-003` (usage delta `217611`, online, not banned).
+  The disposable was not kept running to manufacture a result; cleanup used
+  normal Worker API/CAS and removed both Docker components.
+- Therefore authenticated workload on the disposable remains `unverified`,
+  while transport, link queue, account auth, deterministic rotation, cleanup,
+  and production-proven workload gates are evidenced. Do not claim that a
+  disposable with blank country/usage has earned.
