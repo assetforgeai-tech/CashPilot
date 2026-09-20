@@ -53,7 +53,7 @@ def test_mac_proxy_handoff_pins_the_resolved_ipv4_for_source_iptables():
     entrypoint = earnapp_runtime.proxy_entrypoint_script("macos").decode("utf-8")
 
     handoff = entrypoint.index('export PROXY_HOST="$PROXY_IP"')
-    source_exec = entrypoint.index('exec "$SANITIZED_ENTRYPOINT" "$@"')
+    source_exec = entrypoint.index('"$SANITIZED_ENTRYPOINT" "$@" & PROVIDER_PID=$!')
     assert "unset PROXY_CREDENTIALS" in entrypoint[handoff - 128 : handoff]
     assert handoff < source_exec
 
@@ -117,6 +117,56 @@ def test_canary_spec_requires_verified_mac_runtime_image():
     assert spec["image"] == earnapp_runtime.MAC_RUNTIME_IMAGE
     assert spec["image_contract_sha256"] == earnapp_runtime.MAC_RUNTIME_ASSET_MANIFEST_SHA256
     assert spec["image_delivery"] == "operator_preload"
+
+
+def test_disposable_canary_accepts_only_allowlisted_production_mac_image():
+    spec = earnapp_canary.build_canary_spec(
+        logical_node_id="earnapp-disposable-ab-mac",
+        account_id=7,
+        device_id="sdk-mac-test",
+        proxy={"proxy_id": 12, "host": "proxy.example", "port": 1080, "protocol": "socks5", "exit_ip": "203.0.113.10"},
+        image_override="cashpilot/earnapp-mac-canary:asset-02dc8060a352",
+    )
+    assert spec["image"] == "cashpilot/earnapp-mac-canary:asset-02dc8060a352"
+    earnapp_runtime.validate_runtime_spec(spec)
+
+
+def test_production_node_cannot_use_disposable_image_override():
+    spec = earnapp_canary.build_canary_spec(
+        logical_node_id="earnapp-production-mac",
+        account_id=7,
+        device_id="sdk-mac-test",
+        proxy={"proxy_id": 12, "host": "proxy.example", "port": 1080, "protocol": "socks5", "exit_ip": "203.0.113.10"},
+        image_override="cashpilot/earnapp-mac-canary:asset-02dc8060a352",
+    )
+    with pytest.raises(ValueError, match="verified Mac canary image"):
+        earnapp_runtime.validate_runtime_spec(spec)
+
+
+def test_worker_image_label_validation_allows_old_labels_only_for_disposable_image():
+    labels = earnapp_runtime.required_image_labels("macos")
+    labels["com.cashpilot.earnapp.assets-sha256"] = "old-production-manifest"
+    earnapp_runtime.validate_image_labels(
+        labels,
+        "macos",
+        image="cashpilot/earnapp-mac-canary:asset-02dc8060a352",
+        logical_node_id="earnapp-disposable-label-ab",
+    )
+    with pytest.raises(ValueError, match="assets-sha256"):
+        earnapp_runtime.validate_image_labels(
+            labels,
+            "macos",
+            image="cashpilot/earnapp-mac-canary:asset-02dc8060a352",
+            logical_node_id="earnapp-production-label-ab",
+        )
+
+
+def test_worker_118904_live_proven_mac_image_is_allowlisted_for_disposable_ab():
+    assert earnapp_runtime.is_disposable_proven_image(
+        "macos",
+        "cashpilot/earnapp-mac-canary:asset-801686a44062",
+        "earnapp-disposable-w118904-runtime-ab",
+    )
 
 
 def test_canary_spec_does_not_put_account_tokens_in_container_env_or_labels():
@@ -624,7 +674,7 @@ def test_transparent_proxy_runtime_disables_application_level_proxying(platform)
     assert "unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy NO_PROXY no_proxy" in wrapper
     if platform == "macos":
         assert "# ANTI-DETECTION: Docker \\/ VM" in wrapper
-    assert 'exec "$SANITIZED_ENTRYPOINT" "$@"' in wrapper
+    assert '"$SANITIZED_ENTRYPOINT" "$@" & PROVIDER_PID=$!' in wrapper
 
 
 def test_macos_proxy_wrapper_restores_binary_but_does_not_forge_registration_marker():
@@ -693,7 +743,7 @@ def test_ios_proxy_wrapper_installs_route_before_control_plane_registration():
     assert "iptables -t nat -I OUTPUT 1 -p tcp -j CP_EARNAPP_IOS_REDSOCKS" in wrapper
     assert "unset PROXY_CREDENTIALS PROXY_HOST PROXY_PORT PROXY_USER PROXY_PASS" in wrapper
     assert wrapper.index('/usr/sbin/redsocks -c "$REDSOCKS_CONF" &') < wrapper.index(
-        "exec /usr/local/bin/ios-entrypoint"
+        '/usr/local/bin/ios-entrypoint "$@" & PROVIDER_PID=$!'
     )
 
 
@@ -737,7 +787,7 @@ def test_ubuntu_reference_runtime_uses_the_shared_fail_closed_proxy_entrypoint()
     assert set(artifacts) == {"cashpilot-proxy-entrypoint", "cashpilot-doh.js"}
     wrapper = artifacts["cashpilot-proxy-entrypoint"].decode("utf-8")
     assert "EARNAPP_DEVICE_ID" not in wrapper
-    assert 'exec "$SANITIZED_ENTRYPOINT" "$@"' in wrapper
+    assert '"$SANITIZED_ENTRYPOINT" "$@" & PROVIDER_PID=$!' in wrapper
     assert "0,/^  set -e$/s" in wrapper
 
 
@@ -750,6 +800,54 @@ def test_ubuntu_reference_runtime_blocks_direct_fallback_and_public_dns():
     assert "/etc/resolv.conf" in wrapper
     assert "ip6tables -N CP_EARNAPP6_OUT" in wrapper
     assert "ip6tables -A CP_EARNAPP6_OUT -j DROP" in wrapper
+
+
+@pytest.mark.parametrize("platform", ["macos", "ios", "ubuntu"])
+def test_doh_helper_waits_for_redsocks_port_before_starting(platform):
+    wrapper = earnapp_runtime.proxy_entrypoint_script(platform).decode("utf-8")
+    wait = '(exec 3<>"/dev/tcp/127.0.0.1/$REDSOCKS_PORT")'
+    assert wait in wrapper
+    assert wrapper.index(wait) < wrapper.index("node /usr/local/lib/cashpilot-doh.js")
+
+
+@pytest.mark.parametrize("platform", ["macos", "ubuntu"])
+def test_source_runtime_has_synchronous_doh_gate_after_its_proxy_setup(platform):
+    wrapper = earnapp_runtime.proxy_entrypoint_script(platform).decode("utf-8")
+
+    assert "cashpilot_wait_for_doh()" in wrapper
+    assert "getent hosts example.com >/dev/null 2>&1 || return 70" in wrapper
+    if platform == "macos":
+        marker = "# ANTI-DETECTION: Docker \\/ VM"
+        assert marker in wrapper
+        assert "cashpilot_wait_for_doh" in wrapper.split(marker, 1)[1]
+
+    else:
+        marker = "iptables REDSOCKS chain installed"
+        assert marker in wrapper
+        assert "cashpilot_wait_for_doh" in wrapper.split(marker, 1)[1]
+
+
+@pytest.mark.parametrize("platform", ["macos", "ios", "ubuntu"])
+def test_earnapp_wrapper_watchdog_stops_child_when_redsocks_dies(platform):
+    wrapper = earnapp_runtime.proxy_entrypoint_script(platform).decode("utf-8")
+
+    assert "cashpilot_watchdog" in wrapper
+    assert "PROVIDER_PID=$!" in wrapper
+    assert "pidof redsocks" in wrapper
+    assert 'kill -TERM "$PROVIDER_PID"' in wrapper
+    assert "wait \"$PROVIDER_PID\"" in wrapper
+
+
+@pytest.mark.parametrize("platform", ["macos", "ios", "ubuntu"])
+def test_earnapp_wrapper_watchdog_allows_doh_startup_grace(platform):
+    wrapper = earnapp_runtime.proxy_entrypoint_script(platform).decode("utf-8")
+
+    grace = "for _ in $(seq 1 120); do"
+    dns_probe = "pgrep -f '/usr/local/lib/cashpilot-doh.js'"
+    assert grace in wrapper
+    assert wrapper.index(grace, wrapper.index("cashpilot_watchdog")) < wrapper.index(
+        dns_probe, wrapper.index("cashpilot_watchdog")
+    )
 
 
 def test_ubuntu_image_wraps_the_pinned_reference_runtime_with_fail_closed_proxying():
@@ -3182,7 +3280,8 @@ async def test_verify_canary_serializes_link_loops_for_one_account(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_canary_deploy_route_defaults_to_authorized_ubuntu_lane(monkeypatch):
-    routes = {route.path for route in main.app.routes}
+    from tests.route_enumeration import all_paths
+    routes = all_paths()
     assert "/api/admin/earnapp/canary/deploy" in routes
     assert "/api/admin/earnapp/canary/{logical_node_id}/verify" in routes
 
@@ -3293,6 +3392,48 @@ async def test_canary_deploy_route_dispatches_apple_runtime(monkeypatch, platfor
     )
     assert result["deployment"]["status"] == "deployed"
     deploy.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_canary_route_passes_allowlisted_image_only_to_disposable_node(monkeypatch):
+    deploy = AsyncMock(return_value={"status": "deployed", "logical_node_id": "earnapp-disposable-ab-mac"})
+    monkeypatch.setattr(main, "_resolve_worker_id", AsyncMock(return_value=118904))
+    monkeypatch.setattr(earnapp_canary, "deploy_canary", deploy)
+    monkeypatch.setattr(
+        earnapp_canary, "verify_canary", AsyncMock(return_value={"workload_state": "workload_verified", "online": True})
+    )
+    monkeypatch.setattr(main, "_persist_earnapp_canary_verification", AsyncMock(side_effect=lambda _n, v: v))
+    monkeypatch.setattr(database, "record_health_event", AsyncMock())
+
+    await main.api_deploy_earnapp_canary(
+        _request("/api/admin/earnapp/canary/deploy"),
+        main.EarnAppCanaryDeployRequest(
+            logical_node_id="earnapp-disposable-ab-mac",
+            worker_id=118904,
+            platform="macos",
+            country_scope="vn",
+            runtime_image="cashpilot/earnapp-mac-canary:asset-02dc8060a352",
+        ),
+        _auth={"r": "owner"},
+    )
+
+    assert deploy.await_args.kwargs["image_override"] == "cashpilot/earnapp-mac-canary:asset-02dc8060a352"
+
+
+@pytest.mark.asyncio
+async def test_canary_route_rejects_image_override_for_non_disposable_node(monkeypatch):
+    with pytest.raises(HTTPException, match="allowlisted disposable Apple canaries") as exc:
+        await main.api_deploy_earnapp_canary(
+            _request("/api/admin/earnapp/canary/deploy"),
+            main.EarnAppCanaryDeployRequest(
+                logical_node_id="earnapp-production-mac",
+                worker_id=118904,
+                platform="macos",
+                runtime_image="cashpilot/earnapp-mac-canary:asset-02dc8060a352",
+            ),
+            _auth={"r": "owner"},
+        )
+    assert exc.value.status_code == 409
 
 
 @pytest.mark.asyncio
@@ -3952,11 +4093,12 @@ async def test_canary_deploy_route_rejects_online_without_workload(monkeypatch):
         earnapp_canary,
         "verify_canary",
         AsyncMock(
-            return_value={
-                "status": "online_pending_usage",
-                "workload_state": "online_pending_usage",
-                "online": True,
-            }
+                return_value={
+                    "status": "online_pending_usage",
+                    "workload_state": "online_pending_usage",
+                    "workload_reason": "awaiting_metric_delta",
+                    "online": True,
+                }
         ),
     )
     monkeypatch.setattr(database, "record_health_event", AsyncMock())
@@ -3974,6 +4116,7 @@ async def test_canary_deploy_route_rejects_online_without_workload(monkeypatch):
 
     assert exc.value.status_code == 409
     assert "authenticated workload is not verified" in str(exc.value.detail).lower()
+    assert "awaiting_metric_delta" in str(exc.value.detail)
 
 
 @pytest.mark.asyncio
@@ -4508,6 +4651,40 @@ async def test_runtime_asset_request_supports_only_the_nodes_platform_asset(monk
 
 
 @pytest.mark.asyncio
+async def test_runtime_asset_request_allows_owned_staged_earnapp_identity(monkeypatch):
+    stage_slug = "earnapp-node-1-stage-abcdef123456"
+    monkeypatch.setattr(main, "_require_confirmed_worker", AsyncMock())
+    monkeypatch.setattr(database, "get_worker_by_client_id", AsyncMock(return_value={"id": 3}))
+    monkeypatch.setattr(database, "get_earnapp_logical_node", AsyncMock(side_effect=[None, {
+        "logical_node_id": "earnapp-node-1",
+        "assigned_worker_id": 3,
+        "platform": "macos",
+    }]))
+    staged = AsyncMock(return_value={
+        "stage_slug": stage_slug,
+        "logical_node_id": "earnapp-node-1",
+        "platform": "macos",
+        "asset_kind": "mac_identity_profile",
+        "device_id": "sdk-mac-" + "a" * 32,
+        "value": "staged-encrypted-profile",
+    })
+    monkeypatch.setattr(database, "get_earnapp_staged_identity_profile", staged)
+
+    result = await main.api_worker_runtime_asset(
+        _request("/api/workers/runtime-asset"),
+        main.RuntimeAssetRequest(
+            client_id="worker-a",
+            provider="earnapp",
+            asset_kind="mac_identity_profile",
+            asset_id=stage_slug,
+        ),
+    )
+
+    assert result["value"] == "staged-encrypted-profile"
+    staged.assert_awaited_once_with(stage_slug)
+
+
+@pytest.mark.asyncio
 async def test_runtime_asset_request_rejects_cross_platform_asset_kind(monkeypatch):
     monkeypatch.setattr(main, "_require_confirmed_worker", AsyncMock())
     monkeypatch.setattr(database, "get_worker_by_client_id", AsyncMock(return_value={"id": 3}))
@@ -4563,6 +4740,29 @@ async def test_runtime_asset_request_rejects_worker_that_does_not_own_logical_no
         )
 
     assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_runtime_asset_request_rejects_unassigned_provider_asset(monkeypatch):
+    """A worker key must not read another provider's global credential asset."""
+    monkeypatch.setattr(main, "_require_confirmed_worker", AsyncMock())
+    monkeypatch.setattr(database, "get_worker_by_client_id", AsyncMock(return_value={"id": 3}))
+    monkeypatch.setattr(database, "list_provider_instances", AsyncMock(return_value=[]))
+    fetch = AsyncMock(return_value="secret")
+    monkeypatch.setattr(database, "get_runtime_asset", fetch)
+
+    with pytest.raises(HTTPException) as exc:
+        await main.api_worker_runtime_asset(
+            _request("/api/workers/runtime-asset"),
+            main.RuntimeAssetRequest(
+                client_id="worker-a",
+                provider="uprock",
+                asset_kind="credentials_json",
+            ),
+        )
+
+    assert exc.value.status_code == 403
+    fetch.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -4710,6 +4910,35 @@ async def test_worker_earnapp_docker_remove_cleans_unprotected_state(tmp_path, m
     remove.assert_called_once()
     remove_volume.assert_called_once_with("earnapp-node-1")
     assert not worker_api._earnapp_state_path("earnapp-node-1").exists()
+
+
+@pytest.mark.asyncio
+async def test_worker_earnapp_docker_remove_disposable_orphan_uses_runtime_authority(tmp_path, monkeypatch):
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    device_id = "sdk-mac-" + "a" * 32
+    with (
+        patch.object(worker_api, "_verify_api_key"),
+        patch.object(
+            worker_api.orchestrator,
+            "earnapp_runtime_authority",
+            return_value={"logical_node_id": "earnapp-disposable-orphan", "generation": 2, "device_id": device_id},
+        ) as authority,
+        patch.object(
+            worker_api.orchestrator,
+            "remove_earnapp_service",
+            return_value={"main_present": False, "sidecar_present": False},
+        ) as remove,
+        patch.object(worker_api.orchestrator, "remove_earnapp_identity_volume"),
+    ):
+        result = await worker_api.api_remove_earnapp_docker_node(
+            _request("/api/earnapp/docker-nodes/earnapp-disposable-orphan"),
+            "earnapp-disposable-orphan",
+            worker_api.EarnAppDockerNodeCasSpec(generation=2, device_id=device_id),
+        )
+
+    assert result["status"] == "removed"
+    authority.assert_called_once_with("earnapp-disposable-orphan")
+    remove.assert_called_once_with("earnapp-disposable-orphan")
 
 
 @pytest.mark.asyncio

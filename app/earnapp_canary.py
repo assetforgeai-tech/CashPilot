@@ -8,6 +8,7 @@ import hashlib
 import json
 import re
 import secrets
+import time
 import weakref
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
@@ -198,13 +199,14 @@ def build_canary_spec(
     *,
     generation: int = 1,
     identity_asset_id: str | None = None,
+    image_override: str | None = None,
 ) -> dict[str, Any]:
     node_id = _safe_node_id(logical_node_id)
     device = earnapp_runtime.validate_device_id(device_id)
     earnapp_runtime.validate_identity_asset_kind(identity_asset_kind)
     proxy_meta = _redacted_proxy(proxy)
     return {
-        "image": earnapp_runtime.MAC_RUNTIME_IMAGE,
+        "image": str(image_override or earnapp_runtime.MAC_RUNTIME_IMAGE),
         "image_contract_sha256": earnapp_runtime.MAC_RUNTIME_ASSET_MANIFEST_SHA256,
         "image_delivery": "operator_preload",
         "provider_slug": "earnapp",
@@ -269,6 +271,7 @@ def build_runtime_spec(
     *,
     generation: int = 1,
     identity_asset_id: str | None = None,
+    image_override: str | None = None,
 ) -> dict[str, Any]:
     """Build a Docker runtime spec for one persisted MacOS or iOS node."""
     selected = str(platform or "").strip().lower()
@@ -280,6 +283,7 @@ def build_runtime_spec(
             proxy,
             generation=generation,
             identity_asset_id=identity_asset_id,
+            image_override=image_override,
         )
     if selected == "ubuntu":
         node_id = _safe_node_id(logical_node_id)
@@ -358,7 +362,7 @@ def build_runtime_spec(
     if not expected_egress_ip:
         raise ValueError("EarnApp iOS runtime requires an authoritative proxy egress IP")
     return {
-        "image": earnapp_runtime.IOS_RUNTIME_IMAGE,
+        "image": str(image_override or earnapp_runtime.IOS_RUNTIME_IMAGE),
         "image_contract_sha256": earnapp_runtime.IOS_RUNTIME_ASSET_MANIFEST_SHA256,
         "image_delivery": "operator_preload",
         "provider_slug": "earnapp",
@@ -446,6 +450,7 @@ async def deploy_canary(
     worker_deploy: WorkerDeploy,
     worker_remove: WorkerRemove,
     country_scope: str = "any",
+    image_override: str | None = None,
 ) -> dict[str, Any]:
     from app import earnapp_deploy
 
@@ -502,6 +507,7 @@ async def deploy_canary(
             proxy,
             generation=int(provisioned["generation"]),
             identity_asset_id=profile["asset_id"],
+            image_override=image_override,
         )
         transport_spec["proxy"] = _proxy_metadata(proxy)
         persisted_spec = json.loads(json.dumps(transport_spec))
@@ -588,6 +594,7 @@ async def deploy_platform_canary(
     worker_deploy: WorkerDeploy,
     worker_remove: PlatformWorkerRemove,
     lxd_settings: Mapping[str, Any] | None = None,
+    image_override: str | None = None,
 ) -> dict[str, Any]:
     """Deploy one fresh iOS-Docker or Ubuntu-Docker canary without touching Mac nodes."""
     from app import earnapp_deploy
@@ -670,6 +677,7 @@ async def deploy_platform_canary(
             prepared.proxy,
             generation=prepared.generation,
             identity_asset_id=prepared.identity_asset_id,
+            image_override=image_override,
         )
         transport_spec["proxy"] = _proxy_metadata(prepared.proxy)
     # Keep lifecycle metadata in the encrypted deployment record. Redaction is
@@ -805,15 +813,54 @@ async def verify_canary(
     lock = account_api_lock(account_id)
     async with lock:
         return await _verify_canary_locked(
-            node_id,
-            node,
-            account,
-            attempts=attempts,
-            interval_seconds=interval_seconds,
+            node_id, node, account, attempts=attempts, interval_seconds=interval_seconds
         )
 
 
 async def _verify_canary_locked(
+    node_id: str,
+    node: Mapping[str, Any],
+    account: Mapping[str, Any],
+    *,
+    attempts: int,
+    interval_seconds: float,
+) -> dict[str, Any]:
+    claimed = None
+    try:
+        key = f"verify:{node_id}:{str(node.get('device_id') or '')}:{int(time.time() // 300)}"
+        await database.enqueue_earnapp_account_operation(
+            int(node["account_id"]), "link_verify", node_id, operation_key=key
+        )
+        claimed = await database.claim_earnapp_account_operation(
+            int(node["account_id"]), f"canary:{node_id}", lease_seconds=900
+        )
+    except Exception as exc:
+        if not any(token in str(exc).upper() for token in ("NO SUCH TABLE", "FOREIGN KEY")):
+            raise
+    if claimed is None and "account_id" in node and str(node.get("state") or "") == "ACTIVE":
+        db = await database._get_db()
+        try:
+            queue_exists = await database._table_exists(db, "earnapp_account_operations")
+            try:
+                account_exists = await (await db.execute("SELECT 1 FROM earnapp_accounts WHERE id = ?", (int(node["account_id"]),))).fetchone()
+            except Exception as exc:
+                if "NO SUCH TABLE" not in str(exc).upper():
+                    raise
+                account_exists = None
+        finally:
+            await db.close()
+        if queue_exists and account_exists:
+            return {"status": "pending", "error_kind": "account_queue", "error": "EarnApp account operation is queued", "device_id": str(node.get("device_id") or ""), "online": False, "banned": False}
+    result = await _verify_canary_locked_unqueued(node_id, node, account, attempts=attempts, interval_seconds=interval_seconds)
+    if claimed is not None:
+        await database.complete_earnapp_account_operation(
+            int(claimed["id"]), cooldown_seconds=300 if result.get("error_kind") == "rate_limited" else 5,
+            error_kind=str(result.get("error_kind") or ""),
+        )
+    return result
+
+
+async def _verify_canary_locked_unqueued(
     node_id: str,
     node: Mapping[str, Any],
     account: Mapping[str, Any],

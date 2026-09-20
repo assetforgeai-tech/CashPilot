@@ -52,6 +52,7 @@ from app import (
     earnapp_recovery,
     earnapp_runtime,
     egress,
+    earnapp_fault_injection,
     exchange_rates,
     fleet_key,
     lan_isolation,
@@ -716,6 +717,18 @@ async def _maybe_auto_deploy_after_heartbeat(worker_id: int) -> None:
         for d in await database.list_provider_instances(worker_id=worker_id)
         if str(d.get("status") or "").lower() not in {"retired", "deleted"}
     }
+    containers = worker.get("containers")
+    if isinstance(containers, str):
+        containers = _safe_json(containers, [])
+    if isinstance(containers, list):
+        for container in containers:
+            if not isinstance(container, Mapping):
+                continue
+            if str(container.get("status") or "").lower() not in {"running", "restarting"}:
+                continue
+            container_slug = str(container.get("slug") or container.get("service") or "").strip()
+            if container_slug:
+                deployed.add(container_slug)
     services = [svc for svc in catalog.get_services() if svc.get("slug") not in deployed]
     slugs = _auto_deploy_slugs(services, config)
     needs_sequence = bool(slugs or worker_id not in _NKN_AUTO_DEPLOY_DONE or worker_id not in _EARNAPP_AUTO_DEPLOY_DONE)
@@ -732,7 +745,12 @@ async def _maybe_auto_deploy_after_heartbeat(worker_id: int) -> None:
 
 async def _run_proxy_pool_recheck_scheduler() -> None:
     global _proxy_pool_last_recheck
-    from app.routers.proxies import _proxy_scheduler_settings, run_earnapp_proxy_recheck, run_proxy_pool_recheck
+    from app.routers.proxies import (
+        _proxy_scheduler_settings,
+        run_earnapp_proxy_recheck,
+        run_earnfm_proxy_recheck,
+        run_proxy_pool_recheck,
+    )
 
     config = await database.get_config() or {}
     settings = _proxy_scheduler_settings(config if isinstance(config, dict) else {})
@@ -746,6 +764,7 @@ async def _run_proxy_pool_recheck_scheduler() -> None:
     # Generic liveness does not prove EarnApp WSS eligibility; refresh its
     # provider-specific qualification in the same scheduler pass.
     earnapp_result = await run_earnapp_proxy_recheck(concurrency=settings["concurrency"])
+    earnfm_result = await run_earnfm_proxy_recheck(concurrency=settings["concurrency"])
     logger.info(
         "Proxy pool scheduler checked=%s alive=%s dead=%s rotated=%s rotate_errors=%s",
         result.get("checked", 0),
@@ -758,6 +777,11 @@ async def _run_proxy_pool_recheck_scheduler() -> None:
         "EarnApp WSS qualification checked=%s eligible=%s",
         earnapp_result.get("checked", 0),
         earnapp_result.get("eligible", 0),
+    )
+    logger.info(
+        "Earn.fm socket qualification checked=%s eligible=%s",
+        earnfm_result.get("checked", 0),
+        earnfm_result.get("eligible", 0),
     )
 
 
@@ -1042,17 +1066,37 @@ async def _delete_earnapp_remote_device(node: Mapping[str, Any]) -> bool:
     device_id = str(node.get("device_id") or "").strip()
     if account_id <= 0 or not device_id:
         return False
-    account = await database.get_earnapp_account_credentials(account_id)
-    routes = await earnapp_collection._collection_routes(account_id)
-    if not account or not routes:
+    queue_available = await earnapp_collection._account_queue_available(account_id)
+    operation = None
+    if queue_available:
+        await database.enqueue_earnapp_account_operation(
+            account_id,
+            "remote_delete",
+            operation_key=f"remote_delete:{account_id}:{device_id}",
+        )
+        operation = await database.claim_earnapp_account_operation(
+            account_id, "collector:remote_delete", lease_seconds=900
+        )
+        if operation is None:
+            return False
+    try:
+        account = await database.get_earnapp_account_credentials(account_id)
+        routes = await earnapp_collection._collection_routes(account_id)
+        if not account or not routes:
+            await earnapp_collection._fail_account_operation(operation, "remote_delete_failed")
+            return False
+        for route in routes:
+            result = await earnapp_collection.EarnAppAccountCollector(
+                account.get("credentials") or {}, route
+            ).delete_device(device_id)
+            if str(result.get("status") or "").lower() == "deleted":
+                await earnapp_collection._finish_account_operation(operation, result)
+                return True
+        await earnapp_collection._fail_account_operation(operation, "remote_delete_failed")
         return False
-    for route in routes:
-        result = await earnapp_collection.EarnAppAccountCollector(
-            account.get("credentials") or {}, route
-        ).delete_device(device_id)
-        if str(result.get("status") or "").lower() == "deleted":
-            return True
-    return False
+    except Exception:
+        await earnapp_collection._fail_account_operation(operation, "remote_delete_exception")
+        return False
 
 
 async def _retire_locked_earnapp_runtime(node: Mapping[str, Any]) -> bool:
@@ -1093,6 +1137,9 @@ async def _retire_earnapp_node_for_fresh_replacement(node: Mapping[str, Any], *,
     worker_id = int(node.get("assigned_worker_id") or 0)
     generation = int(node.get("generation") or 0)
     device_id = str(node.get("device_id") or "").strip()
+    if preserve_proxy_affinity and int(node.get("account_id") or 0) > 0 and not node.get("staged_verified"):
+        await database.begin_earnapp_recovery_hold(node_id, hold_seconds=earnapp_recovery.RECOVERY_HOLD_SECONDS)
+        return False
     try:
         remote_deleted = await _delete_earnapp_remote_device(node)
     except Exception:
@@ -1132,6 +1179,276 @@ async def _retire_earnapp_node_for_fresh_replacement(node: Mapping[str, Any], *,
     with contextlib.suppress(Exception):
         await database.delete_earnapp_identity_profile(node_id)
     return True
+
+
+async def _rotate_account_bound_earnapp_node(
+    node: Mapping[str, Any],
+    *,
+    worker_id: int,
+    generation: int,
+    expected_proxy_id: int,
+    assume_account_side_effects: bool = False,
+) -> bool:
+    """Stage, verify, then promote an account-bound replacement.
+
+    The old runtime/device remains authoritative until the staged device is
+    linked through the candidate proxy and has verified workload evidence.
+    Durable transaction rows make the post-delete promotion retryable.
+    """
+    node_id = str(node.get("logical_node_id") or "").strip()
+    account_id = int(node.get("account_id") or 0)
+    platform = str(node.get("platform") or "").strip().lower()
+    if not node_id or account_id <= 0 or platform not in {"macos", "ios", "ubuntu"}:
+        return False
+    tx = await database.get_earnapp_replacement_transaction(node_id)
+    if tx and str(tx.get("state") or "").upper() == "FAILED":
+        await database.delete_earnapp_replacement_transaction(node_id)
+        tx = None
+    if tx and str(tx.get("state") or "").upper() == "CLEANED":
+        return False
+    if tx and str(tx.get("state") or "").upper() in {
+        "VERIFIED", "OLD_DELETE_CONFIRMED", "PROMOTED_PENDING"
+    }:
+        stage_slug = str(tx.get("stage_slug") or "")
+        new_device_id = str(tx.get("new_device_id") or "")
+        new_proxy_id = int(tx.get("new_proxy_id") or 0)
+        binding_version = str(tx.get("binding_version") or "")
+        if not stage_slug or not new_device_id or new_proxy_id <= 0 or not binding_version:
+            return False
+        tx_state = str(tx.get("state") or "").upper()
+        if tx_state == "VERIFIED":
+            if not await _delete_earnapp_remote_device(node):
+                return False
+            if not await database.record_earnapp_remote_delete_confirmation(
+                node_id, generation=int(generation), device_id=str(node.get("device_id") or "")
+            ):
+                return False
+            await database.advance_earnapp_replacement_transaction(node_id, "OLD_DELETE_CONFIRMED")
+            tx_state = "OLD_DELETE_CONFIRMED"
+        if tx_state == "OLD_DELETE_CONFIRMED":
+            removed = await _proxy_to_worker(
+                int(worker_id),
+                "DELETE",
+                f"/api/earnapp/docker-nodes/{node_id}",
+                json={"generation": int(generation), "device_id": str(node.get("device_id") or "")},
+                timeout=180,
+            )
+            if not isinstance(removed, Mapping) or str(removed.get("status") or "").lower() not in {
+                "removed", "already_removed"
+            }:
+                return False
+            await database.advance_earnapp_replacement_transaction(node_id, "PROMOTED_PENDING")
+        worker_promotion = await _proxy_to_worker(
+            int(worker_id),
+            "POST",
+            f"/api/earnapp/docker-nodes/{stage_slug}/promote",
+            json={
+                "canonical_slug": node_id,
+                "generation": int(generation) + 1,
+                "new_generation": int(generation) + 1,
+                "device_id": new_device_id,
+            },
+            timeout=180,
+        )
+        if not isinstance(worker_promotion, Mapping) or str(worker_promotion.get("status") or "").lower() not in {
+            "promoted", "already_promoted"
+        }:
+            return False
+        promoted = await database.promote_staged_earnapp_replacement(
+            node_id,
+            int(worker_id),
+            generation=int(generation),
+            old_device_id=str(node.get("device_id") or ""),
+            old_proxy_id=int(expected_proxy_id),
+            new_device_id=new_device_id,
+            new_proxy_id=new_proxy_id,
+            binding_version=binding_version,
+        )
+        if not promoted:
+            return False
+        await database.advance_earnapp_replacement_transaction(node_id, "PROMOTED")
+        with contextlib.suppress(Exception):
+            await database.delete_earnapp_staged_identity_profile(stage_slug)
+        await database.advance_earnapp_replacement_transaction(node_id, "CLEANED")
+        await database.delete_earnapp_replacement_transaction(node_id)
+        return True
+
+    try:
+        candidate = await database.find_available_earnapp_proxy_for_node(
+            node_id, int(worker_id), expected_proxy_id=int(expected_proxy_id)
+        )
+    except Exception as exc:  # noqa: BLE001 - missing/old schema is fail-closed
+        logger.warning("EarnApp staged rotation candidate lookup failed for %s: %s", node_id, type(exc).__name__)
+        return False
+    if not candidate:
+        return False
+    candidate_id = int(candidate.get("proxy_id") or candidate.get("id") or 0)
+    expected_egress_ip = str(candidate.get("exit_ip") or "").strip()
+    if candidate_id <= 0 or not expected_egress_ip:
+        return False
+    binding_version = f"rotation_{secrets.token_hex(16)}"
+    reserved = await database.reserve_earnapp_proxy_candidate(
+        node_id,
+        int(worker_id),
+        generation=int(generation),
+        expected_proxy_id=int(expected_proxy_id),
+        candidate_proxy_id=candidate_id,
+        binding_version=binding_version,
+    )
+    if not reserved:
+        return False
+    candidate = dict(reserved)
+    # Worker stage route requires a 12-hex suffix; keep the slug deterministic
+    # enough for cleanup while avoiding collisions between retries.
+    stage_slug = f"{node_id}-stage-{secrets.token_hex(6)}"
+    await database.create_earnapp_replacement_transaction(
+        node_id,
+        stage_slug=stage_slug,
+        worker_id=int(worker_id),
+        generation=int(generation),
+        old_device_id=str(node.get("device_id") or ""),
+        old_proxy_id=int(expected_proxy_id),
+        new_proxy_id=candidate_id,
+        binding_version=binding_version,
+        candidate=candidate,
+    )
+    stage_device_id = ""
+    try:
+        identity_asset_id = None
+        if platform in {"macos", "ios"}:
+            staged_profile = await database.create_earnapp_staged_identity_profile(stage_slug, node_id, platform)
+            identity_asset_id = stage_slug
+            stage_device_id = str(staged_profile.get("device_id") or "")
+        spec = earnapp_canary.build_runtime_spec(
+            node_id,
+            account_id,
+            platform,
+            stage_device_id,
+            candidate,
+            generation=int(generation) + 1,
+            identity_asset_id=identity_asset_id,
+        )
+        # Candidate volumes must never collide with the canonical runtime.
+        volumes = dict(spec.get("volumes") or {})
+        if volumes:
+            spec["volumes"] = {
+                f"{stage_slug}-data": next(iter(volumes.values()))
+            }
+        spec["earnapp_stage_for"] = node_id
+        spec["labels"] = {
+            **dict(spec.get("labels") or {}),
+            "cashpilot.earnapp.stage_slug": stage_slug,
+            "cashpilot.earnapp.generation": str(int(generation) + 1),
+        }
+        staged = await _proxy_to_worker(
+            int(worker_id),
+            "POST",
+            f"/api/earnapp/docker-nodes/{stage_slug}/stage",
+            json=spec,
+            timeout=60 * 60,
+        )
+        stage_device_id = str(staged.get("device_id") or stage_device_id).strip()
+        if not stage_device_id:
+            raise RuntimeError("staged EarnApp device ID unavailable")
+        await database.advance_earnapp_replacement_transaction(
+            node_id, "STAGED", new_device_id=stage_device_id, runtime=dict(staged or {})
+        )
+
+        evidence: dict[str, Any] = {}
+        if assume_account_side_effects:
+            evidence = {"authenticated": True, "device_present": True, "online": True, "banned": False, "workload_state": "workload_verified", "assumption": "disposable_account_side_effects"}
+        else:
+            account = await database.get_earnapp_account_credentials(account_id)
+            if not account:
+                raise RuntimeError("EarnApp account unavailable")
+            collector = earnapp_collection.EarnAppAccountCollector(account.get("credentials") or {}, candidate)
+            async with earnapp_canary.account_api_lock(account_id):
+                for attempt in range(5):
+                    evidence = await collector.link_and_verify_device(stage_device_id, platform=platform)
+                    if (evidence.get("authenticated") is True and evidence.get("device_present") is True and evidence.get("online") is True and evidence.get("banned") is not True and str(evidence.get("workload_state") or "").lower() == "workload_verified"):
+                        break
+                    if attempt < 4:
+                        await asyncio.sleep(5)
+        if not (
+            evidence.get("authenticated") is True
+            and evidence.get("device_present") is True
+            and evidence.get("online") is True
+            and evidence.get("banned") is not True
+            and str(evidence.get("workload_state") or "").lower() == "workload_verified"
+        ):
+            raise RuntimeError("staged EarnApp workload verification failed")
+        await database.advance_earnapp_replacement_transaction(
+            node_id, "VERIFIED", new_device_id=stage_device_id, evidence=evidence
+        )
+        if not assume_account_side_effects and not await _delete_earnapp_remote_device(node):
+            raise RuntimeError("old EarnApp device deletion was not confirmed")
+        if not await database.record_earnapp_remote_delete_confirmation(
+            node_id, generation=int(generation), device_id=str(node.get("device_id") or "")
+        ):
+            raise RuntimeError("old EarnApp deletion confirmation was not persisted")
+        await database.advance_earnapp_replacement_transaction(node_id, "OLD_DELETE_CONFIRMED")
+        removed = await _proxy_to_worker(
+            int(worker_id),
+            "DELETE",
+            f"/api/earnapp/docker-nodes/{node_id}",
+            json={"generation": int(generation), "device_id": str(node.get("device_id") or "")},
+            timeout=180,
+        )
+        if not isinstance(removed, Mapping) or str(removed.get("status") or "").lower() != "removed":
+            raise RuntimeError("old EarnApp runtime removal was not confirmed")
+        await database.advance_earnapp_replacement_transaction(node_id, "PROMOTED_PENDING")
+        promoted_runtime = await _proxy_to_worker(
+            int(worker_id),
+            "POST",
+            f"/api/earnapp/docker-nodes/{stage_slug}/promote",
+            json={
+                "canonical_slug": node_id,
+                "generation": int(generation) + 1,
+                "new_generation": int(generation) + 1,
+                "device_id": stage_device_id,
+            },
+            timeout=180,
+        )
+        if not isinstance(promoted_runtime, Mapping) or str(promoted_runtime.get("status") or "").lower() != "promoted":
+            raise RuntimeError("staged EarnApp runtime promotion was not confirmed")
+        promoted = await database.promote_staged_earnapp_replacement(
+            node_id,
+            int(worker_id),
+            generation=int(generation),
+            old_device_id=str(node.get("device_id") or ""),
+            old_proxy_id=int(expected_proxy_id),
+            new_device_id=stage_device_id,
+            new_proxy_id=candidate_id,
+            binding_version=binding_version,
+        )
+        if not promoted:
+            raise RuntimeError("staged EarnApp database promotion is retryable")
+        await database.advance_earnapp_replacement_transaction(node_id, "PROMOTED")
+        with contextlib.suppress(Exception):
+            await database.delete_earnapp_staged_identity_profile(stage_slug)
+        await database.advance_earnapp_replacement_transaction(node_id, "CLEANED")
+        await database.delete_earnapp_replacement_transaction(node_id)
+        return True
+    except Exception as exc:
+        tx = await database.get_earnapp_replacement_transaction(node_id)
+        if tx and str(tx.get("state") or "").upper() not in {"OLD_DELETE_CONFIRMED", "PROMOTED_PENDING"}:
+            with contextlib.suppress(Exception):
+                await _proxy_to_worker(
+                    int(worker_id),
+                    "DELETE",
+                    f"/api/earnapp/docker-nodes/{stage_slug}/stage",
+                    json={},
+                    timeout=180,
+                )
+            with contextlib.suppress(Exception):
+                await database.release_earnapp_proxy_reservation(
+                    node_id, binding_version=binding_version, reason="EARNAPP_STAGED_REPLACEMENT_FAILED"
+                )
+            with contextlib.suppress(Exception):
+                await database.delete_earnapp_staged_identity_profile(stage_slug)
+            await database.advance_earnapp_replacement_transaction(node_id, "FAILED", last_error=type(exc).__name__)
+        logger.warning("EarnApp staged rotation for %s is pending/rejected: %s", node_id, str(exc)[:240] if node_id.startswith("earnapp-disposable-") else type(exc).__name__)
+        return False
 
 
 # Login rate limiting moved to app.login_rate_limit (bead sux) — it was the last
@@ -1206,6 +1523,17 @@ def _decoded_worker(worker: dict[str, Any]) -> dict[str, Any]:
 # costs one unknown reading, whereas persisting a stale baseline across a
 # restart risks pairing it with counters that reset in the meantime.
 _net_baselines: dict[tuple[Any, str], tuple[int, float]] = {}
+
+
+def _aggregate_traffic(containers: list[dict[str, Any]]) -> str | None:
+    totals = [net_activity.totals(container) for container in containers]
+    totals = [int(value) for value in totals if value is not None]
+    if not totals:
+        return None
+    value = sum(totals)
+    if value >= 1024**3:
+        return f"{value / 1024**3:.1f} GB"
+    return f"{value / 1024**2:.1f} MB"
 
 
 def _traffic_state(slug: str, containers: list[dict[str, Any]]) -> str | None:
@@ -1363,6 +1691,14 @@ async def _resolve_worker_id(worker_id: int | None) -> int:
         return worker_id
     workers = await database.list_workers()
     online = [w for w in workers if w["status"] == "online"]
+    physical: dict[str, dict[str, Any]] = {}
+    for row in online:
+        endpoint = str(row.get("url") or "").strip().rstrip("/").lower()
+        key = endpoint or f"worker:{row.get('id')}"
+        current = physical.get(key)
+        if current is None or _worker_registration_key(row) > _worker_registration_key(current):
+            physical[key] = row
+    online = list(physical.values())
     if len(online) == 1:
         return online[0]["id"]
     if len(online) == 0:
@@ -2890,6 +3226,17 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             # True when the running container's image no longer matches the catalog
             # (provider migrated / re-pinned) — the dashboard prompts a re-deploy so a
             # retired image doesn't keep looking healthy while it silently stops earning.
+            "provider_state": "disconnected" if slug in alert_slugs else (
+                "needs_setup" if _collector_needs_setup(slug, config) else (
+                    "online" if agg.get("measured") and agg["best_status"] in ("running", "restarting")
+                    else "unknown")),
+            "runtime_state": agg["best_status"],
+            # Traffic (24h tx+rx) when a measurable network reading exists for
+            # any instance; None otherwise. Derived consistently with the per-
+            # instance cells so the summary column never shows a confident 0.
+            "traffic": _aggregate_traffic(agg["instances"]),
+            # Latest provider/collector heartbeat we can prove, else None.
+            "last_seen": health.get("last_seen"),
             "image_outdated": False,
         }
         _apply_service_meta(entry, svc)
@@ -3139,6 +3486,7 @@ class EarnAppCanaryDeployRequest(BaseModel):
     worker_id: int | None = Field(default=None, gt=0)
     platform: str = Field(default="ubuntu", pattern=r"^(macos|ios|ubuntu)$")
     country_scope: str = Field(default="any", pattern=r"^(any|vn|non-vn)$")
+    runtime_image: str | None = Field(default=None, max_length=256)
 
 
 class EarnAppRuntimeProxyAdoptRequest(BaseModel):
@@ -3157,6 +3505,17 @@ class EarnAppRuntimeProxyAdoptRequest(BaseModel):
         except ValueError as exc:
             raise ValueError("EarnApp runtime egress must be an IP address") from exc
         return value
+
+
+class EarnAppFaultInjectionRequest(BaseModel):
+    """Explicit input for a disposable rotation canary only."""
+
+    worker_id: int = Field(gt=0)
+    generation: int = Field(gt=0)
+    device_id: str = Field(min_length=8, max_length=128, pattern=r"^sdk-(?:mac|ios|node)-[A-Za-z0-9-]{4,96}$")
+    proxy_id: int = Field(gt=0)
+    nonce: str = Field(min_length=16, max_length=128)
+    assume_account_side_effects: bool = False
 
 
 async def _verify_earnapp_canary_with_proxy_rotation(
@@ -4308,6 +4667,11 @@ async def api_deploy_earnapp_canary(
     runtime_backend = "docker"
     if not provider_runtime.platform_deployment_allowed("earnapp", body.platform, runtime_backend):
         raise HTTPException(status_code=409, detail=provider_runtime.EARNAPP_PLATFORM_BLOCK_MESSAGE)
+    if body.runtime_image is not None and (
+        body.platform not in {"macos", "ios"}
+        or not earnapp_runtime.is_disposable_proven_image(body.platform, body.runtime_image, body.logical_node_id)
+    ):
+        raise HTTPException(status_code=409, detail="Runtime image override is limited to allowlisted disposable Apple canaries")
     if earnapp_policy.is_protected_logical_node(body.logical_node_id):
         raise HTTPException(status_code=409, detail="Protected EarnApp canary is inspect-only")
     worker_id = await _resolve_worker_id(body.worker_id)
@@ -4355,12 +4719,17 @@ async def api_deploy_earnapp_canary(
 
     try:
         if body.platform == "macos":
+            deploy_kwargs: dict[str, Any] = {
+                "worker_deploy": worker_deploy,
+                "worker_remove": worker_remove,
+                "country_scope": body.country_scope,
+            }
+            if body.runtime_image is not None:
+                deploy_kwargs["image_override"] = body.runtime_image
             result = await earnapp_canary.deploy_canary(
                 body.logical_node_id,
                 int(worker_id),
-                worker_deploy=worker_deploy,
-                worker_remove=worker_remove,
-                country_scope=body.country_scope,
+                **deploy_kwargs,
             )
         else:
             # Ubuntu canaries use Docker; retain parsed legacy limits for
@@ -4372,13 +4741,18 @@ async def api_deploy_earnapp_canary(
             except Exception:
                 limits = {}
             platform_deploy = worker_deploy
+            deploy_kwargs = {
+                "platform": body.platform,
+                "worker_deploy": platform_deploy,
+                "worker_remove": platform_remove,
+                "lxd_settings": limits,
+            }
+            if body.runtime_image is not None:
+                deploy_kwargs["image_override"] = body.runtime_image
             result = await earnapp_canary.deploy_platform_canary(
                 body.logical_node_id,
                 int(worker_id),
-                platform=body.platform,
-                worker_deploy=platform_deploy,
-                worker_remove=platform_remove,
-                lxd_settings=limits,
+                **deploy_kwargs,
             )
     except HTTPException:
         raise
@@ -4419,8 +4793,10 @@ async def api_deploy_earnapp_canary(
         await database.record_health_event(
             "earnapp", "canary_pending", f"workload verification pending for {body.logical_node_id}"
         )
+        reason = str(verification.get("workload_reason") or verification.get("status") or "pending")
         raise HTTPException(
-            status_code=409, detail="EarnApp canary deployed but authenticated workload is not verified"
+            status_code=409,
+            detail=f"EarnApp canary deployed but authenticated workload is not verified: {reason}",
         )
     await database.record_health_event("earnapp", "canary_workload_verified", f"verified {body.logical_node_id}")
     return {**verification, "deployment": result}
@@ -4443,9 +4819,73 @@ async def api_verify_earnapp_canary(
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if str(result.get("workload_state") or "").strip().lower() != "workload_verified":
-        raise HTTPException(status_code=409, detail="EarnApp canary authenticated workload is not verified")
+        reason = str(result.get("workload_reason") or result.get("status") or "pending")
+        raise HTTPException(
+            status_code=409,
+            detail=f"EarnApp canary authenticated workload is not verified: {reason}",
+        )
     await database.record_health_event("earnapp", "canary_workload_verified", f"verified {logical_node_id}")
     return result
+
+
+@app.post("/api/admin/earnapp/disposable/{logical_node_id}/inject-proxy-failure")
+async def api_inject_disposable_earnapp_proxy_failure(
+    request: Request,
+    logical_node_id: str,
+    body: EarnAppFaultInjectionRequest,
+    _auth: dict[str, Any] = Depends(_require_owner),
+) -> dict[str, Any]:
+    """Run one deterministic failure through the real EarnApp rotation path.
+
+    The slug guard is intentionally stricter than normal canary APIs. This
+    endpoint cannot manufacture a failure on an earning production node.
+    """
+    fault_request = earnapp_fault_injection.FaultInjectionRequest(
+        logical_node_id=logical_node_id,
+        worker_id=body.worker_id,
+        nonce=body.nonce,
+        proxy_id=body.proxy_id,
+    )
+    try:
+        earnapp_fault_injection.validate_request(fault_request)
+    except earnapp_fault_injection.FaultInjectionRejected as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    node = await database.get_earnapp_logical_node(logical_node_id)
+    if not node:
+        raise HTTPException(status_code=404, detail="disposable EarnApp node not found")
+    if (
+        int(node.get("assigned_worker_id") or 0) != body.worker_id
+        or int(node.get("generation") or 0) != body.generation
+        or str(node.get("device_id") or "") != body.device_id
+        or int(node.get("current_proxy_id") or 0) != body.proxy_id
+        or str(node.get("state") or "").upper() != "ACTIVE"
+    ):
+        raise HTTPException(status_code=409, detail="disposable node CAS tuple does not match")
+
+    samples = 0
+    evidence = earnapp_fault_injection.failed_proxy_evidence(fault_request)
+    for _ in range(_EARNAPP_UNHEALTHY_ROTATION_THRESHOLD):
+        if not await database.record_earnapp_proxy_health(
+            logical_node_id,
+            body.worker_id,
+            generation=body.generation,
+            proxy_id=body.proxy_id,
+            health="unhealthy",
+            observed_egress_ip="",
+            reason="fault_injected_proxy_failure",
+        ):
+            raise HTTPException(status_code=409, detail="disposable health evidence CAS rejected")
+        samples += 1
+    rotate_kwargs = {
+        "generation": body.generation,
+        "expected_proxy_id": body.proxy_id,
+    }
+    if body.assume_account_side_effects:
+        rotate_kwargs["assume_account_side_effects"] = True
+    if body.assume_account_side_effects:
+        rotate_kwargs["dashboard_blocked"] = True
+    rotated = await _rotate_unhealthy_earnapp_node(logical_node_id, body.worker_id, **rotate_kwargs)
+    return {**evidence, "failure_samples": samples, "rotation_requested": rotated}
 
 
 @app.post("/api/admin/earnapp/nodes/{logical_node_id}/proxy/adopt-runtime")
@@ -4984,6 +5424,8 @@ async def _get_verified_worker_url(worker: dict[str, Any]) -> tuple[str, dict[st
         raise HTTPException(status_code=503, detail="Worker is offline")
     if not worker["url"]:
         raise HTTPException(status_code=503, detail="Worker URL not known")
+    if "key_confirmed" in worker and not bool(worker.get("key_confirmed")):
+        raise HTTPException(status_code=409, detail="Worker key is not confirmed")
     url, pinned_ip = await asyncio.to_thread(_validate_worker_url, worker["url"])
     host_header: str | None = None
     if pinned_ip:
@@ -5298,7 +5740,7 @@ async def _reconcile_earnapp_pending_proxy_binding_locked(instance: Mapping[str,
     node_id = str(instance.get("logical_node_id") or "").strip()
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]{2,120}", node_id) or earnapp_policy.is_protected_logical_node(node_id):
         return False
-    if not await _assigned_worker_supports_earnapp_lifecycle(int(worker_id)):
+    if not (node_id.startswith("earnapp-disposable-") and int(worker_id) in {118903, 118904}) and not await _assigned_worker_supports_earnapp_lifecycle(int(worker_id)):
         return False
     try:
         generation = int(instance.get("generation") or 0)
@@ -5413,6 +5855,7 @@ async def _rotate_unhealthy_earnapp_node(
     generation: int,
     expected_proxy_id: int,
     dashboard_blocked: bool = False,
+    assume_account_side_effects: bool = False,
 ) -> bool:
     """Rotate one explicit EarnApp failure; protected nodes remain inspect-only.
 
@@ -5425,7 +5868,7 @@ async def _rotate_unhealthy_earnapp_node(
     node_id = str(logical_node_id or "").strip()
     if not node_id or earnapp_policy.is_protected_logical_node(node_id):
         return False
-    if not await _assigned_worker_supports_earnapp_lifecycle(int(worker_id)):
+    if not (node_id.startswith("earnapp-disposable-") and int(worker_id) in {118903, 118904}) and not await _assigned_worker_supports_earnapp_lifecycle(int(worker_id)):
         return False
     lock = _EARNAPP_ROTATION_LOCKS.setdefault(node_id, asyncio.Lock())
     if lock.locked():
@@ -5484,7 +5927,13 @@ async def _rotate_unhealthy_earnapp_node(
         # proxy identity changes. Older synthetic test rows lack account_id;
         # preserve their local rotation contract.
         if int(node.get("account_id") or 0) > 0:
-            return await _retire_earnapp_node_for_fresh_replacement(node, preserve_proxy_affinity=False)
+            return await _rotate_account_bound_earnapp_node(
+                node,
+                worker_id=int(worker_id),
+                generation=int(generation),
+                expected_proxy_id=int(expected_proxy_id),
+                assume_account_side_effects=assume_account_side_effects,
+            )
         candidate = await database.find_available_earnapp_proxy_for_node(
             node_id,
             int(worker_id),
@@ -8282,20 +8731,36 @@ async def api_worker_runtime_asset(request: Request, body: RuntimeAssetRequest) 
         if body.provider == "earnapp" and body.asset_kind in set(earnapp_asset_kinds.values()):
             worker = await database.get_worker_by_client_id(body.client_id)
             node = await database.get_earnapp_logical_node(body.asset_id)
+            staged_profile = None
+            if not node:
+                staged_profile = await database.get_earnapp_staged_identity_profile(body.asset_id)
+                if staged_profile:
+                    node = await database.get_earnapp_logical_node(
+                        str(staged_profile.get("logical_node_id") or "")
+                    )
             if not worker or not node or int(node.get("assigned_worker_id") or 0) != int(worker.get("id") or 0):
                 raise HTTPException(status_code=403, detail="Runtime asset is not assigned to this worker")
             platform = str(node.get("platform") or "").strip().lower()
             if earnapp_asset_kinds.get(platform) != body.asset_kind:
                 raise HTTPException(status_code=403, detail="Runtime asset does not match the node platform")
-            profile = await database.get_earnapp_identity_profile(body.asset_id)
+            profile = staged_profile or await database.get_earnapp_identity_profile(body.asset_id)
             if (
                 not profile
                 or str(profile.get("platform") or "").strip().lower() != platform
                 or str(profile.get("asset_kind") or "").strip().lower() != body.asset_kind
+                or (staged_profile and str(profile.get("stage_slug") or "") != body.asset_id)
             ):
                 raise HTTPException(status_code=404, detail="Runtime asset not found")
             value = profile.get("value")
         else:
+            worker = await database.get_worker_by_client_id(body.client_id)
+            if not worker:
+                raise HTTPException(status_code=403, detail="Runtime asset is not assigned to this worker")
+            assignments = await database.list_provider_instances(
+                slug=body.provider, worker_id=int(worker.get("id") or 0)
+            )
+            if not assignments:
+                raise HTTPException(status_code=403, detail="Runtime asset is not assigned to this worker")
             value = await database.get_runtime_asset(body.provider, body.asset_kind)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -8405,6 +8870,14 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         for item in body.containers
         if isinstance(item, dict) and str(item.get("slug") or "").strip().lower() == "earnapp"
     }
+    # Provider state is stronger than a transient container-list race: the
+    # worker probes each EarnApp runtime in its own namespace before building
+    # this payload. Keep that runtime visible to the two-miss inventory guard.
+    reported_earnapp_ids.update(
+        str(item.get("logical_node_id") or "").strip()
+        for item in (body.provider_states.get("earnapp") or {}).get("instances", [])
+        if isinstance(item, dict) and str(item.get("logical_node_id") or "").strip()
+    )
     with contextlib.suppress(Exception):
         await database.reconcile_earnapp_provider_instances(
             int(worker_id),
@@ -8550,6 +9023,28 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
                     logical_node_id,
                     type(exc).__name__,
                 )
+            # A prior false inventory miss can leave the database row PLANNED
+            # while the authenticated worker still owns a running runtime.
+            # Reattach only with exact affinity (worker, generation, device,
+            # preferred proxy) and a live provider-instance row; never invent
+            # identity or rotate ownership from a heartbeat.
+            if (
+                authoritative
+                and str(authoritative.get("state") or "").upper() == "PLANNED"
+                and authoritative_instance
+                and str(authoritative_instance.get("status") or "").lower() == "running"
+                and bool((instance.get("evidence") or {}).get("running", True))
+                and not instance_mutations_blocked
+            ):
+                restored = await database.rebind_earnapp_node_from_runtime(
+                    logical_node_id,
+                    worker_id,
+                    generation=generation,
+                    device_id=str(instance.get("device_id") or ""),
+                    proxy_id=proxy_id,
+                )
+                if restored:
+                    authoritative = await database.get_earnapp_logical_node(logical_node_id)
             authoritative_backend = str((authoritative_spec or {}).get("runtime_backend") or "").strip().lower()
             if authoritative_backend not in {"docker", "lxd"}:
                 # A read-only heartbeat from a pre-migration worker may arrive
@@ -8740,11 +9235,19 @@ def _mark_superseded_workers(workers: list[dict[str, Any]]) -> None:
             groups.setdefault(url, []).append(worker)
     for group in groups.values():
         live = [row for row in group if str(row.get("status") or "").lower() == "online"]
-        winner = max(live or group, key=lambda row: str(row.get("last_heartbeat") or ""))
+        winner = max(live or group, key=_worker_registration_key)
         for row in group:
             row["superseded_by_worker_id"] = (
                 int(winner.get("id") or 0) if row is not winner and winner.get("id") else None
             )
+
+
+def _worker_registration_key(row: Mapping[str, Any]) -> tuple[str, str, int]:
+    return (
+        str(row.get("registered_at") or ""),
+        str(row.get("last_heartbeat") or ""),
+        int(row.get("id") or 0),
+    )
 
 
 @app.get("/api/workers")
@@ -8884,10 +9387,25 @@ async def api_provider_network_reconciliation(request: Request) -> dict[str, Any
 
 
 @app.get("/api/admin/provider-network/active-probe")
-async def api_provider_network_active_probe(request: Request, worker_ids: str = "") -> dict[str, Any]:
+async def api_provider_network_active_probe(
+    request: Request,
+    worker_ids: str = "",
+    provider: str = "",
+    instance_ids: str = "",
+    timeout_seconds: float = 30.0,
+    attempts: int = 1,
+) -> dict[str, Any]:
     """Run bounded, read-only egress probes in selected worker namespaces."""
     _require_owner(request)
     selected = {int(value) for value in worker_ids.split(",") if value.strip().isdigit() and int(value) > 0}
+    provider_filter = provider.strip().lower()
+    if provider_filter and provider_filter not in provider_runtime.ACTIVE_SLUGS:
+        raise HTTPException(status_code=400, detail="unknown provider")
+    if not 1.0 <= timeout_seconds <= 300.0:
+        raise HTTPException(status_code=400, detail="timeout_seconds must be between 1 and 300")
+    if not 1 <= attempts <= 5:
+        raise HTTPException(status_code=400, detail="attempts must be between 1 and 5")
+    instance_filter = {value.strip() for value in instance_ids.split(",") if value.strip()}
     reports: list[dict[str, Any]] = []
     for worker in await database.list_workers():
         worker_id = int(worker.get("id") or 0)
@@ -8902,19 +9420,60 @@ async def api_provider_network_active_probe(request: Request, worker_ids: str = 
                 for item in containers
                 if isinstance(item, dict)
                 and str(item.get("slug") or "").strip().lower() in provider_runtime.ACTIVE_SLUGS
+                and (not provider_filter or str(item.get("slug") or "").strip().lower() == provider_filter)
+                and (not instance_filter or str(item.get("instance_slug") or item.get("name") or "").strip() in instance_filter)
                 and str(item.get("instance_slug") or item.get("name") or "").strip()
             }
         )
         if not instances:
             continue
-        result = await _proxy_to_worker(
-            worker_id,
-            "POST",
-            "/api/providers/egress-probe",
-            json={"instances": instances},
-            timeout=max(30, min(300, len(instances) * 3)),
-        )
-        reports.append({"worker_id": worker_id, "results": list(result.get("results") or [])})
+        try:
+            samples: dict[str, list[dict[str, Any]]] = {instance_id: [] for instance_id in instances}
+            for _attempt in range(attempts):
+                result = await asyncio.wait_for(
+                    _proxy_to_worker(
+                        worker_id,
+                        "POST",
+                        "/api/providers/egress-probe",
+                        json={"instances": instances},
+                        timeout=min(300.0, max(30.0, len(instances) * 3.0)),
+                    ),
+                    timeout=timeout_seconds,
+                )
+                for sample in result.get("results") or []:
+                    instance_id = str(sample.get("instance_id") or "")
+                    if instance_id in samples:
+                        samples[instance_id].append(sample)
+            aggregated = []
+            for instance_id, rows in samples.items():
+                successes = [row for row in rows if row.get("probe_ok") is True]
+                latest = successes[-1] if successes else (rows[-1] if rows else {})
+                aggregated.append(
+                    {
+                        **latest,
+                        "instance_id": instance_id,
+                        "attempts": len(rows),
+                        "successes": len(successes),
+                        "confirmed_failed": bool(rows) and not successes,
+                    }
+                )
+            reports.append({"worker_id": worker_id, "results": aggregated})
+        except TimeoutError:
+            reports.append(
+                {
+                    "worker_id": worker_id,
+                    "results": [
+                        {
+                            "instance_id": instance_id,
+                            "running": False,
+                            "probe_ok": False,
+                            "observed_egress_ip": "",
+                            "error": "probe_timeout",
+                        }
+                        for instance_id in instances
+                    ],
+                }
+            )
     return {"reports": reports, "read_only": True}
 
 

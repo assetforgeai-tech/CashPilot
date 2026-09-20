@@ -264,32 +264,61 @@ fi
 printf '}\\n' >>"$REDSOCKS_CONF"
 chmod 0600 "$REDSOCKS_CONF"
 /usr/sbin/redsocks -c "$REDSOCKS_CONF" &
-sleep 1
+for _ in $(seq 1 30); do
+  (exec 3<>"/dev/tcp/127.0.0.1/$REDSOCKS_PORT") 2>/dev/null && break
+  sleep 1
+done
+(exec 3<>"/dev/tcp/127.0.0.1/$REDSOCKS_PORT") 2>/dev/null || exit 70
         iptables -t nat -N CP_EARNAPP_IOS_REDSOCKS 2>/dev/null || iptables -t nat -F CP_EARNAPP_IOS_REDSOCKS
 for cidr in 0.0.0.0/8 10.0.0.0/8 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 "$PROXY_IP/32"; do
           iptables -t nat -A CP_EARNAPP_IOS_REDSOCKS -d "$cidr" -j RETURN
 done
         iptables -t nat -A CP_EARNAPP_IOS_REDSOCKS -p tcp -j REDIRECT --to-ports "$REDSOCKS_PORT"
         iptables -t nat -C OUTPUT -p tcp -j CP_EARNAPP_IOS_REDSOCKS 2>/dev/null || iptables -t nat -I OUTPUT 1 -p tcp -j CP_EARNAPP_IOS_REDSOCKS
-unset PROXY_CREDENTIALS PROXY_HOST PROXY_PORT PROXY_USER PROXY_PASS
+ unset PROXY_CREDENTIALS PROXY_HOST PROXY_PORT PROXY_USER PROXY_PASS
 """
         if selected == "ios"
         else ""
     )
     if selected == "ios":
-        runtime_handoff = f'exec {next_entrypoint} "$@"'
+        runtime_handoff = f'{next_entrypoint} "$@" & PROVIDER_PID=$!'
     elif selected == "ubuntu":
         # The pinned official Linux image owns first-boot installation and UUID
         # generation. The outer wrapper only installs the fail-closed firewall;
         # requiring a control-plane UUID here would deadlock fresh deployment.
-        runtime_handoff = r'''SANITIZED_ENTRYPOINT=/tmp/cashpilot-entrypoint-original.sh
-sed '/^set -euo pipefail/a unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy NO_PROXY no_proxy' \
+        runtime_handoff = r'''cat >/tmp/cashpilot-doh-gate.sh <<'EOF'
+cashpilot_wait_for_doh() {
+  for _ in $(seq 1 30); do
+    (exec 3<>"/dev/tcp/127.0.0.1/$REDSOCKS_PORT") 2>/dev/null && break
+    sleep 1
+  done
+  (exec 3<>"/dev/tcp/127.0.0.1/$REDSOCKS_PORT") 2>/dev/null || return 70
+  if [[ -z "${DNS_PID:-}" ]] || ! kill -0 "$DNS_PID" 2>/dev/null; then
+    node /usr/local/lib/cashpilot-doh.js >/tmp/cashpilot-doh.log 2>&1 &
+    DNS_PID=$!
+  fi
+  printf "nameserver 127.0.0.1
+options timeout:2 attempts:2
+" > /etc/resolv.conf
+  for _ in $(seq 1 30); do
+    getent hosts example.com >/dev/null 2>&1 && break
+    sleep 1
+  done
+  getent hosts example.com >/dev/null 2>&1 || return 70
+}
+EOF
+SANITIZED_ENTRYPOINT=/tmp/cashpilot-entrypoint-original.sh
+sed -e '/^set -euo pipefail/a unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy NO_PROXY no_proxy' \
+  -e '/^set -euo pipefail/r /tmp/cashpilot-doh-gate.sh' \
+  -e '/iptables REDSOCKS chain installed/a\
+  cashpilot_wait_for_doh' \
   /usr/local/bin/entrypoint-original.sh >"$SANITIZED_ENTRYPOINT"
+grep -q 'cashpilot_wait_for_doh' "$SANITIZED_ENTRYPOINT"
 # The reference watchdog re-enables errexit immediately before returning the
 # child status. That exits PID 1 before the caller can classify and back off.
 sed -i '0,/^  set -e$/s//  : # caller restores errexit/' "$SANITIZED_ENTRYPOINT"
 chmod 0755 "$SANITIZED_ENTRYPOINT"
-exec "$SANITIZED_ENTRYPOINT" "$@"'''
+"$SANITIZED_ENTRYPOINT" "$@" & PROVIDER_PID=$!'''
     else:
         binary_sha256 = str(mac_binary_sha256 or MAC_RUNTIME_ARTIFACT_HASHES["earnapp-mac"]).strip().lower()
         if not re.fullmatch(r"[0-9a-f]{64}", binary_sha256):
@@ -358,12 +387,54 @@ if [[ ! -s "$STATE_DIR/registered" || "$(cat "$STATE_DIR/registered")" != "$EXPE
   rm -f "$register_body"
   trap - EXIT
 fi
+cat >/tmp/cashpilot-doh-gate.sh <<'EOF'
+cashpilot_wait_for_doh() {
+  for _ in $(seq 1 30); do
+    (exec 3<>"/dev/tcp/127.0.0.1/$REDSOCKS_PORT") 2>/dev/null && break
+    sleep 1
+  done
+  (exec 3<>"/dev/tcp/127.0.0.1/$REDSOCKS_PORT") 2>/dev/null || return 70
+  if [[ -z "${DNS_PID:-}" ]] || ! kill -0 "$DNS_PID" 2>/dev/null; then
+    node /usr/local/lib/cashpilot-doh.js >/tmp/cashpilot-doh.log 2>&1 &
+    DNS_PID=$!
+  fi
+  printf "nameserver 127.0.0.1
+options timeout:2 attempts:2
+" > /etc/resolv.conf
+  for _ in $(seq 1 30); do
+    getent hosts example.com >/dev/null 2>&1 && break
+    sleep 1
+  done
+  getent hosts example.com >/dev/null 2>&1 || return 70
+}
+EOF
 SANITIZED_ENTRYPOINT=/tmp/cashpilot-entrypoint-original.sh
-sed '/# ANTI-DETECTION: Docker \/ VM/i unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy NO_PROXY no_proxy' \
-  /usr/local/bin/entrypoint-original.sh >"$SANITIZED_ENTRYPOINT"
+sed -e '/^set -euo pipefail/a unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy NO_PROXY no_proxy' \
+  -e '/^set -euo pipefail/r /tmp/cashpilot-doh-gate.sh' \
+   -e '/# ANTI-DETECTION: Docker \/ VM/i\
+cashpilot_wait_for_doh' \
+   -e '/# ANTI-DETECTION: Docker \/ VM/i unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy NO_PROXY no_proxy' \
+   /usr/local/bin/entrypoint-original.sh >"$SANITIZED_ENTRYPOINT"
+grep -q 'cashpilot_wait_for_doh' "$SANITIZED_ENTRYPOINT"
 chmod 0755 "$SANITIZED_ENTRYPOINT"
-exec "$SANITIZED_ENTRYPOINT" "$@"'''
+"$SANITIZED_ENTRYPOINT" "$@" & PROVIDER_PID=$!'''
         runtime_handoff = runtime_handoff.replace("__MAC_BINARY_SHA256__", binary_sha256)
+    doh_bootstrap = r'''for _ in $(seq 1 30); do
+  (exec 3<>"/dev/tcp/127.0.0.1/$REDSOCKS_PORT") 2>/dev/null && break
+  sleep 1
+done
+(exec 3<>"/dev/tcp/127.0.0.1/$REDSOCKS_PORT") 2>/dev/null || exit 70
+printf "nameserver 127.0.0.1
+options timeout:2 attempts:2
+" > /etc/resolv.conf
+node /usr/local/lib/cashpilot-doh.js >/tmp/cashpilot-doh.log 2>&1 &
+DNS_PID=$!
+for _ in $(seq 1 30); do
+  getent hosts example.com >/dev/null 2>&1 && break
+  sleep 1
+done
+getent hosts example.com >/dev/null 2>&1 || exit 70
+''' if selected == "ios" else ""
     return f"""#!/usr/bin/env bash
 set -euo pipefail
 umask 077
@@ -379,8 +450,6 @@ case "$PROXY_TYPE" in
   HTTP) REDSOCKS_TYPE=http-connect ;;
   *) exit 64 ;;
 esac
-node /usr/local/lib/cashpilot-doh.js >/tmp/cashpilot-doh.log 2>&1 &
-printf "nameserver 127.0.0.1\noptions timeout:2 attempts:2\n" > /etc/resolv.conf
 iptables -N CP_EARNAPP_OUT 2>/dev/null || iptables -F CP_EARNAPP_OUT
 iptables -A CP_EARNAPP_OUT -o lo -j ACCEPT
 iptables -A CP_EARNAPP_OUT -d 127.0.0.0/8 -j ACCEPT
@@ -398,8 +467,44 @@ command -v ip6tables >/dev/null 2>&1 || exit 69
   ip6tables -A CP_EARNAPP6_OUT -o lo -j ACCEPT
   ip6tables -A CP_EARNAPP6_OUT -j DROP
   ip6tables -C OUTPUT -j CP_EARNAPP6_OUT 2>/dev/null || ip6tables -I OUTPUT 1 -j CP_EARNAPP6_OUT
-{ios_route}
+ {ios_route}
+ {doh_bootstrap}
 {runtime_handoff}
+cashpilot_watchdog() {{
+  local redsocks_seen=0
+  for _ in $(seq 1 60); do
+    kill -0 "$PROVIDER_PID" 2>/dev/null || return 0
+    if pidof redsocks >/dev/null 2>&1; then
+      redsocks_seen=1
+      break
+    fi
+    sleep 1
+  done
+  [[ "$redsocks_seen" -eq 1 ]] || {{ kill -TERM "$PROVIDER_PID" 2>/dev/null || true; return 1; }}
+  # The reference entrypoint performs registration and external-IP checks
+  # before the DoH helper is started; do not kill a healthy startup mid-flight.
+  for _ in $(seq 1 120); do
+    kill -0 "$PROVIDER_PID" 2>/dev/null || return 0
+    if [[ -n "${{DNS_PID:-}}" ]]; then
+      break
+    fi
+    pgrep -f '/usr/local/lib/cashpilot-doh.js' >/dev/null 2>&1 && break
+    sleep 1
+  done
+  while kill -0 "$PROVIDER_PID" 2>/dev/null; do
+    pidof redsocks >/dev/null 2>&1 || {{ kill -TERM "$PROVIDER_PID" 2>/dev/null || true; return 1; }}
+    if [[ -n "${{DNS_PID:-}}" ]]; then
+      kill -0 "$DNS_PID" 2>/dev/null || {{ kill -TERM "$PROVIDER_PID" 2>/dev/null || true; return 1; }}
+    else
+      pgrep -f '/usr/local/lib/cashpilot-doh.js' >/dev/null 2>&1 || {{ kill -TERM "$PROVIDER_PID" 2>/dev/null || true; return 1; }}
+    fi
+    iptables -C OUTPUT -j CP_EARNAPP_OUT 2>/dev/null || {{ kill -TERM "$PROVIDER_PID" 2>/dev/null || true; return 1; }}
+    ip6tables -C OUTPUT -j CP_EARNAPP6_OUT 2>/dev/null || {{ kill -TERM "$PROVIDER_PID" 2>/dev/null || true; return 1; }}
+    sleep 5
+  done
+  wait "$PROVIDER_PID"
+}}
+cashpilot_watchdog
         """.encode()
 
 
@@ -710,6 +815,17 @@ IOS_RUNTIME_ASSET_MANIFEST_SHA256 = runtime_asset_manifest_sha256(platform="ios"
 IOS_RUNTIME_IMAGE = f"cashpilot/earnapp-ios:asset-{IOS_RUNTIME_ASSET_MANIFEST_SHA256[:12]}"
 UBUNTU_RUNTIME_ASSET_MANIFEST_SHA256 = runtime_asset_manifest_sha256(platform="ubuntu")
 UBUNTU_RUNTIME_IMAGE = f"cashpilot/earnapp-ubuntu:asset-{UBUNTU_RUNTIME_ASSET_MANIFEST_SHA256[:12]}"
+# Historical production artifacts are permitted only for explicitly disposable
+# A/B canaries. Production deployment remains pinned to the current manifest.
+DISPOSABLE_PROVEN_IMAGES = {
+    "macos": frozenset(
+        {
+            "cashpilot/earnapp-mac-canary:asset-02dc8060a352",
+            "cashpilot/earnapp-mac-canary:asset-801686a44062",
+        }
+    ),
+    "ios": frozenset({"cashpilot/earnapp-ios:asset-28b1be5d6668"}),
+}
 IOS_RUNTIME_HOST = "earnapp_ios"
 MAC_PROFILE_MAGIC = b"ESPF"
 MAC_PROFILE_VERSION = 1
@@ -726,6 +842,14 @@ def runtime_image(platform: str = "macos") -> str:
     return f"{contract['image']}:asset-{digest[:12]}"
 
 
+def is_disposable_proven_image(platform: str, image: str, logical_node_id: str) -> bool:
+    selected = _image_platform(platform)
+    return (
+        str(logical_node_id or "").startswith("earnapp-disposable-")
+        and str(image or "") in DISPOSABLE_PROVEN_IMAGES.get(selected, frozenset())
+    )
+
+
 def required_image_labels(platform: str = "macos") -> dict[str, str]:
     selected = _image_platform(platform)
     contract = _PLATFORM_CONTRACTS[selected]
@@ -738,12 +862,14 @@ def required_image_labels(platform: str = "macos") -> dict[str, str]:
     }
 
 
-def validate_image_labels(labels: Any, platform: str = "macos") -> None:
+def validate_image_labels(
+    labels: Any, platform: str = "macos", *, image: str = "", logical_node_id: str = ""
+) -> None:
     actual = labels if isinstance(labels, dict) else {}
     missing = [
         key for key, expected in required_image_labels(platform).items() if str(actual.get(key) or "") != expected
     ]
-    if missing:
+    if missing and not is_disposable_proven_image(platform, image, logical_node_id):
         raise ValueError(f"EarnApp image is missing verified labels: {', '.join(missing)}")
 
 
@@ -753,7 +879,9 @@ def validate_canary_spec(spec: dict[str, Any]) -> None:
         raise ValueError("EarnApp canary provider is required")
     if str(spec.get("host_runtime") or "") != MAC_RUNTIME_HOST:
         raise ValueError("EarnApp Mac canary host runtime is required")
-    if str(spec.get("image") or "") != MAC_RUNTIME_IMAGE:
+    image = str(spec.get("image") or "")
+    logical_node_id = str((spec.get("labels") or {}).get("cashpilot.earnapp.logical_node_id") or "")
+    if image != MAC_RUNTIME_IMAGE and not is_disposable_proven_image("macos", image, logical_node_id):
         raise ValueError("EarnApp image is not the verified Mac canary image")
     if spec.get("privileged") or spec.get("devices"):
         raise ValueError("EarnApp canary cannot request privilege or devices")
@@ -821,7 +949,9 @@ def validate_runtime_spec(spec: dict[str, Any]) -> None:
         raise ValueError("EarnApp provider is required")
     if str(spec.get("host_runtime") or "") != IOS_RUNTIME_HOST:
         raise ValueError("EarnApp iOS runtime is required")
-    if str(spec.get("image") or "") != IOS_RUNTIME_IMAGE:
+    image = str(spec.get("image") or "")
+    logical_node_id = str((spec.get("labels") or {}).get("cashpilot.earnapp.logical_node_id") or "")
+    if image != IOS_RUNTIME_IMAGE and not is_disposable_proven_image("ios", image, logical_node_id):
         raise ValueError("EarnApp image is not the verified iOS image")
     if spec.get("privileged") or spec.get("devices"):
         raise ValueError("EarnApp iOS runtime cannot request host privilege")
