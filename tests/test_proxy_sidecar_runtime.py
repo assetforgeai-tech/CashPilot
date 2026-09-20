@@ -446,7 +446,9 @@ def test_earnapp_cleanup_keeps_candidate_that_still_has_stage_name():
         "cashpilot.earnapp.stage_slug": "earnapp-disposable-node-stage-abcdef123456",
     }
     client.containers.list.side_effect = [[], [], [candidate], [], []]
-    client.containers.get.side_effect = lambda _name: (_ for _ in ()).throw(orchestrator.NotFound("old runtime is gone"))
+    client.containers.get.side_effect = lambda _name: (_ for _ in ()).throw(
+        orchestrator.NotFound("old runtime is gone")
+    )
 
     with patch.object(orchestrator, "_get_client", return_value=client):
         result = orchestrator.remove_earnapp_service("earnapp-disposable-node")

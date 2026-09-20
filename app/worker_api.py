@@ -2819,9 +2819,7 @@ async def api_remove_earnapp_docker_node(
             # container inventory. For disposable slugs, the caller's CAS
             # tuple is the remaining safety boundary; cleanup is idempotent
             # and still goes through the normal orchestrator API.
-            if spec.generation <= 0 or not re.fullmatch(
-                r"sdk-(?:mac|ios|node)-[A-Za-z0-9-]{4,96}", spec.device_id
-            ):
+            if spec.generation <= 0 or not re.fullmatch(r"sdk-(?:mac|ios|node)-[A-Za-z0-9-]{4,96}", spec.device_id):
                 raise exc from authority_exc
             state = {"generation": spec.generation, "device_id": spec.device_id}
     platform = str(state.get("platform") or "").strip().lower()
@@ -2952,7 +2950,9 @@ async def api_promote_staged_earnapp_docker_node(
         try:
             presence = await asyncio.to_thread(orchestrator.earnapp_service_presence, spec.canonical_slug)
         except (ValueError, RuntimeError, OSError) as exc:
-            raise HTTPException(status_code=409, detail="Canonical EarnApp runtime state conflicts with promotion") from exc
+            raise HTTPException(
+                status_code=409, detail="Canonical EarnApp runtime state conflicts with promotion"
+            ) from exc
         if presence.get("main_present") or presence.get("sidecar_present"):
             raise HTTPException(status_code=409, detail="Canonical EarnApp runtime state conflicts with promotion")
         with contextlib.suppress(ValueError):
@@ -3166,20 +3166,29 @@ async def api_stage_earnapp_docker_node(request: Request, slug: str, spec: Deplo
                 slug,
                 device_prefix="sdk-ios-" if platform == "ios" else "sdk-node-",
             )
-        _save_earnapp_state(slug, {
+        _save_earnapp_state(
+            slug,
+            {
+                "logical_node_id": canonical,
+                "canonical_slug": canonical,
+                "generation": int(spec.labels.get("cashpilot.earnapp.generation") or 0),
+                "device_id": device_id,
+                "platform": platform,
+                "runtime_backend": "docker",
+                "proxy_id": int((spec.proxy or {}).get("proxy_id") or (spec.proxy or {}).get("id") or 0),
+                "expected_egress_ip": str((spec.proxy or {}).get("exit_ip") or ""),
+                "runtime_status": "running",
+                "container_id": container_id,
+                "evidence": {"running": True, "online": False},
+            },
+        )
+        return {
+            "status": "staged",
+            "stage_slug": slug,
             "logical_node_id": canonical,
-            "canonical_slug": canonical,
-            "generation": int(spec.labels.get("cashpilot.earnapp.generation") or 0),
-            "device_id": device_id,
-            "platform": platform,
-            "runtime_backend": "docker",
-            "proxy_id": int((spec.proxy or {}).get("proxy_id") or (spec.proxy or {}).get("id") or 0),
-            "expected_egress_ip": str((spec.proxy or {}).get("exit_ip") or ""),
-            "runtime_status": "running",
             "container_id": container_id,
-            "evidence": {"running": True, "online": False},
-        })
-        return {"status": "staged", "stage_slug": slug, "logical_node_id": canonical, "container_id": container_id, "device_id": device_id}
+            "device_id": device_id,
+        }
     except HTTPException:
         raise
     except (ValueError, RuntimeError) as exc:
