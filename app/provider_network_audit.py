@@ -21,6 +21,8 @@ def validate_provider_network_evidence(
     """Validate leak controls without treating missing evidence as safe."""
     findings: list[str] = []
     selected = str(mode or "").strip().lower()
+    if selected not in {"direct", "proxy"}:
+        return {"status": "attention", "findings": ["unsupported_egress_mode"]}
     if selected == "direct":
         if dns_via_proxy is None:
             findings.append("dns_isolation_unverified")
@@ -70,6 +72,8 @@ def validate_provider_egress(
     """Validate one lane's egress evidence without permitting fallback."""
     selected = str(mode or "").strip().lower()
     findings: list[str] = []
+    if provider_runtime.get(str(provider or "").strip().lower()) is None:
+        return {"status": "attention", "findings": ["unknown provider"]}
     expected = str(expected_egress_ip or "").strip()
     observed = str(observed_egress_ip or "").strip()
     if selected == "direct":

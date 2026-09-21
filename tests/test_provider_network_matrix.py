@@ -88,3 +88,27 @@ def test_proxy_providers_share_the_versioned_fail_closed_contract():
 def test_direct_only_providers_do_not_claim_proxy_contract():
     assert provider_runtime.proxy_contract("mysterium") == "direct-only"
     assert provider_runtime.proxy_contract("nkn") == "direct-only"
+
+
+def test_capability_matrix_is_explicit_for_every_provider_lane():
+    for slug, spec in provider_runtime.PROVIDERS.items():
+        matrix = provider_runtime.capability_matrix(slug)
+        assert set(matrix) == {"direct", "proxy"} & set(spec.modes)
+        for mode, capabilities in matrix.items():
+            assert capabilities["dns"] in {"provider_native", "tunneled"}
+            assert capabilities["ipv6"] in {"explicit", "disabled_or_tunneled"}
+            assert capabilities["udp"] in {"explicit", "blocked_by_default", "direct_exception"}
+            assert capabilities["direct_fallback"] is False
+            assert capabilities["watchdog"] is (mode == "proxy")
+            assert capabilities["restart"] in {"observe", "restart", "rotate"}
+
+
+def test_unsupported_capability_matrix_lane_is_rejected():
+    import pytest
+
+    with pytest.raises(ValueError, match="unsupported egress lane"):
+        provider_runtime.capability_matrix("nkn", mode="proxy")
+
+
+def test_catalog_runtime_publishes_the_same_capability_matrix():
+    assert provider_runtime.catalog_runtime("earnfm")["capabilities"] == provider_runtime.capability_matrix("earnfm")

@@ -256,6 +256,26 @@ def proxy_contract(slug: str) -> str:
     return "earnapp-style-v1"
 
 
+def capability_matrix(slug: str, mode: str | None = None) -> dict[str, dict[str, object]] | dict[str, object]:
+    """Expose the declared lane capabilities without provider fallbacks."""
+    provider = get(str(slug or "").strip().lower())
+    if provider is None:
+        raise ValueError(f"unknown provider: {slug}")
+    lanes = [str(mode or "").strip().lower()] if mode else list(provider.modes)
+    if any(lane not in provider.modes for lane in lanes):
+        raise ValueError("unsupported egress lane")
+    matrix = {
+        lane: {
+            **provider.network_contract_for(lane),
+            "direct_fallback": False,
+            "watchdog": lane == "proxy" and provider.proxy_transport != "direct_only",
+            "restart": provider.lifecycle_action(lane, "offline"),
+        }
+        for lane in lanes
+    }
+    return matrix[lanes[0]] if mode else matrix
+
+
 def _runtime_platform(spec: object) -> tuple[str, str]:
     if not isinstance(spec, Mapping):
         return "", ""
@@ -450,6 +470,7 @@ def catalog_runtime(slug: str) -> dict[str, object]:
         "network_contract": {
             lane: provider.network_contract_for(lane) for lane in ("direct", "proxy") if lane in provider.modes
         },
+        "capabilities": capability_matrix(slug),
         "hybrid_cardinality": (
             "one_node_per_public_ipv4_per_lane" if len(lanes) == 2 and provider.topology.startswith("slot_") else None
         ),

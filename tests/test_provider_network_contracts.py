@@ -4,7 +4,11 @@ import json
 from pathlib import Path
 
 from app import earnapp_runtime, orchestrator, provider_runtime
-from app.provider_network_audit import audit_provider_network_inventory
+from app.provider_network_audit import (
+    audit_provider_network_inventory,
+    validate_provider_egress,
+    validate_provider_network_evidence,
+)
 
 
 def test_status_includes_live_sidecar_identity_for_managed_container(monkeypatch):
@@ -360,6 +364,26 @@ def test_probe_service_egress_uses_container_namespace_sidecar(monkeypatch):
 def test_network_audit_reports_unverified_when_provider_has_no_live_inventory():
     report = audit_provider_network_inventory("packetstream", instances=[], containers=[], inventory_confirmed=False)
     assert report["status"] == "unverified"
+
+
+def test_network_evidence_rejects_unknown_egress_lane():
+    report = validate_provider_network_evidence(
+        mode="fallback",
+        dns_via_proxy=True,
+        ipv6_blocked=True,
+        udp_blocked=True,
+    )
+    assert report == {"status": "attention", "findings": ["unsupported_egress_mode"]}
+
+
+def test_egress_validation_rejects_unknown_provider():
+    report = validate_provider_egress(
+        "not-a-provider",
+        mode="direct",
+        expected_egress_ip="198.51.100.1",
+        observed_egress_ip="198.51.100.1",
+    )
+    assert report == {"status": "attention", "findings": ["unknown provider"]}
 
 
 def test_active_provider_matrix_is_explicit_and_earnapp_is_docker_only():
