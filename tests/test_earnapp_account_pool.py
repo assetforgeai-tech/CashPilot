@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
@@ -161,6 +162,23 @@ def test_record_earnapp_auth_result_persists_auditable_state(tmp_path):
             assert row["last_auth_failure_at"] is None
             assert row["auth_failure_kind"] == ""
             assert row["needs_token_refresh"] == 0
+
+    asyncio.run(run())
+
+
+def test_import_marks_known_expired_token_for_refresh_without_deleting_account(tmp_path):
+    async def run():
+        expired = int(datetime.now(UTC).timestamp()) - 60
+        payload = _payload("profile-expired", "expired@example.com", token_exp=expired)
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            await database.init_db()
+            account_id = await earnapp_accounts.import_account(payload)
+            row = next(row for row in await database.list_earnapp_accounts() if int(row["id"]) == account_id)
+
+        assert row is not None
+        assert row["state"] == "AUTH_FAILED"
+        assert row["auth_failure_kind"] == "TOKEN_EXPIRED"
+        assert row["needs_token_refresh"] == 1
 
     asyncio.run(run())
 
