@@ -24,6 +24,19 @@ _WIPTER_TRAFFIC_RE = re.compile(
 )
 
 
+def capacity_counters(row: dict[str, Any] | None) -> dict[str, int | None]:
+    """Return the concise, authority-derived capacity vocabulary used by UI/API."""
+    if not row:
+        return {"total": None, "eligible": None, "used": None, "available": None, "duplicates": None}
+    return {
+        "total": int(row.get("total") or 0),
+        "eligible": int(row.get("eligible") or 0),
+        "used": int(row.get("leased") or row.get("used") or 0),
+        "available": int(row.get("available") or 0),
+        "duplicates": int(row.get("duplicate_egress") or row.get("duplicates") or 0),
+    }
+
+
 def extract_spide_device_key(logs: str) -> str | None:
     """Return the first Spide CLI Device key from container logs."""
     match = _SPIDE_DEVICE_KEY_RE.search(logs or "")

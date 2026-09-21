@@ -9,6 +9,34 @@ from typing import Any
 
 from app import provider_modes
 
+
+def group_proxy_heartbeat_targets(
+    instances: list[Mapping[str, Any]] | tuple[Mapping[str, Any], ...],
+) -> dict[str, list[str]]:
+    """Group proxy runtimes for one heartbeat fan-out.
+
+    Direct lanes have no proxy heartbeat. EarnApp and Pawns stay isolated from
+    the shared proxy group; all other proxy lanes share one scheduler target.
+    The result is deterministic and contains each instance at most once.
+    """
+    groups: dict[str, set[str]] = {}
+    for row in instances or ():
+        if not isinstance(row, Mapping) or str(row.get("mode") or "").strip().lower() != "proxy":
+            continue
+        instance_id = str(row.get("instance_id") or "").strip()
+        if not instance_id:
+            continue
+        slug = str(row.get("slug") or row.get("provider_slug") or "").strip().lower()
+        if slug == "earnapp":
+            group = "earnapp"
+        elif slug in {"iproyal", "pawns"}:
+            group = "pawns"
+        else:
+            group = "shared-proxy"
+        groups.setdefault(group, set()).add(instance_id)
+    return {key: sorted(values) for key, values in sorted(groups.items())}
+
+
 _SLOT_RE = re.compile(r"^ipv4-(\d{3,6})$")
 
 
