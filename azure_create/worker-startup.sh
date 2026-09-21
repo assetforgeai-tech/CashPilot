@@ -7,6 +7,10 @@ set -euo pipefail
 
 REPO_ROOT="${CASHPILOT_REPO_ROOT:-$HOME/CashPilot}"
 WORKER_IMAGE="${CASHPILOT_WORKER_IMAGE:-ghcr.io/assetforgeai-tech/cashpilot-worker:${CASHPILOT_RELEASE}}"
+WORKER_IMAGE_DIGEST="${CASHPILOT_WORKER_IMAGE_DIGEST:-}"
+if [ -n "$WORKER_IMAGE_DIGEST" ]; then
+  WORKER_IMAGE="${WORKER_IMAGE%@*}@${WORKER_IMAGE_DIGEST}"
+fi
 WORKER_NAME="${CASHPILOT_WORKER_NAME:-$(hostname)}"
 WORKER_URL="${CASHPILOT_WORKER_URL:?set CASHPILOT_WORKER_URL in the process environment}"
 WORKER_BIND_ADDR="${CASHPILOT_WORKER_BIND_ADDR:?set CASHPILOT_WORKER_BIND_ADDR to the private/UI-reachable interface}"
@@ -18,6 +22,11 @@ case "$CASHPILOT_API_KEY$CASHPILOT_UI_URL$WORKER_URL$WORKER_BIND_ADDR" in
 esac
 case "$CASHPILOT_RELEASE$WORKER_NAME" in
   *$'\n'*|*$'\r'*) echo "CashPilot release/worker name must not contain newlines" >&2; exit 1 ;;
+esac
+case "$WORKER_IMAGE_DIGEST" in
+  "") ;;
+  sha256:[0-9a-fA-F]*) [ "${#WORKER_IMAGE_DIGEST}" -eq 71 ] || { echo "CASHPILOT_WORKER_IMAGE_DIGEST must contain 64 hex characters" >&2; exit 1; } ;;
+  *) echo "CASHPILOT_WORKER_IMAGE_DIGEST must be sha256:<hex>" >&2; exit 1 ;;
 esac
 case "$CASHPILOT_RELEASE" in
   *[!A-Za-z0-9._-]*) echo "CashPilot release contains unsupported characters" >&2; exit 1 ;;

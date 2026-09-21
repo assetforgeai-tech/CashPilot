@@ -48,3 +48,11 @@ def test_azure_startup_writes_env_without_heredoc_and_rejects_newlines():
     assert "printf '%s\\n'" in text
     assert "must not contain newlines" in text
     assert "cat > /etc/cashpilot/worker.env <<ENV" not in text
+
+
+def test_azure_startup_accepts_only_optional_sha256_image_digest():
+    text = SCRIPT.read_text(encoding="utf-8")
+
+    assert "CASHPILOT_WORKER_IMAGE_DIGEST" in text
+    assert "sha256:[0-9a-fA-F]*" in text
+    assert "WORKER_IMAGE%@*}@${WORKER_IMAGE_DIGEST}" in text
