@@ -1,0 +1,9 @@
+{
+  "rules": [
+    {
+      "path": "**/*",
+      "merge_system_rule": true,
+      "rule": "Review only behaviorally relevant defects. Check DB CAS/race safety, authority before mutation, provider/account ownership isolation, secret redaction, fail-closed networking, identity-volume preservation, bounded retry/backoff, idempotent recovery, and dashboard claims backed by runtime/collector evidence. Reject style-only refactors and speculative findings. Require a concrete exploitable path for security findings."
+    }
+  ]
+}
