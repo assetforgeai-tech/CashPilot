@@ -177,6 +177,19 @@ def test_lane_target_for_unsupported_mode_fails_closed(provider, mode, target):
         plan_provider_nodes(7, provider, ["ipv4-001"], mode=mode, proxy_capacity=1, **target)
 
 
+def test_proxy_only_provider_accepts_zero_direct_lane_target():
+    plans = plan_provider_nodes(
+        7,
+        "iproyal",
+        1,
+        mode="proxy",
+        proxy_capacity=1,
+        direct_desired=0,
+        proxy_desired=1,
+    )
+    assert [plan.mode for plan in plans] == ["proxy"]
+
+
 def test_manual_provider_cannot_auto_plan():
     with pytest.raises(ValueError, match="manual-only"):
         plan_provider_nodes(7, "wipter", 1)

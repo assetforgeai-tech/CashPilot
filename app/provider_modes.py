@@ -19,6 +19,10 @@ def expand_requested(slug: str, mode: str | None) -> list[str]:
     if not mode:
         mode = default_deploy_mode(slug)
     if mode == "legacy":
+        # Legacy deployment is normalized to the direct lane downstream. A
+        # proxy-only provider must never reach that compatibility path.
+        if supported_modes(slug) == {"proxy"}:
+            raise ValueError(f"{slug} does not support legacy mode; use proxy")
         return ["legacy"]
     wanted = ["direct", "proxy"] if mode == "both" else [mode]
     supported = supported_modes(slug)

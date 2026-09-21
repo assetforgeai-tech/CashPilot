@@ -124,6 +124,7 @@ def test_proxy_instance_runs_provider_inside_singbox_sidecar_namespace():
     sidecar = MagicMock(short_id="side", id="sidecar-id", name="cashpilot-earnfm-proxy-egress")
     provider = MagicMock(short_id="provider", id="provider-id")
     client.containers.run.side_effect = [sidecar, provider]
+    client.images.get.return_value.attrs = {"Config": {"Entrypoint": ["/app/main"], "Cmd": None}}
 
     with patch.object(orchestrator, "_get_client", return_value=client):
         container_id = orchestrator.deploy_raw(
@@ -144,13 +145,122 @@ def test_proxy_instance_runs_provider_inside_singbox_sidecar_namespace():
         "cashpilot-earnfm-proxy-egress-config": {"bind": "/etc/sing-box", "mode": "rw"}
     }
     assert ".cashpilot-initialized" in sidecar_call.kwargs["entrypoint"][2]
+    sidecar_entrypoint = sidecar_call.kwargs["entrypoint"][2]
+    assert "while true; do" in sidecar_entrypoint
+    assert "sing-box run -c /etc/sing-box/config.json &" in sidecar_entrypoint
+    assert 'wait "$SINGBOX_PID"' in sidecar_entrypoint
+    assert "exec sing-box run" not in sidecar_entrypoint
     assert sidecar_call.kwargs["labels"]["cashpilot.provider"] == "earnfm"
     assert sidecar_call.kwargs["labels"]["cashpilot.instance_mode"] == "proxy"
+    assert sidecar_call.kwargs["labels"]["cashpilot.proxy_transport"] == "singbox_compat"
+    assert sidecar_call.kwargs["labels"]["cashpilot.proxy_contract"] == "earnapp-style-v1"
     assert provider_call.kwargs["network_mode"] == "container:cashpilot-earnfm-proxy-egress"
+    assert provider_call.kwargs["entrypoint"] == ["/app/main"]
+    assert provider_call.kwargs["command"] is None
     assert provider_call.kwargs["hostname"] is None
     assert provider_call.kwargs["name"] == "cashpilot-earnfm-proxy"
     assert provider_call.kwargs["labels"]["cashpilot.provider"] == "earnfm"
+    assert provider_call.kwargs["labels"]["cashpilot.proxy_contract"] == "earnapp-style-v1"
     assert provider_call.kwargs["labels"]["cashpilot.instance_mode"] == "proxy"
+
+
+def test_proxy_wrapper_preserves_explicit_command_override():
+    client = MagicMock()
+    client.containers.get.side_effect = [orchestrator.NotFound("provider"), orchestrator.NotFound("sidecar")]
+    client.containers.run.side_effect = [MagicMock(id="sidecar-id"), MagicMock(id="provider-id")]
+    client.images.get.return_value.attrs = {"Config": {"Entrypoint": None, "Cmd": ["/bin/sh"]}}
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        orchestrator.deploy_raw(
+            slug="proxy-canary-w118904-dns-001",
+            provider_slug="earnfm",
+            image="alpine:3.20",
+            command="sleep 3600",
+            labels={"cashpilot.provider": "earnfm", "cashpilot.instance_mode": "proxy"},
+            proxy={"host": "1.2.3.4", "port": 1080, "protocol": "socks5"},
+        )
+
+    provider_call = client.containers.run.call_args_list[1]
+    assert provider_call.kwargs["entrypoint"] == [
+        "/bin/sh",
+        "-c",
+        "printf '%s\\n' 'nameserver 172.31.255.2' > /etc/resolv.conf; exec /bin/sh -c 'sleep 3600'",
+    ]
+    assert provider_call.kwargs["command"] is None
+
+
+def test_proxy_wrapper_passes_argument_list_without_shell_rewriting():
+    """Native entrypoints must receive list commands unchanged (ProxyBase)."""
+    client = MagicMock()
+    client.containers.get.side_effect = [MagicMock(remove=lambda force: None), orchestrator.NotFound("sidecar")]
+    client.images.get.return_value.attrs = {"Config": {"Entrypoint": ["/opt/proxybase/ProxyBase-Peer"], "Cmd": None}}
+    client.containers.run.return_value = MagicMock(id="provider-id")
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        orchestrator.deploy_raw(
+            slug="proxybase-proxy",
+            provider_slug="proxybase",
+            image="ghcr.io/proxybaseorg/peer-cli@sha256:test",
+            env={"NAME": "proxybase-node"},
+            labels={"cashpilot.provider": "proxybase", "cashpilot.instance_mode": "proxy"},
+            proxy={"host": "1.2.3.4", "port": 1080, "protocol": "socks5"},
+            deploy_credentials={"deploy_access_token": "token"},
+        )
+
+    provider_call = client.containers.run.call_args_list[-1]
+    assert provider_call.kwargs["entrypoint"] == ["/opt/proxybase/ProxyBase-Peer"]
+    assert provider_call.kwargs["command"] == ["token", "proxybase-node"]
+
+
+def test_shellless_repocket_image_keeps_native_entrypoint_when_catalog_command_empty():
+    """Repocket has no /bin/sh; the sidecar must not wrap its native binary."""
+    client = MagicMock()
+    client.containers.get.side_effect = [orchestrator.NotFound("provider"), orchestrator.NotFound("sidecar")]
+    client.images.get.return_value.attrs = {"Config": {"Entrypoint": ["/usr/local/bin/repocket"], "Cmd": None}}
+    client.containers.run.side_effect = [MagicMock(id="sidecar-id"), MagicMock(id="provider-id")]
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        orchestrator.deploy_raw(
+            slug="repocket-proxy",
+            provider_slug="repocket",
+            image="repocket/repocket",
+            command="",
+            labels={"cashpilot.provider": "repocket", "cashpilot.instance_mode": "proxy"},
+            proxy={"host": "1.2.3.4", "port": 1080, "protocol": "socks5"},
+        )
+
+    provider_call = client.containers.run.call_args_list[-1]
+    assert provider_call.kwargs["entrypoint"] == ["/usr/local/bin/repocket"]
+    assert provider_call.kwargs["command"] is None
+
+
+def test_shellless_traffmonetizer_command_becomes_native_argv():
+    """Native CLI images must not receive a /bin/sh DNS wrapper."""
+    client = MagicMock()
+    client.containers.get.side_effect = [orchestrator.NotFound("provider"), orchestrator.NotFound("sidecar")]
+    client.images.get.return_value.attrs = {"Config": {"Entrypoint": ["/usr/local/bin/cli"], "Cmd": None}}
+    client.containers.run.side_effect = [MagicMock(id="sidecar-id"), MagicMock(id="provider-id")]
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        orchestrator.deploy_raw(
+            slug="traffmonetizer-proxy",
+            provider_slug="traffmonetizer",
+            image="traffmonetizer/cli_v2",
+            command="start accept --token token-value --device-name node-1",
+            labels={"cashpilot.provider": "traffmonetizer", "cashpilot.instance_mode": "proxy"},
+            proxy={"host": "1.2.3.4", "port": 1080, "protocol": "socks5"},
+        )
+
+    provider_call = client.containers.run.call_args_list[-1]
+    assert provider_call.kwargs["entrypoint"] == ["/usr/local/bin/cli"]
+    assert provider_call.kwargs["command"] == [
+        "start",
+        "accept",
+        "--token",
+        "token-value",
+        "--device-name",
+        "node-1",
+    ]
 
 
 def test_sidecar_replaces_stale_config_on_every_create():
@@ -171,6 +281,14 @@ def test_sidecar_replaces_stale_config_on_every_create():
     assert "SINGBOX_CONFIG_B64" in entrypoint
     assert "if [ ! -f /etc/sing-box/.cashpilot-initialized ]" not in entrypoint
     assert 'mv -f "$tmp" /etc/sing-box/config.json' in entrypoint
+    assert "set -eu; tmp=/etc/sing-box/config.json.cashpilot-new;" in entrypoint
+    assert "nft -f - <<EOF" in entrypoint
+    assert "cashpilot_dns" in entrypoint
+    assert "dport 53 dnat to 172.31.255.2:53" in entrypoint
+    assert "priority -199" in entrypoint
+    assert "ip daddr 127.0.0.1 tcp dport 1-65535 accept" in entrypoint
+    assert "ip daddr 172.31.255.2 udp dport 53 accept" in entrypoint
+    assert "ip daddr 172.31.255.2 tcp dport 53 accept" in entrypoint
 
 
 def test_wipter_migration_keeps_legacy_container_until_proxy_probe_passes(monkeypatch):
@@ -257,6 +375,7 @@ def test_earnapp_operator_artifact_is_never_pulled_from_a_public_registry():
             labels={"cashpilot.provider": "earnapp", "cashpilot.earnapp.platform": "darwin"},
             host_runtime="earnapp_mac_canary",
             image_delivery="operator_preload",
+            network_mode="bridge",
             proxy={"host": "1.2.3.4", "port": 1080, "protocol": "socks5"},
         )
 
@@ -406,6 +525,73 @@ def test_earnapp_cleanup_removes_orphan_sidecar_after_main_is_gone():
     assert result["main_present"] is False
     assert result["sidecar_present"] is False
     sidecar.remove.assert_called_once_with(force=True)
+
+
+def test_earnapp_cleanup_removes_promoted_container_with_stage_marker():
+    """Canonical cleanup must not ignore a promoted disposable stage."""
+    client = MagicMock()
+    promoted = MagicMock()
+    promoted.name = "cashpilot-earnapp-disposable-node"
+    promoted.labels = {
+        orchestrator.LABEL_MANAGED: "true",
+        orchestrator.LABEL_SERVICE: "earnapp-disposable-node",
+        "cashpilot.provider": "earnapp",
+        "cashpilot.earnapp.logical_node_id": "earnapp-disposable-node",
+        "cashpilot.earnapp.stage_slug": "earnapp-disposable-node-stage-abcdef123456",
+    }
+    client.containers.list.return_value = [promoted]
+    promoted.remove.side_effect = lambda force=True: setattr(client.containers.list, "return_value", [])
+    client.containers.get.side_effect = orchestrator.NotFound("canonical lookup excludes staged marker")
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        result = orchestrator.remove_earnapp_service("earnapp-disposable-node")
+
+    assert result == {"main_present": False, "sidecar_present": False}
+    promoted.remove.assert_called_once_with(force=True)
+
+
+def test_earnapp_cleanup_keeps_candidate_that_still_has_stage_name():
+    """Removing the old canonical runtime must not delete a staged candidate."""
+    client = MagicMock()
+    candidate = MagicMock()
+    candidate.name = "cashpilot-earnapp-disposable-node-stage-abcdef123456"
+    candidate.labels = {
+        orchestrator.LABEL_MANAGED: "true",
+        orchestrator.LABEL_SERVICE: "earnapp-disposable-node-stage-abcdef123456",
+        "cashpilot.provider": "earnapp",
+        "cashpilot.earnapp.logical_node_id": "earnapp-disposable-node",
+        "cashpilot.earnapp.stage_slug": "earnapp-disposable-node-stage-abcdef123456",
+    }
+    client.containers.list.side_effect = [[], [], [candidate], [], []]
+    client.containers.get.side_effect = lambda _name: (_ for _ in ()).throw(
+        orchestrator.NotFound("old runtime is gone")
+    )
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        result = orchestrator.remove_earnapp_service("earnapp-disposable-node")
+
+    assert result == {"main_present": False, "sidecar_present": False}
+    candidate.remove.assert_not_called()
+
+
+def test_promoted_canonical_runtime_with_stage_marker_is_restartable():
+    """Promotion keeps a stage marker; canonical lookup must still find it."""
+    client = MagicMock()
+    promoted = MagicMock()
+    promoted.name = "cashpilot-earnapp-disposable-node"
+    promoted.labels = {
+        orchestrator.LABEL_MANAGED: "true",
+        orchestrator.LABEL_SERVICE: "earnapp-disposable-node",
+        "cashpilot.provider": "earnapp",
+        "cashpilot.earnapp.logical_node_id": "earnapp-disposable-node",
+        "cashpilot.earnapp.stage_slug": "earnapp-disposable-node-stage-abcdef123456",
+    }
+    client.containers.get.return_value = promoted
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        assert (
+            orchestrator._find_earnapp_runtime_container(client, "earnapp-disposable-node", sidecar=False) is promoted
+        )
 
 
 def test_apply_proxy_binding_preflights_every_sidecar_before_writing_any_config():

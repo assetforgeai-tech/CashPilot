@@ -886,6 +886,10 @@ const CP = (() => {
               ${sortTh('name', 'Service', '')}
               ${sortTh('status', 'Status', 'center')}
               ${sortTh('health', 'Health', 'center')}
+              ${sortTh('provider', 'Provider', 'center')}
+              ${sortTh('runtime', 'Runtime', 'center')}
+              ${sortTh('traffic', 'Traffic', 'center')}
+              ${sortTh('seen', 'Last seen', 'center')}
               ${sortTh('balance', 'Balance', 'right')}
               ${sortTh('change', 'Change', 'right')}
               ${sortTh('cpu', 'CPU', 'right')}
@@ -1220,7 +1224,9 @@ const CP = (() => {
     } else {
       // Single instance — build container buttons targeting the right node
       const inst = details[0] || {};
-      const wParam = inst.worker_id != null ? `', ${inst.worker_id}` : `'`;
+      const workerAttr = inst.worker_id != null
+        ? ` data-a2="${escapeHtml(String(inst.worker_id))}"`
+        : '';
       const noDocker = !inst.has_docker || inst.is_android;
       // Started outside CashPilot — matched by IMAGE, not by a CashPilot label,
       // so every container command targets a name that does not exist and
@@ -1238,13 +1244,13 @@ const CP = (() => {
           ${collectBtn}
           ${settingsBtn}
           ${_canWrite ? `
-          <button class="btn btn-icon" data-action="restartService" data-a1="'${escapeHtml(svc.slug)}${wParam}" title="Restart"${disabledAttr}>
+          <button class="btn btn-icon" data-action="restartService" data-a1="${escapeHtml(svc.slug)}"${workerAttr} title="Restart"${disabledAttr}>
             ${ICON_RESTART}
           </button>
-          <button class="btn btn-icon" data-action="stopService" data-a1="'${escapeHtml(svc.slug)}${wParam}" title="Stop"${disabledAttr}>
+          <button class="btn btn-icon" data-action="stopService" data-a1="${escapeHtml(svc.slug)}"${workerAttr} title="Stop"${disabledAttr}>
             ${ICON_STOP}
           </button>
-          <button class="btn btn-icon" data-action="viewLogs" data-a1="'${escapeHtml(svc.slug)}${wParam}" title="Logs"${disabledAttr}>
+          <button class="btn btn-icon" data-action="viewLogs" data-a1="${escapeHtml(svc.slug)}"${workerAttr} title="Logs"${disabledAttr}>
             ${ICON_LOGS}
           </button>` : ''}
         </div>`;
@@ -1256,6 +1262,10 @@ const CP = (() => {
       <td>${nameHtml}<div style="font-size:0.7rem; color:var(--text-muted);">${subtitle}</div></td>
       <td style="text-align:center;"><span class="badge badge-${statusClass}"><span class="status-dot ${statusClass}"></span> ${statusLabel}</span>${instanceLabel}${unmanagedLabel}${outdatedBadge}</td>
       <td style="text-align:center;">${healthBadge}</td>
+      <td style="text-align:center;" data-field="provider_state">${svc.provider_state != null ? escapeHtml(String(svc.provider_state)) : '&mdash;'}</td>
+      <td style="text-align:center;" data-field="runtime_state">${svc.runtime_state != null ? escapeHtml(String(svc.runtime_state)) : '&mdash;'}</td>
+      <td style="text-align:center;" data-field="traffic">${svc.traffic != null ? escapeHtml(String(svc.traffic)) : '&mdash;'}</td>
+      <td style="text-align:center;" data-field="last_seen">${svc.last_seen != null ? escapeHtml(String(svc.last_seen)) : '&mdash;'}</td>
       <td style="text-align:right; font-weight:600;">${balanceHtml}</td>
       <td style="text-align:right;"><span class="stat-change ${deltaClass}">${deltaStr}</span></td>
       <td style="text-align:right;">${cpuStr}</td>
@@ -1272,7 +1282,9 @@ const CP = (() => {
         const iStatus = (inst.status || 'unknown').toLowerCase();
         const iStatusLabel = iStatus.charAt(0).toUpperCase() + iStatus.slice(1);
         const nodeLabel = inst.node === 'local' ? 'Local' : escapeHtml(inst.node);
-        const wParam = inst.worker_id != null ? `', ${inst.worker_id}` : `'`;
+        const workerAttr = inst.worker_id != null
+          ? ` data-a2="${escapeHtml(String(inst.worker_id))}"`
+          : '';
         const iNoDocker = !inst.has_docker || inst.is_android;
         // The mixed case this whole change is built around. The ROW keeps its
         // buttons because a managed instance can still be controlled — but the
@@ -1315,13 +1327,13 @@ const CP = (() => {
           <td style="text-align:center; white-space:nowrap;">
             <div class="action-btns">
               ${_canWrite ? `
-              <button class="btn btn-icon" data-action="restartService" data-a1="'${escapeHtml(svc.slug)}${wParam}" title="Restart on ${nodeLabel}"${disabledAttr}>
+              <button class="btn btn-icon" data-action="restartService" data-a1="${escapeHtml(svc.slug)}"${workerAttr} title="Restart on ${nodeLabel}"${disabledAttr}>
                 ${ICON_RESTART}
               </button>
-              <button class="btn btn-icon" data-action="stopService" data-a1="'${escapeHtml(svc.slug)}${wParam}" title="Stop on ${nodeLabel}"${disabledAttr}>
+              <button class="btn btn-icon" data-action="stopService" data-a1="${escapeHtml(svc.slug)}"${workerAttr} title="Stop on ${nodeLabel}"${disabledAttr}>
                 ${ICON_STOP}
               </button>
-              <button class="btn btn-icon" data-action="viewLogs" data-a1="'${escapeHtml(svc.slug)}${wParam}" title="Logs on ${nodeLabel}"${disabledAttr}>
+              <button class="btn btn-icon" data-action="viewLogs" data-a1="${escapeHtml(svc.slug)}"${workerAttr} title="Logs on ${nodeLabel}"${disabledAttr}>
                 ${ICON_LOGS}
               </button>` : ''}
             </div>
@@ -3669,11 +3681,10 @@ const CP = (() => {
     rows.innerHTML = nodes.map(node => {
       const account = accounts.get(Number(node.account_id)) || {};
       const platform = String(node.platform || 'unknown').toLowerCase();
-      const ubuntuRecovery = platform === 'ubuntu';
       const recovery = node.state === 'RECOVERY_HOLD'
         ? earnAppHoldCountdown(node.recovery_hold_remaining_seconds)
         : (node.state === 'RECOVERABLE' ? 'Proxy released; affinity retained' : 'Not in recovery');
-      const recoveryAction = ubuntuRecovery && ['RECOVERY_HOLD', 'RECOVERABLE'].includes(node.state)
+      const recoveryAction = ['macos', 'ios', 'ubuntu'].includes(platform) && ['RECOVERY_HOLD', 'RECOVERABLE'].includes(node.state)
         ? `<button class="btn btn-ghost btn-sm" data-action="issueEarnAppReplacementTicket" data-a1="${escapeHtml(node.logical_node_id)}">Issue ticket</button>`
         : '<small>Docker runtime recovery follows the provider policy</small>';
       return `<tr>

@@ -853,6 +853,15 @@ class TestTheWizardSelectionIsVisible:
             assert not re.search(r'data-a[123]="this"', text), f"{path.name} passes the string 'this' as an argument"
 
 
+class TestPerWorkerServiceActions:
+    def test_slug_and_worker_id_are_separate_delegated_arguments(self):
+        source = js_function("renderServiceRow")
+        assert "const wParam" not in source
+        assert "data-a1=\"'${escapeHtml(svc.slug)}" not in source
+        assert source.count('data-a1="${escapeHtml(svc.slug)}"${workerAttr}') == 6
+        assert source.count("const workerAttr = inst.worker_id != null") == 2
+
+
 class TestCatalogShowsReadiness:
     def test_catalog_card_renders_readiness_badges(self):
         source = js_function("renderCatalogCard")
@@ -1136,3 +1145,16 @@ def test_network_reconciliation_ui_exposes_lane_and_egress_evidence():
     app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
     assert "lane_counts" in app_js
     assert "network_evidence" in app_js
+
+
+def test_service_row_shows_provider_runtime_traffic_and_last_seen_separately():
+    """Task 8 item 1: provider state, runtime state, traffic, last-seen as separate fields."""
+    row = js_function("renderServiceRow")
+    # Provider state (from provider dashboard/API, not container status)
+    assert "svc.provider_state" in row
+    # Runtime state (container/process status, separate from provider enrollment)
+    assert "svc.runtime_state" in row or "svc.container_status" in row
+    # Traffic (bytes/packets/connections where provider exposes it)
+    assert "svc.traffic" in row or "svc.net_tx" in row or "svc.bandwidth" in row
+    # Last-seen timestamp from provider or runtime
+    assert "svc.last_seen" in row or "svc.last_active" in row

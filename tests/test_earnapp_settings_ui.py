@@ -161,6 +161,7 @@ def test_settings_scopes_recovery_to_all_docker_platforms():
     assert "Issue ticket" in javascript
     assert "MacOS/iOS runtime is inspection-only" not in javascript
     assert "Docker runtime recovery" in javascript
+    assert "['macos', 'ios', 'ubuntu'].includes(platform)" in javascript
 
 
 def test_earnapp_notice_matches_docker_only_runtime():

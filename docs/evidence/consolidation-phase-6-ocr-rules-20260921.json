@@ -1,0 +1,14 @@
+{
+  "schema_version": "1",
+  "groups": [
+    {
+      "group_id": 1,
+      "source": "project",
+      "pattern": "**/*",
+      "files": [
+        "app/collectors/proxies_sx.py app/database.py app/earnapp_canary.py app/earnapp_collection.py app/earnapp_lifecycle.py app/earnapp_runtime.py app/main.py app/orchestrator.py app/provider_modes.py app/provider_network_audit.py app/provider_runtime.py app/provider_topology.py app/routers/proxies.py app/singbox_config.py app/static/js/app.js app/worker_api.py docs/ACTIVE_CONTEXT.md entrypoint.sh services/bandwidth/earnapp.yml services/bandwidth/proxies-sx.yml tests/test_auto_deploy_policy.py tests/test_earnapp_account_pool.py tests/test_earnapp_account_routes.py tests/test_earnapp_auto_deploy.py tests/test_earnapp_canary_contract.py tests/test_earnapp_lifecycle.py tests/test_earnapp_node_health.py tests/test_earnapp_paypal_pool.py tests/test_earnapp_policy_matrix.py tests/test_earnapp_settings_ui.py tests/test_frontend_wiring.py tests/test_nkn_auto_deploy.py tests/test_nkn_contract_audit.py tests/test_provider_active_probe.py tests/test_provider_instances.py tests/test_provider_lifecycle_policy.py tests/test_provider_modes.py tests/test_provider_network_contracts.py tests/test_provider_topology.py tests/test_proxies_sx_collector.py tests/test_proxy_egress.py tests/test_proxy_routes.py tests/test_proxy_sidecar_runtime.py uv.lock"
+      ],
+      "rule": "## System-Specific Rules (Mandatory)\n\n#### Correctness\nIs the logic correct? Are there missing boundary conditions?\nAre exceptions handled properly?\nIs it thread-safe in concurrent scenarios?\n\n#### Security\nAre there security vulnerabilities such as SQL injection or XSS?\nIs sensitive information handled correctly?\nIs permission validation complete?\n\n#### Performance\nAre there obvious performance issues (e.g., N+1 queries, unnecessary loops)?\nAre resources properly released?\n\n#### Maintainability\nIs the code clear and easy to understand?\nDo names accurately express intent?\nDoes it follow the project’s existing code style and architecture patterns?\n\n#### Test Coverage\nDo critical logic paths have corresponding test cases?\nDo test cases cover boundary conditions?\n\n---\n\n## User-Specific Rules (Mandatory)\n\nReview only behaviorally relevant defects. Check DB CAS/race safety, authority before mutation, provider/account ownership isolation, secret redaction, fail-closed networking, identity-volume preservation, bounded retry/backoff, idempotent recovery, and dashboard claims backed by runtime/collector evidence. Reject style-only refactors and speculative findings. Require a concrete exploitable path for security findings."
+    }
+  ]
+}

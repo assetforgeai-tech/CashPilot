@@ -107,13 +107,15 @@ def evaluate_node(
     if bool(snapshot.get("auth_failed")):
         return LifecycleDecision("defer_auth", same, rotates, "account authentication requires retry")
     if bool(snapshot.get("banned")):
-        # Node-level bans use the same in-place recovery as offline nodes;
-        # account suspension is handled separately by auth/account lifecycle.
-        return LifecycleDecision("restart", 0, rotates, "node banned")
+        # A provider-confirmed node ban invalidates the remote device identity;
+        # recreate immediately. Account suspension remains an auth lifecycle.
+        return LifecycleDecision("recreate", 0, rotates, "device banned")
     # Offline is an operational failure even when the last account snapshot
     # still reports positive usage. Restart in place; preserve identity/lease.
     if snapshot.get("online") is False:
-        return LifecycleDecision("restart", 0, rotates, "node offline")
+        if same >= 2:
+            return LifecycleDecision("recreate", 0, rotates, "three failed restart cycles")
+        return LifecycleDecision("restart", same + 1, rotates, "node offline")
     billing = str(snapshot.get("billing") or "").strip().lower()
     awaiting_country = (
         billing in _UPTIME_BILLING
@@ -183,4 +185,6 @@ def evaluate_node(
     # A healthy route with a flatline is a workload/admission problem, not
     # proof that the identity or proxy should be replaced. Restart in place so
     # the device, volume and lease remain stable.
-    return LifecycleDecision("restart", 0, rotates, "usage flatline or offline")
+    if same >= 2:
+        return LifecycleDecision("recreate", 0, rotates, "three failed restart cycles")
+    return LifecycleDecision("restart", same + 1, rotates, "usage flatline or offline")

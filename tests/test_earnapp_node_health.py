@@ -88,6 +88,167 @@ def test_earnapp_runtime_authority_reports_exact_identity_proxy_and_components(m
     }
 
 
+def test_earnapp_lookup_does_not_treat_staged_runtime_as_canonical(monkeypatch):
+    staged = MagicMock(
+        labels={
+            "cashpilot.managed": "true",
+            "cashpilot.service": "earnapp-node",
+            "cashpilot.provider": "earnapp",
+            "cashpilot.earnapp.stage_slug": "earnapp-node-stage-abcdef123456",
+        }
+    )
+    client = MagicMock()
+    client.containers.get.side_effect = orchestrator.NotFound("canonical absent")
+    client.containers.list.return_value = [staged]
+
+    assert orchestrator._find_earnapp_runtime_container(client, "earnapp-node", sidecar=False) is None
+
+
+def test_promote_staged_earnapp_runtime_renames_candidate_components_and_updates_state(monkeypatch):
+    stage = "earnapp-runtime-promote-stage"
+    canonical = "earnapp-runtime-promote"
+    stage_main = MagicMock(
+        id="new-main",
+        name="cashpilot-" + stage,
+        status="running",
+        labels={
+            "cashpilot.managed": "true",
+            "cashpilot.service": canonical,
+            "cashpilot.provider": "earnapp",
+            "cashpilot.earnapp.canonical_slug": canonical,
+        },
+    )
+    stage_main.attrs = {}
+    stage_sidecar = MagicMock(
+        id="new-sidecar",
+        name="cashpilot-" + stage + "-egress",
+        status="running",
+        labels={
+            "cashpilot.managed": "true",
+            "cashpilot.service": canonical,
+            "cashpilot.provider": "earnapp",
+            "cashpilot.role": "egress-sidecar",
+            "cashpilot.earnapp.canonical_slug": canonical,
+        },
+    )
+    client = MagicMock()
+    client.containers.get.side_effect = [
+        stage_main,
+        stage_sidecar,
+        orchestrator.NotFound("old main"),
+        orchestrator.NotFound("old sidecar"),
+    ]
+    monkeypatch.setattr(orchestrator, "_get_client", lambda: client)
+    monkeypatch.setattr(
+        orchestrator,
+        "_find_earnapp_runtime_container",
+        lambda _client, slug, *, sidecar: (
+            stage_sidecar if slug == stage and sidecar else stage_main if slug == stage else None
+        ),
+    )
+    assert orchestrator.promote_staged_earnapp_runtime(stage, canonical, new_generation=4) == {
+        "main_container_id": "new-main",
+        "sidecar_container_id": "new-sidecar",
+        "generation": 4,
+    }
+    stage_sidecar.rename.assert_called_once_with("cashpilot-" + canonical + "-egress")
+    stage_main.rename.assert_called_once_with("cashpilot-" + canonical)
+
+
+def test_promote_staged_earnapp_runtime_preserves_runtime_contract(monkeypatch):
+    stage = "earnapp-runtime-contract-stage"
+    canonical = "earnapp-runtime-contract"
+    labels = {
+        "cashpilot.managed": "true",
+        "cashpilot.service": canonical,
+        "cashpilot.provider": "earnapp",
+        "cashpilot.earnapp.canonical_slug": canonical,
+    }
+    main = MagicMock(id="stage-main", status="running", labels=labels)
+    main.attrs = {
+        "Config": {"Image": "earnapp:1", "Env": ["A=B"], "Cmd": ["run"], "WorkingDir": "/opt", "User": "1000"},
+        "HostConfig": {
+            "RestartPolicy": {"Name": "always"},
+            "NanoCpus": 123,
+            "ShmSize": 456,
+            "PidsLimit": 7,
+            "NetworkMode": "container:stage-side",
+        },
+        "Mounts": [],
+    }
+    side_labels = {**labels, "cashpilot.role": "egress-sidecar"}
+    side = MagicMock(id="stage-side", status="running", labels=side_labels)
+    side.attrs = {
+        "Config": {"Image": "sidecar:1", "Env": ["S=1"], "Cmd": ["side"], "WorkingDir": "/", "User": "0"},
+        "HostConfig": {
+            "RestartPolicy": {"Name": "always"},
+            "NanoCpus": 234,
+            "ShmSize": 567,
+            "PidsLimit": 8,
+            "CapAdd": ["NET_ADMIN"],
+            "Devices": [{"PathOnHost": "/dev/net/tun", "PathInContainer": "/dev/net/tun", "CgroupPermissions": "rwm"}],
+        },
+        "Mounts": [],
+    }
+    promoted_side = MagicMock(id="promoted-side", status="created")
+    replacement = MagicMock(id="replacement", status="created")
+    client = MagicMock()
+    client.containers.get.side_effect = [
+        main,
+        side,
+        orchestrator.NotFound("old main"),
+        orchestrator.NotFound("old side"),
+    ]
+    client.containers.create.side_effect = [promoted_side, replacement]
+    monkeypatch.setattr(orchestrator, "_get_client", lambda: client)
+
+    result = orchestrator.promote_staged_earnapp_runtime(stage, canonical, new_generation=2)
+
+    assert result["main_container_id"] == "replacement"
+    side_kwargs = client.containers.create.call_args_list[0].kwargs
+    main_kwargs = client.containers.create.call_args_list[1].kwargs
+    assert side_kwargs["nano_cpus"] == 234
+    assert side_kwargs["shm_size"] == 567
+    assert side_kwargs["devices"]
+    assert main_kwargs["nano_cpus"] == 123
+    assert main_kwargs["shm_size"] == 456
+    assert main_kwargs["working_dir"] == "/opt"
+    assert main_kwargs["network_mode"] == "container:promoted-side"
+
+
+def test_promote_staged_earnapp_runtime_supports_in_container_main_only(monkeypatch):
+    stage = "earnapp-runtime-main-only-stage"
+    canonical = "earnapp-runtime-main-only"
+    labels = {
+        "cashpilot.managed": "true",
+        "cashpilot.service": canonical,
+        "cashpilot.provider": "earnapp",
+        "cashpilot.earnapp.canonical_slug": canonical,
+    }
+    main = MagicMock(id="stage-main", status="running", labels=labels)
+    main.attrs = {
+        "Config": {"Image": "earnapp:1", "Env": ["A=B"], "Cmd": ["run"]},
+        "HostConfig": {"RestartPolicy": {"Name": "always"}, "NetworkMode": "bridge"},
+        "Mounts": [],
+    }
+    promoted = MagicMock(id="promoted-main", status="created")
+    client = MagicMock()
+    client.containers.get.side_effect = [
+        main,
+        orchestrator.NotFound("no sidecar"),
+        orchestrator.NotFound("no canonical"),
+    ]
+    client.containers.create.return_value = promoted
+    monkeypatch.setattr(orchestrator, "_get_client", lambda: client)
+
+    result = orchestrator.promote_staged_earnapp_runtime(stage, canonical, new_generation=2)
+
+    assert result == {"main_container_id": "promoted-main", "sidecar_container_id": "", "generation": 2}
+    assert client.containers.create.call_args.kwargs["network_mode"] == "bridge"
+    main.rename.assert_called_once()
+    promoted.start.assert_called_once()
+
+
 def test_earnapp_runtime_authority_accepts_main_only_runtime(monkeypatch):
     device_id = "sdk-mac-" + "2" * 32
     main_container = MagicMock(
@@ -666,6 +827,46 @@ async def _proxy(provider_id: int, suffix: int) -> int:
         probe_version="test",
     )
     return proxy_id
+
+
+def test_orphaned_running_earnapp_runtime_rebinds_without_identity_or_proxy_change(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "rebind.db"):
+            await database.init_db()
+            await earnapp_accounts.import_account(_account("rebind"))
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            proxy_id = await _proxy(provider_id, 91)
+            worker_id = await database.upsert_worker("worker-rebind", "worker-rebind", "http://worker")
+            node_id = "earnapp-orphaned-runtime"
+            await database.assign_earnapp_account(node_id, platform="macos")
+            device_id = "sdk-mac-" + "9" * 32
+            await database.bind_earnapp_node_runtime(node_id, worker_id, device_id=device_id, proxy_id=proxy_id)
+            await database.save_provider_instance(
+                "earnapp", node_id, worker_id=worker_id, mode="proxy", proxy_id=proxy_id, status="running"
+            )
+            db = await database._get_db()
+            await db.execute(
+                "UPDATE earnapp_logical_nodes SET state='PLANNED', assigned_worker_id=NULL, current_proxy_id=NULL, "
+                "last_heartbeat_at=NULL, preferred_proxy_id=? WHERE logical_node_id=?",
+                (proxy_id, node_id),
+            )
+            await db.commit()
+            await db.close()
+
+            assert await database.rebind_earnapp_node_from_runtime(
+                node_id,
+                worker_id,
+                generation=1,
+                device_id=device_id,
+                proxy_id=proxy_id,
+            )
+            node = await database.get_earnapp_logical_node(node_id)
+            assert node["state"] == "ACTIVE"
+            assert int(node["assigned_worker_id"]) == worker_id
+            assert int(node["current_proxy_id"]) == proxy_id
+            assert node["device_id"] == device_id
+
+    asyncio.run(run())
 
 
 def test_node_scoped_health_evidence_and_atomic_rotation_preserve_preference(tmp_path):
@@ -2819,6 +3020,85 @@ async def test_unhealthy_node_rotation_commits_only_after_matching_worker_ack(mo
 
 
 @pytest.mark.asyncio
+async def test_account_bound_rotation_never_deletes_old_device_before_staging_replacement(monkeypatch):
+    node_id = "earnapp-account-bound-rotation"
+    retire = AsyncMock(return_value=True)
+    monkeypatch.setattr(main, "_retire_earnapp_node_for_fresh_replacement", retire)
+    monkeypatch.setattr(main, "_assigned_worker_supports_earnapp_lifecycle", AsyncMock(return_value=True))
+    monkeypatch.setattr(main.provider_runtime, "mutation_block", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        database,
+        "get_earnapp_logical_node",
+        AsyncMock(
+            return_value={
+                "logical_node_id": node_id,
+                "account_id": 470,
+                "assigned_worker_id": 11,
+                "generation": 4,
+                "current_proxy_id": 11,
+                "proxy_health": "unhealthy",
+                "state": "ACTIVE",
+                "device_id": "sdk-mac-" + "f" * 32,
+                "platform": "macos",
+            }
+        ),
+    )
+    monkeypatch.setattr(database, "get_provider_instance", AsyncMock(return_value=None))
+
+    assert not await main._rotate_unhealthy_earnapp_node(node_id, 11, generation=4, expected_proxy_id=11)
+    retire.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_account_bound_promoted_pending_retries_worker_before_database_promotion(monkeypatch):
+    node_id = "earnapp-account-bound-promotion-retry"
+    device_id = "sdk-mac-" + "a" * 32
+    new_device_id = "sdk-mac-" + "b" * 32
+    calls: list[str] = []
+    monkeypatch.setattr(
+        database,
+        "get_earnapp_replacement_transaction",
+        AsyncMock(
+            return_value={
+                "state": "PROMOTED_PENDING",
+                "stage_slug": f"{node_id}-stage-a1b2c3d4e5f6",
+                "new_device_id": new_device_id,
+                "new_proxy_id": 22,
+                "binding_version": "rotation_retry",
+            }
+        ),
+    )
+
+    async def worker_call(_worker_id, method, path, **_kwargs):
+        calls.append(f"worker:{method}:{path}")
+        return {"status": "promoted", "logical_node_id": node_id}
+
+    async def db_promote(*args, **kwargs):
+        calls.append("database:promote")
+        return {"logical_node_id": node_id, "current_proxy_id": 22}
+
+    monkeypatch.setattr(main, "_proxy_to_worker", worker_call)
+    monkeypatch.setattr(database, "promote_staged_earnapp_replacement", db_promote)
+    monkeypatch.setattr(database, "advance_earnapp_replacement_transaction", AsyncMock(return_value={}))
+    monkeypatch.setattr(database, "delete_earnapp_staged_identity_profile", AsyncMock(return_value=True))
+    monkeypatch.setattr(database, "delete_earnapp_replacement_transaction", AsyncMock(return_value=True))
+
+    assert await main._rotate_account_bound_earnapp_node(
+        {
+            "logical_node_id": node_id,
+            "account_id": 470,
+            "platform": "macos",
+            "device_id": device_id,
+        },
+        worker_id=118904,
+        generation=4,
+        expected_proxy_id=11,
+    )
+    assert calls[0].startswith("worker:POST:")
+    assert calls[1] == "database:promote"
+
+
+@pytest.mark.asyncio
 async def test_unhealthy_node_rotation_reports_pending_when_worker_finalize_never_acks(monkeypatch):
     """A committed DB CAS is not a completed rotation while worker ACK is pending."""
     monkeypatch.setattr(main.provider_runtime, "mutation_block", lambda *_args, **_kwargs: None)
@@ -3327,6 +3607,106 @@ def test_earnapp_proxy_rotation_candidate_reservation_is_exclusive_and_released(
                     "earnapp-reservation-node", binding_version="rotation_reservation_1"
                 )
             )["state"] == "RELEASED"
+
+    asyncio.run(run())
+
+
+def test_find_earnapp_rotation_candidate_skips_sticky_egress_owned_by_other_account(tmp_path):
+    async def run():
+        with (
+            patch.object(database, "DB_DIR", tmp_path),
+            patch.object(database, "DB_PATH", tmp_path / "sticky-candidate.db"),
+        ):
+            await database.init_db()
+            await earnapp_accounts.import_account(_account("profile-owner"))
+            await earnapp_accounts.import_account(_account("profile-node"))
+            accounts = await database.list_earnapp_accounts()
+            owner_id = int(next(row["id"] for row in accounts if row["profile_key"] == "profile-owner"))
+            node_account_id = int(next(row["id"] for row in accounts if row["profile_key"] == "profile-node"))
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            old_proxy = await _proxy(provider_id, 80)
+            owned_proxy = await _proxy(provider_id, 81)
+            backup_proxy = await _proxy(provider_id, 82)
+            for proxy_id in (owned_proxy, backup_proxy):
+                await database.update_proxy_endpoint_intelligence(
+                    proxy_id,
+                    {
+                        "country_code": "VN",
+                        "country_name": "Vietnam",
+                        "location_source": "test",
+                        "location_confidence": "high",
+                    },
+                )
+            db = await database._open_transaction_connection()
+            try:
+                await db.execute(
+                    "INSERT INTO earnapp_account_egress_ownership (account_id, egress_ip, proxy_id) VALUES (?, ?, ?)",
+                    (owner_id, "198.51.100.81", owned_proxy),
+                )
+                await db.commit()
+            finally:
+                await db.close()
+            worker_id = await database.upsert_worker("worker-sticky", "worker-sticky", "http://worker")
+            await database.assign_earnapp_account("earnapp-sticky-node", platform="macos")
+            db = await database._open_transaction_connection()
+            try:
+                await db.execute(
+                    "UPDATE earnapp_logical_nodes SET account_id = ? WHERE logical_node_id = ?",
+                    (node_account_id, "earnapp-sticky-node"),
+                )
+                await db.commit()
+            finally:
+                await db.close()
+            await database.bind_earnapp_node_runtime(
+                "earnapp-sticky-node", worker_id, device_id="sdk-mac-" + "8" * 32, proxy_id=old_proxy
+            )
+            candidate = await database.find_available_earnapp_proxy_for_node(
+                "earnapp-sticky-node", worker_id, expected_proxy_id=old_proxy
+            )
+            assert candidate and candidate["proxy_id"] == backup_proxy
+            assert not await database.reserve_earnapp_proxy_candidate(
+                "earnapp-sticky-node",
+                worker_id,
+                generation=1,
+                expected_proxy_id=old_proxy,
+                candidate_proxy_id=owned_proxy,
+                binding_version="sticky-owned-rejected",
+            )
+
+    asyncio.run(run())
+
+
+def test_macos_rotation_can_reserve_non_vn_proxy_when_platform_policy_allows_it(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "non-vn.db"):
+            await database.init_db()
+            await earnapp_accounts.import_account(_account("profile-non-vn"))
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            old_proxy = await _proxy(provider_id, 70)
+            candidate = await _proxy(provider_id, 71)
+            await database.update_proxy_endpoint_intelligence(
+                candidate,
+                {
+                    "country_code": "US",
+                    "country_name": "United States",
+                    "location_source": "test",
+                    "location_confidence": "high",
+                },
+            )
+            worker_id = await database.upsert_worker("worker-non-vn", "worker-non-vn", "http://worker")
+            await database.assign_earnapp_account("earnapp-mac-non-vn", platform="macos")
+            await database.bind_earnapp_node_runtime(
+                "earnapp-mac-non-vn", worker_id, device_id="sdk-mac-" + "7" * 32, proxy_id=old_proxy
+            )
+            reserved = await database.reserve_earnapp_proxy_candidate(
+                "earnapp-mac-non-vn",
+                worker_id,
+                generation=1,
+                expected_proxy_id=old_proxy,
+                candidate_proxy_id=candidate,
+                binding_version="rotation_non_vn_1",
+            )
+            assert reserved and reserved["proxy_id"] == candidate
 
     asyncio.run(run())
 

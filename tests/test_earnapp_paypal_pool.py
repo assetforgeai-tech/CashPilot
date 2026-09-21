@@ -85,3 +85,45 @@ def test_payment_configuration_tries_each_healthy_route_owned_by_the_account(mon
     )
     assert result["configured"] is True
     assert attempted == [11, 12]
+
+
+def test_payment_configuration_failure_releases_queue_lease(monkeypatch):
+    operation = {"id": 91}
+    failed = []
+
+    async def credentials(_account_id):
+        return {"id": 7, "credentials": {"oauth-refresh-token": "redacted"}}
+
+    async def routes(_account_id):
+        return [{"proxy_id": 11}]
+
+    class Collector:
+        def __init__(self, _credentials, _route):
+            pass
+
+        async def configure_payment(self, **_kwargs):
+            raise httpx.NetworkError("provider unavailable")
+
+    async def fail(operation_id, *, error_kind, cooldown_seconds):
+        failed.append((operation_id, error_kind, cooldown_seconds))
+
+    monkeypatch.setattr(earnapp_collection.database, "get_earnapp_account_credentials", credentials)
+    monkeypatch.setattr(earnapp_collection, "_collection_routes", routes)
+    monkeypatch.setattr(earnapp_collection, "EarnAppAccountCollector", Collector)
+    monkeypatch.setattr(
+        earnapp_collection, "_account_queue_available", lambda _account_id: asyncio.sleep(0, result=True)
+    )
+    monkeypatch.setattr(
+        earnapp_collection, "_claim_account_operation", lambda *_args: asyncio.sleep(0, result=operation)
+    )
+    monkeypatch.setattr(earnapp_collection.database, "fail_earnapp_account_operation", fail)
+
+    try:
+        asyncio.run(
+            earnapp_collection.configure_payment(7, payment_method="paypal.com", destination="owner@example.com")
+        )
+    except httpx.NetworkError:
+        pass
+    else:
+        raise AssertionError("payment failure should propagate")
+    assert failed == [(91, "payment_provider_error", 300)]
