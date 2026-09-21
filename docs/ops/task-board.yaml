@@ -1,0 +1,132 @@
+schema_version: 1
+inventory: cashpilot-operations
+tasks:
+- id: CP-013
+  owner: AssetForgeAI@gmail.com.com
+  path_scope: production rollout
+  resource_lock: cp013-production
+  dependencies:
+  - CP-011
+  - CP-012
+  acceptance: State reconciles after each approved rollout stage.
+  evidence_path: docs/evidence/CP-001-2026-09-21.md
+  status: open
+- id: CP-012
+  owner: AssetForgeAI@gmail.com.com
+  path_scope: docs/ops/release-checklist.md
+  resource_lock: cp012-release
+  dependencies:
+  - CP-011
+  acceptance: Fresh operator can deploy and roll back; production remains disabled.
+  evidence_path: docs/evidence/CP-001-2026-09-21.md
+  status: open
+- id: CP-011
+  owner: AssetForgeAI@gmail.com.com
+  path_scope: disposable canary
+  resource_lock: cp011-canary
+  dependencies:
+  - CP-002
+  - CP-003
+  - CP-004
+  - CP-005
+  - CP-006
+  - CP-007
+  - CP-008
+  - CP-009
+  - CP-010
+  acceptance: Machine-readable gates; failure stops rollout and preserves runtime.
+  evidence_path: docs/evidence/CP-001-2026-09-21.md
+  status: open
+- id: CP-010
+  owner: AssetForgeAI@gmail.com.com
+  path_scope: read-only audit
+  resource_lock: cp010-audit
+  dependencies:
+  - CP-001
+  acceptance: Findings severity-ranked with exact evidence; fixes separately scoped.
+  evidence_path: docs/evidence/CP-001-2026-09-21.md
+  status: open
+- id: CP-009
+  owner: AssetForgeAI@gmail.com.com
+  path_scope: app/database.py
+  resource_lock: cp009-leases
+  dependencies:
+  - CP-001
+  acceptance: Reconciliation idempotent; grouped heartbeat and counts match authority.
+  evidence_path: docs/evidence/CP-001-2026-09-21.md
+  status: open
+- id: CP-008
+  owner: AssetForgeAI@gmail.com.com
+  path_scope: app/earnapp_collection.py
+  resource_lock: cp008-accounts
+  dependencies:
+  - CP-001
+  acceptance: Expired token never deletes account; retries serialized; states distinguished.
+  evidence_path: docs/evidence/CP-001-2026-09-21.md
+  status: open
+- id: CP-007
+  owner: AssetForge
+  path_scope: azure_create
+  resource_lock: cp007-azure
+  dependencies:
+  - CP-001
+  acceptance: Dry-run deterministic; startup idempotent; enrollment survives reboot.
+  evidence_path: docs/evidence/CP-001-2026-09-21.md
+  status: closed
+- id: CP-006
+  owner: AssetForge
+  path_scope: release
+  resource_lock: cp006-release
+  dependencies:
+  - CP-001
+  acceptance: Worker verifies pinned artifact; failed verification preserves previous
+    artifact.
+  evidence_path: docs/evidence/CP-001-2026-09-21.md
+  status: in_progress
+- id: CP-005
+  owner: AssetForgeAI@gmail.com.com
+  path_scope: app/static
+  resource_lock: cp005-ui
+  dependencies:
+  - CP-001
+  acceptance: Endpoints remain compatible; actions expose validation, pending, success,
+    failure.
+  evidence_path: docs/evidence/CP-001-2026-09-21.md
+  status: open
+- id: CP-004
+  owner: AssetForgeAI@gmail.com.com
+  path_scope: provider-owned runtime
+  resource_lock: cp004-provider
+  dependencies:
+  - CP-003
+  acceptance: Each provider group records PASS, FAIL, or INCONCLUSIVE with rollback.
+  evidence_path: docs/evidence/CP-001-2026-09-21.md
+  status: open
+- id: CP-003
+  owner: AssetForgeAI@gmail.com.com
+  path_scope: app/provider_network_audit.py
+  resource_lock: cp003-network
+  dependencies:
+  - CP-001
+  acceptance: Unsupported capabilities rejected before deploy; every provider has
+    explicit mode.
+  evidence_path: docs/evidence/CP-001-2026-09-21.md
+  status: open
+- id: CP-002
+  owner: AssetForgeAI@gmail.com.com
+  path_scope: tools/ssh-worker.ps1
+  resource_lock: cp002-ssh
+  dependencies:
+  - CP-001
+  acceptance: Preflight returns structured JSON and SSH failure is actionable.
+  evidence_path: docs/evidence/CP-001-2026-09-21.md
+  status: open
+- id: CP-001
+  owner: AssetForge
+  path_scope: docs/ops
+  resource_lock: cp001-ops-docs
+  dependencies: []
+  acceptance: Fresh task discovers credential reference, SSH alias, owner, lock, and
+    evidence without secrets.
+  evidence_path: docs/evidence/CP-001-2026-09-21.md
+  status: in_progress

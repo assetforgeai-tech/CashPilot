@@ -1,0 +1,32 @@
+schema_version: 1
+inventory_id: cashpilot-operations
+resources:
+  - id: control-plane-docs
+    kind: repository
+    path_scope: docs/ops
+    resource_lock: cp001-ops-docs
+    owner: control-plane
+    read_only: false
+    evidence_path: docs/evidence/CP-001-2026-09-21.md
+  - id: task-board-exporter
+    kind: repository
+    path_scope: tools/export-task-board.py
+    resource_lock: cp001-exporter
+    owner: control-plane
+    read_only: false
+    evidence_path: docs/evidence/CP-001-2026-09-21.md
+  - id: test-contract
+    kind: repository
+    path_scope: tests/test_ops_contract.py
+    resource_lock: cp001-tests
+    owner: control-plane
+    read_only: false
+    evidence_path: docs/evidence/CP-001-2026-09-21.md
+  - id: azure-worker-credentials
+    kind: credential
+    path_scope: external/azure-worker-credentials
+    resource_lock: azure-worker-credentials
+    owner: infrastructure
+    secret_file: file:~/.config/cashpilot/azure-worker-credentials
+    read_only: true
+    evidence_path: docs/evidence/CP-001-2026-09-21.md
