@@ -8118,6 +8118,10 @@ async def get_provider_proxy_capacity(
                 "eligible": int(row["eligible"] or 0),
                 "available": int(row["available"] or 0),
                 "leased": int(row["leased"] or 0),
+                # Keep the concise dashboard vocabulary alongside the legacy
+                # names; both values come from the same authoritative query.
+                "used": int(row["leased"] or 0),
+                "remaining": int(row["available"] or 0),
                 "sticky_owned": int(row["sticky_owned"] or 0),
                 "duplicate_egress": int(row["duplicate_egress"] or 0),
             }
@@ -8125,6 +8129,52 @@ async def get_provider_proxy_capacity(
         ]
     finally:
         await db.close()
+
+
+async def reconcile_provider_proxy_leases(*, provider_slug: str = "") -> dict[str, Any]:
+    """Return a read-only lease/instance/capacity reconciliation snapshot.
+
+    ``provider_proxy_leases`` is the allocation authority. Provider-instance
+    rows are runtime metadata only; an active lease without a corresponding
+    non-retired instance is reported as an orphan, never released implicitly.
+    Re-running this function therefore cannot change state and yields the same
+    result until another writer changes the authority tables.
+    """
+    slug = str(provider_slug or "").strip().lower()
+    leases = [
+        row
+        for row in await list_provider_proxy_leases(provider_slug=slug)
+        if not str(row.get("released_at") or "").strip()
+    ]
+    instances = await list_provider_instances(slug=slug) if slug else await list_provider_instances()
+    live_instances = {
+        (str(row.get("slug") or "").strip().lower(), int(row.get("worker_id") or 0), str(row.get("instance_id") or ""))
+        for row in instances
+        if str(row.get("status") or "").strip().lower() not in {"retired", "deleted"}
+    }
+    orphan_leases = [
+        {
+            "provider_slug": str(row.get("provider_slug") or "").strip().lower(),
+            "worker_id": int(row.get("worker_id") or 0),
+            "instance_id": str(row.get("instance_id") or ""),
+            "proxy_id": int(row.get("proxy_id") or 0),
+        }
+        for row in leases
+        if (
+            str(row.get("provider_slug") or "").strip().lower(),
+            int(row.get("worker_id") or 0),
+            str(row.get("instance_id") or ""),
+        )
+        not in live_instances
+    ]
+    capacity = await get_provider_proxy_capacity(provider_slug=slug)
+    return {
+        "provider_slug": slug or None,
+        "active_leases": len(leases),
+        "orphan_leases": orphan_leases,
+        "capacity": capacity,
+        "read_only": True,
+    }
 
 
 # --- Deployments ---
