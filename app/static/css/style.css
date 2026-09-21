@@ -793,6 +793,29 @@ img { max-width: 100%; }
   background: var(--success-soft);
   color: var(--success);
 }
+.sidebar-section-label {
+  padding: 10px 12px 3px;
+  color: var(--text-muted);
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+.sidebar-section-label:not(:first-child) { margin-top: 5px; }
+.sidebar-operational-link { min-height: 34px; padding-top: 7px; padding-bottom: 7px; }
+.badge-healthy {
+  background: var(--success-soft);
+  color: var(--success);
+}
+.badge-degraded {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.badge-offline,
+.badge-blocked {
+  background: var(--error-soft);
+  color: var(--error);
+}
 .badge-stopped {
   background: var(--error-soft);
   color: var(--error);
@@ -841,6 +864,13 @@ img { max-width: 100%; }
   box-shadow: 0 0 6px rgba(34, 197, 94, 0.5);
   animation: pulse-glow 2s ease-in-out infinite;
 }
+.status-dot.healthy {
+  background: var(--success);
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.5);
+}
+.status-dot.degraded { background: var(--warning); }
+.status-dot.offline,
+.status-dot.blocked { background: var(--error); }
 .status-dot.stopped { background: var(--error); }
 /* "Unknown" is amber, deliberately NOT the stopped red. The two are different
    claims: stopped means the service should be reporting and is not; unknown
@@ -865,6 +895,11 @@ img { max-width: 100%; }
   margin-left: 4px;
   vertical-align: middle;
 }
+
+.confirmation-modal { max-width: 520px; }
+.confirmation-message { color: var(--text-secondary); margin-bottom: 16px; }
+.confirmation-error { color: var(--error); margin-top: 8px; }
+.confirmation-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
 
 .operator-table {
   table-layout: fixed;

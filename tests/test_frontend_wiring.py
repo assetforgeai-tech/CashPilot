@@ -1158,3 +1158,40 @@ def test_service_row_shows_provider_runtime_traffic_and_last_seen_separately():
     assert "svc.traffic" in row or "svc.net_tx" in row or "svc.bandwidth" in row
     # Last-seen timestamp from provider or runtime
     assert "svc.last_seen" in row or "svc.last_active" in row
+
+
+def test_frontend_uses_shared_operational_status_vocabulary():
+    app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+    for needle in (
+        "const STATUS_VOCABULARY",
+        "healthy: 'healthy'",
+        "degraded: 'degraded'",
+        "offline: 'offline'",
+        "blocked: 'blocked'",
+        "unknown: 'unknown'",
+        "normalizeOperationalStatus",
+    ):
+        assert needle in app_js
+
+
+def test_frontend_does_not_use_browser_prompt_for_destructive_actions():
+    app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+    assert "window.prompt(" not in app_js
+
+
+def test_frontend_exposes_the_operations_information_architecture():
+    app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+    for label in (
+        "Overview",
+        "Workers / VPS",
+        "Provider Accounts",
+        "Proxy Pool",
+        "Runtime",
+        "Nodes",
+        "Collectors / Payments",
+        "Recovery / Alerts",
+        "Settings",
+        "Audit",
+    ):
+        assert label in app_js
+    assert "initOperationalNavigation" in app_js
