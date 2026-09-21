@@ -15,6 +15,10 @@ contract is:
    CashPilot UI and worker never receive the token and never pull an EarnApp
    image from a registry.
 
+For general CashPilot releases, use the attached `runtime-manifest.json` from
+the GitHub Release. Verify its SHA-256/signature before activation; image
+references must use the manifest's immutable GHCR digest, never `latest`.
+
 The existing worker validation intentionally rejects registry delivery for
 EarnApp. This prevents a leaked dashboard credential from becoming a private
 package pull credential and keeps binary provenance tied to the operator's

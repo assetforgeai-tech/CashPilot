@@ -58,10 +58,8 @@ jobs:
           UI_REPO="ghcr.io/${OWNER}/cashpilot"
           WORKER_REPO="ghcr.io/${OWNER}/cashpilot-worker"
           if [ -z "$VERSION" ]; then
-            echo "ui_tags=${UI_REPO}:latest" >> "$GITHUB_OUTPUT"
-            echo "worker_tags=${WORKER_REPO}:latest" >> "$GITHUB_OUTPUT"
-            echo "version=latest" >> "$GITHUB_OUTPUT"
-            exit 0
+            echo "::error::An immutable release version is required; refusing to publish a mutable latest tag"
+            exit 1
           fi
           VER="${VERSION#v}"
           MAJOR_MINOR="$(echo "$VER" | cut -d. -f1).$(echo "$VER" | cut -d. -f2)"

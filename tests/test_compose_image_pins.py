@@ -79,6 +79,23 @@ def test_build_and_release_workflows_use_the_fork_ghcr_images():
     assert "ghcr.io/${OWNER}/cashpilot" in release
 
 
+def test_release_attaches_a_digest_based_runtime_manifest():
+    release = (PROJECT_ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    assert "runtime-manifest.json" in release
+    assert "docker buildx imagetools inspect" in release
+    assert "gh release upload" in release
+    assert '"sha256": digest.rsplit(":", 1)[1]' in release
+    assert "rollback_release" in release
+    assert "previous_tag" in release
+
+
+def test_build_workflow_refuses_unversioned_latest_publication():
+    build = (PROJECT_ROOT / ".github" / "workflows" / "build.yml").read_text(encoding="utf-8")
+    assert "refusing to publish a mutable latest tag" in build
+    assert 'echo "ui_tags=${UI_REPO}:latest"' not in build
+    assert 'echo "worker_tags=${WORKER_REPO}:latest"' not in build
+
+
 def test_release_pin_update_uses_pr_after_release_publication():
     """Protected main receives compose pin updates through an auditable PR."""
     release = (PROJECT_ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")

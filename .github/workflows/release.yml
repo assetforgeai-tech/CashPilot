@@ -287,6 +287,28 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Attach immutable runtime manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.release.outputs.new_tag }}
+        run: |
+          set -euo pipefail
+          owner="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
+          ui="ghcr.io/${owner}/cashpilot:${VERSION}"
+          worker="ghcr.io/${owner}/cashpilot-worker:${VERSION}"
+          previous_tag="$(git for-each-ref --sort=-v:refname --format='%(refname:strip=2)' 'refs/fork-tags/v*.*.*' | grep -v "^${VERSION}$" | head -1)"
+          previous_tag="${previous_tag:-$VERSION}"
+          ui_digest="$(docker buildx imagetools inspect "$ui" --format '{{json .Manifest.Digest}}' | tr -d '"')"
+          worker_digest="$(docker buildx imagetools inspect "$worker" --format '{{json .Manifest.Digest}}' | tr -d '"')"
+          python3 - "$VERSION" "$previous_tag" "$owner" "$ui_digest" "$worker_digest" > runtime-manifest.json <<'PY'
+          import json, sys
+          release, rollback, owner, ui_digest, worker_digest = sys.argv[1:]
+          def artifact(name, digest):
+              return {"name": name, "provider": "cashpilot", "architecture": "linux/amd64", "source": "ghcr", "reference": digest, "path": name, "sha256": digest.rsplit(":", 1)[1]}
+          print(json.dumps({"schema_version": 1, "release": release, "rollback_release": rollback, "artifacts": [artifact("cashpilot", f"ghcr.io/{owner}/cashpilot@{ui_digest}"), artifact("cashpilot-worker", f"ghcr.io/{owner}/cashpilot-worker@{worker_digest}")]}, indent=2))
+          PY
+          gh release upload "$VERSION" runtime-manifest.json --clobber
+
       - name: Bump the example compose pins to this series
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
