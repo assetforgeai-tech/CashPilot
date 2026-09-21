@@ -328,7 +328,9 @@ def test_nkn_auto_deploy_retries_after_a_failed_slot_on_the_next_stable_heartbea
                 ),
             ),
             patch.object(
-                database, "get_worker", AsyncMock(return_value={"id": 7, "name": "worker-a", "client_id": "worker-a"})
+                database,
+                "get_worker",
+                AsyncMock(return_value={"id": 7, "name": "worker-a", "client_id": "worker-a", "key_confirmed": 1}),
             ),
             patch.object(database, "get_deployments", AsyncMock(return_value=[])),
             patch.object(main, "_deploy_nkn_slots", deploy),

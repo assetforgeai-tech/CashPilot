@@ -93,7 +93,11 @@ def test_singbox_config_uses_tun_and_socks_outbound():
     assert config["dns"]["strategy"] == "ipv4_only"
     assert {"port": 53, "action": "hijack-dns"} in config["route"]["rules"]
     assert config["dns"]["servers"][0]["detour"] == "proxy-out"
-    assert config["dns"]["servers"][0]["server"] == "cloudflare-dns.com"
+    assert config["dns"]["servers"][0]["server"] == "1.1.1.1"
+    assert config["dns"]["servers"][0]["tls"] == {
+        "enabled": True,
+        "server_name": "cloudflare-dns.com",
+    }
     assert config["dns"]["servers"][0]["path"] == "/dns-query"
     assert config["dns"]["servers"][0]["type"] == "https"
     assert {"domain": ["dc-t5.proxyvt.com"], "outbound": "direct"} in config["route"]["rules"]
@@ -119,6 +123,31 @@ def test_proxy_hostname_uses_bootstrap_doh_without_empty_direct_detour():
     }
     assert {"domain": ["proxy.example.com"], "server": "bootstrap"} in config["dns"]["rules"]
     assert config["dns"]["reverse_mapping"] is True
+
+
+def test_proxy_ip_uses_no_direct_bootstrap_dns():
+    from app.singbox_config import render_tun_proxy_config
+
+    config = render_tun_proxy_config(
+        {"host": "203.0.113.8", "port": 8080, "protocol": "http"},
+        worker_name="pinned-proxy",
+    )
+
+    assert config["outbounds"][0]["server"] == "203.0.113.8"
+    assert "domain_resolver" not in config["outbounds"][0]
+    assert [server["tag"] for server in config["dns"]["servers"]] == ["cf"]
+    assert {
+        "ip_cidr": ["203.0.113.8/32"],
+        "outbound": "direct",
+    } in config["route"]["rules"]
+
+
+def test_proxy_endpoint_can_be_pinned_without_changing_lease_metadata():
+    from app.singbox_config import pin_proxy_endpoint
+
+    result = pin_proxy_endpoint({"host": "proxy.example", "port": 8080}, resolver=lambda _host: "203.0.113.8")
+    assert result["host"] == "203.0.113.8"
+    assert result["port"] == 8080
 
 
 def test_proxy_bootstrap_resolver_does_not_recurse_through_proxy_hostname():
@@ -164,7 +193,7 @@ def test_singbox_config_can_use_repocket_safe_tun_name():
     assert config["inbounds"][0]["interface_name"] == "cpegress"
 
 
-def test_singbox_config_can_route_udp_direct_for_traffmonetizer_proxy():
+def test_singbox_config_blocks_udp_direct_for_traffmonetizer_proxy():
     from app.singbox_config import render_tun_proxy_config
 
     config = render_tun_proxy_config(
@@ -176,10 +205,9 @@ def test_singbox_config_can_route_udp_direct_for_traffmonetizer_proxy():
             "protocol": "socks5",
         },
         worker_name="traffmonetizer-proxy",
-        udp_direct=True,
+        udp_direct=False,
     )
-    assert {"network": "udp", "outbound": "direct"} in config["route"]["rules"]
-    assert {"network": "tcp", "outbound": "proxy-out"} in config["route"]["rules"]
+    assert {"network": "udp", "outbound": "direct"} not in config["route"]["rules"]
     assert config["route"]["final"] == "proxy-out"
 
 

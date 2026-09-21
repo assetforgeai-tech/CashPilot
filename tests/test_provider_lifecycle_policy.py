@@ -38,6 +38,34 @@ def test_duplicate_worker_endpoint_marks_only_stale_registration_superseded():
     assert workers[2]["superseded_by_worker_id"] is None
 
 
+def test_old_duplicate_heartbeat_cannot_supersede_newer_registration():
+    from app.main import _mark_superseded_workers
+
+    workers = [
+        {
+            "id": 112494,
+            "client_id": "retired-client",
+            "url": "http://20.187.79.110:8081",
+            "status": "online",
+            "registered_at": "2026-09-10 10:00:00",
+            "last_heartbeat": "2026-09-16 12:01:00",
+        },
+        {
+            "id": 118903,
+            "client_id": "current-client",
+            "url": "http://20.187.79.110:8081/",
+            "status": "online",
+            "registered_at": "2026-09-15 10:00:00",
+            "last_heartbeat": "2026-09-16 12:00:00",
+        },
+    ]
+
+    _mark_superseded_workers(workers)
+
+    assert workers[0]["superseded_by_worker_id"] == 118903
+    assert workers[1]["superseded_by_worker_id"] is None
+
+
 def test_container_snapshot_ignores_superseded_worker():
     from app import main
 
@@ -71,7 +99,7 @@ def test_lifecycle_policy_is_defined_by_provider_lane_contract():
     earnapp = provider_runtime.get("earnapp")
     packetstream = provider_runtime.get("packetstream")
     assert earnapp is not None and packetstream is not None
-    assert earnapp.lifecycle_action("proxy", "banned") == "restart"
+    assert earnapp.lifecycle_action("proxy", "banned") == "recreate"
     assert packetstream.lifecycle_action("proxy", "banned") == "observe"
     assert earnapp.lifecycle_action("proxy", "proxy_unhealthy") == "rotate"
     assert provider_runtime.get("earnfm").lifecycle_action("direct", "direct_route_unhealthy") == "blocked"
@@ -84,6 +112,12 @@ def test_provider_policy_groups_keep_pawns_and_earnapp_isolated():
     assert provider_runtime.get("iproyal").proxy_failure_scope == "provider"
     assert provider_runtime.get("earnapp").policy_group == "earnapp"
     assert provider_runtime.get("earnapp").proxy_failure_scope == "node"
+
+
+def test_earnapp_banned_nodes_recreate_immediately():
+    from app import provider_runtime
+
+    assert provider_runtime.get("earnapp").lifecycle_action("proxy", "banned") == "recreate"
 
 
 def test_provider_lifecycle_dispatcher_is_scheduled_separately():
@@ -283,6 +317,10 @@ def test_proxy_pool_scheduler_runs_earnapp_wss_qualification(monkeypatch):
         calls.append(("earnapp_wss", kwargs))
         return {"checked": 1, "eligible": 1}
 
+    async def earnfm(**kwargs):
+        calls.append(("earnfm_socket_8443", kwargs))
+        return {"checked": 1, "eligible": 1}
+
     monkeypatch.setattr(main, "_proxy_pool_last_recheck", None)
     monkeypatch.setattr(
         main.database,
@@ -297,11 +335,13 @@ def test_proxy_pool_scheduler_runs_earnapp_wss_qualification(monkeypatch):
     )
     monkeypatch.setattr(proxy_routes, "run_proxy_pool_recheck", generic)
     monkeypatch.setattr(proxy_routes, "run_earnapp_proxy_recheck", earnapp)
+    monkeypatch.setattr(proxy_routes, "run_earnfm_proxy_recheck", earnfm)
 
     asyncio.run(main._run_proxy_pool_recheck_scheduler())
 
-    assert [name for name, _ in calls] == ["generic", "earnapp_wss"]
+    assert [name for name, _ in calls] == ["generic", "earnapp_wss", "earnfm_socket_8443"]
     assert calls[1][1] == {"concurrency": 2}
+    assert calls[2][1] == {"concurrency": 2}
 
 
 def test_offline_policy_is_earnapp_only():
@@ -330,8 +370,8 @@ def test_unhealthy_proxy_rotates_only_for_proxy_runtime():
     assert decide("mysterium", online=True, banned=False, proxy_healthy=False) == "observe"
 
 
-def test_earnapp_banned_nodes_use_restart_policy():
-    assert decide("earnapp", online=True, banned=True, proxy_healthy=True) == "restart"
+def test_earnapp_banned_nodes_use_recreate_policy():
+    assert decide("earnapp", online=True, banned=True, proxy_healthy=True) == "recreate"
 
 
 def test_hybrid_direct_lane_does_not_rotate_when_proxy_health_is_bad():
@@ -347,7 +387,7 @@ def test_hybrid_lifecycle_requires_an_explicit_lane():
 
 
 def test_lane_banned_action_uses_provider_policy():
-    assert decide_lane("earnapp", mode="proxy", online=True, banned=True, proxy_healthy=True) == "restart"
+    assert decide_lane("earnapp", mode="proxy", online=True, banned=True, proxy_healthy=True) == "recreate"
 
 
 def test_invalid_lane_fails_closed_to_observe():

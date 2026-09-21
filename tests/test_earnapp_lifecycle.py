@@ -42,16 +42,35 @@ def test_positive_usage_resets_recovery_counters():
     assert decision.clear_earnings_zero_observed is True
 
 
-def test_banned_device_restarts_without_proxy_rotation():
+def test_banned_device_recreates_without_proxy_rotation():
     now = datetime.now(UTC)
     decision = evaluate_node(
         {"usage": 10.0, "online": False, "banned": True},
         _runtime(same_proxy_recreates=2, rotate_count=3),
         now,
     )
-    assert decision.action == "restart"
+    assert decision.action == "recreate"
     assert decision.same_proxy_recreates == 0
     assert decision.rotate_count == 3
+
+
+def test_banned_device_recreates_immediately_without_waiting_for_cycle():
+    decision = evaluate_node(
+        {"usage": 10.0, "online": True, "banned": True, "earnings_update_in_ms": 1_800_000},
+        _runtime(same_proxy_recreates=2),
+        datetime(2026, 9, 8, 1, tzinfo=UTC),
+    )
+    assert decision.action == "recreate"
+
+
+def test_three_failed_restart_cycles_escalate_to_same_proxy_recreate():
+    decision = evaluate_node(
+        {"usage": 10, "online": False, "banned": False},
+        _runtime(same_proxy_recreates=2),
+        datetime.now(UTC),
+    )
+    assert decision.action == "recreate"
+    assert decision.same_proxy_recreates == 0
 
 
 def test_new_or_restarted_node_gets_a_sixty_minute_admission_window():
@@ -251,15 +270,33 @@ async def test_fresh_replacement_enters_recovery_hold_when_worker_remove_is_unce
         "generation": 3,
         "device_id": "sdk-mac-" + "d" * 32,
     }
-    monkeypatch.setattr(main, "_delete_earnapp_remote_device", AsyncMock(return_value=True))
-    monkeypatch.setattr(main, "_proxy_to_worker", AsyncMock(return_value={"status": "timeout"}))
     hold = AsyncMock(return_value={"state": "RECOVERY_HOLD"})
     monkeypatch.setattr(main.database, "begin_earnapp_recovery_hold", hold)
-    monkeypatch.setattr(main.database, "prepare_fresh_earnapp_replacement", AsyncMock())
-    monkeypatch.setattr(main.database, "record_earnapp_remote_delete_confirmation", AsyncMock(return_value=True))
 
     assert await main._retire_earnapp_node_for_fresh_replacement(node, preserve_proxy_affinity=True) is False
     hold.assert_awaited_once_with("earnapp-mac-remove-uncertain", hold_seconds=earnapp_recovery.RECOVERY_HOLD_SECONDS)
+
+
+@pytest.mark.asyncio
+async def test_account_bound_replacement_never_deletes_before_staged_verification(monkeypatch):
+    node = {
+        "logical_node_id": "earnapp-account-bound-staged",
+        "account_id": 470,
+        "assigned_worker_id": 3098,
+        "generation": 4,
+        "device_id": "sdk-mac-" + "a" * 32,
+    }
+    remote_delete = AsyncMock()
+    worker_call = AsyncMock()
+    hold = AsyncMock(return_value={"state": "RECOVERY_HOLD"})
+    monkeypatch.setattr(main, "_delete_earnapp_remote_device", remote_delete)
+    monkeypatch.setattr(main, "_proxy_to_worker", worker_call)
+    monkeypatch.setattr(main.database, "begin_earnapp_recovery_hold", hold)
+
+    assert await main._retire_earnapp_node_for_fresh_replacement(node, preserve_proxy_affinity=True) is False
+    remote_delete.assert_not_awaited()
+    worker_call.assert_not_awaited()
+    hold.assert_awaited_once_with(node["logical_node_id"], hold_seconds=earnapp_recovery.RECOVERY_HOLD_SECONDS)
 
 
 @pytest.mark.asyncio
@@ -272,22 +309,11 @@ async def test_fresh_replacement_enters_recovery_hold_when_cleanup_raises(monkey
         "generation": 3,
         "device_id": "sdk-mac-" + "e" * 32,
     }
-    if failure_stage == "remote_delete":
-        monkeypatch.setattr(main, "_delete_earnapp_remote_device", AsyncMock(side_effect=TimeoutError()))
-        worker_remove = AsyncMock()
-    else:
-        monkeypatch.setattr(main, "_delete_earnapp_remote_device", AsyncMock(return_value=True))
-        worker_remove = AsyncMock(side_effect=TimeoutError())
-    monkeypatch.setattr(main, "_proxy_to_worker", worker_remove)
     hold = AsyncMock(return_value={"state": "RECOVERY_HOLD"})
     monkeypatch.setattr(main.database, "begin_earnapp_recovery_hold", hold)
-    prepare = AsyncMock()
-    monkeypatch.setattr(main.database, "prepare_fresh_earnapp_replacement", prepare)
-    monkeypatch.setattr(main.database, "record_earnapp_remote_delete_confirmation", AsyncMock(return_value=True))
 
     assert await main._retire_earnapp_node_for_fresh_replacement(node, preserve_proxy_affinity=True) is False
     hold.assert_awaited_once_with(node["logical_node_id"], hold_seconds=earnapp_recovery.RECOVERY_HOLD_SECONDS)
-    prepare.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -564,6 +590,77 @@ async def test_remote_device_delete_uses_full_internal_account_route(monkeypatch
     assert seen["route"] == second_route
     assert delete.await_count == 2
     assert delete.await_args.args == (node["device_id"],)
+
+
+@pytest.mark.asyncio
+async def test_remote_device_delete_failure_keeps_account_operation_retryable(monkeypatch):
+    node = {"account_id": 470, "device_id": "sdk-mac-" + "b" * 32}
+    account = {"credentials": {"cookies": {"xsrf-token": "redacted"}}}
+    operation = {"id": 42}
+    route = {"protocol": "socks5", "host": "proxy.example", "port": 1080}
+    monkeypatch.setattr(main.database, "_get_db", AsyncMock())
+    monkeypatch.setattr(main.database, "_table_exists", AsyncMock(return_value=True))
+    monkeypatch.setattr(main.database, "enqueue_earnapp_account_operation", AsyncMock())
+    monkeypatch.setattr(main.database, "claim_earnapp_account_operation", AsyncMock(return_value=operation))
+    failed = AsyncMock()
+    monkeypatch.setattr(main.database, "fail_earnapp_account_operation", failed)
+    monkeypatch.setattr(main.database, "get_earnapp_account_credentials", AsyncMock(return_value=account))
+    monkeypatch.setattr(main.earnapp_collection, "_collection_routes", AsyncMock(return_value=[route]))
+    delete = AsyncMock(return_value={"status": "error", "error_kind": "remote"})
+    monkeypatch.setattr(
+        main.earnapp_collection,
+        "EarnAppAccountCollector",
+        lambda credentials, selected_route: type("Collector", (), {"delete_device": delete})(),
+    )
+
+    assert await main._delete_earnapp_remote_device(node) is False
+    failed.assert_awaited_once_with(42, error_kind="remote_delete_failed", cooldown_seconds=300)
+
+
+@pytest.mark.asyncio
+async def test_remote_device_delete_exception_releases_queue_lease_to_cooldown(monkeypatch):
+    node = {"account_id": 470, "device_id": "sdk-mac-" + "c" * 32}
+    operation = {"id": 43}
+    db = AsyncMock()
+    db.close = AsyncMock()
+    monkeypatch.setattr(main.database, "_get_db", AsyncMock(return_value=db))
+    monkeypatch.setattr(main.database, "_table_exists", AsyncMock(return_value=True))
+    monkeypatch.setattr(main.database, "enqueue_earnapp_account_operation", AsyncMock())
+    monkeypatch.setattr(main.database, "claim_earnapp_account_operation", AsyncMock(return_value=operation))
+    failed = AsyncMock()
+    monkeypatch.setattr(main.database, "fail_earnapp_account_operation", failed)
+    monkeypatch.setattr(
+        main.database,
+        "get_earnapp_account_credentials",
+        AsyncMock(return_value={"credentials": {"cookies": {"xsrf-token": "redacted"}}}),
+    )
+    monkeypatch.setattr(
+        main.earnapp_collection,
+        "_collection_routes",
+        AsyncMock(return_value=[{"protocol": "socks5", "host": "proxy.example", "port": 1080}]),
+    )
+    delete = AsyncMock(side_effect=RuntimeError("provider unavailable"))
+    monkeypatch.setattr(
+        main.earnapp_collection,
+        "EarnAppAccountCollector",
+        lambda credentials, route: type("Collector", (), {"delete_device": delete})(),
+    )
+
+    assert await main._delete_earnapp_remote_device(node) is False
+    failed.assert_awaited_once_with(43, error_kind="remote_delete_exception", cooldown_seconds=300)
+
+
+@pytest.mark.asyncio
+async def test_remote_device_delete_does_not_bypass_busy_account_queue(monkeypatch):
+    node = {"account_id": 470, "device_id": "sdk-mac-" + "d" * 32}
+    monkeypatch.setattr(main.earnapp_collection, "_account_queue_available", AsyncMock(return_value=True))
+    monkeypatch.setattr(main.database, "enqueue_earnapp_account_operation", AsyncMock())
+    monkeypatch.setattr(main.database, "claim_earnapp_account_operation", AsyncMock(return_value=None))
+    credentials = AsyncMock()
+    monkeypatch.setattr(main.database, "get_earnapp_account_credentials", credentials)
+
+    assert await main._delete_earnapp_remote_device(node) is False
+    credentials.assert_not_awaited()
 
 
 @pytest.mark.asyncio

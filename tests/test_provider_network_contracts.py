@@ -620,6 +620,29 @@ def test_earnapp_iptables_parser_proves_fail_closed_controls():
     }
 
 
+def test_shared_proxy_runtime_iptables_parser_proves_fail_closed_controls():
+    from app.orchestrator import _parse_proxy_runtime_iptables
+
+    output = """-N CP_PROXY_OUT
+-A CP_PROXY_OUT -p udp -j DROP
+-A CP_PROXY_OUT -j DROP
+-N CP_PROXY_DNS
+-A CP_PROXY_DNS -p udp --dport 53 -j REDIRECT --to-ports 1053
+-N CP_PROXY_REDSOCKS
+-A CP_PROXY_REDSOCKS -p tcp -j REDIRECT --to-ports 12345
+-N CP_PROXY6_OUT
+-A CP_PROXY6_OUT -j DROP
+"""
+    assert _parse_proxy_runtime_iptables(output) == {
+        "dns_via_proxy": True,
+        "ipv6_blocked": True,
+        "udp_blocked": True,
+        "doh_blocked": True,
+        "dot_blocked": True,
+        "direct_fallback_blocked": True,
+    }
+
+
 def test_live_container_network_evidence_overrides_stale_instance_fields():
     report = audit_provider_network_inventory(
         "earnapp",

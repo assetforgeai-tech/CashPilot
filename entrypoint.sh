@@ -1,11 +1,15 @@
 #!/bin/sh
 # Already running as non-root (e.g. Unraid --user flag) — skip privilege setup
+export PATH="/app/.venv/bin:${PATH}"
 if [ "$(id -u)" != "0" ]; then
   exec "$@"
 fi
 
 # Ensure data and fleet directories are writable by cashpilot
 chown cashpilot:root /data 2>/dev/null || true
+if [ -d "/data/earnapp-nodes" ]; then
+  chown -R cashpilot:root /data/earnapp-nodes 2>/dev/null || true
+fi
 if [ -d "/fleet" ]; then
   chown cashpilot:root /fleet 2>/dev/null || true
 fi

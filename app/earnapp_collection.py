@@ -15,6 +15,61 @@ from app import database, earnapp_canary
 from app.collectors.earnapp import EarnAppAccountCollector
 
 logger = logging.getLogger(__name__)
+
+
+async def _claim_account_operation(account_id: int, operation_type: str) -> dict[str, Any] | None:
+    """Use the durable queue when the upgraded schema is available."""
+    if not hasattr(database, "claim_earnapp_account_operation"):
+        return None
+    db = await database._get_db()
+    try:
+        if not await database._table_exists(db, "earnapp_account_operations"):
+            return None
+        account_row = await (
+            await db.execute("SELECT 1 FROM earnapp_accounts WHERE id = ?", (int(account_id),))
+        ).fetchone()
+        if account_row is None:
+            return None
+    finally:
+        await db.close()
+    await database.enqueue_earnapp_account_operation(
+        account_id, operation_type, operation_key=f"{operation_type}:{account_id}"
+    )
+    return await database.claim_earnapp_account_operation(account_id, f"collector:{operation_type}", lease_seconds=900)
+
+
+async def _account_queue_available(account_id: int) -> bool:
+    if not hasattr(database, "claim_earnapp_account_operation"):
+        return False
+    db = await database._get_db()
+    try:
+        if not await database._table_exists(db, "earnapp_account_operations"):
+            return False
+        row = await (await db.execute("SELECT 1 FROM earnapp_accounts WHERE id = ?", (int(account_id),))).fetchone()
+        return row is not None
+    finally:
+        await db.close()
+
+
+async def _finish_account_operation(operation: dict[str, Any] | None, result: Mapping[str, Any] | None = None) -> None:
+    if operation is None or not hasattr(database, "complete_earnapp_account_operation"):
+        return
+    result = result or {}
+    await database.complete_earnapp_account_operation(
+        int(operation["id"]),
+        cooldown_seconds=300 if str(result.get("error_kind") or "") == "rate_limited" else 0,
+        error_kind=str(result.get("error_kind") or ""),
+    )
+
+
+async def _fail_account_operation(operation: dict[str, Any] | None, error_kind: str) -> None:
+    if operation is None or not hasattr(database, "fail_earnapp_account_operation"):
+        return
+    await database.fail_earnapp_account_operation(
+        int(operation["id"]), error_kind=str(error_kind or "operation_failed"), cooldown_seconds=300
+    )
+
+
 _COLLECTABLE_STATES = frozenset({"ACTIVE", "AUTH_FAILED"})
 
 
@@ -56,8 +111,12 @@ async def _collection_routes(account_id: int) -> list[dict[str, Any]]:
 
 async def collect_account(account_id: int, *, reuse_recent_seconds: int = 0) -> dict[str, Any]:
     async with earnapp_canary.account_api_lock(account_id):
+        operation = await _claim_account_operation(account_id, "collect")
+        if await _account_queue_available(account_id) and operation is None:
+            return {"status": "pending", "error_kind": "account_queue", "error": "EarnApp account operation is queued"}
         account = await database.get_earnapp_account_credentials(account_id)
         if not account:
+            await _fail_account_operation(operation, "account_unavailable")
             return {"status": "error", "error_kind": "auth", "error": "EarnApp account unavailable"}
         if reuse_recent_seconds > 0:
             recent = await database.get_latest_earnapp_snapshot(account_id)
@@ -74,9 +133,11 @@ async def collect_account(account_id: int, *, reuse_recent_seconds: int = 0) -> 
                 and collected_when
                 and datetime.now(UTC) - collected_when <= timedelta(seconds=int(reuse_recent_seconds))
             ):
+                await _finish_account_operation(operation, {"status": "ok"})
                 return {"status": "ok", "source": "recent_snapshot"}
         routes = await _collection_routes(account_id)
         if not routes:
+            await _fail_account_operation(operation, "route_unavailable")
             return {"status": "error", "error_kind": "route", "error": "EarnApp account proxy unavailable"}
         last_snapshot: dict[str, Any] = {"status": "error", "error_kind": "route", "error": "EarnApp route unavailable"}
         for route in routes:
@@ -85,6 +146,7 @@ async def collect_account(account_id: int, *, reuse_recent_seconds: int = 0) -> 
                 await database.save_earnapp_snapshot(account_id, snapshot)
                 if account.get("id") is not None:
                     await database.record_earnapp_auth_result(account_id, success=True)
+                await _finish_account_operation(operation, snapshot)
                 return snapshot
             last_snapshot = snapshot
             if snapshot.get("error_kind") == "auth":
@@ -95,7 +157,12 @@ async def collect_account(account_id: int, *, reuse_recent_seconds: int = 0) -> 
                         success=False,
                         failure_kind=failure_kind,
                     )
+                await _fail_account_operation(operation, str(snapshot.get("error_kind") or "auth"))
                 return snapshot
+        if str(last_snapshot.get("status") or "").lower() != "ok":
+            await _fail_account_operation(operation, str(last_snapshot.get("error_kind") or "collection_failed"))
+        else:
+            await _finish_account_operation(operation, last_snapshot)
         return last_snapshot
 
 
@@ -111,19 +178,27 @@ async def _payment_collector(account_id: int) -> EarnAppAccountCollector:
 
 async def configure_payment(account_id: int, *, payment_method: str, destination: str) -> dict[str, Any]:
     async with earnapp_canary.account_api_lock(account_id):
+        operation = await _claim_account_operation(account_id, "payment_configure")
+        if await _account_queue_available(account_id) and operation is None:
+            raise ValueError("EarnApp account operation is queued")
         account = await database.get_earnapp_account_credentials(account_id)
         if not account:
+            await _fail_account_operation(operation, "account_unavailable")
             raise ValueError("EarnApp account unavailable")
         routes = await _collection_routes(account_id)
         if not routes:
+            await _fail_account_operation(operation, "route_unavailable")
             raise ValueError("EarnApp account proxy unavailable")
         last_error: Exception | None = None
         for route in routes:
             collector = EarnAppAccountCollector(account.get("credentials") or {}, route)
             try:
-                return await collector.configure_payment(payment_method=payment_method, destination=destination)
+                result = await collector.configure_payment(payment_method=payment_method, destination=destination)
+                await _finish_account_operation(operation, result)
+                return result
             except (httpx.TimeoutException, httpx.NetworkError, httpx.ProxyError, httpx.HTTPStatusError) as exc:
                 last_error = exc
+        await _fail_account_operation(operation, "payment_provider_error")
         assert last_error is not None
         raise last_error
 
@@ -180,8 +255,17 @@ async def ensure_paypal_pool_payment(
 
 async def disable_payment(account_id: int) -> dict[str, Any]:
     async with earnapp_canary.account_api_lock(account_id):
-        collector = await _payment_collector(account_id)
-        return await collector.disable_payment()
+        operation = await _claim_account_operation(account_id, "payment_disable")
+        if await _account_queue_available(account_id) and operation is None:
+            raise ValueError("EarnApp account operation is queued")
+        try:
+            collector = await _payment_collector(account_id)
+            result = await collector.disable_payment()
+        except Exception:
+            await _fail_account_operation(operation, "payment_disable_failed")
+            raise
+        await _finish_account_operation(operation, result)
+        return result
 
 
 async def collect_active_accounts(*, concurrency: int = 4) -> dict[str, Any]:

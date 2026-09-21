@@ -129,3 +129,79 @@ class TestProxiesSxCollector:
         assert row["last_seen"] == "less than a minute"
         assert row["pending_payout_usd"] == 1.25
         assert row["total_earned_usd"] == 7.5
+
+    def test_per_node_normalizes_current_api_fields(self):
+        from app.collectors.proxies_sx import ProxiesSxCollector
+
+        client = _client()
+        client.get.return_value = _response(
+            200,
+            {
+                "peers": [
+                    {
+                        "deviceId": "agent-live",
+                        "name": "peer-live",
+                        "status": "online",
+                        "isOnline": True,
+                        "listedForSale": False,
+                        "verified": True,
+                        "probeQuality": {
+                            "workingForCustomers": False,
+                            "throughputKBps": 231,
+                            "lastFailureReason": "tls_dropped_bernard_pattern",
+                            "probeMode": "connect_v2",
+                        },
+                        "totalTrafficMB": 12.5,
+                        "lastHourTrafficBytes": 2048,
+                        "lastSeenAt": "2026-09-18T07:34:14Z",
+                        "pendingPayoutCents": 125,
+                        "totalEarnedCents": 750,
+                    }
+                ]
+            },
+        )
+
+        with patch("app.collectors.proxies_sx.httpx.AsyncClient", return_value=client):
+            row = asyncio.run(ProxiesSxCollector(api_key="k").get_per_node_earnings())[0]
+
+        assert row["online"] is True
+        assert row["listed"] is False
+        assert row["verification"] == "verified"
+        assert row["customer_routable"] is False
+        assert row["gateway_failure"] == "tls_dropped_bernard_pattern"
+        assert row["gateway_probe"] == "connect_v2"
+        assert row["gateway_last_probe"] == ""
+        assert row["speed"] == "231 KB/s"
+        assert row["traffic"] == "12.5 MB"
+        assert row["last_seen"] == "2026-09-18T07:34:14Z"
+        assert row["pending_payout_usd"] == 1.25
+        assert row["total_earned_usd"] == 7.5
+
+    def test_per_node_reads_live_status_quality_and_traffic_fields(self):
+        from app.collectors.proxies_sx import ProxiesSxCollector
+
+        client = _client()
+        client.get.return_value = _response(
+            200,
+            {
+                "devices": [
+                    {
+                        "deviceId": "agent-live-2",
+                        "status": "connected",
+                        "isOnline": True,
+                        "qualityScore": 91,
+                        "totalTrafficGB": 1.25,
+                        "lastHourTrafficBytes": 4096,
+                        "probeQuality": {"workingForCustomers": True},
+                    }
+                ]
+            },
+        )
+
+        with patch("app.collectors.proxies_sx.httpx.AsyncClient", return_value=client):
+            row = asyncio.run(ProxiesSxCollector(api_key="k").get_per_node_earnings())[0]
+
+        assert row["online"] is True
+        assert row["quality"] == 91
+        assert row["customer_routable"] is True
+        assert row["traffic"] == "1.25 GB"

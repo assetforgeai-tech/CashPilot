@@ -200,6 +200,56 @@ def test_prepare_fresh_earnapp_replacement_clears_identity_and_lease(tmp_path):
     asyncio.run(run())
 
 
+def test_promote_staged_earnapp_replacement_advances_generation_and_consumes_reservation(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "earnapp.db"):
+            await database.init_db()
+            account_id = await earnapp_accounts.import_account(_payload("profile-promote", "promote@example.com"))
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            old_proxy, new_proxy = (
+                await _seed_proxy_for_account_delete(database, provider_id, 21),
+                await _seed_proxy_for_account_delete(database, provider_id, 22),
+            )
+            db = await database._get_db()
+            await db.execute("INSERT INTO workers(id, client_id) VALUES (7, 'worker-7')")
+            await db.execute(
+                "INSERT INTO earnapp_logical_nodes(logical_node_id, account_id, platform, state, generation, assigned_worker_id, device_id, current_proxy_id) VALUES (?, ?, 'macos', 'ACTIVE', 2, 7, ?, ?)",
+                ("promote-node", account_id, "sdk-mac-" + "a" * 32, old_proxy),
+            )
+            await db.execute(
+                "INSERT INTO provider_proxy_leases(provider_slug, worker_id, instance_id, proxy_id, exit_ip) VALUES ('earnapp', 7, 'promote-node', ?, ?)",
+                (old_proxy, "198.51.100.21"),
+            )
+            await db.commit()
+            assert await database.record_earnapp_remote_delete_confirmation(
+                "promote-node", generation=2, device_id="sdk-mac-" + "a" * 32
+            )
+            reserved = await database.reserve_earnapp_proxy_candidate(
+                "promote-node",
+                7,
+                generation=2,
+                expected_proxy_id=old_proxy,
+                candidate_proxy_id=new_proxy,
+                binding_version="promote_binding_22",
+            )
+            assert reserved
+            promoted = await database.promote_staged_earnapp_replacement(
+                "promote-node",
+                7,
+                generation=2,
+                old_device_id="sdk-mac-" + "a" * 32,
+                old_proxy_id=old_proxy,
+                new_device_id="sdk-mac-" + "b" * 32,
+                new_proxy_id=new_proxy,
+                binding_version="promote_binding_22",
+            )
+            assert promoted and promoted["generation"] == 3
+            assert promoted["device_id"] == "sdk-mac-" + "b" * 32
+            assert promoted["current_proxy_id"] == new_proxy
+
+    asyncio.run(run())
+
+
 async def _seed_legacy_earnapp_schema(
     db,
     accounts: list[dict[str, object]],

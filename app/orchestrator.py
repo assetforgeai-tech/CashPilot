@@ -17,6 +17,8 @@ import logging
 import os
 import re
 import secrets
+import shlex
+import socket
 import tarfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -26,7 +28,14 @@ from urllib.request import Request, urlopen
 import docker
 from docker.errors import APIError, DockerException, NotFound
 
-from app import earnapp_runtime, myst_runtime, provider_automation, provider_installers, singbox_config
+from app import (
+    earnapp_runtime,
+    myst_runtime,
+    provider_automation,
+    provider_installers,
+    provider_runtime,
+    singbox_config,
+)
 
 try:
     from app.catalog import critical_volume_targets, get_service, get_services
@@ -212,6 +221,14 @@ def _find_earnapp_runtime_container(client: Any, slug: str, *, sidecar: bool):
             raise RuntimeError(f"EarnApp runtime label conflict for {slug}")
         if str(labels.get("cashpilot.provider") or "") != "earnapp":
             raise RuntimeError(f"EarnApp runtime provider conflict for {slug}")
+        # A candidate keeps the canonical service label but its stage name
+        # identifies it as transitional. After promotion Docker renames the
+        # container to the canonical name while retaining that marker; accept
+        # only that renamed form so restart/presence still find the runtime.
+        stage_marker = str(labels.get("cashpilot.earnapp.stage_slug") or "").strip()
+        container_name = str(getattr(container, "name", "") or "").lstrip("/")
+        if stage_marker and container_name not in {_container_name(slug), _sidecar_name(slug)}:
+            continue
         is_sidecar = labels.get("cashpilot.role") == "egress-sidecar"
         if is_sidecar == sidecar:
             matches.append(container)
@@ -955,7 +972,7 @@ def deploy_raw(
     network: str | None = None,
     cap_add: list[str] | None = None,
     devices: list[str] | None = None,
-    command: str | None = None,
+    command: str | list[str] | tuple[str, ...] | None = None,
     hostname: str | None = None,
     labels: dict[str, str] | None = None,
     resources: Any = None,
@@ -1011,7 +1028,12 @@ def deploy_raw(
         labels_value = image_config.get("Labels") or {}
         platform_label = str((labels or {}).get("cashpilot.earnapp.platform") or "")
         image_platform = "ios" if platform_label == "ios" else ("ubuntu" if platform_label == "linux" else "macos")
-        earnapp_runtime.validate_image_labels(labels_value, image_platform)
+        earnapp_runtime.validate_image_labels(
+            labels_value,
+            image_platform,
+            image=str(image),
+            logical_node_id=str((labels or {}).get("cashpilot.earnapp.logical_node_id") or ""),
+        )
     # Remove any existing container with the same name
     try:
         old = client.containers.get(name)
@@ -1028,6 +1050,8 @@ def deploy_raw(
         pass
     # Only proxy deployments own a generated sing-box config volume. Direct
     # providers (notably MYST) must never touch that unrelated state.
+    if proxy and not network_mode and provider_runtime.proxy_transport(provider) == "in_container":
+        raise RuntimeError("in-container proxy runtime requires an explicit network mode")
     if proxy and not network_mode:
         _remove_sidecar_config_volume(client, slug)
     if provider == "mysterium" and deploy_credentials and deploy_credentials.get("myst_wallet_raw"):
@@ -1041,6 +1065,10 @@ def deploy_raw(
     }
     if labels:
         all_labels.update(labels)
+    if proxy:
+        policy_provider = str((labels or {}).get("cashpilot.provider") or provider).strip().lower()
+        all_labels["cashpilot.proxy_transport"] = provider_runtime.proxy_transport(policy_provider)
+        all_labels["cashpilot.proxy_contract"] = provider_runtime.proxy_contract(policy_provider)
 
     if provider != "earnapp" and not installer_image:
         logger.info("Pulling image %s", image)
@@ -1076,10 +1104,11 @@ def deploy_raw(
 
     if proxy and not network_mode:
         logger.info("Creating egress sidecar %s", sidecar_name)
+        pinned_proxy = singbox_config.pin_proxy_endpoint(proxy, resolver=socket.gethostbyname)
         config = singbox_config.render_tun_proxy_config(
-            proxy,
+            pinned_proxy,
             worker_name=slug,
-            udp_direct=provider in {"traffmonetizer", "mysterium"},
+            udp_direct=provider_runtime.proxy_udp_direct(provider),
             interface_name="cpegress" if provider == "repocket" else "cp-egress",
         )
         encoded_config = base64.b64encode(json.dumps(config, sort_keys=True).encode()).decode()
@@ -1088,17 +1117,61 @@ def deploy_raw(
             name=sidecar_name,
             environment={
                 "SINGBOX_CONFIG_B64": encoded_config,
+                "CASHPILOT_PROXY_IP": str(pinned_proxy["host"]),
+                "CASHPILOT_PROXY_PORT": str(int(pinned_proxy["port"])),
                 "ENABLE_DEPRECATED_LEGACY_DNS_SERVERS": "true",
             },
             entrypoint=[
                 "/bin/sh",
                 "-c",
-                "tmp=/etc/sing-box/config.json.cashpilot-new; "
+                "set -eu; tmp=/etc/sing-box/config.json.cashpilot-new; "
+                "if [ ! -s /etc/sing-box/config.json ] || [ ! -f /etc/sing-box/.cashpilot-binding-version ]; then "
                 'printf "%s" "$SINGBOX_CONFIG_B64" | base64 -d > "$tmp" && '
                 'sing-box check -c "$tmp" && '
-                'mv -f "$tmp" /etc/sing-box/config.json && '
+                'mv -f "$tmp" /etc/sing-box/config.json; '
+                'else rm -f "$tmp"; fi && '
+                "command -v nft >/dev/null 2>&1; "
+                "nft delete table inet cashpilot 2>/dev/null || true; "
+                "nft delete table ip cashpilot_dns 2>/dev/null || true; "
+                "nft -f - <<EOF\n"
+                "add table inet cashpilot\n"
+                "add chain inet cashpilot output { type filter hook output priority 0; policy drop; }\n"
+                'add rule inet cashpilot output oifname "lo" accept\n'
+                # sing-box auto-redirects intercepted TCP to its local
+                # listener after route lookup; the interface can still be
+                # eth0 at this filter hook, so allow only that loopback port.
+                # sing-box chooses the auto-redirect listener port at runtime;
+                # permit only loopback destinations, never an external route.
+                "add rule inet cashpilot output ip daddr 127.0.0.1 tcp dport 1-65535 accept\n"
+                # OUTPUT DNAT may retain the pre-DNAT route until the reroute
+                # step. Authorize only the local TUN DNS peer, never an
+                # external resolver such as the SDK's hard-coded 9.9.9.9.
+                "add rule inet cashpilot output ip daddr 172.31.255.2 udp dport 53 accept\n"
+                "add rule inet cashpilot output ip daddr 172.31.255.2 tcp dport 53 accept\n"
+                "add rule inet cashpilot output ct state established,related accept\n"
+                'add rule inet cashpilot output oifname "cp-egress" accept\n'
+                "add rule inet cashpilot output ip daddr $CASHPILOT_PROXY_IP tcp dport $CASHPILOT_PROXY_PORT accept\n"
+                # Some provider SDKs ignore resolv.conf and send DNS directly
+                # to a hard-coded resolver. Redirect those packets to the
+                # local TUN DNS peer before the fail-closed filter evaluates
+                # the egress interface; never permit direct UDP/53.
+                "add table ip cashpilot_dns\n"
+                # Run before sing-box's own mangle/output interception. Some
+                # SDKs connect to a hard-coded resolver and otherwise get
+                # rejected before the TUN DNS hijack can see the packet.
+                "add chain ip cashpilot_dns output { type nat hook output priority -199; policy accept; }\n"
+                "add rule ip cashpilot_dns output ip daddr != 172.31.255.2 udp dport 53 dnat to 172.31.255.2:53\n"
+                "add rule ip cashpilot_dns output ip daddr != 172.31.255.2 tcp dport 53 dnat to 172.31.255.2:53\n"
+                "EOF\n"
                 "touch /etc/sing-box/.cashpilot-initialized; "
-                "exec sing-box run -c /etc/sing-box/config.json",
+                # Keep the namespace alive while restarting only sing-box.
+                # Reassert DNS after every child restart; Docker can rewrite
+                # resolv.conf when the TUN process exits.
+                "set +e; while true; do "
+                "printf '%s\\n' 'nameserver 172.31.255.2' > /etc/resolv.conf; "
+                "sing-box run -c /etc/sing-box/config.json & SINGBOX_PID=$!; "
+                'wait "$SINGBOX_PID"; STATUS=$?; '
+                '[ "$STATUS" -eq 0 ] && exit 0; sleep 1; done',
             ],
             volumes={_sidecar_config_volume(slug): {"bind": "/etc/sing-box", "mode": "rw"}},
             cap_add=["NET_ADMIN"],
@@ -1113,11 +1186,57 @@ def deploy_raw(
                 "cashpilot.provider": str((labels or {}).get("cashpilot.provider") or provider),
                 "cashpilot.instance_mode": str((labels or {}).get("cashpilot.instance_mode") or "proxy"),
                 "cashpilot.role": "egress-sidecar",
+                "cashpilot.proxy_transport": provider_runtime.proxy_transport(
+                    str((labels or {}).get("cashpilot.provider") or provider).strip().lower()
+                ),
+                "cashpilot.proxy_contract": provider_runtime.proxy_contract(
+                    str((labels or {}).get("cashpilot.provider") or provider).strip().lower()
+                ),
+                "cashpilot.earnapp.logical_node_id": str(
+                    (labels or {}).get("cashpilot.earnapp.logical_node_id") or slug
+                ),
+                "cashpilot.earnapp.canonical_slug": str((labels or {}).get("cashpilot.earnapp.canonical_slug") or ""),
             },
             detach=True,
             restart_policy={"Name": "always"},
         )
         network_mode = f"container:{sidecar_name}"
+
+    provider_entrypoint = None
+    if proxy and network_mode == f"container:{sidecar_name}":
+        image_config = (client.images.get(image).attrs or {}).get("Config") or {}
+        original_entrypoint = list(image_config.get("Entrypoint") or [])
+        # Docker's explicit command must survive the proxy wrapper. Previously
+        # the image CMD won silently, making disposable probes and providers
+        # run the wrong process.
+        if isinstance(command, (list, tuple)):
+            # Native entrypoints (for example ProxyBase) expect argv, not a
+            # stringified Python list evaluated by /bin/sh.
+            provider_entrypoint = original_entrypoint or None
+            command = list(command)
+        elif command:
+            # Shell-less provider images (Traffmonetizer, Repocket) expose a
+            # native binary entrypoint. Simple argv commands must bypass /bin/sh;
+            # shell syntax still uses the resolver wrapper for shell images.
+            shell_chars = set("|;&<>$`()")
+            native_argv = bool(original_entrypoint) and not any(char in command for char in shell_chars)
+            if native_argv:
+                provider_entrypoint = original_entrypoint
+                command = shlex.split(command)
+            else:
+                launch = ["/bin/sh", "-c", command]
+                provider_entrypoint = [
+                    "/bin/sh",
+                    "-c",
+                    "printf '%s\\n' 'nameserver 172.31.255.2' > /etc/resolv.conf; exec "
+                    + " ".join(shlex.quote(str(part)) for part in launch),
+                ]
+                command = None
+        else:
+            # Shell-less images such as Repocket cannot execute the DNS wrapper.
+            # Preserve their native entrypoint/CMD; the shared network namespace
+            # already inherits the sidecar resolver and fail-closed route.
+            provider_entrypoint = original_entrypoint or None
 
     logger.info("Creating container %s from %s", name, image)
     container = client.containers.run(
@@ -1127,6 +1246,7 @@ def deploy_raw(
         ports=ports if ports and not network_mode else None,
         volumes=volumes if volumes else None,
         network_mode=network_mode,
+        entrypoint=provider_entrypoint,
         network=network if not network_mode else None,
         # These images are third-party and closed-source, so they get the minimum
         # kernel surface: every capability dropped, then only the ones the service's
@@ -1273,9 +1393,9 @@ def apply_proxy_binding_batch(instance_slugs: list[str], proxy: dict[str, Any], 
             raise RuntimeError(f"{slug} egress sidecar predates persistent binding support")
         provider = str(labels.get("cashpilot.provider") or slug.rsplit("-", 1)[0])
         config = singbox_config.render_tun_proxy_config(
-            proxy,
+            singbox_config.pin_proxy_endpoint(proxy, resolver=socket.gethostbyname),
             worker_name=slug,
-            udp_direct=provider in {"traffmonetizer", "mysterium"},
+            udp_direct=provider_runtime.proxy_udp_direct(provider),
             interface_name="cpegress" if provider == "repocket" else "cp-egress",
         )
         raw = json.dumps(config, sort_keys=True).encode()
@@ -1628,11 +1748,278 @@ def remove_earnapp_service(slug: str) -> dict[str, bool]:
             # below, not the exception, decides whether cleanup completed.
             logger.warning("EarnApp runtime component removal was not acknowledged for %s: %s", slug, exc)
 
+    # A promoted staged runtime can retain the canonical container name while
+    # keeping its stage marker. Canonical lookup deliberately excludes that
+    # marker, so remove it explicitly before acknowledging cleanup. The marker
+    # must point back to this logical node; never remove an unrelated staged
+    # candidate.
+    for container in client.containers.list(all=True):
+        labels = getattr(container, "labels", {}) or {}
+        if str(labels.get("cashpilot.provider") or "") != "earnapp":
+            continue
+        stage_marker = str(labels.get("cashpilot.earnapp.stage_slug") or "").strip()
+        container_name = str(getattr(container, "name", "") or "").lstrip("/")
+        # Keep a candidate while it still has its stage name. Only a promoted
+        # container renamed to the canonical name is an orphan to clean up.
+        if (
+            stage_marker
+            and container_name in {_container_name(slug), _sidecar_name(slug)}
+            and str(
+                labels.get("cashpilot.earnapp.logical_node_id") or labels.get("cashpilot.earnapp.canonical_slug") or ""
+            ).strip()
+            == str(slug)
+        ):
+            try:
+                container.remove(force=True)
+            except NotFound:
+                pass
+            except APIError as exc:
+                logger.warning("Staged EarnApp cleanup was not acknowledged for %s: %s", slug, exc)
+
     presence = earnapp_service_presence(slug, client=client)
     if presence["main_present"] or presence["sidecar_present"]:
         remaining = [name for name, present in presence.items() if present]
         raise RuntimeError(f"EarnApp Docker cleanup incomplete for {slug}: {', '.join(remaining)}")
     return presence
+
+
+def promote_staged_earnapp_runtime(stage_slug: str, canonical_slug: str, *, new_generation: int) -> dict[str, Any]:
+    """Promote an already verified staged pair by atomically changing labels.
+
+    Docker resolves ``container:<name>`` to the sidecar container ID when the
+    main container is created. Renaming both components therefore preserves the
+    namespace while restoring the canonical names used by reconciliation.
+    """
+    if not re.fullmatch(r"earnapp-[a-z0-9][a-z0-9-]{1,112}", str(stage_slug or "")):
+        raise ValueError("invalid EarnApp staged runtime id")
+    if not re.fullmatch(r"earnapp-[a-z0-9][a-z0-9-]{1,112}", str(canonical_slug or "")):
+        raise ValueError("invalid EarnApp canonical runtime id")
+    if stage_slug == canonical_slug or int(new_generation or 0) <= 0:
+        raise ValueError("staged runtime promotion arguments are invalid")
+    client = _get_client()
+    try:
+        main = client.containers.get(_container_name(stage_slug))
+    except NotFound as exc:
+        raise RuntimeError("staged EarnApp runtime is incomplete") from exc
+    # The current EarnApp route is in-container and therefore has no sidecar.
+    # Keep the older sidecar promotion path below for migration compatibility.
+    try:
+        sidecar = client.containers.get(_sidecar_name(stage_slug))
+    except NotFound:
+        sidecar = None
+    if sidecar is None:
+        labels = getattr(main, "labels", {}) or {}
+        if labels.get(LABEL_MANAGED) != "true" or labels.get("cashpilot.provider") != "earnapp":
+            raise RuntimeError("staged EarnApp runtime labels are invalid")
+        if (
+            labels.get(LABEL_SERVICE) != canonical_slug
+            or labels.get("cashpilot.earnapp.canonical_slug") != canonical_slug
+        ):
+            raise RuntimeError("staged EarnApp runtime is not bound to canonical slug")
+        if str(getattr(main, "status", "") or "").lower() != "running":
+            raise RuntimeError("staged EarnApp runtime is not running")
+        try:
+            client.containers.get(_container_name(canonical_slug))
+        except NotFound:
+            pass
+        else:
+            raise RuntimeError("canonical EarnApp runtime still exists")
+        attrs = getattr(main, "attrs", {}) or {}
+        config, host = attrs.get("Config"), attrs.get("HostConfig")
+        if not config or not host:
+            raise RuntimeError("staged EarnApp runtime metadata is incomplete")
+        main.stop(timeout=30)
+        backup_name = f"{_container_name(stage_slug)}-cashpilot-promote-{secrets.token_hex(4)}"
+        main.rename(backup_name)
+        try:
+            promoted = client.containers.create(
+                image=str(config.get("Image") or ""),
+                name=_container_name(canonical_slug),
+                environment=_docker_environment(config.get("Env")),
+                volumes=_docker_volumes(attrs.get("Mounts")),
+                network_mode=str(host.get("NetworkMode") or "bridge"),
+                labels={
+                    **dict(config.get("Labels") or {}),
+                    LABEL_SERVICE: canonical_slug,
+                    "cashpilot.earnapp.logical_node_id": canonical_slug,
+                    "cashpilot.earnapp.generation": str(int(new_generation)),
+                },
+                command=config.get("Cmd") or None,
+                entrypoint=config.get("Entrypoint") or None,
+                working_dir=str(config.get("WorkingDir") or "") or None,
+                user=str(config.get("User") or "") or None,
+                restart_policy=dict(host.get("RestartPolicy") or {"Name": "always"}),
+                cap_drop=list(host.get("CapDrop") or []),
+                cap_add=list(host.get("CapAdd") or []),
+                devices=list(host.get("Devices") or []) or None,
+                security_opt=list(host.get("SecurityOpt") or []),
+                pids_limit=host.get("PidsLimit"),
+                mem_limit=host.get("Memory") or None,
+                mem_reservation=host.get("MemoryReservation") or None,
+                nano_cpus=host.get("NanoCpus") or None,
+                oom_score_adj=host.get("OomScoreAdj"),
+                shm_size=host.get("ShmSize") or None,
+            )
+            promoted.start()
+        except Exception:
+            with contextlib.suppress(Exception):
+                main.rename(_container_name(stage_slug))
+                main.start()
+            raise
+        with contextlib.suppress(Exception):
+            main.remove(force=True)
+        return {
+            "main_container_id": str(getattr(promoted, "id", "")),
+            "sidecar_container_id": "",
+            "generation": int(new_generation),
+        }
+    for component, role in ((main, "main"), (sidecar, "egress-sidecar")):
+        labels = getattr(component, "labels", {}) or {}
+        if labels.get(LABEL_MANAGED) != "true" or labels.get("cashpilot.provider") != "earnapp":
+            raise RuntimeError("staged EarnApp runtime labels are invalid")
+        if (
+            labels.get(LABEL_SERVICE) != canonical_slug
+            or labels.get("cashpilot.earnapp.canonical_slug") != canonical_slug
+        ):
+            raise RuntimeError("staged EarnApp runtime is not bound to canonical slug")
+        if role == "egress-sidecar" and labels.get("cashpilot.role") != role:
+            raise RuntimeError("staged EarnApp sidecar role is invalid")
+        if str(getattr(component, "status", "") or "").lower() != "running":
+            raise RuntimeError("staged EarnApp runtime is not running")
+    for name in (_container_name(canonical_slug), _sidecar_name(canonical_slug)):
+        try:
+            client.containers.get(name)
+        except NotFound:
+            continue
+        raise RuntimeError("canonical EarnApp runtime still exists")
+    attrs = getattr(main, "attrs", {}) or {}
+    side_attrs = getattr(sidecar, "attrs", {}) or {}
+    if attrs.get("Config") and attrs.get("HostConfig") and side_attrs.get("Config") and side_attrs.get("HostConfig"):
+        config, host = attrs["Config"], attrs["HostConfig"]
+        side_config, side_host = side_attrs["Config"], side_attrs["HostConfig"]
+        main.stop(timeout=30)
+        sidecar.stop(timeout=30)
+        side_backup = f"{_sidecar_name(stage_slug)}-cashpilot-promote-{secrets.token_hex(4)}"
+        sidecar.rename(side_backup)
+        try:
+            promoted_sidecar = client.containers.create(
+                image=str(side_config.get("Image") or ""),
+                name=_sidecar_name(canonical_slug),
+                environment=_docker_environment(side_config.get("Env")),
+                volumes=_docker_volumes(side_attrs.get("Mounts")),
+                labels={
+                    **dict(side_config.get("Labels") or {}),
+                    LABEL_SERVICE: canonical_slug,
+                    "cashpilot.earnapp.logical_node_id": canonical_slug,
+                },
+                command=side_config.get("Cmd") or None,
+                entrypoint=side_config.get("Entrypoint") or None,
+                working_dir=str(side_config.get("WorkingDir") or "") or None,
+                user=str(side_config.get("User") or "") or None,
+                restart_policy=dict(side_host.get("RestartPolicy") or {"Name": "always"}),
+                cap_drop=list(side_host.get("CapDrop") or []),
+                cap_add=list(side_host.get("CapAdd") or []),
+                devices=list(side_host.get("Devices") or []) or None,
+                security_opt=list(side_host.get("SecurityOpt") or []),
+                pids_limit=side_host.get("PidsLimit"),
+                mem_limit=side_host.get("Memory") or None,
+                mem_reservation=side_host.get("MemoryReservation") or None,
+                nano_cpus=side_host.get("NanoCpus") or None,
+                oom_score_adj=side_host.get("OomScoreAdj"),
+                shm_size=side_host.get("ShmSize") or None,
+            )
+            promoted_sidecar.start()
+        except Exception:
+            with contextlib.suppress(Exception):
+                sidecar.rename(_sidecar_name(stage_slug))
+                sidecar.start()
+            with contextlib.suppress(Exception):
+                main.start()
+            raise
+        backup_name = f"{_container_name(stage_slug)}-cashpilot-promote-{secrets.token_hex(4)}"
+        main.rename(backup_name)
+        replacement = None
+        try:
+            replacement = client.containers.create(
+                image=str(config.get("Image") or ""),
+                name=_container_name(canonical_slug),
+                environment=_docker_environment(config.get("Env")),
+                volumes=_docker_volumes(attrs.get("Mounts")),
+                network_mode=f"container:{getattr(promoted_sidecar, 'id', '') or _sidecar_name(canonical_slug)}",
+                labels={
+                    **dict(config.get("Labels") or {}),
+                    LABEL_SERVICE: canonical_slug,
+                    "cashpilot.earnapp.logical_node_id": canonical_slug,
+                    "cashpilot.earnapp.generation": str(int(new_generation)),
+                },
+                command=config.get("Cmd") or None,
+                entrypoint=config.get("Entrypoint") or None,
+                user=str(config.get("User") or "") or None,
+                working_dir=str(config.get("WorkingDir") or "") or None,
+                restart_policy=dict(host.get("RestartPolicy") or {"Name": "always"}),
+                cap_drop=list(host.get("CapDrop") or []),
+                cap_add=list(host.get("CapAdd") or []),
+                security_opt=list(host.get("SecurityOpt") or []),
+                pids_limit=host.get("PidsLimit"),
+                mem_limit=host.get("Memory") or None,
+                mem_reservation=host.get("MemoryReservation") or None,
+                nano_cpus=host.get("NanoCpus") or None,
+                oom_score_adj=host.get("OomScoreAdj"),
+                shm_size=host.get("ShmSize") or None,
+            )
+            replacement.start()
+            main.remove(force=True)
+            sidecar.remove(force=True)
+            main = replacement
+            sidecar = promoted_sidecar
+        except Exception:
+            if replacement is not None:
+                with contextlib.suppress(Exception):
+                    replacement.remove(force=True)
+            with contextlib.suppress(Exception):
+                main.rename(_container_name(stage_slug))
+                main.start()
+            with contextlib.suppress(Exception):
+                sidecar.rename(_sidecar_name(stage_slug))
+                sidecar.start()
+            with contextlib.suppress(Exception):
+                promoted_sidecar.remove(force=True)
+            raise
+    else:
+        sidecar.rename(_sidecar_name(canonical_slug))
+        main.rename(_container_name(canonical_slug))
+    return {
+        "main_container_id": str(getattr(main, "id", "") or ""),
+        "sidecar_container_id": str(getattr(sidecar, "id", "") or ""),
+        "generation": int(new_generation),
+    }
+
+
+def remove_staged_earnapp_service(stage_slug: str) -> dict[str, bool]:
+    """Remove candidate components by physical name before promotion."""
+    client = _get_client()
+    names = [_container_name(stage_slug), _sidecar_name(stage_slug)]
+    # A crashed promotion can rename the candidate to its canonical name while
+    # retaining the stage marker. Treat that exact marker as disposable too.
+    for container in client.containers.list(all=True, filters={"label": f"cashpilot.earnapp.stage_slug={stage_slug}"}):
+        names.append(str(getattr(container, "name", "") or "").lstrip("/"))
+    for name in dict.fromkeys(names):
+        if not name:
+            continue
+        with contextlib.suppress(NotFound):
+            client.containers.get(name).remove(force=True)
+    return {
+        "main_present": _physical_container_present(client, _container_name(stage_slug)),
+        "sidecar_present": _physical_container_present(client, _sidecar_name(stage_slug)),
+    }
+
+
+def _physical_container_present(client: Any, name: str) -> bool:
+    try:
+        client.containers.get(name)
+    except NotFound:
+        return False
+    return True
 
 
 def remove_earnapp_identity_volume(slug: str) -> bool:
@@ -1839,7 +2226,14 @@ def _provider_evidence(slug: str, container: Any, *, probe_container: Any | None
                 controls = container.exec_run(["sh", "-lc", "iptables-save 2>/dev/null; ip6tables-save 2>/dev/null"])
                 code, raw = _exec_output(controls)
                 if code == 0:
-                    evidence.update(_parse_earnapp_iptables(raw.decode("utf-8", errors="replace")))
+                    text = raw.decode("utf-8", errors="replace")
+                    labels = getattr(container, "labels", {}) or {}
+                    parser = (
+                        _parse_proxy_runtime_iptables
+                        if labels.get("cashpilot.proxy_transport") == "in_container"
+                        else _parse_earnapp_iptables
+                    )
+                    evidence.update(parser(text))
             try:
                 probe_result = probe.exec_run(
                     [
@@ -1865,7 +2259,14 @@ def _provider_evidence(slug: str, container: Any, *, probe_container: Any | None
                     )
                     code, raw = _exec_output(controls)
                     if code == 0:
-                        evidence.update(_parse_earnapp_iptables(raw.decode("utf-8", errors="replace")))
+                        text = raw.decode("utf-8", errors="replace")
+                        labels = getattr(container, "labels", {}) or {}
+                        parser = (
+                            _parse_proxy_runtime_iptables
+                            if labels.get("cashpilot.proxy_transport") == "in_container"
+                            else _parse_earnapp_iptables
+                        )
+                        evidence.update(parser(text))
             except (ValueError, OSError, APIError):
                 evidence.update(observed_egress_ip="", probe_ok=False)
             return evidence
@@ -1896,11 +2297,15 @@ def _provider_evidence(slug: str, container: Any, *, probe_container: Any | None
             ok = int(getattr(result, "exit_code", 1)) == 0 and bool(observed)
             evidence: dict[str, Any] = {"running": True, "observed_egress_ip": observed if ok else "", "probe_ok": ok}
             if ok:
-                controls = (
-                    _direct_network_controls(container)
-                    if str((getattr(container, "labels", {}) or {}).get("cashpilot.instance_mode") or "") == "direct"
-                    else _sidecar_network_controls(probe)
-                )
+                labels = getattr(container, "labels", {}) or {}
+                if str(labels.get("cashpilot.instance_mode") or "") == "direct":
+                    controls = _direct_network_controls(container)
+                elif labels.get("cashpilot.proxy_transport") == "in_container":
+                    result = container.exec_run(["sh", "-lc", "iptables-save 2>/dev/null; ip6tables-save 2>/dev/null"])
+                    code, raw = _exec_output(result)
+                    controls = _parse_proxy_runtime_iptables(raw.decode("utf-8", errors="replace")) if code == 0 else {}
+                else:
+                    controls = _sidecar_network_controls(probe)
                 evidence.update(controls)
             return evidence
         except Exception as exc:
@@ -2002,6 +2407,29 @@ def _parse_earnapp_iptables(text: str) -> dict[str, bool]:
         "doh_blocked": drop(out_rules),
         "dot_blocked": drop(out_rules),
         "direct_fallback_blocked": drop(out_rules),
+    }
+
+
+def _parse_proxy_runtime_iptables(text: str) -> dict[str, bool]:
+    """Map the shared in-container route chains to evidence fields."""
+    lines = str(text or "").splitlines()
+    out_rules = [line for line in lines if "CP_PROXY_OUT" in line]
+    dns_rules = [line for line in lines if "CP_PROXY_DNS" in line]
+    ipv6_rules = [line for line in lines if "CP_PROXY6_OUT" in line]
+    redirect_rules = [line for line in lines if "CP_PROXY_REDSOCKS" in line]
+    if not out_rules and not dns_rules and not ipv6_rules and not redirect_rules:
+        return {}
+
+    def drop(rules: list[str]) -> bool:
+        return any("-j DROP" in line for line in rules)
+
+    return {
+        "dns_via_proxy": any("--dport 53" in line and "REDIRECT" in line for line in dns_rules),
+        "ipv6_blocked": drop(ipv6_rules),
+        "udp_blocked": drop(out_rules) and any("-p udp" in line for line in out_rules),
+        "doh_blocked": drop(out_rules),
+        "dot_blocked": drop(out_rules),
+        "direct_fallback_blocked": drop(out_rules) and any("CP_PROXY_REDSOCKS" in line for line in redirect_rules),
     }
 
 

@@ -983,7 +983,7 @@ def test_earnapp_auto_deploy_runs_once_across_stable_heartbeats(monkeypatch):
             patch.object(
                 database,
                 "get_worker",
-                AsyncMock(return_value={"id": 7, "name": "worker-a", "client_id": "worker-a"}),
+                AsyncMock(return_value={"id": 7, "name": "worker-a", "client_id": "worker-a", "key_confirmed": 1}),
             ),
             patch.object(database, "get_deployments", AsyncMock(return_value=[])),
             patch.object(main, "_deploy_earnapp_nodes", deploy),

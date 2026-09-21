@@ -33,19 +33,29 @@ docker:
   volumes:
     - "proxies-sx-data:/app"
   command: >
-    sh -lc 'apk add --no-cache curl >/dev/null 2>&1 && cd /app &&
+    sh -lc 'cd /app || exit 1;
+    resolved=0;
+    for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+      if getent hosts relay.proxies.sx >/dev/null 2>&1 && getent hosts agents.proxies.sx >/dev/null 2>&1; then resolved=1; break; fi;
+      sleep 5;
+    done;
+    test "$resolved" = 1 || exit 1;
+    apk add --no-cache curl >/dev/null 2>&1 || exit 1;
+    expected_sha256=A4541CF44B129822CDB431EB8DF16B1B30023C1BCC9DB8CDAB1DB20D7828DF9F;
+    if [ -s reference-sdk.js ] && [ "$(sha256sum reference-sdk.js | cut -d\" \" -f1)" != "$expected_sha256" ]; then rm -f reference-sdk.js; fi;
     if [ ! -s reference-sdk.js ]; then
       rm -f reference-sdk.js.tmp;
       for attempt in 1 2 3 4 5; do
         if curl -4 -fsSL --retry 2 --retry-delay 2 --connect-timeout 15 --max-time 60 -o reference-sdk.js.tmp https://agents.proxies.sx/peer/reference-sdk.js && [ -s reference-sdk.js.tmp ]; then
-          mv reference-sdk.js.tmp reference-sdk.js;
-          break;
+          if [ "$(sha256sum reference-sdk.js.tmp | cut -d\" \" -f1)" = "$expected_sha256" ]; then mv reference-sdk.js.tmp reference-sdk.js; break; fi;
+          rm -f reference-sdk.js.tmp;
         fi;
         rm -f reference-sdk.js.tmp;
         sleep 10;
       done;
     fi &&
     test -s reference-sdk.js &&
+    test "$(sha256sum reference-sdk.js | cut -d\" \" -f1)" = "$expected_sha256" &&
     if [ ! -f package.json ]; then npm init -y >/dev/null 2>&1; fi &&
     if [ ! -d node_modules/ws ]; then npm install ws >/dev/null 2>&1; fi &&
     exec node reference-sdk.js'
@@ -117,7 +127,7 @@ egress:
   mode: proxy
   udp: none
   fallback: none
-  reason: "The tested provider-runtime source runs Proxies.sx as a proxy-node only."
+  reason: "Proxies.sx is a provider-only-proxy runtime; it must use the assigned CashPilot proxy and fail closed without fallback."
 
 disclosure:
   sells: >-

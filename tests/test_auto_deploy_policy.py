@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from app import main
 
@@ -31,6 +34,35 @@ def test_resolve_worker_id_adopts_online_reenrollment_with_same_endpoint(monkeyp
             ),
         )
         assert await main._resolve_worker_id(112494) == 118903
+
+    asyncio.run(run())
+
+
+def test_resolve_worker_id_counts_one_physical_worker_per_endpoint(monkeypatch):
+    async def run():
+        monkeypatch.setattr(
+            main.database,
+            "list_workers",
+            AsyncMock(
+                return_value=[
+                    {
+                        "id": 112494,
+                        "status": "online",
+                        "url": "http://20.187.79.110:8081",
+                        "registered_at": "2026-09-10 10:00:00",
+                        "last_heartbeat": "2026-09-16 12:01:00",
+                    },
+                    {
+                        "id": 118903,
+                        "status": "online",
+                        "url": "http://20.187.79.110:8081/",
+                        "registered_at": "2026-09-15 10:00:00",
+                        "last_heartbeat": "2026-09-16 12:00:00",
+                    },
+                ]
+            ),
+        )
+        assert await main._resolve_worker_id(None) == 118903
 
     asyncio.run(run())
 
@@ -217,7 +249,11 @@ def test_heartbeat_auto_deploy_does_not_skip_provider_deployed_on_another_worker
             patch.object(
                 main.database, "get_config", AsyncMock(return_value={"cashpilot_auto_deploy_enabled": "true"})
             ),
-            patch.object(main.database, "get_worker", AsyncMock(return_value={"id": 7, "name": "azure-worker"})),
+            patch.object(
+                main.database,
+                "get_worker",
+                AsyncMock(return_value={"id": 7, "name": "azure-worker", "key_confirmed": 1}),
+            ),
             patch.object(main.database, "list_provider_instances", AsyncMock(return_value=[])),
             patch.object(main.catalog, "get_services", return_value=services),
             patch.object(main, "_spawn") as spawn,
@@ -230,5 +266,71 @@ def test_heartbeat_auto_deploy_does_not_skip_provider_deployed_on_another_worker
         coroutine = spawn.call_args.args[0]
         coroutine.close()
         assert coroutine.cr_frame is None
+
+    asyncio.run(run())
+
+
+def test_heartbeat_auto_deploy_skips_unconfirmed_worker_key():
+    async def run():
+        main._WORKER_HEARTBEAT_STREAKS.clear()
+        with (
+            patch.object(
+                main.database, "get_config", AsyncMock(return_value={"cashpilot_auto_deploy_enabled": "true"})
+            ),
+            patch.object(
+                main.database, "get_worker", AsyncMock(return_value={"id": 7, "status": "online", "key_confirmed": 0})
+            ),
+            patch.object(main, "_spawn") as spawn,
+        ):
+            for _ in range(3):
+                await main._maybe_auto_deploy_after_heartbeat(7)
+        spawn.assert_not_called()
+
+
+def test_heartbeat_auto_deploy_does_not_redeploy_authenticated_runtime_missing_from_db():
+    async def run():
+        main._WORKER_HEARTBEAT_STREAKS.clear()
+        main._NKN_AUTO_DEPLOY_DONE.add(7)
+        main._EARNAPP_AUTO_DEPLOY_DONE.add(7)
+        services = [
+            {
+                "slug": "wipter",
+                "status": "active",
+                "docker": {"image": "wipter/image"},
+                "deploy": {},
+            }
+        ]
+        worker = {
+            "id": 7,
+            "name": "azure-worker",
+            "status": "online",
+            "key_confirmed": 1,
+            "containers": json.dumps([{"slug": "wipter", "instance_slug": "wipter-proxy", "status": "running"}]),
+        }
+        with (
+            patch.object(
+                main.database,
+                "get_config",
+                AsyncMock(return_value={"cashpilot_auto_deploy_enabled": "true"}),
+            ),
+            patch.object(main.database, "get_worker", AsyncMock(return_value=worker)),
+            patch.object(main.database, "list_provider_instances", AsyncMock(return_value=[])),
+            patch.object(main.catalog, "get_services", return_value=services),
+            patch.object(main, "_spawn") as spawn,
+        ):
+            for _ in range(3):
+                await main._maybe_auto_deploy_after_heartbeat(7)
+        spawn.assert_not_called()
+
+    asyncio.run(run())
+
+
+def test_verified_worker_url_rejects_unconfirmed_worker(monkeypatch):
+    async def run():
+        with pytest.raises(main.HTTPException) as exc:
+            await main._get_verified_worker_url(
+                {"status": "online", "url": "http://worker.example", "client_id": "w", "key_confirmed": 0}
+            )
+        assert exc.value.status_code == 409
 
     asyncio.run(run())

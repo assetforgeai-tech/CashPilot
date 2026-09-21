@@ -895,6 +895,32 @@ async def test_earnapp_recheck_skips_generic_dead_proxies():
 
 
 @pytest.mark.asyncio
+async def test_earnfm_recheck_saves_socket_8443_profile():
+    rows = [{"id": 7, "host": "alive.example", "port": 1080, "status": "alive"}]
+    proxy = {"id": 7, "host": "alive.example", "port": 1080, "protocol": "socks5"}
+
+    with (
+        patch("app.routers.proxies.database.list_proxy_pool", new_callable=AsyncMock, return_value=rows),
+        patch("app.routers.proxies.database.get_proxy_endpoint", new_callable=AsyncMock, return_value=proxy),
+        patch(
+            "app.routers.proxies.probe_earnfm_proxy",
+            new_callable=AsyncMock,
+            return_value={
+                "eligibility": "eligible",
+                "reason": "tls_connect_ok",
+                "successful_target": "socket-prod.earn.fm",
+            },
+        ),
+        patch("app.routers.proxies.database.save_proxy_probe_result", new_callable=AsyncMock) as save,
+    ):
+        result = await proxy_routes.run_earnfm_proxy_recheck(concurrency=1)
+
+    assert result["eligible"] == 1
+    assert save.await_args.kwargs["profile"] == "earnfm_socket_8443"
+    assert save.await_args.kwargs["eligibility"] == "eligible"
+
+
+@pytest.mark.asyncio
 async def test_proxy_pool_recheck_uses_decrypted_proxy_credentials():
     rows = [{"id": 7, "host": "proxy.example.com", "port": 1080, "assigned_worker_id": None}]
     proxy = {"id": 7, "host": "proxy.example.com", "port": 1080, "username": "user", "password": "pass"}
@@ -916,6 +942,34 @@ async def test_proxy_pool_recheck_uses_decrypted_proxy_credentials():
     assert result["status"] == "ok"
     lookup.assert_awaited_once_with(7)
     probe.assert_awaited_once_with("proxy.example.com", 1080, username="user", password="pass")
+
+
+@pytest.mark.asyncio
+async def test_proxy_pool_recheck_probes_shared_egress_once_per_cycle():
+    rows = [
+        {"id": 7, "host": "one.example", "port": 1080, "exit_ip": "8.8.8.8", "assigned_worker_id": None},
+        {"id": 8, "host": "two.example", "port": 1080, "exit_ip": "8.8.8.8", "assigned_worker_id": None},
+    ]
+
+    async def endpoint(proxy_id):
+        return rows[proxy_id - 7]
+
+    with (
+        patch("app.routers.proxies.database.list_proxy_pool", new_callable=AsyncMock, return_value=rows),
+        patch("app.routers.proxies.database.get_proxy_endpoint", new_callable=AsyncMock, side_effect=endpoint),
+        patch(
+            "app.routers.proxies._probe_proxy_confirmed",
+            new_callable=AsyncMock,
+            return_value={"status": "alive", "exit_ip": "8.8.8.8"},
+        ) as probe,
+        patch("app.routers.proxies.database.update_proxy_pool_check_results", new_callable=AsyncMock, return_value=2),
+        patch("app.routers.proxies.database.save_proxy_probe_result", new_callable=AsyncMock),
+        patch("app.routers.proxies.database.get_cached_proxy_intelligence", new_callable=AsyncMock, return_value={}),
+        patch("app.routers.proxies.database.reconcile_proxy_duplicates", new_callable=AsyncMock, return_value=1),
+    ):
+        await proxy_routes.run_proxy_pool_recheck(concurrency=2)
+
+    assert probe.await_count == 1
 
 
 @pytest.mark.asyncio
@@ -2524,6 +2578,17 @@ def test_manual_assignment_rejects_duplicate_noncanonical_and_scoped_egress(tmp_
                     latency_ms=10,
                     probe_version="test",
                 )
+                await database.save_proxy_probe_result(
+                    proxy_id,
+                    profile="earnfm_socket_8443",
+                    probe_status="alive",
+                    verdict="TLS_CONNECT",
+                    eligibility="eligible",
+                    reason="tls_connect_ok",
+                    exit_ip="",
+                    latency_ms=10,
+                    probe_version="test",
+                )
             await database.reconcile_proxy_duplicates()
             scoped_worker = await database.upsert_worker("scoped", "scoped", "http://scoped")
             manual_worker = await database.upsert_worker("manual", "manual", "http://manual")
@@ -3071,6 +3136,17 @@ def test_proxy_intelligence_cache_preserves_verified_fields_on_unknown_refresh(t
                 eligibility="eligible",
                 reason="",
                 exit_ip="8.8.8.8",
+                latency_ms=10,
+                probe_version="test",
+            )
+            await database.save_proxy_probe_result(
+                proxy_id,
+                profile="earnfm_socket_8443",
+                probe_status="alive",
+                verdict="TLS_CONNECT",
+                eligibility="eligible",
+                reason="tls_connect_ok",
+                exit_ip="",
                 latency_ms=10,
                 probe_version="test",
             )
@@ -4190,6 +4266,17 @@ def test_provider_slot_leases_are_deterministic_across_reruns(tmp_path):
                     latency_ms=10,
                     probe_version="test",
                 )
+                await database.save_proxy_probe_result(
+                    proxy_id,
+                    profile="earnfm_socket_8443",
+                    probe_status="alive",
+                    verdict="TLS_CONNECT",
+                    eligibility="eligible",
+                    reason="tls_connect_ok",
+                    exit_ip="",
+                    latency_ms=10,
+                    probe_version="test",
+                )
             worker_id = await database.upsert_worker("worker-a", "a", "http://a")
             slot_one = "earnfm-proxy-w7-ipv4-001"
             slot_two = "earnfm-proxy-w7-ipv4-002"
@@ -4224,6 +4311,17 @@ def test_provider_slot_lease_persists_capacity_slot(tmp_path):
                 eligibility="eligible",
                 reason="",
                 exit_ip="8.8.8.8",
+                latency_ms=10,
+                probe_version="test",
+            )
+            await database.save_proxy_probe_result(
+                proxy_id,
+                profile="earnfm_socket_8443",
+                probe_status="alive",
+                verdict="TLS_CONNECT",
+                eligibility="eligible",
+                reason="tls_connect_ok",
+                exit_ip="",
                 latency_ms=10,
                 probe_version="test",
             )

@@ -306,7 +306,45 @@ def test_unconfirmed_container_inventory_never_marks_earnapp_runtime_missing(tmp
     asyncio.run(run())
 
 
-def test_generic_provider_missing_runtime_requires_two_confirmed_inventories(tmp_path):
+def test_earnapp_replacement_inflight_is_not_cleaned_by_inventory_miss(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "inflight.db"):
+            await database.init_db()
+            worker_id = await database.upsert_worker("worker-a", "worker-a", "http://worker")
+            await database.save_provider_instance(
+                "earnapp",
+                "earnapp-rotation-node",
+                worker_id=worker_id,
+                mode="proxy",
+                container_id="staged-container",
+                status="running",
+            )
+            await database.create_earnapp_replacement_transaction(
+                "earnapp-rotation-node",
+                stage_slug="earnapp-rotation-node-stage-abc123",
+                worker_id=worker_id,
+                generation=1,
+                old_device_id="sdk-mac-old",
+                old_proxy_id=10,
+                new_proxy_id=11,
+                binding_version="rotation_test",
+                candidate={"proxy_id": 11},
+            )
+            await database.advance_earnapp_replacement_transaction("earnapp-rotation-node", "OLD_DELETE_CONFIRMED")
+
+            result = await database.reconcile_earnapp_provider_instances(
+                worker_id,
+                reported_instance_ids=(),
+                inventory_confirmed=True,
+            )
+
+            assert result == {"marked_missing": [], "removed": []}
+            assert await database.get_provider_instance("earnapp-rotation-node") is not None
+
+    asyncio.run(run())
+
+
+def test_generic_provider_missing_runtime_honors_recovery_hold_before_release(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "generic.db"):
             await database.init_db()
@@ -333,7 +371,23 @@ def test_generic_provider_missing_runtime_requires_two_confirmed_inventories(tmp
                 reported_instance_ids=(),
                 inventory_confirmed=True,
             )
-            assert second == {"marked_missing": [], "removed": ["earnfm-proxy-w1-proxy-001"]}
+            assert second == {"marked_missing": [], "removed": []}
+            assert (await database.get_provider_instance("earnfm-proxy-w1-proxy-001"))["status"] == "missing_once"
+
+            db = await database._get_db()
+            await db.execute(
+                "UPDATE provider_instances SET updated_at=datetime('now', '-61 minutes') WHERE instance_id=?",
+                ("earnfm-proxy-w1-proxy-001",),
+            )
+            await db.commit()
+            await db.close()
+
+            expired = await database.reconcile_provider_instances(
+                worker_id,
+                reported_instance_ids=(),
+                inventory_confirmed=True,
+            )
+            assert expired == {"marked_missing": [], "removed": ["earnfm-proxy-w1-proxy-001"]}
             assert await database.get_provider_instance("earnfm-proxy-w1-proxy-001") is None
 
     asyncio.run(run())
@@ -355,6 +409,17 @@ def test_generic_runtime_reappearance_cancels_cleanup_and_keeps_proxy_lease(tmp_
                 eligibility="eligible",
                 reason="",
                 exit_ip="8.8.8.8",
+                latency_ms=10,
+                probe_version="test",
+            )
+            await database.save_proxy_probe_result(
+                proxy_id,
+                profile="earnfm_socket_8443",
+                probe_status="alive",
+                verdict="TLS_CONNECT",
+                eligibility="eligible",
+                reason="tls_connect_ok",
+                exit_ip="",
                 latency_ms=10,
                 probe_version="test",
             )

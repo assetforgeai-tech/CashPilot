@@ -310,7 +310,7 @@ def test_nkn_auto_deploy_does_not_mark_zero_slot_worker_complete():
             patch.object(
                 main.database,
                 "get_worker",
-                AsyncMock(return_value={"id": 7, "name": "worker-a", "client_id": "worker-a"}),
+                AsyncMock(return_value={"id": 7, "name": "worker-a", "client_id": "worker-a", "key_confirmed": 1}),
             ),
             patch.object(main, "_worker_public_ip_slots", AsyncMock(return_value=[])),
             patch.object(main, "_deploy_nkn_slots", AsyncMock(return_value={"slots": 0, "failed": []})),

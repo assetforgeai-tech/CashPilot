@@ -250,6 +250,9 @@ def audit_provider_network_inventory(
             == "in_container"
         )
         sidecar = bool(container.get("sidecar_id") or container.get("sidecar_container_id"))
+        proxy_contract = str(container.get("proxy_contract") or instance.get("proxy_contract") or "").strip().lower()
+        if active and runtime.topology in {"slot_proxy", "slot_both"} and proxy_contract != "earnapp-style-v1":
+            findings.append(f"{instance_id}: shared proxy contract marker missing")
         if not in_container and not sidecar and not mode.startswith("container:"):
             missing.append(instance_id)
             findings.append(f"{instance_id}: managed sidecar missing; direct egress risk")

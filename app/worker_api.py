@@ -1718,6 +1718,7 @@ class DeploySpec(BaseModel):
     # what everything uses and what everything is tested against.
     runtime: str | None = None
     user: str | None = None
+    earnapp_stage_for: str | None = Field(default=None, pattern=r"^earnapp-[a-z0-9][a-z0-9-]{1,112}$")
 
 
 class NknDeploySpec(BaseModel):
@@ -1786,6 +1787,19 @@ class EarnAppNodeCasSpec(BaseModel):
 class EarnAppDockerNodeCasSpec(BaseModel):
     generation: int = Field(ge=1)
     device_id: str = Field(pattern=r"^sdk-(?:mac|ios|node)-[0-9a-f]{32}$")
+
+
+class EarnAppStagedPromotionSpec(BaseModel):
+    canonical_slug: str = Field(pattern=r"^earnapp-[a-z0-9][a-z0-9-]{1,112}$")
+    generation: int = Field(ge=1)
+    new_generation: int = Field(ge=2)
+    device_id: str = Field(pattern=r"^sdk-(?:mac|ios|node)-[0-9a-f]{32}$")
+
+    @model_validator(mode="after")
+    def validate_generation(self) -> EarnAppStagedPromotionSpec:
+        if self.new_generation != self.generation:
+            raise ValueError("EarnApp staged generation must match the deployed candidate")
+        return self
 
 
 class EarnAppUbuntuMigrationSpec(BaseModel):
@@ -2789,10 +2803,25 @@ async def api_remove_earnapp_docker_node(
     spec: EarnAppDockerNodeCasSpec,
 ) -> dict[str, Any]:
     """Remove both Docker components before acknowledging local EarnApp cleanup."""
+    logger.warning("earnapp disposable cleanup request slug=%s", slug)
     _verify_api_key(request)
     if earnapp_policy.is_protected_logical_node(slug):
         raise HTTPException(status_code=409, detail="Protected EarnApp node is inspection-only")
-    state = _earnapp_node_state(slug)
+    try:
+        state = _earnapp_node_state(slug)
+    except HTTPException as exc:
+        if not slug.startswith("earnapp-disposable-") or exc.status_code != 404:
+            raise
+        try:
+            state = await asyncio.to_thread(orchestrator.earnapp_runtime_authority, slug)
+        except (HTTPException, RuntimeError, ValueError) as authority_exc:
+            # A lost promotion acknowledgement can leave only the worker's
+            # container inventory. For disposable slugs, the caller's CAS
+            # tuple is the remaining safety boundary; cleanup is idempotent
+            # and still goes through the normal orchestrator API.
+            if spec.generation <= 0 or not re.fullmatch(r"sdk-(?:mac|ios|node)-[A-Za-z0-9-]{4,96}", spec.device_id):
+                raise exc from authority_exc
+            state = {"generation": spec.generation, "device_id": spec.device_id}
     platform = str(state.get("platform") or "").strip().lower()
     if not platform:
         platform = "ios" if str(state.get("device_id") or "").startswith("sdk-ios-") else "macos"
@@ -2806,6 +2835,17 @@ async def api_remove_earnapp_docker_node(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    # A promotion can leave the candidate container under the canonical name
+    # while retaining its stage label.  It is still disposable state; remove
+    # the staged alias through the normal orchestrator path, never raw Docker.
+    if result.get("main_present") is True and str(slug).startswith("earnapp-disposable-"):
+        try:
+            candidate = await asyncio.to_thread(orchestrator._find_container, slug)
+            stage_slug = str((getattr(candidate, "labels", {}) or {}).get("cashpilot.earnapp.stage_slug") or "")
+        except (ValueError, RuntimeError):
+            stage_slug = ""
+        if re.fullmatch(r"earnapp-[a-z0-9][a-z0-9-]{1,112}-stage-[a-f0-9]{12}", stage_slug):
+            result = await asyncio.to_thread(orchestrator.remove_staged_earnapp_service, stage_slug)
     if result.get("main_present") is not False or result.get("sidecar_present") is not False:
         raise HTTPException(status_code=409, detail="EarnApp Docker cleanup is incomplete")
     try:
@@ -2882,6 +2922,76 @@ async def api_earnapp_docker_node_presence(
     except (ValueError, RuntimeError, OSError) as exc:
         raise HTTPException(status_code=409, detail="EarnApp runtime presence is unavailable") from exc
     return {"logical_node_id": slug, **presence}
+
+
+@app.post("/api/earnapp/docker-nodes/{slug}/promote")
+async def api_promote_staged_earnapp_docker_node(
+    request: Request,
+    slug: str,
+    spec: EarnAppStagedPromotionSpec,
+) -> dict[str, Any]:
+    """Promote a verified staged runtime without changing its network namespace."""
+    _verify_api_key(request)
+    if not re.fullmatch(r"earnapp-[a-z0-9][a-z0-9-]{1,112}-stage-[a-f0-9]{12}", slug):
+        raise HTTPException(status_code=400, detail="Invalid EarnApp staged runtime id")
+    canonical_state_path = _earnapp_state_path(spec.canonical_slug)
+    if canonical_state_path.exists() and not _earnapp_state_path(slug).exists():
+        canonical_state = _earnapp_node_state(spec.canonical_slug)
+        if (
+            int(canonical_state.get("generation") or 0) == spec.new_generation
+            and str(canonical_state.get("device_id") or "") == spec.device_id
+            and str(canonical_state.get("runtime_status") or "").lower() == "running"
+        ):
+            return {"status": "already_promoted", "logical_node_id": spec.canonical_slug}
+        # A prior main-only promotion can leave a durable state file after the
+        # container was removed. Reconcile that stale marker only when the
+        # canonical Docker components are both absent; never overwrite a live
+        # runtime or an assignment with a mismatched identity.
+        try:
+            presence = await asyncio.to_thread(orchestrator.earnapp_service_presence, spec.canonical_slug)
+        except (ValueError, RuntimeError, OSError) as exc:
+            raise HTTPException(
+                status_code=409, detail="Canonical EarnApp runtime state conflicts with promotion"
+            ) from exc
+        if presence.get("main_present") or presence.get("sidecar_present"):
+            raise HTTPException(status_code=409, detail="Canonical EarnApp runtime state conflicts with promotion")
+        with contextlib.suppress(ValueError):
+            _remove_earnapp_state(spec.canonical_slug)
+    try:
+        state = _earnapp_node_state(slug)
+    except HTTPException as exc:
+        # Promotion removes the local journal after the new canonical runtime
+        # is durable. Only disposable canaries may recover identity from the
+        # runtime labels for a lost cleanup acknowledgement.
+        if not slug.startswith("earnapp-disposable-") or exc.status_code != 404:
+            raise
+        try:
+            state = await asyncio.to_thread(orchestrator.earnapp_runtime_authority, slug)
+        except (RuntimeError, ValueError) as authority_exc:
+            raise exc from authority_exc
+    if int(state.get("generation") or 0) != spec.generation or str(state.get("device_id") or "") != spec.device_id:
+        raise HTTPException(status_code=409, detail="EarnApp staged runtime assignment conflict")
+    if str(state.get("runtime_backend") or "").lower() != "docker":
+        raise HTTPException(status_code=409, detail="EarnApp staged promotion supports Docker only")
+    if canonical_state_path.exists():
+        raise HTTPException(status_code=409, detail="Canonical EarnApp runtime state still exists")
+    try:
+        result = await asyncio.to_thread(
+            orchestrator.promote_staged_earnapp_runtime,
+            slug,
+            spec.canonical_slug,
+            new_generation=spec.new_generation,
+        )
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    promoted = dict(state)
+    promoted["logical_node_id"] = spec.canonical_slug
+    promoted["generation"] = spec.new_generation
+    promoted["runtime_status"] = "running"
+    _save_earnapp_state(spec.canonical_slug, promoted)
+    with contextlib.suppress(OSError):
+        _earnapp_state_path(slug).unlink()
+    return {"status": "promoted", "logical_node_id": spec.canonical_slug, **result}
 
 
 @app.post("/api/earnapp/docker-nodes/{slug}/deploy")
@@ -2997,6 +3107,111 @@ async def api_deploy_earnapp_docker_node(request: Request, slug: str, spec: Depl
         "logical_node_id": logical_node_id,
         "device_id": device_id,
     }
+
+
+@app.post("/api/earnapp/docker-nodes/{slug}/stage")
+async def api_stage_earnapp_docker_node(request: Request, slug: str, spec: DeploySpec) -> dict[str, Any]:
+    """Create a distinct candidate runtime; never touches the canonical node."""
+    _verify_api_key(request)
+    if not re.fullmatch(r"earnapp-[a-z0-9][a-z0-9-]{1,112}-stage-[a-f0-9]{12}", slug):
+        raise HTTPException(status_code=400, detail="Invalid EarnApp staged runtime id")
+    canonical = str(spec.earnapp_stage_for or "").strip()
+    if not canonical or str(spec.labels.get("cashpilot.earnapp.logical_node_id") or "") != canonical:
+        raise HTTPException(status_code=409, detail="Staged EarnApp canonical binding is missing")
+    platform = str((spec.runtime_contract or {}).get("platform") or "").strip().lower()
+    if platform == "darwin":
+        platform = "macos"
+    _reject_earnapp_runtime_mutation(canonical, platform=platform, runtime_backend="docker")
+    if str(spec.provider_slug or "").strip().lower() != "earnapp":
+        raise HTTPException(status_code=400, detail="EarnApp provider is required")
+    try:
+        spec.labels = {
+            **spec.labels,
+            "cashpilot.service": canonical,
+            "cashpilot.earnapp.logical_node_id": canonical,
+            "cashpilot.earnapp.canonical_slug": canonical,
+        }
+        _validate_deploy_spec(spec, slug=canonical)
+        await _materialize_runtime_assets(slug, spec)
+        container_id = await asyncio.to_thread(
+            orchestrator.deploy_raw,
+            slug=slug,
+            provider_slug="earnapp",
+            image=spec.image,
+            env=spec.env,
+            ports=spec.ports,
+            volumes=spec.volumes,
+            network_mode=spec.network_mode,
+            cap_add=spec.cap_add,
+            devices=spec.devices,
+            command=spec.command,
+            hostname=spec.hostname,
+            labels=spec.labels,
+            resources=spec.resources,
+            runtime=spec.runtime,
+            installer_manifest_url=spec.installer_manifest_url,
+            installer_platform=spec.installer_platform,
+            deploy_credentials=spec.deploy_credentials,
+            user=spec.user,
+            host_runtime=spec.host_runtime,
+            image_delivery=spec.image_delivery,
+            proxy=spec.proxy,
+            sysctls=spec.sysctls,
+            shm_size=spec.shm_size,
+        )
+        device_id = str(spec.labels.get("cashpilot.earnapp.device_id") or "")
+        if platform in {"linux", "ios"}:
+            device_id = await asyncio.to_thread(
+                orchestrator.wait_for_earnapp_device_id,
+                slug,
+                device_prefix="sdk-ios-" if platform == "ios" else "sdk-node-",
+            )
+        _save_earnapp_state(
+            slug,
+            {
+                "logical_node_id": canonical,
+                "canonical_slug": canonical,
+                "generation": int(spec.labels.get("cashpilot.earnapp.generation") or 0),
+                "device_id": device_id,
+                "platform": platform,
+                "runtime_backend": "docker",
+                "proxy_id": int((spec.proxy or {}).get("proxy_id") or (spec.proxy or {}).get("id") or 0),
+                "expected_egress_ip": str((spec.proxy or {}).get("exit_ip") or ""),
+                "runtime_status": "running",
+                "container_id": container_id,
+                "evidence": {"running": True, "online": False},
+            },
+        )
+        return {
+            "status": "staged",
+            "stage_slug": slug,
+            "logical_node_id": canonical,
+            "container_id": container_id,
+            "device_id": device_id,
+        }
+    except HTTPException:
+        raise
+    except (ValueError, RuntimeError) as exc:
+        with contextlib.suppress(Exception):
+            await asyncio.to_thread(orchestrator.remove_staged_earnapp_service, slug)
+        with contextlib.suppress(OSError):
+            _earnapp_state_path(slug).unlink()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.delete("/api/earnapp/docker-nodes/{slug}/stage")
+async def api_remove_staged_earnapp_docker_node(request: Request, slug: str) -> dict[str, Any]:
+    """Abort a candidate runtime without touching the canonical node."""
+    _verify_api_key(request)
+    if not re.fullmatch(r"earnapp-[a-z0-9][a-z0-9-]{1,112}-stage-[a-f0-9]{12}", slug):
+        raise HTTPException(status_code=400, detail="Invalid EarnApp staged runtime id")
+    try:
+        result = await asyncio.to_thread(orchestrator.remove_staged_earnapp_service, slug)
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    with contextlib.suppress(ValueError, OSError):
+        _remove_earnapp_state(slug)
+    return {"status": "removed", "stage_slug": slug, **result}
 
 
 @app.post("/api/earnapp/docker-nodes/{slug}/recreate")

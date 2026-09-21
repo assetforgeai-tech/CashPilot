@@ -196,9 +196,9 @@ def plan_provider_nodes(
     for target in (direct_desired, proxy_desired):
         if target is not None and int(target) < 0:
             raise ValueError("lane desired count cannot be negative")
-    if direct_desired is not None and "direct" not in modes:
+    if direct_desired not in (None, 0) and "direct" not in modes:
         raise ValueError("unsupported lane target: direct")
-    if proxy_desired is not None and "proxy" not in modes:
+    if proxy_desired not in (None, 0) and "proxy" not in modes:
         raise ValueError("unsupported lane target: proxy")
     slots = _normalise_slots(public_ipv4_slots)
     plans: list[ProviderNodePlan] = []

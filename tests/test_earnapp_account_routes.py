@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from app import database, earnapp_collection, earnapp_recovery
 from app.main import app
 from app.routers import earnapp_accounts as earnapp_accounts_router
+from tests.route_enumeration import all_paths
 
 
 @asynccontextmanager
@@ -66,7 +67,7 @@ def _import_body() -> dict[str, object]:
 
 
 def test_account_routes_are_registered_and_owner_only(client):
-    routes = {route.path for route in app.routes}
+    routes = all_paths()
     assert "/api/admin/earnapp/accounts" in routes
     assert "/api/admin/earnapp/accounts/import" in routes
     assert "/api/admin/earnapp/accounts/import-challenge" in routes
