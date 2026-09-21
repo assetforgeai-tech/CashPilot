@@ -5,3 +5,6 @@ Host cashpilot-worker-example
     IdentityFile ~/.config/cashpilot/worker-example_ed25519
     IdentitiesOnly yes
     BatchMode yes
+
+# Wrapper usage (read-only preflight before SSH):
+# pwsh -NoProfile -File tools/ssh-worker.ps1 -WorkerId <id> -ResourceGroup <rg> -VmName <vm> -KeyPath <inventory-secret-path>
