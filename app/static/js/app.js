@@ -117,6 +117,23 @@ const CP = (() => {
 
   function capFirst(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
 
+  const STATUS_VOCABULARY = Object.freeze({
+    healthy: 'healthy',
+    degraded: 'degraded',
+    offline: 'offline',
+    blocked: 'blocked',
+    unknown: 'unknown',
+  });
+
+  function normalizeOperationalStatus(value) {
+    const status = String(value || '').trim().toLowerCase();
+    if (['running', 'online', 'alive', 'connected', 'deployed', 'ok', 'good'].includes(status)) return STATUS_VOCABULARY.healthy;
+    if (['restarting', 'unstable', 'warning', 'partial', 'unhealthy', 'error'].includes(status)) return STATUS_VOCABULARY.degraded;
+    if (['stopped', 'exited', 'dead', 'disconnected'].includes(status)) return STATUS_VOCABULARY.offline;
+    if (['broken', 'disabled', 'needs_redeploy', 'credentials_pending', 'quality_rejected'].includes(status)) return STATUS_VOCABULARY.blocked;
+    return STATUS_VOCABULARY.unknown;
+  }
+
   function fmtNetBytes(b) {
     if (!b || b < 1024) return (b || 0) + ' B';
     if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
@@ -139,6 +156,49 @@ const CP = (() => {
 
   function closeAllModals() {
     document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+  }
+
+  function requestModalInput({ title, message, label, expected = null, value = '', readonly = false, confirmLabel = 'Continue', danger = false }) {
+    return new Promise(resolve => {
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay open';
+      overlay.innerHTML = `
+        <div class="modal confirmation-modal" role="dialog" aria-modal="true" aria-labelledby="confirmation-modal-title">
+          <div class="modal-header">
+            <h3 class="modal-title" id="confirmation-modal-title">${escapeHtml(title)}</h3>
+            <button class="modal-close" type="button" data-confirm-cancel aria-label="Cancel">&times;</button>
+          </div>
+          <form class="modal-body" data-confirm-form>
+            <p class="confirmation-message">${escapeHtml(message)}</p>
+            <label class="form-label" for="confirmation-modal-input">${escapeHtml(label)}</label>
+            <input class="form-input" id="confirmation-modal-input" value="${escapeHtml(value)}" ${readonly ? 'readonly' : 'autocomplete="off"'}>
+            <p class="confirmation-error" role="alert" hidden></p>
+            <div class="confirmation-actions">
+              <button class="btn btn-ghost" type="button" data-confirm-cancel>${readonly ? 'Close' : 'Cancel'}</button>
+              ${readonly ? '' : `<button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" type="submit">${escapeHtml(confirmLabel)}</button>`}
+            </div>
+          </form>
+        </div>`;
+      document.body.appendChild(overlay);
+      const input = overlay.querySelector('input');
+      const error = overlay.querySelector('.confirmation-error');
+      const finish = result => { overlay.remove(); resolve(result); };
+      overlay.querySelectorAll('[data-confirm-cancel]').forEach(button => button.addEventListener('click', () => finish(null)));
+      overlay.addEventListener('click', event => { if (event.target === overlay) finish(null); });
+      overlay.querySelector('form').addEventListener('submit', event => {
+        event.preventDefault();
+        const result = input.value.trim();
+        if (expected !== null && result !== expected) {
+          error.textContent = `Type ${expected} exactly to continue.`;
+          error.hidden = false;
+          input.focus();
+          return;
+        }
+        finish(result);
+      });
+      input.focus();
+      input.select();
+    });
   }
 
   // Close modals on overlay click or Escape
@@ -170,6 +230,49 @@ const CP = (() => {
         overlay.classList.remove('open');
       });
     }
+  }
+
+  function initOperationalNavigation() {
+    const nav = document.querySelector('.sidebar-nav');
+    if (!nav || nav.dataset.operationsNav === 'ready') return;
+    const links = new Map([...nav.querySelectorAll('.sidebar-link')].map(link => [link.getAttribute('href'), link]));
+    const sections = [
+      ['Overview', [['/', 'Dashboard']]],
+      ['Workers / VPS', [['/fleet', 'Fleet']]],
+      ['Provider Accounts', [['/settings#provider-account-pools', 'Accounts']]],
+      ['Proxy Pool', [['/proxy-pool', 'Proxy pool']]],
+      ['Runtime', [['/settings#earnapp-runtime-settings', 'Runtime']]],
+      ['Nodes', [['/fleet#nodes', 'Nodes']]],
+      ['Collectors / Payments', [['/settings#earnapp-reconciliation', 'Collectors'], ['/payouts', 'Payments']]],
+      ['Recovery / Alerts', [['/fleet#recovery', 'Recovery']]],
+      ['Settings', [['/settings', 'Settings']]],
+      ['Audit', [['/settings#audit', 'Audit']]],
+    ];
+    const fragment = document.createDocumentFragment();
+    for (const [heading, entries] of sections) {
+      const existing = entries.map(([href]) => links.get(href.split('#')[0])).filter(Boolean);
+      if (!existing.length && !['Overview', 'Workers / VPS'].includes(heading)) continue;
+      const label = document.createElement('div');
+      label.className = 'sidebar-section-label';
+      label.textContent = heading;
+      label.setAttribute('role', 'heading');
+      label.setAttribute('aria-level', '2');
+      fragment.appendChild(label);
+      for (const [href, text] of entries) {
+        const source = links.get(href.split('#')[0]);
+        const link = source ? source.cloneNode(true) : document.createElement('a');
+        link.href = href;
+        link.classList.add('sidebar-operational-link');
+        link.querySelectorAll('svg').forEach(svg => { svg.setAttribute('aria-hidden', 'true'); });
+        [...link.childNodes].filter(node => node.nodeType === Node.TEXT_NODE).forEach(node => { node.textContent = ''; });
+        const textNode = document.createElement('span');
+        textNode.textContent = text;
+        link.appendChild(textNode);
+        fragment.appendChild(link);
+      }
+    }
+    nav.replaceChildren(fragment);
+    nav.dataset.operationsNav = 'ready';
   }
 
   // -----------------------------------------------------------
@@ -1047,6 +1150,7 @@ const CP = (() => {
     const isExternal = svc.container_status === 'external';
     const statusClass = isExternal ? 'external' : (svc.container_status || 'stopped').toLowerCase();
     const statusLabel = isExternal ? 'External' : (statusClass === 'not_deployed' ? 'Not deployed' : statusClass.charAt(0).toUpperCase() + statusClass.slice(1));
+    const operationalStatus = isExternal ? STATUS_VOCABULARY.unknown : normalizeOperationalStatus(statusClass);
     const instances = svc.instances || 0;
     const details = svc.instance_details || [];
     const isMulti = details.length > 1;
@@ -1260,7 +1364,7 @@ const CP = (() => {
     let html = `
     <tr class="breakdown-row${isMulti ? ' expandable' : ''}" data-slug="${escapeHtml(svc.slug)}"${isMulti ? ` data-action="toggleInstances" data-a1="${escapeHtml(svc.slug)}" data-a2="event" style="cursor:pointer;"` : ''}>
       <td>${nameHtml}<div style="font-size:0.7rem; color:var(--text-muted);">${subtitle}</div></td>
-      <td style="text-align:center;"><span class="badge badge-${statusClass}"><span class="status-dot ${statusClass}"></span> ${statusLabel}</span>${instanceLabel}${unmanagedLabel}${outdatedBadge}</td>
+      <td style="text-align:center;"><span class="badge badge-${operationalStatus}" title="Runtime reported: ${escapeHtml(statusLabel)}"><span class="status-dot ${operationalStatus}"></span> ${capFirst(operationalStatus)}</span>${instanceLabel}${unmanagedLabel}${outdatedBadge}</td>
       <td style="text-align:center;">${healthBadge}</td>
       <td style="text-align:center;" data-field="provider_state">${svc.provider_state != null ? escapeHtml(String(svc.provider_state)) : '&mdash;'}</td>
       <td style="text-align:center;" data-field="runtime_state">${svc.runtime_state != null ? escapeHtml(String(svc.runtime_state)) : '&mdash;'}</td>
@@ -3918,16 +4022,24 @@ const CP = (() => {
   }
 
   async function deleteEarnAppAccount(accountId, accountName) {
-    const name = window.prompt(`First confirmation: type the locked account name exactly:\n${accountName}`);
-    if (name !== accountName) {
-      if (name !== null) toast('Account name did not match; nothing was deleted', 'warning');
-      return;
-    }
-    const phrase = window.prompt('Second confirmation: type DELETE ACCOUNT exactly. This removes only CashPilot credentials and bindings; it does not delete the remote EarnApp account or device.');
-    if (phrase !== 'DELETE ACCOUNT') {
-      if (phrase !== null) toast('Confirmation phrase did not match; nothing was deleted', 'warning');
-      return;
-    }
+    const name = await requestModalInput({
+      title: 'Remove locked EarnApp account',
+      message: 'This removes CashPilot credentials and bindings. It does not delete the remote account or device.',
+      label: `Type the account name: ${accountName}`,
+      expected: accountName,
+      confirmLabel: 'Next',
+      danger: true,
+    });
+    if (name === null) return;
+    const phrase = await requestModalInput({
+      title: 'Final confirmation',
+      message: 'This action cannot be undone inside CashPilot.',
+      label: 'Type DELETE ACCOUNT',
+      expected: 'DELETE ACCOUNT',
+      confirmLabel: 'Remove account',
+      danger: true,
+    });
+    if (phrase === null) return;
     try {
       await api(`/api/admin/earnapp/accounts/${encodeURIComponent(accountId)}`, {
         method: 'DELETE',
@@ -3941,7 +4053,12 @@ const CP = (() => {
   }
 
   async function issueEarnAppReplacementTicket(logicalNodeId) {
-    const rawWorkerId = window.prompt('Target CashPilot worker ID for this one-time replacement ticket:');
+    const rawWorkerId = await requestModalInput({
+      title: 'Issue replacement ticket',
+      message: 'The ticket is single-use and expires after 15 minutes.',
+      label: 'Target CashPilot worker ID',
+      confirmLabel: 'Issue ticket',
+    });
     if (rawWorkerId === null) return;
     const workerId = Number(rawWorkerId);
     if (!Number.isInteger(workerId) || workerId <= 0) {
@@ -3953,7 +4070,13 @@ const CP = (() => {
         method: 'POST',
         body: { target_worker_id: workerId },
       });
-      window.prompt('Copy this ticket now. It is shown once and expires in 15 minutes:', result.replacement_ticket);
+      await requestModalInput({
+        title: 'Replacement ticket issued',
+        message: 'Copy this ticket now. It is shown once and expires in 15 minutes.',
+        label: 'Replacement ticket',
+        value: result.replacement_ticket,
+        readonly: true,
+      });
     } catch (err) {
       toast(`Could not issue replacement ticket: ${err.message}`, 'error');
     }
@@ -4722,6 +4845,7 @@ const CP = (() => {
 
   document.addEventListener('DOMContentLoaded', () => {
     initSidebar();
+    initOperationalNavigation();
     initThemeToggle();
     initNotifications();
     initAvatarDropdown();
@@ -4882,6 +5006,8 @@ const CP = (() => {
     formatCurrency,
     // Shared, so the next timestamp added does not repeat CashPilot-2dh.
     fmtTimestamp,
+    normalizeOperationalStatus,
+    initOperationalNavigation,
   };
 })();
 window.CP = CP;
