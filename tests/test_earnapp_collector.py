@@ -1476,6 +1476,33 @@ def test_collect_active_accounts_isolates_failures_and_skips_locked_accounts(mon
 
 
 @pytest.mark.asyncio
+async def test_collect_account_stops_known_expired_token_before_proxy_request():
+    account = {
+        "id": 7,
+        "state": "AUTH_FAILED",
+        "auth_failure_kind": "TOKEN_EXPIRED",
+        "credentials": {"cookies": {"oauth-refresh-token": "secret"}},
+    }
+    fail = AsyncMock()
+    with (
+        patch.object(database, "get_earnapp_account_credentials", AsyncMock(return_value=account)),
+        patch.object(earnapp_collection, "_account_queue_available", AsyncMock(return_value=False)),
+        patch.object(earnapp_collection, "_claim_account_operation", AsyncMock(return_value=None)),
+        patch.object(earnapp_collection, "_fail_account_operation", fail),
+        patch.object(earnapp_collection, "_collection_routes", AsyncMock(side_effect=AssertionError("route used"))),
+    ):
+        result = await earnapp_collection.collect_account(7)
+
+    assert result == {
+        "status": "error",
+        "error_kind": "auth",
+        "auth_failure_kind": "TOKEN_EXPIRED",
+        "error": "EarnApp token expired; refresh is required",
+    }
+    fail.assert_awaited_once_with(None, "token_expired")
+
+
+@pytest.mark.asyncio
 async def test_collect_account_reuses_snapshot_created_while_waiting_for_account_lock():
     account = {"id": 7, "credentials": {"xsrf_token": "opaque"}}
     route = {"proxy_id": 101, "protocol": "http", "host": "proxy.test", "port": 8080}

@@ -118,6 +118,17 @@ async def collect_account(account_id: int, *, reuse_recent_seconds: int = 0) -> 
         if not account:
             await _fail_account_operation(operation, "account_unavailable")
             return {"status": "error", "error_kind": "auth", "error": "EarnApp account unavailable"}
+        if (
+            str(account.get("state") or "").upper() == "AUTH_FAILED"
+            and str(account.get("auth_failure_kind") or "").upper() == "TOKEN_EXPIRED"
+        ):
+            await _fail_account_operation(operation, "token_expired")
+            return {
+                "status": "error",
+                "error_kind": "auth",
+                "auth_failure_kind": "TOKEN_EXPIRED",
+                "error": "EarnApp token expired; refresh is required",
+            }
         if reuse_recent_seconds > 0:
             recent = await database.get_latest_earnapp_snapshot(account_id)
             collected_at = str((recent or {}).get("collected_at") or "")

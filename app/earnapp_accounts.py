@@ -85,6 +85,19 @@ def _iso_from_timestamp(value: Any) -> str | None:
         return None
 
 
+def _expiry_is_past(value: str | None) -> bool:
+    """Return true only for parseable expiry metadata already in the past."""
+    if not value:
+        return False
+    try:
+        expiry = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if expiry.tzinfo is None:
+        expiry = expiry.replace(tzinfo=UTC)
+    return expiry <= datetime.now(UTC)
+
+
 def _jwt_exp(value: str) -> int | None:
     parts = str(value or "").split(".")
     if len(parts) != 3:
@@ -135,7 +148,7 @@ async def import_account(payload: Mapping[str, Any]) -> int:
         raise ValueError("oauth-refresh-token and xsrf-token are required")
 
     jwt_exp = _jwt_exp(cookies.get("oauth-refresh-token", ""))
-    return await database.upsert_earnapp_account(
+    account_id = await database.upsert_earnapp_account(
         profile_key=profile_key,
         account_name=account_name,
         email=email,
@@ -145,6 +158,16 @@ async def import_account(payload: Mapping[str, Any]) -> int:
         token_expires_at=_iso_from_timestamp(jwt_exp),
         cookie_expires_at=_iso_from_timestamp(min(cookie_expirations)) if cookie_expirations else None,
     )
+    stored = await database.get_earnapp_account_credentials(account_id)
+    token_expiry = _iso_from_timestamp(jwt_exp)
+    cookie_expiry = _iso_from_timestamp(min(cookie_expirations)) if cookie_expirations else None
+    if (
+        stored
+        and str(stored.get("state") or "").upper() != "ACCOUNT_LOCKED"
+        and (_expiry_is_past(token_expiry) or _expiry_is_past(cookie_expiry))
+    ):
+        await database.record_earnapp_auth_result(account_id, success=False, failure_kind="TOKEN_EXPIRED")
+    return account_id
 
 
 async def list_accounts() -> list[dict[str, Any]]:
