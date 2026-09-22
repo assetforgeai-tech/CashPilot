@@ -10510,8 +10510,10 @@ async def lease_myst_wallet(
     *,
     public_ip: str = "",
 ) -> dict[str, Any] | None:
-    db = await _get_db()
+    # Serialize selection plus CAS update so concurrent recovery cannot double-lease a wallet.
+    db = await _open_transaction_connection()
     try:
+        await db.execute("BEGIN IMMEDIATE")
         await _ensure_myst_wallets_table(db)
         normalized_public_ip = (public_ip or "").strip()
         if normalized_public_ip:
@@ -10525,6 +10527,7 @@ async def lease_myst_wallet(
                 (normalized_public_ip, client_id),
             )
             if await cursor.fetchone():
+                await db.rollback()
                 raise MystWalletPublicIpInUse(normalized_public_ip)
         cursor = await db.execute(
             """
@@ -10559,8 +10562,10 @@ async def lease_myst_wallet(
         )
         row = await cursor.fetchone()
         if not row:
+            await db.rollback()
             return None
-        await db.execute(
+        next_version = int(row["wallet_assignment_version"] or 0) + 1
+        updated = await db.execute(
             """
             UPDATE myst_wallets
             SET state = 'LEASED',
@@ -10571,10 +10576,13 @@ async def lease_myst_wallet(
                 public_ip = ?,
                 wallet_assignment_version = wallet_assignment_version + 1,
                 updated_at = datetime('now')
-            WHERE id = ?
+            WHERE id = ? AND state = 'AVAILABLE' AND wallet_assignment_version = ?
             """,
-            (worker_id, client_id, normalized_public_ip, row["id"]),
+            (worker_id, client_id, normalized_public_ip, row["id"], row["wallet_assignment_version"]),
         )
+        if int(updated.rowcount or 0) != 1:
+            await db.rollback()
+            return None
         await db.commit()
         item = dict(row)
         item["state"] = "LEASED"
@@ -10583,9 +10591,12 @@ async def lease_myst_wallet(
         item["leased_at"] = datetime.now(UTC).isoformat()
         item["release_reason"] = ""
         item["public_ip"] = normalized_public_ip
-        item["wallet_assignment_version"] = int(item.get("wallet_assignment_version") or 0) + 1
+        item["wallet_assignment_version"] = next_version
         item["raw_wallet"] = decrypt_value(item.pop("raw_wallet_enc") or "")
         return item
+    except Exception:
+        await db.rollback()
+        raise
     finally:
         await db.close()
 
