@@ -15,6 +15,10 @@
     <div class="stat-label">Online</div>
     <div class="stat-value" id="fleet-online-workers">-</div>
   </div>
+  <div class="stat-card">
+    <div class="stat-label">Reclaimed</div>
+    <div class="stat-value" id="fleet-reclaimed-workers">-</div>
+  </div>
   {# "Workers" and "Online" are fleet-wide; these two count ONLY online workers
      (api_fleet_summary skips offline ones before accumulating). Nothing said so,
      so a host rebooting made "Services" drop and read as containers lost --
@@ -180,6 +184,7 @@ CASHPILOT_WORKER_URL=http://public-vps-ip:8081</code>
 
       document.getElementById('fleet-total-workers').textContent = summary.total_workers || 0;
       document.getElementById('fleet-online-workers').textContent = summary.online_workers || 0;
+      document.getElementById('fleet-reclaimed-workers').textContent = summary.reclaimed_workers || 0;
       document.getElementById('fleet-total-containers').textContent = summary.total_containers || 0;
       document.getElementById('fleet-running-containers').textContent = summary.running_containers || 0;
       const nkn = summary.nkn || {};
@@ -384,6 +389,14 @@ CASHPILOT_WORKER_URL=http://public-vps-ip:8081</code>
         const sysInfo = w.system_info || {};
         const isAndroid = (sysInfo.device_type === 'android');
         const items = isAndroid ? (w.apps || []) : (w.containers || []);
+        const loss = w.worker_loss || {};
+        const reclaim = w.reclamation || {};
+        const ageText = loss.heartbeat_age_seconds == null ? 'unknown' : compactDuration(loss.heartbeat_age_seconds);
+        const lossText = w.status === 'online'
+          ? `Heartbeat age ${ageText}`
+          : loss.fresh_allocation_required
+          ? `Resources reclaimed · fresh allocation required`
+          : `Offline · Reclaim in ${compactDuration(loss.reclaim_countdown_seconds || 0)}`;
         html += `
         <div class="card" style="margin-bottom: 12px; border-left: 3px solid ${borderColor};${w.superseded_by_worker_id ? ' opacity:0.7;' : ''}">
           <div style="padding: 16px;">
@@ -411,6 +424,9 @@ CASHPILOT_WORKER_URL=http://public-vps-ip:8081</code>
               <span>${esc(sysInfo.os || '-')}${sysInfo.os_version ? ' ' + esc(sysInfo.os_version) : ''}</span>
               <span>${esc(sysInfo.arch || '-')}</span>
               <span title="${esc(CP.fmtTimestamp(w.last_heartbeat).title)}">Last seen: ${esc(CP.fmtTimestamp(w.last_heartbeat).text)}</span>
+              <span title="Offline after 3 minutes; worker-bound resources reclaimed after 15 minutes.">${esc(lossText)}</span>
+              <span title="Generation fencing prevents this stale worker from resurrecting released resources.">Fence: ${esc(loss.fencing_state || 'unknown')} · generation ${esc(loss.resource_generation || '?')}</span>
+              ${reclaim.count ? `<span title="Latest reclaim: ${esc(reclaim.last_reclaimed_at || 'unknown')}">Reclaims: ${esc(reclaim.count)}</span>` : ''}
               <span>
                 <label for="watts-${esc(w.client_id || w.id)}" style="color:var(--text-muted);">Draw</label>
                 <input id="watts-${esc(w.client_id || w.id)}" class="power-watts form-input" type="number" min="0" step="1"
@@ -471,6 +487,14 @@ CASHPILOT_WORKER_URL=http://public-vps-ip:8081</code>
     if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
     if (b < 1073741824) return (b / 1048576).toFixed(1) + ' MB';
     return (b / 1073741824).toFixed(2) + ' GB';
+  }
+
+  function compactDuration(seconds) {
+    const value = Math.max(0, Number(seconds) || 0);
+    if (value < 60) return `${Math.floor(value)}s`;
+    const minutes = Math.floor(value / 60);
+    const remainder = Math.floor(value % 60);
+    return remainder ? `${minutes}m ${remainder}s` : `${minutes}m`;
   }
 
   function renderApps(apps, isOnline, lastSeen) {
