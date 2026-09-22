@@ -15,6 +15,11 @@ on:
       - 'contrib/chrome-provider-importer/**'
       - '.dockerignore'
   workflow_dispatch:
+    inputs:
+      recover_version:
+        description: Existing release version whose manifest asset must be repaired
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -67,7 +72,7 @@ jobs:
     needs: ci
     name: Bump version and release
     runs-on: ubuntu-latest
-    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    if: "!contains(github.event.head_commit.message, '[skip ci]') && !inputs.recover_version"
     outputs:
       new_tag: ${{ steps.version.outputs.new_tag }}
       build_ui: ${{ steps.changes.outputs.ui }}
@@ -365,3 +370,39 @@ jobs:
             echo "::warning::GitHub token cannot create pull requests; open this branch manually: https://github.com/${GITHUB_REPOSITORY}/compare/main...${PIN_BRANCH}?expand=1"
           fi
           echo "compose pin PR: ${PIN_BRANCH}"
+
+  recover:
+    if: github.event_name == 'workflow_dispatch' && inputs.recover_version
+    name: Repair existing release manifest
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Fetch release tags
+        run: git fetch --force origin 'refs/tags/*:refs/fork-tags/*'
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Attach immutable runtime manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.recover_version }}
+        run: |
+          set -euo pipefail
+          owner="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
+          ui="ghcr.io/${owner}/cashpilot:${VERSION}"
+          worker="ghcr.io/${owner}/cashpilot-worker:${VERSION}"
+          ui_digest="$(python3 scripts/resolve_release_digest.py "$ui" --attempts 6 --delay-seconds 10)"
+          worker_digest="$(python3 scripts/resolve_release_digest.py "$worker" --attempts 6 --delay-seconds 10)"
+          mapfile -t release_tags < <(git for-each-ref --format='%(refname:strip=2)' 'refs/fork-tags/v*.*.*')
+          python3 scripts/create_release_runtime_manifest.py --release "$VERSION" --owner "$owner" \
+            --ui-digest "$ui_digest" --worker-digest "$worker_digest" --tags "${release_tags[@]}" > runtime-manifest.json
+          gh release upload "$VERSION" runtime-manifest.json --clobber
