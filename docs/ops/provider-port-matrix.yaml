@@ -1,0 +1,124 @@
+schema_version: 1
+provider_count: 16
+count_contract:
+  public_ipv4_count: N
+  direct_only: N
+  hybrid_direct: N
+  hybrid_proxy: N
+  proxy_only: N
+  insufficient_proxy_capacity: block_lane
+  silent_count_reduction: forbidden
+providers:
+  mysterium:
+    modes: [direct]
+    topology: slot_direct
+    inbound_tcp: [4449]
+    inbound_udp: ["56000-56100"]
+    outbound: [tcp, udp]
+    tun: required
+    host_network: required
+    operator_access: tunnel_only
+  nkn:
+    modes: [direct]
+    topology: slot_direct
+    inbound_tcp: ["30000-30005"]
+    inbound_udp: ["30000-30005"]
+    outbound: [tcp, udp]
+    web_view: "http://<node-public-ip>:30000/web"
+    credentials: wallet_and_password_files
+    operator_access: tunnel_or_authenticated_web
+  earnfm:
+    modes: [direct, proxy]
+    topology: slot_both
+    inbound_tcp: []
+    inbound_udp: []
+    outbound: [tcp, https]
+  proxybase:
+    modes: [direct, proxy]
+    topology: slot_both
+    inbound_tcp: []
+    inbound_udp: []
+    outbound: [tcp, https, websocket]
+  proxybase-xyz:
+    modes: [direct, proxy]
+    topology: slot_both
+    inbound_tcp: []
+    inbound_udp: []
+    outbound: [tcp, https, websocket]
+    input: phrase
+    collector: count_only
+  proxyrack:
+    modes: [direct, proxy]
+    topology: slot_both
+    inbound_tcp: []
+    inbound_udp: []
+    outbound: [tcp, https]
+  repocket:
+    modes: [direct, proxy]
+    topology: slot_both
+    inbound_tcp: []
+    inbound_udp: []
+    outbound: [tcp, https]
+  spide:
+    modes: [direct, proxy]
+    topology: slot_both
+    inbound_tcp: []
+    inbound_udp: []
+    outbound: [tcp, https, websocket]
+  traffmonetizer:
+    modes: [direct, proxy]
+    topology: slot_both
+    inbound_tcp: []
+    inbound_udp: []
+    outbound: [tcp, https]
+  urnetwork:
+    modes: [direct, proxy]
+    topology: slot_both
+    inbound_tcp: []
+    inbound_udp: []
+    outbound: [tcp, https, websocket]
+  earnapp:
+    modes: [proxy]
+    topology: slot_proxy
+    inbound_tcp: []
+    inbound_udp: []
+    outbound: [tcp, https]
+  iproyal:
+    modes: [proxy]
+    topology: slot_proxy
+    inbound_tcp: []
+    inbound_udp: []
+    outbound: [tcp, https]
+    policy_group: pawns
+  packetstream:
+    modes: [proxy]
+    topology: slot_proxy
+    inbound_tcp: []
+    inbound_udp: []
+    outbound: [tcp, https]
+  proxies-sx:
+    modes: [proxy]
+    topology: slot_proxy
+    inbound_tcp: []
+    inbound_udp: []
+    outbound: [tcp, https, websocket]
+  uprock:
+    modes: [proxy]
+    topology: slot_proxy
+    inbound_tcp: [6080]
+    inbound_udp: []
+    outbound: [tcp, https]
+    operator_access: tunnel_only
+  wipter:
+    modes: [proxy]
+    topology: slot_proxy
+    inbound_tcp: [5900, 6080]
+    inbound_udp: []
+    outbound: [tcp, https]
+    operator_access: tunnel_only
+security:
+  public_worker_api_ports: []
+  public_cashpilot_ui_ports: []
+  no_public_vnc: true
+  no_public_novnc: true
+  unknown_ports: inconclusive
