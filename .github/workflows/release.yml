@@ -306,8 +306,8 @@ jobs:
           owner="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
           ui="ghcr.io/${owner}/cashpilot:${VERSION}"
           worker="ghcr.io/${owner}/cashpilot-worker:${VERSION}"
-          ui_digest="$(docker buildx imagetools inspect "$ui" --format '{{json .Manifest.Digest}}' | tr -d '"')"
-          worker_digest="$(docker buildx imagetools inspect "$worker" --format '{{json .Manifest.Digest}}' | tr -d '"')"
+          ui_digest="$(python3 scripts/resolve_release_digest.py "$ui" --attempts 6 --delay-seconds 10)"
+          worker_digest="$(python3 scripts/resolve_release_digest.py "$worker" --attempts 6 --delay-seconds 10)"
           mapfile -t release_tags < <(git for-each-ref --format='%(refname:strip=2)' 'refs/fork-tags/v*.*.*')
           python3 scripts/create_release_runtime_manifest.py \
             --release "$VERSION" \
