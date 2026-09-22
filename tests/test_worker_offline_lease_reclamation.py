@@ -20,7 +20,7 @@ def test_three_minute_stale_marks_offline_without_reclaiming():
     async def run():
         with (
             patch.object(main.database, "list_workers", AsyncMock(return_value=[_worker(181)])),
-            patch.object(main.database, "set_worker_status", AsyncMock()),
+            patch.object(main.database, "set_worker_status", AsyncMock()) as set_status,
             patch.object(main.database, "reclaim_worker_resources", AsyncMock()) as reclaim,
         ):
             await main._check_stale_workers()
@@ -36,7 +36,7 @@ def test_fifteen_minute_stale_reclaims_once_with_generation_cas():
             patch.object(
                 main.database, "list_workers", AsyncMock(return_value=[_worker(901, status="offline", generation=4)])
             ),
-            patch.object(main.database, "set_worker_status", AsyncMock()) as set_status,
+            patch.object(main.database, "set_worker_status", AsyncMock()),
             patch.object(
                 main.database, "reclaim_worker_resources", AsyncMock(return_value={"reclaimed": True})
             ) as reclaim,
