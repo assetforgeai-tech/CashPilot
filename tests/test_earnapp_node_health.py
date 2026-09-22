@@ -104,6 +104,23 @@ def test_earnapp_lookup_does_not_treat_staged_runtime_as_canonical(monkeypatch):
     assert orchestrator._find_earnapp_runtime_container(client, "earnapp-node", sidecar=False) is None
 
 
+def test_earnapp_lookup_finds_staged_runtime_by_stage_slug():
+    stage_slug = "earnapp-node-stage-abcdef123456"
+    staged = MagicMock(
+        name="cashpilot-" + stage_slug,
+        labels={
+            "cashpilot.managed": "true",
+            "cashpilot.service": "earnapp-node",
+            "cashpilot.provider": "earnapp",
+            "cashpilot.earnapp.stage_slug": stage_slug,
+        },
+    )
+    client = MagicMock()
+    client.containers.get.return_value = staged
+
+    assert orchestrator._find_earnapp_runtime_container(client, stage_slug, sidecar=False) is staged
+
+
 def test_promote_staged_earnapp_runtime_renames_candidate_components_and_updates_state(monkeypatch):
     stage = "earnapp-runtime-promote-stage"
     canonical = "earnapp-runtime-promote"

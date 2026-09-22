@@ -19,12 +19,21 @@
     "ipv6": "PASS",
     "udp": "PASS",
     "direct_fallback": "PASS",
-    "watchdog": "FAIL",
+    "watchdog": "PASS",
     "reboot": "PASS",
     "reconciliation": "PASS",
     "cleanup": "PASS"
   },
   "mutations": [
+    {
+      "timestamp": "2026-09-22T07:05:00Z",
+      "scope": "cashpilot-cp011-canary-au",
+      "action": "deploy disposable Ubuntu node, inject three unhealthy samples, stage/promote replacement, verify reboot persistence",
+      "result": "PASS",
+      "evidence": "rotation_requested=true; generation 1->2; proxy 1->2; device sdk-node-d9fa4e5a05cd413a8a3363e8556bc7a4; expected egress 20.213.104.89; replacement transaction empty after promotion",
+      "rollback_ref": "delete disposable AU VM, containers, volumes, network, images, second IP, NSG/VNet after evidence capture",
+      "secret_free": true
+    },
     {
       "timestamp": "2026-09-22T00:30:58Z",
       "scope": "cashpilot-live-ea",
@@ -107,6 +116,15 @@
       "result": "PARTIAL",
       "evidence": "candidate proxy available; a curl request addressed to the 1.1.1.1 DoH endpoint returned HTTP 400, while packet capture showed only container traffic to proxy 51.194.83.2:1337 and no direct 1.1.1.1 packet; UDP probe failed with Operation not permitted and CP_EARNAPP_OUT DROP counter incremented; guarded 3-sample injection returned rotation_requested=false; normal API removal returned HTTP 200 and final node was PLANNED with no worker/proxy binding",
       "rollback_ref": "disposable runtime removed; no container residue",
+      "secret_free": true
+    },
+    {
+      "timestamp": "2026-09-22T04:00:00Z",
+      "scope": "cashpilot-live-je",
+      "action": "built commit 2ca08dd0 control-plane and disposable worker with separate volumes/network; worker heartbeat preflight",
+      "result": "STOPPED_SAFELY",
+      "evidence": "Both canary containers healthy and worker enrolled, but the disposable worker Docker socket exposed the existing JE host container inventory; no canary provider node was deployed and no fault injection was run",
+      "rollback_ref": "removed cp011-ui/cp011-worker containers, images, volumes, network, source and tarball; authorized worker/provider containers remained",
       "secret_free": true
     }
   ]

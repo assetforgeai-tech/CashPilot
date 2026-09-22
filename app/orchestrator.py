@@ -217,7 +217,9 @@ def _find_earnapp_runtime_container(client: Any, slug: str, *, sidecar: bool):
     matches = []
     for container in candidates:
         labels = getattr(container, "labels", {}) or {}
-        if labels.get(LABEL_MANAGED) != "true" or labels.get(LABEL_SERVICE) != slug:
+        stage_marker = str(labels.get("cashpilot.earnapp.stage_slug") or "").strip()
+        service_matches = labels.get(LABEL_SERVICE) == slug or stage_marker == slug
+        if labels.get(LABEL_MANAGED) != "true" or not service_matches:
             raise RuntimeError(f"EarnApp runtime label conflict for {slug}")
         if str(labels.get("cashpilot.provider") or "") != "earnapp":
             raise RuntimeError(f"EarnApp runtime provider conflict for {slug}")
@@ -225,9 +227,8 @@ def _find_earnapp_runtime_container(client: Any, slug: str, *, sidecar: bool):
         # identifies it as transitional. After promotion Docker renames the
         # container to the canonical name while retaining that marker; accept
         # only that renamed form so restart/presence still find the runtime.
-        stage_marker = str(labels.get("cashpilot.earnapp.stage_slug") or "").strip()
         container_name = str(getattr(container, "name", "") or "").lstrip("/")
-        if stage_marker and container_name not in {_container_name(slug), _sidecar_name(slug)}:
+        if stage_marker and slug != stage_marker and container_name not in {_container_name(slug), _sidecar_name(slug)}:
             continue
         is_sidecar = labels.get("cashpilot.role") == "egress-sidecar"
         if is_sidecar == sidecar:
