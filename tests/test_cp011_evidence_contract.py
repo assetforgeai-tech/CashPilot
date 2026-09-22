@@ -38,7 +38,10 @@ def test_cp011_result_is_secret_free_and_stops_on_failed_gates():
     result = json.loads((ROOT / "docs/evidence/CP-011-canary-result.json").read_text())
 
     assert result["gates"]["watchdog"] == "FAIL"
-    assert result["gates"]["reboot"] == "FAIL"
+    assert result["gates"]["dns_doh"] == "PASS"
+    assert result["gates"]["udp"] == "PASS"
+    assert result["gates"]["reboot"] == "PASS"
+    assert result["gates"]["cleanup"] == "PASS"
     assert result["authorization"]["production_rollout"] is False
     serialized = json.dumps(result).lower()
     for forbidden in ("password", "cookie", "private_key", "api_key"):

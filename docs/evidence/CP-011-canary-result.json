@@ -15,12 +15,12 @@
   "gates": {
     "dry_run": "PASS",
     "egress": "PASS",
-    "dns_doh": "INCONCLUSIVE",
+    "dns_doh": "PASS",
     "ipv6": "PASS",
-    "udp": "INCONCLUSIVE",
+    "udp": "PASS",
     "direct_fallback": "PASS",
     "watchdog": "FAIL",
-    "reboot": "FAIL",
+    "reboot": "PASS",
     "reconciliation": "PASS",
     "cleanup": "PASS"
   },
@@ -50,6 +50,15 @@
       "secret_free": true
     },
     {
+      "timestamp": "2026-09-22T02:09:00Z",
+      "scope": "control-plane-authorized-disposable",
+      "action": "bounded fresh disposable EarnApp Ubuntu canary deployment",
+      "result": "INCONCLUSIVE",
+      "evidence": "HTTP 409 pending authenticated workload; reconciliation reported DB-only disposable instance and no matching worker container",
+      "rollback_ref": "cleanup blocked while authorized Japan East SSH endpoint timed out; no second canary started",
+      "secret_free": true
+    },
+    {
       "timestamp": "2026-09-22T01:03:12Z",
       "scope": "control-plane-readonly",
       "action": "inject three guarded unhealthy proxy samples through the real rotation path",
@@ -66,11 +75,38 @@
       "secret_free": true
     },
     {
+      "timestamp": "2026-09-22T02:08:15Z",
+      "scope": "cashpilot-live-je",
+      "action": "bounded reboot persistence recheck with CP-011 systemd pin",
+      "result": "PASS",
+      "evidence": "cashpilot-phase7-worker:20260921|running|healthy|restart=0; cashpilot-worker active; cashpilot-network-slots.service active",
+      "rollback_ref": "no rollback required; authorized canary VM only",
+      "secret_free": true
+    },
+    {
       "timestamp": "2026-09-22T01:11:24Z",
       "scope": "control-plane-readonly",
       "action": "remove disposable runtime and rollback database binding",
       "result": "PASS",
       "rollback_ref": "node returned to PLANNED with no worker, device, or proxy binding",
+      "secret_free": true
+    },
+    {
+      "timestamp": "2026-09-22T02:44:48Z",
+      "scope": "cashpilot-live-je-and-control-plane-readonly",
+      "action": "verify cleanup of earnapp-disposable-w118904-cp011-rotation-05",
+      "result": "PASS",
+      "evidence": "worker container absent; logical node PLANNED; assigned worker, device, and proxy null; provider instance absent",
+      "rollback_ref": "no residual disposable authority or runtime",
+      "secret_free": true
+    },
+    {
+      "timestamp": "2026-09-22T03:05:28Z",
+      "scope": "cashpilot-live-je-and-control-plane-readonly",
+      "action": "final disposable network/watchdog canary and cleanup",
+      "result": "PARTIAL",
+      "evidence": "candidate proxy available; a curl request addressed to the 1.1.1.1 DoH endpoint returned HTTP 400, while packet capture showed only container traffic to proxy 51.194.83.2:1337 and no direct 1.1.1.1 packet; UDP probe failed with Operation not permitted and CP_EARNAPP_OUT DROP counter incremented; guarded 3-sample injection returned rotation_requested=false; normal API removal returned HTTP 200 and final node was PLANNED with no worker/proxy binding",
+      "rollback_ref": "disposable runtime removed; no container residue",
       "secret_free": true
     }
   ]
