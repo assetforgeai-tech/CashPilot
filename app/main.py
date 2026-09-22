@@ -2538,7 +2538,7 @@ async def _run_vacuum() -> None:
 
 
 async def _check_stale_workers() -> None:
-    """Mark workers as offline if stale, and purge never-enrolled workers offline > 1 hour.
+    """Apply one heartbeat-only lifecycle policy to every worker resource.
 
     A worker that HAS enrolled a per-worker key (``api_key_enc`` set) is never
     auto-deleted here, even after a long outage: the host persists that same
@@ -2556,43 +2556,29 @@ async def _check_stale_workers() -> None:
         return
     now = datetime.now(UTC)
     cutoff = now - timedelta(seconds=STALE_WORKER_SECONDS)
-    purge_cutoff = now - timedelta(hours=1)
+    reclaim_cutoff = now - timedelta(seconds=NKN_WALLET_STALE_SECONDS)
     _mark_superseded_workers(workers)
     for w in [row for row in workers if not row.get("superseded_by_worker_id")]:
         try:
             last_hb = w.get("last_heartbeat")
             if not last_hb:
                 continue
-            last = datetime.fromisoformat(last_hb).replace(tzinfo=UTC)
+            last = datetime.fromisoformat(str(last_hb).replace("Z", "+00:00"))
+            if last.tzinfo is None:
+                last = last.replace(tzinfo=UTC)
             if w["status"] == "online" and last < cutoff:
                 await database.set_worker_status(w["id"], "offline")
                 logger.info("Worker '%s' marked offline (last heartbeat: %s)", w["name"], last_hb)
-            elif w["status"] == "offline" and last < purge_cutoff and not w.get("api_key_enc"):
-                await database.delete_worker(w["id"])
-                logger.info("Purged stale unenrolled worker '%s' (offline since %s)", w["name"], last_hb)
+            if last < reclaim_cutoff:
+                generation = int(w.get("resource_generation") or 1)
+                token = f"worker-lost:{int(w['id'])}:{generation}"
+                result = await database.reclaim_worker_resources(
+                    int(w["id"]), "worker_lost", token, expected_generation=generation
+                )
+                if result.get("reclaimed") and not result.get("already_reclaimed"):
+                    logger.warning("Reclaimed resources for stale worker '%s' generation %s", w["name"], generation)
         except Exception as exc:
             logger.warning("Stale worker check error for worker '%s': %s", w.get("name", w.get("id")), exc)
-    try:
-        reclaimed = await database.reclaim_stale_nkn_wallets(stale_after_seconds=NKN_WALLET_STALE_SECONDS)
-        for item in reclaimed:
-            logger.warning(
-                "Reclaimed NKN wallet %s from stale worker %s slot %s",
-                item.get("wallet_id"),
-                item.get("worker_id"),
-                item.get("slot_id"),
-            )
-    except Exception as exc:
-        logger.warning("NKN stale wallet reclaim error: %s", exc)
-    try:
-        runtime = provider_runtime.get("earnapp")
-        if runtime and runtime.deployment_allowed:
-            recovered = await earnapp_recovery.sweep_stale_nodes(stale_after_seconds=EARNAPP_NODE_STALE_SECONDS)
-            if recovered["held"]:
-                logger.warning("Put %d EarnApp node(s) into recovery hold", len(recovered["held"]))
-            if recovered["released"]:
-                logger.warning("Released %d expired EarnApp recovery proxy lease(s)", len(recovered["released"]))
-    except Exception as exc:
-        logger.warning("EarnApp stale node recovery error: %s", exc)
 
 
 FLEET_API_KEY = fleet_key.resolve_fleet_key()
@@ -8878,6 +8864,13 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
     if not cid:
         raise HTTPException(status_code=400, detail="Worker name or client_id required")
     state = await _authenticate_worker_heartbeat(request, cid)
+    existing_worker = await database.get_worker_by_client_id(cid)
+    if existing_worker and str(existing_worker.get("status") or "").lower() == "reclaimed":
+        return {
+            "status": "quarantined",
+            "resource_generation": int(existing_worker.get("resource_generation") or 1),
+            "reenrollment_required": True,
+        }
     worker_id = await database.upsert_worker(
         client_id=cid,
         name=body.name,
