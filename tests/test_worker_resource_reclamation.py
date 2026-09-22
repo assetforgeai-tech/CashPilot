@@ -25,7 +25,12 @@ def test_reclaim_worker_resources_releases_all_worker_authority_once(tmp_path):
                 )
             )[0]
             await database.save_provider_instance(
-                "packetstream", "packet-1", worker_id=worker_id, mode="proxy", proxy_id=proxy_id
+                "packetstream",
+                "packet-1",
+                worker_id=worker_id,
+                mode="proxy",
+                capacity_slot="proxy-01",
+                proxy_id=proxy_id,
             )
             assert await database.lease_proxy_for_provider_instance("packetstream", worker_id, "packet-1")
             db = await database._get_db()
@@ -49,7 +54,11 @@ def test_reclaim_worker_resources_releases_all_worker_authority_once(tmp_path):
             assert second["already_reclaimed"] is True
             assert first["generation"] == 2
             assert (await database.list_provider_proxy_leases(provider_slug="packetstream"))[0]["released_at"]
-            assert (await database.get_provider_instance("packet-1"))["status"] == "retired"
+            instance = await database.get_provider_instance("packet-1")
+            assert instance["status"] == "retired"
+            assert instance["worker_id"] is None
+            assert instance["proxy_id"] is None
+            assert instance["capacity_slot"] == ""
             db = await database._get_db()
             try:
                 nkn = await (

@@ -9121,7 +9121,8 @@ async def reclaim_worker_resources(
         runtime_result = await db.execute(
             """
             UPDATE provider_instances
-            SET status='retired', worker_id=NULL, container_id='', sidecar_id='',
+            SET status='retired', worker_id=NULL, proxy_id=NULL, capacity_slot='',
+                container_id='', sidecar_id='',
                 updated_at=datetime('now')
             WHERE worker_id=? AND lower(status) NOT IN ('retired', 'deleted')
             """,
