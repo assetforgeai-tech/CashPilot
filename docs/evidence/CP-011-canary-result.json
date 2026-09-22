@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "scope": {
+    "subscription_id": "0e4b9f20-f92f-4883-a598-3251b0016d65",
+    "resource_group": "rg-cashpilot-live-test-20260911",
+    "vm_names": ["cashpilot-live-ea", "cashpilot-live-je"],
+    "forbidden_scopes": ["test-sing", "test-us", "sing", "eapp", "all production resources"]
+  },
+  "authorization": {
+    "approved": true,
+    "can_mutate_existing_provider_resources": true,
+    "production_rollout": false,
+    "approved_at": "2026-09-22"
+  },
+  "gates": {
+    "dry_run": "PASS",
+    "egress": "PASS",
+    "dns_doh": "INCONCLUSIVE",
+    "ipv6": "PASS",
+    "udp": "INCONCLUSIVE",
+    "direct_fallback": "PASS",
+    "watchdog": "FAIL",
+    "reboot": "FAIL",
+    "reconciliation": "PASS",
+    "cleanup": "PASS"
+  },
+  "mutations": [
+    {
+      "timestamp": "2026-09-22T00:30:58Z",
+      "scope": "cashpilot-live-ea",
+      "action": "restart followed by deallocate/start recovery after VM Agent and Run Command became unresponsive",
+      "result": "PASS",
+      "rollback_ref": "Azure static public IP mapping remained unchanged",
+      "secret_free": true
+    },
+    {
+      "timestamp": "2026-09-22T00:49:23Z",
+      "scope": "cashpilot-live-je",
+      "action": "deploy guarded fault-injection worker image",
+      "result": "PASS",
+      "rollback_ref": "restore cashpilot-worker.service compose stack",
+      "secret_free": true
+    },
+    {
+      "timestamp": "2026-09-22T00:59:59Z",
+      "scope": "control-plane-readonly",
+      "action": "deploy disposable EarnApp Ubuntu canary through the normal API",
+      "result": "INCONCLUSIVE",
+      "rollback_ref": "remove disposable node and rollback canary binding",
+      "secret_free": true
+    },
+    {
+      "timestamp": "2026-09-22T01:03:12Z",
+      "scope": "control-plane-readonly",
+      "action": "inject three guarded unhealthy proxy samples through the real rotation path",
+      "result": "FAIL",
+      "rollback_ref": "no rotation was requested; original CAS tuple remained active",
+      "secret_free": true
+    },
+    {
+      "timestamp": "2026-09-22T01:05:52Z",
+      "scope": "cashpilot-live-je",
+      "action": "reboot persistence check",
+      "result": "FAIL",
+      "rollback_ref": "systemd restored its pinned worker stack; disposable node was later removed",
+      "secret_free": true
+    },
+    {
+      "timestamp": "2026-09-22T01:11:24Z",
+      "scope": "control-plane-readonly",
+      "action": "remove disposable runtime and rollback database binding",
+      "result": "PASS",
+      "rollback_ref": "node returned to PLANNED with no worker, device, or proxy binding",
+      "secret_free": true
+    }
+  ]
+}

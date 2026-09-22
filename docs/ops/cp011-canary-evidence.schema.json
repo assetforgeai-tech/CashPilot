@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CashPilot CP-011 canary evidence",
+  "type": "object",
+  "required": ["schema_version", "scope", "authorization", "gates", "mutations"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "scope": {
+      "type": "object",
+      "required": ["subscription_id", "resource_group", "vm_names", "forbidden_scopes"],
+      "properties": {
+        "subscription_id": {"type": "string", "pattern": "^[0-9a-f-]{36}$"},
+        "resource_group": {"const": "rg-cashpilot-live-test-20260911"},
+        "vm_names": {
+          "type": "array",
+          "const": ["cashpilot-live-ea", "cashpilot-live-je"]
+        },
+        "forbidden_scopes": {"type": "array", "minItems": 1, "items": {"type": "string"}}
+      },
+      "additionalProperties": false
+    },
+    "authorization": {
+      "type": "object",
+      "required": ["approved", "can_mutate_existing_provider_resources", "production_rollout"],
+      "properties": {
+        "approved": {"const": true},
+        "can_mutate_existing_provider_resources": {"const": true},
+        "production_rollout": {"const": false},
+        "approved_at": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "gates": {
+      "type": "object",
+      "required": ["dry_run", "egress", "dns_doh", "ipv6", "udp", "direct_fallback", "watchdog", "reboot", "reconciliation", "cleanup"],
+      "additionalProperties": {"enum": ["PASS", "FAIL", "INCONCLUSIVE", "PENDING"]}
+    },
+    "mutations": {"type": "array", "items": {"$ref": "#/$defs/mutation"}}
+  },
+  "$defs": {
+    "mutation": {
+      "type": "object",
+      "required": ["timestamp", "scope", "action", "result"],
+      "properties": {
+        "timestamp": {"type": "string"},
+        "scope": {"enum": ["cashpilot-live-ea", "cashpilot-live-je", "control-plane-readonly"]},
+        "action": {"type": "string"},
+        "result": {"enum": ["PASS", "FAIL", "INCONCLUSIVE"]},
+        "rollback_ref": {"type": "string"},
+        "secret_free": {"const": true}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
