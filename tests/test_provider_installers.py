@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock
 
 from app import provider_installers
+from app.provider_runtime import PROVIDERS
 
 
 def test_proxybase_xyz_runtime_command_imports_phrase_and_resolves_cli_path():
@@ -23,12 +25,38 @@ def test_proxybase_xyz_installer_image_installs_cli_at_build_time():
 
     image = provider_installers.ensure_proxybase_xyz_image(client)
 
-    assert image == "cashpilot/proxybase-xyz-cli:latest-ubuntu24.04"
+    assert image == "cashpilot/proxybase-xyz-cli:v0.1.47-ubuntu24.04"
     dockerfile = client.images.build.call_args.kwargs["fileobj"].getvalue().decode()
     assert "FROM ubuntu:24.04" in dockerfile
     assert "apt-get install -y --no-install-recommends ca-certificates curl" in dockerfile
-    assert "https://proxybase.xyz/install.sh" in dockerfile
+    assert "proxybase-cli-v0.1.47" in dockerfile
+    assert "8075a9022f4df493da38dd30f6c959c1b82e87956b0e737ff15c25a489359fb4" in dockerfile
+    assert "releases/latest" not in dockerfile
     assert "proxybase-cli" in dockerfile
+
+
+def test_proxybase_xyz_command_is_idempotent_and_persists_wallet_state():
+    command = provider_installers.proxybase_xyz_command()
+    assert "wallet import" in command
+    assert 'if [ ! -f "$HOME/.proxybase/.cashpilot-wallet-imported" ]' in command
+    assert "seller start --foreground" in command
+    assert command.count("seller start --foreground") == 1
+    assert "systemctl" not in command
+
+
+def test_proxybase_xyz_has_fixed_slot_contract():
+    assert provider_installers.PROXYBASE_XYZ_SLOT_COUNT == 20
+    runtime = PROVIDERS["proxybase-xyz"]
+    assert runtime.topology == "slot_both"
+    assert runtime.modes == ("direct", "proxy")
+    assert runtime.count_only is True
+
+
+def test_proxybase_xyz_deploy_requires_only_wallet_phrase():
+    source = (Path(__file__).parents[1] / "app" / "orchestrator.py").read_text(encoding="utf-8")
+    assert 'provider == "proxybase-xyz"' in source
+    assert '"phrase"' in source
+    assert "ProxyBase.xyz wallet phrase is required" in source
 
 
 def test_uprock_deb_url_resolves_as_linux_amd64_installer():

@@ -9,6 +9,9 @@ from docker.errors import ImageNotFound
 
 _UPROCK_IMAGE = "cashpilot/uprock-mining"
 _PROXYBASE_XYZ_IMAGE = "cashpilot/proxybase-xyz-cli"
+PROXYBASE_XYZ_VERSION = "v0.1.47"
+PROXYBASE_XYZ_LINUX_AMD64_SHA256 = "8075a9022f4df493da38dd30f6c959c1b82e87956b0e737ff15c25a489359fb4"
+PROXYBASE_XYZ_SLOT_COUNT = 20
 _RUNNER = "ubuntu24.04"
 _UPROCK_ALLOWED_HOST = "edge.uprock.com"
 _PROXYBASE_XYZ_INSTALLER = "https://proxybase.xyz/install.sh"
@@ -44,7 +47,7 @@ def ensure_proxybase_xyz_image(client) -> str:
     return _ensure_image(
         client,
         _PROXYBASE_XYZ_IMAGE,
-        {"version": "latest", "url": _PROXYBASE_XYZ_INSTALLER},
+        {"version": PROXYBASE_XYZ_VERSION, "url": _PROXYBASE_XYZ_INSTALLER},
         _proxybase_xyz_dockerfile,
     )
 
@@ -83,16 +86,18 @@ CMD ["bash", "-lc", "set -e; mkdir -p /root/.local/share/UpRock; if [ -s /cashpi
 def _proxybase_xyz_dockerfile(installer_url: str) -> str:
     if installer_url != _PROXYBASE_XYZ_INSTALLER:
         raise ValueError("ProxyBase Markets installer URL is fixed to the official install.sh")
+    binary_url = (
+        "https://github.com/proxybasehq/proxybase-cli/releases/download/"
+        f"proxybase-cli-{PROXYBASE_XYZ_VERSION}/proxybase-cli-x86_64-unknown-linux-gnu"
+    )
     return f"""FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \\
  && apt-get install -y --no-install-recommends ca-certificates curl \\
  && rm -rf /var/lib/apt/lists/*
-RUN curl -fsSL {installer_url} | sh \\
- && CLI="$(command -v proxybase-cli || true)" \\
- && if [ -z "$CLI" ]; then for p in "$HOME/.local/bin/proxybase-cli" "/root/.local/bin/proxybase-cli" "/usr/local/bin/proxybase-cli"; do if [ -x "$p" ]; then CLI="$p"; break; fi; done; fi \\
- && if [ -z "$CLI" ]; then echo "proxybase-cli not found" >&2; exit 1; fi \\
- && cp "$CLI" /usr/local/bin/proxybase-cli
+RUN curl -fsSL {binary_url} -o /usr/local/bin/proxybase-cli \\
+ && echo "{PROXYBASE_XYZ_LINUX_AMD64_SHA256}  /usr/local/bin/proxybase-cli" | sha256sum -c - \\
+ && chmod 0755 /usr/local/bin/proxybase-cli
 """
 
 
@@ -106,7 +111,8 @@ def proxybase_xyz_command() -> str:
         'if [ -x "$p" ]; then CLI="$p"; break; fi; done; fi; '
         'if [ -z "$CLI" ]; then echo "proxybase-cli not found" >&2; exit 1; fi; '
         'PHASE="${PROXYBASE_XYZ_PHRASE:?missing wallet phrase}"; '
-        '"$CLI" wallet import "$PHASE"; '
+        'if [ ! -f "$HOME/.proxybase/.cashpilot-wallet-imported" ]; then "$CLI" wallet import "$PHASE" && touch "$HOME/.proxybase/.cashpilot-wallet-imported"; fi; '
+        "unset PHASE PROXYBASE_XYZ_PHRASE; "
         '"$CLI" login; '
         'if [ ! -s "$HOME/.proxybase/seller_config.json" ]; then printf \'{"upstream_proxies":[],"no_direct":false}\' > "$HOME/.proxybase/seller_config.json"; fi; '
         'exec "$CLI" seller start --foreground\''

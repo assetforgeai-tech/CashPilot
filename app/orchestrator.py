@@ -1014,10 +1014,16 @@ def deploy_raw(
     if provider == "urnetwork" and deploy_credentials:
         env["UR_API_KEY"] = str(deploy_credentials.get("api_key") or "")
         command = command or "provide"
-    if provider == "proxybase-xyz" and deploy_credentials:
-        env["PROXYBASE_XYZ_PHRASE"] = str(deploy_credentials.get("phrase") or "")
+    if provider == "proxybase-xyz":
+        phrase = str((deploy_credentials or {}).get("phrase") or "").strip()
+        if not phrase:
+            raise RuntimeError("ProxyBase.xyz wallet phrase is required")
+        env["PROXYBASE_XYZ_PHRASE"] = phrase
         image = provider_installers.ensure_proxybase_xyz_image(client)
         command = command or provider_installers.proxybase_xyz_command()
+        # Keep the imported wallet and seller session across container restart.
+        # The phrase remains an env-only bootstrap secret and is not persisted.
+        volumes = volumes or {"proxybase-xyz-data": {"bind": "/home/proxybase/.proxybase", "mode": "rw"}}
     if provider == "earnapp":
         if image_delivery != "operator_preload":
             raise RuntimeError("EarnApp runtime requires an operator-preloaded image")
