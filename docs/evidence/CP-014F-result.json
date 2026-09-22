@@ -4,7 +4,7 @@
   "recorded_at": "2026-09-22",
   "scope": {
     "mode": "read_only_preflight",
-    "approved_disposable_worker": false,
+    "approved_disposable_worker": true,
     "production_touched": false,
     "resources_mutated": []
   },
@@ -26,11 +26,11 @@
   "inventory": {
     "before": null,
     "after": null,
-    "reason": "No disposable worker scope was approved for this task; no live inventory was read or mutated."
+    "reason": "Owner approved the CP-011 canary scope, but no isolated disposable worker identity or authenticated control-plane endpoint was provided. Existing VM worker containers are not an isolated worker-loss target."
   },
   "acceptance": "BLOCKED",
   "blockers": [
-    "CP-014F requires one explicitly approved disposable worker and an exact resource scope before live stop-heartbeat/reclaim/cleanup testing."
+    "The approved RG/VM scope does not identify an isolated disposable worker. The prior CP-011 run proved that mounting the host Docker socket exposes existing containers; reusing either live worker would violate the one-disposable-worker boundary."
   ],
-  "next_safe_action": "Obtain explicit disposable-worker scope, then capture a read-only inventory and rerun the staged canary."
+  "next_safe_action": "Provision or identify an isolated disposable worker inside the approved RG, then capture a read-only inventory and run the staged canary through the authenticated control-plane route."
 }
