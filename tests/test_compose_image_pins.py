@@ -82,7 +82,9 @@ def test_build_and_release_workflows_use_the_fork_ghcr_images():
 def test_release_attaches_a_digest_based_runtime_manifest():
     release = (PROJECT_ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
     assert "runtime-manifest.json" in release
-    assert "docker buildx imagetools inspect" in release
+    assert "scripts/resolve_release_digest.py" in release
+    assert "--attempts 6" in release
+    assert "--delay-seconds 10" in release
     assert "gh release upload" in release
     assert "create_release_runtime_manifest.py" in release
     assert "rollback_release" in release
