@@ -69,3 +69,42 @@ def test_reclaimed_worker_heartbeat_is_quarantined_before_upsert():
             upsert.assert_not_awaited()
 
     asyncio.run(run())
+
+
+def test_worker_loss_visibility_reports_countdowns_and_active_generation():
+    now = datetime(2026, 9, 22, 12, 15, tzinfo=UTC)
+    worker = {
+        "id": 7,
+        "status": "offline",
+        "last_heartbeat": "2026-09-22T12:10:00",
+        "resource_generation": 4,
+    }
+
+    visibility = main._worker_loss_visibility(worker, now=now)
+
+    assert visibility == {
+        "heartbeat_age_seconds": 300,
+        "offline_after_seconds": 180,
+        "reclaim_after_seconds": 900,
+        "reclaim_countdown_seconds": 600,
+        "fencing_state": "generation_active",
+        "resource_generation": 4,
+        "fresh_allocation_required": False,
+    }
+
+
+def test_worker_loss_visibility_marks_reclaimed_generation_fenced():
+    now = datetime(2026, 9, 22, 12, 20, tzinfo=UTC)
+    worker = {
+        "id": 7,
+        "status": "reclaimed",
+        "last_heartbeat": "2026-09-22T12:00:00",
+        "resource_generation": 5,
+    }
+
+    visibility = main._worker_loss_visibility(worker, now=now)
+
+    assert visibility["heartbeat_age_seconds"] == 1200
+    assert visibility["reclaim_countdown_seconds"] == 0
+    assert visibility["fencing_state"] == "generation_fenced"
+    assert visibility["fresh_allocation_required"] is True

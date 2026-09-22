@@ -9013,6 +9013,34 @@ async def list_workers() -> list[dict[str, Any]]:
         await db.close()
 
 
+async def worker_reclamation_summary(worker_id: int) -> dict[str, Any]:
+    """Return durable reclamation audit data for one worker."""
+    db = await _get_db()
+    try:
+        try:
+            row = await (
+                await db.execute(
+                    """
+                    SELECT COUNT(*) AS count, MAX(reclaimed_at) AS last_reclaimed_at
+                    FROM worker_resource_reclamations WHERE worker_id = ?
+                    """,
+                    (int(worker_id),),
+                )
+            ).fetchone()
+        except aiosqlite.OperationalError as exc:
+            # Partial-schema fixtures may predate CP-014C; visibility remains
+            # useful and must not turn a read-only workers endpoint into 500.
+            if "no such table" not in str(exc).lower():
+                raise
+            row = None
+        return {
+            "count": int(row["count"] or 0) if row else 0,
+            "last_reclaimed_at": row["last_reclaimed_at"] if row else None,
+        }
+    finally:
+        await db.close()
+
+
 async def set_worker_status(worker_id: int, status: str) -> None:
     db = await _get_db()
     try:

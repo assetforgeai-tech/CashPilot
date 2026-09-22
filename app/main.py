@@ -9272,6 +9272,32 @@ def _worker_registration_key(row: Mapping[str, Any]) -> tuple[str, str, int]:
     )
 
 
+def _worker_loss_visibility(worker: Mapping[str, Any], *, now: datetime | None = None) -> dict[str, Any]:
+    """Expose the heartbeat-only loss policy without making a new liveness claim."""
+    now = now or datetime.now(UTC)
+    raw = str(worker.get("last_heartbeat") or "").replace("Z", "+00:00")
+    try:
+        heartbeat = datetime.fromisoformat(raw)
+        if heartbeat.tzinfo is None:
+            heartbeat = heartbeat.replace(tzinfo=UTC)
+        age = max(0, int((now - heartbeat).total_seconds()))
+    except (TypeError, ValueError):
+        age = None
+    generation = int(worker.get("resource_generation") or 1)
+    status = str(worker.get("status") or "unknown").lower()
+    reclaimed = status == "reclaimed"
+    countdown = 0 if age is None else max(0, NKN_WALLET_STALE_SECONDS - age)
+    return {
+        "heartbeat_age_seconds": age,
+        "offline_after_seconds": STALE_WORKER_SECONDS,
+        "reclaim_after_seconds": NKN_WALLET_STALE_SECONDS,
+        "reclaim_countdown_seconds": countdown,
+        "fencing_state": "generation_fenced" if reclaimed else "generation_active",
+        "resource_generation": generation,
+        "fresh_allocation_required": reclaimed,
+    }
+
+
 @app.get("/api/workers")
 async def api_list_workers(request: Request) -> list[dict[str, Any]]:
     """List all registered workers."""
@@ -9319,6 +9345,8 @@ async def api_list_workers(request: Request) -> list[dict[str, Any]]:
         # so a worker still authenticating with the SHARED key looked identical
         # to a fully enrolled one on the fleet page.
         w["enrollment"] = enrollment_state(w.get("key_issued_at"), bool(w.get("key_confirmed")))
+        w["worker_loss"] = _worker_loss_visibility(w)
+        w["reclamation"] = await database.worker_reclamation_summary(int(w.get("id") or 0))
     return workers
 
 
@@ -9879,6 +9907,7 @@ async def api_fleet_summary(request: Request) -> dict[str, Any]:
         "running_containers": total_running,
         "unreachable_containers": unreachable_containers,
         "unreachable_workers": unreachable_workers,
+        "reclaimed_workers": sum(1 for w in active_workers if str(w.get("status") or "").lower() == "reclaimed"),
         "nkn": nkn_summary,
     }
 

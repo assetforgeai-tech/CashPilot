@@ -175,6 +175,25 @@ class TestFleetSupersededRegistrations:
         assert '"stale_worker_registrations"' in source
 
 
+class TestFleetWorkerLossVisibility:
+    def test_worker_cards_show_heartbeat_age_and_reclaim_countdown(self):
+        page = (ROOT / "app" / "templates" / "fleet.html").read_text(encoding="utf-8")
+        assert "heartbeat_age_seconds" in page
+        assert "reclaim_countdown_seconds" in page
+        assert "Reclaim in" in page
+
+    def test_worker_cards_show_fencing_and_fresh_allocation_requirement(self):
+        page = (ROOT / "app" / "templates" / "fleet.html").read_text(encoding="utf-8")
+        assert "fencing_state" in page
+        assert "fresh allocation required" in page
+
+    def test_summary_shows_reclaimed_worker_count(self):
+        page = (ROOT / "app" / "templates" / "fleet.html").read_text(encoding="utf-8")
+        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        assert 'id="fleet-reclaimed-workers"' in page
+        assert '"reclaimed_workers"' in source
+
+
 class TestDeployModeSelect:
     def test_dual_mode_services_can_select_both_by_default(self):
         source = js_function("deployModeSelect")
