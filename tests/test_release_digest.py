@@ -50,3 +50,12 @@ def test_release_workflow_uses_bounded_digest_resolver():
     workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
     assert "resolve_release_digest.py" in workflow
     assert "--attempts 6" in workflow
+
+
+def test_publish_authenticates_before_reading_private_ghcr_images():
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    publish = workflow[workflow.index("  publish:") :]
+    manifest = publish.index("Attach immutable runtime manifest")
+    assert "packages: read" in publish[:manifest]
+    assert "docker/login-action@" in publish[:manifest]
+    assert "registry: ghcr.io" in publish[:manifest]
