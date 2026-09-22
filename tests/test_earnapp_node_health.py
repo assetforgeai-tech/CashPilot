@@ -3562,7 +3562,10 @@ def test_find_earnapp_rotation_candidate_respects_platform_country_and_exclusive
 
 def test_find_earnapp_rotation_candidate_rejects_vn_for_ubuntu(tmp_path):
     async def run():
-        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "ubuntu-candidate.db"):
+        with (
+            patch.object(database, "DB_DIR", tmp_path),
+            patch.object(database, "DB_PATH", tmp_path / "ubuntu-candidate.db"),
+        ):
             await database.init_db()
             await earnapp_accounts.import_account(_account("profile-ubuntu"))
             provider_id = await database.upsert_proxy_provider("manual", "manual")
@@ -3571,11 +3574,21 @@ def test_find_earnapp_rotation_candidate_rejects_vn_for_ubuntu(tmp_path):
             non_vn_candidate = await _proxy(provider_id, 8)
             await database.update_proxy_endpoint_intelligence(
                 vn_candidate,
-                {"country_code": "VN", "country_name": "Vietnam", "location_source": "test", "location_confidence": "high"},
+                {
+                    "country_code": "VN",
+                    "country_name": "Vietnam",
+                    "location_source": "test",
+                    "location_confidence": "high",
+                },
             )
             await database.update_proxy_endpoint_intelligence(
                 non_vn_candidate,
-                {"country_code": "US", "country_name": "United States", "location_source": "test", "location_confidence": "high"},
+                {
+                    "country_code": "US",
+                    "country_name": "United States",
+                    "location_source": "test",
+                    "location_confidence": "high",
+                },
             )
             worker_id = await database.upsert_worker("worker-ubuntu", "worker-ubuntu", "http://worker")
             await database.assign_earnapp_account("earnapp-ubuntu-node", platform="ubuntu")
