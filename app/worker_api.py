@@ -1612,14 +1612,14 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    if _heartbeat_task and not _heartbeat_task.done():
-        _heartbeat_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await _heartbeat_task
     if _heartbeat_supervisor_task and not _heartbeat_supervisor_task.done():
         _heartbeat_supervisor_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await _heartbeat_supervisor_task
+    if _heartbeat_task and not _heartbeat_task.done():
+        _heartbeat_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await _heartbeat_task
     logger.info("CashPilot Worker stopped")
 
 
