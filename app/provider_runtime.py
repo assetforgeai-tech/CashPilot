@@ -199,7 +199,7 @@ PROVIDERS: dict[str, ProviderRuntime] = {
         "proxybase", "proxybase.org.py", "proxybase.org.py", ("direct", "proxy"), "dashboard_only", topology="slot_both"
     ),
     "proxybase-xyz": ProviderRuntime(
-        "proxybase-xyz", "proxybase.xyz.py", "proxybase.xyz.py", ("direct", "proxy"), "count_only", topology="manual"
+        "proxybase-xyz", "proxybase.xyz.py", "proxybase.xyz.py", ("direct", "proxy"), "count_only", topology="slot_both"
     ),
     "proxyrack": ProviderRuntime(
         "proxyrack", "proxyrack.org.py", "proxyrack.org.py", ("direct", "proxy"), "earnings", topology="slot_both"
