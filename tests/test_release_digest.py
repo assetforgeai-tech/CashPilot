@@ -59,3 +59,10 @@ def test_publish_authenticates_before_reading_private_ghcr_images():
     assert "packages: read" in publish[:manifest]
     assert "docker/login-action@" in publish[:manifest]
     assert "registry: ghcr.io" in publish[:manifest]
+
+
+def test_release_workflow_has_explicit_existing_release_recovery_path():
+    workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    assert "recover_version" in workflow
+    assert "Repair existing release manifest" in workflow
+    assert "gh release upload \"$VERSION\" runtime-manifest.json --clobber" in workflow
