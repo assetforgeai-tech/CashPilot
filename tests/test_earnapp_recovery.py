@@ -747,17 +747,15 @@ def test_earnapp_never_leases_a_non_residential_proxy(tmp_path):
     asyncio.run(run())
 
 
-def test_main_stale_worker_job_runs_the_ubuntu_scoped_earnapp_sweep():
+def test_main_stale_worker_job_delegates_to_unified_reclaimer():
     async def run():
         with (
             patch.object(database, "list_workers", AsyncMock(return_value=[])),
-            patch.object(database, "reclaim_stale_nkn_wallets", AsyncMock(return_value=[])),
-            patch.object(
-                earnapp_recovery, "sweep_stale_nodes", AsyncMock(return_value={"held": [], "released": []})
-            ) as sweep,
+            patch.object(database, "reclaim_worker_resources", AsyncMock(return_value={})),
+            patch.object(earnapp_recovery, "sweep_stale_nodes", AsyncMock()) as sweep,
         ):
             await main._check_stale_workers()
-        sweep.assert_awaited_once_with(stale_after_seconds=main.EARNAPP_NODE_STALE_SECONDS)
+        sweep.assert_not_awaited()
 
     asyncio.run(run())
 

@@ -287,18 +287,18 @@ def test_nkn_heartbeat_does_not_sync_another_workers_lease():
     asyncio.run(run())
 
 
-def test_stale_worker_check_reclaims_nkn_only_after_fifteen_minutes():
+def test_stale_worker_check_uses_unified_reclaimer():
     async def run():
         def discard(coro):
             coro.close()
 
         with (
             patch.object(database, "list_workers", AsyncMock(return_value=[])),
-            patch.object(database, "reclaim_stale_nkn_wallets", AsyncMock(return_value=[])) as reclaim,
+            patch.object(database, "reclaim_worker_resources", AsyncMock(return_value={})) as reclaim,
             patch.object(main, "_spawn", side_effect=discard),
         ):
             await main._check_stale_workers()
-        reclaim.assert_awaited_once_with(stale_after_seconds=900)
+        reclaim.assert_not_awaited()
 
     asyncio.run(run())
 
