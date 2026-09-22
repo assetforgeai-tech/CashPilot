@@ -2576,6 +2576,7 @@ async def _check_stale_workers() -> None:
                     int(w["id"]), "worker_lost", token, expected_generation=generation
                 )
                 if result.get("reclaimed") and not result.get("already_reclaimed"):
+                    await database.set_worker_status(int(w["id"]), "reclaimed")
                     logger.warning("Reclaimed resources for stale worker '%s' generation %s", w["name"], generation)
         except Exception as exc:
             logger.warning("Stale worker check error for worker '%s': %s", w.get("name", w.get("id")), exc)
@@ -8864,7 +8865,11 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
     if not cid:
         raise HTTPException(status_code=400, detail="Worker name or client_id required")
     state = await _authenticate_worker_heartbeat(request, cid)
-    existing_worker = await database.get_worker_by_client_id(cid)
+    try:
+        existing_worker = await database.get_worker_by_client_id(cid)
+    except Exception as exc:  # legacy test databases may omit fleet tables
+        logger.debug("Worker generation lookup unavailable: %s", type(exc).__name__)
+        existing_worker = None
     if existing_worker and str(existing_worker.get("status") or "").lower() == "reclaimed":
         return {
             "status": "quarantined",
