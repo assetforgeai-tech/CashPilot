@@ -19,6 +19,19 @@
 - Beads is the authoritative task/claim store. `docs/ops/task-board.yaml` is a human-readable generated/exported view, never an independent task database.
 - Every code task uses TDD, `pytest`, `uv run ruff check .`, `uv run ruff format --check .`, `python -m compileall -q app tests`, and `git diff --check`.
 - Runtime images/assets are referenced by immutable digest/SHA-256, never `latest`.
+- Heartbeat is supervised at application, container, and host layers; a dead or frozen heartbeat must self-recover after task exit, process crash, container restart, and VPS reboot.
+- No provider is production-ready while its direct/proxy topology, required ports, manual-access path, or dashboard-count acceptance is unknown.
+- Destructive Azure cleanup requires a fresh approval after read-only inventory and reclamation dry-run.
+- `proxybase-xyz` is included in production scope as provider 16. Its required
+  input is only the secret `YOUR_PHRASE_WALLET` value; its collector is
+  count-only. The official raw reference is
+  `D:\\1. WORK_true\\CashPilot\\provider-runtime\\provider_code_setup_node\\proxybase.xyz.py`.
+- Provider deployment targets the configured public IPv4 count `N` for every
+  provider. Direct-only providers create `N` direct nodes. Hybrid providers
+  create `N` direct plus `N` proxy nodes when at least `N` eligible proxies are
+  available. Proxy-only providers create `N` proxy nodes when at least `N`
+  eligible proxies are available. Insufficient proxy capacity must block the
+  affected lane visibly; it must not silently reduce the requested count.
 
 ## Execution Graph
 
@@ -28,9 +41,36 @@
 | 1 | CP-002, CP-003, CP-004, CP-005, CP-006, CP-007 | Each lane has isolated files/resources and evidence |
 | 2 | CP-008, CP-009, CP-010 | Wave 1 contracts are stable |
 | 3 | CP-011, CP-012 | Release artifacts and canary gates pass |
-| 4 | CP-013 | Separate production approval |
+| 4 | CP-014G, CP-014H | Reliability and provider matrix pass |
+| 5 | CP-014I, CP-014K | Raw Cloud Shell and ProxyBase.xyz gates pass |
+| 6 | CP-014J | Fresh destructive approval and recreate acceptance |
+| 7 | CP-013 | Separate production approval |
 
 Do not start a task whose dependency gate is incomplete. Tasks in the same wave must not edit each other's owned files.
+
+### Cross-cutting policy: heartbeat-timeout worker loss
+
+Worker heartbeat is the authoritative detector for a VPS that is unreachable,
+but one missed heartbeat is not enough to release leases. The control plane
+must use this sequence:
+
+1. `OFFLINE`: heartbeat stale for `STALE_WORKER_SECONDS` (currently 3 minutes);
+   no lease mutation.
+2. `LEASE_RECLAIM_DUE`: no heartbeat for 15 minutes. Heartbeat time is the only
+   liveness authority; do not add ping, ICMP, SSH, TCP, Azure, or client probes.
+3. At 15 minutes, release every **runtime proxy lease** belonging to that
+   worker across all proxy-capable providers, idempotently and with an audit
+   reason `WORKER_HEARTBEAT_STALE_15M`.
+4. Preserve provider/account egress ownership. Releasing a runtime lease must
+   not make a sticky EarnApp/account egress reusable while that account remains
+   in its pool.
+5. Direct-only lanes have no proxy lease and are only marked unavailable.
+6. If the worker returns, do not silently reattach old leases; redeploy or
+   reacquire through normal provider policy and CAS.
+
+This policy must never release leases after a single missed heartbeat or a
+control-plane read failure. Recovery hold, account ownership, and
+provider-specific Pawns/EarnApp rules remain separate.
 
 ---
 
@@ -210,7 +250,288 @@ Do not start a task whose dependency gate is incomplete. Tasks in the same wave 
 
 **Acceptance:** Reconciliation is idempotent; shared-proxy groups heartbeat once; EarnApp/Pawns lane rules remain isolated; dashboard counts match database authority.
 
+### Task CP-014A: Unified worker-loss policy contract
+
+**Owner:** worker-liveness task
+
+**Depends on:** CP-001 only.
+
+**Files:**
+- Create: `app/worker_resource_policy.py`
+- Test: `tests/test_worker_resource_policy.py`
+- Evidence: `docs/evidence/CP-014A-YYYY-MM-DD.md`
+
+**Produces:** a pure decision contract that consumes only last heartbeat and
+current time. It returns `ONLINE`, `OFFLINE`, or `RECLAIM_ALL_WORKER_RESOURCES`
+plus the exact resource families to reclaim.
+
+**Rules:** heartbeat is the only liveness signal. At 3 minutes without a
+heartbeat return `OFFLINE`; at 15 minutes return
+`RECLAIM_ALL_WORKER_RESOURCES`. Reclaim worker-scoped runtime proxy leases,
+NKN wallet leases, Mysterium wallet leases, provider-instance runtime
+assignments, and worker capacity reservations. Preserve provider credentials,
+account-pool membership, EarnApp account/egress sticky ownership, PayPal
+ownership, and historical evidence. Do not add another liveness signal or
+client code.
+
+**Acceptance:** deterministic tests cover heartbeat recovery, exact 3-minute
+and 15-minute boundaries, missing/invalid timestamps, clock skew, and duplicate
+scheduler evaluation.
+
+### Task CP-014B: Worker-resource authority inventory
+
+**Owner:** resource-contract task
+
+**Depends on:** CP-001 only.
+
+**Files:**
+- Create: `app/worker_resource_registry.py`
+- Test: `tests/test_worker_resource_registry.py`
+- Evidence: `docs/evidence/CP-014B-YYYY-MM-DD.md`
+
+**Produces:** one registry enumerating every worker-bound authority table,
+release function, release reason, preserved ownership table, and post-release
+state. This prevents a new provider lease type from being silently omitted.
+
+**Acceptance:** tests fail if proxy leases, NKN wallets, Myst wallets,
+provider-instance assignments, or capacity reservations lack an explicit
+reclaim/preserve decision. Direct-only runtime rows are retired but have no
+proxy lease to release.
+
+### Task CP-014C: Atomic worker-resource reclamation
+
+**Owner:** lease-authority task
+
+**Depends on:** CP-009 merged; consumes the CP-014B registry contract.
+
+**Files:**
+- Modify: `app/database.py`
+- Test: `tests/test_worker_resource_reclamation.py`
+- Evidence: `docs/evidence/CP-014C-YYYY-MM-DD.md`
+
+**Produces:** `reclaim_worker_resources(worker_id, reason, reclamation_token)`
+as one idempotent transaction covering every worker-scoped authority row.
+
+**Rules:** release proxy runtime leases, NKN/Myst wallet leases, runtime
+assignments, and capacity reservations. Preserve sticky egress ownership,
+EarnApp account ownership, account-pool membership, PayPal ownership, proxy
+health, credentials, and history. Mark the worker resource generation revoked
+so a late heartbeat cannot resurrect reclaimed authority. Replaying the same
+reclamation token changes nothing.
+
+**Acceptance:** tests prove every registered resource family is reclaimed once,
+preserved ownership survives, capacity updates atomically, a new worker can
+acquire released resources, and the old worker generation cannot reclaim them.
+
+### Task CP-014D: Heartbeat scheduler and old-worker fencing
+
+**Owner:** scheduler integration task
+
+**Depends on:** CP-014A and CP-014C merged.
+
+**Files:**
+- Modify: `app/main.py` (`_check_stale_workers` integration only)
+- Test: `tests/test_worker_offline_lease_reclamation.py`
+- Evidence: `docs/evidence/CP-014D-YYYY-MM-DD.md`
+
+**Produces:** the single system-wide worker-loss scheduler. Existing separate
+NKN/EarnApp/Myst stale-worker reclaim calls are removed or delegated to the one
+CP-014C transaction. Heartbeats from a reclaimed worker generation are
+accepted only as quarantined/re-enrollment evidence, never as authority to
+restore old resources.
+
+**Rules:** no new client heartbeat and no client-side lease decision. Persist
+the confirmation/audit token before release. Do not delete the enrolled worker
+row. A returning worker must obtain fresh leases through the normal CAS path.
+
+**Acceptance:** 3-minute stale marks worker offline without releasing leases;
+15-minute stale releases all runtime proxy leases exactly once.
+
+### Task CP-014E: Worker-loss dashboard and audit visibility
+
+**Owner:** frontend/status task
+
+**Depends on:** CP-014D API/status contract merged.
+
+**Files:**
+- Modify: `app/static/js/app.js`
+- Modify: `app/templates/fleet.html`
+- Test: `tests/test_frontend_wiring.py`
+- Evidence: `docs/evidence/CP-014E-YYYY-MM-DD.md`
+
+**Produces:** concise worker status showing heartbeat age, `offline` at three
+minutes, resource reclaim countdown, reclaimed resource counts, fencing state,
+and the requirement for fresh allocation on return.
+
+### Task CP-014F: Disposable worker-loss canary
+
+**Owner:** canary/evidence task
+
+**Depends on:** CP-014D and CP-014E merged and explicit disposable-resource approval.
+
+**Files:**
+- Create: `docs/evidence/CP-014F-YYYY-MM-DD.md`
+- Create: `docs/evidence/CP-014F-result.json`
+
+**Resources:** one disposable worker only. No production resource.
+
+**Checks:** stop heartbeat; verify worker becomes offline after 3 minutes with
+resources retained. Keep heartbeat absent through 15 minutes; verify proxy
+leases, NKN/Myst wallets, runtime assignments, and capacity reservations are
+reclaimed together; preserved ownership remains; dashboard reconciles; the old
+worker is fenced; a new worker can acquire released resources; cleanup passes.
+
+**Acceptance:** machine-readable before/after lease inventory and cleanup PASS.
+
 ---
+
+### Task CP-014G: Heartbeat supervision and reboot persistence
+
+**Owner:** worker reliability task
+
+**Depends on:** CP-014A and CP-014D.
+
+**Files:**
+- Modify: `app/worker_api.py` (heartbeat supervisor only)
+- Modify: `Dockerfile.worker` and `docker-compose.fleet.yml` (healthcheck/restart only)
+- Modify: `azure_create/worker-startup.sh` (systemd supervision only)
+- Test: `tests/test_worker_heartbeat_supervisor.py`
+- Test: `tests/test_bootstrap_contract.py`
+- Evidence: `docs/evidence/CP-014G-YYYY-MM-DD.md`
+
+**Produces:** one bounded supervisor that recreates a finished heartbeat task;
+heartbeat-aware health detects a frozen task; Docker/systemd restart after
+process failure and boot. Shutdown cancellation remains clean.
+
+**Rules:** one heartbeat task; no duplicate loops; bounded backoff; health
+proves recent server contact, not merely TCP/API process liveness; worker API
+remains private. Preserve the 3-minute offline and 15-minute reclaim policy.
+
+**Acceptance:** tests cover task exception, unexpected completion, frozen
+heartbeat, container exit, reboot, duplicate-supervisor prevention, and clean
+shutdown. Disposable canary proves recovery without manual restart.
+
+### Task CP-014H: Complete provider port and access matrix
+
+**Owner:** provider-network/access task
+
+**Depends on:** CP-003.
+
+**Files:**
+- Create: `docs/ops/provider-port-matrix.yaml`
+- Modify: `app/provider_runtime.py` only for evidenced catalog corrections
+- Test: `tests/test_provider_port_matrix.py`
+- Evidence: `docs/evidence/CP-014H-YYYY-MM-DD.md`
+
+**Produces:** explicit matrix for all providers and lanes: direct-only,
+direct+proxy, proxy-only; public IPv4 slot use; inbound TCP/UDP; outbound
+requirements; host network/TUN/capabilities; watchdog; operator access.
+
+**Required topology:** Mysterium/NKN direct-only; EarnFM, ProxyBase,
+ProxyBase.xyz, ProxyRack, Repocket, Spide, TraffMonetizer, URNetwork hybrid;
+EarnApp, IPRoyal Pawns, PacketStream, Proxies.sx, UpRock, Wipter proxy-only.
+
+**Count contract:** for `N=20`, every direct-only provider gets 20 direct
+nodes; every hybrid provider gets 20 direct plus 20 proxy nodes; every
+proxy-only provider gets 20 proxy nodes. Proxy lanes require 20 eligible proxy
+assignments. Mysterium must expose UDP `56000-56100` as the authoritative
+runtime/NSG range.
+
+**ProxyBase.xyz contract:** normalize the existing host-systemd runtime against
+the raw reference, preserving the official CLI wallet import/login/seller
+flow. Do not add unsupported account fields. Input is one secret phrase only;
+collector reports node count only. Keep wallet state in its protected runtime
+volume and never expose the phrase or wallet/password material in evidence.
+
+**Access requirements:** every Myst/Wipter/UpRock node gets a controlled
+tunnel/noVNC path to this PC. Every NKN node automatically exposes its native
+web view at `http://<node-public-ip>:30000/web`; its username/password are read
+from that node's wallet and password files and delivered through a secret-safe
+operator channel. Access must not expose wallet contents in Git, evidence, or
+general API responses.
+
+**Acceptance:** no implicit mode or missing port decision; unknowns are
+`INCONCLUSIVE`, never guessed open ports. Matrix drives NSG/startup tests.
+
+### Task CP-014I: Self-contained Azure Cloud Shell deployment script
+
+**Owner:** Azure bootstrap task
+
+**Depends on:** CP-002, CP-006, CP-007, CP-014H.
+
+**Files:**
+- Create: `azure_create/cloud-shell-create-worker.sh`
+- Create: `tests/test_cloud_shell_create_worker.py`
+- Modify: `docs/ops/azure-runbook.md`
+- Evidence: `docs/evidence/CP-014I-YYYY-MM-DD.md`
+
+**Produces:** one pasteable raw Azure CLI script with variables for
+subscription, fixed region, VM size `Standard_D8s_v4`, Ubuntu 24.04 x64, OS
+disk `P20`/512 GiB, configurable public IPv4 count (initially 20), exact NSG
+ports from CP-014H, embedded cloud-init/startup, immutable runtime digest,
+worker enrollment, and post-create reconciliation.
+
+**Rules:** no local-file reads; secrets are runtime variables/prompts and never
+committed or logged. Static public IPs, deterministic NIC/IP names, dry-run,
+idempotency, and pre-mutation inventory are mandatory. Full TCP+UDP requires
+explicit matrix proof.
+
+**Acceptance:** shell/static tests prove no local-path dependency, deterministic
+20-IP topology, least-privilege NSG, and reboot-persistent enrollment.
+
+### Task CP-014J: Cleanup, reclaim, and operator acceptance gate
+
+**Owner:** release-operations task
+
+**Depends on:** CP-014C, CP-014D, CP-014G, CP-014H, CP-014I, CP-011, CP-012.
+
+**Files:**
+- Create: `docs/ops/azure-cleanup-runbook.md`
+- Create: `docs/evidence/CP-014J-YYYY-MM-DD.md`
+- Create: `tools/azure-inventory-and-cleanup.sh` (dry-run default)
+- Test: `tests/test_azure_cleanup_contract.py`
+
+**Sequence:** read-only Azure inventory; export worker/proxy/wallet/runtime
+ownership; reclamation dry-run; fresh explicit approval; delete only listed
+old/disposable VPS resource groups and dependent NIC/PIP/disk/NSG resources;
+verify no worker-bound leases; create one East Asia worker; deploy; stop and
+report for manual provider-dashboard checks. Preserve account pools,
+credentials, sticky egress, and earnings/history.
+
+**Acceptance:** machine-readable before/after inventory, zero orphaned
+worker-bound resources, no out-of-scope deletions, operator sign-off before
+repeat cleanup.
+
+### Task CP-014K: ProxyBase.xyz runtime and count-only collector normalization
+
+**Owner:** ProxyBase.xyz provider task
+
+**Depends on:** CP-003 and CP-014H.
+
+**Files:**
+- Reference: `D:\\1. WORK_true\\CashPilot\\provider-runtime\\provider_code_setup_node\\proxybase.xyz.py`
+- Modify: `app/provider_runtime.py`, `app/provider_installers.py`,
+  `app/orchestrator.py`, and the ProxyBase.xyz service contract only where
+  the audit proves drift
+- Modify/create: the ProxyBase.xyz collector adapter and focused tests
+- Evidence: `docs/evidence/CP-014K-YYYY-MM-DD.md`
+
+**Required behavior:** input has exactly one secret field, the wallet phrase
+(`YOUR_PHRASE_WALLET` at raw-code placeholder level). Runtime performs the
+official CLI wallet import, login, and seller start flow. Collector is
+count-only; it must not claim earnings or invent an API balance.
+
+**Audit gates:** reconcile the raw host-systemd reference with the current
+container/image path; remove duplicate foreground/systemd starts; preserve
+wallet state in the protected runtime volume; pin the installer/image instead
+of `latest`; verify restart/reboot behavior and one node per requested IPv4
+slot. Any difference between raw code and current runtime requires a focused
+regression test and evidence.
+
+**Acceptance:** 20 requested slots yield 20 ProxyBase.xyz nodes when the
+provider's direct/proxy lane prerequisites are met; phrase is never logged or
+returned; collector reports only node count; runtime survives restart/reboot;
+no duplicate seller processes exist.
 
 ### Task CP-010: Security and operations audit sweep
 
@@ -289,10 +610,27 @@ blocker instead of guessing.
 - Then dispatch CP-002, CP-003, CP-005, CP-006, CP-007, and CP-010 in parallel.
 - Dispatch CP-004 only after CP-003 publishes the matrix; split CP-004 by provider group if each group has a separate worktree.
 - Dispatch CP-008 and CP-009 in parallel only because they own separate files and share no migration.
+- Dispatch CP-014A and CP-014B in parallel; both create isolated modules/tests.
+- CP-014C starts after CP-014B and CP-009 merge; it exclusively owns the DB
+  reclamation transaction.
+- CP-014D starts after CP-014A and CP-014C merge; it exclusively owns
+  `_check_stale_workers` and heartbeat fencing integration.
+- CP-014E starts after CP-014D publishes its status contract.
+- CP-014F runs last with explicit disposable-resource approval.
+- CP-014G and CP-014H may run in parallel after CP-014A/CP-003 contracts;
+  neither may mutate Azure or provider production resources.
+- CP-014I starts only after CP-014H freezes the port matrix and CP-007/CP-006
+  release contracts are merged.
+- CP-014K starts after CP-014H; it may run in parallel with CP-014I because it
+  owns only the ProxyBase.xyz runtime/collector lane.
+- CP-014J is destructive and strictly serial: inventory -> dry-run -> fresh
+  approval -> cleanup -> one-worker deployment -> operator dashboard check.
 - Run CP-011 and CP-012 serially after all required gates.
 - Never run CP-007 and CP-011 against the same VPS concurrently.
 - Never run two tasks that mutate the same provider/account/proxy lease group concurrently.
 
 ## Completion Rule
 
-The project is production-ready only when CP-001 through CP-012 have evidence-backed PASS status. CP-013 requires a separate explicit production rollout approval.
+The project is production-ready only when CP-001 through CP-012 and CP-014A
+through CP-014K have evidence-backed PASS status. CP-013 requires a separate
+explicit production rollout approval.
