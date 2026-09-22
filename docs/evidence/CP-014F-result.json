@@ -1,0 +1,36 @@
+{
+  "schema": "cashpilot.cp014f.v1",
+  "task": "CP-014F",
+  "recorded_at": "2026-09-22",
+  "scope": {
+    "mode": "read_only_preflight",
+    "approved_disposable_worker": true,
+    "production_touched": false,
+    "resources_mutated": []
+  },
+  "contract_tests": {
+    "command": "pytest -q tests/test_database_shared_connection.py tests/test_worker_nkn_sync.py tests/test_nkn_wallet_leases.py tests/test_myst_wallets_module.py --disable-warnings --maxfail=1",
+    "result": "PASS",
+    "passed": 62,
+    "failed": 0
+  },
+  "stages": {
+    "offline_after_3m_retains_resources": "NOT_RUN",
+    "reclaim_after_15m_releases_all_worker_resources": "NOT_RUN",
+    "preserves_sticky_ownership": "NOT_RUN",
+    "old_worker_fencing": "NOT_RUN",
+    "new_worker_reacquisition": "NOT_RUN",
+    "dashboard_reconciliation": "NOT_RUN",
+    "cleanup": "NOT_RUN"
+  },
+  "inventory": {
+    "before": null,
+    "after": null,
+    "reason": "Owner approved the CP-011 canary scope, but no isolated disposable worker identity or authenticated control-plane endpoint was provided. Existing VM worker containers are not an isolated worker-loss target."
+  },
+  "acceptance": "BLOCKED",
+  "blockers": [
+    "The approved RG/VM scope does not identify an isolated disposable worker. The prior CP-011 run proved that mounting the host Docker socket exposes existing containers; reusing either live worker would violate the one-disposable-worker boundary."
+  ],
+  "next_safe_action": "Provision or identify an isolated disposable worker inside the approved RG, then capture a read-only inventory and run the staged canary through the authenticated control-plane route."
+}
