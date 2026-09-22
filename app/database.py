@@ -1085,7 +1085,18 @@ CREATE TABLE IF NOT EXISTS workers (
     api_key_enc     TEXT,
     key_confirmed   INTEGER NOT NULL DEFAULT 0,
     key_issued_at   TEXT,
+    resource_generation INTEGER NOT NULL DEFAULT 1,
     registered_at   TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS worker_resource_reclamations (
+    worker_id       INTEGER NOT NULL,
+    reclamation_token TEXT NOT NULL UNIQUE,
+    generation     INTEGER NOT NULL,
+    reason         TEXT NOT NULL,
+    reclaimed_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (worker_id, reclamation_token),
+    FOREIGN KEY(worker_id) REFERENCES workers(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS proxy_providers (
@@ -3147,6 +3158,22 @@ async def init_db() -> None:
                 "UPDATE workers SET key_issued_at = datetime('now') "
                 "WHERE api_key_enc IS NOT NULL AND api_key_enc != '' AND key_confirmed = 0"
             )
+        if "resource_generation" not in cols:
+            applied.append("workers.resource_generation")
+            await db.execute("ALTER TABLE workers ADD COLUMN resource_generation INTEGER NOT NULL DEFAULT 1")
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS worker_resource_reclamations (
+                worker_id INTEGER NOT NULL,
+                reclamation_token TEXT NOT NULL UNIQUE,
+                generation INTEGER NOT NULL,
+                reason TEXT NOT NULL,
+                reclaimed_at TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (worker_id, reclamation_token),
+                FOREIGN KEY(worker_id) REFERENCES workers(id) ON DELETE CASCADE
+            )
+            """
+        )
 
         # Migrate earnings table: add fx_rate_usd so a non-USD balance's value at the
         # time it was recorded stays reconstructable (rates are only cached live).
@@ -8991,6 +9018,138 @@ async def set_worker_status(worker_id: int, status: str) -> None:
     try:
         await db.execute("UPDATE workers SET status = ? WHERE id = ?", (status, worker_id))
         await db.commit()
+    finally:
+        await db.close()
+
+
+async def reclaim_worker_resources(
+    worker_id: int,
+    reason: str,
+    reclamation_token: str,
+    *,
+    expected_generation: int | None = None,
+) -> dict[str, Any]:
+    """Atomically revoke every resource currently owned by a lost worker.
+
+    The token is the scheduler's durable idempotency key.  Resource identity,
+    credentials, sticky ownership, and history remain intact; only the live
+    worker assignment is released.  Incrementing ``resource_generation`` fences
+    late heartbeats and redeploy callbacks from the retired worker generation.
+    """
+    worker_id = int(worker_id or 0)
+    token = str(reclamation_token or "").strip()
+    if worker_id <= 0 or not token:
+        return {"reclaimed": False, "reason": "missing_token"}
+    db = await _open_transaction_connection()
+    try:
+        await db.execute("BEGIN IMMEDIATE")
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS worker_resource_reclamations (
+                worker_id INTEGER NOT NULL,
+                reclamation_token TEXT NOT NULL UNIQUE,
+                generation INTEGER NOT NULL,
+                reason TEXT NOT NULL,
+                reclaimed_at TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (worker_id, reclamation_token),
+                FOREIGN KEY(worker_id) REFERENCES workers(id) ON DELETE CASCADE
+            )
+            """
+        )
+        worker = await (
+            await db.execute("SELECT resource_generation FROM workers WHERE id = ?", (worker_id,))
+        ).fetchone()
+        if not worker:
+            await db.rollback()
+            return {"reclaimed": False, "reason": "worker_not_found"}
+        prior = await (
+            await db.execute(
+                "SELECT generation FROM worker_resource_reclamations WHERE worker_id=? AND reclamation_token=?",
+                (worker_id, token),
+            )
+        ).fetchone()
+        if prior:
+            await db.commit()
+            return {
+                "reclaimed": True,
+                "already_reclaimed": True,
+                "worker_id": worker_id,
+                "generation": int(prior["generation"]),
+            }
+        old_generation = int(worker["resource_generation"] or 1)
+        if expected_generation is not None and int(expected_generation) != old_generation:
+            await db.commit()
+            return {
+                "reclaimed": False,
+                "reason": "generation_mismatch",
+                "worker_id": worker_id,
+                "generation": old_generation,
+            }
+        new_generation = old_generation + 1
+        proxy_result = await db.execute(
+            """
+            UPDATE provider_proxy_leases
+            SET released_at=datetime('now'), release_reason=?
+            WHERE worker_id=? AND released_at IS NULL
+            """,
+            (str(reason or "worker_lost")[:300], worker_id),
+        )
+        nkn_result = await db.execute(
+            """
+            UPDATE nkn_wallets
+            SET state='AVAILABLE', leased_to_worker_id=NULL, leased_to_client_id='',
+                leased_at=NULL, public_ip='', release_reason=?,
+                node_identity='', runtime_status='', last_heartbeat_at=NULL,
+                evidence_json='{}', wallet_assignment_version=wallet_assignment_version+1,
+                updated_at=datetime('now')
+            WHERE state='LEASED' AND leased_to_worker_id=?
+            """,
+            (str(reason or "worker_lost")[:300], worker_id),
+        )
+        myst_result = await db.execute(
+            """
+            UPDATE myst_wallets
+            SET state='AVAILABLE', leased_to_worker_id=NULL, leased_to_client_id='',
+                leased_at=NULL, public_ip='', release_reason=?,
+                node_identity='', runtime_status='', last_heartbeat_at=NULL,
+                evidence_json='{}', wallet_assignment_version=wallet_assignment_version+1,
+                updated_at=datetime('now')
+            WHERE state='LEASED' AND leased_to_worker_id=?
+            """,
+            (str(reason or "worker_lost")[:300], worker_id),
+        )
+        runtime_result = await db.execute(
+            """
+            UPDATE provider_instances
+            SET status='retired', worker_id=NULL, proxy_id=NULL, capacity_slot='',
+                container_id='', sidecar_id='',
+                updated_at=datetime('now')
+            WHERE worker_id=? AND lower(status) NOT IN ('retired', 'deleted')
+            """,
+            (worker_id,),
+        )
+        await db.execute(
+            "UPDATE workers SET status='offline', resource_generation=? WHERE id=?",
+            (new_generation, worker_id),
+        )
+        await db.execute(
+            "INSERT INTO worker_resource_reclamations(worker_id,reclamation_token,generation,reason) VALUES(?,?,?,?)",
+            (worker_id, token, new_generation, str(reason or "worker_lost")[:300]),
+        )
+        await db.commit()
+        return {
+            "reclaimed": True,
+            "already_reclaimed": False,
+            "worker_id": worker_id,
+            "generation": new_generation,
+            "proxy_leases": int(proxy_result.rowcount or 0),
+            "nkn_wallets": int(nkn_result.rowcount or 0),
+            "myst_wallets": int(myst_result.rowcount or 0),
+            "runtime_assignments": int(runtime_result.rowcount or 0),
+        }
+    except Exception:
+        await db.rollback()
+        raise
     finally:
         await db.close()
 
