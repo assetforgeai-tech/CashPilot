@@ -317,8 +317,9 @@ jobs:
         run: |
           set -euo pipefail
           owner="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
-          ui="ghcr.io/${owner}/cashpilot:${VERSION}"
-          worker="ghcr.io/${owner}/cashpilot-worker:${VERSION}"
+          image_version="${VERSION#v}"
+          ui="ghcr.io/${owner}/cashpilot:${image_version}"
+          worker="ghcr.io/${owner}/cashpilot-worker:${image_version}"
           ui_digest="$(python3 scripts/resolve_release_digest.py "$ui" --attempts 6 --delay-seconds 10)"
           worker_digest="$(python3 scripts/resolve_release_digest.py "$worker" --attempts 6 --delay-seconds 10)"
           mapfile -t release_tags < <(git for-each-ref --format='%(refname:strip=2)' 'refs/fork-tags/v*.*.*')
@@ -398,8 +399,9 @@ jobs:
         run: |
           set -euo pipefail
           owner="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
-          ui="ghcr.io/${owner}/cashpilot:${VERSION}"
-          worker="ghcr.io/${owner}/cashpilot-worker:${VERSION}"
+          image_version="${VERSION#v}"
+          ui="ghcr.io/${owner}/cashpilot:${image_version}"
+          worker="ghcr.io/${owner}/cashpilot-worker:${image_version}"
           ui_digest="$(python3 scripts/resolve_release_digest.py "$ui" --attempts 6 --delay-seconds 10)"
           worker_digest="$(python3 scripts/resolve_release_digest.py "$worker" --attempts 6 --delay-seconds 10)"
           mapfile -t release_tags < <(git for-each-ref --format='%(refname:strip=2)' 'refs/fork-tags/v*.*.*')
