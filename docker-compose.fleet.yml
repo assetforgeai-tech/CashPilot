@@ -124,6 +124,12 @@ services:
       # CASHPILOT_WORKER_URL: override auto-detected URL if the UI can't reach the default
     init: true
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
     security_opt:
       - no-new-privileges:true
     tmpfs:

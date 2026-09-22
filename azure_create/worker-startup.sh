@@ -72,6 +72,10 @@ RemainAfterExit=yes
 EnvironmentFile=/etc/cashpilot/worker.env
 WorkingDirectory=$REPO_ROOT
 ExecStart=/usr/bin/docker compose -f docker-compose.fleet.yml -f docker-compose.worker-${CASHPILOT_RELEASE}.override.yml -p cashpilot up -d --no-deps cashpilot-worker
+# Docker owns process crash recovery; systemd owns boot recovery.  Reassert the
+# restart policy after every bootstrap so an existing container cannot retain a
+# weaker policy from an older deployment.
+ExecStartPost=/usr/bin/docker update --restart unless-stopped cashpilot-worker
 ExecStop=/usr/bin/docker compose -f docker-compose.fleet.yml -f docker-compose.worker-${CASHPILOT_RELEASE}.override.yml -p cashpilot stop cashpilot-worker
 TimeoutStartSec=0
 [Install]
