@@ -112,12 +112,17 @@ WORKER_NAME = os.getenv("CASHPILOT_WORKER_NAME", socket.gethostname())
 WORKER_PORT = int(os.getenv("CASHPILOT_PORT", "8081"))
 WORKER_URL = os.getenv("CASHPILOT_WORKER_URL", "")
 HEARTBEAT_INTERVAL = 60  # seconds
+HEARTBEAT_FRESHNESS_SECONDS = max(HEARTBEAT_INTERVAL * 3, 180)
+HEARTBEAT_SUPERVISOR_INTERVAL = 5
 # Stop locally one heartbeat before the server's 15-minute reclaim boundary so
 # the old wallet cannot still be running when the server makes it available.
 NKN_LEASE_GUARD_SECONDS = 14 * 60
 _heartbeat_task: asyncio.Task | None = None
+_heartbeat_supervisor_task: asyncio.Task | None = None
+_heartbeat_task_started_at: float | None = None
 _ui_connected = False
 _last_heartbeat: str = "never"
+_last_heartbeat_at: float | None = None
 _last_error: str = ""
 
 # Consecutive 401s while holding our own per-worker key. One is unremarkable (the UI
@@ -1340,7 +1345,7 @@ async def _detect_egress_ip() -> str | None:
 
 async def _send_heartbeat() -> None:
     """Send a single heartbeat to the UI."""
-    global _ui_connected, _last_heartbeat, _last_error, _consecutive_auth_failures
+    global _ui_connected, _last_heartbeat, _last_heartbeat_at, _last_error, _consecutive_auth_failures
 
     containers = []
     containers_inventory_confirmed = False
@@ -1414,6 +1419,7 @@ async def _send_heartbeat() -> None:
                     logger.error("Received per-worker key but could not persist it — staying on shared key")
             _ui_connected = True
             logger.info("NKN heartbeat response: %s", nkn_ack_summary(response_payload))
+            _last_heartbeat_at = time.time()
             _last_heartbeat = datetime.now(UTC).strftime("%H:%M:%S UTC")
             _last_error = ""
             _consecutive_auth_failures = 0
@@ -1521,6 +1527,52 @@ async def _heartbeat_loop() -> None:
         await asyncio.sleep(HEARTBEAT_INTERVAL)
 
 
+def _heartbeat_is_fresh(*, now: float | None = None) -> bool:
+    if not UI_URL:
+        return True
+    if _last_heartbeat_at is None:
+        return False
+    return (time.time() if now is None else now) - _last_heartbeat_at < HEARTBEAT_FRESHNESS_SECONDS
+
+
+def _start_heartbeat_task() -> asyncio.Task:
+    global _heartbeat_task, _heartbeat_task_started_at
+    if _heartbeat_task is not None and not _heartbeat_task.done():
+        return _heartbeat_task
+    _heartbeat_task = asyncio.create_task(_heartbeat_loop(), name="cashpilot-heartbeat")
+    _heartbeat_task_started_at = time.monotonic()
+    return _heartbeat_task
+
+
+async def _supervise_heartbeat_once() -> None:
+    global _heartbeat_task
+    if not UI_URL:
+        return
+    task = _heartbeat_task
+    if task is not None and not task.done():
+        if _heartbeat_task_started_at is None:
+            return
+        startup_age = time.monotonic() - (_heartbeat_task_started_at or 0.0)
+        if _heartbeat_is_fresh() or startup_age < HEARTBEAT_FRESHNESS_SECONDS:
+            return
+    if task is not None and not task.done():
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+    _heartbeat_task = _start_heartbeat_task()
+
+
+async def _heartbeat_supervisor_loop() -> None:
+    while True:
+        try:
+            await _supervise_heartbeat_once()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Heartbeat supervisor cycle failed — continuing")
+        await asyncio.sleep(HEARTBEAT_SUPERVISOR_INTERVAL)
+
+
 def _get_local_ip() -> str:
     """Best-effort local IP detection for worker URL."""
     try:
@@ -1541,14 +1593,17 @@ def _get_local_ip() -> str:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _heartbeat_task
+    global _heartbeat_task, _heartbeat_supervisor_task
 
     logger.info("CashPilot Worker '%s' starting", WORKER_NAME)
     docker_mode = "direct" if await asyncio.to_thread(orchestrator.docker_available) else "monitor-only"
     logger.info("Docker: %s", docker_mode)
 
     if UI_URL:
-        _heartbeat_task = asyncio.create_task(_heartbeat_loop())
+        _heartbeat_task = _start_heartbeat_task()
+        _heartbeat_supervisor_task = asyncio.create_task(
+            _heartbeat_supervisor_loop(), name="cashpilot-heartbeat-supervisor"
+        )
         logger.info("Heartbeat enabled -> %s (every %ds)", UI_URL, HEARTBEAT_INTERVAL)
         if not API_KEY:
             logger.warning("CASHPILOT_API_KEY not set — heartbeats sent without auth")
@@ -1561,10 +1616,22 @@ async def lifespan(app: FastAPI):
         _heartbeat_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await _heartbeat_task
+    if _heartbeat_supervisor_task and not _heartbeat_supervisor_task.done():
+        _heartbeat_supervisor_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await _heartbeat_supervisor_task
     logger.info("CashPilot Worker stopped")
 
 
 app = FastAPI(title="CashPilot Worker", version=version.current(), lifespan=lifespan)
+
+
+@app.get("/healthz")
+async def worker_health() -> dict[str, Any]:
+    """Healthcheck includes recent UI heartbeat, not merely an open HTTP port."""
+    if UI_URL and not _heartbeat_is_fresh():
+        raise HTTPException(status_code=503, detail="heartbeat stale")
+    return {"status": "ok", "heartbeat": _last_heartbeat}
 
 
 # ---------------------------------------------------------------------------
