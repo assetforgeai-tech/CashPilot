@@ -5557,6 +5557,12 @@ async def find_available_earnapp_proxy_for_node(
         country_clause = (
             "length(trim(coalesce(pe.country_code, ''))) = 2 AND upper(trim(pe.country_code)) GLOB '[A-Z][A-Z]'"
         )
+        # Ubuntu's verified runtime rejects VN residential proxies. Keep the
+        # allocator aligned with the worker validator so rotation never
+        # reserves a candidate that staging must reject.
+        platform_country_clause = (
+            "upper(trim(coalesce(pe.country_code, ''))) != 'VN'" if platform == "ubuntu" else "1 = 1"
+        )
         preferred_proxy_id = int(node["preferred_proxy_id"] or 0)
         row = await (
             await db.execute(
@@ -5569,6 +5575,7 @@ async def find_available_earnapp_proxy_for_node(
                 WHERE pe.id != ? AND legacy.proxy_id IS NULL
                   AND {_earnapp_proxy_eligible_sql("pe")}
                   AND {country_clause}
+                  AND {platform_country_clause}
                   AND NOT EXISTS (
                       SELECT 1 FROM proxy_provider_masks ppm
                       WHERE ppm.proxy_id = pe.id AND ppm.provider_slug = 'earnapp'

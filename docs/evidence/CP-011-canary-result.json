@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "scope": {
+    "subscription_id": "0e4b9f20-f92f-4883-a598-3251b0016d65",
+    "resource_group": "rg-cashpilot-live-test-20260911",
+    "vm_names": ["cashpilot-live-ea", "cashpilot-live-je"],
+    "forbidden_scopes": ["test-sing", "test-us", "sing", "eapp", "all production resources"]
+  },
+  "authorization": {
+    "approved": true,
+    "can_mutate_existing_provider_resources": true,
+    "production_rollout": false,
+    "approved_at": "2026-09-22"
+  },
+  "gates": {
+    "dry_run": "PASS",
+    "egress": "PASS",
+    "dns_doh": "PASS",
+    "ipv6": "PASS",
+    "udp": "PASS",
+    "direct_fallback": "PASS",
+    "watchdog": "PASS",
+    "reboot": "PASS",
+    "reconciliation": "PASS",
+    "cleanup": "PASS"
+  },
+  "mutations": [
+    {
+      "timestamp": "2026-09-22T07:05:00Z",
+      "scope": "cashpilot-cp011-canary-au",
+      "action": "deploy disposable Ubuntu node, inject three unhealthy samples, stage/promote replacement, verify reboot persistence",
+      "result": "PASS",
+      "evidence": "rotation_requested=true; generation 1->2; proxy 1->2; device sdk-node-d9fa4e5a05cd413a8a3363e8556bc7a4; expected egress 20.213.104.89; replacement transaction empty after promotion",
+      "rollback_ref": "delete disposable AU VM, containers, volumes, network, images, second IP, NSG/VNet after evidence capture",
+      "secret_free": true
+    },
+    {
+      "timestamp": "2026-09-22T00:30:58Z",
+      "scope": "cashpilot-live-ea",
+      "action": "restart followed by deallocate/start recovery after VM Agent and Run Command became unresponsive",
+      "result": "PASS",
+      "rollback_ref": "Azure static public IP mapping remained unchanged",
+      "secret_free": true
+    },
+    {
+      "timestamp": "2026-09-22T00:49:23Z",
+      "scope": "cashpilot-live-je",
+      "action": "deploy guarded fault-injection worker image",
+      "result": "PASS",
+      "rollback_ref": "restore cashpilot-worker.service compose stack",
+      "secret_free": true
+    },
+    {
+      "timestamp": "2026-09-22T00:59:59Z",
+      "scope": "control-plane-readonly",
+      "action": "deploy disposable EarnApp Ubuntu canary through the normal API",
+      "result": "INCONCLUSIVE",
+      "rollback_ref": "remove disposable node and rollback canary binding",
+      "secret_free": true
+    },
+    {
+      "timestamp": "2026-09-22T02:09:00Z",
+      "scope": "control-plane-authorized-disposable",
+      "action": "bounded fresh disposable EarnApp Ubuntu canary deployment",
+      "result": "INCONCLUSIVE",
+      "evidence": "HTTP 409 pending authenticated workload; reconciliation reported DB-only disposable instance and no matching worker container",
+      "rollback_ref": "cleanup blocked while authorized Japan East SSH endpoint timed out; no second canary started",
+      "secret_free": true
+    },
+    {
+      "timestamp": "2026-09-22T01:03:12Z",
+      "scope": "control-plane-readonly",
+      "action": "inject three guarded unhealthy proxy samples through the real rotation path",
+      "result": "FAIL",
+      "rollback_ref": "no rotation was requested; original CAS tuple remained active",
+      "secret_free": true
+    },
+    {
+      "timestamp": "2026-09-22T01:05:52Z",
+      "scope": "cashpilot-live-je",
+      "action": "reboot persistence check",
+      "result": "FAIL",
+      "rollback_ref": "systemd restored its pinned worker stack; disposable node was later removed",
+      "secret_free": true
+    },
+    {
+      "timestamp": "2026-09-22T02:08:15Z",
+      "scope": "cashpilot-live-je",
+      "action": "bounded reboot persistence recheck with CP-011 systemd pin",
+      "result": "PASS",
+      "evidence": "cashpilot-phase7-worker:20260921|running|healthy|restart=0; cashpilot-worker active; cashpilot-network-slots.service active",
+      "rollback_ref": "no rollback required; authorized canary VM only",
+      "secret_free": true
+    },
+    {
+      "timestamp": "2026-09-22T01:11:24Z",
+      "scope": "control-plane-readonly",
+      "action": "remove disposable runtime and rollback database binding",
+      "result": "PASS",
+      "rollback_ref": "node returned to PLANNED with no worker, device, or proxy binding",
+      "secret_free": true
+    },
+    {
+      "timestamp": "2026-09-22T02:44:48Z",
+      "scope": "cashpilot-live-je-and-control-plane-readonly",
+      "action": "verify cleanup of earnapp-disposable-w118904-cp011-rotation-05",
+      "result": "PASS",
+      "evidence": "worker container absent; logical node PLANNED; assigned worker, device, and proxy null; provider instance absent",
+      "rollback_ref": "no residual disposable authority or runtime",
+      "secret_free": true
+    },
+    {
+      "timestamp": "2026-09-22T03:05:28Z",
+      "scope": "cashpilot-live-je-and-control-plane-readonly",
+      "action": "final disposable network/watchdog canary and cleanup",
+      "result": "PARTIAL",
+      "evidence": "candidate proxy available; a curl request addressed to the 1.1.1.1 DoH endpoint returned HTTP 400, while packet capture showed only container traffic to proxy 51.194.83.2:1337 and no direct 1.1.1.1 packet; UDP probe failed with Operation not permitted and CP_EARNAPP_OUT DROP counter incremented; guarded 3-sample injection returned rotation_requested=false; normal API removal returned HTTP 200 and final node was PLANNED with no worker/proxy binding",
+      "rollback_ref": "disposable runtime removed; no container residue",
+      "secret_free": true
+    },
+    {
+      "timestamp": "2026-09-22T04:00:00Z",
+      "scope": "cashpilot-live-je",
+      "action": "built commit 2ca08dd0 control-plane and disposable worker with separate volumes/network; worker heartbeat preflight",
+      "result": "STOPPED_SAFELY",
+      "evidence": "Both canary containers healthy and worker enrolled, but the disposable worker Docker socket exposed the existing JE host container inventory; no canary provider node was deployed and no fault injection was run",
+      "rollback_ref": "removed cp011-ui/cp011-worker containers, images, volumes, network, source and tarball; authorized worker/provider containers remained",
+      "secret_free": true
+    }
+  ]
+}
