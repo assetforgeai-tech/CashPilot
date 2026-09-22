@@ -84,9 +84,9 @@ def test_release_attaches_a_digest_based_runtime_manifest():
     assert "runtime-manifest.json" in release
     assert "docker buildx imagetools inspect" in release
     assert "gh release upload" in release
-    assert '"sha256": digest.rsplit(":", 1)[1]' in release
+    assert "create_release_runtime_manifest.py" in release
     assert "rollback_release" in release
-    assert "previous_tag" in release
+    assert '--tags "${release_tags[@]}"' in release
 
 
 def test_build_workflow_refuses_unversioned_latest_publication():

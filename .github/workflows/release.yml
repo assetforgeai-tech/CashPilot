@@ -20,6 +20,10 @@ permissions:
   contents: write
   packages: write
 
+concurrency:
+  group: cashpilot-release-main
+  cancel-in-progress: false
+
 jobs:
   ci:
     name: Verify CI passes
@@ -248,6 +252,12 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Fetch fork release tags
+        run: |
+          set -euo pipefail
+          git fetch --force origin 'refs/tags/*:refs/fork-tags/*'
+          test -n "$(git for-each-ref --format='%(refname)' 'refs/fork-tags/v*' | head -n 1)"
+
       # The example compose files pin the major.minor series, and nothing moved
       # them. So every minor release left docker-compose.yml and
       # docker-compose.fleet.yml a series behind, and
@@ -296,17 +306,16 @@ jobs:
           owner="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
           ui="ghcr.io/${owner}/cashpilot:${VERSION}"
           worker="ghcr.io/${owner}/cashpilot-worker:${VERSION}"
-          previous_tag="$(git for-each-ref --sort=-v:refname --format='%(refname:strip=2)' 'refs/fork-tags/v*.*.*' | grep -v "^${VERSION}$" | head -1)"
-          previous_tag="${previous_tag:-$VERSION}"
           ui_digest="$(docker buildx imagetools inspect "$ui" --format '{{json .Manifest.Digest}}' | tr -d '"')"
           worker_digest="$(docker buildx imagetools inspect "$worker" --format '{{json .Manifest.Digest}}' | tr -d '"')"
-          python3 - "$VERSION" "$previous_tag" "$owner" "$ui_digest" "$worker_digest" > runtime-manifest.json <<'PY'
-          import json, sys
-          release, rollback, owner, ui_digest, worker_digest = sys.argv[1:]
-          def artifact(name, digest):
-              return {"name": name, "provider": "cashpilot", "architecture": "linux/amd64", "source": "ghcr", "reference": digest, "path": name, "sha256": digest.rsplit(":", 1)[1]}
-          print(json.dumps({"schema_version": 1, "release": release, "rollback_release": rollback, "artifacts": [artifact("cashpilot", f"ghcr.io/{owner}/cashpilot@{ui_digest}"), artifact("cashpilot-worker", f"ghcr.io/{owner}/cashpilot-worker@{worker_digest}")]}, indent=2))
-          PY
+          mapfile -t release_tags < <(git for-each-ref --format='%(refname:strip=2)' 'refs/fork-tags/v*.*.*')
+          python3 scripts/create_release_runtime_manifest.py \
+            --release "$VERSION" \
+            --owner "$owner" \
+            --ui-digest "$ui_digest" \
+            --worker-digest "$worker_digest" \
+            --tags "${release_tags[@]}" > runtime-manifest.json
+          # The helper validates digests and emits the rollback_release field.
           gh release upload "$VERSION" runtime-manifest.json --clobber
 
       - name: Bump the example compose pins to this series
