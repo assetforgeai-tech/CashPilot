@@ -291,6 +291,8 @@ Working collectors (8 total, in `app/collectors/__init__.py` `COLLECTOR_MAP`):
 
 Base URL: `https://api.bringyour.com`
 
+Dashboard/collector: `https://manager.bringyour.com/`
+
 | Method | Endpoint | Auth | Purpose |
 |--------|----------|------|---------|
 | `POST` | `/auth/login-with-password` | None | Login â†’ `{network:{by_jwt:"..."}}` |

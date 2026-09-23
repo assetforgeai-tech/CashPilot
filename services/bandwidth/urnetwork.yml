@@ -34,7 +34,7 @@ deploy:
       kind: api_key
       secret: true
       required: true
-      source: "https://app.ur.network Account Settings > API Key Management"
+      source: "https://manager.bringyour.com Account Settings > API Key Management"
       description: "API key used to create a one-time provider auth code before starting the node."
 
 requirements:
@@ -59,7 +59,7 @@ earnings:
 
 cashout:
   method: redirect
-  dashboard_url: "https://app.ur.network/wallet-stats"
+  dashboard_url: "https://manager.bringyour.com/"
   min_amount: 5.0
   currency: USD
 
@@ -82,7 +82,7 @@ collector:
       required: true
       source: "URNetwork account"
       description: "Account password used for dashboard/collector login."
-  notes: "Logged-in client manager exposes Clients, Statistics, Providers, Wallet Stats, Account Settings, Balance Codes, and API Key Management. Collector is dashboard/session based; no API response shape is confirmed yet."
+  notes: "Logged-in manager at https://manager.bringyour.com/ exposes Clients, Statistics, Providers, Wallet Stats, Account Settings, Balance Codes, and API Key Management. Collector is dashboard/session based; no API response shape is confirmed yet."
 
 payout:
   model: external

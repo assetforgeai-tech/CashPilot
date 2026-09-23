@@ -9627,10 +9627,11 @@ async def list_proxy_pool_page(
                 lower(coalesce(pe.duplicate_reason, '')) LIKE ? OR lower(coalesce(pe.expiry_date, '')) LIKE ? OR
                 lower(coalesce(CAST(pa.worker_id AS TEXT), '')) LIKE ? OR lower({location_expr}) LIKE ? OR
                 lower({ip_type_expr}) LIKE ? OR lower(coalesce(pe.exit_ip, 'Egress unresolved')) LIKE ? OR
-                lower({earnapp_expr}) LIKE ?
+                lower({earnapp_expr}) LIKE ? OR lower(coalesce(scoped.provider_slug, '')) LIKE ? OR
+                lower(coalesce(scoped.instance_id, '')) LIKE ?
             )"""
         )
-        params.extend([pattern] * 15)
+        params.extend([pattern] * 17)
     if str(provider or "").strip():
         clauses.append("pp.name = ?")
         params.append(str(provider).strip())

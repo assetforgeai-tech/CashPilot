@@ -37,9 +37,9 @@ Sign up at [URnetwork](https://ur.io/?referral_code=1Q3G19).
 
 ### 2. Get deploy API key
 
-Get an API key from Account Settings > API Key Management at [app.ur.network](https://app.ur.network). CashPilot uses it to create a one-time provider auth code before starting the node.
+Get an API key from Account Settings > API Key Management at [BringYour Manager](https://manager.bringyour.com/). CashPilot still uses the BringYour API at `https://api.bringyour.com` to create a one-time provider auth code before starting the node.
 
-For dashboard/collector checks, save your URNetwork account email and password in the Earnings collector section.
+For dashboard/collector checks, open [BringYour Manager](https://manager.bringyour.com/), then save your URNetwork account email and password in the Earnings collector section.
 
 ### 3. Deploy with CashPilot
 
@@ -58,4 +58,4 @@ In the CashPilot web UI, find **URnetwork** in the service catalog and click **D
 
 ## Collector Status
 
-Logged-in client manager exposes Clients, Statistics, Providers, Wallet Stats, Account Settings, Balance Codes, Data Stats, Payout Stats, Generate Auth Client, and API Key Management. No collector/API response shape is confirmed yet.
+The logged-in [BringYour Manager](https://manager.bringyour.com/) exposes Clients, Statistics, Providers, Wallet Stats, Account Settings, Balance Codes, Data Stats, Payout Stats, Generate Auth Client, and API Key Management. No collector/API response shape is confirmed yet.

@@ -77,7 +77,7 @@
     if (hostname.includes("peer.proxyrack.com")) return "proxyrack";
     if (hostname.includes("repocket.com")) return "repocket";
     if (hostname.includes("spide.network")) return "spide";
-    if (hostname.includes("ur.network")) return "urnetwork";
+    if (hostname.includes("ur.network") || hostname === "manager.bringyour.com") return "urnetwork";
     if (hostname.includes("peer.proxybase.org")) return "proxybase";
     if (hostname.includes("proxybase.xyz")) return "proxybase-xyz";
     if (hostname.includes("proxies.sx") || hostname.includes("farmer.proxies.sx")) return "proxies_sx";

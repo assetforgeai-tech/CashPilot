@@ -101,6 +101,12 @@ def test_importer_has_explicit_provider_key_mapping():
         assert key in extractor
 
 
+def test_urnetwork_importer_recognizes_current_bringyour_manager():
+    extractor = (EXT / "extractor.js").read_text(encoding="utf-8")
+
+    assert 'hostname === "manager.bringyour.com"' in extractor
+
+
 def test_importer_keys_are_backend_settings_keys():
     from app import catalog
     from app.collectors import collector_credential_fields, service_credential_fields
