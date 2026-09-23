@@ -21,3 +21,35 @@
   explicitly says otherwise.
 - Migration-source additions are candidates, not retained behavior, until the
   matrix is updated with code, test, and evidence.
+
+## CP-015A frozen route groups
+
+The following grouping is normative for route safety and count planning:
+
+### Direct-only
+
+Mysterium and NKN use direct public-IPv4 slots. Mysterium/NKN never receive proxy leases,
+fake-proxy wrappers, or proxy rotation events.
+
+### Hybrid
+
+EarnFM, ProxyBase, ProxyBase.xyz, ProxyRack, Repocket, Spide, TraffMonetizer,
+and URNetwork expose independent direct and proxy lanes. A shortage or failed
+probe blocks the proxy lane; it must not silently reduce the requested count or
+switch that instance to direct.
+
+### Proxy-only
+
+EarnApp, IPRoyal Pawns, PacketStream, Proxies.sx, UpRock, and Wipter require an
+eligible proxy lease. Direct fallback is forbidden. EarnApp account-scoped
+ownership/link policy and Pawns/IPRoyal `ip_used` allocator policy remain
+provider-private even though route safety is shared.
+
+### Shared safety boundary
+
+Proxy Pool Probe is the only upstream liveness authority. The local route
+watchdog fails closed and may stop the provider for Docker restart, but must not
+release a lease or mark an upstream proxy dead. ACK and observed egress are
+replacement commit gates, not another liveness authority. Insufficient proxy
+capacity blocks the affected lane; an insufficient proxy capacity condition is
+visible, and silent count reduction is forbidden.
