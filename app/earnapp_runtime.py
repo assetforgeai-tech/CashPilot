@@ -12,6 +12,7 @@ from typing import Any
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from app import provider_runtime
+from app.proxy_runtime import _watchdog_shell_contract
 
 VPS_RUNTIME_BLOCK_REASON = provider_runtime.VPS_RUNTIME_BLOCK_REASON
 VPS_RUNTIME_BLOCK_MESSAGE = provider_runtime.VPS_RUNTIME_BLOCK_MESSAGE
@@ -442,6 +443,7 @@ getent hosts example.com >/dev/null 2>&1 || exit 70
     return f"""#!/usr/bin/env bash
 set -euo pipefail
 umask 077
+{_watchdog_shell_contract()}
 STATE_DIR=/etc/earnapp
 REDSOCKS_PORT=12345
 PROXY_TYPE=$(printf '%s' "${{PROXY_TYPE:-SOCKS5}}" | tr '[:lower:]' '[:upper:]')
@@ -474,6 +476,8 @@ command -v ip6tables >/dev/null 2>&1 || exit 69
  {ios_route}
  {doh_bootstrap}
 {runtime_handoff}
+route_ready
+record_restart_evidence provider-start || {{ route_blocked restart-budget-exhausted; exit 75; }}
 cashpilot_watchdog() {{
   local redsocks_seen=0
   for _ in $(seq 1 60); do
@@ -496,14 +500,16 @@ cashpilot_watchdog() {{
     sleep 1
   done
   while kill -0 "$PROVIDER_PID" 2>/dev/null; do
-    pidof redsocks >/dev/null 2>&1 || {{ kill -TERM "$PROVIDER_PID" 2>/dev/null || true; return 1; }}
+    [[ -e "$ROUTE_READY_MARKER" ]] || {{ route_blocked route-marker-missing; kill -TERM "$PROVIDER_PID" 2>/dev/null || true; return 1; }}
+    pidof redsocks >/dev/null 2>&1 || {{ route_blocked redsocks-dead; kill -TERM "$PROVIDER_PID" 2>/dev/null || true; return 1; }}
     if [[ -n "${{DNS_PID:-}}" ]]; then
-      kill -0 "$DNS_PID" 2>/dev/null || {{ kill -TERM "$PROVIDER_PID" 2>/dev/null || true; return 1; }}
+      kill -0 "$DNS_PID" 2>/dev/null || {{ route_blocked dns-dead; kill -TERM "$PROVIDER_PID" 2>/dev/null || true; return 1; }}
     else
-      pgrep -f '/usr/local/lib/cashpilot-doh.js' >/dev/null 2>&1 || {{ kill -TERM "$PROVIDER_PID" 2>/dev/null || true; return 1; }}
+      pgrep -f '/usr/local/lib/cashpilot-doh.js' >/dev/null 2>&1 || {{ route_blocked doh-dead; kill -TERM "$PROVIDER_PID" 2>/dev/null || true; return 1; }}
     fi
-    iptables -C OUTPUT -j CP_EARNAPP_OUT 2>/dev/null || {{ kill -TERM "$PROVIDER_PID" 2>/dev/null || true; return 1; }}
-    ip6tables -C OUTPUT -j CP_EARNAPP6_OUT 2>/dev/null || {{ kill -TERM "$PROVIDER_PID" 2>/dev/null || true; return 1; }}
+    iptables -C OUTPUT -j CP_EARNAPP_OUT 2>/dev/null || {{ route_blocked firewall-chain-missing; kill -TERM "$PROVIDER_PID" 2>/dev/null || true; return 1; }}
+    ip6tables -C OUTPUT -j CP_EARNAPP6_OUT 2>/dev/null || {{ route_blocked ipv6-chain-missing; kill -TERM "$PROVIDER_PID" 2>/dev/null || true; return 1; }}
+    touch "$ROUTE_READY_MARKER"
     sleep 5
   done
   wait "$PROVIDER_PID"

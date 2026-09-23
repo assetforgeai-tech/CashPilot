@@ -53,6 +53,32 @@ def test_entrypoint_watchdog_stops_provider_when_route_process_dies():
     assert "install_firewall ||" in script
 
 
+def test_entrypoint_has_explicit_route_readiness_and_bounded_restart_contract():
+    from app.proxy_runtime import render_entrypoint
+
+    script = render_entrypoint(["provider"]).decode()
+
+    assert 'ROUTE_READY_MARKER="${ROUTE_READY_MARKER:-/run/cashpilot/route-ready}"' in script
+    assert 'STARTUP_GRACE_SECONDS="${STARTUP_GRACE_SECONDS:-30}"' in script
+    assert 'RESTART_BUDGET="${RESTART_BUDGET:-3}"' in script
+    assert 'touch "$ROUTE_READY_MARKER"' in script
+    assert 'rm -f "$ROUTE_READY_MARKER"' in script
+    assert "record_restart_evidence" in script
+    assert "route_blocked" in script
+
+
+def test_sidecar_guard_stops_provider_when_route_marker_disappears():
+    from app.proxy_runtime import render_sidecar_guard_entrypoint
+
+    script = render_sidecar_guard_entrypoint(["provider", "--run"]).decode()
+
+    assert 'ROUTE_READY_MARKER="${ROUTE_READY_MARKER:-/run/cashpilot/route-ready}"' in script
+    assert 'STARTUP_GRACE_SECONDS="${STARTUP_GRACE_SECONDS:-30}"' in script
+    assert 'kill -TERM "$PROVIDER_PID"' in script
+    assert "route_blocked" in script
+    assert "record_restart_evidence" in script
+
+
 def test_entrypoint_rejects_empty_provider_command():
     from app.proxy_runtime import render_entrypoint
 
