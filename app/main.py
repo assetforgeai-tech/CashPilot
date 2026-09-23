@@ -745,6 +745,7 @@ async def _maybe_auto_deploy_after_heartbeat(worker_id: int) -> None:
 
 async def _run_proxy_pool_recheck_scheduler() -> None:
     global _proxy_pool_last_recheck
+    from app import proxy_pool_scheduler
     from app.routers.proxies import (
         _proxy_scheduler_settings,
         run_earnapp_proxy_recheck,
@@ -760,11 +761,15 @@ async def _run_proxy_pool_recheck_scheduler() -> None:
     if _proxy_pool_last_recheck and now - _proxy_pool_last_recheck < timedelta(minutes=settings["interval_minutes"]):
         return
     _proxy_pool_last_recheck = now
-    result = await run_proxy_pool_recheck(concurrency=settings["concurrency"])
+    token = proxy_pool_scheduler.enter_automatic_recheck()
+    try:
+        result = await run_proxy_pool_recheck(concurrency=settings["concurrency"])
+    finally:
+        proxy_pool_scheduler.reset_automatic_recheck(token)
     # Generic liveness does not prove EarnApp WSS eligibility; refresh its
     # provider-specific qualification in the same scheduler pass.
-    earnapp_result = await run_earnapp_proxy_recheck(concurrency=settings["concurrency"])
-    earnfm_result = await run_earnfm_proxy_recheck(concurrency=settings["concurrency"])
+    earnapp_result = await run_earnapp_proxy_recheck(concurrency=settings["concurrency"], due_only=True)
+    earnfm_result = await run_earnfm_proxy_recheck(concurrency=settings["concurrency"], due_only=True)
     logger.info(
         "Proxy pool scheduler checked=%s alive=%s dead=%s rotated=%s rotate_errors=%s",
         result.get("checked", 0),

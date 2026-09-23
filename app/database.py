@@ -9690,8 +9690,17 @@ async def list_proxy_pool_page(
     duplicate: str = "",
     sort: str = "provider_name",
     direction: str = "asc",
+    due_before: str | None = None,
+    due_only: bool = False,
+    leased_first: bool = False,
 ) -> dict[str, Any]:
-    """Return one operator page while keeping aggregate inventory context."""
+    """Return one operator page while keeping aggregate inventory context.
+
+    ``due_only`` is reserved for the automatic probe scheduler.  It keeps
+    inventory scans bounded by persisted ``proxy_probe_state.next_probe_at``
+    while always admitting currently leased rows.  The default remains the
+    unfiltered operator view.
+    """
     size = min(100_000, max(1, int(page_size or 20)))
     requested_page = max(1, int(page or 1))
     location_expr = _proxy_location_sql()
@@ -9727,6 +9736,8 @@ async def list_proxy_pool_page(
                scoped.provider_slug AS scoped_provider_slug,
                scoped.worker_id AS scoped_worker_id,
                scoped.instance_id AS scoped_instance_id,
+               probe_state.state AS probe_state,
+               probe_state.next_probe_at AS probe_next_at,
                {location_expr} AS display_location,
                {ip_type_expr} AS display_ip_type,
                {earnapp_expr} AS display_earnapp,
@@ -9743,6 +9754,7 @@ async def list_proxy_pool_page(
             AND trim(coalesce(earnapp.exit_ip, '')) != ''
             AND earnapp.exit_ip = pe.exit_ip
         LEFT JOIN provider_proxy_leases scoped ON scoped.proxy_id = pe.id AND scoped.released_at IS NULL
+        LEFT JOIN proxy_probe_state probe_state ON probe_state.proxy_id = pe.id
     """
     clauses: list[str] = []
     params: list[Any] = []
@@ -9796,6 +9808,13 @@ async def list_proxy_pool_page(
         clauses.append("coalesce(pe.duplicate_egress, 0) = 1")
     elif duplicate_value == "canonical":
         clauses.append("coalesce(pe.duplicate_egress, 0) = 0")
+    if due_only:
+        cutoff = str(due_before or "").strip() or datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+        clauses.append(
+            "(pa.worker_id IS NOT NULL OR scoped.provider_slug IS NOT NULL OR "
+            "probe_state.next_probe_at IS NULL OR probe_state.next_probe_at <= ?)"
+        )
+        params.append(cutoff)
     where_sql = f" WHERE {' AND '.join(clauses)}" if clauses else ""
     sort_expressions = {
         "provider_name": "lower(coalesce(pp.name, ''))",
@@ -9812,6 +9831,10 @@ async def list_proxy_pool_page(
         "last_checked_at": "coalesce(pe.last_checked_at, '')",
     }
     order_by = sort_expressions.get(str(sort or "").strip(), sort_expressions["provider_name"])
+    if leased_first:
+        order_by = (
+            "CASE WHEN pa.worker_id IS NOT NULL OR scoped.provider_slug IS NOT NULL THEN 0 ELSE 1 END, " + order_by
+        )
     order_direction = "DESC" if str(direction or "").strip().lower() == "desc" else "ASC"
     db = await _get_db()
     try:
