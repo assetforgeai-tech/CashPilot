@@ -15,6 +15,7 @@
 - UI status: `running`, Docker health `healthy`, restart count `0`.
 - Worker status: `running`, Docker health `healthy`, restart count `0`.
 - A pre-deploy compose backup was created on the control-plane host; secret values are not recorded here.
+- After deployment, a diagnostic command exposed the prior admin-key value in tool output. The admin key was immediately rotated again, the local secret file was updated without printing the value, and only `cashpilot-ui` was recreated. The replacement key authenticated successfully (`/api/fleet/summary` HTTP `200`); the previous key returned `401`. UI and worker remained healthy; worker container ID remained unchanged.
 
 ## Authoritative mapping
 
