@@ -340,8 +340,8 @@ def test_proxy_pool_scheduler_runs_earnapp_wss_qualification(monkeypatch):
     asyncio.run(main._run_proxy_pool_recheck_scheduler())
 
     assert [name for name, _ in calls] == ["generic", "earnapp_wss", "earnfm_socket_8443"]
-    assert calls[1][1] == {"concurrency": 2}
-    assert calls[2][1] == {"concurrency": 2}
+    assert calls[1][1] == {"concurrency": 2, "due_only": True}
+    assert calls[2][1] == {"concurrency": 2, "due_only": True}
 
 
 def test_offline_policy_is_earnapp_only():
