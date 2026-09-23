@@ -371,6 +371,7 @@ class TestProviderAutomationContracts:
         assert self._credential_keys(svc, "collector") == {"email", "password"}
         assert self._credential_keys(svc, "dashboard") == set()
         assert {item["key"] for item in svc["docker"]["env"]} == set()
+        assert svc["cashout"]["dashboard_url"] == "https://manager.bringyour.com/"
 
     def test_earnfm_uses_api_key_for_deploy_and_email_password_for_collector(self):
         svc = self._svc("earnfm")

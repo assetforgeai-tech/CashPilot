@@ -2785,6 +2785,36 @@ def test_proxy_pool_page_filters_and_sorts_before_pagination_with_global_counts(
             )
             assert len(safe_sort["items"]) == 2
 
+            scoped_proxy_id = (
+                await database.upsert_proxy_endpoints_returning_ids(
+                    beta,
+                    [
+                        {
+                            "provider_proxy_id": "scoped-1",
+                            "endpoint": "scoped.example:2000",
+                            "host": "scoped.example",
+                            "port": 2000,
+                            "status": "alive",
+                            "exit_ip": "9.9.9.9",
+                        }
+                    ],
+                )
+            )[0]
+            db = await database._get_db()
+            await db.execute(
+                "INSERT INTO workers(id, client_id, name, url) VALUES (?, ?, ?, ?)",
+                (118904, "worker-118904", "worker-118904", "http://worker-118904"),
+            )
+            await db.execute(
+                "INSERT INTO provider_proxy_leases(provider_slug, worker_id, instance_id, proxy_id, exit_ip) "
+                "VALUES (?, ?, ?, ?, ?)",
+                ("earnfm", 118904, "earnfm-proxy-w118904-proxy-010", scoped_proxy_id, "9.9.9.9"),
+            )
+            await db.commit()
+            scoped = await database.list_proxy_pool_page(search="proxy-010")
+            assert scoped["total"] == 1
+            assert scoped["items"][0]["scoped_instance_id"] == "earnfm-proxy-w118904-proxy-010"
+
     asyncio.run(run())
 
 
