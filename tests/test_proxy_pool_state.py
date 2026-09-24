@@ -1,4 +1,5 @@
 import asyncio
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -275,10 +276,11 @@ def test_rotation_claim_recovery_and_fenced_completion(tmp_path):
                     1, {"status": "failed", "reason": "timeout"}, generation=generation
                 )
             assert await database.enqueue_proxy_rotation_requests(1, 3) == 1
-            first = await database.claim_proxy_rotation_request("2026-09-24 00:00:00")
+            claim_at = datetime.now(UTC) + timedelta(minutes=1)
+            first = await database.claim_proxy_rotation_request(claim_at)
             assert first["state"] == "running" and first["lease_token"]
-            assert await database.claim_proxy_rotation_request("2026-09-24 00:00:01") is None
-            recovered = await database.claim_proxy_rotation_request("2026-09-24 00:02:00")
+            assert await database.claim_proxy_rotation_request(claim_at + timedelta(seconds=1)) is None
+            recovered = await database.claim_proxy_rotation_request(claim_at + timedelta(minutes=2))
             assert recovered["id"] == first["id"] and recovered["lease_token"] != first["lease_token"]
             assert not await database.complete_proxy_rotation_request(
                 first["id"], "succeeded", lease_token=first["lease_token"]
@@ -363,9 +365,10 @@ def test_rotation_claim_serializes_all_requests_for_one_worker(tmp_path):
                 for generation in (1, 2, 3):
                     await database.record_proxy_probe_transition(proxy, {"status": "failed"}, generation=generation)
                 assert await database.enqueue_proxy_rotation_requests(proxy, 3) == 1
-            first = await database.claim_proxy_rotation_request("2026-09-24 00:00:00")
+            claim_at = datetime.now(UTC) + timedelta(minutes=1)
+            first = await database.claim_proxy_rotation_request(claim_at)
             assert first is not None
-            assert await database.claim_proxy_rotation_request("2026-09-24 00:00:01") is None
+            assert await database.claim_proxy_rotation_request(claim_at + timedelta(seconds=1)) is None
             await db.close()
             await database.close_shared()
 
@@ -454,7 +457,7 @@ def test_rotation_completion_requires_cas_replacement_not_only_a_token(tmp_path)
             for generation in (1, 2, 3):
                 await database.record_proxy_probe_transition(1, {"status": "failed"}, generation=generation)
             await database.enqueue_proxy_rotation_requests(1, 3)
-            request = await database.claim_proxy_rotation_request("2026-09-24 00:00:00")
+            request = await database.claim_proxy_rotation_request(datetime.now(UTC) + timedelta(minutes=1))
             assert not await database.complete_proxy_rotation_request(
                 request["id"], "succeeded", lease_token=request["lease_token"]
             )
@@ -496,7 +499,7 @@ def test_new_probe_generation_fences_running_rotation_completion(tmp_path):
             for generation in (1, 2, 3):
                 await database.record_proxy_probe_transition(1, {"status": "failed"}, generation=generation)
             await database.enqueue_proxy_rotation_requests(1, 3)
-            request = await database.claim_proxy_rotation_request("2026-09-24 00:00:00")
+            request = await database.claim_proxy_rotation_request(datetime.now(UTC) + timedelta(minutes=1))
             await database.record_proxy_probe_transition(1, {"status": "failed"}, generation=4)
             assert not await database.complete_proxy_rotation_request(
                 request["id"], "failed", error="apply_failed", lease_token=request["lease_token"]
