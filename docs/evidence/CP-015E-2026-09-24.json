@@ -107,6 +107,14 @@
     "production_or_live_volume_touched": false,
     "main_canary_ui_health_unchanged": true
   },
+  "ci_failure_sweep": {
+    "pr": 504,
+    "failed_run": 35966412208,
+    "failure_class": "repository_compose_pin",
+    "failure": "docker-compose.yml and docker-compose.fleet.yml pinned 1.67 while newest release series was 1.68",
+    "fix": "updated both compose examples to 1.68",
+    "provider_or_azure_related": false
+  },
   "provider_group_policy": {
     "earnapp": {"policy_group": "earnapp", "proxy_contract": "earnapp-style-v1", "lane": "proxy-only"},
     "pawns": {"provider_slug": "iproyal", "policy_group": "pawns", "proxy_contract": "earnapp-style-v1", "lane": "proxy-only"},
