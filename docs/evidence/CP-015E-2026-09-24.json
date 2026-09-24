@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "task": "CP-015E",
+  "date": "2026-09-24",
+  "scope": {
+    "subscription_id": "a9d21cd7-abf8-4b14-a2e5-1867178fd5f6",
+    "resource_group": "rg-cashpilot-cp015e-20260924",
+    "control_vm": {
+      "name": "cashpilot-cp015e-control",
+      "region": "japaneast",
+      "public_ipv4": "20.194.169.242",
+      "private_ipv4": "10.151.0.4"
+    },
+    "worker_vm": {
+      "name": "cashpilot-cp015e-worker",
+      "region": "eastasia",
+      "public_ipv4": "104.208.91.231",
+      "private_ipv4": "10.152.0.4"
+    },
+    "vm_size": "Standard_D8s_v4",
+    "os": "Ubuntu 24.04 x64",
+    "forbidden_scopes": [
+      "cashpilot-live-ea",
+      "cashpilot-live-je",
+      "production",
+      "test-sing",
+      "test-us",
+      "sing",
+      "eapp",
+      "real provider credentials",
+      "real proxy endpoints",
+      "real wallets",
+      "real account pools",
+      "real leases"
+    ]
+  },
+  "release": {
+    "version": "v1.68.0",
+    "ui_image": "ghcr.io/assetforgeai-tech/cashpilot@sha256:1a06fed2cf497b520b11e3eedac36f4bfab65dce6ae1c4b16d4d6e7430e20f86",
+    "worker_image": "ghcr.io/assetforgeai-tech/cashpilot-worker@sha256:9757a0c43771ad1ca2bcfd2ba5e3309045632246cebe5274497e495c4f2357ee",
+    "rollback_ui_image": "ghcr.io/assetforgeai-tech/cashpilot@sha256:51cf076b6324b7b0ed995274647a651d4e1f4c6a99b1f0f43b109634a2e834f2"
+  },
+  "gates": {
+    "synthetic_pool_50000": "PASS",
+    "bounded_scheduler": "PASS",
+    "dead_event_before_scan_completion": "PASS",
+    "duplicate_rotation_replay": "PASS",
+    "control_restart_persistence": "PASS",
+    "worker_reboot_persistence": "PASS",
+    "worker_heartbeat_recovery": "PASS",
+    "watchdog_route_loss": "PASS",
+    "packet_synthetic_earnapp_lane": "PASS",
+    "packet_synthetic_pawns_lane": "PASS",
+    "packet_synthetic_shared_proxy_lane": "PASS",
+    "direct_only_negative_control": "PASS",
+    "rollback_db_clone_and_previous_digest": "PASS",
+    "real_provider_dashboard": "NOT_RUN",
+    "production_rollout": "NOT_RUN"
+  },
+  "metrics": {
+    "synthetic_proxy_rows": 50000,
+    "scheduler_pages": 100,
+    "scheduler_checked": 50000,
+    "scheduler_queue_capacity": 16,
+    "scheduler_max_probe_concurrency": 8,
+    "scheduler_errors": 0,
+    "scheduler_timeouts": 0,
+    "scheduler_elapsed_seconds": 1.31302,
+    "dead_transition_states": ["suspect", "suspect", "dead"],
+    "rotation_inserted_first": 1,
+    "rotation_inserted_replay": 0,
+    "duplicate_probe_deduplicated": true,
+    "rotation_failed_apply_state": "pending",
+    "rotation_failed_apply_attempts": 2,
+    "watchdog_exit_code": 75,
+    "watchdog_route_untrusted": true,
+    "watchdog_restart_count": 2,
+    "packet_direct_tcp_count": 0,
+    "packet_udp_dns_count": 0,
+    "packet_proxy_earnapp_count": 7,
+    "packet_proxy_pawns_count": 6,
+    "packet_proxy_shared_count": 6,
+    "packet_doh_count": 6
+  },
+  "packet_capture": {
+    "pcap_sha256": "5c4353e3040dab312c41b7f48c55092a979dd0ed6d6dc11daae961674b618834",
+    "direct_fallback_blocked": true,
+    "ipv6_blocked": true,
+    "udp_blocked": true,
+    "doh_ok": true,
+    "synthetic_connect_bidirectional": true,
+    "host_firewall_cleanup_verified": true
+  },
+  "persistence": {
+    "worker_id_sha256": "a3a190658514bdcabab2ed523560282d1423c4a1df399337ca88d006b78b2ae8",
+    "worker_key_sha256": "6a77f60580762b956f424a2b6cd9bdfc3a0709b5b37262016a4ff077291e4878",
+    "worker_container_health_after_reboot": "healthy",
+    "worker_heartbeat_after_reboot": "online",
+    "control_db_proxy_rows_after_restart": 50000,
+    "control_db_pending_rotation_after_restart": 1
+  },
+  "rollback": {
+    "mode": "disposable_db_clone",
+    "previous_image_digest_started": true,
+    "clone_proxy_rows": 50000,
+    "clone_rotation_rows": 4,
+    "production_or_live_volume_touched": false,
+    "main_canary_ui_health_unchanged": true
+  },
+  "provider_group_policy": {
+    "earnapp": {"policy_group": "earnapp", "proxy_contract": "earnapp-style-v1", "lane": "proxy-only"},
+    "pawns": {"provider_slug": "iproyal", "policy_group": "pawns", "proxy_contract": "earnapp-style-v1", "lane": "proxy-only"},
+    "shared_proxy": {"provider_slug": "earnfm", "policy_group": "provider", "proxy_contract": "earnapp-style-v1", "lane": "hybrid-or-proxy"},
+    "direct_only_negative_control": {"providers": ["mysterium", "nkn"], "proxy_lease_count": 0}
+  },
+  "mutations": [
+    {"action": "deploy_disposable_canary", "scope": "rg-cashpilot-cp015e-20260924", "result": "PASS"},
+    {"action": "synthetic_db_seed_50000", "scope": "cashpilot-cp015e-control", "result": "PASS"},
+    {"action": "synthetic_packet_capture_and_fault_injection", "scope": "cashpilot-cp015e-worker", "result": "PASS"},
+    {"action": "control_container_restart", "scope": "cashpilot-cp015e-control", "result": "PASS"},
+    {"action": "worker_vm_reboot", "scope": "cashpilot-cp015e-worker", "result": "PASS"},
+    {"action": "rollback_previous_digest_on_db_clone", "scope": "cashpilot-cp015e-control", "result": "PASS"},
+    {"action": "real_provider_or_live_resource_mutation", "scope": "outside_approved_scope", "result": "NOT_RUN"}
+  ],
+  "limitations": [
+    "Provider dashboards and real provider credentials were intentionally not used.",
+    "Packet captures prove the synthetic route harness and generated watchdog path, not external provider behavior.",
+    "CP-013 production rollout remains separately approval-gated."
+  ],
+  "cleanup": {
+    "approved": true,
+    "performed": true,
+    "result": "resource_group_deleted_and_inventory_empty",
+    "required_scope": "rg-cashpilot-cp015e-20260924"
+  }
+}
