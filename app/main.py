@@ -482,6 +482,7 @@ async def _deploy_nkn_slots(
             lease_client_id = f"{client_id}:nkn:{slot_id}"
             instance_id = _nkn_record_instance_id(worker_id, slot_id)
             lease: dict[str, Any] | None = None
+            worker_request_started = False
             base_spec: dict[str, Any] = {
                 "slot_id": slot_id,
                 "public_ip": public_ip,
@@ -548,6 +549,7 @@ async def _deploy_nkn_slots(
                     snapshot = await _nkn_chaindb_snapshot_for_deploy(lxd_settings)
                     if snapshot:
                         deploy_spec["chaindb_snapshot"] = snapshot
+                worker_request_started = True
                 if adopt_instance:
                     result = await _proxy_worker_nkn_deploy(worker_id, slot_id, deploy_spec, timeout=900)
                 elif "chaindb_snapshot" in deploy_spec:
@@ -558,7 +560,7 @@ async def _deploy_nkn_slots(
                         timeout=6 * 60 * 60,
                     )
                 else:
-                    result = await _proxy_worker_nkn_deploy(worker_id, slot_id, deploy_spec)
+                    result = await _proxy_worker_nkn_deploy(worker_id, slot_id, deploy_spec, timeout=900)
                 container_id = str(result.get("container_id") or "remote")
                 # Persist only non-secret assignment metadata. The wallet pool remains
                 # the sole server-side source of wallet material on retry.
@@ -581,7 +583,9 @@ async def _deploy_nkn_slots(
                     safe_detail = re.sub(r"[\r\n\t]+", " ", str(exc.detail))[:240]
                     safe_error = f"{safe_error}: {safe_detail}"
                 logger.warning("NKN slot %s deploy failed on worker %s: %s", slot_id, worker_id, safe_error)
-                if lease:
+                # A response/error after dispatch may arrive after LXD mutation.
+                # Keep the CAS lease for same-slot reconciliation.
+                if lease and not worker_request_started:
                     with contextlib.suppress(Exception):
                         await database.release_nkn_wallet(
                             int(lease["id"]),
