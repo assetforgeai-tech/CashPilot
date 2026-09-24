@@ -487,6 +487,46 @@ def test_hydrate_nkn_lxd_state_does_not_overwrite_existing_suspend_guard(tmp_pat
     assert saved["last_server_ack_at"] == 100.0
 
 
+def test_hydrate_nkn_lxd_state_does_not_overwrite_existing_ack_state(tmp_path, monkeypatch):
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    assignment = {
+        "slot_id": "ipv4-001",
+        "wallet_id": 7,
+        "wallet_assignment_version": 3,
+        "lease_client_id": "worker-a:nkn:ipv4-001",
+    }
+    worker_api._save_nkn_wallet_state(
+        "ipv4-001",
+        {
+            **assignment,
+            "lease_guard_suspended": False,
+            "runtime_status": "running",
+            "last_server_ack_at": 1_234.0,
+        },
+    )
+
+    assert (
+        worker_api._hydrate_nkn_lxd_states(
+            [assignment],
+            {
+                "instances": [
+                    {
+                        **assignment,
+                        "instance_id": "cashpilot-nkn-ipv4-001",
+                        "runtime_backend": "lxd",
+                        "runtime_status": "running",
+                    }
+                ]
+            },
+        )
+        == []
+    )
+    saved = json.loads(Path(tmp_path, "nkn-wallets", "ipv4-001.json").read_text(encoding="utf-8"))
+    assert saved["runtime_status"] == "running"
+    assert saved["lease_guard_suspended"] is False
+    assert saved["last_server_ack_at"] == 1_234.0
+
+
 def test_recover_nkn_lxd_state_reads_only_exact_server_assignments(tmp_path, monkeypatch):
     monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
     assignment = {
