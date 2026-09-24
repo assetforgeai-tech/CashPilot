@@ -9,6 +9,9 @@ until CP-013 receives separate explicit approval.
 - Confirm all required CP-001 through CP-011 PRs are merged and evidence paths resolve.
 - Confirm no credentials, cookies, private keys, runtime identity volumes, or raw provider responses are in the release.
 - Confirm image references are immutable GHCR digests and GitHub assets have SHA-256 checksums.
+- Confirm the manifest includes the pinned `ghcr.io/sagernet/sing-box` sidecar
+  digest used by `app/orchestrator.py`; container-image entries are verified by
+  reference digest, while file entries are verified by local SHA-256.
 
 ## Verification
 
@@ -22,7 +25,9 @@ python tools/verify-runtime-manifest.py --manifest runtime-manifest.json --artif
 ```
 
 The manifest verifier must finish with exit code `0`. A failed verification must
-leave the previous active pointer unchanged.
+leave the previous active pointer unchanged. A container-image artifact does not
+require a same-named local file: its `reference` digest must equal `sha256`, and
+`--pull` optionally preloads that exact immutable reference.
 
 ## Rollback
 

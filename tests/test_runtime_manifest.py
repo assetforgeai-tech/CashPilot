@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 VERIFY = ROOT / "tools" / "verify-runtime-manifest.py"
 
@@ -132,3 +134,52 @@ def test_ghcr_artifact_is_pulled_by_digest_before_activation(monkeypatch):
     verifier._pull_ghcr(reference)
 
     assert calls == [(["docker", "pull", reference], True)]
+
+
+def test_container_image_artifact_uses_reference_digest_without_local_file(tmp_path: Path):
+    verifier = _verifier_module()
+    digest = "a" * 64
+    manifest = {
+        "schema_version": 1,
+        "release": "v2.0.0",
+        "rollback_release": "v1.9.0",
+        "artifacts": [
+            {
+                "name": "sing-box",
+                "provider": "sagernet",
+                "architecture": "linux/amd64",
+                "source": "ghcr",
+                "kind": "container-image",
+                "reference": f"ghcr.io/sagernet/sing-box@sha256:{digest}",
+                "path": "sing-box",
+                "sha256": digest,
+            }
+        ],
+    }
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    state = tmp_path / "active.json"
+
+    verifier.verify(manifest_path, tmp_path, state, None)
+
+    active = json.loads(state.read_text(encoding="utf-8"))
+    assert active["artifacts"] == [
+        {
+            "name": "sing-box",
+            "kind": "container-image",
+            "reference": f"ghcr.io/sagernet/sing-box@sha256:{digest}",
+            "sha256": digest,
+        }
+    ]
+
+
+def test_container_image_artifact_rejects_reference_digest_mismatch(tmp_path: Path):
+    verifier = _verifier_module()
+    manifest = _manifest("worker.tar", "b" * 64)
+    manifest["artifacts"][0]["kind"] = "container-image"
+    manifest["artifacts"][0]["reference"] = "ghcr.io/assetforgeai-tech/cashpilot-worker@sha256:" + "a" * 64
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="does not match sha256"):
+        verifier.verify(manifest_path, tmp_path, tmp_path / "active.json", None)

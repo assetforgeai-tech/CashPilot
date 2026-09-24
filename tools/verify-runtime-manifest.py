@@ -38,6 +38,9 @@ def _validate(manifest: dict) -> list[dict]:
     for artifact in artifacts:
         if artifact.get("architecture") not in PLATFORMS or artifact.get("source") not in SOURCES:
             raise ValueError("invalid artifact architecture or source")
+        kind = str(artifact.get("kind", "file"))
+        if kind not in {"file", "container-image"}:
+            raise ValueError("invalid artifact kind")
         if not HEX64.fullmatch(str(artifact.get("sha256", ""))):
             raise ValueError("invalid artifact sha256")
         path = str(artifact.get("path", ""))
@@ -46,6 +49,10 @@ def _validate(manifest: dict) -> list[dict]:
         reference = str(artifact.get("reference", ""))
         if not re.fullmatch(r"ghcr\.io/.+@sha256:[a-f0-9]{64}", reference):
             raise ValueError("GHCR reference must use an immutable digest")
+        if kind == "container-image":
+            reference_digest = reference.rsplit("@sha256:", 1)[1]
+            if not hmac.compare_digest(reference_digest, str(artifact["sha256"])):
+                raise ValueError(f"{artifact.get('name', 'artifact')} reference digest does not match sha256")
     return artifacts
 
 
@@ -75,6 +82,17 @@ def verify(manifest_path: Path, artifact_dir: Path, state_path: Path, key: str |
     for artifact in artifacts:
         if pull and artifact["source"] == "ghcr":
             _pull_ghcr(artifact["reference"])
+        if artifact.get("kind", "file") == "container-image":
+            digest = artifact["sha256"]
+            verified.append(
+                {
+                    "name": artifact["name"],
+                    "kind": "container-image",
+                    "reference": artifact["reference"],
+                    "sha256": digest,
+                }
+            )
+            continue
         path = artifact_dir / artifact["path"]
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
         if not hmac.compare_digest(digest, artifact["sha256"]):

@@ -30,6 +30,7 @@
           "provider": {"type": "string", "minLength": 1},
           "architecture": {"enum": ["linux/amd64", "linux/arm64"]},
           "source": {"enum": ["github-release", "ghcr"]},
+          "kind": {"enum": ["file", "container-image"]},
           "reference": {"type": "string", "pattern": "^ghcr\\.io/.+@sha256:[a-f0-9]{64}$"},
           "asset_url": {"type": "string", "pattern": "^https://github\\.com/.+/releases/download/.+$"},
           "path": {"type": "string", "pattern": "^[^/\\\\]+$"},
