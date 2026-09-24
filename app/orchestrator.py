@@ -64,6 +64,23 @@ _docker_available: bool | None = None
 _status_cache: list[dict[str, Any]] = []
 _status_cache_time: float = 0.0
 
+# The sidecar must be immutable.  A moving tag can silently change routing
+# semantics between worker restarts, so deployments use the release-manifest
+# digest resolved from the upstream v1.12.0 registry manifest (CP-015F must
+# include it in the CashPilot release manifest before rollout).
+SING_BOX_IMAGE_PIN = "ghcr.io/sagernet/sing-box@sha256:3c1ee82d450df9b336b6f63b1d272cf86e3835392d99596ef8c35f206a457999"
+
+
+def proxy_route_contract() -> dict[str, str]:
+    """Return the shared route/watchdog contract without runtime secrets."""
+    return {
+        "route_ready_marker": "/etc/sing-box/.cashpilot-route-ready",
+        "route_blocked_marker": "/etc/sing-box/.cashpilot-route-blocked",
+        "restart_evidence": "/etc/sing-box/restart-evidence.log",
+        "restart_budget": "3",
+        "restart_backoff_seconds": "5",
+    }
+
 
 def _recent_iso_timestamp(value: str, window_seconds: int) -> bool:
     """Return whether a Docker UTC timestamp is within the supplied window."""
@@ -1059,6 +1076,9 @@ def deploy_raw(
     # providers (notably MYST) must never touch that unrelated state.
     if proxy and not network_mode and provider_runtime.proxy_transport(provider) == "in_container":
         raise RuntimeError("in-container proxy runtime requires an explicit network mode")
+    provider_marker = secrets.token_hex(16) if proxy and not network_mode else ""
+    if provider_marker:
+        env["CASHPILOT_PROVIDER_MARKER"] = provider_marker
     if proxy and not network_mode:
         _remove_sidecar_config_volume(client, slug)
     if provider == "mysterium" and deploy_credentials and deploy_credentials.get("myst_wallet_raw"):
@@ -1076,6 +1096,17 @@ def deploy_raw(
         policy_provider = str((labels or {}).get("cashpilot.provider") or provider).strip().lower()
         all_labels["cashpilot.proxy_transport"] = provider_runtime.proxy_transport(policy_provider)
         all_labels["cashpilot.proxy_contract"] = provider_runtime.proxy_contract(policy_provider)
+        route_contract = proxy_route_contract()
+        all_labels.update(
+            {
+                "cashpilot.route.required": "true",
+                "cashpilot.route.ready_marker": route_contract["route_ready_marker"],
+                "cashpilot.route.blocked_marker": route_contract["route_blocked_marker"],
+                "cashpilot.route.restart_budget": route_contract["restart_budget"],
+                "cashpilot.route.restart_backoff_seconds": route_contract["restart_backoff_seconds"],
+                "cashpilot.route.health_contract": "fail-closed-v1",
+            }
+        )
 
     if provider != "earnapp" and not installer_image:
         logger.info("Pulling image %s", image)
@@ -1111,6 +1142,7 @@ def deploy_raw(
 
     if proxy and not network_mode:
         logger.info("Creating egress sidecar %s", sidecar_name)
+        route_contract = proxy_route_contract()
         pinned_proxy = singbox_config.pin_proxy_endpoint(proxy, resolver=socket.gethostbyname)
         config = singbox_config.render_tun_proxy_config(
             pinned_proxy,
@@ -1120,13 +1152,19 @@ def deploy_raw(
         )
         encoded_config = base64.b64encode(json.dumps(config, sort_keys=True).encode()).decode()
         client.containers.run(
-            image="ghcr.io/sagernet/sing-box:latest",
+            image=SING_BOX_IMAGE_PIN,
             name=sidecar_name,
             environment={
                 "SINGBOX_CONFIG_B64": encoded_config,
                 "CASHPILOT_PROXY_IP": str(pinned_proxy["host"]),
                 "CASHPILOT_PROXY_PORT": str(int(pinned_proxy["port"])),
                 "ENABLE_DEPRECATED_LEGACY_DNS_SERVERS": "true",
+                "CASHPILOT_ROUTE_READY_MARKER": route_contract["route_ready_marker"],
+                "CASHPILOT_ROUTE_BLOCKED_MARKER": route_contract["route_blocked_marker"],
+                "CASHPILOT_RESTART_BUDGET": route_contract["restart_budget"],
+                "CASHPILOT_RESTART_BACKOFF_SECONDS": route_contract["restart_backoff_seconds"],
+                "CASHPILOT_TUN_IFACE": "cpegress" if provider == "repocket" else "cp-egress",
+                "CASHPILOT_EXPECTED_PROVIDER_MARKER": provider_marker,
             },
             entrypoint=[
                 "/bin/sh",
@@ -1156,7 +1194,7 @@ def deploy_raw(
                 "add rule inet cashpilot output ip daddr 172.31.255.2 udp dport 53 accept\n"
                 "add rule inet cashpilot output ip daddr 172.31.255.2 tcp dport 53 accept\n"
                 "add rule inet cashpilot output ct state established,related accept\n"
-                'add rule inet cashpilot output oifname "cp-egress" accept\n'
+                'add rule inet cashpilot output oifname "$CASHPILOT_TUN_IFACE" accept\n'
                 "add rule inet cashpilot output ip daddr $CASHPILOT_PROXY_IP tcp dport $CASHPILOT_PROXY_PORT accept\n"
                 # Some provider SDKs ignore resolv.conf and send DNS directly
                 # to a hard-coded resolver. Redirect those packets to the
@@ -1171,14 +1209,49 @@ def deploy_raw(
                 "add rule ip cashpilot_dns output ip daddr != 172.31.255.2 tcp dport 53 dnat to 172.31.255.2:53\n"
                 "EOF\n"
                 "touch /etc/sing-box/.cashpilot-initialized; "
+                "rm -f /etc/sing-box/.cashpilot-route-ready /etc/sing-box/.cashpilot-route-blocked; "
+                # Share only the PID namespace with the provider. Native
+                # shell-less images cannot execute a wrapper, so the sidecar
+                # terminates only processes bearing this deployment marker.
+                "terminate_provider() { "
+                "for entry in /proc/[0-9]*/environ; do "
+                '[ -r "$entry" ] || continue; '
+                "if tr '\\0' '\\n' <\"$entry\" 2>/dev/null | "
+                'grep -Fxq "CASHPILOT_PROVIDER_MARKER=$CASHPILOT_EXPECTED_PROVIDER_MARKER"; then '
+                "pid=${entry#/proc/}; pid=${pid%/environ}; "
+                '[ "$pid" = 1 ] || kill -TERM "$pid" 2>/dev/null || true; '
+                "fi; done; sleep 2; "
+                "for entry in /proc/[0-9]*/environ; do "
+                '[ -r "$entry" ] || continue; '
+                "if tr '\\0' '\\n' <\"$entry\" 2>/dev/null | "
+                'grep -Fxq "CASHPILOT_PROVIDER_MARKER=$CASHPILOT_EXPECTED_PROVIDER_MARKER"; then '
+                "pid=${entry#/proc/}; pid=${pid%/environ}; "
+                '[ "$pid" = 1 ] || kill -KILL "$pid" 2>/dev/null || true; '
+                "fi; done; }; "
+                "trap 'rm -f /etc/sing-box/.cashpilot-route-ready; terminate_provider' EXIT; "
+                "trap 'exit 75' TERM INT; "
                 # Keep the namespace alive while restarting only sing-box.
                 # Reassert DNS after every child restart; Docker can rewrite
                 # resolv.conf when the TUN process exits.
-                "set +e; while true; do "
+                "set +e; restart_count=0; while true; do "
                 "printf '%s\\n' 'nameserver 172.31.255.2' > /etc/resolv.conf; "
                 "sing-box run -c /etc/sing-box/config.json & SINGBOX_PID=$!; "
+                'while kill -0 "$SINGBOX_PID" 2>/dev/null; do '
+                "  if test -d /sys/class/net/$CASHPILOT_TUN_IFACE && "
+                "     nft list chain inet cashpilot output >/dev/null 2>&1 && "
+                "     nft list chain ip cashpilot_dns output >/dev/null 2>&1 && "
+                "     grep -q '^nameserver 172.31.255.2$' /etc/resolv.conf; then "
+                "    touch /etc/sing-box/.cashpilot-route-ready; "
+                "  else rm -f /etc/sing-box/.cashpilot-route-ready; terminate_provider; fi; "
+                "  sleep 5; "
+                "done; "
                 'wait "$SINGBOX_PID"; STATUS=$?; '
-                '[ "$STATUS" -eq 0 ] && exit 0; sleep 1; done',
+                "rm -f /etc/sing-box/.cashpilot-route-ready; terminate_provider; "
+                '[ "$STATUS" -eq 0 ] && exit 0; '
+                "restart_count=$((restart_count + 1)); "
+                'printf "%s reason=sidecar-exit count=%s\\n" "$(date -u +%FT%TZ)" "$restart_count" >> /etc/sing-box/restart-evidence.log; '
+                'if [ "$restart_count" -ge "${CASHPILOT_RESTART_BUDGET:-3}" ]; then touch /etc/sing-box/.cashpilot-route-blocked; exit 75; fi; '
+                'sleep "${CASHPILOT_RESTART_BACKOFF_SECONDS:-5}"; done',
             ],
             volumes={_sidecar_config_volume(slug): {"bind": "/etc/sing-box", "mode": "rw"}},
             cap_add=["NET_ADMIN"],
@@ -1199,6 +1272,12 @@ def deploy_raw(
                 "cashpilot.proxy_contract": provider_runtime.proxy_contract(
                     str((labels or {}).get("cashpilot.provider") or provider).strip().lower()
                 ),
+                "cashpilot.route.required": "true",
+                "cashpilot.route.ready_marker": route_contract["route_ready_marker"],
+                "cashpilot.route.blocked_marker": route_contract["route_blocked_marker"],
+                "cashpilot.route.restart_budget": route_contract["restart_budget"],
+                "cashpilot.route.restart_backoff_seconds": route_contract["restart_backoff_seconds"],
+                "cashpilot.route.health_contract": "fail-closed-v1",
                 "cashpilot.earnapp.logical_node_id": str(
                     (labels or {}).get("cashpilot.earnapp.logical_node_id") or slug
                 ),
@@ -1206,6 +1285,16 @@ def deploy_raw(
             },
             detach=True,
             restart_policy={"Name": "always"},
+            healthcheck={
+                "test": [
+                    "CMD-SHELL",
+                    "test -e /etc/sing-box/.cashpilot-route-ready && test ! -e /etc/sing-box/.cashpilot-route-blocked",
+                ],
+                "interval": 5_000_000_000,
+                "timeout": 3_000_000_000,
+                "retries": 3,
+                "start_period": 30_000_000_000,
+            },
         )
         network_mode = f"container:{sidecar_name}"
 
@@ -1253,6 +1342,7 @@ def deploy_raw(
         ports=ports if ports and not network_mode else None,
         volumes=volumes if volumes else None,
         network_mode=network_mode,
+        pid_mode=f"container:{sidecar_name}" if provider_marker else None,
         entrypoint=provider_entrypoint,
         network=network if not network_mode else None,
         # These images are third-party and closed-source, so they get the minimum
