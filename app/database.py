@@ -8767,11 +8767,13 @@ async def reconcile_provider_instances(
     *,
     reported_instance_ids: Sequence[str],
     inventory_confirmed: bool,
+    confirmed_running_instance_ids: Sequence[str] = (),
 ) -> dict[str, list[str]]:
     """Retire non-EarnApp runtimes only after two confirmed inventory misses."""
     if int(worker_id or 0) <= 0 or not inventory_confirmed:
         return {"marked_missing": [], "removed": []}
     reported = {str(value or "").strip() for value in reported_instance_ids if str(value or "").strip()}
+    running = {str(value or "").strip() for value in confirmed_running_instance_ids if str(value or "").strip()}
     async with _earnapp_lock():
         db = await _open_transaction_connection()
         try:
@@ -8787,10 +8789,12 @@ async def reconcile_provider_instances(
             for row in rows:
                 instance_id = str(row["instance_id"] or "")
                 if not instance_id or instance_id in reported:
-                    if str(row["status"] or "") == "missing_once":
+                    if str(row["status"] or "") == "missing_once" or (
+                        str(row["status"] or "") == "verification_pending" and instance_id in running
+                    ):
                         await db.execute(
-                            "UPDATE provider_instances SET status='verification_pending', updated_at=datetime('now') WHERE instance_id=?",
-                            (instance_id,),
+                            "UPDATE provider_instances SET status=?, updated_at=datetime('now') WHERE instance_id=?",
+                            ("running" if instance_id in running else "verification_pending", instance_id),
                         )
                     continue
                 if str(row["status"] or "") == "missing_once":
