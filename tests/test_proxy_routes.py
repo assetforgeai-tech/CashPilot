@@ -383,6 +383,22 @@ def test_proxy_pool_export_and_recheck_are_owner_only_and_wired(client):
     mark.assert_awaited_once_with(proxy_ids=[1, 2, 3], concurrency=4, rotate_dead=False)
 
 
+def test_proxy_pool_recheck_rejects_manual_rotation_request(client):
+    with (
+        patch("app.main.auth.get_current_user", return_value=_owner_user()),
+        patch("app.routers.proxies.database.get_config", new_callable=AsyncMock, return_value={}),
+        patch("app.routers.proxies.run_proxy_pool_recheck", new_callable=AsyncMock) as recheck,
+    ):
+        response = client.post(
+            "/api/proxy-pool/recheck",
+            json={"proxy_ids": [1], "rotate_dead": True},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Manual proxy recheck is read-only; automatic scheduler owns rotation"
+    recheck.assert_not_awaited()
+
+
 @pytest.mark.asyncio
 async def test_proxy_probe_requires_a_real_tunnel_not_just_handshake():
     calls = []
@@ -1961,7 +1977,7 @@ async def test_proxy_rotation_refuses_worker_ack_with_unexpected_exit_ip():
 
 
 @pytest.mark.asyncio
-async def test_proxy_pool_recheck_rotates_only_after_worker_ack():
+async def test_proxy_pool_recheck_does_not_rotate_after_one_dead_probe():
     rows = [
         {"id": 1, "host": "1.1.1.1", "port": 1080, "assigned_worker_id": 7},
         {"id": 2, "host": "2.2.2.2", "port": 1080, "assigned_worker_id": None},
@@ -1990,6 +2006,16 @@ async def test_proxy_pool_recheck_rotates_only_after_worker_ack():
             new_callable=AsyncMock,
             return_value={"proxy_id": 2, "host": "2.2.2.2", "port": 1080, "protocol": "socks5"},
         ) as available,
+        patch(
+            "app.routers.proxies.proxy_pool_state.record_proxy_probe_transition",
+            new_callable=AsyncMock,
+            return_value={"state": "suspect", "probe_generation": 1},
+        ) as transition,
+        patch(
+            "app.routers.proxies.proxy_pool_state.enqueue_proxy_rotation_requests",
+            new_callable=AsyncMock,
+            return_value=0,
+        ) as enqueue,
         patch("app.routers.proxies._probe_proxy_confirmed", new_callable=AsyncMock, side_effect=probe),
         patch(
             "app.routers.proxies._rotate_worker_proxy_after_ack", new_callable=AsyncMock, return_value=True
@@ -1997,13 +2023,14 @@ async def test_proxy_pool_recheck_rotates_only_after_worker_ack():
         patch("app.routers.proxies.database.set_worker_proxy_assignment", new_callable=AsyncMock) as unsafe_commit,
         patch("app.routers.proxies._apply_proxy_to_worker", new_callable=AsyncMock) as legacy_apply,
     ):
-        result = await proxy_routes.run_proxy_pool_recheck(concurrency=1)
+        result = await proxy_routes.run_proxy_pool_recheck(concurrency=1, rotate_dead=True)
 
-    assert result["rotated"] == 1
-    rotate.assert_awaited_once()
-    assert int(rotate.await_args.args[0]) == 7
-    assert int(rotate.await_args.args[1]["proxy_id"]) == 2
-    available.assert_awaited_once_with(7)
+    assert result["rotated"] == 0
+    rotate.assert_not_awaited()
+    transition.assert_awaited_once()
+    assert transition.await_args.args[1]["status"] == "dead"
+    enqueue.assert_not_awaited()
+    available.assert_not_awaited()
     unsafe_commit.assert_not_awaited()
     legacy_apply.assert_not_awaited()
 
@@ -2844,6 +2871,56 @@ def test_proxy_pool_page_reads_only_the_requested_rows_from_sqlite(tmp_path):
             full_inventory.assert_not_awaited()
             assert result["total"] == 5
             assert len(result["items"]) == 2
+
+    asyncio.run(run())
+
+
+def test_proxy_pool_due_page_excludes_future_idle_rows_and_keeps_due_rows(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "proxy.db"):
+            await database.init_db()
+            provider_id = await database.upsert_proxy_provider("manual", "manual")
+            proxy_ids = await database.upsert_proxy_endpoints_returning_ids(
+                provider_id,
+                [
+                    {
+                        "provider_proxy_id": "due",
+                        "endpoint": "10.0.0.1:1000",
+                        "host": "10.0.0.1",
+                        "port": 1000,
+                        "status": "alive",
+                        "exit_ip": "8.8.8.1",
+                    },
+                    {
+                        "provider_proxy_id": "future",
+                        "endpoint": "10.0.0.2:1000",
+                        "host": "10.0.0.2",
+                        "port": 1000,
+                        "status": "alive",
+                        "exit_ip": "8.8.8.2",
+                    },
+                ],
+            )
+            db = await database._get_db()
+            await db.executemany(
+                "INSERT INTO proxy_probe_state(proxy_id, state, next_probe_at, updated_at) VALUES (?, ?, ?, datetime('now'))",
+                [
+                    (proxy_ids[0], "alive", "2026-09-22 00:00:00"),
+                    (proxy_ids[1], "alive", "2026-09-24 00:00:00"),
+                ],
+            )
+            await db.commit()
+
+            result = await database.list_proxy_pool_page(
+                page=1,
+                page_size=500,
+                due_before="2026-09-23 00:00:00",
+                due_only=True,
+                leased_first=True,
+            )
+
+            assert result["total"] == 1
+            assert [item["provider_proxy_id"] for item in result["items"]] == ["due"]
 
     asyncio.run(run())
 

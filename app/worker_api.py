@@ -727,12 +727,12 @@ def _hydrate_nkn_lxd_states(assignments: list[dict[str, Any]], inventory: dict[s
         item = by_slot.get(slot_id)
         if not item or not _same_nkn_identity(assignment, item):
             continue
-        # Inventory hydration is recovery-only. Never turn a locally suspended
-        # assignment back into running before the server sends a fresh ACK.
+        # Inventory hydration is recovery-only. An existing matching journal
+        # already carries the ACK deadline and any local suspension guard.
         existing_path = _nkn_state_path(slot_id)
         with contextlib.suppress(OSError, json.JSONDecodeError):
             existing_state = json.loads(existing_path.read_text(encoding="utf-8"))
-            if isinstance(existing_state, dict) and existing_state.get("lease_guard_suspended") is True:
+            if isinstance(existing_state, dict) and _same_nkn_identity(existing_state, assignment):
                 continue
         state = {
             "slot_id": slot_id,

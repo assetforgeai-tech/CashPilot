@@ -8,6 +8,92 @@ from __future__ import annotations
 
 import shlex
 
+ROUTE_READY_MARKER = "/run/cashpilot/route-ready"
+ROUTE_BLOCKED_MARKER = "/run/cashpilot/route-blocked"
+RESTART_EVIDENCE_FILE = "/run/cashpilot/restart-evidence.log"
+
+
+def _watchdog_shell_contract(*, initialize: bool = True) -> str:
+    """Return local fail-closed watchdog helpers shared by proxy wrappers."""
+    initialize_lines = (
+        'mkdir -p "$(dirname "$ROUTE_READY_MARKER")" "$(dirname "$RESTART_EVIDENCE_FILE")"\n'
+        'rm -f "$ROUTE_READY_MARKER" "$ROUTE_BLOCKED_MARKER"\n'
+        if initialize
+        else 'mkdir -p "$(dirname "$RESTART_EVIDENCE_FILE")"\n'
+    )
+    return rf"""ROUTE_READY_MARKER="${{ROUTE_READY_MARKER:-{ROUTE_READY_MARKER}}}"
+ROUTE_BLOCKED_MARKER="${{ROUTE_BLOCKED_MARKER:-{ROUTE_BLOCKED_MARKER}}}"
+RESTART_EVIDENCE_FILE="${{RESTART_EVIDENCE_FILE:-{RESTART_EVIDENCE_FILE}}}"
+RESTART_STATE_FILE="${{RESTART_STATE_FILE:-/run/cashpilot/restart-count}}"
+STARTUP_GRACE_SECONDS="${{STARTUP_GRACE_SECONDS:-30}}"
+RESTART_BUDGET="${{RESTART_BUDGET:-3}}"
+ROUTE_TTL_SECONDS="${{ROUTE_TTL_SECONDS:-15}}"
+{initialize_lines}
+
+record_restart_evidence() {{
+  local reason="${{1:-startup}}" count=0
+  if [[ -s "$RESTART_STATE_FILE" ]]; then read -r count <"$RESTART_STATE_FILE" || count=0; fi
+  count=$((count + 1))
+  printf '%s\n' "$count" >"$RESTART_STATE_FILE"
+  printf '%s reason=%s count=%s budget=%s\n' "$(date -u +%FT%TZ)" "$reason" "$count" "$RESTART_BUDGET" >>"$RESTART_EVIDENCE_FILE"
+  (( count <= RESTART_BUDGET ))
+}}
+
+route_blocked() {{
+  local reason="${{1:-untrusted-route}}"
+  if [[ "${{ROUTE_MARKER_OWNER:-true}}" == true ]]; then
+    rm -f "$ROUTE_READY_MARKER"
+    printf '%s reason=%s\n' "$(date -u +%FT%TZ)" "$reason" >"$ROUTE_BLOCKED_MARKER"
+  fi
+  record_restart_evidence "$reason" || true
+}}
+
+route_is_ready() {{
+  [[ -e "$ROUTE_READY_MARKER" && ! -e "$ROUTE_BLOCKED_MARKER" ]] || return 1
+  local modified now
+  modified=$(stat -c %Y "$ROUTE_READY_MARKER") || return 1
+  now=$(date +%s)
+  (( now - modified <= ROUTE_TTL_SECONDS ))
+}}
+
+route_ready() {{
+  rm -f "$ROUTE_BLOCKED_MARKER"
+  touch "$ROUTE_READY_MARKER"
+}}
+"""
+
+
+def render_sidecar_guard_entrypoint(command: list[str]) -> bytes:
+    """Render a provider guard for a separately managed route sidecar."""
+    if not command:
+        raise ValueError("provider command")
+    provider_command = shlex.join(command)
+    return rf"""#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+{_watchdog_shell_contract(initialize=False)}
+ROUTE_MARKER_OWNER=false
+PROVIDER_PID=""
+for _ in $(seq 1 "$STARTUP_GRACE_SECONDS"); do
+  route_is_ready && break
+  sleep 1
+done
+route_is_ready || {{ route_blocked startup-grace-expired; exit 70; }}
+record_restart_evidence provider-start || {{ route_blocked restart-budget-exhausted; exit 75; }}
+{provider_command} &
+PROVIDER_PID=$!
+while kill -0 "$PROVIDER_PID" 2>/dev/null; do
+  if ! route_is_ready; then
+    route_blocked route-untrusted
+    kill -TERM "$PROVIDER_PID" 2>/dev/null || true
+    wait "$PROVIDER_PID" || true
+    exit 75
+  fi
+  sleep 5
+done
+wait "$PROVIDER_PID"
+""".encode()
+
 
 def rotation_steps() -> tuple[str, ...]:
     """Return the ordered route rebuild contract used by provider adapters."""
@@ -42,6 +128,7 @@ iptables -X CP_PROXY_OUT 2>/dev/null || true
 ip6tables -D OUTPUT -j CP_PROXY6_OUT 2>/dev/null || true
 ip6tables -F CP_PROXY6_OUT 2>/dev/null || true
 ip6tables -X CP_PROXY6_OUT 2>/dev/null || true
+rm -f "${ROUTE_READY_MARKER:-/run/cashpilot/route-ready}" "${ROUTE_BLOCKED_MARKER:-/run/cashpilot/route-blocked}"
 """
 
 
@@ -53,6 +140,8 @@ def render_entrypoint(command: list[str]) -> bytes:
     script = rf"""#!/usr/bin/env bash
 set -euo pipefail
 umask 077
+
+{_watchdog_shell_contract()}
 
 REDSOCKS_PORT="${{REDSOCKS_PORT:-12345}}"
 DNS_PORT="${{DNS_PORT:-1053}}"
@@ -176,12 +265,25 @@ install_firewall() {{
 
 watchdog() {{
   local provider_pid="$1" redsocks_pid="$2" dns_pid="$3"
+  local grace=0
   while kill -0 "$provider_pid" 2>/dev/null; do
-    kill -0 "$redsocks_pid" 2>/dev/null || {{ kill -TERM "$provider_pid"; return 1; }}
-    kill -0 "$dns_pid" 2>/dev/null || {{ kill -TERM "$provider_pid"; return 1; }}
-    if ! iptables -C OUTPUT -j CP_PROXY_OUT 2>/dev/null; then
-      install_firewall || {{ kill -TERM "$provider_pid"; return 1; }}
+    if (( grace < STARTUP_GRACE_SECONDS )); then
+      grace=$((grace + 1))
+      sleep 1
+      continue
     fi
+    [[ -e "$ROUTE_READY_MARKER" ]] || {{ route_blocked route-marker-missing; kill -TERM "$provider_pid"; return 1; }}
+    kill -0 "$redsocks_pid" 2>/dev/null || {{ route_blocked redsocks-dead; kill -TERM "$provider_pid"; return 1; }}
+    kill -0 "$dns_pid" 2>/dev/null || {{ route_blocked dns-dead; kill -TERM "$provider_pid"; return 1; }}
+    if ! iptables -C OUTPUT -j CP_PROXY_OUT 2>/dev/null; then
+      # install_firewall || route_blocked is intentionally not used here:
+      # re-installing a missing chain could briefly permit an untrusted route.
+      route_blocked firewall-chain-missing
+      kill -TERM "$provider_pid"
+      return 1
+    fi
+    ip6tables -C OUTPUT -j CP_PROXY6_OUT 2>/dev/null || {{ route_blocked ipv6-chain-missing; kill -TERM "$provider_pid"; return 1; }}
+    touch "$ROUTE_READY_MARKER"
     sleep 5
   done
 }}
@@ -198,6 +300,8 @@ wait_tcp "127.0.0.1" "$REDSOCKS_PORT"
 start_process "dns"
 wait_udp_dns "127.0.0.1" "$DNS_PORT"
 verify_egress "$EXPECTED_EGRESS_IP"
+route_ready
+record_restart_evidence provider-start || {{ route_blocked restart-budget-exhausted; exit 75; }}
 {provider_command} &
 PROVIDER_PID=$!
 watchdog "$PROVIDER_PID" "$REDSOCKS_PID" "$DNS_PID"

@@ -322,12 +322,14 @@ jobs:
           worker="ghcr.io/${owner}/cashpilot-worker:${image_version}"
           ui_digest="$(python3 scripts/resolve_release_digest.py "$ui" --attempts 6 --delay-seconds 10)"
           worker_digest="$(python3 scripts/resolve_release_digest.py "$worker" --attempts 6 --delay-seconds 10)"
+          sidecar_digest="$(python3 scripts/resolve_release_digest.py 'ghcr.io/sagernet/sing-box:v1.12.0' --attempts 6 --delay-seconds 10)"
           mapfile -t release_tags < <(git for-each-ref --format='%(refname:strip=2)' 'refs/fork-tags/v*.*.*')
           python3 scripts/create_release_runtime_manifest.py \
             --release "$VERSION" \
             --owner "$owner" \
             --ui-digest "$ui_digest" \
             --worker-digest "$worker_digest" \
+            --sidecar-digest "$sidecar_digest" \
             --tags "${release_tags[@]}" > runtime-manifest.json
           # The helper validates digests and emits the rollback_release field.
           gh release upload "$VERSION" runtime-manifest.json --clobber
@@ -404,7 +406,9 @@ jobs:
           worker="ghcr.io/${owner}/cashpilot-worker:${image_version}"
           ui_digest="$(python3 scripts/resolve_release_digest.py "$ui" --attempts 6 --delay-seconds 10)"
           worker_digest="$(python3 scripts/resolve_release_digest.py "$worker" --attempts 6 --delay-seconds 10)"
+          sidecar_digest="$(python3 scripts/resolve_release_digest.py 'ghcr.io/sagernet/sing-box:v1.12.0' --attempts 6 --delay-seconds 10)"
           mapfile -t release_tags < <(git for-each-ref --format='%(refname:strip=2)' 'refs/fork-tags/v*.*.*')
           python3 scripts/create_release_runtime_manifest.py --release "$VERSION" --owner "$owner" \
-            --ui-digest "$ui_digest" --worker-digest "$worker_digest" --tags "${release_tags[@]}" > runtime-manifest.json
+            --ui-digest "$ui_digest" --worker-digest "$worker_digest" --sidecar-digest "$sidecar_digest" \
+            --tags "${release_tags[@]}" > runtime-manifest.json
           gh release upload "$VERSION" runtime-manifest.json --clobber

@@ -39,6 +39,80 @@ def _body():
     )
 
 
+def test_generic_reconciliation_maps_authenticated_nkn_lxd_slots_to_server_ids():
+    body = _body()
+    assert main._reported_provider_instance_ids(body, worker_id=11, nkn_slots={"ipv4-001", "ipv4-002"}) == {
+        "nkn-direct-w11-ipv4-001",
+        "nkn-direct-w11-ipv4-002",
+    }
+
+
+def test_nkn_heartbeat_reconciles_only_cas_confirmed_lxd_slots(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "nkn.db"):
+            await database.init_db()
+            worker_id = await database.upsert_worker("worker-a", "worker-a", "http://worker")
+            for slot_id in ("ipv4-001", "ipv4-002"):
+                await database.save_provider_instance(
+                    "nkn",
+                    main._nkn_record_instance_id(worker_id, slot_id),
+                    worker_id=worker_id,
+                    mode="direct",
+                    status="verification_pending" if slot_id == "ipv4-001" else "missing_once",
+                )
+            body = _body()
+            body.containers_inventory_confirmed = True
+            body.provider_states["nkn"]["instances"][0].update(
+                instance_id="cashpilot-nkn-ipv4-001",
+                runtime_backend="lxd",
+                evidence={"running": True, "online": False, "sync_state": "SYNC_STARTED"},
+            )
+            body.provider_states["nkn"]["instances"].append(
+                {
+                    **body.provider_states["nkn"]["instances"][0],
+                    "slot_id": "ipv4-002",
+                    "lease_client_id": "worker-a:nkn:ipv4-002",
+                    "wallet_id": 8,
+                    "instance_id": "cashpilot-nkn-ipv4-002",
+                }
+            )
+            body.provider_states["nkn"]["instances"].append(
+                {
+                    **body.provider_states["nkn"]["instances"][0],
+                    "slot_id": "invalid-slot",
+                    "lease_client_id": "worker-a:nkn:invalid-slot",
+                    "wallet_id": 9,
+                }
+            )
+
+            async def cas(wallet_id, *_args, **_kwargs):
+                return wallet_id in (7, 9)
+
+            def discard(coro):
+                coro.close()
+
+            with (
+                patch.object(main, "_authenticate_worker_heartbeat", AsyncMock(return_value="ok")),
+                patch.object(database, "sync_nkn_wallet_runtime", side_effect=cas),
+                patch.object(database, "list_nkn_wallets", AsyncMock(return_value=[])),
+                patch.object(database, "confirm_worker_key", AsyncMock()),
+                patch.object(main, "_earnings_for_worker", AsyncMock(return_value=None)),
+                patch.object(main, "_spawn", side_effect=discard),
+                patch.object(main.metrics, "record_heartbeat"),
+            ):
+                await main.api_worker_heartbeat(
+                    type("Request", (), {"headers": {"authorization": "Bearer key"}})(), body
+                )
+            assert (await database.get_provider_instance(main._nkn_record_instance_id(worker_id, "ipv4-001")))[
+                "status"
+            ] == "running"
+            assert (await database.get_provider_instance(main._nkn_record_instance_id(worker_id, "ipv4-002")))[
+                "status"
+            ] == "missing_once"
+
+    asyncio.run(run())
+
+
 def test_nkn_heartbeat_syncs_each_instance_with_cas_and_rejects_secrets():
     async def run():
         def discard(coro):
@@ -485,6 +559,46 @@ def test_hydrate_nkn_lxd_state_does_not_overwrite_existing_suspend_guard(tmp_pat
     saved = json.loads(Path(tmp_path, "nkn-wallets", "ipv4-001.json").read_text(encoding="utf-8"))
     assert saved["lease_guard_suspended"] is True
     assert saved["last_server_ack_at"] == 100.0
+
+
+def test_hydrate_nkn_lxd_state_does_not_overwrite_existing_ack_state(tmp_path, monkeypatch):
+    monkeypatch.setenv("CASHPILOT_DATA_DIR", str(tmp_path))
+    assignment = {
+        "slot_id": "ipv4-001",
+        "wallet_id": 7,
+        "wallet_assignment_version": 3,
+        "lease_client_id": "worker-a:nkn:ipv4-001",
+    }
+    worker_api._save_nkn_wallet_state(
+        "ipv4-001",
+        {
+            **assignment,
+            "lease_guard_suspended": False,
+            "runtime_status": "running",
+            "last_server_ack_at": 1_234.0,
+        },
+    )
+
+    assert (
+        worker_api._hydrate_nkn_lxd_states(
+            [assignment],
+            {
+                "instances": [
+                    {
+                        **assignment,
+                        "instance_id": "cashpilot-nkn-ipv4-001",
+                        "runtime_backend": "lxd",
+                        "runtime_status": "running",
+                    }
+                ]
+            },
+        )
+        == []
+    )
+    saved = json.loads(Path(tmp_path, "nkn-wallets", "ipv4-001.json").read_text(encoding="utf-8"))
+    assert saved["runtime_status"] == "running"
+    assert saved["lease_guard_suspended"] is False
+    assert saved["last_server_ack_at"] == 1_234.0
 
 
 def test_recover_nkn_lxd_state_reads_only_exact_server_assignments(tmp_path, monkeypatch):

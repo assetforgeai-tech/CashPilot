@@ -137,7 +137,7 @@ def test_proxy_instance_runs_provider_inside_singbox_sidecar_namespace():
     assert container_id == "provider-id"
     sidecar_call, provider_call = client.containers.run.call_args_list
     assert sidecar_call.kwargs["name"] == "cashpilot-earnfm-proxy-egress"
-    assert sidecar_call.kwargs["image"] == "ghcr.io/sagernet/sing-box:latest"
+    assert sidecar_call.kwargs["image"] == orchestrator.SING_BOX_IMAGE_PIN
     assert sidecar_call.kwargs["environment"]["ENABLE_DEPRECATED_LEGACY_DNS_SERVERS"] == "true"
     assert sidecar_call.kwargs["cap_add"] == ["NET_ADMIN"]
     assert "/dev/net/tun:/dev/net/tun" in sidecar_call.kwargs["devices"]
@@ -162,6 +162,32 @@ def test_proxy_instance_runs_provider_inside_singbox_sidecar_namespace():
     assert provider_call.kwargs["labels"]["cashpilot.provider"] == "earnfm"
     assert provider_call.kwargs["labels"]["cashpilot.proxy_contract"] == "earnapp-style-v1"
     assert provider_call.kwargs["labels"]["cashpilot.instance_mode"] == "proxy"
+
+
+def test_shellless_proxy_provider_shares_pid_namespace_and_has_marker_guard():
+    client = MagicMock()
+    client.containers.get.side_effect = [orchestrator.NotFound("provider"), orchestrator.NotFound("sidecar")]
+    client.containers.run.side_effect = [MagicMock(id="sidecar-id"), MagicMock(id="provider-id")]
+    client.images.get.return_value.attrs = {"Config": {"Entrypoint": ["/usr/local/bin/repocket"], "Cmd": None}}
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        orchestrator.deploy_raw(
+            slug="repocket-proxy",
+            provider_slug="repocket",
+            image="repocket/repocket:latest",
+            labels={"cashpilot.provider": "repocket", "cashpilot.instance_mode": "proxy"},
+            proxy={"host": "1.2.3.4", "port": 1080, "protocol": "socks5"},
+        )
+
+    sidecar_call, provider_call = client.containers.run.call_args_list
+    marker = provider_call.kwargs["environment"]["CASHPILOT_PROVIDER_MARKER"]
+    assert marker
+    assert sidecar_call.kwargs["environment"]["CASHPILOT_EXPECTED_PROVIDER_MARKER"] == marker
+    assert provider_call.kwargs["pid_mode"] == "container:cashpilot-repocket-proxy-egress"
+    entrypoint = sidecar_call.kwargs["entrypoint"][2]
+    assert "terminate_provider()" in entrypoint
+    assert "CASHPILOT_EXPECTED_PROVIDER_MARKER" in entrypoint
+    assert "kill -TERM" in entrypoint and "kill -KILL" in entrypoint
 
 
 def test_proxy_wrapper_preserves_explicit_command_override():
@@ -232,6 +258,56 @@ def test_shellless_repocket_image_keeps_native_entrypoint_when_catalog_command_e
     provider_call = client.containers.run.call_args_list[-1]
     assert provider_call.kwargs["entrypoint"] == ["/usr/local/bin/repocket"]
     assert provider_call.kwargs["command"] is None
+
+
+def test_shellless_proxy_provider_shares_sidecar_pid_namespace_and_marker():
+    client = MagicMock()
+    client.containers.get.side_effect = [orchestrator.NotFound("provider"), orchestrator.NotFound("sidecar")]
+    client.images.get.return_value.attrs = {"Config": {"Entrypoint": ["/usr/local/bin/repocket"], "Cmd": None}}
+    client.containers.run.side_effect = [MagicMock(id="sidecar-id"), MagicMock(id="provider-id")]
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        orchestrator.deploy_raw(
+            slug="repocket-proxy",
+            provider_slug="repocket",
+            image="repocket/repocket",
+            command="",
+            labels={"cashpilot.provider": "repocket", "cashpilot.instance_mode": "proxy"},
+            proxy={"host": "1.2.3.4", "port": 1080, "protocol": "socks5"},
+        )
+
+    sidecar_call, provider_call = client.containers.run.call_args_list
+    marker = provider_call.kwargs["environment"]["CASHPILOT_PROVIDER_MARKER"]
+    assert marker
+    assert provider_call.kwargs["pid_mode"] == "container:cashpilot-repocket-proxy-egress"
+    assert sidecar_call.kwargs["environment"]["CASHPILOT_EXPECTED_PROVIDER_MARKER"] == marker
+    assert "CASHPILOT_PROVIDER_MARKER" not in sidecar_call.kwargs["environment"]
+
+
+def test_sidecar_entrypoint_terminates_marked_provider_on_route_loss_and_budget_block():
+    client = MagicMock()
+    client.containers.get.side_effect = [orchestrator.NotFound("provider"), orchestrator.NotFound("sidecar")]
+    client.images.get.return_value.attrs = {"Config": {"Entrypoint": ["/usr/local/bin/repocket"], "Cmd": None}}
+    client.containers.run.side_effect = [MagicMock(id="sidecar-id"), MagicMock(id="provider-id")]
+
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        orchestrator.deploy_raw(
+            slug="repocket-proxy",
+            provider_slug="repocket",
+            image="repocket/repocket",
+            command="",
+            labels={"cashpilot.provider": "repocket", "cashpilot.instance_mode": "proxy"},
+            proxy={"host": "1.2.3.4", "port": 1080, "protocol": "socks5"},
+        )
+
+    entrypoint = client.containers.run.call_args_list[0].kwargs["entrypoint"][2]
+    assert "CASHPILOT_EXPECTED_PROVIDER_MARKER" in entrypoint
+    assert "CASHPILOT_PROVIDER_MARKER=" in entrypoint
+    assert "tr '\\0' '\\n'" in entrypoint
+    assert "kill -TERM" in entrypoint
+    assert "kill -KILL" in entrypoint
+    assert "terminate_provider" in entrypoint
+    assert "route_blocked" not in entrypoint
 
 
 def test_shellless_traffmonetizer_command_becomes_native_argv():

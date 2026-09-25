@@ -13,6 +13,7 @@ import re
 import secrets
 import time
 from collections import Counter
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any, Literal
 from urllib.parse import urlparse
@@ -21,7 +22,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
-from app import database, deps, egress, provider_runtime, proxy_egress
+from app import database, deps, egress, provider_runtime, proxy_egress, proxy_pool_scheduler, proxy_pool_state
 from app.proxy_intelligence import lookup_ip_intelligence
 from app.proxy_probe_profiles.earnapp import probe_earnapp_proxy
 from app.proxy_probe_profiles.earnfm import probe_earnfm_proxy
@@ -33,6 +34,7 @@ _proxy_rotation_locks: dict[tuple[int, int], asyncio.Lock] = {}
 _proxy_recheck_jobs: dict[str, dict[str, Any]] = {}
 _proxy_recheck_tasks: set[asyncio.Task] = set()
 _MAX_PROXY_RECHECK_JOBS = 100
+_last_scheduled_probe_generation = 0
 _SYNC_EARNAPP_IMPORT_LIMIT = 20
 _PROTOCOL_MODES = frozenset({"auto", "http", "socks5"})
 
@@ -79,7 +81,7 @@ class ProxyRecheckIn(BaseModel):
     proxy_ids: list[int] | None = None
     concurrency: int | None = None
     profile: str = "generic"
-    rotate_dead: bool = True
+    rotate_dead: bool = False
 
 
 class ProxyMetadataRefreshIn(BaseModel):
@@ -122,6 +124,13 @@ class ProviderProxyRotateIn(ProviderProxyLeaseIn):
 
 def _utc_timestamp() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _next_scheduled_probe_generation() -> int:
+    global _last_scheduled_probe_generation
+    candidate = time.time_ns()
+    _last_scheduled_probe_generation = max(candidate, _last_scheduled_probe_generation + 1)
+    return _last_scheduled_probe_generation
 
 
 def _prune_proxy_recheck_jobs() -> None:
@@ -979,10 +988,16 @@ async def run_proxy_pool_recheck(
     *,
     proxy_ids: list[int] | None = None,
     concurrency: int = 8,
-    rotate_dead: bool = True,
+    rotate_dead: bool = False,
     probe_retries: int = 3,
     protocol_mode: str = "auto",
 ) -> dict[str, Any]:
+    if proxy_pool_scheduler.automatic_recheck_enabled() and proxy_ids is None:
+        return await run_proxy_pool_recheck_scheduled(
+            concurrency=concurrency,
+            probe_retries=probe_retries,
+            protocol_mode=protocol_mode,
+        )
     protocol_mode = _normalize_protocol_mode(protocol_mode)
     wanted = {int(x) for x in (proxy_ids or []) if int(x) > 0}
     rows = await database.list_proxy_pool()
@@ -1026,7 +1041,29 @@ async def run_proxy_pool_recheck(
     update_kwargs = {"protocols": protocols, "exit_ips": exit_ips}
     if any(value is not None for value in udp_results.values()):
         update_kwargs["udp_results"] = udp_results
-    checked = await database.update_proxy_pool_check_results(results, **update_kwargs)
+    if rotate_dead:
+        # Durable probe state owns failed/dead transitions.  Persist only a
+        # confirmed success here so one failed manual probe cannot mark the
+        # endpoint dead before the three-cycle threshold is reached.
+        persisted_results = {
+            int(row["id"]): "alive"
+            for row, result in checks
+            if str(result.get("status") or "").strip().lower() in {"alive", "healthy", "success", "ok"}
+        }
+        persisted_update_kwargs: dict[str, Any] = {
+            "protocols": {proxy_id: protocols[proxy_id] for proxy_id in persisted_results},
+            "exit_ips": {proxy_id: exit_ips[proxy_id] for proxy_id in persisted_results},
+        }
+        persisted_udp_results = {proxy_id: udp_results[proxy_id] for proxy_id in persisted_results}
+        if any(value is not None for value in persisted_udp_results.values()):
+            persisted_update_kwargs["udp_results"] = persisted_udp_results
+        checked = await database.update_proxy_pool_check_results(persisted_results, **persisted_update_kwargs)
+        checked = len(checks)
+    else:
+        manual_update_kwargs: dict[str, Any] = {"protocols": protocols, "exit_ips": exit_ips}
+        if any(value is not None for value in udp_results.values()):
+            manual_update_kwargs["udp_results"] = udp_results
+        checked = await database.update_proxy_pool_check_results(results, **manual_update_kwargs)
     intelligence_jobs: list[tuple[int, str]] = []
     for row, result in checks:
         proxy_id = int(row["id"])
@@ -1056,22 +1093,47 @@ async def run_proxy_pool_recheck(
 
     rotated = 0
     rotate_errors = 0
-    for row, result in checks if rotate_dead else []:
-        if result.get("status") != "dead" or not row.get("assigned_worker_id"):
-            continue
-        worker_id = int(row["assigned_worker_id"])
-        replacement = await database.find_available_proxy_for_worker(worker_id)
-        if not replacement:
-            continue
-        try:
-            candidate = dict(replacement)
-            candidate["proxy_id"] = int(replacement.get("proxy_id") or replacement.get("id") or 0)
-            if not await _rotate_worker_proxy_after_ack(worker_id, candidate):
-                rotate_errors += 1
+    rotation_enqueued = 0
+    if rotate_dead:
+        for row, result in checks:
+            if str(result.get("status") or "").strip().lower() not in {
+                "dead",
+                "failed",
+                "unhealthy",
+                "error",
+                "timeout",
+            }:
                 continue
-            rotated += 1
-        except Exception:
-            rotate_errors += 1
+            proxy_id = int(row["id"])
+            transition = await proxy_pool_state.record_proxy_probe_transition(
+                proxy_id,
+                {
+                    "status": str(result.get("status") or "unknown"),
+                    "reason": str(result.get("reason") or ""),
+                    "profile": "generic",
+                    "verdict": str(result.get("status") or "unknown").upper(),
+                    "eligibility": "eligible" if result.get("status") == "alive" else "unknown",
+                    "exit_ip": str(result.get("exit_ip") or ""),
+                    "latency_ms": result.get("latency_ms"),
+                    "probe_version": "generic-v1",
+                },
+                generation=_next_scheduled_probe_generation(),
+            )
+            if str(transition.get("state") or "").lower() != "dead":
+                continue
+            rotation_enqueued += await proxy_pool_state.enqueue_proxy_rotation_requests(
+                proxy_id,
+                int(transition.get("probe_generation") or 0),
+            )
+        if rotation_enqueued:
+            rotation = await proxy_pool_scheduler.drain_rotation_queue(
+                claim_request=proxy_pool_state.claim_proxy_rotation_request,
+                apply_request=_apply_proxy_rotation_request,
+                complete_request=proxy_pool_state.complete_proxy_rotation_request,
+                max_items=rotation_enqueued,
+            )
+            rotated = int(rotation.get("applied") or 0)
+            rotate_errors = int(rotation.get("failed") or 0)
     return {
         "status": "ok",
         "checked": checked,
@@ -1084,12 +1146,193 @@ async def run_proxy_pool_recheck(
     }
 
 
-async def run_earnapp_proxy_recheck(*, proxy_ids: list[int] | None = None, concurrency: int = 8) -> dict[str, Any]:
-    wanted = {int(x) for x in (proxy_ids or []) if int(x) > 0}
-    rows = await database.list_proxy_pool()
-    selected = [row for row in rows if not wanted or int(row["id"]) in wanted]
-    targets = [row for row in selected if str(row.get("status") or "").strip().lower() != "dead"]
+async def _probe_proxy_pool_row(
+    row: dict[str, Any], *, probe_retries: int = 3, protocol_mode: str = "auto"
+) -> dict[str, Any]:
+    """Probe and persist one generic Proxy Pool transition.
+
+    Generic liveness is deliberately separate from provider-specific
+    qualification. The durable CP-015B transition is committed before the
+    scheduler can enqueue rotation work.
+    """
+
+    proxy_id = int(row.get("id") or 0)
+    proxy = await database.get_proxy_endpoint(proxy_id) or row
+    probe_kwargs: dict[str, Any] = {
+        "username": str(proxy.get("username") or "").strip(),
+        "password": str(proxy.get("password") or "").strip(),
+    }
+    if int(probe_retries or 3) != 3:
+        probe_kwargs["retries"] = min(3, max(1, int(probe_retries or 1)))
+    if protocol_mode != "auto":
+        probe_kwargs["protocol_mode"] = protocol_mode
+    result = await _probe_proxy_confirmed(
+        str(proxy.get("host") or "").strip(),
+        int(proxy.get("port") or 0),
+        **probe_kwargs,
+    )
+    status = str(result.get("status") or "unknown").strip().lower()
+    generation = _next_scheduled_probe_generation()
+    transition = await proxy_pool_state.record_proxy_probe_transition(
+        proxy_id,
+        {
+            "status": status,
+            "reason": str(result.get("reason") or ("probe_failed" if status == "dead" else "")),
+            "profile": "generic",
+            "verdict": status.upper(),
+            "eligibility": "eligible" if status == "alive" else "unknown",
+            "exit_ip": str(result.get("exit_ip") or ""),
+            "latency_ms": result.get("latency_ms"),
+            "probe_version": str(result.get("probe_version") or "cp015c"),
+        },
+        generation=generation,
+    )
+    if str(transition.get("state") or "").lower() == "alive":
+        await database.update_proxy_pool_check_results(
+            {proxy_id: "alive"},
+            protocols={proxy_id: str(result.get("protocol") or "")},
+            exit_ips={proxy_id: str(result.get("exit_ip") or "")},
+        )
+    return {
+        "proxy_id": proxy_id,
+        "state": str(transition.get("state") or status),
+        "probe_generation": int(transition.get("probe_generation") or generation),
+        "status": status,
+        "protocol": str(result.get("protocol") or ""),
+        "exit_ip": str(result.get("exit_ip") or ""),
+    }
+
+
+async def run_proxy_pool_recheck_scheduled(
+    *,
+    concurrency: int = 8,
+    probe_retries: int = 3,
+    protocol_mode: str = "auto",
+) -> dict[str, Any]:
+    """Run the automatic paged probe path and enqueue durable rotations only."""
+
+    protocol_mode = _normalize_protocol_mode(protocol_mode)
+
+    async def list_page(page: int, page_size: int) -> dict[str, Any]:
+        return await database.list_proxy_pool_page(
+            page=page,
+            page_size=page_size,
+            sort="assigned_worker_id",
+            direction="desc",
+            due_before=datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"),
+            due_only=True,
+            leased_first=True,
+        )
+
+    async def probe_one(row: dict[str, Any]) -> dict[str, Any]:
+        return await _probe_proxy_pool_row(
+            row,
+            probe_retries=probe_retries,
+            protocol_mode=protocol_mode,
+        )
+
+    async def persist_timeout(row: Mapping[str, Any], result: Mapping[str, Any]) -> Mapping[str, Any]:
+        if str(result.get("reason") or "") != "probe_timeout":
+            return result
+        proxy_id = int(row.get("id") or 0)
+        transition = await proxy_pool_state.record_proxy_probe_transition(
+            proxy_id,
+            {"status": "inconclusive", "reason": "control_plane_unavailable", "profile": "generic"},
+            generation=_next_scheduled_probe_generation(),
+        )
+        return {
+            "proxy_id": proxy_id,
+            "state": str(transition.get("state") or "unknown"),
+            "probe_generation": int(transition.get("probe_generation") or 0),
+            "status": "inconclusive",
+        }
+
+    async def process_rotation() -> dict[str, int]:
+        return await proxy_pool_scheduler.drain_rotation_queue(
+            claim_request=proxy_pool_state.claim_proxy_rotation_request,
+            apply_request=_apply_proxy_rotation_request,
+            complete_request=proxy_pool_state.complete_proxy_rotation_request,
+            max_items=1,
+        )
+
+    result = await proxy_pool_scheduler.run_incremental_probe_scan(
+        list_page=list_page,
+        probe_one=probe_one,
+        enqueue_rotation=proxy_pool_state.enqueue_proxy_rotation_requests,
+        on_probe_result=persist_timeout,
+        process_rotation=process_rotation,
+        concurrency=concurrency,
+        page_size=proxy_pool_scheduler.DEFAULT_PAGE_SIZE,
+        queue_capacity=proxy_pool_scheduler.DEFAULT_PROBE_QUEUE_CAPACITY,
+        rotation_queue_capacity=proxy_pool_scheduler.DEFAULT_ROTATION_QUEUE_CAPACITY,
+    )
+    rotation = await proxy_pool_scheduler.drain_rotation_queue(
+        claim_request=proxy_pool_state.claim_proxy_rotation_request,
+        apply_request=_apply_proxy_rotation_request,
+        complete_request=proxy_pool_state.complete_proxy_rotation_request,
+        max_items=proxy_pool_scheduler.DEFAULT_ROTATION_QUEUE_CAPACITY,
+    )
+    result["rotation"] = rotation
+    result["rotated"] = int(rotation.get("applied") or 0)
+    result["rotate_errors"] = int(rotation.get("failed") or 0)
+    return result
+
+
+async def _apply_proxy_rotation_request(request: Mapping[str, Any]) -> bool:
+    """Apply one durable rotation request through the existing ACK/CAS paths."""
+
+    worker_id = int(request.get("worker_id") or 0)
+    provider_slug = str(request.get("provider_slug") or "").strip()
+    instance_id = str(request.get("instance_id") or "").strip()
+    if worker_id <= 0:
+        return False
+    if provider_slug == "legacy":
+        candidate = await database.find_available_proxy_for_worker(worker_id)
+        return bool(candidate and await _rotate_worker_proxy_after_ack(worker_id, candidate))
+    if not provider_slug or not instance_id:
+        return False
+    candidate = await database.find_available_proxy_for_worker(worker_id, provider_slug=provider_slug)
+    return bool(
+        candidate and await _rotate_provider_instance_after_ack(worker_id, provider_slug, instance_id, candidate)
+    )
+
+
+async def _proxy_pool_probe_pages(
+    *, proxy_ids: list[int] | None, due_only: bool, page_size: int = proxy_pool_scheduler.DEFAULT_PAGE_SIZE
+) -> Any:
+    """Bound full-inventory profile checks to one page of endpoints at a time."""
+
+    wanted = {int(value) for value in (proxy_ids or []) if int(value) > 0}
+    if wanted or not due_only:
+        rows = await database.list_proxy_pool()
+        yield [row for row in rows if not wanted or int(row.get("id") or 0) in wanted]
+        return
+
+    page = 1
+    while True:
+        payload = await database.list_proxy_pool_page(
+            page=page,
+            page_size=page_size,
+            sort="assigned_worker_id",
+            direction="desc",
+            due_before=datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S") if due_only else None,
+            due_only=due_only,
+            leased_first=due_only,
+        )
+        items = list(payload.get("items") or [])
+        if items:
+            yield items
+        if page >= max(1, int(payload.get("pages") or 1)) or not items:
+            return
+        page += 1
+
+
+async def run_earnapp_proxy_recheck(
+    *, proxy_ids: list[int] | None = None, concurrency: int = 8, due_only: bool = False
+) -> dict[str, Any]:
     semaphore = asyncio.Semaphore(min(32, max(1, int(concurrency or 8))))
+    checked = eligible = blocked = quality_rejected = unknown = skipped_dead = 0
+    intelligence_jobs: list[tuple[int, str]] = []
 
     async def check(row: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         async with semaphore:
@@ -1103,24 +1346,30 @@ async def run_earnapp_proxy_recheck(*, proxy_ids: list[int] | None = None, concu
             )
             return int(row["id"]), result
 
-    checked_rows = await asyncio.gather(*(check(row) for row in targets))
-    intelligence_jobs = []
-    for proxy_id, result in checked_rows:
-        await database.save_proxy_probe_result(
-            proxy_id,
-            profile="earnapp_wss",
-            probe_status="alive" if result.get("verdict") in {"CID_SET", "BLACKLIST", "DECLINE"} else "unknown",
-            verdict=str(result.get("verdict") or "UNKNOWN"),
-            eligibility=str(result.get("eligibility") or "unknown"),
-            reason=str(result.get("reason") or ""),
-            exit_ip=str(result.get("exit_ip") or ""),
-            latency_ms=result.get("latency_ms"),
-            probe_version=str(result.get("probe_version") or ""),
-            evidence={"profile": "earnapp_wss"},
-        )
-        if result.get("exit_ip"):
-            value = str(result["exit_ip"]).strip()
-            intelligence_jobs.append((proxy_id, value))
+    async for selected in _proxy_pool_probe_pages(proxy_ids=proxy_ids, due_only=due_only):
+        targets = [row for row in selected if str(row.get("status") or "").strip().lower() != "dead"]
+        skipped_dead += len(selected) - len(targets)
+        checked_rows = await asyncio.gather(*(check(row) for row in targets))
+        checked += len(checked_rows)
+        eligible += sum(1 for _, result in checked_rows if result.get("eligibility") == "eligible")
+        blocked += sum(1 for _, result in checked_rows if result.get("eligibility") == "blocked")
+        quality_rejected += sum(1 for _, result in checked_rows if result.get("eligibility") == "quality_rejected")
+        unknown += sum(1 for _, result in checked_rows if result.get("eligibility") == "unknown")
+        for proxy_id, result in checked_rows:
+            await database.save_proxy_probe_result(
+                proxy_id,
+                profile="earnapp_wss",
+                probe_status="alive" if result.get("verdict") in {"CID_SET", "BLACKLIST", "DECLINE"} else "unknown",
+                verdict=str(result.get("verdict") or "UNKNOWN"),
+                eligibility=str(result.get("eligibility") or "unknown"),
+                reason=str(result.get("reason") or ""),
+                exit_ip=str(result.get("exit_ip") or ""),
+                latency_ms=result.get("latency_ms"),
+                probe_version=str(result.get("probe_version") or ""),
+                evidence={"profile": "earnapp_wss"},
+            )
+            if result.get("exit_ip"):
+                intelligence_jobs.append((proxy_id, str(result["exit_ip"]).strip()))
     intelligence = await _refresh_exit_ip_intelligence(
         intelligence_jobs,
         concurrency=concurrency,
@@ -1130,24 +1379,23 @@ async def run_earnapp_proxy_recheck(*, proxy_ids: list[int] | None = None, concu
     return {
         "status": "ok",
         "profile": "earnapp_wss",
-        "checked": len(checked_rows),
-        "eligible": sum(1 for _, result in checked_rows if result.get("eligibility") == "eligible"),
-        "blocked": sum(1 for _, result in checked_rows if result.get("eligibility") == "blocked"),
-        "quality_rejected": sum(1 for _, result in checked_rows if result.get("eligibility") == "quality_rejected"),
-        "unknown": sum(1 for _, result in checked_rows if result.get("eligibility") == "unknown"),
-        "skipped_dead": len(selected) - len(targets),
+        "checked": checked,
+        "eligible": eligible,
+        "blocked": blocked,
+        "quality_rejected": quality_rejected,
+        "unknown": unknown,
+        "skipped_dead": skipped_dead,
         "duplicates_marked": duplicate_count,
         "intelligence": intelligence,
     }
 
 
-async def run_earnfm_proxy_recheck(*, proxy_ids: list[int] | None = None, concurrency: int = 8) -> dict[str, Any]:
+async def run_earnfm_proxy_recheck(
+    *, proxy_ids: list[int] | None = None, concurrency: int = 8, due_only: bool = False
+) -> dict[str, Any]:
     """Qualify proxies for Earn.fm's actual TLS socket, not generic HTTPS."""
-    wanted = {int(x) for x in (proxy_ids or []) if int(x) > 0}
-    rows = await database.list_proxy_pool()
-    selected = [row for row in rows if not wanted or int(row["id"]) in wanted]
-    targets = [row for row in selected if str(row.get("status") or "").strip().lower() != "dead"]
     semaphore = asyncio.Semaphore(min(32, max(1, int(concurrency or 8))))
+    checked = eligible_count = quality_rejected = skipped_dead = 0
 
     async def check(row: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         async with semaphore:
@@ -1161,28 +1409,34 @@ async def run_earnfm_proxy_recheck(*, proxy_ids: list[int] | None = None, concur
             )
             return int(row["id"]), result
 
-    checked_rows = await asyncio.gather(*(check(row) for row in targets))
-    for proxy_id, result in checked_rows:
-        eligible = str(result.get("eligibility") or "").lower() == "eligible"
-        await database.save_proxy_probe_result(
-            proxy_id,
-            profile="earnfm_socket_8443",
-            probe_status="alive" if eligible else "unknown",
-            verdict="TLS_CONNECT" if eligible else "UNREACHABLE",
-            eligibility="eligible" if eligible else "quality_rejected",
-            reason=str(result.get("reason") or ""),
-            exit_ip="",
-            latency_ms=result.get("latency_ms"),
-            probe_version=str(result.get("probe_version") or ""),
-            evidence={"profile": "earnfm_socket_8443", "successful_target": result.get("successful_target")},
-        )
+    async for selected in _proxy_pool_probe_pages(proxy_ids=proxy_ids, due_only=due_only):
+        targets = [row for row in selected if str(row.get("status") or "").strip().lower() != "dead"]
+        skipped_dead += len(selected) - len(targets)
+        checked_rows = await asyncio.gather(*(check(row) for row in targets))
+        checked += len(checked_rows)
+        for proxy_id, result in checked_rows:
+            eligible = str(result.get("eligibility") or "").lower() == "eligible"
+            eligible_count += int(eligible)
+            quality_rejected += int(not eligible)
+            await database.save_proxy_probe_result(
+                proxy_id,
+                profile="earnfm_socket_8443",
+                probe_status="alive" if eligible else "unknown",
+                verdict="TLS_CONNECT" if eligible else "UNREACHABLE",
+                eligibility="eligible" if eligible else "quality_rejected",
+                reason=str(result.get("reason") or ""),
+                exit_ip="",
+                latency_ms=result.get("latency_ms"),
+                probe_version=str(result.get("probe_version") or ""),
+                evidence={"profile": "earnfm_socket_8443", "successful_target": result.get("successful_target")},
+            )
     return {
         "status": "ok",
         "profile": "earnfm_socket_8443",
-        "checked": len(checked_rows),
-        "eligible": sum(1 for _, result in checked_rows if result.get("eligibility") == "eligible"),
-        "quality_rejected": sum(1 for _, result in checked_rows if result.get("eligibility") == "quality_rejected"),
-        "skipped_dead": len(selected) - len(targets),
+        "checked": checked,
+        "eligible": eligible_count,
+        "quality_rejected": quality_rejected,
+        "skipped_dead": skipped_dead,
     }
 
 
@@ -1485,6 +1739,11 @@ async def api_proxy_pool_recheck(request: Request, body: ProxyRecheckIn) -> dict
     if profile == "earnfm_socket_8443":
         return await run_earnfm_proxy_recheck(
             proxy_ids=body.proxy_ids, concurrency=body.concurrency or settings["concurrency"]
+        )
+    if body.rotate_dead:
+        raise HTTPException(
+            status_code=409,
+            detail="Manual proxy recheck is read-only; automatic scheduler owns rotation",
         )
     return await run_proxy_pool_recheck(
         proxy_ids=body.proxy_ids,

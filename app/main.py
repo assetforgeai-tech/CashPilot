@@ -287,6 +287,27 @@ def _nkn_record_instance_id(worker_id: int, slot_id: str) -> str:
     return f"nkn-direct-w{int(worker_id)}-{slot_id}"
 
 
+def _reported_provider_instance_ids(
+    body: WorkerHeartbeat, *, worker_id: int, nkn_slots: set[str] | None = None
+) -> set[str]:
+    """Build the confirmed runtime inventory used by generic reconciliation.
+
+    Docker runtimes arrive in ``containers``.  NKN LXD runtimes cannot appear
+    there because they live behind the worker's host helper, so accept only
+    CAS-confirmed NKN slots and map each slot to the server-scoped bookkeeping
+    ID.  Never trust a client-supplied instance ID for this set.
+    """
+    reported = {
+        str(item.get("instance_slug") or item.get("name") or "").strip()
+        for item in body.containers
+        if isinstance(item, dict) and str(item.get("instance_slug") or item.get("name") or "").strip()
+    }
+    for slot_id in nkn_slots or set():
+        with contextlib.suppress(ValueError):
+            reported.add(_nkn_record_instance_id(int(worker_id), slot_id))
+    return reported
+
+
 async def _get_nkn_instance_for_worker(worker_id: int, slot_id: str) -> tuple[str, dict[str, Any] | None]:
     """Read the scoped record, falling back to the pre-scope id during upgrade."""
     scoped_id = _nkn_record_instance_id(worker_id, slot_id)
@@ -482,6 +503,7 @@ async def _deploy_nkn_slots(
             lease_client_id = f"{client_id}:nkn:{slot_id}"
             instance_id = _nkn_record_instance_id(worker_id, slot_id)
             lease: dict[str, Any] | None = None
+            worker_request_started = False
             base_spec: dict[str, Any] = {
                 "slot_id": slot_id,
                 "public_ip": public_ip,
@@ -548,6 +570,7 @@ async def _deploy_nkn_slots(
                     snapshot = await _nkn_chaindb_snapshot_for_deploy(lxd_settings)
                     if snapshot:
                         deploy_spec["chaindb_snapshot"] = snapshot
+                worker_request_started = True
                 if adopt_instance:
                     result = await _proxy_worker_nkn_deploy(worker_id, slot_id, deploy_spec, timeout=900)
                 elif "chaindb_snapshot" in deploy_spec:
@@ -558,7 +581,7 @@ async def _deploy_nkn_slots(
                         timeout=6 * 60 * 60,
                     )
                 else:
-                    result = await _proxy_worker_nkn_deploy(worker_id, slot_id, deploy_spec)
+                    result = await _proxy_worker_nkn_deploy(worker_id, slot_id, deploy_spec, timeout=900)
                 container_id = str(result.get("container_id") or "remote")
                 # Persist only non-secret assignment metadata. The wallet pool remains
                 # the sole server-side source of wallet material on retry.
@@ -581,7 +604,9 @@ async def _deploy_nkn_slots(
                     safe_detail = re.sub(r"[\r\n\t]+", " ", str(exc.detail))[:240]
                     safe_error = f"{safe_error}: {safe_detail}"
                 logger.warning("NKN slot %s deploy failed on worker %s: %s", slot_id, worker_id, safe_error)
-                if lease:
+                # A response/error after dispatch may arrive after LXD mutation.
+                # Keep the CAS lease for same-slot reconciliation.
+                if lease and not worker_request_started:
                     with contextlib.suppress(Exception):
                         await database.release_nkn_wallet(
                             int(lease["id"]),
@@ -745,6 +770,7 @@ async def _maybe_auto_deploy_after_heartbeat(worker_id: int) -> None:
 
 async def _run_proxy_pool_recheck_scheduler() -> None:
     global _proxy_pool_last_recheck
+    from app import proxy_pool_scheduler
     from app.routers.proxies import (
         _proxy_scheduler_settings,
         run_earnapp_proxy_recheck,
@@ -760,11 +786,15 @@ async def _run_proxy_pool_recheck_scheduler() -> None:
     if _proxy_pool_last_recheck and now - _proxy_pool_last_recheck < timedelta(minutes=settings["interval_minutes"]):
         return
     _proxy_pool_last_recheck = now
-    result = await run_proxy_pool_recheck(concurrency=settings["concurrency"])
+    token = proxy_pool_scheduler.enter_automatic_recheck()
+    try:
+        result = await run_proxy_pool_recheck(concurrency=settings["concurrency"])
+    finally:
+        proxy_pool_scheduler.reset_automatic_recheck(token)
     # Generic liveness does not prove EarnApp WSS eligibility; refresh its
     # provider-specific qualification in the same scheduler pass.
-    earnapp_result = await run_earnapp_proxy_recheck(concurrency=settings["concurrency"])
-    earnfm_result = await run_earnfm_proxy_recheck(concurrency=settings["concurrency"])
+    earnapp_result = await run_earnapp_proxy_recheck(concurrency=settings["concurrency"], due_only=True)
+    earnfm_result = await run_earnfm_proxy_recheck(concurrency=settings["concurrency"], due_only=True)
     logger.info(
         "Proxy pool scheduler checked=%s alive=%s dead=%s rotated=%s rotate_errors=%s",
         result.get("checked", 0),
@@ -8906,21 +8936,6 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
             reported_instance_ids=reported_earnapp_ids,
             inventory_confirmed=bool(body.containers_inventory_confirmed),
         )
-    reported_provider_ids = {
-        str(item.get("instance_slug") or item.get("name") or "").strip()
-        for item in body.containers
-        if isinstance(item, dict) and str(item.get("instance_slug") or item.get("name") or "").strip()
-    }
-    with contextlib.suppress(Exception):
-        await database.reconcile_provider_instances(
-            int(worker_id),
-            reported_instance_ids=reported_provider_ids,
-            inventory_confirmed=bool(body.containers_inventory_confirmed),
-        )
-    with contextlib.suppress(Exception):
-        await database.sync_provider_runtime_inventory(
-            int(worker_id), body.containers, inventory_confirmed=bool(body.containers_inventory_confirmed)
-        )
     myst = body.provider_states.get("mysterium") or {}
     if myst:
         evidence = dict(myst.get("evidence") or {})
@@ -8940,6 +8955,8 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
     nkn = body.provider_states.get("nkn") or {}
     nkn_assignment_acks: list[dict[str, Any]] = []
     nkn_assignment_rejections: list[dict[str, Any]] = []
+    nkn_confirmed_slots: set[str] = set()
+    nkn_running_slots: set[str] = set()
     for instance in nkn.get("instances") or []:
         if not isinstance(instance, dict):
             continue
@@ -8972,6 +8989,11 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
                 }
             )
         else:
+            slot_id = str(instance.get("slot_id") or "")
+            if re.fullmatch(r"ipv4-\d{3,6}", slot_id):
+                nkn_confirmed_slots.add(slot_id)
+                if evidence.get("running") is True:
+                    nkn_running_slots.add(slot_id)
             nkn_assignment_acks.append(
                 {
                     "slot_id": str(instance.get("slot_id") or ""),
@@ -8980,6 +9002,24 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
                     "lease_client_id": lease_client_id,
                 }
             )
+    reported_provider_ids = _reported_provider_instance_ids(
+        body,
+        worker_id=int(worker_id),
+        nkn_slots=nkn_confirmed_slots,
+    )
+    with contextlib.suppress(Exception):
+        await database.reconcile_provider_instances(
+            int(worker_id),
+            reported_instance_ids=reported_provider_ids,
+            inventory_confirmed=bool(body.containers_inventory_confirmed),
+            confirmed_running_instance_ids={
+                _nkn_record_instance_id(int(worker_id), slot_id) for slot_id in nkn_running_slots
+            },
+        )
+    with contextlib.suppress(Exception):
+        await database.sync_provider_runtime_inventory(
+            int(worker_id), body.containers, inventory_confirmed=bool(body.containers_inventory_confirmed)
+        )
     earnapp = body.provider_states.get("earnapp") or {}
     earnapp_assignment_acks: list[dict[str, Any]] = []
     earnapp_assignment_rejections: list[dict[str, Any]] = []
