@@ -740,7 +740,9 @@ async def _maybe_auto_deploy_after_heartbeat(worker_id: int) -> None:
     deployed = {
         str(d.get("slug") or "")
         for d in await database.list_provider_instances(worker_id=worker_id)
-        if str(d.get("status") or "").lower() not in {"retired", "deleted"}
+        # ponytail: failed rows are retryable; planned/starting rows remain
+        # idempotency guards until reconciliation resolves them.
+        if str(d.get("status") or "").lower() not in {"failed", "retired", "deleted"}
     }
     containers = worker.get("containers")
     if isinstance(containers, str):

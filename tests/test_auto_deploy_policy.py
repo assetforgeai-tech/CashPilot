@@ -82,6 +82,48 @@ def test_auto_deploy_targets_deployable_catalog_services_only():
     assert main._auto_deploy_slugs(services) == ["ok"]
 
 
+def test_auto_deploy_retries_failed_target_row_despite_global_deployment():
+    async def run():
+        main._WORKER_HEARTBEAT_STREAKS[7] = 2
+        main._NKN_AUTO_DEPLOY_DONE.add(7)
+        main._EARNAPP_AUTO_DEPLOY_DONE.add(7)
+        services = [
+            {"slug": slug, "status": "active", "docker": {"image": "img"}}
+            for slug in ("legacy", "failed", "running", "planned", "verification")
+        ]
+        instances = [
+            {"slug": "failed", "status": "failed"},
+            {"slug": "running", "status": "running"},
+            {"slug": "planned", "status": "planned"},
+            {"slug": "verification", "status": "verification_pending"},
+        ]
+        captured = []
+        with (
+            patch.object(
+                main.database, "get_config", AsyncMock(return_value={"cashpilot_auto_deploy_enabled": "true"})
+            ),
+            patch.object(
+                main.database,
+                "get_worker",
+                AsyncMock(return_value={"id": 7, "name": "worker-a", "status": "online", "key_confirmed": 1}),
+            ),
+            patch.object(main.database, "get_deployments", AsyncMock(return_value=[{"slug": "legacy"}])) as global_rows,
+            patch.object(main.database, "list_provider_instances", AsyncMock(return_value=instances)) as worker_rows,
+            patch.object(main.catalog, "get_services", return_value=services),
+            patch.object(main, "_auto_deploy_credentials_ready", return_value=True),
+            patch.object(main, "_run_auto_deploy_sequence", AsyncMock()) as sequence,
+            patch.object(main, "_spawn", side_effect=captured.append),
+        ):
+            await main._maybe_auto_deploy_after_heartbeat(7)
+            assert len(captured) == 1
+            await captured.pop()
+        worker_rows.assert_awaited_once_with(worker_id=7)
+        global_rows.assert_not_awaited()
+        assert sequence.await_args.args[2] == ["legacy", "failed"]
+
+    asyncio.run(run())
+
+
 def test_auto_deploy_skips_services_with_missing_required_credentials():
     services = [
         {
