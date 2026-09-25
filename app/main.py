@@ -287,6 +287,27 @@ def _nkn_record_instance_id(worker_id: int, slot_id: str) -> str:
     return f"nkn-direct-w{int(worker_id)}-{slot_id}"
 
 
+def _reported_provider_instance_ids(
+    body: WorkerHeartbeat, *, worker_id: int, nkn_slots: set[str] | None = None
+) -> set[str]:
+    """Build the confirmed runtime inventory used by generic reconciliation.
+
+    Docker runtimes arrive in ``containers``.  NKN LXD runtimes cannot appear
+    there because they live behind the worker's host helper, so accept only
+    CAS-confirmed NKN slots and map each slot to the server-scoped bookkeeping
+    ID.  Never trust a client-supplied instance ID for this set.
+    """
+    reported = {
+        str(item.get("instance_slug") or item.get("name") or "").strip()
+        for item in body.containers
+        if isinstance(item, dict) and str(item.get("instance_slug") or item.get("name") or "").strip()
+    }
+    for slot_id in nkn_slots or set():
+        with contextlib.suppress(ValueError):
+            reported.add(_nkn_record_instance_id(int(worker_id), slot_id))
+    return reported
+
+
 async def _get_nkn_instance_for_worker(worker_id: int, slot_id: str) -> tuple[str, dict[str, Any] | None]:
     """Read the scoped record, falling back to the pre-scope id during upgrade."""
     scoped_id = _nkn_record_instance_id(worker_id, slot_id)
@@ -8915,21 +8936,6 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
             reported_instance_ids=reported_earnapp_ids,
             inventory_confirmed=bool(body.containers_inventory_confirmed),
         )
-    reported_provider_ids = {
-        str(item.get("instance_slug") or item.get("name") or "").strip()
-        for item in body.containers
-        if isinstance(item, dict) and str(item.get("instance_slug") or item.get("name") or "").strip()
-    }
-    with contextlib.suppress(Exception):
-        await database.reconcile_provider_instances(
-            int(worker_id),
-            reported_instance_ids=reported_provider_ids,
-            inventory_confirmed=bool(body.containers_inventory_confirmed),
-        )
-    with contextlib.suppress(Exception):
-        await database.sync_provider_runtime_inventory(
-            int(worker_id), body.containers, inventory_confirmed=bool(body.containers_inventory_confirmed)
-        )
     myst = body.provider_states.get("mysterium") or {}
     if myst:
         evidence = dict(myst.get("evidence") or {})
@@ -8949,6 +8955,8 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
     nkn = body.provider_states.get("nkn") or {}
     nkn_assignment_acks: list[dict[str, Any]] = []
     nkn_assignment_rejections: list[dict[str, Any]] = []
+    nkn_confirmed_slots: set[str] = set()
+    nkn_running_slots: set[str] = set()
     for instance in nkn.get("instances") or []:
         if not isinstance(instance, dict):
             continue
@@ -8981,6 +8989,11 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
                 }
             )
         else:
+            slot_id = str(instance.get("slot_id") or "")
+            if re.fullmatch(r"ipv4-\d{3,6}", slot_id):
+                nkn_confirmed_slots.add(slot_id)
+                if evidence.get("running") is True:
+                    nkn_running_slots.add(slot_id)
             nkn_assignment_acks.append(
                 {
                     "slot_id": str(instance.get("slot_id") or ""),
@@ -8989,6 +9002,24 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
                     "lease_client_id": lease_client_id,
                 }
             )
+    reported_provider_ids = _reported_provider_instance_ids(
+        body,
+        worker_id=int(worker_id),
+        nkn_slots=nkn_confirmed_slots,
+    )
+    with contextlib.suppress(Exception):
+        await database.reconcile_provider_instances(
+            int(worker_id),
+            reported_instance_ids=reported_provider_ids,
+            inventory_confirmed=bool(body.containers_inventory_confirmed),
+            confirmed_running_instance_ids={
+                _nkn_record_instance_id(int(worker_id), slot_id) for slot_id in nkn_running_slots
+            },
+        )
+    with contextlib.suppress(Exception):
+        await database.sync_provider_runtime_inventory(
+            int(worker_id), body.containers, inventory_confirmed=bool(body.containers_inventory_confirmed)
+        )
     earnapp = body.provider_states.get("earnapp") or {}
     earnapp_assignment_acks: list[dict[str, Any]] = []
     earnapp_assignment_rejections: list[dict[str, Any]] = []
