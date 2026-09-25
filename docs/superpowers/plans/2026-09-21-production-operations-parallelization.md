@@ -6,6 +6,10 @@
 
 **Architecture:** Keep the merged `main` release immutable. Add an operations control plane for resource inventory, SSH aliases, task ownership, evidence, and release manifests. Refine the shared network contract through provider-specific adapters; do not force EarnApp/Pawns/provider-specific lanes into one binary. Deploy through pinned GitHub/GHCR artifacts and an idempotent Azure bootstrap.
 
+Proxy route safety and high-volume Proxy Pool scheduling are governed by the
+follow-up addendum `docs/superpowers/plans/2026-09-23-proxy-route-and-pool-reliability-addendum.md`.
+It is a mandatory pre-canary gate, not an optional optimization.
+
 **Tech Stack:** Python/FastAPI, SQLite/CAS authority, Docker, shell startup scripts, Azure CLI, GitHub Actions, GHCR, PowerShell, pytest, Ruff.
 
 ## Global Constraints
@@ -32,6 +36,12 @@
   available. Proxy-only providers create `N` proxy nodes when at least `N`
   eligible proxies are available. Insufficient proxy capacity must block the
   affected lane visibly; it must not silently reduce the requested count.
+- Proxy Pool Probe is the only authority for upstream proxy liveness. Worker
+  watchdogs enforce local fail-closed routing but never release leases or mark
+  an upstream proxy dead. ACK and observed egress are apply/commit gates only.
+- No provider can pass the fake-proxy gate until the addendum's bounded probe
+  queue, durable failure state, deduplicated rotation queue, crash-loop guard,
+  and packet-level evidence are complete for its applicable lane.
 
 ## Execution Graph
 
@@ -40,11 +50,14 @@
 | 0 | CP-001 only | Operations files and ownership rules exist |
 | 1 | CP-002, CP-003, CP-004, CP-005, CP-006, CP-007 | Each lane has isolated files/resources and evidence |
 | 2 | CP-008, CP-009, CP-010 | Wave 1 contracts are stable |
-| 3 | CP-011, CP-012 | Release artifacts and canary gates pass |
-| 4 | CP-014G, CP-014H | Reliability and provider matrix pass |
-| 5 | CP-014I, CP-014K | Raw Cloud Shell and ProxyBase.xyz gates pass |
-| 6 | CP-014J | Fresh destructive approval and recreate acceptance |
-| 7 | CP-013 | Separate production approval |
+| 3 | CP-014A, CP-014B, CP-014C, CP-014D, CP-014E, CP-014G, CP-014H | Worker-loss, authority, reliability, and provider-port contracts pass |
+| 4 | CP-015A, then CP-015B | Proxy-route/state contracts and durable pool authority pass |
+| 5 | CP-015C, CP-015D | Bounded probe/rotation queue and fake-proxy watchdog hardening pass |
+| 6 | CP-015E | Fresh disposable scale/provider-group canary passes |
+| 7 | CP-015F, CP-014I, CP-014K | New release/rollback gate, Cloud Shell, and ProxyBase.xyz gates pass |
+| 8 | CP-011, CP-012 | Fresh canary/release evidence for the changed runtime passes; closed historical issues remain immutable |
+| 9 | CP-014J | Fresh destructive approval and recreate acceptance |
+| 10 | CP-013 | Separate production approval |
 
 Do not start a task whose dependency gate is incomplete. Tasks in the same wave must not edit each other's owned files.
 
@@ -551,7 +564,9 @@ no duplicate seller processes exist.
 
 **Owner:** release validation task
 
-**Depends on:** CP-002 through CP-010 required contracts and CI.
+**Depends on:** CP-002 through CP-010 required contracts and CI, plus the new
+CP-015A through CP-015F proxy-route/pool reliability gates. Historical CP-011
+evidence remains immutable; this dependency requires a fresh follow-up canary.
 
 **Resources:** only an explicitly approved disposable Azure worker; no production workers or forbidden environments.
 
@@ -570,6 +585,8 @@ no duplicate seller processes exist.
 - Create: `docs/evidence/CP-012-release-candidate.md`
 - Tag only after explicit approval.
 
+**Depends on:** CP-015F when the release contains route/pool changes.
+
 **Produces:** release tag, manifest, checksums, rollback command, change summary, known limitations, and canary evidence index.
 
 **Acceptance:** A fresh operator can deploy and roll back without chat history; production rollout remains disabled until separate approval.
@@ -580,7 +597,8 @@ no duplicate seller processes exist.
 
 **Owner:** operator task, separate approval required
 
-**Depends on:** CP-011 and CP-012.
+**Depends on:** CP-011, CP-012, and CP-015F. CP-015F is a planned follow-up
+gate; it does not reopen closed CP-011/CP-012 issues.
 
 **Stages:** one worker -> one provider group -> one region -> remaining fleet, with pause gates and automatic rollback on health failure.
 
@@ -631,6 +649,6 @@ blocker instead of guessing.
 
 ## Completion Rule
 
-The project is production-ready only when CP-001 through CP-012 and CP-014A
-through CP-014K have evidence-backed PASS status. CP-013 requires a separate
-explicit production rollout approval.
+The project is production-ready only when CP-001 through CP-012, CP-014A
+through CP-014K, and CP-015A through CP-015F have evidence-backed PASS status.
+CP-013 requires a separate explicit production rollout approval.

@@ -45,7 +45,7 @@ def test_nkn_deploy_runs_slots_sequentially_and_continues_after_failure():
         async def lease(client_id, worker_id=None, public_ip=""):
             return _lease(int(client_id[-1]), client_id, public_ip)
 
-        async def deploy(_worker_id, slot_id, _spec):
+        async def deploy(_worker_id, slot_id, _spec, **_kwargs):
             calls.append(slot_id)
             if slot_id == "ipv4-001":
                 raise RuntimeError("boom")
@@ -69,7 +69,84 @@ def test_nkn_deploy_runs_slots_sequentially_and_continues_after_failure():
         assert result["deployed"] == ["ipv4-002"]
         assert result["failed"] == ["ipv4-001"]
         assert save.await_count == 2
-        release.assert_awaited_once()
+        release.assert_not_awaited()
+
+    asyncio.run(run())
+
+
+def test_nkn_lxd_deploy_uses_long_worker_timeout_without_snapshot():
+    async def run():
+        with (
+            patch.object(database, "get_worker", AsyncMock(return_value={"id": 7, "client_id": "worker-a"})),
+            patch.object(main, "_worker_public_ip_slots", AsyncMock(return_value=[_slot("ipv4-001", "8.8.8.8")])),
+            patch.object(
+                database,
+                "lease_nkn_wallet",
+                AsyncMock(return_value=_lease(1, "worker-a:nkn:ipv4-001", "8.8.8.8")),
+            ),
+            patch.object(database, "get_provider_instance", AsyncMock(return_value=None)),
+            patch.object(main, "_nkn_chaindb_snapshot_for_deploy", AsyncMock(return_value=None)),
+            patch.object(
+                main,
+                "_proxy_worker_nkn_deploy",
+                AsyncMock(return_value={"container_id": "cashpilot-nkn-ipv4-001"}),
+            ) as deploy,
+            patch.object(database, "save_provider_instance", AsyncMock()),
+        ):
+            result = await main._deploy_nkn_slots(7, beneficiary_address="NKNBeneficiaryAddress")
+
+        assert result["deployed"] == ["ipv4-001"]
+        assert deploy.await_args.kwargs["timeout"] == 900
+
+    asyncio.run(run())
+
+
+def test_nkn_worker_timeout_keeps_wallet_lease_for_same_slot_retry():
+    async def run():
+        with (
+            patch.object(database, "get_worker", AsyncMock(return_value={"id": 7, "client_id": "worker-a"})),
+            patch.object(main, "_worker_public_ip_slots", AsyncMock(return_value=[_slot("ipv4-001", "8.8.8.8")])),
+            patch.object(
+                database,
+                "lease_nkn_wallet",
+                AsyncMock(return_value=_lease(1, "worker-a:nkn:ipv4-001", "8.8.8.8")),
+            ),
+            patch.object(database, "get_provider_instance", AsyncMock(return_value=None)),
+            patch.object(main, "_nkn_chaindb_snapshot_for_deploy", AsyncMock(return_value=None)),
+            patch.object(main, "_proxy_worker_nkn_deploy", AsyncMock(side_effect=main.HTTPException(503, "timeout"))),
+            patch.object(database, "save_provider_instance", AsyncMock()),
+            patch.object(database, "release_nkn_wallet", AsyncMock()) as release,
+        ):
+            result = await main._deploy_nkn_slots(7, beneficiary_address="NKNBeneficiaryAddress")
+
+        assert result["failed"] == ["ipv4-001"]
+        release.assert_not_awaited()
+
+    asyncio.run(run())
+
+
+def test_nkn_worker_400_keeps_wallet_lease_when_lxd_may_have_started():
+    async def run():
+        with (
+            patch.object(database, "get_worker", AsyncMock(return_value={"id": 7, "client_id": "worker-a"})),
+            patch.object(main, "_worker_public_ip_slots", AsyncMock(return_value=[_slot("ipv4-001", "8.8.8.8")])),
+            patch.object(
+                database,
+                "lease_nkn_wallet",
+                AsyncMock(return_value=_lease(1, "worker-a:nkn:ipv4-001", "8.8.8.8")),
+            ),
+            patch.object(database, "get_provider_instance", AsyncMock(return_value=None)),
+            patch.object(main, "_nkn_chaindb_snapshot_for_deploy", AsyncMock(return_value=None)),
+            patch.object(
+                main, "_proxy_worker_nkn_deploy", AsyncMock(side_effect=main.HTTPException(400, "route failed"))
+            ),
+            patch.object(database, "save_provider_instance", AsyncMock()),
+            patch.object(database, "release_nkn_wallet", AsyncMock()) as release,
+        ):
+            result = await main._deploy_nkn_slots(7, beneficiary_address="NKNBeneficiaryAddress")
+
+        assert result["failed"] == ["ipv4-001"]
+        release.assert_not_awaited()
 
     asyncio.run(run())
 

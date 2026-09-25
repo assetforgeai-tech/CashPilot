@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import ipaddress
 import json
 import logging
 import math
@@ -1186,6 +1187,48 @@ CREATE TABLE IF NOT EXISTS proxy_probe_results (
     checked_at     TEXT    NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY(proxy_id) REFERENCES proxy_endpoints(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS proxy_probe_state (
+    proxy_id              INTEGER PRIMARY KEY,
+    state                 TEXT NOT NULL CHECK(state IN ('unknown','alive','suspect','dead','quarantined')),
+    consecutive_failures  INTEGER NOT NULL DEFAULT 0,
+    consecutive_successes INTEGER NOT NULL DEFAULT 0,
+    last_probe_at         TEXT,
+    next_probe_at         TEXT,
+    last_transition_at    TEXT,
+    last_failure_reason   TEXT NOT NULL DEFAULT '',
+    probe_generation      INTEGER NOT NULL DEFAULT 0,
+    updated_at            TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY(proxy_id) REFERENCES proxy_endpoints(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_proxy_probe_state_next_probe
+    ON proxy_probe_state(state, next_probe_at, proxy_id);
+
+CREATE TABLE IF NOT EXISTS proxy_rotation_requests (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    proxy_id          INTEGER NOT NULL,
+    probe_generation  INTEGER NOT NULL,
+    provider_slug     TEXT NOT NULL,
+    worker_id         INTEGER NOT NULL,
+    instance_id       TEXT NOT NULL,
+    lease_id          INTEGER NOT NULL DEFAULT 0,
+    assignment_version INTEGER NOT NULL DEFAULT 0,
+    state             TEXT NOT NULL CHECK(state IN ('pending','running','succeeded','failed','cancelled')),
+    attempts          INTEGER NOT NULL DEFAULT 0,
+    available_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    lease_token       TEXT NOT NULL DEFAULT '',
+    reason            TEXT NOT NULL DEFAULT '',
+    last_error        TEXT NOT NULL DEFAULT '',
+    created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(proxy_id, probe_generation, provider_slug, worker_id, instance_id, lease_id, assignment_version),
+    FOREIGN KEY(proxy_id) REFERENCES proxy_endpoints(id) ON DELETE CASCADE,
+    FOREIGN KEY(worker_id) REFERENCES workers(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_proxy_rotation_requests_claim
+    ON proxy_rotation_requests(state, available_at, id);
 
 CREATE TABLE IF NOT EXISTS proxy_import_batches (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2954,7 +2997,7 @@ async def _migrate_legacy_earnapp_accounts(db: Any, applied: list[str]) -> None:
 #: missing a column -- an interrupted upgrade, a restored backup, a hand-edited
 #: file -- could never be repaired, because the gate would say there was nothing
 #: to do. The guards are idempotent and cheap; the version is for the operator.
-SCHEMA_VERSION = 23
+SCHEMA_VERSION = 25
 
 
 async def init_db() -> None:
@@ -2967,6 +3010,56 @@ async def init_db() -> None:
     try:
         await _dedupe_earnings_before_indexing(db)
         await db.executescript(_SCHEMA)
+        rotation_request_columns = await _table_columns(db, "proxy_rotation_requests")
+        missing_binding_columns = {"lease_id", "assignment_version"} - rotation_request_columns
+        if missing_binding_columns:
+            applied.append("proxy_rotation_requests.binding_fence")
+            await db.execute("DROP INDEX IF EXISTS idx_proxy_rotation_requests_claim")
+            await db.execute("ALTER TABLE proxy_rotation_requests RENAME TO proxy_rotation_requests_legacy")
+            await db.execute(
+                """
+                CREATE TABLE proxy_rotation_requests (
+                    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                    proxy_id          INTEGER NOT NULL,
+                    probe_generation  INTEGER NOT NULL,
+                    provider_slug     TEXT NOT NULL,
+                    worker_id         INTEGER NOT NULL,
+                    instance_id       TEXT NOT NULL,
+                    lease_id          INTEGER NOT NULL DEFAULT 0,
+                    assignment_version INTEGER NOT NULL DEFAULT 0,
+                    state             TEXT NOT NULL CHECK(state IN ('pending','running','succeeded','failed','cancelled')),
+                    attempts          INTEGER NOT NULL DEFAULT 0,
+                    available_at      TEXT NOT NULL DEFAULT (datetime('now')),
+                    lease_token       TEXT NOT NULL DEFAULT '',
+                    reason            TEXT NOT NULL DEFAULT '',
+                    last_error        TEXT NOT NULL DEFAULT '',
+                    created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+                    updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
+                    UNIQUE(proxy_id, probe_generation, provider_slug, worker_id, instance_id, lease_id, assignment_version),
+                    FOREIGN KEY(proxy_id) REFERENCES proxy_endpoints(id) ON DELETE CASCADE,
+                    FOREIGN KEY(worker_id) REFERENCES workers(id) ON DELETE CASCADE
+                )
+                """
+            )
+            await db.execute(
+                """
+                INSERT INTO proxy_rotation_requests
+                    (id, proxy_id, probe_generation, provider_slug, worker_id, instance_id,
+                     lease_id, assignment_version, state, attempts, available_at, lease_token,
+                     reason, last_error, created_at, updated_at)
+                SELECT id, proxy_id, probe_generation, provider_slug, worker_id, instance_id,
+                       0, 0,
+                       CASE WHEN state IN ('pending', 'running') THEN 'cancelled' ELSE state END,
+                       attempts, available_at, '',
+                       CASE WHEN state IN ('pending', 'running') THEN 'migration_fence' ELSE reason END,
+                       last_error, created_at, updated_at
+                FROM proxy_rotation_requests_legacy
+                """
+            )
+            await db.execute("DROP TABLE proxy_rotation_requests_legacy")
+            await db.execute(
+                "CREATE INDEX idx_proxy_rotation_requests_claim ON proxy_rotation_requests(state, available_at, id)"
+            )
         provider_instance_columns = await _table_columns(db, "provider_instances")
         if "capacity_slot" not in provider_instance_columns:
             await db.execute("ALTER TABLE provider_instances ADD COLUMN capacity_slot TEXT NOT NULL DEFAULT ''")
@@ -3281,6 +3374,44 @@ async def init_db() -> None:
             );
             CREATE INDEX IF NOT EXISTS idx_proxy_probe_results_latest
                 ON proxy_probe_results(proxy_id, profile, id DESC);
+            CREATE TABLE IF NOT EXISTS proxy_probe_state (
+                proxy_id              INTEGER PRIMARY KEY,
+                state                 TEXT NOT NULL CHECK(state IN ('unknown','alive','suspect','dead','quarantined')),
+                consecutive_failures  INTEGER NOT NULL DEFAULT 0,
+                consecutive_successes INTEGER NOT NULL DEFAULT 0,
+                last_probe_at         TEXT,
+                next_probe_at         TEXT,
+                last_transition_at    TEXT,
+                last_failure_reason   TEXT NOT NULL DEFAULT '',
+                probe_generation      INTEGER NOT NULL DEFAULT 0,
+                updated_at            TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY(proxy_id) REFERENCES proxy_endpoints(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_proxy_probe_state_next_probe
+                ON proxy_probe_state(state, next_probe_at, proxy_id);
+            CREATE TABLE IF NOT EXISTS proxy_rotation_requests (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                proxy_id          INTEGER NOT NULL,
+                probe_generation  INTEGER NOT NULL,
+                provider_slug     TEXT NOT NULL,
+                worker_id         INTEGER NOT NULL,
+                instance_id       TEXT NOT NULL,
+                lease_id          INTEGER NOT NULL DEFAULT 0,
+                assignment_version INTEGER NOT NULL DEFAULT 0,
+                state             TEXT NOT NULL CHECK(state IN ('pending','running','succeeded','failed','cancelled')),
+                attempts          INTEGER NOT NULL DEFAULT 0,
+                available_at      TEXT NOT NULL DEFAULT (datetime('now')),
+                lease_token       TEXT NOT NULL DEFAULT '',
+                reason            TEXT NOT NULL DEFAULT '',
+                last_error        TEXT NOT NULL DEFAULT '',
+                created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(proxy_id, probe_generation, provider_slug, worker_id, instance_id, lease_id, assignment_version),
+                FOREIGN KEY(proxy_id) REFERENCES proxy_endpoints(id) ON DELETE CASCADE,
+                FOREIGN KEY(worker_id) REFERENCES workers(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_proxy_rotation_requests_claim
+                ON proxy_rotation_requests(state, available_at, id);
             CREATE INDEX IF NOT EXISTS idx_proxy_endpoints_exit_ip
                 ON proxy_endpoints(exit_ip);
 
@@ -8636,11 +8767,13 @@ async def reconcile_provider_instances(
     *,
     reported_instance_ids: Sequence[str],
     inventory_confirmed: bool,
+    confirmed_running_instance_ids: Sequence[str] = (),
 ) -> dict[str, list[str]]:
     """Retire non-EarnApp runtimes only after two confirmed inventory misses."""
     if int(worker_id or 0) <= 0 or not inventory_confirmed:
         return {"marked_missing": [], "removed": []}
     reported = {str(value or "").strip() for value in reported_instance_ids if str(value or "").strip()}
+    running = {str(value or "").strip() for value in confirmed_running_instance_ids if str(value or "").strip()}
     async with _earnapp_lock():
         db = await _open_transaction_connection()
         try:
@@ -8656,10 +8789,12 @@ async def reconcile_provider_instances(
             for row in rows:
                 instance_id = str(row["instance_id"] or "")
                 if not instance_id or instance_id in reported:
-                    if str(row["status"] or "") == "missing_once":
+                    if str(row["status"] or "") == "missing_once" or (
+                        str(row["status"] or "") == "verification_pending" and instance_id in running
+                    ):
                         await db.execute(
-                            "UPDATE provider_instances SET status='verification_pending', updated_at=datetime('now') WHERE instance_id=?",
-                            (instance_id,),
+                            "UPDATE provider_instances SET status=?, updated_at=datetime('now') WHERE instance_id=?",
+                            ("running" if instance_id in running else "verification_pending", instance_id),
                         )
                     continue
                 if str(row["status"] or "") == "missing_once":
@@ -9559,8 +9694,17 @@ async def list_proxy_pool_page(
     duplicate: str = "",
     sort: str = "provider_name",
     direction: str = "asc",
+    due_before: str | None = None,
+    due_only: bool = False,
+    leased_first: bool = False,
 ) -> dict[str, Any]:
-    """Return one operator page while keeping aggregate inventory context."""
+    """Return one operator page while keeping aggregate inventory context.
+
+    ``due_only`` is reserved for the automatic probe scheduler.  It keeps
+    inventory scans bounded by persisted ``proxy_probe_state.next_probe_at``
+    while always admitting currently leased rows.  The default remains the
+    unfiltered operator view.
+    """
     size = min(100_000, max(1, int(page_size or 20)))
     requested_page = max(1, int(page or 1))
     location_expr = _proxy_location_sql()
@@ -9596,6 +9740,8 @@ async def list_proxy_pool_page(
                scoped.provider_slug AS scoped_provider_slug,
                scoped.worker_id AS scoped_worker_id,
                scoped.instance_id AS scoped_instance_id,
+               probe_state.state AS probe_state,
+               probe_state.next_probe_at AS probe_next_at,
                {location_expr} AS display_location,
                {ip_type_expr} AS display_ip_type,
                {earnapp_expr} AS display_earnapp,
@@ -9612,6 +9758,7 @@ async def list_proxy_pool_page(
             AND trim(coalesce(earnapp.exit_ip, '')) != ''
             AND earnapp.exit_ip = pe.exit_ip
         LEFT JOIN provider_proxy_leases scoped ON scoped.proxy_id = pe.id AND scoped.released_at IS NULL
+        LEFT JOIN proxy_probe_state probe_state ON probe_state.proxy_id = pe.id
     """
     clauses: list[str] = []
     params: list[Any] = []
@@ -9665,6 +9812,13 @@ async def list_proxy_pool_page(
         clauses.append("coalesce(pe.duplicate_egress, 0) = 1")
     elif duplicate_value == "canonical":
         clauses.append("coalesce(pe.duplicate_egress, 0) = 0")
+    if due_only:
+        cutoff = str(due_before or "").strip() or datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+        clauses.append(
+            "(pa.worker_id IS NOT NULL OR scoped.provider_slug IS NOT NULL OR "
+            "probe_state.next_probe_at IS NULL OR probe_state.next_probe_at <= ?)"
+        )
+        params.append(cutoff)
     where_sql = f" WHERE {' AND '.join(clauses)}" if clauses else ""
     sort_expressions = {
         "provider_name": "lower(coalesce(pp.name, ''))",
@@ -9681,6 +9835,10 @@ async def list_proxy_pool_page(
         "last_checked_at": "coalesce(pe.last_checked_at, '')",
     }
     order_by = sort_expressions.get(str(sort or "").strip(), sort_expressions["provider_name"])
+    if leased_first:
+        order_by = (
+            "CASE WHEN pa.worker_id IS NOT NULL OR scoped.provider_slug IS NOT NULL THEN 0 ELSE 1 END, " + order_by
+        )
     order_direction = "DESC" if str(direction or "").strip().lower() == "desc" else "ASC"
     db = await _get_db()
     try:
@@ -11335,6 +11493,520 @@ async def save_proxy_probe_result(
         return int(cursor.lastrowid or 0)
     finally:
         await db.close()
+
+
+def _rotation_timestamp(value: Any = None) -> str:
+    """Return a SQLite-compatible UTC timestamp for queue CAS operations."""
+    if value is None:
+        return datetime.now(UTC).replace(microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        text = str(value).strip().replace("Z", "+00:00")
+        try:
+            parsed = datetime.fromisoformat(text)
+        except ValueError:
+            parsed = datetime.strptime(text, "%Y-%m-%d %H:%M:%S")
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(UTC).replace(tzinfo=None)
+    return parsed.replace(microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _rotation_timestamp_plus(value: Any, seconds: int) -> str:
+    parsed = datetime.strptime(_rotation_timestamp(value), "%Y-%m-%d %H:%M:%S")
+    return (parsed + timedelta(seconds=int(seconds))).strftime("%Y-%m-%d %H:%M:%S")
+
+
+_PROBE_CREDENTIAL_MARKERS = (
+    "password",
+    "token",
+    "cookie",
+    "secret",
+    "authorization",
+    "bearer",
+    "credential",
+    "api_key",
+    "private_key",
+)
+_INCONCLUSIVE_PROBE_REASONS = {
+    "control_plane_unavailable",
+    "shared_dns_outage",
+    "shared_probe_target_unavailable",
+    "dns_outage",
+}
+
+
+def _safe_probe_text(value: Any, field: str, limit: int) -> str:
+    raw = str(value or "")
+    lowered = raw.lower()
+    if any(marker in lowered for marker in _PROBE_CREDENTIAL_MARKERS) or re.search(r"://[^/\s:@]+:[^/\s@]+@", raw):
+        raise ValueError(f"probe {field} may not contain credentials")
+    if any(ord(char) < 32 and char not in "\t\n\r" for char in raw):
+        raise ValueError(f"probe {field} contains control characters")
+    return raw[:limit]
+
+
+def _safe_rotation_error(value: Any) -> str:
+    text = str(value or "")[:500]
+    lowered = text.lower()
+    if any(marker in lowered for marker in _PROBE_CREDENTIAL_MARKERS):
+        raise ValueError("rotation error may not contain credentials")
+    return text
+
+
+async def record_proxy_probe_transition(
+    proxy_id: int,
+    result: Mapping[str, Any],
+    *,
+    generation: int,
+) -> dict[str, Any]:
+    """Persist one idempotent probe generation and update durable proxy state.
+
+    ``inconclusive`` is recorded as evidence but never increments the failure
+    counter. Three independent failed generations are required before an
+    upstream becomes ``dead``. No lease or assignment is changed here.
+    """
+    proxy = int(proxy_id)
+    probe_generation = int(generation)
+    if proxy <= 0 or probe_generation < 0:
+        raise ValueError("proxy_id and generation must be non-negative integers")
+    status = _safe_probe_text(result.get("status") or "unknown", "status", 40).strip().lower()
+    reason = _safe_probe_text(result.get("reason"), "reason", 500)
+    profile = _safe_probe_text(result.get("profile") or "generic", "profile", 100)
+    if profile != "generic":
+        raise ValueError("only generic Proxy Pool probes control upstream liveness")
+    verdict = _safe_probe_text(result.get("verdict"), "verdict", 100)
+    eligibility = _safe_probe_text(result.get("eligibility") or "unknown", "eligibility", 100)
+    observed_exit_ip = str(result.get("exit_ip") or "").strip()
+    latency = result.get("latency_ms")
+    latency_ms = int(latency) if latency is not None else None
+    if latency_ms is not None and not 0 <= latency_ms <= 3_600_000:
+        raise ValueError("probe latency must be between 0 and 3600000 ms")
+    probe_version = _safe_probe_text(result.get("probe_version"), "probe_version", 100)
+    if observed_exit_ip:
+        try:
+            observed_exit_ip = str(ipaddress.ip_address(observed_exit_ip))
+        except ValueError as exc:
+            raise ValueError("probe exit IP must be a valid IP address") from exc
+    # ponytail: this authority stores no caller-supplied evidence until a strict
+    # schema exists; append richer sanitized fields only with explicit tests.
+    evidence = "{}"
+    failed = status in {"failed", "dead", "unhealthy", "error", "timeout"}
+    successful = status in {"alive", "healthy", "success", "ok"}
+    inconclusive = status in {"", "unknown", "inconclusive", "unreachable", "control_plane_unavailable"}
+    if failed and reason.strip().lower() in _INCONCLUSIVE_PROBE_REASONS:
+        failed = False
+        inconclusive = True
+        status = "inconclusive"
+    if not (failed or successful or inconclusive):
+        raise ValueError(f"unsupported proxy probe status: {status}")
+
+    async with _proxy_assignment_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            row = await (
+                await db.execute(
+                    "SELECT state, consecutive_failures, consecutive_successes, probe_generation "
+                    "FROM proxy_probe_state WHERE proxy_id = ?",
+                    (proxy,),
+                )
+            ).fetchone()
+            if row is None:
+                current_state = "unknown"
+                failures = 0
+                successes = 0
+                current_generation = -1
+            else:
+                current_state = str(row["state"])
+                failures = int(row["consecutive_failures"] or 0)
+                successes = int(row["consecutive_successes"] or 0)
+                current_generation = int(row["probe_generation"] or 0)
+
+            if probe_generation <= current_generation:
+                await db.commit()
+                return {
+                    "proxy_id": proxy,
+                    "state": current_state,
+                    "consecutive_failures": failures,
+                    "consecutive_successes": successes,
+                    "probe_generation": current_generation,
+                    "deduplicated": True,
+                }
+
+            proxy_row = await (
+                await db.execute("SELECT exit_ip FROM proxy_endpoints WHERE id = ?", (proxy,))
+            ).fetchone()
+            if not proxy_row:
+                raise ValueError("proxy does not exist")
+            if successful and observed_exit_ip and proxy_row["exit_ip"] and observed_exit_ip != proxy_row["exit_ip"]:
+                successful = False
+                inconclusive = True
+                status = "inconclusive"
+                reason = "egress_mismatch"
+
+            if failed:
+                failures += 1
+                successes = 0
+                next_state = "dead" if failures >= 3 else "suspect"
+            elif successful:
+                failures = 0
+                successes += 1
+                next_state = "alive"
+            elif inconclusive and reason == "egress_mismatch":
+                next_state = "unknown"
+            else:
+                next_state = current_state
+
+            transition = next_state != current_state
+            await db.execute(
+                """
+                INSERT INTO proxy_probe_state
+                    (proxy_id, state, consecutive_failures, consecutive_successes,
+                     last_probe_at, next_probe_at, last_transition_at,
+                     last_failure_reason, probe_generation, updated_at)
+                VALUES (?, ?, ?, ?, datetime('now'), datetime('now', '+30 seconds'),
+                        CASE WHEN ? THEN datetime('now') ELSE NULL END, ?, ?, datetime('now'))
+                ON CONFLICT(proxy_id) DO UPDATE SET
+                    state = excluded.state,
+                    consecutive_failures = excluded.consecutive_failures,
+                    consecutive_successes = excluded.consecutive_successes,
+                    last_probe_at = excluded.last_probe_at,
+                    next_probe_at = excluded.next_probe_at,
+                    last_transition_at = CASE WHEN excluded.last_transition_at IS NOT NULL
+                                              THEN excluded.last_transition_at
+                                              ELSE proxy_probe_state.last_transition_at END,
+                    last_failure_reason = excluded.last_failure_reason,
+                    probe_generation = excluded.probe_generation,
+                    updated_at = excluded.updated_at
+                """,
+                (proxy, next_state, failures, successes, transition, reason if failed else "", probe_generation),
+            )
+            await db.execute(
+                """
+                INSERT INTO proxy_probe_results
+                    (proxy_id, profile, probe_status, verdict, eligibility, reason, exit_ip,
+                     latency_ms, probe_version, evidence_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    proxy,
+                    profile,
+                    status,
+                    verdict,
+                    eligibility,
+                    reason,
+                    observed_exit_ip,
+                    latency_ms,
+                    probe_version,
+                    evidence,
+                ),
+            )
+            if observed_exit_ip and (not proxy_row["exit_ip"] or observed_exit_ip == proxy_row["exit_ip"]):
+                await db.execute(
+                    "UPDATE proxy_endpoints SET exit_ip = ? WHERE id = ? AND exit_ip != ?",
+                    (observed_exit_ip, proxy, observed_exit_ip),
+                )
+            if successful or next_state == "dead":
+                await db.execute(
+                    "UPDATE proxy_endpoints SET status = ?, last_checked_at = datetime('now') WHERE id = ?",
+                    ("alive" if successful else "dead", proxy),
+                )
+            if next_state == "alive":
+                await db.execute(
+                    "UPDATE proxy_rotation_requests SET state = 'cancelled', lease_token = '', "
+                    "reason = 'proxy_recovered', updated_at = datetime('now') "
+                    "WHERE proxy_id = ? AND state IN ('pending', 'running')",
+                    (proxy,),
+                )
+            updated = await (
+                await db.execute("SELECT * FROM proxy_probe_state WHERE proxy_id = ?", (proxy,))
+            ).fetchone()
+            await db.commit()
+            return {**dict(updated), "deduplicated": False}
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
+
+
+async def enqueue_proxy_rotation_requests(proxy_id: int, probe_generation: int) -> int:
+    """Create deduplicated rotation work for every active lease using a dead proxy."""
+    proxy = int(proxy_id)
+    generation = int(probe_generation)
+    if proxy <= 0 or generation < 0:
+        return 0
+    async with _proxy_assignment_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            state = await (
+                await db.execute(
+                    "SELECT state, probe_generation FROM proxy_probe_state WHERE proxy_id = ?",
+                    (proxy,),
+                )
+            ).fetchone()
+            if not state or str(state["state"]) != "dead" or int(state["probe_generation"] or 0) != generation:
+                await db.rollback()
+                return 0
+            rows = await (
+                await db.execute(
+                    """
+                    SELECT id, provider_slug, worker_id, instance_id
+                    FROM provider_proxy_leases
+                    WHERE proxy_id = ? AND released_at IS NULL
+                    ORDER BY id
+                    """,
+                    (proxy,),
+                )
+            ).fetchall()
+            legacy = await (
+                await db.execute(
+                    """
+                    SELECT worker_id, assignment_version
+                    FROM proxy_assignments
+                    WHERE proxy_id = ?
+                    ORDER BY worker_id
+                    """,
+                    (proxy,),
+                )
+            ).fetchall()
+            requests = [
+                (str(row["provider_slug"]), int(row["worker_id"]), str(row["instance_id"]), int(row["id"]), 0)
+                for row in rows
+            ]
+            requests.extend(
+                (
+                    "legacy",
+                    int(row["worker_id"]),
+                    f"legacy-worker-{int(row['worker_id'])}",
+                    0,
+                    int(row["assignment_version"]),
+                )
+                for row in legacy
+            )
+            inserted = 0
+            for provider_slug, worker_id, instance_id, lease_id, assignment_version in requests:
+                cursor = await db.execute(
+                    """
+                    INSERT OR IGNORE INTO proxy_rotation_requests
+                        (proxy_id, probe_generation, provider_slug, worker_id, instance_id, lease_id, assignment_version,
+                         state, reason, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 'proxy_probe_dead', datetime('now'))
+                    """,
+                    (proxy, generation, provider_slug, worker_id, instance_id, lease_id, assignment_version),
+                )
+                inserted += int(cursor.rowcount or 0)
+            await db.commit()
+            return inserted
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
+
+
+async def claim_proxy_rotation_request(now: Any = None) -> dict[str, Any] | None:
+    """CAS-claim one due rotation request and recover expired running work."""
+    now_text = _rotation_timestamp(now)
+    async with _proxy_assignment_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            await db.execute(
+                """
+                UPDATE proxy_rotation_requests
+                SET state = 'pending', lease_token = '', updated_at = ?
+                WHERE state = 'running' AND available_at <= ?
+                """,
+                (now_text, now_text),
+            )
+            await db.execute(
+                """
+                UPDATE proxy_rotation_requests SET state = 'cancelled', lease_token = '',
+                    reason = 'stale_binding', updated_at = ?
+                WHERE state = 'pending' AND (
+                    NOT EXISTS (SELECT 1 FROM proxy_probe_state ps
+                                WHERE ps.proxy_id = proxy_rotation_requests.proxy_id
+                                  AND ps.state = 'dead' AND ps.consecutive_failures >= 3
+                                  AND ps.probe_generation = proxy_rotation_requests.probe_generation)
+                    OR (provider_slug = 'legacy' AND NOT EXISTS (
+                        SELECT 1 FROM proxy_assignments pa
+                        WHERE pa.worker_id = proxy_rotation_requests.worker_id
+                          AND pa.proxy_id = proxy_rotation_requests.proxy_id
+                          AND pa.assignment_version = proxy_rotation_requests.assignment_version))
+                    OR (provider_slug != 'legacy' AND NOT EXISTS (
+                        SELECT 1 FROM provider_proxy_leases lease
+                        WHERE lease.id = proxy_rotation_requests.lease_id
+                          AND lease.provider_slug = proxy_rotation_requests.provider_slug
+                          AND lease.worker_id = proxy_rotation_requests.worker_id
+                          AND lease.instance_id = proxy_rotation_requests.instance_id
+                          AND lease.proxy_id = proxy_rotation_requests.proxy_id
+                          AND lease.released_at IS NULL))
+                )
+                """,
+                (now_text,),
+            )
+            row = await (
+                await db.execute(
+                    """
+                    SELECT * FROM proxy_rotation_requests request
+                    WHERE request.state = 'pending' AND request.available_at <= ?
+                      AND NOT EXISTS (
+                          SELECT 1 FROM proxy_rotation_requests running
+                          WHERE running.state = 'running'
+                            AND (running.worker_id = request.worker_id
+                                 OR (running.provider_slug = request.provider_slug
+                                     AND running.instance_id = request.instance_id))
+                            AND running.available_at > ?
+                      )
+                    ORDER BY request.id
+                    LIMIT 1
+                    """,
+                    (now_text, now_text),
+                )
+            ).fetchone()
+            if not row:
+                await db.commit()
+                return None
+            token = secrets.token_urlsafe(24)
+            expires = _rotation_timestamp_plus(now_text, 60)
+            claimed = await db.execute(
+                """
+                UPDATE proxy_rotation_requests
+                SET state = 'running', lease_token = ?, available_at = ?, updated_at = ?
+                WHERE id = ? AND state = 'pending' AND available_at <= ?
+                """,
+                (token, expires, now_text, int(row["id"]), now_text),
+            )
+            if not claimed.rowcount:
+                await db.rollback()
+                return None
+            result = await (
+                await db.execute("SELECT * FROM proxy_rotation_requests WHERE id = ?", (int(row["id"]),))
+            ).fetchone()
+            await db.commit()
+            return dict(result)
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
+
+
+async def complete_proxy_rotation_request(
+    request_id: int,
+    state: str,
+    *,
+    error: str = "",
+    lease_token: str = "",
+    replacement_committed: bool = False,
+) -> bool:
+    """Complete a claimed request after a separately verified CAS replacement."""
+    request = int(request_id)
+    requested = str(state or "").strip().lower()
+    if requested not in {"succeeded", "failed", "cancelled"}:
+        raise ValueError("rotation request state must be succeeded, failed, or cancelled")
+    async with _proxy_assignment_lock():
+        db = await _open_transaction_connection()
+        try:
+            await db.execute("BEGIN IMMEDIATE")
+            row = await (
+                await db.execute(
+                    """
+                    SELECT attempts, state, lease_token, proxy_id, probe_generation, provider_slug, worker_id,
+                           instance_id, lease_id, assignment_version
+                    FROM proxy_rotation_requests
+                    WHERE id = ?
+                    """,
+                    (request,),
+                )
+            ).fetchone()
+            if not row or str(row["state"]) != "running" or not lease_token or str(row["lease_token"]) != lease_token:
+                await db.rollback()
+                return False
+            safe_error = _safe_rotation_error(error)
+            probe = await (
+                await db.execute(
+                    "SELECT state, probe_generation FROM proxy_probe_state WHERE proxy_id = ?",
+                    (int(row["proxy_id"]),),
+                )
+            ).fetchone()
+            if (
+                not probe
+                or str(probe["state"]) != "dead"
+                or int(probe["probe_generation"] or 0) != int(row["probe_generation"])
+            ):
+                await db.rollback()
+                return False
+            if requested == "succeeded":
+                if not replacement_committed:
+                    await db.rollback()
+                    return False
+                if str(row["provider_slug"]) == "legacy":
+                    replacement = await (
+                        await db.execute(
+                            """
+                            SELECT 1
+                            FROM proxy_assignments
+                            WHERE worker_id = ? AND proxy_id IS NOT NULL
+                              AND proxy_id != ? AND assignment_version > ?
+                            LIMIT 1
+                            """,
+                            (int(row["worker_id"]), int(row["proxy_id"]), int(row["assignment_version"] or 0)),
+                        )
+                    ).fetchone()
+                else:
+                    replacement = await (
+                        await db.execute(
+                            """
+                            SELECT 1
+                            FROM provider_proxy_leases
+                            WHERE provider_slug = ? AND worker_id = ? AND instance_id = ?
+                              AND released_at IS NULL AND proxy_id != ? AND id = ?
+                            LIMIT 1
+                            """,
+                            (
+                                str(row["provider_slug"]),
+                                int(row["worker_id"]),
+                                str(row["instance_id"]),
+                                int(row["proxy_id"]),
+                                int(row["lease_id"] or 0),
+                            ),
+                        )
+                    ).fetchone()
+                if not replacement:
+                    await db.rollback()
+                    return False
+            if requested == "failed":
+                attempts = int(row["attempts"] or 0) + 1
+                delay = min(3600, 2 ** min(attempts, 10))
+                cursor = await db.execute(
+                    """
+                    UPDATE proxy_rotation_requests
+                    SET state = 'pending', attempts = ?, available_at = datetime('now', ?),
+                        lease_token = '', last_error = ?, updated_at = datetime('now')
+                    WHERE id = ? AND state = 'running' AND lease_token = ?
+                    """,
+                    (attempts, f"+{delay} seconds", safe_error, request, str(row["lease_token"])),
+                )
+            else:
+                cursor = await db.execute(
+                    """
+                    UPDATE proxy_rotation_requests
+                    SET state = ?, lease_token = '', last_error = ?, updated_at = datetime('now')
+                    WHERE id = ? AND state = 'running' AND lease_token = ?
+                    """,
+                    (requested, safe_error, request, str(row["lease_token"])),
+                )
+            await db.commit()
+            return bool(cursor.rowcount)
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
 
 
 async def reconcile_proxy_duplicates() -> int:
