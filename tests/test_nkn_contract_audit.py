@@ -74,6 +74,40 @@ def test_generic_nkn_deploy_uses_slot_scheduler_and_never_global_deploy_row():
     asyncio.run(run())
 
 
+def test_generic_nkn_deploy_forwards_explicit_canary_slot():
+    async def run():
+        with (
+            patch.object(main, "_resolve_worker_id", AsyncMock(return_value=7)),
+            patch.object(
+                main.database,
+                "get_config",
+                AsyncMock(return_value={"nkn_beneficiary_address": "NKNBeneficiaryAddress"}),
+            ),
+            patch.object(
+                main,
+                "_deploy_nkn_slots",
+                AsyncMock(return_value={"slots": 1, "deployed": ["ipv4-002"], "failed": []}),
+            ) as scheduler,
+        ):
+            result = await main.api_deploy(
+                _request(),
+                "nkn",
+                main.DeployRequest(mode="direct"),
+                worker_id=7,
+                slot_id="ipv4-002",
+                _auth={"r": "owner"},
+            )
+        scheduler.assert_awaited_once_with(
+            7,
+            beneficiary_address="NKNBeneficiaryAddress",
+            lxd_settings={"nkn_beneficiary_address": "NKNBeneficiaryAddress"},
+            slot_id="ipv4-002",
+        )
+        assert result["deployed"] == ["ipv4-002"]
+
+    asyncio.run(run())
+
+
 def test_nkn_is_not_backfilled_as_a_global_collection_deployment():
     async def run():
         with (

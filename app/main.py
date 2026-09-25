@@ -455,6 +455,7 @@ async def _deploy_nkn_slots(
     *,
     beneficiary_address: str,
     lxd_settings: Mapping[str, Any] | None = None,
+    slot_id: str | None = None,
     adopt_instance: str | None = None,
     expected_node_id: str | None = None,
     adopt_slot_id: str = "ipv4-001",
@@ -486,6 +487,12 @@ async def _deploy_nkn_slots(
         # A malformed or stale worker response must never turn into a wallet lease;
         # keep this guard at the mutation boundary as well as in the reader.
         slots = [slot for slot in await _worker_public_ip_slots(worker_id) if slot.get("route_ready") is True]
+        if slot_id is not None:
+            if not re.fullmatch(r"ipv4-\d{3,6}", str(slot_id or "")):
+                raise HTTPException(status_code=400, detail="Invalid NKN slot id")
+            slots = [slot for slot in slots if str(slot.get("slot_id") or "") == slot_id]
+            if not slots:
+                raise HTTPException(status_code=404, detail="NKN slot is not route-ready")
         if adopt_instance:
             slots = [slot for slot in slots if str(slot.get("slot_id") or "") == adopt_slot_id]
             if not slots:
@@ -4073,6 +4080,7 @@ async def api_deploy(
     slug: str,
     body: DeployRequest,
     worker_id: int | None = None,
+    slot_id: str | None = None,
     adopt_instance: str | None = None,
     expected_node_id: str | None = None,
     adopt_slot_id: str = "ipv4-001",
@@ -4120,6 +4128,8 @@ async def api_deploy(
                     "adopt_slot_id": adopt_slot_id,
                 }
             )
+        if slot_id is not None:
+            deploy_kwargs["slot_id"] = slot_id
         result = await _deploy_nkn_slots(worker_id, **deploy_kwargs)
         return {"status": "deployed", "provider": "nkn", **result}
 
