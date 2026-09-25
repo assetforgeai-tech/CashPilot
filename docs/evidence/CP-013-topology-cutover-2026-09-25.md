@@ -91,7 +91,11 @@ account-pool, Azure, or auto-deploy mutation was authorized or performed.
   accounts unchanged. Dynamic telemetry tables (`earnapp_account_snapshots`,
   `health_events`, `worker_resource_reclamations`) advanced during operation.
 - A command-path probe targeting a nonexistent slug returned `Worker request
-  failed` through the canonical UI. No provider container was changed.
+  failed` through the canonical UI. A subsequent read-only diagnostic using
+  the canonical UI runtime `_proxy_to_worker` returned HTTP `200` for both
+  worker `/api/status` and `/api/network/slots`: client ID matched the enrolled
+  worker, Docker was available, and all 20 slots reported `route_ready=true`.
+  No provider container was changed.
 
 UI upgrade gate: **PASS**. Auto-deploy remains disabled; no production-ready
 claim. Follow-on private/TLS transport and staged provider-group deployment
