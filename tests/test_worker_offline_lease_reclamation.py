@@ -51,6 +51,24 @@ def test_fifteen_minute_stale_reclaims_once_with_generation_cas():
     asyncio.run(run())
 
 
+def test_reclaimed_worker_is_not_reclaimed_again_on_next_scheduler_tick():
+    async def run():
+        with (
+            patch.object(
+                main.database,
+                "list_workers",
+                AsyncMock(return_value=[_worker(901, status="reclaimed", generation=5)]),
+            ),
+            patch.object(main.database, "set_worker_status", AsyncMock()) as set_status,
+            patch.object(main.database, "reclaim_worker_resources", AsyncMock()) as reclaim,
+        ):
+            await main._check_stale_workers()
+            set_status.assert_not_awaited()
+            reclaim.assert_not_awaited()
+
+    asyncio.run(run())
+
+
 def test_reclaimed_worker_heartbeat_is_quarantined_before_upsert():
     async def run():
         body = main.WorkerHeartbeat(name="worker-7", client_id="worker-7")

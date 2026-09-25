@@ -2588,7 +2588,11 @@ async def _check_stale_workers() -> None:
     cutoff = now - timedelta(seconds=STALE_WORKER_SECONDS)
     reclaim_cutoff = now - timedelta(seconds=NKN_WALLET_STALE_SECONDS)
     _mark_superseded_workers(workers)
-    for w in [row for row in workers if not row.get("superseded_by_worker_id")]:
+    for w in [
+        row
+        for row in workers
+        if not row.get("superseded_by_worker_id") and str(row.get("status") or "").lower() != "reclaimed"
+    ]:
         try:
             last_hb = w.get("last_heartbeat")
             if not last_hb:
@@ -2606,7 +2610,6 @@ async def _check_stale_workers() -> None:
                     int(w["id"]), "worker_lost", token, expected_generation=generation
                 )
                 if result.get("reclaimed") and not result.get("already_reclaimed"):
-                    await database.set_worker_status(int(w["id"]), "reclaimed")
                     logger.warning("Reclaimed resources for stale worker '%s' generation %s", w["name"], generation)
         except Exception as exc:
             logger.warning("Stale worker check error for worker '%s': %s", w.get("name", w.get("id")), exc)

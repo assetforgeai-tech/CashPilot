@@ -92,6 +92,77 @@ def test_reclaim_requires_non_empty_idempotency_token(tmp_path):
     asyncio.run(run())
 
 
+def test_reclaimed_worker_is_idempotent_with_a_new_token(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "reclaim.db"):
+            await database.init_db()
+            worker_id = await database.upsert_worker("worker", "worker", "http://worker")
+            first = await database.reclaim_worker_resources(worker_id, "worker_lost", "token-1")
+            assert first["generation"] == 2
+
+            db = await database._get_db()
+            try:
+                status = await (await db.execute("SELECT status FROM workers WHERE id=?", (worker_id,))).fetchone()
+                assert status["status"] == "reclaimed"
+            finally:
+                await db.close()
+
+            second = await database.reclaim_worker_resources(worker_id, "worker_lost", "token-2", expected_generation=2)
+            assert second == {
+                "reclaimed": True,
+                "already_reclaimed": True,
+                "worker_id": worker_id,
+                "generation": 2,
+            }
+            db = await database._get_db()
+            try:
+                worker = await (
+                    await db.execute("SELECT resource_generation FROM workers WHERE id=?", (worker_id,))
+                ).fetchone()
+                count = await (
+                    await db.execute(
+                        "SELECT COUNT(*) AS count FROM worker_resource_reclamations WHERE worker_id=?", (worker_id,)
+                    )
+                ).fetchone()
+                assert worker["resource_generation"] == 2
+                assert count["count"] == 1
+            finally:
+                await db.close()
+
+    asyncio.run(run())
+
+
+def test_worker_heartbeat_racing_reclaim_does_not_block_next_reclaim(tmp_path):
+    async def run():
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "reclaim.db"):
+            await database.init_db()
+            worker_id = await database.upsert_worker("worker", "worker", "http://worker")
+            first = await database.reclaim_worker_resources(worker_id, "worker_lost", "token-1")
+            assert first["generation"] == 2
+            # A heartbeat authorized before the reclaim transaction can commit its upsert afterward.
+            assert await database.upsert_worker("worker", "worker", "http://worker") == worker_id
+
+            db = await database._get_db()
+            try:
+                await db.execute(
+                    "INSERT INTO nkn_wallets (wallet_fingerprint, folder_name, wallet_json_enc, wallet_pswd_enc, "
+                    "state, leased_to_worker_id, leased_to_client_id, wallet_assignment_version) "
+                    "VALUES ('nkn-new', 'nkn-new', '', '', 'LEASED', ?, 'new-slot', 1)",
+                    (worker_id,),
+                )
+                await db.commit()
+            finally:
+                await db.close()
+
+            second = await database.reclaim_worker_resources(worker_id, "worker_lost", "token-2", expected_generation=2)
+            assert second["already_reclaimed"] is False
+            assert second["generation"] == 3
+            assert second["nkn_wallets"] == 1
+            assert (await database.get_worker(worker_id))["status"] == "reclaimed"
+
+    asyncio.run(run())
+
+
 def test_fresh_worker_reacquires_released_proxy_wallets_and_runtime_with_cas(tmp_path):
     async def run():
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "reclaim.db"):

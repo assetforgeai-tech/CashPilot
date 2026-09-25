@@ -9220,7 +9220,7 @@ async def reclaim_worker_resources(
             """
         )
         worker = await (
-            await db.execute("SELECT resource_generation FROM workers WHERE id = ?", (worker_id,))
+            await db.execute("SELECT status, resource_generation FROM workers WHERE id = ?", (worker_id,))
         ).fetchone()
         if not worker:
             await db.rollback()
@@ -9240,6 +9240,18 @@ async def reclaim_worker_resources(
                 "generation": int(prior["generation"]),
             }
         old_generation = int(worker["resource_generation"] or 1)
+        # A terminal reclaimed row is already fenced.  Do not use generation
+        # alone as an idempotency key: a heartbeat that passed authentication
+        # before this transaction can upsert the same worker row afterward,
+        # leaving it online again with fresh resources on the same generation.
+        if str(worker["status"] or "").lower() == "reclaimed":
+            await db.commit()
+            return {
+                "reclaimed": True,
+                "already_reclaimed": True,
+                "worker_id": worker_id,
+                "generation": old_generation,
+            }
         if expected_generation is not None and int(expected_generation) != old_generation:
             await db.commit()
             return {
@@ -9292,7 +9304,7 @@ async def reclaim_worker_resources(
             (worker_id,),
         )
         await db.execute(
-            "UPDATE workers SET status='offline', resource_generation=? WHERE id=?",
+            "UPDATE workers SET status='reclaimed', resource_generation=? WHERE id=?",
             (new_generation, worker_id),
         )
         await db.execute(
