@@ -74,6 +74,7 @@ from app import (
     provider_network_audit,
     provider_runtime,
     provider_topology,
+    rollout_safety,
     setup_token,
     update_check,
     version,
@@ -731,7 +732,7 @@ async def _run_auto_deploy_sequence(
     delay_seconds: int = 10,
     run_id: str | None = None,
 ) -> None:
-    """Run every provider lane in order; a failed lane never blocks the next."""
+    """Run lanes in order; ordinary failures continue, safety violations fence the round."""
     if worker_id in _AUTO_DEPLOY_ACTIVE:
         return
     _AUTO_DEPLOY_ACTIVE.add(worker_id)
@@ -739,8 +740,8 @@ async def _run_auto_deploy_sequence(
     try:
         async with lock:
             if run_id is not None:
-                # ponytail: one intent/outcome per provider lane; slot-level proof
-                # stays in provider_instances until the CP-013 live gate adds it.
+                # ponytail: one intent/outcome per provider lane; slot reconciliation
+                # is exposed by the read-only plan endpoint before live entry.
                 lanes = (
                     ["nkn"] if config.get("nkn_beneficiary_address") and worker_id not in _NKN_AUTO_DEPLOY_DONE else []
                 )
@@ -759,8 +760,6 @@ async def _run_auto_deploy_sequence(
                             status = (
                                 "failed" if result.get("failed") else "started" if result.get("deployed") else "pending"
                             )
-                            if status == "started":
-                                _NKN_AUTO_DEPLOY_DONE.add(worker_id)
                         elif slug == "earnapp":
                             result = await _deploy_earnapp_nodes(worker_id, config=config)
                             status = (
@@ -772,18 +771,31 @@ async def _run_auto_deploy_sequence(
                                 if result.get("deployed") or result.get("verified")
                                 else "pending"
                             )
-                            if status == "started":
-                                _EARNAPP_AUTO_DEPLOY_DONE.add(worker_id)
                         else:
                             result = await _auto_deploy_one(worker_id, slug)
                             status = _rollout_lane_status(result)
-                    except Exception as exc:  # noqa: BLE001 - collect ordinary lane failures
+                    except Exception as exc:  # noqa: BLE001 - classify before continuing
                         logger.warning(
                             "Diagnostic round lane %s failed on worker %s: %s", slug, worker_id, type(exc).__name__
                         )
-                        await database.record_rollout_outcome(run_id, slug, "failed", type(exc).__name__)
+                        assessment = rollout_safety.classify_rollout_exception(exc)
+                        await database.record_rollout_outcome(
+                            run_id, slug, "failed", assessment.code if assessment.stop_round else type(exc).__name__
+                        )
+                        if assessment.stop_round:
+                            # Keep the run open: restart/heartbeat must remain fenced
+                            # until an operator reconciles the unsafe lane.
+                            return
                     else:
+                        assessment = rollout_safety.classify_rollout_result(result)
+                        if assessment.stop_round:
+                            await database.record_rollout_outcome(run_id, slug, "failed", assessment.code)
+                            return
                         await database.record_rollout_outcome(run_id, slug, status)
+                        if status == "started" and slug == "nkn":
+                            _NKN_AUTO_DEPLOY_DONE.add(worker_id)
+                        if status == "started" and slug == "earnapp":
+                            _EARNAPP_AUTO_DEPLOY_DONE.add(worker_id)
                     if delay_seconds:
                         await asyncio.sleep(delay_seconds)
                 await database.finish_rollout_round(run_id)
@@ -4182,6 +4194,7 @@ async def api_plan_provider(
         ports=docker.get("ports") if isinstance(docker.get("ports"), list) else [],
         available_proxy_count=available_proxy_count,
     )
+    reconciliation = provider_topology.reconcile_provider_slots(plans, instances)
     return {
         "provider": slug,
         "worker_id": worker_id,
@@ -4192,6 +4205,7 @@ async def api_plan_provider(
         "status": summary.get("topology_status", "blocked"),
         "preflight": preflight,
         "plans": [plan.__dict__ | {"instance_id": plan.instance_id} for plan in plans],
+        "reconciliation": reconciliation,
         **summary,
     }
 
