@@ -34,6 +34,14 @@ therefore recorded every generic provider lane as `started`, including
   and malformed responses.
 - No live or production mutation.
 
+## CI release-pin repair
+
+PR #518 first test run `36237796663` failed only the two compose-pin drift
+assertions: release `v1.69.0` had published after PR #517, while both shipped
+compose examples still pinned UI/worker series `1.68`. Updated their active
+images and the commented fleet worker example to `1.69`. This does not deploy
+or recreate containers. Re-run CI must pass before merge.
+
 ## Gate status
 
 Live gate remains **CLOSED**. Slot-level inventory/reconciliation, provider
