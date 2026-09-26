@@ -3,6 +3,8 @@
 import asyncio
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from app import database, main
 
 
@@ -174,6 +176,44 @@ def test_ledger_write_failure_stops_sequential_dispatch(tmp_path):
                     raise AssertionError("ledger failure must stop dispatch")
             assert calls == []
             assert (await database.get_rollout_round(run_id))["status"] == "running"
+            await database.close_shared()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    ("response", "outcome"),
+    [
+        ({"status": "pending_capacity", "pending_proxy": 1, "instances": []}, "pending"),
+        ({"status": "deployed", "pending_capacity": 1, "instances": [{"status": "running"}]}, "pending"),
+        ({"status": "deployed", "failed": 1, "instances": [{"status": "failed"}]}, "failed"),
+        ({"status": "failed", "instances": []}, "failed"),
+        ({"status": "deployed", "instances": [{"status": "failed"}]}, "failed"),
+        ({"status": "deployed", "instances": [{"status": "pending_proxy"}]}, "pending"),
+        ({"status": "deployed", "instances": [{"status": "running"}]}, "started"),
+        ({"status": "deployed", "instances": []}, "pending"),
+        (None, "pending"),
+    ],
+)
+def test_generic_round_records_actual_result_not_assumed_start(tmp_path, response, outcome):
+    async def run():
+        with patch.object(database, "DB_PATH", tmp_path / "cashpilot.db"), patch.object(database, "DB_DIR", tmp_path):
+            await database.init_db()
+            worker_id = await database.upsert_worker("round-worker", "round-worker", "http://worker")
+            run_id = await database.claim_rollout_round(worker_id, 1, ["earnfm"])
+            main._NKN_AUTO_DEPLOY_DONE.add(worker_id)
+            main._EARNAPP_AUTO_DEPLOY_DONE.add(worker_id)
+            with patch.object(
+                main,
+                "_auto_deploy_one",
+                AsyncMock(return_value=response),
+            ):
+                await main._run_auto_deploy_sequence(worker_id, {}, ["earnfm"], delay_seconds=0, run_id=run_id)
+            saved = await database.get_rollout_round(run_id)
+            assert saved["status"] == "completed"
+            assert [row["status"] for row in saved["events"]] == ["planned", "attempted", outcome]
+            assert saved["started_count"] == int(outcome == "started")
+            assert saved["pending_count"] == int(outcome == "pending")
             await database.close_shared()
 
     asyncio.run(run())
