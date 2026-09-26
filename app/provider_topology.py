@@ -40,6 +40,65 @@ def group_proxy_heartbeat_targets(
 _SLOT_RE = re.compile(r"^ipv4-(\d{3,6})$")
 
 
+def reconcile_provider_slots(
+    plans: list[ProviderNodePlan] | tuple[ProviderNodePlan, ...],
+    instances: list[Mapping[str, Any]] | tuple[Mapping[str, Any], ...],
+) -> dict[str, Any]:
+    planned = {plan.instance_id: plan for plan in plans}
+    actual_rows = [row for row in instances if isinstance(row, Mapping) and str(row.get("instance_id") or "").strip()]
+    actual = {str(row.get("instance_id") or "").strip(): row for row in actual_rows}
+    seen: set[str] = set()
+    duplicates: set[str] = set()
+    for row in actual_rows:
+        instance_id = str(row.get("instance_id") or "").strip()
+        if instance_id in seen:
+            duplicates.add(instance_id)
+        seen.add(instance_id)
+    blocked = sorted(instance_id for instance_id, plan in planned.items() if not plan.deployable)
+    eligible = {instance_id for instance_id, plan in planned.items() if plan.deployable}
+    missing = sorted(instance_id for instance_id in eligible - actual.keys())
+    unexpected = sorted(instance_id for instance_id in actual.keys() - planned.keys())
+    not_running = sorted(
+        instance_id
+        for instance_id in eligible & actual.keys()
+        if str(actual[instance_id].get("status") or "").strip().lower() not in {"running", "deployed"}
+    )
+    mismatched = []
+    for instance_id in sorted(eligible & actual.keys()):
+        plan = planned[instance_id]
+        row = actual[instance_id]
+        for field in ("mode", "slot_id", "public_ipv4_slot", "capacity_slot"):
+            expected = str(getattr(plan, field) or "").strip()
+            observed = str(row.get(field) or "").strip()
+            if expected and observed and expected != observed:
+                mismatched.append(instance_id)
+                break
+    mismatched = sorted(set(mismatched))
+    status = (
+        "attention"
+        if missing or unexpected or not_running or duplicates or mismatched
+        else "pending"
+        if blocked
+        else "ready"
+    )
+    return {
+        "status": status,
+        "desired": len(planned),
+        "eligible": len(eligible),
+        "running": sum(
+            1
+            for instance_id in eligible & actual.keys()
+            if str(actual[instance_id].get("status") or "").strip().lower() in {"running", "deployed"}
+        ),
+        "missing": missing,
+        "unexpected": unexpected,
+        "duplicates": sorted(duplicates),
+        "mismatched": mismatched,
+        "not_running": not_running,
+        "blocked": blocked,
+    }
+
+
 def topology_contract(provider_slug: str) -> dict[str, Any]:
     """Return the explicit egress contract used by planning and UI code."""
     from app import provider_runtime

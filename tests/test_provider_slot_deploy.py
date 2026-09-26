@@ -179,6 +179,8 @@ async def test_provider_plan_endpoint_is_read_only(monkeypatch):
     assert result["plans"][0]["mode"] == "proxy"
     assert result["contract"]["proxy_required"] is True
     assert result["contract"]["proxy_fallback"] is False
+    assert result["reconciliation"]["status"] == "attention"
+    assert result["reconciliation"]["missing"] == [result["plans"][0]["instance_id"]]
 
 
 @pytest.mark.asyncio
