@@ -1090,6 +1090,30 @@ CREATE TABLE IF NOT EXISTS workers (
     registered_at   TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+-- A diagnostic round is one-shot per worker/generation. An interrupted run
+-- stays running for operator reconciliation; a heartbeat cannot resume it.
+CREATE TABLE IF NOT EXISTS rollout_runs (
+    run_id         TEXT PRIMARY KEY,
+    worker_id      INTEGER NOT NULL REFERENCES workers(id) ON DELETE RESTRICT,
+    generation     INTEGER NOT NULL CHECK(generation > 0),
+    status         TEXT NOT NULL DEFAULT 'running' CHECK(status IN ('running', 'completed')),
+    failure_count  INTEGER NOT NULL DEFAULT 0,
+    started_at     TEXT NOT NULL DEFAULT (datetime('now')),
+    finished_at    TEXT,
+    UNIQUE(worker_id, generation)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_rollout_runs_one_active_worker
+    ON rollout_runs(worker_id) WHERE status = 'running';
+CREATE TABLE IF NOT EXISTS rollout_run_events (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id     TEXT NOT NULL REFERENCES rollout_runs(run_id) ON DELETE RESTRICT,
+    slug       TEXT NOT NULL,
+    status     TEXT NOT NULL CHECK(status IN ('planned', 'attempted', 'started', 'failed', 'pending')),
+    error_type TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_rollout_run_events_run ON rollout_run_events(run_id, id);
+
 CREATE TABLE IF NOT EXISTS worker_resource_reclamations (
     worker_id       INTEGER NOT NULL,
     reclamation_token TEXT NOT NULL UNIQUE,
@@ -2997,7 +3021,7 @@ async def _migrate_legacy_earnapp_accounts(db: Any, applied: list[str]) -> None:
 #: missing a column -- an interrupted upgrade, a restored backup, a hand-edited
 #: file -- could never be repaired, because the gate would say there was nothing
 #: to do. The guards are idempotent and cheap; the version is for the operator.
-SCHEMA_VERSION = 25
+SCHEMA_VERSION = 26
 
 
 async def init_db() -> None:
@@ -12846,6 +12870,132 @@ async def get_worker_key_issued_at(client_id: str) -> str | None:
         cursor = await db.execute("SELECT key_issued_at FROM workers WHERE client_id = ?", (client_id,))
         row = await cursor.fetchone()
         return row["key_issued_at"] if row else None
+    finally:
+        await db.close()
+
+
+# --- CP-013 one-shot diagnostic rounds ---
+
+
+async def claim_rollout_round(worker_id: int, generation: int, slugs: list[str]) -> str | None:
+    """Atomically freeze intent. None means already claimed or a prior round is still open."""
+    if worker_id <= 0 or generation <= 0 or not slugs or len(slugs) != len(set(slugs)):
+        raise ValueError("invalid rollout round")
+    if any(not re.fullmatch(r"[a-z][a-z0-9-]{0,63}", slug) for slug in slugs):
+        raise ValueError("invalid rollout provider slug")
+    db = await _open_transaction_connection()
+    try:
+        await db.execute("BEGIN IMMEDIATE")
+        row = await (
+            await db.execute(
+                "SELECT MAX(generation) AS latest, SUM(status = 'running') AS active "
+                "FROM rollout_runs WHERE worker_id = ?",
+                (worker_id,),
+            )
+        ).fetchone()
+        if (row["latest"] is not None and generation <= int(row["latest"])) or row["active"]:
+            await db.rollback()
+            return None
+        run_id = secrets.token_hex(16)
+        await db.execute(
+            "INSERT INTO rollout_runs (run_id, worker_id, generation) VALUES (?, ?, ?)",
+            (run_id, worker_id, generation),
+        )
+        await db.executemany(
+            "INSERT INTO rollout_run_events (run_id, slug, status) VALUES (?, ?, 'planned')",
+            [(run_id, slug) for slug in slugs],
+        )
+        await db.commit()
+        return run_id
+    except BaseException:
+        await db.rollback()
+        raise
+    finally:
+        await db.close()
+
+
+async def record_rollout_outcome(run_id: str, slug: str, status: str, error_type: str = "") -> None:
+    """Persist a redacted outcome; never accept arbitrary exception text or credentials."""
+    if status not in {"attempted", "started", "failed", "pending"}:
+        raise ValueError("invalid rollout outcome")
+    if not re.fullmatch(r"[a-z][a-z0-9-]{0,63}", slug):
+        raise ValueError("invalid rollout provider slug")
+    if error_type and not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}", error_type):
+        raise ValueError("invalid rollout error type")
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "INSERT INTO rollout_run_events (run_id, slug, status, error_type) "
+            "SELECT run_id, ?, ?, ? FROM rollout_runs WHERE run_id = ? AND status = 'running' "
+            "AND EXISTS (SELECT 1 FROM rollout_run_events WHERE run_id = ? AND slug = ? AND status = 'planned') "
+            "AND ((? = 'attempted' AND NOT EXISTS (SELECT 1 FROM rollout_run_events "
+            "      WHERE run_id = ? AND slug = ? AND status = 'attempted')) "
+            " OR (? IN ('started', 'failed', 'pending') "
+            "     AND EXISTS (SELECT 1 FROM rollout_run_events WHERE run_id = ? AND slug = ? AND status = 'attempted') "
+            "     AND NOT EXISTS (SELECT 1 FROM rollout_run_events "
+            "         WHERE run_id = ? AND slug = ? AND status IN ('started', 'failed', 'pending'))))",
+            (
+                slug,
+                status,
+                error_type,
+                run_id,
+                run_id,
+                slug,
+                status,
+                run_id,
+                slug,
+                status,
+                run_id,
+                slug,
+                run_id,
+                slug,
+            ),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError("rollout round is not active or slug was not planned")
+        if status == "failed":
+            await db.execute("UPDATE rollout_runs SET failure_count = failure_count + 1 WHERE run_id = ?", (run_id,))
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def finish_rollout_round(run_id: str) -> None:
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "UPDATE rollout_runs SET status = 'completed', finished_at = datetime('now') "
+            "WHERE run_id = ? AND status = 'running'",
+            (run_id,),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError("rollout round is not active")
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def get_rollout_round(run_id: str) -> dict[str, Any] | None:
+    db = await _get_db()
+    try:
+        row = await (await db.execute("SELECT * FROM rollout_runs WHERE run_id = ?", (run_id,))).fetchone()
+        if row is None:
+            return None
+        events = await (
+            await db.execute(
+                "SELECT slug, status, error_type, created_at FROM rollout_run_events WHERE run_id = ? ORDER BY id",
+                (run_id,),
+            )
+        ).fetchall()
+        outcomes = [dict(event) for event in events]
+        counts = {
+            "desired_count": sum(event["status"] == "planned" for event in outcomes),
+            "attempted_count": sum(event["status"] == "attempted" for event in outcomes),
+            "started_count": sum(event["status"] == "started" for event in outcomes),
+            "failed_count": sum(event["status"] == "failed" for event in outcomes),
+            "pending_count": sum(event["status"] == "pending" for event in outcomes),
+        }
+        return {**dict(row), **counts, "events": outcomes}
     finally:
         await db.close()
 

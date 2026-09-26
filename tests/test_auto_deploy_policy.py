@@ -82,7 +82,7 @@ def test_auto_deploy_targets_deployable_catalog_services_only():
     assert main._auto_deploy_slugs(services) == ["ok"]
 
 
-def test_auto_deploy_retries_failed_target_row_despite_global_deployment():
+def test_auto_deploy_includes_failed_target_only_in_operator_armed_round():
     async def run():
         main._WORKER_HEARTBEAT_STREAKS[7] = 2
         main._NKN_AUTO_DEPLOY_DONE.add(7)
@@ -100,7 +100,15 @@ def test_auto_deploy_retries_failed_target_row_despite_global_deployment():
         captured = []
         with (
             patch.object(
-                main.database, "get_config", AsyncMock(return_value={"cashpilot_auto_deploy_enabled": "true"})
+                main.database,
+                "get_config",
+                AsyncMock(
+                    return_value={
+                        "cashpilot_auto_deploy_enabled": "true",
+                        "cashpilot_autodeploy_round_generation": "1",
+                        "cashpilot_autodeploy_worker_ids": "7",
+                    }
+                ),
             ),
             patch.object(
                 main.database,
@@ -111,6 +119,7 @@ def test_auto_deploy_retries_failed_target_row_despite_global_deployment():
             patch.object(main.database, "list_provider_instances", AsyncMock(return_value=instances)) as worker_rows,
             patch.object(main.catalog, "get_services", return_value=services),
             patch.object(main, "_auto_deploy_credentials_ready", return_value=True),
+            patch.object(main.database, "claim_rollout_round", AsyncMock(return_value="run-1")) as claim,
             patch.object(main, "_run_auto_deploy_sequence", AsyncMock()) as sequence,
             patch.object(main, "_spawn", side_effect=captured.append),
         ):
@@ -119,6 +128,7 @@ def test_auto_deploy_retries_failed_target_row_despite_global_deployment():
             await captured.pop()
         worker_rows.assert_awaited_once_with(worker_id=7)
         global_rows.assert_not_awaited()
+        claim.assert_awaited_once_with(7, 1, ["legacy", "failed"])
         assert sequence.await_args.args[2] == ["legacy", "failed"]
 
     asyncio.run(run())
@@ -289,7 +299,15 @@ def test_heartbeat_auto_deploy_does_not_skip_provider_deployed_on_another_worker
         ]
         with (
             patch.object(
-                main.database, "get_config", AsyncMock(return_value={"cashpilot_auto_deploy_enabled": "true"})
+                main.database,
+                "get_config",
+                AsyncMock(
+                    return_value={
+                        "cashpilot_auto_deploy_enabled": "true",
+                        "cashpilot_autodeploy_round_generation": "1",
+                        "cashpilot_autodeploy_worker_ids": "7",
+                    }
+                ),
             ),
             patch.object(
                 main.database,
@@ -298,6 +316,7 @@ def test_heartbeat_auto_deploy_does_not_skip_provider_deployed_on_another_worker
             ),
             patch.object(main.database, "list_provider_instances", AsyncMock(return_value=[])),
             patch.object(main.catalog, "get_services", return_value=services),
+            patch.object(main.database, "claim_rollout_round", AsyncMock(return_value="run-1")),
             patch.object(main, "_spawn") as spawn,
         ):
             await main._maybe_auto_deploy_after_heartbeat(7)

@@ -600,9 +600,78 @@ evidence remains immutable; this dependency requires a fresh follow-up canary.
 **Depends on:** CP-011, CP-012, and CP-015F. CP-015F is a planned follow-up
 gate; it does not reopen closed CP-011/CP-012 issues.
 
-**Stages:** one worker -> one provider group -> one region -> remaining fleet, with pause gates and automatic rollback on health failure.
+**Stages:** one worker -> one provider group -> one region -> remaining fleet. A
+full-worker diagnostic round traverses provider lanes **sequentially**; it is
+not a concurrent launch of all providers. Keep the provider's direct/proxy
+cardinality, EarnApp account queue, Pawns private allocator, NKN/Myst wallet
+ownership, and fail-closed network gates. Catalog filename order is only the
+current implementation order, not an approved provider rollout priority.
 
-**Acceptance:** provider dashboards, CashPilot state, collectors, payments, leases, and network evidence reconcile after each stage.
+**Diagnostic-round contract (pre-live gate):**
+
+1. Freeze the worker ID, release digest, public-IPv4 slot manifest, intended
+   provider/lane order, eligible proxy capacity, and existing node/identity,
+   wallet, volume, account, and lease inventory. Mark non-automatable providers
+   explicitly; never count them as successful automatic deployments.
+2. Start one durable round ID for one worker and an operator-selected positive
+   generation. Persist intended provider rows **before** dispatch. On each
+   sequential provider/slot result, persist only redacted status/count/identity
+   labels. Separate `started` (CashPilot worker acknowledgement) from external
+   provider online/traffic/earnings proof; preserve `pending`, `failed`,
+   `inconclusive`, and excluded-lane reasons. A crash leaves an incomplete round
+   visible and must not start another attempt on heartbeat or restart.
+3. Continue through ordinary provider failures to collect the entire round's
+   errors. Stop dispatch immediately if the ledger fails, a proxy route can
+   fall back to direct egress, a wrong wallet/identity/lease could be touched,
+   or another data-loss/security invariant fails. Do not patch code or rotate,
+   delete, or clean nodes mid-round.
+4. After the final provider, freeze the run ledger and gather worker logs,
+   network/egress/DNS evidence, CashPilot counts, external provider dashboard
+   observations, traffic, collectors, and lease/wallet reconciliation under
+   the same round ID. Group errors by root cause; use isolated code/test PRs
+   in parallel only when file and resource ownership do not overlap. Integrate
+   fixes through green CI and a pinned release with rollback.
+5. Only after fixes and backup/inventory, clean the **approved** worker's
+   provider runtimes in dependency order. Preserve identity volumes, accounts,
+   sticky ownership, wallets, and leases unless an exact policy and separate
+   scoped approval explicitly permit release. Verify before/after state and
+   rollback. Advance the generation only after this gate, then repeat one
+   diagnostic round. Never run two rounds or a clean on the same worker at once.
+
+**Automatic-retry gate:** a heartbeat may claim at most one round per worker
+and generation in SQLite. Failed or pending targets are not dispatched again
+by later heartbeats or UI restarts. Changing generation is an explicit
+operator action through `cashpilot_autodeploy_round_generation`; it is not an
+implicit retry. `cashpilot_autodeploy_worker_ids` must contain exactly the
+approved worker ID, and the worker key must be confirmed. Missing, malformed,
+duplicate, or multi-worker scope fails closed. No round status, including
+`completed`, is evidence of provider earnings or production readiness.
+
+**Live entry:** first prove durable redacted round records, duplicate-heartbeat
+and restart suppression, failure continuation, and ledger-failure stop using
+synthetic tests. Then merge code/evidence with green CI, verify current
+control-plane/worker release compatibility and backup/rollback, and obtain an
+exact worker/provider/resource approval. Keep global auto-deploy disabled
+until that gate. Initial live stage remains one approved canary slot; a
+full-worker round requires its own approval and is not inferred from it.
+
+**Acceptance:** run IDs reconcile desired/attempted/started/failed/pending
+counts; provider dashboards, CashPilot state, collectors, payments, leases,
+network evidence, and manual operator observations reconcile after each stage.
+
+**Implementation checkpoint (2026-09-26):** The synthetic ledger currently
+records provider-lane intent/outcomes and blocks *heartbeat auto-deploy* retries
+for the same worker/generation. An interrupted `running` round remains visible
+and fences both the same generation and higher generations until operator
+reconciliation; it is never retried implicitly after restart. It does not yet
+freeze per-slot intent, a release/IPv4/proxy/identity snapshot, external
+provider proof, or an approved provider ordering. Existing EarnApp lifecycle
+and proxy-pool recovery remain separate policies; this gate must not silently
+disable them. Before live entry, add a provider/slot reconciliation view,
+classify fatal network/identity/lease violations versus ordinary failures, and
+explicitly exclude unsupported/manual provider lanes. Do not infer that the
+present generic sequence covers every provider or that a green synthetic test
+authorizes a live worker.
 
 ---
 

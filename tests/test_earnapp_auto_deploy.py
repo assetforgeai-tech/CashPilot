@@ -978,7 +978,13 @@ def test_earnapp_auto_deploy_runs_once_across_stable_heartbeats(monkeypatch):
             patch.object(
                 database,
                 "get_config",
-                AsyncMock(return_value={"cashpilot_auto_deploy_enabled": "true"}),
+                AsyncMock(
+                    return_value={
+                        "cashpilot_auto_deploy_enabled": "true",
+                        "cashpilot_autodeploy_round_generation": "1",
+                        "cashpilot_autodeploy_worker_ids": "7",
+                    }
+                ),
             ),
             patch.object(
                 database,
@@ -986,6 +992,9 @@ def test_earnapp_auto_deploy_runs_once_across_stable_heartbeats(monkeypatch):
                 AsyncMock(return_value={"id": 7, "name": "worker-a", "client_id": "worker-a", "key_confirmed": 1}),
             ),
             patch.object(database, "get_deployments", AsyncMock(return_value=[])),
+            patch.object(database, "claim_rollout_round", AsyncMock(side_effect=["run-1", None])),
+            patch.object(database, "record_rollout_outcome", AsyncMock()),
+            patch.object(database, "finish_rollout_round", AsyncMock()),
             patch.object(main, "_deploy_earnapp_nodes", deploy),
             patch.object(main, "_spawn", side_effect=capture),
             patch.object(main.catalog, "get_services", return_value=[]),
@@ -996,7 +1005,13 @@ def test_earnapp_auto_deploy_runs_once_across_stable_heartbeats(monkeypatch):
             await main._maybe_auto_deploy_after_heartbeat(7)
             await asyncio.gather(*spawned)
 
-        deploy.assert_awaited_once_with(7, config={"cashpilot_auto_deploy_enabled": "true"})
-        assert 7 in main._EARNAPP_AUTO_DEPLOY_DONE
+        deploy.assert_awaited_once_with(
+            7,
+            config={
+                "cashpilot_auto_deploy_enabled": "true",
+                "cashpilot_autodeploy_round_generation": "1",
+                "cashpilot_autodeploy_worker_ids": "7",
+            },
+        )
 
     asyncio.run(run())
