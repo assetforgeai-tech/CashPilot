@@ -706,6 +706,82 @@ def _rollout_lane_status(result: Mapping[str, Any] | None) -> str:
     return "failed" if has_failed else "pending" if has_pending or not has_started else "started"
 
 
+async def _enrich_deploy_result_with_egress_probe(
+    worker_id: int,
+    slug: str,
+    result: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Attach worker-authoritative egress evidence to one deployed lane."""
+    enriched = dict(result or {})
+    deployed = enriched.get("instances")
+    instance_ids = (
+        sorted(
+            {
+                str(row.get("instance_id") or "").strip()
+                for row in deployed
+                if isinstance(row, Mapping)
+                and str(row.get("instance_id") or "").strip()
+                and str(row.get("status") or "").strip().lower() in {"running", "deployed", "started"}
+            }
+        )
+        if isinstance(deployed, list)
+        else []
+    )
+    if not instance_ids:
+        return enriched
+
+    rows = await database.list_provider_instances(slug=slug, worker_id=int(worker_id))
+    by_id = {
+        str(row.get("instance_id") or "").strip(): dict(row)
+        for row in rows
+        if isinstance(row, Mapping) and str(row.get("instance_id") or "").strip() in instance_ids
+    }
+    authoritative: list[dict[str, Any]] = []
+    for instance_id in instance_ids:
+        item = by_id.get(instance_id)
+        if item is None:
+            continue
+        mode = str(item.get("mode") or "").strip().lower()
+        if mode == "proxy":
+            lease = await database.get_active_provider_proxy_lease(slug, int(worker_id), instance_id)
+            item["proxy_lease_id"] = str((lease or {}).get("id") or "").strip()
+            item["proxy_lease_proxy_id"] = str((lease or {}).get("proxy_id") or "").strip()
+            item["expected_egress_ip"] = str((lease or {}).get("exit_ip") or "").strip()
+        else:
+            spec = await database.get_provider_instance_spec(instance_id)
+            if isinstance(spec, Mapping):
+                item["expected_egress_ip"] = str(spec.get("expected_egress_ip") or "").strip()
+        authoritative.append(item)
+
+    probes: list[Mapping[str, Any]] = []
+    probe_error = ""
+    try:
+        probe_response = await _proxy_to_worker(
+            int(worker_id),
+            "POST",
+            "/api/providers/egress-probe",
+            json={"instances": instance_ids},
+            timeout=min(300.0, max(30.0, len(instance_ids) * 3.0)),
+        )
+        raw_probes = probe_response.get("results") if isinstance(probe_response, Mapping) else None
+        if isinstance(raw_probes, list):
+            probes = [row for row in raw_probes if isinstance(row, Mapping)]
+    except Exception as exc:  # noqa: BLE001 - unavailable evidence stays pending
+        probe_error = type(exc).__name__
+
+    enriched = rollout_safety.enrich_rollout_result(
+        enriched,
+        instances=authoritative,
+        probes=probes,
+    )
+    evidence = dict(enriched.get("safety_evidence") or {})
+    if probe_error:
+        evidence["probe_error"] = probe_error
+        enriched["status"] = "verification_pending"
+    enriched["safety_evidence"] = evidence
+    return enriched
+
+
 async def _run_auto_deploy_batch(worker_id: int, slugs: list[str], *, delay_seconds: int = 10) -> None:
     if worker_id in _AUTO_DEPLOY_ACTIVE:
         return
@@ -773,6 +849,7 @@ async def _run_auto_deploy_sequence(
                             )
                         else:
                             result = await _auto_deploy_one(worker_id, slug)
+                            result = await _enrich_deploy_result_with_egress_probe(worker_id, slug, result)
                             status = _rollout_lane_status(result)
                     except Exception as exc:  # noqa: BLE001 - classify before continuing
                         logger.warning(
