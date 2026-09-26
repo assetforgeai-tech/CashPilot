@@ -673,6 +673,13 @@ explicitly exclude unsupported/manual provider lanes. Do not infer that the
 present generic sequence covers every provider or that a green synthetic test
 authorizes a live worker.
 
+The diagnostic dispatcher now propagates the generic deploy response into the
+round ledger: `pending_capacity`, blocked/inconclusive, failed, empty, and
+malformed responses are not reported as `started`. A `started` outcome requires
+an explicit deployed/running response with instance or running evidence. This
+is status accounting only; it does not replace slot-level reconciliation or
+external provider proof.
+
 ---
 
 ## Task Prompt Templates

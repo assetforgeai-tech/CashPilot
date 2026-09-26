@@ -648,14 +648,61 @@ def _worker_allowed_for_auto_deploy(worker: dict[str, Any], config: dict[str, st
     )
 
 
-async def _auto_deploy_one(worker_id: int, slug: str) -> None:
-    await api_deploy(
+async def _auto_deploy_one(worker_id: int, slug: str) -> dict[str, Any]:
+    return await api_deploy(
         Request({"type": "http", "method": "POST", "path": f"/api/deploy/{slug}", "headers": []}),
         slug,
         DeployRequest(env={}, mode=provider_modes.default_deploy_mode(slug)),
         worker_id=worker_id,
         _auth={"r": "owner"},
     )
+
+
+def _rollout_lane_status(result: Mapping[str, Any] | None) -> str:
+    """Classify one generic deploy response without treating intent as success."""
+    if not isinstance(result, Mapping):
+        return "pending"
+    result_status = str(result.get("status") or "").strip().lower()
+    instances = result.get("instances")
+    instance_rows = instances if isinstance(instances, list) else []
+    instance_statuses = {
+        str(item.get("status") or "").strip().lower() for item in instance_rows if isinstance(item, Mapping)
+    }
+    failed_statuses = {"failed", "error", "slot_conflict"}
+    pending_statuses = {
+        "pending",
+        "pending_capacity",
+        "pending_proxy",
+        "verification_pending",
+        "blocked",
+        "inconclusive",
+    }
+    has_failed = (
+        result_status in failed_statuses
+        or bool(result.get("failed"))
+        or any(
+            isinstance(result.get(key), (int, float)) and int(result.get(key) or 0) > 0
+            for key in ("failed", "failed_count")
+        )
+        or bool(instance_statuses & failed_statuses)
+    )
+    has_pending = (
+        result_status in pending_statuses
+        or str(result.get("topology_status") or "").strip().lower() in {"blocked", "partial"}
+        or bool(instance_statuses & pending_statuses)
+        or any(
+            isinstance(result.get(key), (int, float)) and int(result.get(key) or 0) > 0
+            for key in ("pending", "pending_proxy", "pending_direct", "pending_capacity", "blocked")
+        )
+    )
+    has_started = result_status in {"deployed", "running", "started"} and (
+        bool(instance_statuses & {"running", "deployed", "started"})
+        or any(
+            isinstance(result.get(key), (int, float)) and int(result.get(key) or 0) > 0
+            for key in ("running", "skipped")
+        )
+    )
+    return "failed" if has_failed else "pending" if has_pending or not has_started else "started"
 
 
 async def _run_auto_deploy_batch(worker_id: int, slugs: list[str], *, delay_seconds: int = 10) -> None:
@@ -728,8 +775,8 @@ async def _run_auto_deploy_sequence(
                             if status == "started":
                                 _EARNAPP_AUTO_DEPLOY_DONE.add(worker_id)
                         else:
-                            await _auto_deploy_one(worker_id, slug)
-                            status = "started"
+                            result = await _auto_deploy_one(worker_id, slug)
+                            status = _rollout_lane_status(result)
                     except Exception as exc:  # noqa: BLE001 - collect ordinary lane failures
                         logger.warning(
                             "Diagnostic round lane %s failed on worker %s: %s", slug, worker_id, type(exc).__name__
