@@ -338,6 +338,8 @@ def test_nkn_auto_deploy_does_not_mark_zero_slot_worker_complete():
                     return_value={
                         "nkn_beneficiary_address": "NKNBeneficiaryAddress",
                         "cashpilot_auto_deploy_enabled": "true",
+                        "cashpilot_autodeploy_round_generation": "1",
+                        "cashpilot_autodeploy_worker_ids": "7",
                     }
                 ),
             ),
@@ -349,12 +351,15 @@ def test_nkn_auto_deploy_does_not_mark_zero_slot_worker_complete():
             patch.object(main, "_worker_public_ip_slots", AsyncMock(return_value=[])),
             patch.object(main, "_deploy_nkn_slots", AsyncMock(return_value={"slots": 0, "failed": []})),
             patch.object(main, "_spawn", side_effect=capture),
+            patch.object(main.database, "claim_rollout_round", AsyncMock(return_value="run-1")),
+            patch.object(main.database, "record_rollout_outcome", AsyncMock()),
+            patch.object(main.database, "finish_rollout_round", AsyncMock()),
             patch.object(main.database, "get_deployments", AsyncMock(return_value=[])),
             patch.object(main.catalog, "get_services", return_value=[]),
         ):
             await main._maybe_auto_deploy_after_heartbeat(7)
-        assert spawned
-        await spawned.pop(0)
+            assert spawned
+            await spawned.pop(0)
         assert 7 not in main._NKN_AUTO_DEPLOY_DONE
 
     asyncio.run(run())

@@ -682,6 +682,7 @@ async def _run_auto_deploy_sequence(
     slugs: list[str],
     *,
     delay_seconds: int = 10,
+    run_id: str | None = None,
 ) -> None:
     """Run every provider lane in order; a failed lane never blocks the next."""
     if worker_id in _AUTO_DEPLOY_ACTIVE:
@@ -690,6 +691,56 @@ async def _run_auto_deploy_sequence(
     lock = _AUTO_DEPLOY_LOCKS.setdefault(worker_id, asyncio.Lock())
     try:
         async with lock:
+            if run_id is not None:
+                # ponytail: one intent/outcome per provider lane; slot-level proof
+                # stays in provider_instances until the CP-013 live gate adds it.
+                lanes = (
+                    ["nkn"] if config.get("nkn_beneficiary_address") and worker_id not in _NKN_AUTO_DEPLOY_DONE else []
+                )
+                lanes += slugs
+                if worker_id not in _EARNAPP_AUTO_DEPLOY_DONE:
+                    lanes.append("earnapp")
+                for slug in lanes:
+                    await database.record_rollout_outcome(run_id, slug, "attempted")
+                    try:
+                        if slug == "nkn":
+                            result = await _deploy_nkn_slots(
+                                worker_id,
+                                beneficiary_address=str(config["nkn_beneficiary_address"]),
+                                lxd_settings=config,
+                            )
+                            status = (
+                                "failed" if result.get("failed") else "started" if result.get("deployed") else "pending"
+                            )
+                            if status == "started":
+                                _NKN_AUTO_DEPLOY_DONE.add(worker_id)
+                        elif slug == "earnapp":
+                            result = await _deploy_earnapp_nodes(worker_id, config=config)
+                            status = (
+                                "failed"
+                                if result.get("failed")
+                                else "pending"
+                                if result.get("pending")
+                                else "started"
+                                if result.get("deployed") or result.get("verified")
+                                else "pending"
+                            )
+                            if status == "started":
+                                _EARNAPP_AUTO_DEPLOY_DONE.add(worker_id)
+                        else:
+                            await _auto_deploy_one(worker_id, slug)
+                            status = "started"
+                    except Exception as exc:  # noqa: BLE001 - collect ordinary lane failures
+                        logger.warning(
+                            "Diagnostic round lane %s failed on worker %s: %s", slug, worker_id, type(exc).__name__
+                        )
+                        await database.record_rollout_outcome(run_id, slug, "failed", type(exc).__name__)
+                    else:
+                        await database.record_rollout_outcome(run_id, slug, status)
+                    if delay_seconds:
+                        await asyncio.sleep(delay_seconds)
+                await database.finish_rollout_round(run_id)
+                return
             if worker_id not in _NKN_AUTO_DEPLOY_DONE:
                 beneficiary = str(config.get("nkn_beneficiary_address") or "").strip()
                 if beneficiary:
@@ -738,17 +789,31 @@ async def _maybe_auto_deploy_after_heartbeat(worker_id: int) -> None:
     worker = await database.get_worker(worker_id)
     if not worker or not _worker_allowed_for_auto_deploy(worker, config):
         return
+    if int(worker.get("key_confirmed") or 0) != 1:
+        return
     streak = _WORKER_HEARTBEAT_STREAKS.get(worker_id, 0) + 1
     _WORKER_HEARTBEAT_STREAKS[worker_id] = streak
     if streak < 3:
+        return
+    # No implicit generation: a leftover enable flag cannot restart failed
+    # deployments on heartbeat or after a control-plane restart.
+    generation_text = str(config.get("cashpilot_autodeploy_round_generation") or "").strip()
+    if not generation_text.isdecimal() or int(generation_text) <= 0:
+        return
+    scoped_ids = {
+        int(value.strip())
+        for value in str(config.get("cashpilot_autodeploy_worker_ids", "") or "").split(",")
+        if value.strip().isdigit() and int(value.strip()) > 0
+    }
+    if scoped_ids != {worker_id}:
         return
     # Deployment rows are fleet-global; auto-deploy convergence is worker-local.
     # A provider running on another worker must still be provisioned here.
     deployed = {
         str(d.get("slug") or "")
         for d in await database.list_provider_instances(worker_id=worker_id)
-        # ponytail: failed rows are retryable; planned/starting rows remain
-        # idempotency guards until reconciliation resolves them.
+        # Failed rows can be considered only in a newly operator-armed round;
+        # a repeated heartbeat cannot claim that generation twice.
         if str(d.get("status") or "").lower() not in {"failed", "retired", "deleted"}
     }
     containers = worker.get("containers")
@@ -767,12 +832,22 @@ async def _maybe_auto_deploy_after_heartbeat(worker_id: int) -> None:
     slugs = _auto_deploy_slugs(services, config)
     needs_sequence = bool(slugs or worker_id not in _NKN_AUTO_DEPLOY_DONE or worker_id not in _EARNAPP_AUTO_DEPLOY_DONE)
     if needs_sequence:
+        intent = ["nkn"] if config.get("nkn_beneficiary_address") and worker_id not in _NKN_AUTO_DEPLOY_DONE else []
+        intent += slugs
+        if worker_id not in _EARNAPP_AUTO_DEPLOY_DONE:
+            intent.append("earnapp")
+        if not intent:
+            return
+        run_id = await database.claim_rollout_round(worker_id, int(generation_text), intent)
+        if run_id is None:
+            return
         _spawn(
             _run_auto_deploy_sequence(
                 worker_id,
                 config,
                 slugs,
                 delay_seconds=settings["delay_seconds"],
+                run_id=run_id,
             )
         )
 
@@ -7862,6 +7937,16 @@ def _normalize_config_update(data: dict[str, str]) -> dict[str, str]:
 
 
 def _validate_config_update(data: Mapping[str, str]) -> None:
+    if "cashpilot_autodeploy_round_generation" in data:
+        value = str(data.get("cashpilot_autodeploy_round_generation") or "").strip()
+        if not value.isdecimal() or len(value) > 7 or not 0 < int(value) <= 1_000_000:
+            raise ValueError("cashpilot_autodeploy_round_generation must be a positive integer <= 1000000")
+    if "cashpilot_autodeploy_worker_ids" in data:
+        raw_ids = [part.strip() for part in str(data.get("cashpilot_autodeploy_worker_ids") or "").split(",")]
+        if not raw_ids or any(not part.isdecimal() or int(part) <= 0 for part in raw_ids):
+            raise ValueError("cashpilot_autodeploy_worker_ids must be a comma-separated list of positive integers")
+        if len(raw_ids) != len({int(part) for part in raw_ids}):
+            raise ValueError("cashpilot_autodeploy_worker_ids must not contain duplicates")
     if {"nkn_lxd_cpu", "nkn_lxd_memory_mib"}.intersection(data):
         # Validate the merged pair so a request that changes one field keeps the
         # documented default for the other rather than inventing a partial state.

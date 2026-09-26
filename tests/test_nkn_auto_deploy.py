@@ -435,7 +435,7 @@ def test_auto_deploy_excludes_nkn_from_legacy_catalog_batch():
     assert main._auto_deploy_slugs(services) == ["earnfm"]
 
 
-def test_nkn_auto_deploy_retries_after_a_failed_slot_on_the_next_stable_heartbeat():
+def test_nkn_auto_deploy_does_not_retry_failed_slot_on_the_next_heartbeat():
     async def run():
         main._NKN_AUTO_DEPLOY_DONE.discard(7)
         main._WORKER_HEARTBEAT_STREAKS[7] = 2
@@ -454,6 +454,8 @@ def test_nkn_auto_deploy_retries_after_a_failed_slot_on_the_next_stable_heartbea
                     return_value={
                         "nkn_beneficiary_address": "NKNBeneficiaryAddress",
                         "cashpilot_auto_deploy_enabled": "true",
+                        "cashpilot_autodeploy_round_generation": "1",
+                        "cashpilot_autodeploy_worker_ids": "7",
                     }
                 ),
             ),
@@ -463,6 +465,9 @@ def test_nkn_auto_deploy_retries_after_a_failed_slot_on_the_next_stable_heartbea
                 AsyncMock(return_value={"id": 7, "name": "worker-a", "client_id": "worker-a", "key_confirmed": 1}),
             ),
             patch.object(database, "get_deployments", AsyncMock(return_value=[])),
+            patch.object(database, "claim_rollout_round", AsyncMock(side_effect=["run-1", None])),
+            patch.object(database, "record_rollout_outcome", AsyncMock()),
+            patch.object(database, "finish_rollout_round", AsyncMock()),
             patch.object(main, "_deploy_nkn_slots", deploy),
             patch.object(
                 main,
@@ -478,8 +483,7 @@ def test_nkn_auto_deploy_retries_after_a_failed_slot_on_the_next_stable_heartbea
             await main._maybe_auto_deploy_after_heartbeat(7)
             await asyncio.gather(*spawned)
 
-        assert deploy.await_count == 2
-        assert 7 in main._NKN_AUTO_DEPLOY_DONE
+        assert deploy.await_count == 1
 
     asyncio.run(run())
 
