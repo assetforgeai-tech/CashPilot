@@ -1,0 +1,2515 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Self-hosted passive income orchestrator. Deploy, manage, and monitor 14 providers from a single dashboard.">
+      
+      
+        <meta name="author" content="Sergio Fernandez">
+      
+      
+        <link rel="canonical" href="https://geiserx.github.io/CashPilot/superpowers/plans/2026-09-23-proxy-route-and-pool-reliability-addendum/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../icon.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Proxy Route and Proxy Pool Reliability Implementation Plan - CashPilot</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../stylesheets/theme.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#proxy-route-and-proxy-pool-reliability-implementation-plan" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="CashPilot" class="md-header__button md-logo" aria-label="CashPilot" data-md-component="logo">
+      
+  <img src="../../../logo.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            CashPilot
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Proxy Route and Proxy Pool Reliability Implementation Plan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/GeiserX/CashPilot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GeiserX/CashPilot
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../guides/" class="md-tabs__link">
+          
+  
+  
+  Service Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../configuration/" class="md-tabs__link">
+          
+  
+  
+  Configuration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../security-defaults/" class="md-tabs__link">
+          
+  
+  
+  Security
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../backup-restore/" class="md-tabs__link">
+          
+  
+  
+  Operations
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../architecture/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="CashPilot" class="md-nav__button md-logo" aria-label="CashPilot" data-md-component="logo">
+      
+  <img src="../../../logo.svg" alt="logo">
+
+    </a>
+    CashPilot
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/GeiserX/CashPilot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GeiserX/CashPilot
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Service Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Service Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bandwidth Sharing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Bandwidth Sharing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/earnfm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Earn.fm
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/earnapp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    EarnApp
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/iproyal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IPRoyal Pawns
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/mysterium/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MystNodes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/nkn/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NKN
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/packetstream/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PacketStream
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/proxies-sx/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Proxies.sx
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/proxybase/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ProxyBase
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/proxybase-xyz/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ProxyBase Markets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/proxyrack/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ProxyRack
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/repocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repocket
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/spide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/traffmonetizer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Traffmonetizer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/urnetwork/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    URnetwork
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DePIN
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    DePIN
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/uprock/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Uprock
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/wipter/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wipter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Configuration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../fleet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fleet Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Security
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../security-defaults/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security Defaults
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../isolation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Network Isolation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Operations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../backup-restore/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backup and Restore
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../backup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backing Up Node Identities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/prometheus-metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prometheus Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../upgrade-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrade to v1.0.0
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Direction and Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../research/idle-network-traffic/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    What "idle" looks like on the wire
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../research/per-ip-device-limits/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Per-IP device limits
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../research/self-hosting-operability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Self-hosting operability review
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../research/fleet-upgrades-and-onboarding/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fleet upgrades & onboarding (design)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../research/earnings-benchmarks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Earnings benchmarks (design)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#global-constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Global Constraints
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#why-the-watchdog-remains-required" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why the watchdog remains required
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#operational-risks-and-required-controls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Operational risks and required controls
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#network-contract-to-adopt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Network contract to adopt
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Network contract to adopt">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#runtime-route-health-ttl" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime route-health TTL
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#proxy-pool-state-and-rotation-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Proxy Pool state and rotation design
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Proxy Pool state and rotation design">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#durable-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Durable state
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#state-transitions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        State transitions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#event-driven-recheck-and-rotation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Event-driven recheck and rotation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#scale-design-for-50000-proxies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scale design for 50,000 proxies
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#implementation-tasks-and-ownership" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation tasks and ownership
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Implementation tasks and ownership">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cp-015a-freeze-proxy-route-and-state-machine-contracts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CP-015A: Freeze proxy route and state-machine contracts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cp-015b-durable-probe-state-and-rotation-request-authority" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CP-015B: Durable probe state and rotation-request authority
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cp-015c-incremental-probe-scheduler-and-immediate-rotation-queue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CP-015C: Incremental probe scheduler and immediate rotation queue
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cp-015d-shared-fail-closed-route-and-watchdog-hardening" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CP-015D: Shared fail-closed route and watchdog hardening
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cp-015e-new-disposable-scale-and-provider-group-canary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CP-015E: New disposable scale and provider-group canary
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cp-015f-new-release-gate-for-cp-013" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CP-015F: New release gate for CP-013
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#revised-execution-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Revised execution order
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#required-verification-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Required verification commands
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#goal-handoff-rule" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Goal handoff rule
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/GeiserX/CashPilot/edit/main/docs/superpowers/plans/2026-09-23-proxy-route-and-pool-reliability-addendum.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="proxy-route-and-proxy-pool-reliability-implementation-plan">Proxy Route and Proxy Pool Reliability Implementation Plan<a class="headerlink" href="#proxy-route-and-proxy-pool-reliability-implementation-plan" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p><strong>For agentic workers:</strong> REQUIRED SUB-SKILL: Use <code>superpowers:subagent-driven-development</code> or <code>superpowers:executing-plans</code> task-by-task. This addendum supersedes the proxy-runtime and proxy-recheck portions of <code>docs/superpowers/plans/2026-09-21-production-operations-parallelization.md</code>.</p>
+</blockquote>
+<p><strong>Date:</strong> 2026-09-23</p>
+<p><strong>Goal:</strong> Standardize fail-closed fake-proxy behavior and redesign Proxy Pool recheck/rotation so a dead upstream is handled promptly and safely from one source of truth, without breaking provider-specific allocation, identity, wallet, account, or heartbeat policies.</p>
+<p><strong>Architecture:</strong> Proxy Pool Probe is the only authority that decides whether an upstream proxy is <code>alive</code>, <code>suspect</code>, or <code>dead</code>. The worker-side route wrapper/watchdog is a local safety mechanism: it prevents direct fallback and stops the provider process when the local route cannot be trusted. A durable server-side rotation queue consumes dead-proxy transitions and applies one CAS-guarded replacement at a time. ACK and observed egress remain commit gates, not independent proxy-death authorities.</p>
+<p><strong>Tech Stack:</strong> Python/FastAPI, SQLite transactions, asyncio bounded queues, Docker restart policies, <code>redsocks</code>/iptables or the declared sidecar backend, sing-box with immutable image digest, pytest, Ruff, packet-level canary evidence.</p>
+<h2 id="global-constraints">Global Constraints<a class="headerlink" href="#global-constraints" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Work only from a fresh worktree based on <code>origin/main</code>; preserve the dirty CP-013 evidence worktree.</li>
+<li>No production, <code>test-sing</code>, <code>test-us</code>, <code>sing</code>, or <code>eapp</code> mutation during CP-015A–F.</li>
+<li>Do not rotate, delete, release, or reassign a real proxy solely from a watchdog event or one failed probe.</li>
+<li>Proxy Pool Probe remains the sole upstream-liveness authority; provider-specific allocators remain isolated.</li>
+<li>EarnApp account/link/recovery policy and Pawns/IPRoyal <code>ip_used</code> policy are not generalized.</li>
+<li>Direct-only Mysterium/NKN never receive proxy leases or fake-proxy wrappers.</li>
+<li>No secret, token, cookie, password, wallet, database, or raw provider response enters Git, logs, or evidence.</li>
+<li>Every implementation task writes focused tests first, records secret-free evidence, and runs the repository quality gates before handoff.</li>
+<li>Runtime route health TTL is not lease ownership TTL. TTL expiry can fail-closed and request recheck; it cannot release ownership.</li>
+<li>No new third-party dependency is added for queues, retries, or state machines; use existing Python/SQLite/asyncio/Docker facilities.</li>
+</ul>
+<h2 id="why-the-watchdog-remains-required">Why the watchdog remains required<a class="headerlink" href="#why-the-watchdog-remains-required" title="Permanent link">&para;</a></h2>
+<p>The watchdog and Proxy Pool solve different failures:</p>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Detects</th>
+<th>Allowed action</th>
+<th>Must not do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Proxy Pool Probe</td>
+<td>Upstream proxy endpoint/protocol/egress failure</td>
+<td>Persist transition; enqueue rotation</td>
+<td>Decide provider identity, delete a node, or contact a worker directly</td>
+</tr>
+<tr>
+<td>Route watchdog</td>
+<td>Local <code>redsocks</code>/DNS/iptables/sidecar route failure</td>
+<td>Fail closed; stop provider process so Docker can restart the same container</td>
+<td>Mark the upstream proxy dead or release its lease</td>
+</tr>
+<tr>
+<td>Worker heartbeat</td>
+<td>VPS/control-plane liveness</td>
+<td>Mark worker offline; later reclaim all worker-bound runtime resources</td>
+<td>Infer proxy health</td>
+</tr>
+<tr>
+<td>ACK + observed egress</td>
+<td>Candidate apply and runtime/DB agreement</td>
+<td>Allow CAS commit or rollback</td>
+<td>Replace Proxy Pool liveness</td>
+</tr>
+</tbody>
+</table>
+<p>Current behavior is incomplete. The EarnApp wrapper can terminate its provider
+when a route helper/firewall rule disappears. <code>app/proxy_runtime.py</code> renders an
+equivalent script, but the shared-proxy <code>app/orchestrator.py</code> path currently
+uses a sing-box sidecar instead; a code grep finds no production call to
+<code>render_entrypoint()</code>. Its sidecar retries <code>sing-box run</code> in a loop while the
+provider container can stay alive. Docker creates new managed provider and
+sidecar containers with <code>restart_policy={"Name": "always"}</code>. A process exit
+restarts the same container, not a re-deploy, so its mounted identity volumes
+should remain attached; verify this on a disposable canary and inspect old
+containers before relying on their historical Docker restart policy.</p>
+<h2 id="operational-risks-and-required-controls">Operational risks and required controls<a class="headerlink" href="#operational-risks-and-required-controls" title="Permanent link">&para;</a></h2>
+<p>Stopping the provider is the safe action when routing cannot be proven. It still has risks that must be controlled before rollout:</p>
+<ol>
+<li><strong>Crash loop:</strong> a broken local route can repeatedly start and stop a provider. Add startup grace and expose restart-count/backoff evidence. If restarts keep failing, the provider remains unable to send direct traffic, displays <code>route_blocked</code>, and raises an alert. Docker <code>restart: always</code> does not itself enforce a maximum retry count; do not claim a hard stop until a separate, tested supervision rule actually enforces one. Do not recreate the provider identity automatically.</li>
+<li><strong>False positive during bootstrap:</strong> the watchdog must not kill a provider before redsocks/DNS/sidecar startup grace completes. Route readiness must be explicit.</li>
+<li><strong>Sidecar/provider race:</strong> a separately restarting sidecar can leave a provider process alive with no trusted route. The watchdog must observe the sidecar route contract, not only the provider PID.</li>
+<li><strong>Intentional stop ambiguity:</strong> <code>always</code> is suitable for unattended runtime but can surprise an operator after daemon/host restart. Verify the actual stop/restart semantics in the disposable runbook; do not add a new administrative-stop marker unless existing controls cannot express it.</li>
+<li><strong>Identity loss on the wrong action:</strong> <code>docker restart</code> preserves the container and volumes; <code>docker rm</code> followed by catalog redeploy can attach a different volume and create a new provider identity. Watchdog recovery may restart only. Recreate is a separate, approved provider policy action.</li>
+<li><strong>Provider penalties:</strong> a hot loop can look like repeated reconnects or churn. After the alert threshold is reached, suppress provider traffic through fail-closed routing and escalate for controlled recovery. Never infer that the upstream proxy is dead from the local watchdog.</li>
+</ol>
+<h2 id="network-contract-to-adopt">Network contract to adopt<a class="headerlink" href="#network-contract-to-adopt" title="Permanent link">&para;</a></h2>
+<p>Adopt the EarnApp safety invariants, not a blind copy of EarnApp account/runtime code:</p>
+<ul>
+<li>no direct fallback for a proxy lane;</li>
+<li>all provider TCP traffic uses the declared route backend;</li>
+<li>DNS is forced through the declared proxy-owned DNS/DoH path;</li>
+<li>IPv6 is blocked or explicitly tunneled according to the provider matrix;</li>
+<li>UDP is explicitly allowed only when the provider/proxy contract says so;</li>
+<li>only the pinned upstream proxy endpoint is allowed by the egress firewall;</li>
+<li>startup requires route readiness and expected egress verification;</li>
+<li>route failure stops the provider and leaves the runtime fail-closed;</li>
+<li>route evidence contains no secret, token, cookie, or wallet material;</li>
+<li>the sidecar image is pinned by digest, never <code>latest</code>.</li>
+</ul>
+<p>Backend adapters remain explicit:</p>
+<ul>
+<li>EarnApp: retain its dedicated in-container/reference runtime and account policy.</li>
+<li>Shared proxy providers: use the common fail-closed route contract with the declared <code>singbox_compat</code> or <code>redsocks</code> backend; do not force an incompatible binary path.</li>
+<li>Pawns/IPRoyal: keep the provider-private allocator, <code>ip_used</code>, mask-and-replace, and admission/rotation decisions; only the route safety contract is shared.</li>
+<li>Mysterium/NKN direct-only: no fake-proxy route and no proxy lease.</li>
+</ul>
+<p>The contract is not considered standardized until packet evidence proves TCP, DNS/DoH, IPv6, UDP, direct-fallback, egress, watchdog, and reboot behavior for each applicable provider group.</p>
+<h3 id="runtime-route-health-ttl">Runtime route-health TTL<a class="headerlink" href="#runtime-route-health-ttl" title="Permanent link">&para;</a></h3>
+<p>The route wrapper needs a freshness bound separate from proxy ownership. The
+canary default is an active route probe every 30 seconds, a 90-second route
+health TTL, and three consecutive failed route probes before <code>route_blocked</code>.
+These values are server-configured, bounded, and recorded in evidence; they do
+not expire or release a <code>provider_proxy_leases</code> row. When the TTL expires, the
+worker fails closed and emits a recheck request. Only a Proxy Pool transition
+to <code>dead</code> can enqueue upstream rotation.</p>
+<h2 id="proxy-pool-state-and-rotation-design">Proxy Pool state and rotation design<a class="headerlink" href="#proxy-pool-state-and-rotation-design" title="Permanent link">&para;</a></h2>
+<h3 id="durable-state">Durable state<a class="headerlink" href="#durable-state" title="Permanent link">&para;</a></h3>
+<p>Keep <code>proxy_probe_results</code> as append-only evidence. Add a compact current-state table and an idempotent rotation-request table instead of overloading the existing <code>proxy_endpoints.status</code> field:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="k">IF</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">EXISTS</span><span class="w"> </span><span class="n">proxy_probe_state</span><span class="w"> </span><span class="p">(</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="n">proxy_id</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="p">,</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="k">state</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">CHECK</span><span class="p">(</span><span class="k">state</span><span class="w"> </span><span class="k">IN</span><span class="w"> </span><span class="p">(</span><span class="s1">'unknown'</span><span class="p">,</span><span class="s1">'alive'</span><span class="p">,</span><span class="s1">'suspect'</span><span class="p">,</span><span class="s1">'dead'</span><span class="p">,</span><span class="s1">'quarantined'</span><span class="p">)),</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="n">consecutive_failures</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="n">consecutive_successes</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="n">last_probe_at</span><span class="w"> </span><span class="nb">TEXT</span><span class="p">,</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="n">next_probe_at</span><span class="w"> </span><span class="nb">TEXT</span><span class="p">,</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="n">last_transition_at</span><span class="w"> </span><span class="nb">TEXT</span><span class="p">,</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="n">last_failure_reason</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">''</span><span class="p">,</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">    </span><span class="n">probe_generation</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">    </span><span class="n">updated_at</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="p">(</span><span class="n">datetime</span><span class="p">(</span><span class="s1">'now'</span><span class="p">)),</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">    </span><span class="k">FOREIGN</span><span class="w"> </span><span class="k">KEY</span><span class="p">(</span><span class="n">proxy_id</span><span class="p">)</span><span class="w"> </span><span class="k">REFERENCES</span><span class="w"> </span><span class="n">proxy_endpoints</span><span class="p">(</span><span class="n">id</span><span class="p">)</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="k">DELETE</span><span class="w"> </span><span class="k">CASCADE</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="p">);</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="k">IF</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">EXISTS</span><span class="w"> </span><span class="n">proxy_rotation_requests</span><span class="w"> </span><span class="p">(</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">    </span><span class="n">id</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="n">AUTOINCREMENT</span><span class="p">,</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="w">    </span><span class="n">proxy_id</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="w">    </span><span class="n">probe_generation</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="w">    </span><span class="n">provider_slug</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="w">    </span><span class="n">worker_id</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="w">    </span><span class="n">instance_id</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="w">    </span><span class="k">state</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">CHECK</span><span class="p">(</span><span class="k">state</span><span class="w"> </span><span class="k">IN</span><span class="w"> </span><span class="p">(</span><span class="s1">'pending'</span><span class="p">,</span><span class="s1">'running'</span><span class="p">,</span><span class="s1">'succeeded'</span><span class="p">,</span><span class="s1">'failed'</span><span class="p">,</span><span class="s1">'cancelled'</span><span class="p">)),</span>
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="w">    </span><span class="n">attempts</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="w">    </span><span class="n">available_at</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="p">(</span><span class="n">datetime</span><span class="p">(</span><span class="s1">'now'</span><span class="p">)),</span>
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a><span class="w">    </span><span class="n">lease_token</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">''</span><span class="p">,</span>
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a><span class="w">    </span><span class="n">reason</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">''</span><span class="p">,</span>
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a><span class="w">    </span><span class="n">last_error</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">''</span><span class="p">,</span>
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a><span class="w">    </span><span class="n">created_at</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="p">(</span><span class="n">datetime</span><span class="p">(</span><span class="s1">'now'</span><span class="p">)),</span>
+<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a><span class="w">    </span><span class="n">updated_at</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="p">(</span><span class="n">datetime</span><span class="p">(</span><span class="s1">'now'</span><span class="p">)),</span>
+<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a><span class="w">    </span><span class="k">UNIQUE</span><span class="p">(</span><span class="n">proxy_id</span><span class="p">,</span><span class="w"> </span><span class="n">probe_generation</span><span class="p">,</span><span class="w"> </span><span class="n">provider_slug</span><span class="p">,</span><span class="w"> </span><span class="n">worker_id</span><span class="p">,</span><span class="w"> </span><span class="n">instance_id</span><span class="p">),</span>
+<a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a><span class="w">    </span><span class="k">FOREIGN</span><span class="w"> </span><span class="k">KEY</span><span class="p">(</span><span class="n">proxy_id</span><span class="p">)</span><span class="w"> </span><span class="k">REFERENCES</span><span class="w"> </span><span class="n">proxy_endpoints</span><span class="p">(</span><span class="n">id</span><span class="p">)</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="k">DELETE</span><span class="w"> </span><span class="k">CASCADE</span><span class="p">,</span>
+<a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a><span class="w">    </span><span class="k">FOREIGN</span><span class="w"> </span><span class="k">KEY</span><span class="p">(</span><span class="n">worker_id</span><span class="p">)</span><span class="w"> </span><span class="k">REFERENCES</span><span class="w"> </span><span class="n">workers</span><span class="p">(</span><span class="n">id</span><span class="p">)</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="k">DELETE</span><span class="w"> </span><span class="k">CASCADE</span>
+<a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a><span class="p">);</span>
+</code></pre></div>
+<p>The schema is the minimal target shape, not a command to apply on production.
+Migration tests must preserve existing rows and indexes, use one short SQLite
+transaction per transition, and separately model legacy worker-level
+assignments and provider-instance leases. An in-use dead proxy stays reserved
+until replacement CAS succeeds; it must not become available to a second
+consumer during rotation. Existing Pawns allocator decisions remain outside
+this generic admission path.</p>
+<p>Probe grouping must use the exact endpoint, port, protocol, and a protected
+credential identity. Existing <code>app/proxy_health.py:probe_key()</code> groups by
+egress IP first; distinct endpoints that happen to share an exit IP must not
+be considered the same physical health check. Do not expose credentials in a
+group key, log, or evidence.</p>
+<h3 id="state-transitions">State transitions<a class="headerlink" href="#state-transitions" title="Permanent link">&para;</a></h3>
+<p>Use these defaults unless a provider adapter declares a stricter threshold:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>unknown → alive              successful probe
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>alive   → suspect            first failed probe
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>suspect → alive              successful probe
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>suspect → dead               configured consecutive-failure threshold (default 3)
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>dead    → rotation_pending   active lease exists
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>dead    → quarantined        no safe replacement or provider policy blocks reuse
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>dead    → alive              successful recovery before rotation commit
+</code></pre></div>
+<p>Three retries inside one probe attempt do not count as three independent
+health cycles. A successful probe resets the failure counter. Timeout from a
+control-plane outage, DNS outage, or shared probe target is <code>inconclusive</code>,
+not proven upstream death; it cannot increment the upstream failure counter.
+Do not erase the last confirmed egress IP merely because one check failed.
+An egress change invalidates the old binding until ownership and sticky-account
+policy approve it. A single transient failure never rotates a lease.</p>
+<h3 id="event-driven-recheck-and-rotation">Event-driven recheck and rotation<a class="headerlink" href="#event-driven-recheck-and-rotation" title="Permanent link">&para;</a></h3>
+<p>The scanner must not wait for a 50k-proxy sweep before acting:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>incremental scanner
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  → bounded probe queue
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>  → probe worker
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>  → transactional state transition
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>  → append probe evidence
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>  → enqueue one deduplicated rotation request when threshold is reached
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>  → rotation worker claims request with CAS
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>  → provider adapter selects replacement
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>  → worker apply ACK + observed egress
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>  → lease CAS commit
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>  → finalize binding and evidence
+</code></pre></div>
+<p>The rotation request is emitted after the individual proxy transition is committed, not by a direct callback from the probe coroutine. This makes retries, process restarts, and duplicate events safe.</p>
+<p>The existing <code>run_proxy_pool_recheck()</code> rotates only rows with
+<code>assigned_worker_id</code>; the new query must find all affected active provider
+instance leases as well as legacy worker-level assignments. Before enqueueing,
+compare assignment generation and account/provider ownership. Pawns-specific
+allocator and EarnApp account recovery stay in their own adapters.</p>
+<p>Rotation rules:</p>
+<ul>
+<li>one request per active lease/assignment generation and probe generation;</li>
+<li>serialize rotations per worker and per provider instance;</li>
+<li>keep the old lease until candidate apply, ACK, observed egress, and CAS commit succeed;</li>
+<li>on failure, keep the old binding/lease, increment request attempts, and retry with backoff;</li>
+<li>no direct fallback unless an explicit provider contract permits it;</li>
+<li>no proxy delete or release solely because of one probe failure;</li>
+<li>provider-specific adapters retain EarnApp account rules and Pawns <code>ip_used</code> rules;</li>
+<li>generic liveness cannot mark a provider-specific capability (for example EarnApp WSS or EarnFM socket qualification) as healthy; profile results remain independent.</li>
+</ul>
+<h2 id="scale-design-for-50000-proxies">Scale design for 50,000 proxies<a class="headerlink" href="#scale-design-for-50000-proxies" title="Permanent link">&para;</a></h2>
+<p>Replace <code>asyncio.gather()</code> over the whole target list with:</p>
+<ul>
+<li>paged DB reads, default page size 500;</li>
+<li>a bounded probe queue, default capacity 1,024;</li>
+<li>a fixed probe worker pool bounded by the existing configured concurrency;</li>
+<li>a separate bounded rotation queue;</li>
+<li>leased proxies first, then stale idle proxies by <code>next_probe_at</code>;</li>
+<li>persisted <code>next_probe_at</code> scheduling so a restart resumes without rebuilding 50,000 tasks;</li>
+<li>recovery of <code>running</code> probe/rotation work to <code>pending</code> after a control-plane restart;</li>
+<li>per-proxy timeout, exponential backoff, jitter, and provider/network circuit breaker;</li>
+<li>metrics for queue depth, probe latency, dead-to-rotation latency, rotation success/failure, stale work, and flapping.</li>
+</ul>
+<p>The scheduler keeps the existing UI auto-recheck setting and its 15-minute
+trigger. The displayed 60-minute interval / 32 parallel checks is a screenshot,
+not proof that those settings were saved to the control-plane DB. The tick must
+not start a second full scan while one is active. Keep manual recheck (which
+<em>writes probe results</em> but has <code>rotate_dead=false</code> in the UI) independent from
+scheduled rotation. Define separate configurable probe intervals for leased
+and idle proxies only if the operator accepts different freshness guarantees.
+Budget the effective scan interval as <code>total_due * observed_p95_probe_seconds /
+effective_concurrency</code>; if it exceeds the requested interval, show backlog and
+mark freshness <code>unknown</code> instead of promising timely rotation. Full scale may
+require multiple prober workers after the single-process benchmark; do not
+assume 50,000 proxies can be covered in an hour at concurrency 32.</p>
+<p>The current scheduler also serializes generic, EarnApp WSS, and EarnFM socket
+qualification passes. Preserve profile separation and schedule provider
+qualification only for eligible/due proxies so a slow generic sweep cannot
+silently delay every provider-specific result.</p>
+<h2 id="implementation-tasks-and-ownership">Implementation tasks and ownership<a class="headerlink" href="#implementation-tasks-and-ownership" title="Permanent link">&para;</a></h2>
+<p>CP-015A–F below are <em>proposed</em> IDs, not existing Beads records. Create and link
+them in the verified shared Beads store only after the plan is accepted and
+merged; do not invent completion or mutate the isolated worktree's Beads DB.
+They gate continued CP-013 production rollout; closed CP-011/012 remain closed.
+They may not mutate live production resources.</p>
+<h3 id="cp-015a-freeze-proxy-route-and-state-machine-contracts">CP-015A: Freeze proxy route and state-machine contracts<a class="headerlink" href="#cp-015a-freeze-proxy-route-and-state-machine-contracts" title="Permanent link">&para;</a></h3>
+<p><strong>Depends on:</strong> CP-003, CP-004, CP-009.</p>
+<p><strong>Files:</strong>
+- Create: <code>docs/architecture/proxy-route-contract.md</code>
+- Create: <code>docs/architecture/proxy-pool-state-machine.md</code>
+- Modify: <code>docs/architecture/provider-policy-matrix.md</code>
+- Test: <code>tests/test_proxy_route_contract.py</code>
+- Evidence: <code>docs/evidence/CP-015A-YYYY-MM-DD.md</code></p>
+<p><strong>Acceptance:</strong> provider classes, backend adapters, watchdog boundaries, state transitions, retry thresholds, fallback rules, and ACK/egress commit gates are machine-checked; Pawns and EarnApp lanes remain separate.</p>
+<ul>
+<li>[ ] Add failing contract tests for direct-only, hybrid, proxy-only, watchdog, TTL, and fallback invariants.</li>
+<li>[ ] Record the exact state-transition table and canary defaults in the two architecture documents.</li>
+<li>[ ] Run <code>python -m pytest -q tests/test_proxy_route_contract.py</code> and confirm the new tests pass.</li>
+<li>[ ] Run <code>git diff --check</code> and write <code>docs/evidence/CP-015A-YYYY-MM-DD.md</code>.</li>
+</ul>
+<h3 id="cp-015b-durable-probe-state-and-rotation-request-authority">CP-015B: Durable probe state and rotation-request authority<a class="headerlink" href="#cp-015b-durable-probe-state-and-rotation-request-authority" title="Permanent link">&para;</a></h3>
+<p><strong>Depends on:</strong> CP-009 and CP-015A.</p>
+<p><strong>Files:</strong>
+- Modify: <code>app/database.py</code> only for the two migrations and their transaction helpers
+- Create: <code>app/proxy_pool_state.py</code>
+- Test: <code>tests/test_proxy_pool_state.py</code>
+- Evidence: <code>docs/evidence/CP-015B-YYYY-MM-DD.md</code></p>
+<p><strong>Interfaces:</strong>
+- <code>record_proxy_probe_transition(proxy_id, result, *, generation) -&gt; dict</code>
+- <code>enqueue_proxy_rotation_requests(proxy_id, probe_generation) -&gt; int</code>
+- <code>claim_proxy_rotation_request(now) -&gt; dict | None</code>
+- <code>complete_proxy_rotation_request(request_id, state, *, error='') -&gt; None</code></p>
+<p><strong>Acceptance:</strong> transitions are idempotent; old leases are preserved until CAS replacement; duplicate probe generations create no duplicate request; restart recovery returns abandoned work to <code>pending</code>.</p>
+<ul>
+<li>[ ] Add RED tests for first failure, threshold failure, recovery, duplicate generation, and abandoned request recovery.</li>
+<li>[ ] Add the two SQLite migrations and transaction helpers without changing existing lease ownership semantics.</li>
+<li>[ ] Run <code>python -m pytest -q tests/test_proxy_pool_state.py</code>.</li>
+<li>[ ] Run <code>uv run ruff check .</code>, <code>uv run ruff format --check .</code>, <code>python -m compileall -q app tests</code>, and <code>git diff --check</code>.</li>
+</ul>
+<h3 id="cp-015c-incremental-probe-scheduler-and-immediate-rotation-queue">CP-015C: Incremental probe scheduler and immediate rotation queue<a class="headerlink" href="#cp-015c-incremental-probe-scheduler-and-immediate-rotation-queue" title="Permanent link">&para;</a></h3>
+<p><strong>Depends on:</strong> CP-015B.</p>
+<p><strong>Files:</strong>
+- Modify: <code>app/routers/proxies.py</code> only in recheck/probe orchestration
+- Modify: <code>app/main.py</code> only in <code>_run_proxy_pool_recheck_scheduler</code>
+- Create: <code>app/proxy_pool_scheduler.py</code>
+- Test: <code>tests/test_proxy_pool_scheduler.py</code>, <code>tests/test_proxy_pool_rotation_queue.py</code>
+- Evidence: <code>docs/evidence/CP-015C-YYYY-MM-DD.md</code></p>
+<p><strong>Acceptance:</strong> a dead leased proxy enqueues rotation before the rest of the pool finishes; whole-pool memory is bounded; scheduler does not overlap scans; <code>rotate_dead=false</code> remains a read-only/manual mode; automatic scheduler uses the durable queue.</p>
+<ul>
+<li>[ ] Add RED tests proving a completed dead probe enqueues before a slow unrelated probe completes.</li>
+<li>[ ] Replace whole-list <code>asyncio.gather()</code> with paged reads and bounded queues; retain the existing manual endpoint behavior.</li>
+<li>[ ] Add restart recovery, timeout, backoff, deduplication, and 50,000-row synthetic-load tests.</li>
+<li>[ ] Run <code>python -m pytest -q tests/test_proxy_pool_scheduler.py tests/test_proxy_pool_rotation_queue.py</code>.</li>
+</ul>
+<h3 id="cp-015d-shared-fail-closed-route-and-watchdog-hardening">CP-015D: Shared fail-closed route and watchdog hardening<a class="headerlink" href="#cp-015d-shared-fail-closed-route-and-watchdog-hardening" title="Permanent link">&para;</a></h3>
+<p><strong>Depends on:</strong> CP-004, CP-014G, CP-014H, CP-015A.</p>
+<p><strong>Files:</strong>
+- Modify: <code>app/proxy_runtime.py</code>
+- Modify: <code>app/earnapp_runtime.py</code> only for equivalent watchdog controls
+- Modify: <code>app/orchestrator.py</code> only for sidecar digest pin, route readiness, restart/backoff labels, and health contract
+- Test: <code>tests/test_proxy_runtime.py</code>, <code>tests/test_orchestrator_proxy_route.py</code>, <code>tests/test_watchdog_restart_contract.py</code>
+- Evidence: <code>docs/evidence/CP-015D-YYYY-MM-DD.md</code></p>
+<p><strong>Required behavior:</strong> startup grace; route-ready marker; provider termination on trusted-route loss; bounded restart evidence; no identity recreation; sidecar/provider dependency ordering; IPv6/DNS/direct-fallback fail-closed checks; immutable sing-box reference instead of <code>ghcr.io/sagernet/sing-box:latest</code>.</p>
+<p><strong>Acceptance:</strong> fault-injecting a helper causes provider stop and container restart without changing identity/volume; repeated failures enter <code>route_blocked</code> with evidence; recovery requires route readiness; direct traffic is impossible during helper failure.</p>
+<ul>
+<li>[ ] Add RED tests for startup grace, helper death, firewall-chain loss, sidecar restart, TTL expiry, restart budget, and identity/volume preservation.</li>
+<li>[ ] Implement the smallest wrapper/orchestrator changes; do not change provider account or allocator code.</li>
+<li>[ ] Replace the sidecar <code>latest</code> reference with the release manifest's immutable digest.</li>
+<li>[ ] Run <code>python -m pytest -q tests/test_proxy_runtime.py tests/test_orchestrator_proxy_route.py tests/test_watchdog_restart_contract.py</code>.</li>
+</ul>
+<h3 id="cp-015e-new-disposable-scale-and-provider-group-canary">CP-015E: New disposable scale and provider-group canary<a class="headerlink" href="#cp-015e-new-disposable-scale-and-provider-group-canary" title="Permanent link">&para;</a></h3>
+<p><strong>Depends on:</strong> CP-015A through CP-015D and a fresh disposable-resource approval. This is a new follow-up canary; do not reopen or mutate the already closed CP-011 resources.</p>
+<p><strong>Resources:</strong> disposable canary only; no <code>test-sing</code>, <code>test-us</code>, <code>sing</code>, <code>eapp</code>, or production.</p>
+<p><strong>Checks:</strong> 50k synthetic proxy state load; bounded queue memory; dead-proxy event latency; duplicate-event replay; worker restart; control-plane restart; watchdog fault injection; packet capture; EarnApp lane; Pawns private allocator lane; one shared-proxy provider group; direct-only negative control.</p>
+<p><strong>Acceptance:</strong> machine-readable evidence shows no direct fallback, no lease duplication, no queue loss, no identity reset, and rotation begins before full scan completion.</p>
+<ul>
+<li>[ ] Generate synthetic 50,000-row pool data without real credentials or provider responses.</li>
+<li>[ ] Fault-inject route helpers and replay duplicate probe/rotation events.</li>
+<li>[ ] Capture packet-level TCP, DNS/DoH, IPv6, UDP, and direct-fallback evidence for each selected provider group.</li>
+<li>[ ] Verify restart/reboot persistence, identity/volume hashes, queue recovery, and rollback; clean only disposable resources.</li>
+</ul>
+<h3 id="cp-015f-new-release-gate-for-cp-013">CP-015F: New release gate for CP-013<a class="headerlink" href="#cp-015f-new-release-gate-for-cp-013" title="Permanent link">&para;</a></h3>
+<p><strong>Depends on:</strong> CP-015E and all required CP-014 reliability/port gates.</p>
+<p><strong>Files:</strong>
+- Modify: <code>docs/superpowers/plans/2026-09-21-production-operations-parallelization.md</code> only to link this addendum and update dependency order
+- Create: <code>docs/evidence/CP-015F-YYYY-MM-DD.md</code></p>
+<p><strong>Acceptance:</strong> CP-015E is PASS; a new release candidate contains the route/pool changes and rollback manifest; historical CP-011/CP-012 remain closed; CP-013 cannot resume until this follow-up gate is PASS and its separate rollout approval remains valid.</p>
+<ul>
+<li>[ ] Verify all CP-015 PRs are based on <code>origin/main</code>, have green CI, and contain the required evidence.</li>
+<li>[ ] Build a new immutable release manifest with UI/worker/sidecar digests and rollback version.</li>
+<li>[ ] Run the release verification and rollback dry-run; do not create production state.</li>
+<li>[ ] Record the final gate in <code>docs/evidence/CP-015F-YYYY-MM-DD.md</code>.</li>
+</ul>
+<h2 id="revised-execution-order">Revised execution order<a class="headerlink" href="#revised-execution-order" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Keep historical CP-001 through CP-012 evidence immutable; verify every new PR/CI gate.</li>
+<li>Finish CP-009/CP-014 heartbeat/authority dependencies before adding proxy state migrations.</li>
+<li>Run CP-015A, then CP-015B.</li>
+<li>Run CP-015C and CP-015D in parallel only after CP-015B and their file ownership is confirmed; they must not share mutable files.</li>
+<li>Run CP-015E on disposable resources only.</li>
+<li>Run CP-015F as a new release/rollback gate; do not reopen closed CP-011/CP-012 merely because the implementation changed.</li>
+<li>Run CP-014J cleanup/recreate acceptance only after fresh destructive approval if the final plan still requires cleanup.</li>
+<li>Resume CP-013 staged production rollout only after explicit approval; stop after each stage for dashboard, traffic, egress, DNS, heartbeat, lease, and rollback evidence.</li>
+</ol>
+<h2 id="required-verification-commands">Required verification commands<a class="headerlink" href="#required-verification-commands" title="Permanent link">&para;</a></h2>
+<p>Every implementation task must run from its own worktree:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">python</span> <span class="n">-m</span> <span class="n">pytest</span> <span class="n">-q</span> <span class="p">&lt;</span><span class="n">focused</span> <span class="n">tests</span><span class="p">&gt;</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">uv</span> <span class="n">run</span> <span class="n">ruff</span> <span class="n">check</span> <span class="p">.</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">uv</span> <span class="n">run</span> <span class="n">ruff</span> <span class="n">format</span> <span class="p">-</span><span class="n">-check</span> <span class="p">.</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">python</span> <span class="n">-m</span> <span class="n">compileall</span> <span class="n">-q</span> <span class="n">app</span> <span class="n">tests</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="n">git</span> <span class="nb">diff </span><span class="p">-</span><span class="n">-check</span>
+</code></pre></div>
+<p>Runtime canaries additionally require packet evidence for TCP, DNS/DoH, IPv6, UDP, and direct fallback, plus before/after container identity, volume, restart count, provider dashboard state, and rollback result. No task may claim <code>production-ready</code> while any required gate is <code>FAIL</code>, <code>INCONCLUSIVE</code>, or an unexplained CI failure.</p>
+<h2 id="goal-handoff-rule">Goal handoff rule<a class="headerlink" href="#goal-handoff-rule" title="Permanent link">&para;</a></h2>
+<p>The paused goal is not safe to resume with its old text alone: its durable objective currently points at the pasted continuation prompt, while this addendum is new. Do not create a second goal merely to hide the gap. Resume the existing goal only with a continuation message that explicitly reads this addendum, verifies current Beads/PR/CI state, and treats CP-015A–F as mandatory gates before CP-011 or CP-013. If the UI cannot attach that continuation to the paused goal, create one new goal from the complete merged plan and mark the old goal as superseded; do not run both.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2026 Sergio Fernandez
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/GeiserX/CashPilot" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/assetforgeai-tech/CashPilot/pkgs/container/cashpilot" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M349.9 236.3h-66.1v-59.4h66.1zm0-204.3h-66.1v60.7h66.1zm78.2 144.8H362v59.4h66.1zm-156.3-72.1h-66.1v60.1h66.1zm78.1 0h-66.1v60.1h66.1zm276.8 100c-14.4-9.7-47.6-13.2-73.1-8.4-3.3-24-16.7-44.9-41.1-63.7l-14-9.3-9.3 14c-18.4 27.8-23.4 73.6-3.7 103.8-8.7 4.7-25.8 11.1-48.4 10.7H2.4c-8.7 50.8 5.8 116.8 44 162.1 37.1 43.9 92.7 66.2 165.4 66.2 157.4 0 273.9-72.5 328.4-204.2 21.4.4 67.6.1 91.3-45.2 1.5-2.5 6.6-13.2 8.5-17.1zm-511.1-27.9h-66v59.4h66.1v-59.4zm78.1 0h-66.1v59.4h66.1zm78.1 0h-66.1v59.4h66.1zm-78.1-72.1h-66.1v60.1h66.1z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "content.code.copy", "content.action.edit", "search.highlight", "search.suggest", "toc.follow"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

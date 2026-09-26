@@ -1,0 +1,34 @@
+{
+  "schema": "cashpilot.cp014f.v1",
+  "task": "CP-014F",
+  "recorded_at": "2026-09-22",
+  "scope": {
+    "mode": "disposable_live_canary",
+    "approved_disposable_worker": true,
+    "production_touched": false,
+    "resources_mutated": ["cashpilot-cp014f-control", "cashpilot-cp014f-worker"]
+  },
+  "contract_tests": {
+    "command": "pytest -q tests/test_database_shared_connection.py tests/test_worker_nkn_sync.py tests/test_nkn_wallet_leases.py tests/test_myst_wallets_module.py --disable-warnings --maxfail=1",
+    "result": "PASS",
+    "passed": 62,
+    "failed": 0
+  },
+  "stages": {
+    "offline_after_3m_retains_resources": "PASS",
+    "reclaim_after_15m_releases_all_worker_resources": "PASS",
+    "preserves_sticky_ownership": "PASS",
+    "old_worker_fencing": "PASS",
+    "new_worker_reacquisition": "PASS",
+    "dashboard_reconciliation": "PASS",
+    "cleanup": "PASS"
+  },
+  "inventory": {
+    "before": {"cp014f_resources": 0},
+    "after": {"cp014f_resources": 0},
+    "reason": "Disposable control/worker resources deleted and Azure final inventory verified empty."
+  },
+  "acceptance": "PASS",
+  "blockers": [],
+  "next_safe_action": "Coordinator may close CP-014F after reviewing evidence and CI failure ledger."
+}

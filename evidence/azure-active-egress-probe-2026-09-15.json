@@ -1,0 +1,2211 @@
+{
+  "read_only": true,
+  "reports": [
+    {
+      "results": [
+        {
+          "instance_id": "azure-macos-canary-20260914",
+          "observed_egress_ip": "116.103.142.11",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnapp-proxy-w118903-ipv4-001",
+          "observed_egress_ip": "116.98.235.49",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnapp-proxy-w118903-ipv4-002",
+          "observed_egress_ip": "171.251.99.55",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnapp-proxy-w118903-ipv4-003",
+          "observed_egress_ip": "116.98.236.228",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnapp-proxy-w118903-ipv4-004",
+          "observed_egress_ip": "171.251.108.253",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnapp-proxy-w118903-ipv4-005",
+          "observed_egress_ip": "116.98.228.217",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnapp-proxy-w118903-ipv4-006",
+          "observed_egress_ip": "14.243.212.124",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnapp-proxy-w118903-ipv4-007",
+          "observed_egress_ip": "113.189.49.13",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnapp-proxy-w118903-ipv4-008",
+          "observed_egress_ip": "116.98.234.140",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnapp-proxy-w118903-ipv4-009",
+          "observed_egress_ip": "14.243.200.114",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-direct-w118903-ipv4-001",
+          "observed_egress_ip": "13.70.42.190",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-direct-w118903-ipv4-002",
+          "observed_egress_ip": "13.70.57.2",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-direct-w118903-ipv4-003",
+          "observed_egress_ip": "13.70.57.63",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-direct-w118903-ipv4-004",
+          "observed_egress_ip": "13.75.65.97",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-direct-w118903-ipv4-005",
+          "observed_egress_ip": "20.24.76.205",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-direct-w118903-ipv4-006",
+          "observed_egress_ip": "20.187.79.110",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-direct-w118903-ipv4-007",
+          "observed_egress_ip": "20.187.88.206",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-direct-w118903-ipv4-008",
+          "observed_egress_ip": "20.205.57.187",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-direct-w118903-ipv4-009",
+          "observed_egress_ip": "23.101.13.19",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-direct-w118903-ipv4-010",
+          "observed_egress_ip": "65.52.169.43",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-proxy-w118903-proxy-001",
+          "observed_egress_ip": "116.103.132.52",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-proxy-w118903-proxy-002",
+          "observed_egress_ip": "116.103.142.238",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-proxy-w118903-proxy-003",
+          "observed_egress_ip": "14.243.214.17",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-proxy-w118903-proxy-004",
+          "observed_egress_ip": "113.176.239.119",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-proxy-w118903-proxy-005",
+          "observed_egress_ip": "14.174.154.9",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-proxy-w118903-proxy-006",
+          "observed_egress_ip": "14.176.80.112",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-proxy-w118903-proxy-007",
+          "observed_egress_ip": "14.185.103.13",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-proxy-w118903-proxy-008",
+          "observed_egress_ip": "14.243.201.46",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-proxy-w118903-proxy-009",
+          "observed_egress_ip": "14.185.232.241",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-proxy-w118903-proxy-010",
+          "observed_egress_ip": "14.243.207.167",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "iproyal-proxy-w118903-proxy-001",
+          "observed_egress_ip": "116.105.109.101",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "iproyal-proxy-w118903-proxy-002",
+          "observed_egress_ip": "116.98.226.84",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "iproyal-proxy-w118903-proxy-003",
+          "observed_egress_ip": "116.98.189.129",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "iproyal-proxy-w118903-proxy-004",
+          "observed_egress_ip": "116.103.141.115",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "iproyal-proxy-w118903-proxy-005",
+          "observed_egress_ip": "116.98.230.188",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "iproyal-proxy-w118903-proxy-006",
+          "observed_egress_ip": "116.98.181.245",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "iproyal-proxy-w118903-proxy-007",
+          "observed_egress_ip": "113.189.48.60",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "iproyal-proxy-w118903-proxy-008",
+          "observed_egress_ip": "14.243.207.26",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "iproyal-proxy-w118903-proxy-009",
+          "observed_egress_ip": "14.245.159.138",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "iproyal-proxy-w118903-proxy-010",
+          "observed_egress_ip": "14.254.159.7",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "mysterium-direct",
+          "observed_egress_ip": "20.187.79.110",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "packetstream-proxy-w118903-proxy-001",
+          "observed_egress_ip": "171.251.99.76",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "packetstream-proxy-w118903-proxy-002",
+          "observed_egress_ip": "14.185.232.180",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "packetstream-proxy-w118903-proxy-003",
+          "observed_egress_ip": "14.243.200.206",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "packetstream-proxy-w118903-proxy-004",
+          "observed_egress_ip": "14.242.89.141",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "packetstream-proxy-w118903-proxy-005",
+          "observed_egress_ip": "14.251.253.28",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "packetstream-proxy-w118903-proxy-006",
+          "observed_egress_ip": "14.245.12.189",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "packetstream-proxy-w118903-proxy-007",
+          "observed_egress_ip": "14.242.89.164",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "packetstream-proxy-w118903-proxy-008",
+          "observed_egress_ip": "116.98.234.169",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "packetstream-proxy-w118903-proxy-009",
+          "observed_egress_ip": "116.98.184.174",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "packetstream-proxy-w118903-proxy-010",
+          "observed_egress_ip": "116.103.136.224",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxies-sx-proxy-w118903-proxy-001",
+          "observed_egress_ip": "116.98.226.120",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxies-sx-proxy-w118903-proxy-002",
+          "observed_egress_ip": "116.98.181.112",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxies-sx-proxy-w118903-proxy-003",
+          "observed_egress_ip": "14.236.142.213",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxies-sx-proxy-w118903-proxy-004",
+          "observed_egress_ip": "14.245.12.76",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxies-sx-proxy-w118903-proxy-005",
+          "observed_egress_ip": "14.185.101.236",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxies-sx-proxy-w118903-proxy-006",
+          "observed_egress_ip": "14.165.163.153",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxies-sx-proxy-w118903-proxy-007",
+          "observed_egress_ip": "14.254.158.109",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxies-sx-proxy-w118903-proxy-008",
+          "observed_egress_ip": "14.236.142.147",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxies-sx-proxy-w118903-proxy-009",
+          "observed_egress_ip": "14.245.8.128",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxies-sx-proxy-w118903-proxy-010",
+          "observed_egress_ip": "14.251.253.58",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-direct-w118903-ipv4-001",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-direct-w118903-ipv4-002",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-direct-w118903-ipv4-003",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-direct-w118903-ipv4-004",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-direct-w118903-ipv4-005",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-direct-w118903-ipv4-006",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-direct-w118903-ipv4-007",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-direct-w118903-ipv4-008",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-direct-w118903-ipv4-009",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-direct-w118903-ipv4-010",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-proxy-w118903-proxy-001",
+          "observed_egress_ip": "14.242.89.42",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-proxy-w118903-proxy-002",
+          "observed_egress_ip": "14.185.233.92",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-proxy-w118903-proxy-003",
+          "observed_egress_ip": "14.242.89.159",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-proxy-w118903-proxy-004",
+          "observed_egress_ip": "116.98.232.254",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-proxy-w118903-proxy-005",
+          "observed_egress_ip": "116.98.236.253",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-proxy-w118903-proxy-006",
+          "observed_egress_ip": "116.105.110.82",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-proxy-w118903-proxy-007",
+          "observed_egress_ip": "116.103.128.219",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-proxy-w118903-proxy-008",
+          "observed_egress_ip": "116.98.238.54",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-proxy-w118903-proxy-009",
+          "observed_egress_ip": "116.103.139.19",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-proxy-w118903-proxy-010",
+          "observed_egress_ip": "116.98.227.162",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-direct-w118903-ipv4-001",
+          "observed_egress_ip": "13.70.42.190",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-direct-w118903-ipv4-002",
+          "observed_egress_ip": "13.70.57.2",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-direct-w118903-ipv4-003",
+          "observed_egress_ip": "13.70.57.63",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-direct-w118903-ipv4-004",
+          "observed_egress_ip": "13.75.65.97",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-direct-w118903-ipv4-005",
+          "observed_egress_ip": "20.24.76.205",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-direct-w118903-ipv4-006",
+          "observed_egress_ip": "20.187.79.110",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-direct-w118903-ipv4-007",
+          "observed_egress_ip": "20.187.88.206",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-direct-w118903-ipv4-008",
+          "observed_egress_ip": "20.205.57.187",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-direct-w118903-ipv4-009",
+          "observed_egress_ip": "23.101.13.19",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-direct-w118903-ipv4-010",
+          "observed_egress_ip": "65.52.169.43",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-proxy-w118903-proxy-001",
+          "observed_egress_ip": "116.98.190.177",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-proxy-w118903-proxy-002",
+          "observed_egress_ip": "116.98.189.141",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-proxy-w118903-proxy-003",
+          "observed_egress_ip": "116.98.239.65",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-proxy-w118903-proxy-004",
+          "observed_egress_ip": "116.98.176.187",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-proxy-w118903-proxy-005",
+          "observed_egress_ip": "14.245.61.87",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-proxy-w118903-proxy-006",
+          "observed_egress_ip": "14.175.135.48",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-proxy-w118903-proxy-007",
+          "observed_egress_ip": "113.189.48.143",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-proxy-w118903-proxy-008",
+          "observed_egress_ip": "14.243.98.56",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-proxy-w118903-proxy-009",
+          "observed_egress_ip": "113.165.17.67",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-proxy-w118903-proxy-010",
+          "observed_egress_ip": "14.245.15.54",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-direct-w118903-ipv4-001",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-direct-w118903-ipv4-002",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-direct-w118903-ipv4-003",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-direct-w118903-ipv4-004",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-direct-w118903-ipv4-005",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-direct-w118903-ipv4-006",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-direct-w118903-ipv4-007",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-direct-w118903-ipv4-008",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-direct-w118903-ipv4-009",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-direct-w118903-ipv4-010",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-proxy-w118903-proxy-001",
+          "observed_egress_ip": "14.185.103.72",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-proxy-w118903-proxy-002",
+          "observed_egress_ip": "14.185.4.165",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-proxy-w118903-proxy-003",
+          "observed_egress_ip": "14.243.213.66",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-proxy-w118903-proxy-004",
+          "observed_egress_ip": "14.174.159.213",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-proxy-w118903-proxy-005",
+          "observed_egress_ip": "14.185.234.159",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-proxy-w118903-proxy-006",
+          "observed_egress_ip": "14.242.89.148",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-proxy-w118903-proxy-007",
+          "observed_egress_ip": "14.250.254.251",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-proxy-w118903-proxy-008",
+          "observed_egress_ip": "14.242.89.143",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-proxy-w118903-proxy-009",
+          "observed_egress_ip": "14.242.89.156",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-proxy-w118903-proxy-010",
+          "observed_egress_ip": "116.103.142.148",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-direct-w118903-ipv4-001",
+          "observed_egress_ip": "13.70.42.190",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-direct-w118903-ipv4-002",
+          "observed_egress_ip": "13.70.57.2",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-direct-w118903-ipv4-003",
+          "observed_egress_ip": "13.70.57.63",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-direct-w118903-ipv4-004",
+          "observed_egress_ip": "13.75.65.97",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-direct-w118903-ipv4-005",
+          "observed_egress_ip": "20.24.76.205",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-direct-w118903-ipv4-006",
+          "observed_egress_ip": "20.187.79.110",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-direct-w118903-ipv4-007",
+          "observed_egress_ip": "20.187.88.206",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-direct-w118903-ipv4-008",
+          "observed_egress_ip": "20.205.57.187",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-direct-w118903-ipv4-009",
+          "observed_egress_ip": "23.101.13.19",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-direct-w118903-ipv4-010",
+          "observed_egress_ip": "65.52.169.43",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-proxy-w118903-proxy-001",
+          "observed_egress_ip": "14.243.215.11",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-proxy-w118903-proxy-002",
+          "observed_egress_ip": "116.105.99.52",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-proxy-w118903-proxy-003",
+          "observed_egress_ip": "116.98.226.240",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-proxy-w118903-proxy-004",
+          "observed_egress_ip": "116.105.101.223",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-proxy-w118903-proxy-005",
+          "observed_egress_ip": "116.98.179.168",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-proxy-w118903-proxy-006",
+          "observed_egress_ip": "116.98.224.7",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-proxy-w118903-proxy-007",
+          "observed_egress_ip": "116.98.181.82",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-proxy-w118903-proxy-008",
+          "observed_egress_ip": "116.98.184.153",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-proxy-w118903-proxy-009",
+          "observed_egress_ip": "14.242.89.165",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-proxy-w118903-proxy-010",
+          "observed_egress_ip": "116.98.239.48",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-direct-w118903-ipv4-001",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-direct-w118903-ipv4-002",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-direct-w118903-ipv4-003",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-direct-w118903-ipv4-004",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-direct-w118903-ipv4-005",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-direct-w118903-ipv4-006",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-direct-w118903-ipv4-007",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-direct-w118903-ipv4-008",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-direct-w118903-ipv4-009",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-direct-w118903-ipv4-010",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-proxy-w118903-proxy-001",
+          "observed_egress_ip": "116.98.231.115",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-proxy-w118903-proxy-002",
+          "observed_egress_ip": "116.105.109.28",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-proxy-w118903-proxy-003",
+          "observed_egress_ip": "116.98.229.202",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-proxy-w118903-proxy-004",
+          "observed_egress_ip": "113.165.55.170",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-proxy-w118903-proxy-005",
+          "observed_egress_ip": "14.175.133.178",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-proxy-w118903-proxy-006",
+          "observed_egress_ip": "14.185.102.205",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-proxy-w118903-proxy-007",
+          "observed_egress_ip": "14.236.139.230",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-proxy-w118903-proxy-008",
+          "observed_egress_ip": "14.254.157.234",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-proxy-w118903-proxy-009",
+          "observed_egress_ip": "14.176.193.70",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-proxy-w118903-proxy-010",
+          "observed_egress_ip": "14.243.206.25",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "uprock-proxy",
+          "observed_egress_ip": "14.254.159.236",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-direct-w118903-ipv4-001",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-direct-w118903-ipv4-002",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-direct-w118903-ipv4-003",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-direct-w118903-ipv4-004",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-direct-w118903-ipv4-005",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-direct-w118903-ipv4-006",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-direct-w118903-ipv4-007",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-direct-w118903-ipv4-008",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-direct-w118903-ipv4-009",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-direct-w118903-ipv4-010",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-proxy-w118903-proxy-001",
+          "observed_egress_ip": "14.185.235.4",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-proxy-w118903-proxy-002",
+          "observed_egress_ip": "113.189.52.12",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-proxy-w118903-proxy-003",
+          "observed_egress_ip": "14.242.89.114",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-proxy-w118903-proxy-004",
+          "observed_egress_ip": "14.242.89.3",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-proxy-w118903-proxy-005",
+          "observed_egress_ip": "14.250.254.247",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-proxy-w118903-proxy-006",
+          "observed_egress_ip": "14.242.89.171",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-proxy-w118903-proxy-007",
+          "observed_egress_ip": "116.98.233.17",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-proxy-w118903-proxy-008",
+          "observed_egress_ip": "116.103.142.195",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-proxy-w118903-proxy-009",
+          "observed_egress_ip": "171.251.97.111",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-proxy-w118903-proxy-010",
+          "observed_egress_ip": "116.98.233.216",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "wipter-proxy",
+          "observed_egress_ip": "14.254.159.236",
+          "probe_ok": true,
+          "running": true
+        }
+      ],
+      "worker_id": 118903
+    },
+    {
+      "results": [
+        {
+          "instance_id": "azure-ios-canary-20260914",
+          "observed_egress_ip": "14.245.152.179",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnapp-proxy-w118904-ipv4-001",
+          "observed_egress_ip": "116.103.140.66",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnapp-proxy-w118904-ipv4-002",
+          "observed_egress_ip": "14.176.80.253",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnapp-proxy-w118904-ipv4-003",
+          "observed_egress_ip": "116.98.181.156",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnapp-proxy-w118904-ipv4-004",
+          "observed_egress_ip": "116.98.182.123",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnapp-proxy-w118904-ipv4-005",
+          "observed_egress_ip": "14.185.2.43",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnapp-proxy-w118904-ipv4-006",
+          "observed_egress_ip": "14.165.156.22",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnapp-proxy-w118904-ipv4-007",
+          "observed_egress_ip": "14.185.99.102",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnapp-proxy-w118904-ipv4-008",
+          "observed_egress_ip": "14.243.215.202",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnapp-proxy-w118904-ipv4-009",
+          "observed_egress_ip": "14.176.80.97",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-direct-w118904-ipv4-001",
+          "observed_egress_ip": "13.78.13.59",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-direct-w118904-ipv4-002",
+          "observed_egress_ip": "20.43.76.127",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-direct-w118904-ipv4-003",
+          "observed_egress_ip": "20.43.76.128",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-direct-w118904-ipv4-004",
+          "observed_egress_ip": "20.43.79.119",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-direct-w118904-ipv4-005",
+          "observed_egress_ip": "20.46.115.77",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-direct-w118904-ipv4-006",
+          "observed_egress_ip": "20.46.115.108",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-direct-w118904-ipv4-007",
+          "observed_egress_ip": "20.46.117.188",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-direct-w118904-ipv4-008",
+          "observed_egress_ip": "20.89.52.70",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-direct-w118904-ipv4-009",
+          "observed_egress_ip": "20.89.100.249",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-direct-w118904-ipv4-010",
+          "observed_egress_ip": "20.210.93.220",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-proxy-w118904-proxy-001",
+          "observed_egress_ip": "116.98.182.200",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-proxy-w118904-proxy-002",
+          "observed_egress_ip": "116.98.234.154",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-proxy-w118904-proxy-003",
+          "observed_egress_ip": "171.251.98.161",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-proxy-w118904-proxy-004",
+          "observed_egress_ip": "116.98.190.36",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-proxy-w118904-proxy-005",
+          "observed_egress_ip": "14.243.206.179",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-proxy-w118904-proxy-006",
+          "observed_egress_ip": "14.236.140.131",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-proxy-w118904-proxy-007",
+          "observed_egress_ip": "14.236.136.34",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-proxy-w118904-proxy-008",
+          "observed_egress_ip": "14.245.61.214",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-proxy-w118904-proxy-009",
+          "observed_egress_ip": "14.185.103.6",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "earnfm-proxy-w118904-proxy-010",
+          "observed_egress_ip": "14.176.192.237",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "iproyal-proxy-w118904-proxy-001",
+          "observed_egress_ip": "14.254.159.11",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "iproyal-proxy-w118904-proxy-002",
+          "observed_egress_ip": "14.185.7.25",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "iproyal-proxy-w118904-proxy-003",
+          "observed_egress_ip": "14.175.133.79",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "iproyal-proxy-w118904-proxy-004",
+          "observed_egress_ip": "14.185.97.0",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "iproyal-proxy-w118904-proxy-005",
+          "observed_egress_ip": "113.189.49.235",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "iproyal-proxy-w118904-proxy-006",
+          "observed_egress_ip": "14.242.89.80",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "iproyal-proxy-w118904-proxy-007",
+          "observed_egress_ip": "14.251.253.154",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "iproyal-proxy-w118904-proxy-008",
+          "observed_egress_ip": "14.242.89.167",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "iproyal-proxy-w118904-proxy-009",
+          "observed_egress_ip": "14.242.89.112",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "iproyal-proxy-w118904-proxy-010",
+          "observed_egress_ip": "116.105.98.244",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "mysterium-direct",
+          "observed_egress_ip": "20.210.93.220",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "packetstream-proxy-w118904-proxy-001",
+          "observed_egress_ip": "116.98.227.252",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "packetstream-proxy-w118904-proxy-002",
+          "observed_egress_ip": "116.105.109.163",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "packetstream-proxy-w118904-proxy-003",
+          "observed_egress_ip": "116.105.108.38",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "packetstream-proxy-w118904-proxy-004",
+          "observed_egress_ip": "116.98.191.129",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "packetstream-proxy-w118904-proxy-005",
+          "observed_egress_ip": "171.251.107.48",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "packetstream-proxy-w118904-proxy-006",
+          "observed_egress_ip": "116.103.143.230",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "packetstream-proxy-w118904-proxy-007",
+          "observed_egress_ip": "116.98.226.223",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "packetstream-proxy-w118904-proxy-008",
+          "observed_egress_ip": "116.98.231.237",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "packetstream-proxy-w118904-proxy-009",
+          "observed_egress_ip": "116.98.238.68",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "packetstream-proxy-w118904-proxy-010",
+          "observed_egress_ip": "116.98.181.47",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxies-sx-proxy-w118904-proxy-001",
+          "observed_egress_ip": "14.243.213.103",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxies-sx-proxy-w118904-proxy-002",
+          "observed_egress_ip": "14.176.198.164",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxies-sx-proxy-w118904-proxy-003",
+          "observed_egress_ip": "14.245.12.251",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxies-sx-proxy-w118904-proxy-004",
+          "observed_egress_ip": "14.245.61.126",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxies-sx-proxy-w118904-proxy-005",
+          "observed_egress_ip": "14.176.184.201",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxies-sx-proxy-w118904-proxy-006",
+          "observed_egress_ip": "14.185.102.197",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxies-sx-proxy-w118904-proxy-007",
+          "observed_egress_ip": "14.243.204.171",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxies-sx-proxy-w118904-proxy-008",
+          "observed_egress_ip": "14.243.97.147",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxies-sx-proxy-w118904-proxy-009",
+          "observed_egress_ip": "14.236.137.27",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxies-sx-proxy-w118904-proxy-010",
+          "observed_egress_ip": "14.243.210.235",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-direct-w118904-ipv4-001",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-direct-w118904-ipv4-002",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-direct-w118904-ipv4-003",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-direct-w118904-ipv4-004",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-direct-w118904-ipv4-005",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-direct-w118904-ipv4-006",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-direct-w118904-ipv4-007",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-direct-w118904-ipv4-008",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-direct-w118904-ipv4-009",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-direct-w118904-ipv4-010",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-proxy-w118904-proxy-001",
+          "observed_egress_ip": "14.174.154.30",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-proxy-w118904-proxy-002",
+          "observed_egress_ip": "14.236.141.147",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-proxy-w118904-proxy-003",
+          "observed_egress_ip": "14.242.89.149",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-proxy-w118904-proxy-004",
+          "observed_egress_ip": "14.251.253.106",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-proxy-w118904-proxy-005",
+          "observed_egress_ip": "14.254.157.202",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-proxy-w118904-proxy-006",
+          "observed_egress_ip": "116.98.228.118",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-proxy-w118904-proxy-007",
+          "observed_egress_ip": "116.103.130.54",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-proxy-w118904-proxy-008",
+          "observed_egress_ip": "116.105.108.174",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-proxy-w118904-proxy-009",
+          "observed_egress_ip": "116.98.237.184",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxybase-proxy-w118904-proxy-010",
+          "observed_egress_ip": "116.103.137.92",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-direct-w118904-ipv4-001",
+          "observed_egress_ip": "13.78.13.59",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-direct-w118904-ipv4-002",
+          "observed_egress_ip": "20.43.76.127",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-direct-w118904-ipv4-003",
+          "observed_egress_ip": "20.43.76.128",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-direct-w118904-ipv4-004",
+          "observed_egress_ip": "20.43.79.119",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-direct-w118904-ipv4-005",
+          "observed_egress_ip": "20.46.115.77",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-direct-w118904-ipv4-006",
+          "observed_egress_ip": "20.46.115.108",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-direct-w118904-ipv4-007",
+          "observed_egress_ip": "20.46.117.188",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-direct-w118904-ipv4-008",
+          "observed_egress_ip": "20.89.52.70",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-direct-w118904-ipv4-009",
+          "observed_egress_ip": "20.89.100.249",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-direct-w118904-ipv4-010",
+          "observed_egress_ip": "20.210.93.220",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-proxy-w118904-proxy-001",
+          "observed_egress_ip": "116.98.238.190",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-proxy-w118904-proxy-002",
+          "observed_egress_ip": "116.98.183.195",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-proxy-w118904-proxy-003",
+          "observed_egress_ip": "116.98.179.98",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-proxy-w118904-proxy-004",
+          "observed_egress_ip": "116.98.227.34",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-proxy-w118904-proxy-005",
+          "observed_egress_ip": "116.98.181.225",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-proxy-w118904-proxy-006",
+          "observed_egress_ip": "113.189.55.47",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-proxy-w118904-proxy-007",
+          "observed_egress_ip": "116.98.184.213",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-proxy-w118904-proxy-008",
+          "observed_egress_ip": "116.98.236.119",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-proxy-w118904-proxy-009",
+          "observed_egress_ip": "116.103.129.224",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "proxyrack-proxy-w118904-proxy-010",
+          "observed_egress_ip": "116.98.234.22",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-direct-w118904-ipv4-001",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-direct-w118904-ipv4-002",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-direct-w118904-ipv4-003",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-direct-w118904-ipv4-004",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-direct-w118904-ipv4-005",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-direct-w118904-ipv4-006",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-direct-w118904-ipv4-007",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-direct-w118904-ipv4-008",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-direct-w118904-ipv4-009",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-direct-w118904-ipv4-010",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-proxy-w118904-proxy-001",
+          "observed_egress_ip": "116.98.239.116",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-proxy-w118904-proxy-002",
+          "observed_egress_ip": "116.98.183.21",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-proxy-w118904-proxy-003",
+          "observed_egress_ip": "14.243.102.130",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-proxy-w118904-proxy-004",
+          "observed_egress_ip": "14.165.159.133",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-proxy-w118904-proxy-005",
+          "observed_egress_ip": "14.245.239.33",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-proxy-w118904-proxy-006",
+          "observed_egress_ip": "14.176.80.17",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-proxy-w118904-proxy-007",
+          "observed_egress_ip": "14.254.136.65",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-proxy-w118904-proxy-008",
+          "observed_egress_ip": "14.236.136.200",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-proxy-w118904-proxy-009",
+          "observed_egress_ip": "14.189.179.26",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "repocket-proxy-w118904-proxy-010",
+          "observed_egress_ip": "116.98.230.209",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-direct-w118904-ipv4-001",
+          "observed_egress_ip": "13.78.13.59",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-direct-w118904-ipv4-002",
+          "observed_egress_ip": "20.43.76.127",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-direct-w118904-ipv4-003",
+          "observed_egress_ip": "20.43.76.128",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-direct-w118904-ipv4-004",
+          "observed_egress_ip": "20.43.79.119",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-direct-w118904-ipv4-005",
+          "observed_egress_ip": "20.46.115.77",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-direct-w118904-ipv4-006",
+          "observed_egress_ip": "20.46.115.108",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-direct-w118904-ipv4-007",
+          "observed_egress_ip": "20.46.117.188",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-direct-w118904-ipv4-008",
+          "observed_egress_ip": "20.89.52.70",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-direct-w118904-ipv4-009",
+          "observed_egress_ip": "20.89.100.249",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-direct-w118904-ipv4-010",
+          "observed_egress_ip": "20.210.93.220",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-proxy-w118904-proxy-001",
+          "observed_egress_ip": "116.98.234.221",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-proxy-w118904-proxy-002",
+          "observed_egress_ip": "14.185.96.201",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-proxy-w118904-proxy-003",
+          "observed_egress_ip": "116.98.232.183",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-proxy-w118904-proxy-004",
+          "observed_egress_ip": "116.98.190.146",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-proxy-w118904-proxy-005",
+          "observed_egress_ip": "116.105.104.32",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-proxy-w118904-proxy-006",
+          "observed_egress_ip": "116.98.234.185",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-proxy-w118904-proxy-007",
+          "observed_egress_ip": "14.165.155.241",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-proxy-w118904-proxy-008",
+          "observed_egress_ip": "116.98.234.100",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "spide-proxy-w118904-proxy-009",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": false
+        },
+        {
+          "instance_id": "spide-proxy-w118904-proxy-010",
+          "observed_egress_ip": "14.243.213.78",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-direct-w118904-ipv4-001",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-direct-w118904-ipv4-002",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-direct-w118904-ipv4-003",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-direct-w118904-ipv4-004",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-direct-w118904-ipv4-005",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-direct-w118904-ipv4-006",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-direct-w118904-ipv4-007",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-direct-w118904-ipv4-008",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-direct-w118904-ipv4-009",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-direct-w118904-ipv4-010",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-proxy-w118904-proxy-001",
+          "observed_egress_ip": "14.185.0.60",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-proxy-w118904-proxy-002",
+          "observed_egress_ip": "14.185.99.85",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-proxy-w118904-proxy-003",
+          "observed_egress_ip": "14.243.102.242",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-proxy-w118904-proxy-004",
+          "observed_egress_ip": "113.165.18.95",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-proxy-w118904-proxy-005",
+          "observed_egress_ip": "14.185.6.66",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-proxy-w118904-proxy-006",
+          "observed_egress_ip": "14.185.102.248",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-proxy-w118904-proxy-007",
+          "observed_egress_ip": "14.176.195.126",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-proxy-w118904-proxy-008",
+          "observed_egress_ip": "14.174.159.147",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-proxy-w118904-proxy-009",
+          "observed_egress_ip": "14.185.5.64",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "traffmonetizer-proxy-w118904-proxy-010",
+          "observed_egress_ip": "14.185.233.27",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "uprock-proxy",
+          "observed_egress_ip": "113.165.19.39",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-direct-w118904-ipv4-001",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-direct-w118904-ipv4-002",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-direct-w118904-ipv4-003",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-direct-w118904-ipv4-004",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-direct-w118904-ipv4-005",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-direct-w118904-ipv4-006",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-direct-w118904-ipv4-007",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-direct-w118904-ipv4-008",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-direct-w118904-ipv4-009",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-direct-w118904-ipv4-010",
+          "observed_egress_ip": "",
+          "probe_ok": false,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-proxy-w118904-proxy-001",
+          "observed_egress_ip": "14.236.141.47",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-proxy-w118904-proxy-002",
+          "observed_egress_ip": "14.251.253.49",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-proxy-w118904-proxy-003",
+          "observed_egress_ip": "14.251.253.27",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-proxy-w118904-proxy-004",
+          "observed_egress_ip": "14.245.13.233",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-proxy-w118904-proxy-005",
+          "observed_egress_ip": "14.242.89.137",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-proxy-w118904-proxy-006",
+          "observed_egress_ip": "116.98.229.126",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-proxy-w118904-proxy-007",
+          "observed_egress_ip": "116.105.104.34",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-proxy-w118904-proxy-008",
+          "observed_egress_ip": "116.105.102.154",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-proxy-w118904-proxy-009",
+          "observed_egress_ip": "116.98.237.38",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "urnetwork-proxy-w118904-proxy-010",
+          "observed_egress_ip": "116.98.181.62",
+          "probe_ok": true,
+          "running": true
+        },
+        {
+          "instance_id": "wipter-proxy",
+          "observed_egress_ip": "113.165.19.39",
+          "probe_ok": true,
+          "running": true
+        }
+      ],
+      "worker_id": 118904
+    }
+  ]
+}

@@ -1,0 +1,755 @@
+
+WARNING! Your credentials are stored unencrypted in '/root/.docker/config.json'.
+Configure a credential helper to remove this warning. See
+https://docs.docker.com/go/credential-store/
+
+DEPRECATED: The legacy builder is deprecated and will be removed in a future release.
+            Install the buildx component to build images with BuildKit:
+            https://docs.docker.com/go/buildx/
+
+Sending build context to Docker daemon  33.79kB
+
+Step 1/13 : FROM ghcr.io/assetforgeai-tech/cashpilot-earnapp-macos@sha256:3f2a7b9998e6940616c0ec2beec2bfda73e12b598c2da5c80d7ec57ba5178a6d
+ ---> 3f2a7b9998e6
+Step 2/13 : ENV DEBIAN_FRONTEND=noninteractive     EARNAPP_WATCHDOG=1     NODE_TLS_REJECT_UNAUTHORIZED=0
+ ---> Using cache
+ ---> e556ec4947a9
+Step 3/13 : RUN test "$(sha256sum /opt/earnapp-mac | cut -d' ' -f1)" = "d140b41ad1d7e851e2775aed4a77dc72fc306a206287c440829d6b47f35d6911"
+ ---> Using cache
+ ---> 37b7b628b137
+Step 4/13 : COPY boot.js /usr/local/lib/node/boot.js
+ ---> Using cache
+ ---> e0c478ab6c73
+Step 5/13 : COPY earn-supervisor /usr/local/bin/earn-supervisor
+ ---> Using cache
+ ---> 1bc6051af4eb
+Step 6/13 : COPY entrypoint.sh /usr/local/bin/entrypoint-original.sh
+ ---> Using cache
+ ---> 39edef58757f
+Step 7/13 : COPY cashpilot-proxy-entrypoint /usr/local/bin/entrypoint.sh
+ ---> Using cache
+ ---> 3391655f8d2a
+Step 8/13 : COPY cashpilot-doh.js /usr/local/lib/cashpilot-doh.js
+ ---> Using cache
+ ---> 8b1915953fd1
+Step 9/13 : COPY runtime-manifest.json /opt/cashpilot/runtime-manifest.json
+ ---> Using cache
+ ---> b710f2a13b41
+Step 10/13 : RUN chmod 0755 /opt/earnapp-mac /usr/local/bin/earn-supervisor /usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-original.sh     && node --check /usr/local/lib/node/boot.js     && node --check /usr/local/lib/cashpilot-doh.js     && bash -n /usr/local/bin/earn-supervisor /usr/local/bin/entrypoint.sh
+ ---> Using cache
+ ---> 2480a7bb37c9
+Step 11/13 : LABEL com.cashpilot.earnapp.runtime=earnapp_mac_canary       com.cashpilot.earnapp.platform=darwin       com.cashpilot.earnapp.appid=mac_com.earnapp       com.cashpilot.earnapp.device-prefix=sdk-mac-       com.cashpilot.earnapp.assets-sha256=bd8de3ac58d15eb3d67849b8abde4dcebfdb57927edaa095c90eeae560d6d403
+ ---> Using cache
+ ---> 4682aafc1368
+Step 12/13 : VOLUME ["/etc/earnapp"]
+ ---> Using cache
+ ---> 4afe646f8773
+Step 13/13 : ENTRYPOINT ["/usr/local/bin/earn-supervisor"]
+ ---> Using cache
+ ---> 45c62c73242a
+Successfully built 45c62c73242a
+Successfully tagged cashpilot/earnapp-mac-canary:20260912-production-candidate
+DEPRECATED: The legacy builder is deprecated and will be removed in a future release.
+            Install the buildx component to build images with BuildKit:
+            https://docs.docker.com/go/buildx/
+
+Sending build context to Docker daemon  38.91kB
+
+Step 1/15 : FROM ghcr.io/assetforgeai-tech/cashpilot-earnapp-ios@sha256:915875703413a2192c0995bbfc3af4921ed26755a8fe43d329d6f3ebc7d9e0bb
+ ---> 915875703413
+Step 2/15 : ENV DEBIAN_FRONTEND=noninteractive     EARNAPP_WATCHDOG=1     NODE_TLS_REJECT_UNAUTHORIZED=0
+ ---> Using cache
+ ---> 6b788e0bd7dc
+Step 3/15 : RUN test "$(sha256sum /opt/earnapp-ios | cut -d' ' -f1)" = "be9c4f6865134c87dbae373304e4b20bc55e91f60d2744ac03ebb864ca7fc2ee"
+ ---> Using cache
+ ---> c03b59bba053
+Step 4/15 : COPY boot.js /usr/local/lib/node/boot.js
+ ---> Using cache
+ ---> e88888fd8ea9
+Step 5/15 : COPY earn-supervisor /usr/local/bin/earn-supervisor
+ ---> Using cache
+ ---> a749084b0495
+Step 6/15 : COPY entrypoint.sh /usr/local/bin/entrypoint-original.sh
+ ---> Using cache
+ ---> e89da57a9ed4
+Step 7/15 : COPY ios-entrypoint /usr/local/bin/ios-entrypoint
+ ---> Using cache
+ ---> 0568cfff0b96
+Step 8/15 : COPY ios-register-device /usr/local/bin/ios-register-device
+ ---> Using cache
+ ---> 8237d5b27245
+Step 9/15 : COPY cashpilot-proxy-entrypoint /usr/local/bin/entrypoint.sh
+ ---> Using cache
+ ---> 3d8e51fb64a5
+Step 10/15 : COPY cashpilot-doh.js /usr/local/lib/cashpilot-doh.js
+ ---> Using cache
+ ---> e42eae579511
+Step 11/15 : COPY runtime-manifest.json /opt/cashpilot/runtime-manifest.json
+ ---> Using cache
+ ---> c0dcaf9dd1d2
+Step 12/15 : RUN chmod 0755 /opt/earnapp-ios /usr/local/bin/earn-supervisor /usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-original.sh /usr/local/bin/ios-entrypoint /usr/local/bin/ios-register-device     && node --check /usr/local/lib/node/boot.js     && node --check /usr/local/lib/cashpilot-doh.js     && bash -n /usr/local/bin/earn-supervisor /usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-original.sh /usr/local/bin/ios-register-device
+ ---> Using cache
+ ---> 4ae8ff66b8fd
+Step 13/15 : LABEL com.cashpilot.earnapp.runtime=earnapp_ios       com.cashpilot.earnapp.platform=ios       com.cashpilot.earnapp.appid=com.brd.earnapp       com.cashpilot.earnapp.device-prefix=sdk-ios-       com.cashpilot.earnapp.assets-sha256=f384c554c3f851f472a2beee159df6d9f639d973b12654ccb8909bd7757c6ee1
+ ---> Using cache
+ ---> 02cdee43030f
+Step 14/15 : VOLUME ["/etc/earnapp"]
+ ---> Using cache
+ ---> 30934d06a132
+Step 15/15 : ENTRYPOINT ["/usr/local/bin/earn-supervisor"]
+ ---> Using cache
+ ---> f7ca70ce9ef7
+Successfully built f7ca70ce9ef7
+Successfully tagged cashpilot/earnapp-ios:20260912-production-candidate
+DEPRECATED: The legacy builder is deprecated and will be removed in a future release.
+            Install the buildx component to build images with BuildKit:
+            https://docs.docker.com/go/buildx/
+
+Sending build context to Docker daemon  24.58kB
+
+Step 1/9 : FROM ghcr.io/assetforgeai-tech/cashpilot-earnapp-ubuntu@sha256:3e63d79166d493c55879635071c85da298e0d7c13f186dedcb579f9512abdc41
+ ---> 3e63d79166d4
+Step 2/9 : RUN apt-get update     && apt-get install -y --no-install-recommends nodejs ca-certificates     && rm -rf /var/lib/apt/lists/*
+ ---> Using cache
+ ---> deb0f25bad57
+Step 3/9 : RUN mv /usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-base.sh
+ ---> Using cache
+ ---> 8b1eed89e098
+Step 4/9 : COPY entrypoint.sh /usr/local/bin/entrypoint-original.sh
+ ---> Using cache
+ ---> 74babf278fbf
+Step 5/9 : COPY cashpilot-proxy-entrypoint /usr/local/bin/entrypoint.sh
+ ---> Using cache
+ ---> 3971203ab851
+Step 6/9 : COPY cashpilot-doh.js /usr/local/lib/cashpilot-doh.js
+ ---> Using cache
+ ---> 33f5951f0bf1
+Step 7/9 : RUN chmod 0755 /usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-original.sh
+ ---> Using cache
+ ---> b11970618fcd
+Step 8/9 : LABEL com.cashpilot.earnapp.runtime=earnapp_ubuntu       com.cashpilot.earnapp.platform=linux       com.cashpilot.earnapp.appid=node_earnapp.com       com.cashpilot.earnapp.device-prefix=sdk-node-       com.cashpilot.earnapp.assets-sha256=89902b056dc4b31c6cdc756f42f0514bbdc48d4cc3863dc270bf7af80384baeb
+ ---> Using cache
+ ---> c87f6f8cfb06
+Step 9/9 : ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+ ---> Using cache
+ ---> 70265ba720c2
+Successfully built 70265ba720c2
+Successfully tagged cashpilot/earnapp-ubuntu:20260912-production-candidate
+The push refers to repository [ghcr.io/assetforgeai-tech/cashpilot-earnapp-macos]
+4df52974a240: Waiting
+6499713bf2a7: Waiting
+d53706fb2f52: Waiting
+d57cba7e2fc0: Waiting
+4738a5aab53b: Waiting
+c11062a40413: Waiting
+e85d80939604: Waiting
+bf721afd1e8f: Waiting
+938bdce871a8: Waiting
+d544298cabd5: Waiting
+68cf9fcb5782: Waiting
+c92a07d1eb25: Waiting
+f249a079b12d: Waiting
+8f6f09ffbf65: Waiting
+05b0516d989c: Waiting
+dff810632f79: Waiting
+d544298cabd5: Waiting
+68cf9fcb5782: Waiting
+c92a07d1eb25: Waiting
+f249a079b12d: Waiting
+8f6f09ffbf65: Waiting
+05b0516d989c: Waiting
+dff810632f79: Waiting
+4df52974a240: Waiting
+6499713bf2a7: Waiting
+d53706fb2f52: Waiting
+d57cba7e2fc0: Waiting
+4738a5aab53b: Waiting
+c11062a40413: Waiting
+e85d80939604: Waiting
+bf721afd1e8f: Waiting
+938bdce871a8: Waiting
+938bdce871a8: Waiting
+d544298cabd5: Waiting
+68cf9fcb5782: Waiting
+c92a07d1eb25: Waiting
+f249a079b12d: Waiting
+8f6f09ffbf65: Waiting
+05b0516d989c: Waiting
+dff810632f79: Waiting
+4df52974a240: Waiting
+6499713bf2a7: Waiting
+d53706fb2f52: Waiting
+d57cba7e2fc0: Waiting
+4738a5aab53b: Waiting
+c11062a40413: Waiting
+e85d80939604: Waiting
+bf721afd1e8f: Waiting
+d544298cabd5: Waiting
+68cf9fcb5782: Waiting
+c92a07d1eb25: Waiting
+f249a079b12d: Waiting
+8f6f09ffbf65: Waiting
+05b0516d989c: Waiting
+dff810632f79: Waiting
+4df52974a240: Waiting
+6499713bf2a7: Waiting
+d53706fb2f52: Waiting
+d57cba7e2fc0: Waiting
+4738a5aab53b: Waiting
+c11062a40413: Waiting
+e85d80939604: Waiting
+bf721afd1e8f: Waiting
+938bdce871a8: Waiting
+c11062a40413: Waiting
+e85d80939604: Waiting
+bf721afd1e8f: Waiting
+938bdce871a8: Waiting
+d544298cabd5: Waiting
+68cf9fcb5782: Waiting
+c92a07d1eb25: Waiting
+f249a079b12d: Waiting
+8f6f09ffbf65: Waiting
+05b0516d989c: Waiting
+dff810632f79: Waiting
+4df52974a240: Waiting
+6499713bf2a7: Waiting
+d53706fb2f52: Waiting
+d57cba7e2fc0: Waiting
+4738a5aab53b: Waiting
+d57cba7e2fc0: Waiting
+4738a5aab53b: Waiting
+c11062a40413: Waiting
+e85d80939604: Waiting
+bf721afd1e8f: Waiting
+938bdce871a8: Waiting
+d544298cabd5: Waiting
+68cf9fcb5782: Waiting
+c92a07d1eb25: Waiting
+f249a079b12d: Waiting
+8f6f09ffbf65: Waiting
+05b0516d989c: Waiting
+dff810632f79: Waiting
+4df52974a240: Waiting
+6499713bf2a7: Waiting
+d53706fb2f52: Waiting
+e85d80939604: Waiting
+bf721afd1e8f: Waiting
+938bdce871a8: Waiting
+d544298cabd5: Waiting
+68cf9fcb5782: Waiting
+c92a07d1eb25: Waiting
+f249a079b12d: Waiting
+8f6f09ffbf65: Waiting
+05b0516d989c: Waiting
+dff810632f79: Waiting
+4df52974a240: Waiting
+6499713bf2a7: Waiting
+d53706fb2f52: Waiting
+d57cba7e2fc0: Waiting
+4738a5aab53b: Waiting
+c11062a40413: Waiting
+e85d80939604: Waiting
+bf721afd1e8f: Waiting
+938bdce871a8: Waiting
+d544298cabd5: Waiting
+68cf9fcb5782: Waiting
+c92a07d1eb25: Waiting
+f249a079b12d: Waiting
+8f6f09ffbf65: Waiting
+05b0516d989c: Waiting
+dff810632f79: Waiting
+4df52974a240: Waiting
+6499713bf2a7: Waiting
+d53706fb2f52: Waiting
+d57cba7e2fc0: Waiting
+4738a5aab53b: Waiting
+c11062a40413: Waiting
+d544298cabd5: Waiting
+68cf9fcb5782: Waiting
+c92a07d1eb25: Waiting
+f249a079b12d: Waiting
+8f6f09ffbf65: Waiting
+05b0516d989c: Waiting
+dff810632f79: Waiting
+4df52974a240: Waiting
+6499713bf2a7: Waiting
+d53706fb2f52: Waiting
+d57cba7e2fc0: Waiting
+4738a5aab53b: Waiting
+c11062a40413: Waiting
+e85d80939604: Waiting
+bf721afd1e8f: Waiting
+938bdce871a8: Waiting
+6499713bf2a7: Waiting
+d53706fb2f52: Waiting
+d57cba7e2fc0: Waiting
+4738a5aab53b: Waiting
+c11062a40413: Waiting
+e85d80939604: Waiting
+bf721afd1e8f: Waiting
+938bdce871a8: Waiting
+d544298cabd5: Waiting
+68cf9fcb5782: Waiting
+c92a07d1eb25: Waiting
+f249a079b12d: Waiting
+8f6f09ffbf65: Waiting
+05b0516d989c: Waiting
+dff810632f79: Waiting
+4df52974a240: Waiting
+d57cba7e2fc0: Layer already exists
+4738a5aab53b: Layer already exists
+c11062a40413: Layer already exists
+e85d80939604: Layer already exists
+bf721afd1e8f: Layer already exists
+938bdce871a8: Layer already exists
+d544298cabd5: Layer already exists
+68cf9fcb5782: Layer already exists
+c92a07d1eb25: Layer already exists
+f249a079b12d: Layer already exists
+8f6f09ffbf65: Layer already exists
+05b0516d989c: Layer already exists
+dff810632f79: Layer already exists
+4df52974a240: Layer already exists
+6499713bf2a7: Layer already exists
+d53706fb2f52: Layer already exists
+20260912-production-candidate: digest: sha256:45c62c73242a281f5e293a6249bae4706b3c2ff8f9ec23a01b3a01a7a879170d size: 3829
+The push refers to repository [ghcr.io/assetforgeai-tech/cashpilot-earnapp-ios]
+222ad9525ef7: Waiting
+b7b39435dfe0: Waiting
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+1d5948c8e011: Waiting
+0f5b0f65f3e9: Waiting
+00ec53b593a3: Waiting
+28bcce6f90cc: Waiting
+4df52974a240: Waiting
+8225bd3668ec: Waiting
+81485dc198a7: Waiting
+c46ba521ff13: Waiting
+de8279669c23: Waiting
+e7b5ae40f5af: Waiting
+1a48f865f9e4: Waiting
+a7f8e4dda08b: Waiting
+6800336144aa: Waiting
+d544298cabd5: Waiting
+2aa4b706b48b: Waiting
+2133c3b84d04: Waiting
+a7f8e4dda08b: Waiting
+6800336144aa: Waiting
+d544298cabd5: Waiting
+2aa4b706b48b: Waiting
+2133c3b84d04: Waiting
+222ad9525ef7: Waiting
+b7b39435dfe0: Waiting
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+1d5948c8e011: Waiting
+0f5b0f65f3e9: Waiting
+00ec53b593a3: Waiting
+28bcce6f90cc: Waiting
+4df52974a240: Waiting
+8225bd3668ec: Waiting
+81485dc198a7: Waiting
+c46ba521ff13: Waiting
+de8279669c23: Waiting
+e7b5ae40f5af: Waiting
+1a48f865f9e4: Waiting
+222ad9525ef7: Waiting
+b7b39435dfe0: Waiting
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+1d5948c8e011: Waiting
+0f5b0f65f3e9: Waiting
+00ec53b593a3: Waiting
+28bcce6f90cc: Waiting
+4df52974a240: Waiting
+8225bd3668ec: Waiting
+81485dc198a7: Waiting
+c46ba521ff13: Waiting
+de8279669c23: Waiting
+e7b5ae40f5af: Waiting
+1a48f865f9e4: Waiting
+a7f8e4dda08b: Waiting
+6800336144aa: Waiting
+d544298cabd5: Waiting
+2aa4b706b48b: Waiting
+2133c3b84d04: Waiting
+81485dc198a7: Waiting
+c46ba521ff13: Waiting
+de8279669c23: Waiting
+e7b5ae40f5af: Waiting
+1a48f865f9e4: Waiting
+a7f8e4dda08b: Waiting
+6800336144aa: Waiting
+d544298cabd5: Waiting
+2aa4b706b48b: Waiting
+2133c3b84d04: Waiting
+222ad9525ef7: Waiting
+b7b39435dfe0: Waiting
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+1d5948c8e011: Waiting
+0f5b0f65f3e9: Waiting
+00ec53b593a3: Waiting
+28bcce6f90cc: Waiting
+4df52974a240: Waiting
+8225bd3668ec: Waiting
+81485dc198a7: Waiting
+c46ba521ff13: Waiting
+de8279669c23: Waiting
+e7b5ae40f5af: Waiting
+1a48f865f9e4: Waiting
+a7f8e4dda08b: Waiting
+6800336144aa: Waiting
+d544298cabd5: Waiting
+2aa4b706b48b: Waiting
+2133c3b84d04: Waiting
+222ad9525ef7: Waiting
+b7b39435dfe0: Waiting
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+1d5948c8e011: Waiting
+0f5b0f65f3e9: Waiting
+00ec53b593a3: Waiting
+28bcce6f90cc: Waiting
+4df52974a240: Waiting
+8225bd3668ec: Waiting
+6800336144aa: Waiting
+d544298cabd5: Waiting
+2aa4b706b48b: Waiting
+2133c3b84d04: Waiting
+222ad9525ef7: Waiting
+b7b39435dfe0: Waiting
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+1d5948c8e011: Waiting
+0f5b0f65f3e9: Waiting
+00ec53b593a3: Waiting
+28bcce6f90cc: Waiting
+4df52974a240: Waiting
+8225bd3668ec: Waiting
+81485dc198a7: Waiting
+c46ba521ff13: Waiting
+de8279669c23: Waiting
+e7b5ae40f5af: Waiting
+1a48f865f9e4: Waiting
+a7f8e4dda08b: Waiting
+6800336144aa: Waiting
+d544298cabd5: Waiting
+2aa4b706b48b: Waiting
+2133c3b84d04: Waiting
+222ad9525ef7: Waiting
+b7b39435dfe0: Waiting
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+1d5948c8e011: Waiting
+0f5b0f65f3e9: Waiting
+00ec53b593a3: Waiting
+28bcce6f90cc: Waiting
+4df52974a240: Waiting
+8225bd3668ec: Waiting
+81485dc198a7: Waiting
+c46ba521ff13: Waiting
+de8279669c23: Waiting
+e7b5ae40f5af: Waiting
+1a48f865f9e4: Waiting
+a7f8e4dda08b: Waiting
+81485dc198a7: Waiting
+c46ba521ff13: Waiting
+de8279669c23: Waiting
+e7b5ae40f5af: Waiting
+1a48f865f9e4: Waiting
+a7f8e4dda08b: Waiting
+6800336144aa: Waiting
+d544298cabd5: Waiting
+2aa4b706b48b: Waiting
+2133c3b84d04: Waiting
+222ad9525ef7: Waiting
+b7b39435dfe0: Waiting
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+1d5948c8e011: Waiting
+0f5b0f65f3e9: Waiting
+00ec53b593a3: Waiting
+28bcce6f90cc: Waiting
+4df52974a240: Waiting
+8225bd3668ec: Waiting
+e7b5ae40f5af: Waiting
+1a48f865f9e4: Waiting
+a7f8e4dda08b: Waiting
+6800336144aa: Waiting
+d544298cabd5: Waiting
+2aa4b706b48b: Waiting
+2133c3b84d04: Waiting
+222ad9525ef7: Waiting
+b7b39435dfe0: Waiting
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+1d5948c8e011: Waiting
+0f5b0f65f3e9: Waiting
+00ec53b593a3: Waiting
+28bcce6f90cc: Waiting
+4df52974a240: Waiting
+8225bd3668ec: Waiting
+81485dc198a7: Waiting
+c46ba521ff13: Waiting
+de8279669c23: Waiting
+4df52974a240: Waiting
+8225bd3668ec: Waiting
+81485dc198a7: Waiting
+c46ba521ff13: Waiting
+de8279669c23: Waiting
+e7b5ae40f5af: Waiting
+1a48f865f9e4: Waiting
+a7f8e4dda08b: Waiting
+6800336144aa: Waiting
+d544298cabd5: Waiting
+2aa4b706b48b: Waiting
+2133c3b84d04: Waiting
+222ad9525ef7: Waiting
+b7b39435dfe0: Waiting
+1b7a8dc7d391: Waiting
+ef8521c85468: Waiting
+1d5948c8e011: Waiting
+0f5b0f65f3e9: Waiting
+00ec53b593a3: Waiting
+28bcce6f90cc: Waiting
+1a48f865f9e4: Layer already exists
+a7f8e4dda08b: Waiting
+6800336144aa: Layer already exists
+d544298cabd5: Layer already exists
+2aa4b706b48b: Layer already exists
+2133c3b84d04: Waiting
+222ad9525ef7: Layer already exists
+b7b39435dfe0: Layer already exists
+1b7a8dc7d391: Layer already exists
+ef8521c85468: Waiting
+1d5948c8e011: Layer already exists
+0f5b0f65f3e9: Layer already exists
+00ec53b593a3: Layer already exists
+28bcce6f90cc: Layer already exists
+4df52974a240: Layer already exists
+8225bd3668ec: Layer already exists
+81485dc198a7: Layer already exists
+c46ba521ff13: Waiting
+de8279669c23: Layer already exists
+e7b5ae40f5af: Layer already exists
+2133c3b84d04: Layer already exists
+ef8521c85468: Layer already exists
+c46ba521ff13: Layer already exists
+a7f8e4dda08b: Layer already exists
+20260912-production-candidate: digest: sha256:f7ca70ce9ef7bd72321bafa8be3f00047ceb056e67221ac93c10394592049930 size: 4711
+The push refers to repository [ghcr.io/assetforgeai-tech/cashpilot-earnapp-ubuntu]
+d544298cabd5: Waiting
+482070501b2f: Waiting
+fa09349ca998: Waiting
+2f84dce6cee8: Waiting
+6cfb66bf1350: Waiting
+feb3fa14bea3: Waiting
+a00092fb6748: Waiting
+e8b519e89321: Waiting
+38ddd2d6b72c: Waiting
+120c7c2a5424: Waiting
+e101f0fdb263: Waiting
+cb91c09823c2: Waiting
+6a3c293df4d2: Waiting
+6481255e7ad5: Waiting
+4f4fb700ef54: Waiting
+9f6bc89699a5: Waiting
+365dbae00467: Waiting
+695268cc464b: Waiting
+75439219a6aa: Waiting
+fa09349ca998: Waiting
+2f84dce6cee8: Waiting
+6cfb66bf1350: Waiting
+feb3fa14bea3: Waiting
+a00092fb6748: Waiting
+e8b519e89321: Waiting
+38ddd2d6b72c: Waiting
+120c7c2a5424: Waiting
+e101f0fdb263: Waiting
+cb91c09823c2: Waiting
+6a3c293df4d2: Waiting
+6481255e7ad5: Waiting
+4f4fb700ef54: Waiting
+9f6bc89699a5: Waiting
+365dbae00467: Waiting
+695268cc464b: Waiting
+75439219a6aa: Waiting
+d544298cabd5: Waiting
+482070501b2f: Waiting
+4f4fb700ef54: Waiting
+9f6bc89699a5: Waiting
+365dbae00467: Waiting
+695268cc464b: Waiting
+75439219a6aa: Waiting
+d544298cabd5: Waiting
+482070501b2f: Waiting
+fa09349ca998: Waiting
+2f84dce6cee8: Waiting
+6cfb66bf1350: Waiting
+feb3fa14bea3: Waiting
+a00092fb6748: Waiting
+e8b519e89321: Waiting
+38ddd2d6b72c: Waiting
+120c7c2a5424: Waiting
+e101f0fdb263: Waiting
+cb91c09823c2: Waiting
+6a3c293df4d2: Waiting
+6481255e7ad5: Waiting
+e101f0fdb263: Waiting
+cb91c09823c2: Waiting
+6a3c293df4d2: Waiting
+6481255e7ad5: Waiting
+4f4fb700ef54: Waiting
+9f6bc89699a5: Waiting
+365dbae00467: Waiting
+695268cc464b: Waiting
+75439219a6aa: Waiting
+d544298cabd5: Waiting
+482070501b2f: Waiting
+fa09349ca998: Waiting
+2f84dce6cee8: Waiting
+6cfb66bf1350: Waiting
+feb3fa14bea3: Waiting
+a00092fb6748: Waiting
+e8b519e89321: Waiting
+38ddd2d6b72c: Waiting
+120c7c2a5424: Waiting
+695268cc464b: Waiting
+75439219a6aa: Waiting
+d544298cabd5: Waiting
+482070501b2f: Waiting
+fa09349ca998: Waiting
+2f84dce6cee8: Waiting
+6cfb66bf1350: Waiting
+feb3fa14bea3: Waiting
+a00092fb6748: Waiting
+e8b519e89321: Waiting
+38ddd2d6b72c: Waiting
+120c7c2a5424: Waiting
+e101f0fdb263: Waiting
+cb91c09823c2: Waiting
+6a3c293df4d2: Waiting
+6481255e7ad5: Waiting
+4f4fb700ef54: Waiting
+9f6bc89699a5: Waiting
+365dbae00467: Waiting
+cb91c09823c2: Waiting
+6a3c293df4d2: Waiting
+6481255e7ad5: Waiting
+4f4fb700ef54: Waiting
+9f6bc89699a5: Waiting
+365dbae00467: Waiting
+695268cc464b: Waiting
+75439219a6aa: Waiting
+d544298cabd5: Waiting
+482070501b2f: Waiting
+fa09349ca998: Waiting
+2f84dce6cee8: Waiting
+6cfb66bf1350: Waiting
+feb3fa14bea3: Waiting
+a00092fb6748: Waiting
+e8b519e89321: Waiting
+38ddd2d6b72c: Waiting
+120c7c2a5424: Waiting
+e101f0fdb263: Waiting
+365dbae00467: Waiting
+695268cc464b: Waiting
+75439219a6aa: Waiting
+d544298cabd5: Waiting
+482070501b2f: Waiting
+fa09349ca998: Waiting
+2f84dce6cee8: Waiting
+6cfb66bf1350: Waiting
+feb3fa14bea3: Waiting
+a00092fb6748: Waiting
+e8b519e89321: Waiting
+38ddd2d6b72c: Waiting
+120c7c2a5424: Waiting
+e101f0fdb263: Waiting
+cb91c09823c2: Waiting
+6a3c293df4d2: Waiting
+6481255e7ad5: Waiting
+4f4fb700ef54: Waiting
+9f6bc89699a5: Waiting
+75439219a6aa: Waiting
+d544298cabd5: Waiting
+482070501b2f: Waiting
+fa09349ca998: Waiting
+2f84dce6cee8: Waiting
+6cfb66bf1350: Waiting
+feb3fa14bea3: Waiting
+a00092fb6748: Waiting
+e8b519e89321: Waiting
+38ddd2d6b72c: Waiting
+120c7c2a5424: Waiting
+e101f0fdb263: Waiting
+cb91c09823c2: Waiting
+6a3c293df4d2: Waiting
+6481255e7ad5: Waiting
+4f4fb700ef54: Waiting
+9f6bc89699a5: Waiting
+365dbae00467: Waiting
+695268cc464b: Waiting
+365dbae00467: Waiting
+695268cc464b: Waiting
+75439219a6aa: Waiting
+d544298cabd5: Waiting
+482070501b2f: Waiting
+fa09349ca998: Waiting
+2f84dce6cee8: Waiting
+6cfb66bf1350: Waiting
+feb3fa14bea3: Waiting
+a00092fb6748: Waiting
+e8b519e89321: Waiting
+38ddd2d6b72c: Waiting
+120c7c2a5424: Waiting
+e101f0fdb263: Waiting
+cb91c09823c2: Waiting
+6a3c293df4d2: Waiting
+6481255e7ad5: Waiting
+4f4fb700ef54: Waiting
+9f6bc89699a5: Waiting
+6a3c293df4d2: Waiting
+6481255e7ad5: Waiting
+4f4fb700ef54: Waiting
+9f6bc89699a5: Waiting
+365dbae00467: Waiting
+695268cc464b: Waiting
+75439219a6aa: Waiting
+d544298cabd5: Waiting
+482070501b2f: Waiting
+fa09349ca998: Waiting
+2f84dce6cee8: Waiting
+6cfb66bf1350: Waiting
+feb3fa14bea3: Waiting
+a00092fb6748: Waiting
+e8b519e89321: Waiting
+38ddd2d6b72c: Waiting
+120c7c2a5424: Waiting
+e101f0fdb263: Waiting
+cb91c09823c2: Waiting
+fa09349ca998: Layer already exists
+2f84dce6cee8: Layer already exists
+6cfb66bf1350: Layer already exists
+feb3fa14bea3: Layer already exists
+a00092fb6748: Layer already exists
+e8b519e89321: Layer already exists
+38ddd2d6b72c: Layer already exists
+120c7c2a5424: Layer already exists
+e101f0fdb263: Layer already exists
+cb91c09823c2: Layer already exists
+6a3c293df4d2: Layer already exists
+6481255e7ad5: Layer already exists
+4f4fb700ef54: Layer already exists
+9f6bc89699a5: Layer already exists
+365dbae00467: Layer already exists
+695268cc464b: Layer already exists
+75439219a6aa: Layer already exists
+d544298cabd5: Layer already exists
+482070501b2f: Layer already exists
+20260912-production-candidate: digest: sha256:70265ba720c27bb9398f97432fd9e151f841aedf679c1f82831080ac9d0109e3 size: 4864
+[cashpilot/earnapp-mac-canary:20260909-nonvn-macos-canary cashpilot/earnapp-mac-canary:20260912-production-candidate ghcr.io/assetforgeai-tech/cashpilot-earnapp-macos:20260909-nonvn-macos-canary ghcr.io/assetforgeai-tech/cashpilot-earnapp-macos:20260912-production-candidate] sha256:45c62c73242a281f5e293a6249bae4706b3c2ff8f9ec23a01b3a01a7a879170d
+[cashpilot/earnapp-ios:20260909-nonvn-macos-canary cashpilot/earnapp-ios:20260912-production-candidate ghcr.io/assetforgeai-tech/cashpilot-earnapp-ios:20260909-nonvn-macos-canary ghcr.io/assetforgeai-tech/cashpilot-earnapp-ios:20260912-production-candidate] sha256:f7ca70ce9ef7bd72321bafa8be3f00047ceb056e67221ac93c10394592049930
+[cashpilot/earnapp-ubuntu:20260909-nonvn-macos-canary cashpilot/earnapp-ubuntu:20260912-production-candidate ghcr.io/assetforgeai-tech/cashpilot-earnapp-ubuntu:20260909-nonvn-macos-canary ghcr.io/assetforgeai-tech/cashpilot-earnapp-ubuntu:20260912-production-candidate] sha256:70265ba720c27bb9398f97432fd9e151f841aedf679c1f82831080ac9d0109e3
