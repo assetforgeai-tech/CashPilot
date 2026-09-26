@@ -27,6 +27,7 @@ def test_host_helper_installer_updates_only_nkn_host_assets():
 
     service = (ROOT / "scripts" / "cashpilot-nkn-agent.service").read_text(encoding="utf-8")
     assert "snap.lxd.daemon.service" in service
+    assert "RuntimeDirectoryPreserve=yes" in service
 
     forbidden = (
         "docker restart",
